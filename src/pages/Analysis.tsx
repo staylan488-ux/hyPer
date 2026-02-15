@@ -65,12 +65,8 @@ export function Analysis() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.smooth, delay: index * 0.05 }}
               >
-                <Card variant="slab">
+                <Card variant="slab" className="border-l-4" style={{ borderLeftColor: statusColors[mv.status] || '#6B6B6B' }}>
                   <div className="flex items-start gap-4">
-                    <motion.div
-                      className="w-2 h-2 rounded-[4px] mt-1.5 flex-shrink-0 animate-breathe"
-                      style={{ backgroundColor: statusColors[mv.status] || '#6B6B6B' }}
-                    />
                     <div className="flex-1">
                       <h3 className="text-sm text-[#E8E4DE] mb-4">
                         {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
@@ -98,11 +94,11 @@ export function Analysis() {
 
                       <div className="flex items-center justify-between py-2 border-t border-white/5">
                         <span className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">Current</span>
-                        <span className="text-xs tabular-nums text-[#E8E4DE] font-display">{mv.weekly_sets} sets/wk</span>
+                        <span className="number-large text-[#E8E4DE]">{mv.weekly_sets} <span className="text-xs">sets/wk</span></span>
                       </div>
 
                       {recommendation && (
-                        <p className="text-[10px] text-[#9A9A9A] leading-relaxed mt-3 pt-3 border-t border-white/5">
+                        <p className="text-editorial mt-3 pt-3 border-t border-white/5">
                           {recommendation.message}
                         </p>
                       )}

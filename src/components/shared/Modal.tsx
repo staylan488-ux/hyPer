@@ -57,7 +57,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
               )}
               <motion.button
                 onClick={onClose}
-                className="p-2 hover:bg-white/5 rounded-[12px] transition-colors"
+                className="p-2 hover:bg-white/5 active:bg-white/10 rounded-[12px] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
                 <X className="w-4 h-4 text-[#6B6B6B]" />

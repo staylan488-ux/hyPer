@@ -231,10 +231,10 @@ export function Nutrition() {
       <motion.div className="mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <CardTitle className="mb-4">Daily Intake</CardTitle>
         <div className="grid grid-cols-4 gap-2">
-          <MacroGauge label="KCAL" current={dayTotals.calories} target={macroTarget?.calories || 2000} unit="" color="default" />
-          <MacroGauge label="PROTEIN" current={dayTotals.protein} target={macroTarget?.protein || 150} unit="g" color="accent" />
-          <MacroGauge label="CARBS" current={dayTotals.carbs} target={macroTarget?.carbs || 200} unit="g" color="default" />
-          <MacroGauge label="FAT" current={dayTotals.fat} target={macroTarget?.fat || 65} unit="g" color="default" />
+          <MacroGauge label="KCAL" current={dayTotals.calories} target={macroTarget?.calories || 2000} unit="" color="default" loading={loading} />
+          <MacroGauge label="PROTEIN" current={dayTotals.protein} target={macroTarget?.protein || 150} unit="g" color="accent" loading={loading} />
+          <MacroGauge label="CARBS" current={dayTotals.carbs} target={macroTarget?.carbs || 200} unit="g" color="default" loading={loading} />
+          <MacroGauge label="FAT" current={dayTotals.fat} target={macroTarget?.fat || 65} unit="g" color="default" loading={loading} />
         </div>
       </motion.div>
 
@@ -246,7 +246,7 @@ export function Nutrition() {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 transition-colors"
+              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
               whileTap={{ scale: 0.9, x: -2 }}
             >
               <ChevronLeft className="w-4 h-4 text-[#9A9A9A]" />
@@ -268,7 +268,7 @@ export function Nutrition() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 transition-colors"
+              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
               whileTap={{ scale: 0.9, x: 2 }}
             >
               <ChevronRight className="w-4 h-4 text-[#9A9A9A]" />
@@ -304,8 +304,8 @@ export function Nutrition() {
                     isSelected
                       ? 'bg-[#E8E4DE] text-[#1A1A1A]'
                       : inMonth
-                      ? 'text-[#E8E4DE] hover:bg-white/5'
-                      : 'text-[#5A5A5A] hover:bg-white/5'
+                      ? 'text-[#E8E4DE] hover:bg-white/5 active:bg-white/10'
+                      : 'text-[#5A5A5A] hover:bg-white/5 active:bg-white/10'
                   } ${isTodayDate && !isSelected ? 'ring-1 ring-[#C4A484]/30' : ''}`}
                 >
                   {isSelected && (
@@ -358,23 +358,36 @@ export function Nutrition() {
 
             {selectedDayLogs.length === 0 ? (
               <motion.button
-                className="w-full py-6 rounded-[20px] border border-dashed border-white/10 text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B] hover:border-white/20 hover:text-[#9A9A9A] transition-colors"
+                className="w-full py-8 rounded-[20px] border border-dashed border-white/10 hover:border-white/20 hover:text-[#9A9A9A] transition-colors"
                 onClick={() => {
                   setEditingEntry(null);
                   setShowLogger(true);
                 }}
                 whileTap={{ scale: 0.98 }}
               >
-                <Plus className="w-3 h-3 inline-block mr-1" />
-                Log First Entry
+                <p className="text-editorial mb-2">Nothing logged yet.</p>
+                <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">
+                  <Plus className="w-3 h-3 inline-block mr-1" />
+                  Add First Entry
+                </p>
               </motion.button>
             ) : (
               <div className="space-y-1">
                 <AnimatePresence>
-                  {selectedDayLogs.map((log, index) => (
+                  {selectedDayLogs.map((log, index) => {
+                    const mealTypeColors = {
+                      breakfast: '#C4A484',
+                      lunch: '#8B9A7D',
+                      dinner: '#A68B8B',
+                      snack: '#8B8580',
+                    };
+                    const borderColor = log.meal_type ? mealTypeColors[log.meal_type] : '#6B6B6B';
+
+                    return (
                     <motion.div
                       key={log.id}
-                      className="flex items-center gap-3 py-3 border-b border-white/5 last:border-0"
+                      className="flex items-center gap-3 py-3 border-b border-white/5 last:border-0 border-l-[3px] pl-3"
+                      style={{ borderLeftColor: borderColor }}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{
                         opacity: deletedId === log.id ? 0 : 1,
@@ -410,7 +423,7 @@ export function Nutrition() {
                       </div>
 
                       <motion.button
-                        className="p-2 rounded-[12px] hover:bg-white/5 text-[#6B6B6B] hover:text-[#9A9A9A] transition-colors"
+                        className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 text-[#6B6B6B] hover:text-[#9A9A9A] active:text-[#E8E4DE] transition-colors"
                         onClick={() => {
                           setEditingEntry(log);
                           setShowLogger(true);
@@ -430,7 +443,7 @@ export function Nutrition() {
                         <X className="w-3.5 h-3.5" />
                       </motion.button>
                     </motion.div>
-                  ))}
+                  )})}
                 </AnimatePresence>
               </div>
             )}

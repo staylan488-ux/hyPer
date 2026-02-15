@@ -33,19 +33,23 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-[#1A1A1A]">
+    <div className="min-h-screen flex items-center justify-center p-5 bg-[#1A1A1A] relative">
+      {/* Warm gradient overlay */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(circle at 50% 0%, rgba(196, 164, 132, 0.03), transparent 60%)'
+      }} />
       <motion.div
-        className="w-full max-w-sm"
+        className="w-full max-w-sm relative z-10"
       >
         {/* Brand Header */}
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
           <motion.p
-            className="text-[10px] tracking-[0.3em] uppercase text-[#6B6B6B] mb-3"
+            className="text-[10px] tracking-[0.3em] text-[#6B6B6B] mb-3"
             initial={{ opacity: 0, letterSpacing: '0.5em' }}
             animate={{ opacity: 1, letterSpacing: '0.3em' }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
           >
-            Hypertrophy
+            hyPer
           </motion.p>
           <AnimatePresence mode="wait">
             <motion.h1

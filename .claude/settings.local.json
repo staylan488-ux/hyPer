@@ -3,7 +3,9 @@
     "allow": [
       "Bash(ls -la \"C:\\\\Users\\\\synan\\\\hypertrophy-app\\\\public\"\" 2>/dev/null || echo \"public/ not found \")",
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }

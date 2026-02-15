@@ -34,6 +34,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         className={`rounded-[28px] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_rgba(0,0,0,0.15)] ${variants[variant]} ${className}`}
         transition={springs.smooth}
         whileHover={{ y: -1, borderColor: 'rgba(255,255,255,0.08)' }}
+        whileTap={{ scale: 0.985 }}
         {...props}
       >
         {children}

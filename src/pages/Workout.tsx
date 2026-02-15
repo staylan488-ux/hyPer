@@ -550,18 +550,27 @@ export function Workout() {
         </div>
 
         {/* Progress */}
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-1 bg-[#2E2E2E] rounded-[999px] overflow-hidden">
+        <div className="text-center mb-3">
+          <motion.p
+            className="number-hero text-[#E8E4DE] mb-2"
+            key={progress}
+            initial={{ scale: 1 }}
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 0.3 }}
+          >
+            {Math.round(progress)}%
+          </motion.p>
+          <div className="h-2 bg-[#2E2E2E] rounded-[999px] overflow-hidden mb-2">
             <motion.div
-              className="h-full bg-[#E8E4DE] rounded-[999px]"
+              className="h-full gradient-progress-stone-sage"
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             />
           </div>
-          <span className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B] tabular-nums">
-            {completedSets}/{totalSets}
-          </span>
+          <p className="label-section">
+            {completedSets}/{totalSets} sets
+          </p>
         </div>
       </motion.header>
 
@@ -583,7 +592,10 @@ export function Workout() {
             >
               <Card
                 variant="slab"
-                className={`transition-all ${allComplete ? 'opacity-60' : ''} ${isActive ? 'border-white/10' : ''}`}
+                className={`transition-all ${
+                  allComplete ? 'bg-sage-tint border-l-sage' :
+                  isActive ? 'border-l-accent border-white/10' : ''
+                }`}
               >
                 <div
                   className="flex items-center justify-between cursor-pointer"

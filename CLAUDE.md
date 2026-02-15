@@ -44,6 +44,15 @@ Before marking any task complete, run and pass:
 - Use clear visual hierarchy, intentional spacing, and consistent states.
 - Verify final behavior with existing pages/components conventions.
 
+## Cross-tool handoff protocol
+- Before starting major work, read `TOOL_SWITCHING_CHECKLIST.md`.
+- If work is handed over from another agent, start by verifying:
+  1. Current branch (`git branch --show-current`)
+  2. Working tree (`git status --short`)
+  3. Latest commits (`git log --oneline -5`)
+- Require concise handoff details: branch, last commit, files touched, verify results, remaining tasks.
+- Keep bugfix branches separate from large refactor branches.
+
 ## Communication style for user
 - User is technical but not a programmer.
 - Explain in plain English first, then include technical details if needed.

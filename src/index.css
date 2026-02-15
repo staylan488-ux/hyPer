@@ -115,6 +115,64 @@ body::after {
   font-style: italic;
 }
 
+/* Editorial Number Scale */
+.number-hero {
+  font-family: var(--font-display);
+  font-size: 2.5rem; /* 40px */
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.number-large {
+  font-family: var(--font-display);
+  font-size: 1.75rem; /* 28px */
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.number-medium {
+  font-family: var(--font-display);
+  font-size: 1.25rem; /* 20px */
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Editorial Text Scale */
+.text-editorial {
+  font-family: var(--font-display);
+  font-size: 1.125rem; /* 18px */
+  font-style: italic;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  color: var(--color-text-dim);
+}
+
+.text-body-lg {
+  font-size: 1rem; /* 16px */
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+.text-body {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+.label-section {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
 /* ═════════════════════════════════════
    CUSTOM SCROLLBAR
    ═════════════════════════════════════ */
@@ -189,6 +247,73 @@ input::placeholder {
   color: var(--color-rose);
 }
 
+/* Accent Tint Backgrounds */
+.bg-accent-tint {
+  background-color: rgba(196, 164, 132, 0.08);
+}
+
+.bg-accent-tint-strong {
+  background-color: rgba(196, 164, 132, 0.15);
+}
+
+.bg-sage-tint {
+  background-color: rgba(139, 154, 125, 0.08);
+}
+
+.bg-sage-tint-strong {
+  background-color: rgba(139, 154, 125, 0.15);
+}
+
+.bg-rose-tint {
+  background-color: rgba(166, 139, 139, 0.08);
+}
+
+.bg-rose-tint-strong {
+  background-color: rgba(166, 139, 139, 0.15);
+}
+
+/* Left-edge Accent Bars */
+.border-l-accent {
+  border-left: 3px solid var(--color-accent);
+}
+
+.border-l-sage {
+  border-left: 3px solid var(--color-sage);
+}
+
+.border-l-rose {
+  border-left: 3px solid var(--color-rose);
+}
+
+.border-l-4 {
+  border-left-width: 4px;
+}
+
+/* Gradient Progress Tracks */
+.gradient-progress-accent {
+  background: linear-gradient(
+    to right,
+    var(--color-accent),
+    rgba(196, 164, 132, 0.4)
+  );
+}
+
+.gradient-progress-sage {
+  background: linear-gradient(
+    to right,
+    var(--color-sage),
+    rgba(139, 154, 125, 0.4)
+  );
+}
+
+.gradient-progress-stone-sage {
+  background: linear-gradient(
+    to right,
+    var(--color-stone),
+    var(--color-sage)
+  );
+}
+
 /* ═════════════════════════════════════
    ANIMATIONS
    ═════════════════════════════════════ */
@@ -225,6 +350,13 @@ input::placeholder {
 @keyframes shimmer {
   0% { background-position: -200% center; }
   100% { background-position: 200% center; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #242424 25%, #2E2E2E 50%, #242424 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 8px;
 }
 
 @keyframes breathe {

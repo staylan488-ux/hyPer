@@ -44,16 +44,20 @@ export function VolumeChart({ volumeData }: VolumeChartProps) {
               <span className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">
                 {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
               </span>
-              <span className="text-xs tabular-nums text-[#6B6B6B]">
-                <span className="text-[#E8E4DE]">{mv.weekly_sets}</span>
-                {landmark && <span> / {landmark.mav_low}-{landmark.mav_high}</span>}
-              </span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="number-medium text-[#E8E4DE]">{mv.weekly_sets}</span>
+                {landmark && <span className="text-xs tabular-nums text-[#6B6B6B]">/ {landmark.mav_low}-{landmark.mav_high}</span>}
+              </div>
             </div>
 
-            <div className="relative h-2 bg-[#2E2E2E] rounded-[999px] overflow-hidden">
+            <div className="relative h-3 bg-[#2E2E2E] rounded-[999px] overflow-hidden">
               <motion.div
                 className="absolute h-full rounded-[999px]"
-                style={{ backgroundColor: statusColors[mv.status] || '#6B6B6B' }}
+                style={{
+                  background: mv.status === 'mav'
+                    ? 'linear-gradient(to right, #8B9A7D, rgba(139, 154, 125, 0.4))'
+                    : statusColors[mv.status] || '#6B6B6B'
+                }}
                 initial={{ width: 0 }}
                 animate={{ width: `${widthPercent}%` }}
                 transition={{ duration: 0.8, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
@@ -71,19 +75,19 @@ export function VolumeChart({ volumeData }: VolumeChartProps) {
         transition={{ delay: 0.4, duration: 0.4 }}
       >
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-[4px]" style={{ backgroundColor: '#8B6B6B' }} />
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B6B6B' }} />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]">Below MEV</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-[4px]" style={{ backgroundColor: '#A68B6B' }} />
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#A68B6B' }} />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]">MEV-MAV</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-[4px]" style={{ backgroundColor: '#8B9A7D' }} />
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B9A7D' }} />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]">MAV</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-[4px]" style={{ backgroundColor: '#9A8B7D' }} />
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9A8B7D' }} />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]">Near MRV</span>
         </div>
       </motion.div>
