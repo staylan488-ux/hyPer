@@ -1,0 +1,135 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const supabaseMock = vi.hoisted(() => ({
+  from: vi.fn(),
+  auth: {
+    getSession: vi.fn(),
+    onAuthStateChange: vi.fn(),
+    signOut: vi.fn(),
+  },
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: supabaseMock,
+}));
+
+import { useAuthStore } from '@/stores/authStore';
+
+type Profile = {
+  id: string;
+  display_name: string | null;
+};
+
+function createProfilesChain(profile: Profile | null) {
+  const chain = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    single: vi.fn(),
+  };
+
+  chain.select.mockImplementation(() => chain);
+  chain.eq.mockImplementation(() => chain);
+  chain.single.mockResolvedValue({ data: profile, error: null });
+
+  return chain;
+}
+
+beforeEach(() => {
+  supabaseMock.from.mockReset();
+  supabaseMock.auth.getSession.mockReset();
+  supabaseMock.auth.onAuthStateChange.mockReset();
+  supabaseMock.auth.signOut.mockReset();
+
+  useAuthStore.setState({
+    user: null,
+    session: null,
+    profile: null,
+    loading: true,
+    initialized: false,
+  });
+});
+
+describe('auth session must-work behavior', () => {
+  it('restores existing session on initialize', async () => {
+    const session = { user: { id: 'user-1' } } as { user: { id: string } };
+    const profile = { id: 'user-1', display_name: 'Vibe Lifter' };
+
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session } });
+    supabaseMock.auth.onAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    });
+
+    const profilesChain = createProfilesChain(profile);
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'profiles') return profilesChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAuthStore.getState().initialize();
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().profile).toEqual(profile);
+    });
+
+    const state = useAuthStore.getState();
+    expect(state.session).toEqual(session);
+    expect(state.user?.id).toBe(session.user.id);
+    expect(state.initialized).toBe(true);
+    expect(state.loading).toBe(false);
+  });
+
+  it('updates state from auth events after initialize', async () => {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } });
+    supabaseMock.auth.onAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    });
+
+    const profilesChain = createProfilesChain({ id: 'user-2', display_name: 'Session Test' });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'profiles') return profilesChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAuthStore.getState().initialize();
+    expect(useAuthStore.getState().initialized).toBe(true);
+    expect(useAuthStore.getState().user).toBeNull();
+
+    const authCallback = supabaseMock.auth.onAuthStateChange.mock.calls[0]?.[0] as
+      | ((event: string, session: { user: { id: string } } | null) => void)
+      | undefined;
+
+    if (!authCallback) {
+      throw new Error('Expected auth callback to be registered');
+    }
+
+    authCallback('SIGNED_IN', { user: { id: 'user-2' } });
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().profile).toEqual({ id: 'user-2', display_name: 'Session Test' });
+    });
+
+    authCallback('SIGNED_OUT', null);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().profile).toBeNull();
+  });
+
+  it('clears local session state on sign out', async () => {
+    supabaseMock.auth.signOut.mockResolvedValue({ error: null });
+
+    useAuthStore.setState({
+      user: { id: 'user-9' } as never,
+      session: { access_token: 'token' } as never,
+      profile: { id: 'user-9', display_name: 'Loaded User' },
+      loading: false,
+      initialized: true,
+    });
+
+    await useAuthStore.getState().signOut();
+
+    const state = useAuthStore.getState();
+    expect(supabaseMock.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(state.user).toBeNull();
+    expect(state.session).toBeNull();
+    expect(state.profile).toBeNull();
+  });
+});

@@ -1,0 +1,283 @@
+@import "tailwindcss";
+
+@theme {
+  /* ═════════════════════════════════════
+     HIGH-FASHION BRUTALIST PALETTE (DARK)
+     Inspired by YZY / Entire Studios
+     ═════════════════════════════════════ */
+  
+  /* Base */
+  --color-base: #1A1A1A;           /* Charcoal - primary background */
+  --color-surface: #242424;        /* Elevated surface - cards */
+  --color-surface-high: #2E2E2E;   /* Higher elevation */
+  --color-muted: #6B6B6B;          /* Secondary text */
+  --color-text: #E8E4DE;           /* Primary text - oatmeal */
+  --color-text-dim: #9A9A9A;       /* Dimmed text */
+  
+  /* Accent Colors (YZY Muted) */
+  --color-accent: #C4A484;         /* Dusty tan */
+  --color-sage: #8B9A7D;           /* Muted sage - success/optimal */
+  --color-rose: #A68B8B;           /* Dusty rose - warning */
+  --color-stone: #8B8580;          /* Warm stone */
+  
+  /* Status Colors (Desaturated) */
+  --color-success: #8B9A7D;        /* Sage */
+  --color-warning: #C9A9A6;        /* Rose */
+  --color-danger: #8B6B6B;         /* Muted red */
+  
+  /* Volume Status (Editorial) */
+  --color-volume-below-mev: #8B6B6B;
+  --color-volume-mev-mav: #A68B6B;
+  --color-volume-mav: #8B9A7D;
+  --color-volume-approaching-mrv: #9A8B7D;
+  --color-volume-above-mrv: #7D6B6B;
+  
+  /* Massive Radius - Puffer Volume Aesthetic */
+  --radius-sm: 12px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
+  --radius-xl: 36px;
+  --radius-2xl: 48px;
+  --radius-full: 9999px;
+  
+  /* Typography */
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Instrument Serif', serif;
+  
+  /* Spacing (Generous - Editorial) */
+  --spacing-section: 3rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-mono);
+  background-color: var(--color-base);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
+/* Noise/grain texture overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 128px 128px;
+}
+
+/* ═════════════════════════════════════
+   TYPOGRAPHY UTILITIES
+   ═════════════════════════════════════ */
+
+.heading-display {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.heading-section {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.number-display {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-display-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+}
+
+/* ═════════════════════════════════════
+   CUSTOM SCROLLBAR
+   ═════════════════════════════════════ */
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-muted);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+}
+
+/* ═════════════════════════════════════
+   FORM ELEMENTS
+   ═════════════════════════════════════ */
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input::placeholder {
+  color: var(--color-muted);
+  opacity: 0.6;
+}
+
+/* ═════════════════════════════════════
+   FASHION EDITORIAL UTILITIES
+   ═════════════════════════════════════ */
+
+.grayscale-filter {
+  filter: grayscale(100%);
+}
+
+.border-editorial {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.border-editorial-strong {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.surface-elevated {
+  background-color: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.text-sage {
+  color: var(--color-sage);
+}
+
+.text-rose {
+  color: var(--color-rose);
+}
+
+/* ═════════════════════════════════════
+   ANIMATIONS
+   ═════════════════════════════════════ */
+
+@keyframes slide-up-editorial {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slide-up-editorial 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(196, 164, 132, 0); }
+  50% { box-shadow: 0 0 16px rgba(196, 164, 132, 0.15); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes draw-check {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+/* ═════════════════════════════════════
+   GLOW EFFECTS
+   ═════════════════════════════════════ */
+
+.glow-accent {
+  box-shadow: 0 0 20px rgba(196, 164, 132, 0.08),
+              0 0 40px rgba(196, 164, 132, 0.04);
+}
+
+.glow-sage {
+  box-shadow: 0 0 20px rgba(139, 154, 125, 0.08),
+              0 0 40px rgba(139, 154, 125, 0.04);
+}
+
+.glow-text {
+  box-shadow: 0 0 20px rgba(232, 228, 222, 0.06),
+              0 0 40px rgba(232, 228, 222, 0.03);
+}
+
+/* ═════════════════════════════════════
+   EASING CURVES
+   ═════════════════════════════════════ */
+
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ═════════════════════════════════════
+   SAFE AREA (PWA)
+   ═════════════════════════════════════ */
+
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
