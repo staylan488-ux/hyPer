@@ -22,22 +22,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       primary: `
         bg-[#E8E4DE] text-[#1A1A1A]
         hover:bg-[#D4CFC7]
+        active:bg-[#C8C3BB]
         rounded-[28px]
       `,
       secondary: `
         bg-[#2E2E2E] text-[#E8E4DE]
         border border-white/10
         hover:bg-[#383838] hover:border-white/20
+        active:bg-[#424242] active:border-white/25
         rounded-[28px]
       `,
       danger: `
         bg-[#8B6B6B] text-[#E8E4DE]
         hover:bg-[#7A5A5A]
+        active:bg-[#6B4B4B]
         rounded-[28px]
       `,
       ghost: `
         bg-transparent text-[#9A9A9A]
         hover:text-[#E8E4DE] hover:bg-white/5
+        active:text-[#E8E4DE] active:bg-white/10
         rounded-[20px]
       `,
     };

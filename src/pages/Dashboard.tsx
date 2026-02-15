@@ -32,6 +32,7 @@ export function Dashboard() {
     fetchCurrentWorkout
   } = useAppStore();
 
+  const [loading, setLoading] = useState(true);
   const [nutritionTotals, setNutritionTotals] = useState<NutritionTotals>({
     calories: 0,
     protein: 0,
@@ -87,13 +88,16 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchSplits();
-      fetchMacroTarget();
-      fetchVolumeLandmarks();
-      calculateWeeklyVolume();
-      fetchCurrentWorkout();
-      fetchNutritionTotals();
+    const timer = setTimeout(async () => {
+      await Promise.all([
+        fetchSplits(),
+        fetchMacroTarget(),
+        fetchVolumeLandmarks(),
+        calculateWeeklyVolume(),
+        fetchCurrentWorkout(),
+        fetchNutritionTotals(),
+      ]);
+      setLoading(false);
     }, 0);
 
     return () => clearTimeout(timer);
@@ -104,20 +108,21 @@ export function Dashboard() {
       className="pb-24 px-5 pt-8"
     >
       {/* Header */}
-      <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <motion.header className="mb-12" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
           {activeSplit ? activeSplit.name.toUpperCase() : 'NO PROGRAM ACTIVE'}
         </p>
-        <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">
+        <h1 className="text-4xl font-display-italic text-[#E8E4DE] tracking-tight">
           {profile?.display_name ? `Welcome, ${profile.display_name}` : 'Welcome Back'}
         </h1>
+        <p className="text-body text-dim mt-2">{format(new Date(), 'EEEE, MMMM d')}</p>
       </motion.header>
 
       {/* Quick Actions */}
       <motion.div className="grid grid-cols-2 gap-3 mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Link to="/workout">
           <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}>
-            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group">
+            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group bg-accent-tint border-l-accent">
               <motion.div
                 className="p-4 rounded-[20px] bg-[#2E2E2E] mb-3 group-hover:bg-[#383838] transition-colors"
                 whileHover={{ rotate: -12 }}
@@ -134,7 +139,7 @@ export function Dashboard() {
 
         <Link to="/nutrition">
           <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}>
-            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group">
+            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group bg-sage-tint border-l-sage">
               <motion.div
                 className="p-4 rounded-[20px] bg-[#2E2E2E] mb-3 group-hover:bg-[#383838] transition-colors"
                 whileHover={{ rotate: 12 }}
@@ -151,7 +156,7 @@ export function Dashboard() {
 
         <Link to="/history" className="col-span-2">
           <motion.div whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.99 }} transition={springs.snappy}>
-            <Card variant="slab" className="flex items-center justify-center py-4 hover:border-white/10 transition-all cursor-pointer group">
+            <Card variant="slab" className="flex items-center justify-center py-4 hover:border-white/10 transition-all cursor-pointer group border-l-rose">
               <div className="p-3 rounded-[16px] bg-[#2E2E2E] mr-3 group-hover:bg-[#383838] transition-colors">
                 <History className="w-4 h-4 text-[#E8E4DE]" strokeWidth={1.5} />
               </div>
@@ -168,34 +173,46 @@ export function Dashboard() {
         <div className="flex items-center justify-between mb-4">
           <CardTitle>Today's Intake</CardTitle>
         </div>
-        <div className="grid grid-cols-4 gap-2">
+        {/* Calories - full width hero */}
+        <div className="mb-4">
           <MacroGauge
-            label="KCAL"
+            label="CALORIES"
             current={nutritionTotals.calories}
             target={macroTarget?.calories || 2000}
-            unit=""
+            unit=" kcal"
             color="default"
+            variant="hero"
+            loading={loading}
           />
+        </div>
+        {/* Protein, Carbs, Fat - 3 columns */}
+        <div className="grid grid-cols-3 gap-4">
           <MacroGauge
             label="PROTEIN"
             current={nutritionTotals.protein}
             target={macroTarget?.protein || 150}
             unit="g"
             color="accent"
+            variant="hero"
+            loading={loading}
           />
           <MacroGauge
             label="CARBS"
             current={nutritionTotals.carbs}
             target={macroTarget?.carbs || 200}
             unit="g"
-            color="default"
+            color="sage"
+            variant="hero"
+            loading={loading}
           />
           <MacroGauge
             label="FAT"
             current={nutritionTotals.fat}
             target={macroTarget?.fat || 65}
             unit="g"
-            color="default"
+            color="rose"
+            variant="hero"
+            loading={loading}
           />
         </div>
       </motion.div>
@@ -213,7 +230,15 @@ export function Dashboard() {
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <VolumeChart volumeData={weeklyVolume} />
+          {loading ? (
+            <div className="flex items-end gap-3 h-32">
+              <div className="shimmer flex-1 h-[60%]" />
+              <div className="shimmer flex-1 h-[85%]" />
+              <div className="shimmer flex-1 h-[45%]" />
+            </div>
+          ) : (
+            <VolumeChart volumeData={weeklyVolume} />
+          )}
         </Card>
       </motion.div>
 
@@ -225,36 +250,46 @@ export function Dashboard() {
             <CardTitle>Insights</CardTitle>
           </div>
 
-          <div className="space-y-3">
-            {weeklyVolume.length === 0 ? (
-              <p className="text-xs text-[#6B6B6B] leading-relaxed">
-                Complete a workout to receive personalized volume recommendations based on your training landmarks.
-              </p>
-            ) : (
-              weeklyVolume.slice(0, 3).map((mv, index) => (
-                <motion.div
-                  key={mv.muscle_group}
-                  className="flex items-center justify-between py-3 border-b border-white/5 last:border-0"
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.08, ...springs.smooth }}
-                >
-                  <div>
-                    <p className="text-xs text-[#E8E4DE] capitalize tracking-wide">
-                      {mv.muscle_group.replace('_', ' ')}
-                    </p>
-                    <p className="text-[10px] text-[#6B6B6B] tabular-nums">
-                      {mv.weekly_sets} sets this week
-                    </p>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 pl-3">
+                  <div className="flex-1">
+                    <div className="shimmer h-3.5 w-24 mb-2" />
+                    <div className="shimmer h-5 w-16" />
                   </div>
-                  <div
-                    className="w-2 h-2 rounded-[4px] animate-breathe"
-                    style={{ backgroundColor: getVolumeStatusColor(mv.status) }}
-                  />
-                </motion.div>
-              ))
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {weeklyVolume.length === 0 ? (
+                <p className="text-editorial">
+                  Complete a workout to receive personalized volume recommendations based on your training landmarks.
+                </p>
+              ) : (
+                weeklyVolume.slice(0, 3).map((mv, index) => (
+                  <motion.div
+                    key={mv.muscle_group}
+                    className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 border-l-4 pl-3"
+                    style={{ borderLeftColor: getVolumeStatusColor(mv.status) }}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.08, ...springs.smooth }}
+                  >
+                    <div>
+                      <p className="text-body text-[#E8E4DE] capitalize">
+                        {mv.muscle_group.replace('_', ' ')}
+                      </p>
+                      <p className="number-medium text-[#9A9A9A] tabular-nums">
+                        {mv.weekly_sets} <span className="text-[10px] uppercase tracking-wider">sets/wk</span>
+                      </p>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          )}
         </Card>
       </motion.div>
     </motion.div>

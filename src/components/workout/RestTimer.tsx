@@ -85,7 +85,7 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
             cy="50"
           />
           <motion.circle
-            stroke={isComplete ? '#8B9A7D' : '#E8E4DE'}
+            stroke={isComplete ? '#8B9A7D' : isWarning ? '#A68B8B' : '#E8E4DE'}
             strokeWidth="3"
             fill="none"
             r="44"
@@ -100,9 +100,13 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-4xl font-display tabular-nums text-[#E8E4DE] tracking-tight">
+          <motion.span
+            className="text-4xl font-display tabular-nums tracking-tight"
+            animate={{ color: isComplete ? '#8B9A7D' : isWarning ? '#A68B8B' : '#E8E4DE' }}
+            transition={{ duration: 0.3 }}
+          >
             {formatTime(timeLeft)}
-          </span>
+          </motion.span>
           <span className="text-[9px] tracking-[0.2em] uppercase text-[#6B6B6B] mt-1">
             {isRunning ? 'Remaining' : isComplete ? 'Complete' : 'Paused'}
           </span>
@@ -124,7 +128,7 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
           )}
         </motion.button>
         <motion.button
-          className="w-14 h-14 rounded-[20px] bg-transparent border border-white/10 flex items-center justify-center hover:bg-white/5 transition-colors"
+          className="w-14 h-14 rounded-[20px] bg-transparent border border-white/10 flex items-center justify-center hover:bg-white/5 active:bg-white/10 transition-colors"
           onClick={handleReset}
           whileTap={{ scale: 0.9, rotate: -180 }}
           transition={springs.snappy}

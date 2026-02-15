@@ -42,7 +42,7 @@ export function Settings() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Card variant="slab" className="mb-4">
           <div className="flex items-center gap-2 mb-5">
-            <User className="w-4 h-4 text-[#6B6B6B]" strokeWidth={1.5} />
+            <User className="w-4 h-4 text-accent" strokeWidth={1.5} />
             <CardTitle>Identity</CardTitle>
           </div>
           <Input
@@ -58,7 +58,7 @@ export function Settings() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Card variant="slab" className="mb-4">
           <div className="flex items-center gap-2 mb-5">
-            <Target className="w-4 h-4 text-[#6B6B6B]" strokeWidth={1.5} />
+            <Target className="w-4 h-4 text-sage" strokeWidth={1.5} />
             <CardTitle>Daily Targets</CardTitle>
           </div>
 
@@ -66,6 +66,7 @@ export function Settings() {
             <Input
               label="Calories"
               type="number"
+              inputMode="numeric"
               value={macros.calories}
               onChange={(e) => setMacros({ ...macros, calories: parseInt(e.target.value) || 0 })}
             />
@@ -74,18 +75,21 @@ export function Settings() {
               <Input
                 label="Protein (g)"
                 type="number"
+                inputMode="numeric"
                 value={macros.protein}
                 onChange={(e) => setMacros({ ...macros, protein: parseInt(e.target.value) || 0 })}
               />
               <Input
                 label="Carbs (g)"
                 type="number"
+                inputMode="numeric"
                 value={macros.carbs}
                 onChange={(e) => setMacros({ ...macros, carbs: parseInt(e.target.value) || 0 })}
               />
               <Input
                 label="Fat (g)"
                 type="number"
+                inputMode="numeric"
                 value={macros.fat}
                 onChange={(e) => setMacros({ ...macros, fat: parseInt(e.target.value) || 0 })}
               />
@@ -117,11 +121,11 @@ export function Settings() {
         animate={{ opacity: 1, y: 0 }}
         transition={springs.smooth}
       >
-        <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B]">
-          Hypertrophy Tracker
+        <p className="text-[10px] tracking-[0.15em] text-[#6B6B6B]">
+          hyPer
         </p>
         <p className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]/60 mt-1">
-          Based on Chris Beardsley's Hypertrophy Research
+          Built on peer-reviewed research
         </p>
       </motion.div>
     </motion.div>

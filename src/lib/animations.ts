@@ -9,6 +9,8 @@ export const springs = {
   smooth: { type: 'spring', stiffness: 300, damping: 30 } as Transition,
   bouncy: { type: 'spring', stiffness: 400, damping: 15 } as Transition,
   gentle: { type: 'spring', stiffness: 200, damping: 20 } as Transition,
+  responsive: { type: 'spring', stiffness: 350, damping: 25 } as Transition,
+  heavy: { type: 'spring', stiffness: 250, damping: 35 } as Transition,
 };
 
 // ═══════════════════════════════════
@@ -18,6 +20,12 @@ export const springs = {
 /** Fade-up entrance for individual items */
 export const fadeUp: Variants = {
   hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0 },
+};
+
+/** Fade-up entrance triggered by scroll (whileInView) */
+export const inViewFadeUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
 };
 
@@ -112,6 +120,7 @@ export const buttonTap = {
 
 export const cardHover = {
   whileHover: { y: -2, transition: springs.smooth },
+  whileTap: { scale: 0.985 },
 };
 
 // ═══════════════════════════════════

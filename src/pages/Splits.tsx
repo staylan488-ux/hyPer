@@ -92,7 +92,7 @@ export function Splits() {
               >
                 <Card
                   variant="slab"
-                  className={`relative ${split.is_active ? 'border-[#C4A484]/30' : ''}`}
+                  className={`relative ${split.is_active ? 'bg-accent-tint border-[#C4A484]/30' : ''}`}
                 >
                   {split.is_active && (
                     <motion.div
@@ -148,7 +148,7 @@ export function Splits() {
 
                     <div className="relative ml-4">
                       <motion.button
-                        className="p-2 hover:bg-white/5 rounded-[12px] transition-colors"
+                        className="p-2 hover:bg-white/5 active:bg-white/10 rounded-[12px] transition-colors"
                         onClick={() => setShowMenu(showMenu === split.id ? null : split.id)}
                         whileTap={{ scale: 0.9 }}
                       >
@@ -166,7 +166,7 @@ export function Splits() {
                           >
                             {!split.is_active && (
                                 <button
-                                  className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] hover:bg-white/5 flex items-center gap-3"
+                                  className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] hover:bg-white/5 active:bg-white/10 flex items-center gap-3"
                                   onClick={() => {
                                   void handleSelectSplit(split.id, split.name);
                                   }}
@@ -176,7 +176,7 @@ export function Splits() {
                               </button>
                             )}
                             <button
-                              className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B] hover:bg-white/5 flex items-center gap-3"
+                              className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B] hover:bg-white/5 active:bg-white/10 flex items-center gap-3"
                               onClick={() => handleDelete(split.id)}
                             >
                               <Trash2 className="w-3 h-3" />

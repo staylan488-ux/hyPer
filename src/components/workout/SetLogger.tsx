@@ -45,7 +45,7 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
   if (set.completed && !isEditing) {
     return (
       <motion.div
-        className="flex items-center justify-between py-3 px-4 bg-[#2E2E2E] rounded-[16px]"
+        className="flex items-center justify-between py-3 px-4 bg-sage-tint rounded-[16px]"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={springs.smooth}
@@ -54,8 +54,8 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
           <motion.div
             className="w-6 h-6 rounded-[8px] bg-[#8B9A7D]/20 flex items-center justify-center"
             initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={springs.bouncy}
+            animate={{ scale: [0, 1.2, 1] }}
+            transition={{ ...springs.bouncy, duration: 0.5 }}
           >
             <svg className="w-3 h-3 text-[#8B9A7D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <motion.path
@@ -75,7 +75,7 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
           {set.rpe && <span className="text-[#6B6B6B]">@{set.rpe}</span>}
         </div>
         <motion.button
-          className="p-2 hover:bg-white/5 rounded-[10px] transition-colors"
+          className="p-2 hover:bg-white/5 active:bg-white/10 rounded-[10px] transition-colors"
           onClick={() => setIsEditing(true)}
           whileTap={{ scale: 0.9 }}
         >
@@ -95,28 +95,33 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
         <div className="relative">
           <input
             type="number"
+            inputMode="decimal"
+            pattern="[0-9]*"
             placeholder="0"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
             disabled={saving}
-            className="w-full text-center text-lg tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
+            className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
           />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B] absolute -bottom-4 left-0 right-0 text-center">lbs</span>
         </div>
         <div className="relative">
           <input
             type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
             placeholder="0"
             value={reps}
             onChange={(e) => setReps(e.target.value)}
             disabled={saving}
-            className="w-full text-center text-lg tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
+            className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
           />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B] absolute -bottom-4 left-0 right-0 text-center">reps</span>
         </div>
         <div className="relative">
           <input
             type="number"
+            inputMode="decimal"
             placeholder="—"
             value={rpe}
             onChange={(e) => setRpe(e.target.value)}
@@ -124,7 +129,7 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
             max="10"
             step="0.5"
             disabled={saving}
-            className="w-full text-center text-lg tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
+            className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] placeholder:text-[#6B6B6B]/40 transition-colors disabled:opacity-60"
           />
           <span className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B] absolute -bottom-4 left-0 right-0 text-center">rpe</span>
         </div>

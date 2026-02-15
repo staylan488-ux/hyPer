@@ -255,7 +255,7 @@ export function History() {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 transition-colors"
+              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
               whileTap={{ scale: 0.9, x: -2 }}
             >
               <ChevronLeft className="w-4 h-4 text-[#9A9A9A]" />
@@ -277,7 +277,7 @@ export function History() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 transition-colors"
+              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
               whileTap={{ scale: 0.9, x: 2 }}
             >
               <ChevronRight className="w-4 h-4 text-[#9A9A9A]" />
@@ -313,8 +313,8 @@ export function History() {
                     isSelected
                       ? 'bg-[#E8E4DE] text-[#1A1A1A]'
                       : inMonth
-                      ? 'text-[#E8E4DE] hover:bg-white/5'
-                      : 'text-[#5A5A5A] hover:bg-white/5'
+                      ? 'text-[#E8E4DE] hover:bg-white/5 active:bg-white/10'
+                      : 'text-[#5A5A5A] hover:bg-white/5 active:bg-white/10'
                   } ${isTodayDate && !isSelected ? 'ring-1 ring-[#C4A484]/30' : ''}`}
                 >
                   {isSelected && (
@@ -357,8 +357,8 @@ export function History() {
           </div>
 
           {selectedDayWorkouts.length === 0 ? (
-            <Card variant="slab" className="text-center py-8">
-              <p className="text-xs text-[#6B6B6B]">No sessions recorded</p>
+            <Card variant="slab" className="text-center py-12">
+              <p className="text-editorial">No sessions recorded.</p>
             </Card>
           ) : (
             selectedDayWorkouts.map((workout, workoutIndex) => {
@@ -428,7 +428,7 @@ export function History() {
                                 transition={{ delay: exIndex * 0.04, ...springs.smooth }}
                               >
                                 <div
-                                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-white/5 rounded-[12px] px-2 -mx-2"
+                                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-white/5 active:bg-white/10 rounded-[12px] px-2 -mx-2"
                                   onClick={() => setExpandedExercise(isExerciseExpanded ? null : exerciseId)}
                                 >
                                   <div className="flex items-center gap-2">
