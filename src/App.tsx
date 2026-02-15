@@ -58,7 +58,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
-      <main className="max-w-lg mx-auto">
+      <main className="max-w-lg mx-auto safe-area-inset-top">
         {children}
       </main>
       <BottomNav />
