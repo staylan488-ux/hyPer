@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, Plus, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, Input, Card } from '@/components/shared';
@@ -78,22 +78,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     carbs: '',
     fat: '',
   });
-  const touchMovedRef = useRef(false);
-
-  const handleResultTouchStart = () => {
-    touchMovedRef.current = false;
-  };
-
-  const handleResultTouchMove = () => {
-    touchMovedRef.current = true;
-  };
-
-  const handleResultTap = (food: Food) => {
-    if (!touchMovedRef.current && !saving) {
-      setSelectedFood(food);
-    }
-  };
-
   const searchUSDA = async (query: string) => {
     if (!query.trim()) return;
 
@@ -394,6 +378,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
         <>
           <div className="flex gap-2 p-1 bg-[#1A1A1A] rounded-[20px]">
             <button
+              type="button"
               className={`flex-1 py-2.5 rounded-[16px] text-[10px] tracking-[0.1em] uppercase transition-all ${
                 mode === 'search' ? 'bg-[#2E2E2E] text-[#E8E4DE]' : 'text-[#6B6B6B]'
               }`}
@@ -402,6 +387,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
               Search
             </button>
             <button
+              type="button"
               className={`flex-1 py-2.5 rounded-[16px] text-[10px] tracking-[0.1em] uppercase transition-all ${
                 mode === 'manual' ? 'bg-[#2E2E2E] text-[#E8E4DE]' : 'text-[#6B6B6B]'
               }`}
@@ -425,6 +411,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                   />
                 </div>
                 <button
+                  type="button"
                   className="w-12 h-12 flex items-center justify-center bg-[#2E2E2E] rounded-[20px] hover:bg-[#383838] transition-colors disabled:opacity-40"
                   onClick={() => searchUSDA(searchQuery)}
                   disabled={loading}
@@ -439,14 +426,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                     key={food.fdc_id || food.id}
                     type="button"
                     className="w-full flex items-center justify-between p-4 bg-[#1A1A1A] border border-white/5 rounded-[20px] hover:border-white/10 transition-colors text-left active:border-white/20"
-                    onTouchStart={handleResultTouchStart}
-                    onTouchMove={handleResultTouchMove}
-                    onTouchEnd={() => handleResultTap(food)}
-                    onClick={() => setSelectedFood(food)}
+                    onClick={() => {
+                      if (!saving) setSelectedFood(food);
+                    }}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.04, ...springs.smooth }}
                     whileTap={{ scale: 0.98 }}
+                    disabled={saving}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-[#E8E4DE] truncate">{food.name}</p>

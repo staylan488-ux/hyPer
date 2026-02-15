@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { MacroGauge } from '@/components/dashboard/MacroGauge';
 import { VolumeChart } from '@/components/dashboard/VolumeChart';
+import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 
@@ -104,9 +105,10 @@ export function Dashboard() {
   }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchVolumeLandmarks]);
 
   return (
-    <motion.div
-      className="pb-24 px-5 pt-8"
-    >
+    <>
+      <motion.div
+        className="pb-24 px-5 pt-8"
+      >
       {/* Header */}
       <motion.header className="mb-12" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
@@ -292,7 +294,9 @@ export function Dashboard() {
           )}
         </Card>
       </motion.div>
-    </motion.div>
+      </motion.div>
+      <DashboardMonolithIntro />
+    </>
   );
 }
 

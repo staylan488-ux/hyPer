@@ -1,15 +1,19 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useCallback, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Input, Card } from '@/components/shared';
+import { LoginMonolithIntro } from '@/components/intro/LoginMonolithIntro';
+import { markLoginIntroPlayed, shouldPlayLoginIntro } from '@/components/intro/introState';
 import { springs } from '@/lib/animations';
 
 export function AuthForm() {
+  const reduceMotion = useReducedMotion();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showIntro, setShowIntro] = useState(() => shouldPlayLoginIntro() && !reduceMotion);
 
   const { signIn, signUp, signInWithGoogle, loading } = useAuthStore();
 
@@ -32,6 +36,11 @@ export function AuthForm() {
     if (error) setError(error.message);
   };
 
+  const finishIntro = useCallback(() => {
+    markLoginIntroPlayed();
+    setShowIntro(false);
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center p-5 bg-[#1A1A1A] relative">
       {/* Warm gradient overlay */}
@@ -40,6 +49,9 @@ export function AuthForm() {
       }} />
       <motion.div
         className="w-full max-w-sm relative z-10"
+        initial={showIntro ? { opacity: 0, y: 16 } : false}
+        animate={{ opacity: 1, y: 0 }}
+        transition={showIntro ? { duration: 0.4, ease: 'easeOut', delay: 1.1 } : springs.smooth}
       >
         {/* Brand Header */}
         <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
@@ -192,6 +204,8 @@ export function AuthForm() {
           </motion.button>
         </motion.p>
       </motion.div>
+
+      <LoginMonolithIntro active={showIntro} onComplete={finishIntro} />
     </div>
   );
 }
