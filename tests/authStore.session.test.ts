@@ -22,11 +22,13 @@ type Profile = {
 
 function createProfilesChain(profile: Profile | null) {
   const chain = {
+    update: vi.fn(),
     select: vi.fn(),
     eq: vi.fn(),
     single: vi.fn(),
   };
 
+  chain.update.mockImplementation(() => chain);
   chain.select.mockImplementation(() => chain);
   chain.eq.mockImplementation(() => chain);
   chain.single.mockResolvedValue({ data: profile, error: null });
@@ -131,5 +133,29 @@ describe('auth session must-work behavior', () => {
     expect(state.user).toBeNull();
     expect(state.session).toBeNull();
     expect(state.profile).toBeNull();
+  });
+
+  it('updates display name and syncs profile state', async () => {
+    const updatedProfile = { id: 'user-1', display_name: 'New Name' };
+    const profilesChain = createProfilesChain(updatedProfile);
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'profiles') return profilesChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    useAuthStore.setState({
+      user: { id: 'user-1' } as never,
+      profile: { id: 'user-1', display_name: 'Old Name' },
+      loading: false,
+      initialized: true,
+    });
+
+    const result = await useAuthStore.getState().updateDisplayName('  New Name  ');
+
+    expect(result.error).toBeNull();
+    expect(profilesChain.update).toHaveBeenCalledWith({ display_name: 'New Name' });
+    expect(profilesChain.eq).toHaveBeenCalledWith('id', 'user-1');
+    expect(useAuthStore.getState().profile).toEqual(updatedProfile);
   });
 });

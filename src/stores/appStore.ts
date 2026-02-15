@@ -409,14 +409,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('macro_targets')
       .upsert({
         user_id: user.id,
         ...target,
+      }, {
+        onConflict: 'user_id',
       })
       .select()
       .single();
+
+    if (error) {
+      throw error;
+    }
 
     if (data) {
       set({ macroTarget: data });
