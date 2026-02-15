@@ -18,6 +18,7 @@ import { useAppStore } from '@/stores/appStore';
 type Chain = {
   error: null;
   update: ReturnType<typeof vi.fn>;
+  upsert: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
@@ -31,6 +32,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   const chain = {
     error: null,
     update: vi.fn(),
+    upsert: vi.fn(),
     insert: vi.fn(),
     delete: vi.fn(),
     eq: vi.fn(),
@@ -41,6 +43,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   } as unknown as Chain;
 
   chain.update.mockImplementation(() => chain);
+  chain.upsert.mockImplementation(() => chain);
   chain.insert.mockImplementation(() => chain);
   chain.delete.mockImplementation(() => chain);
   chain.eq.mockImplementation(() => chain);
@@ -319,5 +322,49 @@ describe('must-work store contracts', () => {
     expect(setsChain.eq).toHaveBeenCalledWith('workout_id', 'workout-42');
     expect(workoutsChain.delete).toHaveBeenCalledTimes(1);
     expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-42');
+  });
+
+  it('upserts macro targets by user_id and stores saved target', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    const savedTarget = {
+      id: 'macro-1',
+      user_id: 'user-1',
+      calories: 2300,
+      protein: 180,
+      carbs: 240,
+      fat: 70,
+      created_at: '2026-02-15T10:00:00.000Z',
+    };
+
+    const macroTargetsChain = createChain({
+      single: vi.fn().mockResolvedValue({ data: savedTarget, error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'macro_targets') return macroTargetsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().updateMacroTarget({
+      calories: 2300,
+      protein: 180,
+      carbs: 240,
+      fat: 70,
+    });
+
+    expect(macroTargetsChain.upsert).toHaveBeenCalledWith(
+      {
+        user_id: 'user-1',
+        calories: 2300,
+        protein: 180,
+        carbs: 240,
+        fat: 70,
+      },
+      { onConflict: 'user_id' }
+    );
+    expect(useAppStore.getState().macroTarget).toEqual(savedTarget);
   });
 });

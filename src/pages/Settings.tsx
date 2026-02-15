@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LogOut, User, Target } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card, CardTitle, Button, Input } from '@/components/shared';
@@ -7,19 +7,86 @@ import { useAppStore } from '@/stores/appStore';
 import { springs } from '@/lib/animations';
 
 export function Settings() {
-  const { profile, signOut } = useAuthStore();
-  const { macroTarget, updateMacroTarget } = useAppStore();
+  const { profile, signOut, updateDisplayName } = useAuthStore();
+  const { macroTarget, fetchMacroTarget, updateMacroTarget } = useAppStore();
 
-  const [displayName, setDisplayName] = useState(profile?.display_name || '');
-  const [macros, setMacros] = useState({
+  const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
+  const [macroDraft, setMacroDraft] = useState<{
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  } | null>(null);
+  const [savingName, setSavingName] = useState(false);
+  const [savingMacros, setSavingMacros] = useState(false);
+  const [nameMessage, setNameMessage] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [macroMessage, setMacroMessage] = useState<string | null>(null);
+  const [macroError, setMacroError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchMacroTarget();
+  }, [fetchMacroTarget]);
+
+  const baseMacros = {
     calories: macroTarget?.calories || 2000,
     protein: macroTarget?.protein || 150,
     carbs: macroTarget?.carbs || 200,
     fat: macroTarget?.fat || 65,
-  });
+  };
+
+  const displayName = displayNameDraft ?? (profile?.display_name || '');
+  const macros = macroDraft ?? baseMacros;
+
+  const normalizedDisplayName = displayName.trim();
+  const currentDisplayName = profile?.display_name || '';
+  const displayNameChanged = normalizedDisplayName !== currentDisplayName;
+
+  const macrosChanged =
+    macros.calories !== baseMacros.calories
+    || macros.protein !== baseMacros.protein
+    || macros.carbs !== baseMacros.carbs
+    || macros.fat !== baseMacros.fat;
+
+  const clearNameFeedback = () => {
+    setNameMessage(null);
+    setNameError(null);
+  };
+
+  const clearMacroFeedback = () => {
+    setMacroMessage(null);
+    setMacroError(null);
+  };
+
+  const handleSaveDisplayName = async () => {
+    clearNameFeedback();
+    setSavingName(true);
+
+    const { error } = await updateDisplayName(displayName);
+
+    if (error) {
+      setNameError('Could not save display name. Please try again.');
+    } else {
+      setDisplayNameDraft(null);
+      setNameMessage('Display name saved.');
+    }
+
+    setSavingName(false);
+  };
 
   const handleSaveMacros = async () => {
-    await updateMacroTarget(macros);
+    clearMacroFeedback();
+    setSavingMacros(true);
+
+    try {
+      await updateMacroTarget(macros);
+      setMacroDraft(null);
+      setMacroMessage('Daily targets saved.');
+    } catch {
+      setMacroError('Could not save daily targets. Please try again.');
+    }
+
+    setSavingMacros(false);
   };
 
   const handleSignOut = async () => {
@@ -48,9 +115,22 @@ export function Settings() {
           <Input
             label="Display Name"
             value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => {
+              clearNameFeedback();
+              setDisplayNameDraft(e.target.value);
+            }}
             placeholder="Your name"
           />
+          <Button
+            className="w-full mt-4"
+            onClick={handleSaveDisplayName}
+            loading={savingName}
+            disabled={!displayNameChanged}
+          >
+            Save Name
+          </Button>
+          {nameMessage && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-sage">{nameMessage}</p>}
+          {nameError && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{nameError}</p>}
         </Card>
       </motion.div>
 
@@ -68,7 +148,10 @@ export function Settings() {
               type="number"
               inputMode="numeric"
               value={macros.calories}
-              onChange={(e) => setMacros({ ...macros, calories: parseInt(e.target.value) || 0 })}
+              onChange={(e) => {
+                clearMacroFeedback();
+                setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
+              }}
             />
 
             <div className="grid grid-cols-3 gap-3">
@@ -77,27 +160,38 @@ export function Settings() {
                 type="number"
                 inputMode="numeric"
                 value={macros.protein}
-                onChange={(e) => setMacros({ ...macros, protein: parseInt(e.target.value) || 0 })}
+                onChange={(e) => {
+                  clearMacroFeedback();
+                  setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
+                }}
               />
               <Input
                 label="Carbs (g)"
                 type="number"
                 inputMode="numeric"
                 value={macros.carbs}
-                onChange={(e) => setMacros({ ...macros, carbs: parseInt(e.target.value) || 0 })}
+                onChange={(e) => {
+                  clearMacroFeedback();
+                  setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
+                }}
               />
               <Input
                 label="Fat (g)"
                 type="number"
                 inputMode="numeric"
                 value={macros.fat}
-                onChange={(e) => setMacros({ ...macros, fat: parseInt(e.target.value) || 0 })}
+                onChange={(e) => {
+                  clearMacroFeedback();
+                  setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
+                }}
               />
             </div>
 
-            <Button className="w-full" onClick={handleSaveMacros}>
+            <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros} disabled={!macrosChanged}>
               Save Targets
             </Button>
+            {macroMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{macroMessage}</p>}
+            {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{macroError}</p>}
           </div>
         </Card>
       </motion.div>
