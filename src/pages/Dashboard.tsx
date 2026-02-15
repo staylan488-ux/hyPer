@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Dumbbell, UtensilsCrossed, TrendingUp, ArrowRight, History } from 'lucide-react';
 import { motion } from 'motion/react';
+import { format } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -43,16 +44,13 @@ export function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+      const today = format(new Date(), 'yyyy-MM-dd');
 
       const { data: logs, error: logsError } = await supabase
         .from('nutrition_logs')
-        .select('food_id, servings, date, logged_at')
+        .select('food_id, servings')
         .eq('user_id', user.id)
-        .or(`and(logged_at.gte.${startOfToday},logged_at.lt.${startOfTomorrow}),and(logged_at.is.null,date.eq.${today})`);
+        .eq('date', today);
 
       if (logsError || !logs || logs.length === 0) {
         setNutritionTotals({ calories: 0, protein: 0, carbs: 0, fat: 0 });
