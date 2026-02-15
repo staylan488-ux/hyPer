@@ -208,7 +208,7 @@ export function Nutrition() {
       <AnimatePresence>
         {showSuccess && (
           <motion.div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 bg-[#8B9A7D] text-[#1A1A1A] rounded-[20px] text-xs tracking-wider shadow-lg"
+            className="fixed safe-area-top-offset left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 bg-[#8B9A7D] text-[#1A1A1A] rounded-[20px] text-xs tracking-wider shadow-lg"
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
