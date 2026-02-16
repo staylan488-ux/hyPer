@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { Card, Button, Modal } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { SetLogger } from '@/components/workout/SetLogger';
 import { RestTimer } from '@/components/workout/RestTimer';
 import { springs } from '@/lib/animations';
@@ -13,12 +14,12 @@ import type { SplitDay, Workout, WorkoutSet } from '@/types';
 
 export function Workout() {
   const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout } = useAppStore();
+  const userId = useAuthStore((state) => state.user?.id || null);
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
@@ -46,38 +47,36 @@ export function Workout() {
   }, [fetchCurrentWorkout, fetchSplits]);
 
   useEffect(() => {
-    let mounted = true;
-
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!mounted) return;
-      setUserId(user?.id || null);
-    };
-
-    void loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!activeSplit) return;
 
     setSetupAnchorDay(defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
   }, [activeSplit]);
 
   useEffect(() => {
-    if (!userId || !activeSplit) {
+    if (!activeSplit) {
       setPlanSchedule(null);
+      return;
+    }
+
+    if (!userId) {
       return;
     }
 
     const existing = loadPlanSchedule(userId, activeSplit.id);
     setPlanSchedule(existing);
-    setSetupStartDate(existing?.startDate || defaultStartDate());
-    setSetupMode(existing?.mode || 'fixed');
+
+    if (existing) {
+      setSetupStartDate(existing.startDate);
+      setSetupMode(existing.mode);
+      setSetupStartChoice('pick');
+      setSetupAnchorDay(existing.anchorDay ?? existing.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+      return;
+    }
+
+    setSetupStartDate(defaultStartDate());
+    setSetupMode('fixed');
     setSetupStartChoice('today');
-    setSetupAnchorDay(existing?.anchorDay ?? existing?.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+    setSetupAnchorDay(defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
   }, [userId, activeSplit]);
 
   useEffect(() => {
