@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { LogOut, User, Target } from 'lucide-react';
+import { LogOut, User, Target, Palette } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Card, CardTitle, Button, Input } from '@/components/shared';
+import { Card, CardTitle, Button, Input, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 
 export function Settings() {
   const { profile, signOut, updateDisplayName } = useAuthStore();
   const { macroTarget, fetchMacroTarget, updateMacroTarget } = useAppStore();
+  const theme = useThemeStore((state) => state.theme);
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
   const [macroDraft, setMacroDraft] = useState<{
@@ -101,9 +103,27 @@ export function Settings() {
     >
       {/* Header */}
       <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Account</p>
-        <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Profile</h1>
+        <p className="text-[10px] tracking-[0.25em] uppercase text-[var(--color-muted)] mb-1">Account</p>
+        <h1 className="text-2xl font-display-italic text-[var(--color-text)] tracking-tight">Profile</h1>
       </motion.header>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <Card variant="slab" className="mb-4">
+          <div className="flex items-center gap-2 mb-5">
+            <Palette className="w-4 h-4 text-accent" strokeWidth={1.5} />
+            <CardTitle>Appearance</CardTitle>
+          </div>
+          <div className="flex items-center justify-between gap-3 p-3 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-base)]">
+            <div>
+              <p className="text-[11px] tracking-[0.12em] uppercase text-[var(--color-text)]">Theme</p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-1">
+                {theme === 'light' ? 'Bone & Clay light mode' : 'Nocturne dark mode'}
+              </p>
+            </div>
+            <ThemeToggle />
+          </div>
+        </Card>
+      </motion.div>
 
       {/* Profile */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
@@ -130,7 +150,7 @@ export function Settings() {
             Save Name
           </Button>
           {nameMessage && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-sage">{nameMessage}</p>}
-          {nameError && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{nameError}</p>}
+          {nameError && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{nameError}</p>}
         </Card>
       </motion.div>
 
@@ -191,7 +211,7 @@ export function Settings() {
               Save Targets
             </Button>
             {macroMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{macroMessage}</p>}
-            {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{macroError}</p>}
+            {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{macroError}</p>}
           </div>
         </Card>
       </motion.div>
@@ -200,7 +220,7 @@ export function Settings() {
       <motion.div className="mt-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Button
           variant="ghost"
-          className="w-full text-[#8B6B6B] hover:text-[#E8E4DE]"
+          className="w-full text-[var(--color-danger)] hover:text-[var(--color-text)]"
           onClick={handleSignOut}
         >
           <LogOut className="w-4 h-4 mr-2" />
@@ -215,10 +235,10 @@ export function Settings() {
         animate={{ opacity: 1, y: 0 }}
         transition={springs.smooth}
       >
-        <p className="text-[10px] tracking-[0.15em] text-[#6B6B6B]">
+        <p className="text-[10px] tracking-[0.15em] text-[var(--color-muted)]">
           hyPer
         </p>
-        <p className="text-[9px] tracking-[0.1em] uppercase text-[#6B6B6B]/60 mt-1">
+        <p className="text-[9px] tracking-[0.1em] uppercase text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
           Built on peer-reviewed research
         </p>
       </motion.div>

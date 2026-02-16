@@ -16,9 +16,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <motion.label
             htmlFor={inputId}
-            className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[#6B6B6B] mb-1 md:mb-2"
+            className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[var(--color-muted)] mb-1 md:mb-2"
             animate={{
-              color: isFocused ? '#9A9A9A' : '#6B6B6B',
+              color: isFocused ? 'var(--color-text-dim)' : 'var(--color-muted)',
               x: isFocused ? 2 : 0,
             }}
             transition={{ duration: 0.2 }}
@@ -31,24 +31,24 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           className={`
             w-full px-3 py-2 md:px-4 md:py-3
-            bg-[#1A1A1A]
-            border border-white/10
+            bg-[var(--color-base)]
+            border border-[var(--color-border-strong)]
             rounded-[20px]
-            text-[#E8E4DE]
+            text-[var(--color-text)]
             text-sm
-            placeholder:text-[#6B6B6B]/60
+            placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]
             transition-colors duration-200
             focus:outline-none
-            focus:border-white/25
-            focus:bg-[#1A1A1A]
+            focus:border-[var(--color-border-strong)]
+            focus:bg-[var(--color-base)]
             disabled:opacity-40 disabled:cursor-not-allowed
-            ${error ? 'border-[#8B6B6B]' : ''}
+            ${error ? 'border-[var(--color-danger)]' : ''}
             ${className}
           `}
           animate={{
             boxShadow: isFocused
-              ? '0 0 0 3px rgba(196, 164, 132, 0.08)'
-              : '0 0 0 0px rgba(196, 164, 132, 0)',
+              ? '0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent)'
+              : '0 0 0 0px color-mix(in srgb, var(--color-accent) 0%, transparent)',
           }}
           transition={{ duration: 0.2 }}
           onFocus={(e) => {
@@ -63,7 +63,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         />
         {error && (
           <motion.p
-            className="mt-2 text-xs text-[#8B6B6B]"
+            className="mt-2 text-xs text-[var(--color-danger)]"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}

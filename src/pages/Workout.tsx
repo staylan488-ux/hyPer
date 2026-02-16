@@ -380,12 +380,17 @@ export function Workout() {
               <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">Today</p>
               {todayCompletedWorkout ? (
                 <>
-                  <h3 className="text-base !text-[#E8E4DE]" style={{ color: '#E8E4DE' }}>Workout completed</h3>
+                  <h3 className="text-base text-[var(--color-text)]">Workout completed</h3>
                   <p className="text-xs text-[#A9A39A]">Great work. You can rest or train a different day.</p>
                 </>
               ) : todayPlannedDay ? (
                 <>
-                  <h3 className="text-base !text-[#E8E4DE]" style={{ color: '#E8E4DE' }}>{todayPlannedDay.day_name}</h3>
+                  <h3
+                    className="text-base font-medium tracking-[0.02em]"
+                    style={{ color: 'color-mix(in srgb, var(--color-text) 94%, white 6%)' }}
+                  >
+                    {todayPlannedDay.day_name}
+                  </h3>
                   <p className="text-xs text-[#A9A39A]">Planned session for today.</p>
                   <Button onClick={() => handleStartWorkout(todayPlannedDay)} disabled={startingDayId !== null}>
                     {startingDayId === todayPlannedDay.id ? 'Starting...' : 'Start Today\'s Workout'}
@@ -393,7 +398,7 @@ export function Workout() {
                 </>
               ) : (
                 <>
-                  <h3 className="text-base font-medium tracking-[0.02em] !text-[#E8E4DE]" style={{ color: '#E8E4DE' }}>
+                  <h3 className="text-base font-medium tracking-[0.02em] text-[var(--color-text)]">
                     Rest Day
                   </h3>
                   <p className="text-xs text-[#B6B0A8]">No scheduled training today. Recovery is part of progress.</p>
@@ -449,11 +454,11 @@ export function Workout() {
                   const statusClass =
                     status === 'completed'
                       ? 'bg-[#253427] text-[#9AC39A] border-[#3D5C3F]'
-                      : status === 'planned'
-                        ? 'bg-[#2A2A2A] text-[#D0CCC4] border-white/10'
+                    : status === 'planned'
+                        ? 'bg-[var(--color-surface-high)] text-[var(--color-text-dim)] border-[var(--color-border-strong)]'
                         : status === 'missed'
                           ? 'bg-[#3A2A2A] text-[#D39B9B] border-[#5C3D3D]'
-                          : 'bg-[#1F1F1F] text-[#9A9A9A] border-white/5';
+                          : 'bg-[var(--color-surface)] text-[var(--color-muted)] border-[var(--color-border)]';
 
                   return (
                     <div

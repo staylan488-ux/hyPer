@@ -10,10 +10,10 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onD
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
-      default: 'bg-[#242424] border border-white/5',
-      elevated: 'bg-[#2E2E2E] border border-white/8',
-      outlined: 'bg-[#1A1A1A] border border-white/10',
-      slab: 'bg-[#242424] border border-white/[0.03]',
+      default: 'bg-[var(--color-surface)] border border-[var(--color-border)]',
+      elevated: 'bg-[var(--color-surface-high)] border border-[var(--color-border-strong)]',
+      outlined: 'bg-[var(--color-base)] border border-[var(--color-border-strong)]',
+      slab: 'bg-[var(--color-surface)] border border-[var(--color-border-soft)]',
     };
 
     if (!animated) {
@@ -31,9 +31,9 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        className={`rounded-[28px] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_rgba(0,0,0,0.15)] ${variants[variant]} ${className}`}
+        className={`rounded-[28px] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_color-mix(in_srgb,var(--color-text)_16%,transparent)] hover:border-[var(--color-border-strong)] ${variants[variant]} ${className}`}
         transition={springs.smooth}
-        whileHover={{ y: -1, borderColor: 'rgba(255,255,255,0.08)' }}
+        whileHover={{ y: -1 }}
         whileTap={{ scale: 0.985 }}
         {...props}
       >
@@ -52,7 +52,7 @@ export const CardHeader = ({ className = '', children, ...props }: HTMLAttribute
 );
 
 export const CardTitle = ({ className = '', children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
-  <h3 className={`text-[10px] font-medium tracking-[0.2em] uppercase text-[#9A9A9A] ${className}`} {...props}>
+  <h3 className={`text-[10px] font-medium tracking-[0.2em] uppercase text-[var(--color-text-dim)] ${className}`} {...props}>
     {children}
   </h3>
 );

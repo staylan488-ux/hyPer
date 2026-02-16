@@ -16,7 +16,7 @@ export function BottomNav() {
 
   return (
     <motion.nav
-      className="fixed bottom-0 left-0 right-0 bg-[#1A1A1A]/95 backdrop-blur-md border-t border-white/5 safe-area-inset-bottom"
+      className="fixed bottom-0 left-0 right-0 bg-[var(--color-surface)] backdrop-blur-md border-t border-[var(--color-border)] safe-area-inset-bottom"
       initial={{ y: 80 }}
       animate={{ y: 0 }}
       transition={springs.smooth}
@@ -34,7 +34,7 @@ export function BottomNav() {
             >
               {isActive && (
                 <motion.div
-                  className="absolute inset-0 bg-white/5 rounded-[20px]"
+                  className="absolute inset-0 bg-[var(--color-surface-high)] rounded-[20px] border border-[var(--color-border)]"
                   layoutId="nav-active-pill"
                   transition={springs.smooth}
                 />
@@ -46,13 +46,13 @@ export function BottomNav() {
               >
                 <Icon
                   className={`w-5 h-5 transition-colors duration-200 ${
-                    isActive ? 'text-[#E8E4DE]' : 'text-[#6B6B6B]'
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                   strokeWidth={1.5}
                 />
                 <span
                   className={`text-[9px] mt-1.5 tracking-[0.1em] uppercase transition-colors duration-200 ${
-                    isActive ? 'text-[#E8E4DE]' : 'text-[#6B6B6B]'
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
                   {label}

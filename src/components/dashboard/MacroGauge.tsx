@@ -17,17 +17,17 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
   const isHit = percentage >= 100;
 
   const strokeColors = {
-    default: '#6B6B6B',
-    accent: '#C4A484',
-    sage: '#8B9A7D',
-    rose: '#A68B8B',
+    default: 'var(--color-muted)',
+    accent: 'var(--color-accent)',
+    sage: 'var(--color-sage)',
+    rose: 'var(--color-rose)',
   };
 
   const textColors = {
-    default: '#E8E4DE',
-    accent: '#C4A484',
-    sage: '#8B9A7D',
-    rose: '#A68B8B',
+    default: 'var(--color-text)',
+    accent: 'var(--color-accent)',
+    sage: 'var(--color-sage)',
+    rose: 'var(--color-rose)',
   };
 
   // Animated count-up
@@ -55,12 +55,12 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
   if (variant === 'hero') {
     return (
       <div className="flex flex-col">
-        <p className="text-[9px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">{label}</p>
+        <p className="text-[9px] tracking-[0.2em] uppercase text-[var(--color-muted)] mb-2">{label}</p>
 
         {loading ? (
           <>
             <div className="shimmer h-10 w-24 mb-3" />
-            <div className="relative h-2 bg-[#2E2E2E] rounded-full overflow-hidden mb-2" />
+            <div className="relative h-2 bg-[var(--color-surface-high)] rounded-full overflow-hidden mb-2" />
             <div className="shimmer h-3 w-16" />
           </>
         ) : (
@@ -73,16 +73,16 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
             </motion.p>
 
             {/* Gradient progress bar */}
-            <div className="relative h-2 bg-[#2E2E2E] rounded-full overflow-hidden mb-2">
+            <div className="relative h-2 bg-[var(--color-surface-high)] rounded-full overflow-hidden mb-2">
               <motion.div
-                className={`h-full ${color === 'accent' ? 'gradient-progress-accent' : color === 'sage' ? 'gradient-progress-sage' : 'bg-[#6B6B6B]'}`}
+                className={`h-full ${color === 'accent' ? 'gradient-progress-accent' : color === 'sage' ? 'gradient-progress-sage' : 'bg-[var(--color-muted)]'}`}
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min(percentage, 100)}%` }}
                 transition={{ duration: 1, ease: 'easeOut' }}
               />
             </div>
 
-            <p className="text-xs text-[#6B6B6B] tabular-nums">
+            <p className="text-xs text-[var(--color-muted)] tabular-nums">
               /{target}{unit}
             </p>
           </>
@@ -93,14 +93,14 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
 
   // Compact variant - original ring design
   return (
-    <div className={`flex flex-col items-center p-3 rounded-[20px] bg-[#242424] border border-white/5 ${!loading && isHit ? 'animate-pulse-glow' : ''}`}>
-      <p className="text-[9px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">{label}</p>
+    <div className={`flex flex-col items-center p-3 rounded-[20px] bg-[var(--color-surface)] border border-[var(--color-border)] ${!loading && isHit ? 'animate-pulse-glow' : ''}`}>
+      <p className="text-[9px] tracking-[0.2em] uppercase text-[var(--color-muted)] mb-2">{label}</p>
 
       <div className="relative h-14 w-14">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
           {/* Background track */}
           <circle
-            className="text-[#2E2E2E]"
+            className="text-[var(--color-surface-high)]"
             stroke="currentColor"
             strokeWidth="2.5"
             fill="none"
@@ -111,7 +111,7 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
           {/* Progress arc */}
           {!loading && (
             <circle
-              stroke={isOver ? '#8B6B6B' : strokeColors[color]}
+              stroke={isOver ? 'var(--color-danger)' : strokeColors[color]}
               strokeWidth="2.5"
               fill="none"
               r="15.5"
@@ -126,7 +126,7 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
           {loading ? (
             <div className="shimmer h-3 w-8 rounded-full" />
           ) : (
-            <span className="text-xs font-display text-[#E8E4DE] tabular-nums">
+            <span className="text-xs font-display text-[var(--color-text)] tabular-nums">
               {Math.round(percentage)}%
             </span>
           )}
@@ -136,9 +136,9 @@ export function MacroGauge({ label, current, target, unit, color = 'default', va
       {loading ? (
         <div className="shimmer h-2.5 w-12 mt-2" />
       ) : (
-        <p className="text-[10px] text-[#9A9A9A] mt-2 tabular-nums">
-          <motion.span className="text-[#E8E4DE]">{countValue}</motion.span>
-          <span className="text-[#6B6B6B]">/{target}{unit}</span>
+        <p className="text-[10px] text-[var(--color-text-dim)] mt-2 tabular-nums">
+          <motion.span className="text-[var(--color-text)]">{countValue}</motion.span>
+          <span className="text-[var(--color-muted)]">/{target}{unit}</span>
         </p>
       )}
     </div>
