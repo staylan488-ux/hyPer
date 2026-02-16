@@ -1,73 +1,103 @@
-# React + TypeScript + Vite
+# hyPer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+hyPer is an **open-source, mobile-first web app** that combines **nutrition tracking** and **hypertrophy training logging** in one place.
 
-Currently, two official plugins are available:
+Instead of juggling multiple apps, you can log meals, run workout sessions, track progression, and monitor volume/recovery signals from a single dashboard.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## What the app does
 
-## React Compiler
+- Log food and macros throughout the day
+- Start, track, and complete workout sessions
+- Record sets/reps/loads and review workout history
+- Track training volume and progress trends
+- Build/manage hypertrophy split templates
+- Use evidence-backed recommendations (peer-reviewed research references)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Why hyPer
 
-## Expanding the ESLint configuration
+Most fitness tools are either:
+- good at lifting logs but weak on nutrition, or
+- good at nutrition but weak on serious training progression.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+hyPer is built to unify both for people training for muscle growth.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Tech stack
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- **Frontend:** React 19 + TypeScript
+- **State:** Zustand
+- **Styling/UI:** TailwindCSS 4 + Motion
+- **Backend/Auth/DB:** Supabase
+- **Charts:** Recharts
+- **Build tool:** Vite
+- **Testing:** Vitest + ESLint
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Getting started
+
+### 1) Install dependencies
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2) Configure environment variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Create a `.env` file in the project root:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_USDA_API_KEY=your_usda_api_key
 ```
+
+### 3) Run the app
+
+```bash
+npm run dev
+```
+
+App runs on Vite's local dev server (typically `http://localhost:5173`).
+
+## Available scripts
+
+```bash
+npm run dev            # Start development server
+npm run build          # Typecheck + production build
+npm run preview        # Preview production build locally
+npm run lint           # Lint codebase
+npm run test           # Run test suite once
+npm run test:watch     # Run tests in watch mode
+npm run evidence:import # Import/update evidence dataset
+```
+
+## Quality checklist (before shipping changes)
+
+```bash
+npm run test
+npm run lint
+npm run build
+```
+
+## Project structure (high level)
+
+```text
+src/
+  components/   # UI components (auth, dashboard, workout, shared)
+  pages/        # Main app screens
+  stores/       # Zustand state stores
+  lib/          # Supabase client, animation presets, utilities
+  data/         # Evidence + split templates
+scripts/        # Tooling scripts (evidence import)
+```
+
+## Open source
+
+hyPer is open source and intended to keep improving with real training + nutrition workflows.
+
+If you want to contribute, start by opening an issue describing:
+- the problem,
+- expected behavior,
+- and any relevant screenshots/log context.
+
+---
+
+Built for lifters who care about both **performance** and **consistency**.
