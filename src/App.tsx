@@ -11,6 +11,7 @@ import { Splits } from '@/pages/Splits';
 import { Settings } from '@/pages/Settings';
 import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
+import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -19,17 +20,17 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (!initialized) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center px-5 bg-[#1A1A1A]"
-        style={{ backgroundImage: 'radial-gradient(circle at 50% 24%, rgba(196, 164, 132, 0.03), transparent 58%)' }}
+        className="min-h-screen flex items-center justify-center px-5 bg-[var(--color-base)]"
+        style={{ backgroundImage: 'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 58%)' }}
       >
         <motion.div
-          className="w-full max-w-sm rounded-[28px] border border-white/[0.03] bg-[#242424] px-6 py-8 text-center"
+          className="w-full max-w-sm rounded-[28px] border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-6 py-8 text-center"
           initial={{ opacity: 0, y: 10, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={springs.smooth}
         >
           <motion.p
-            className="text-[10px] tracking-[0.32em] text-[#6B6B6B] mb-5"
+            className="text-[10px] tracking-[0.32em] text-[var(--color-muted)] mb-5"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={springs.smooth}
@@ -37,12 +38,12 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
             hyPer
           </motion.p>
           <motion.div
-            className="h-px bg-[#C4A484] mb-5"
+            className="h-px bg-[var(--color-accent)] mb-5"
             initial={{ scaleX: 0, opacity: 0.2 }}
             animate={{ scaleX: [0, 1, 1], opacity: [0.2, 1, 0.2] }}
             transition={{ duration: 1.2, ease: 'easeInOut', repeat: Infinity }}
           />
-          <p className="text-[10px] tracking-[0.18em] uppercase text-[#9A9A9A]">Preparing your dashboard</p>
+          <p className="text-[10px] tracking-[0.18em] uppercase text-[var(--color-text-dim)]">Preparing your dashboard</p>
         </motion.div>
       </div>
     );
@@ -68,10 +69,15 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function App() {
   const { initialize } = useAuthStore();
+  const initializeTheme = useThemeStore((state) => state.initializeTheme);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    initializeTheme();
+  }, [initializeTheme]);
 
   return (
     <BrowserRouter>

@@ -34,7 +34,8 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       {isOpen && (
         <motion.div
           ref={overlayRef}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-blur-sm"
+          style={{ backgroundColor: 'var(--overlay-backdrop)' }}
           variants={backdrop}
           initial="hidden"
           animate="visible"
@@ -43,25 +44,25 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
           onClick={(e) => e.target === overlayRef.current && onClose()}
         >
           <motion.div
-            className="w-full sm:max-w-lg bg-[#1A1A1A] rounded-t-[36px] sm:rounded-[36px] max-h-[90vh] border border-white/5 flex flex-col overflow-hidden"
+            className="w-full sm:max-w-lg bg-[var(--color-base)] rounded-t-[36px] sm:rounded-[36px] max-h-[90vh] border border-[var(--color-border)] flex flex-col overflow-hidden"
             initial={{ opacity: 0, y: 60, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.98 }}
             transition={springs.smooth}
           >
-            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-white/5 bg-[#1A1A1A]">
+            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--color-border)] bg-[var(--color-base)]">
               {title && (
-                <h2 className="text-xs font-medium tracking-[0.15em] uppercase text-[#E8E4DE]">
+                <h2 className="text-xs font-medium tracking-[0.15em] uppercase text-[var(--color-text)]">
                   {title}
                 </h2>
               )}
               <motion.button
                 type="button"
                 onClick={onClose}
-                className="p-3 hover:bg-white/5 active:bg-white/10 rounded-[14px] transition-colors"
+                className="p-3 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)] rounded-[14px] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
-                <X className="w-4 h-4 text-[#6B6B6B]" />
+                <X className="w-4 h-4 text-[var(--color-muted)]" />
               </motion.button>
             </div>
             <motion.div

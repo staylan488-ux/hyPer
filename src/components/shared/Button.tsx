@@ -20,28 +20,28 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary: `
-        bg-[#E8E4DE] text-[#1A1A1A]
-        hover:bg-[#D4CFC7]
-        active:bg-[#C8C3BB]
+        bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
+        hover:bg-[var(--button-primary-hover)]
+        active:bg-[var(--button-primary-active)]
         rounded-[28px]
       `,
       secondary: `
-        bg-[#2E2E2E] text-[#E8E4DE]
-        border border-white/10
-        hover:bg-[#383838] hover:border-white/20
-        active:bg-[#424242] active:border-white/25
+        bg-[var(--color-surface-high)] text-[var(--color-text)]
+        border border-[var(--color-border-strong)]
+        hover:bg-[color-mix(in_srgb,var(--color-surface-high)_90%,var(--color-text)_10%)] hover:border-[var(--color-border-strong)]
+        active:bg-[color-mix(in_srgb,var(--color-surface-high)_86%,var(--color-text)_14%)] active:border-[var(--color-border-strong)]
         rounded-[28px]
       `,
       danger: `
-        bg-[#8B6B6B] text-[#E8E4DE]
-        hover:bg-[#7A5A5A]
-        active:bg-[#6B4B4B]
+        bg-[var(--color-danger)] text-[var(--color-text)]
+        hover:bg-[color-mix(in_srgb,var(--color-danger)_88%,var(--color-base)_12%)]
+        active:bg-[color-mix(in_srgb,var(--color-danger)_82%,var(--color-base)_18%)]
         rounded-[28px]
       `,
       ghost: `
-        bg-transparent text-[#9A9A9A]
-        hover:text-[#E8E4DE] hover:bg-white/5
-        active:text-[#E8E4DE] active:bg-white/10
+        bg-transparent text-[var(--color-text-dim)]
+        hover:text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)]
+        active:text-[var(--color-text)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)]
         rounded-[20px]
       `,
     };
