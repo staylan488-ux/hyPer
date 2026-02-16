@@ -7,8 +7,19 @@ export function toLocalTimeInput(dateIso: string | null, fallbackDate: Date): st
 }
 
 export function buildLoggedAt(selectedDate: Date, timeValue: string): string {
-  const datePart = format(selectedDate, 'yyyy-MM-dd');
-  return `${datePart}T${timeValue || '12:00'}:00`;
+  const [hoursRaw = '12', minutesRaw = '00'] = (timeValue || '12:00').split(':');
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+
+  const localDate = new Date(selectedDate);
+  localDate.setHours(
+    Number.isFinite(hours) ? hours : 12,
+    Number.isFinite(minutes) ? minutes : 0,
+    0,
+    0
+  );
+
+  return localDate.toISOString();
 }
 
 export function hasMissingColumnError(error: unknown, columnName: string): boolean {

@@ -10,12 +10,27 @@ import {
 describe('foodLoggerUtils', () => {
   it('builds logged_at string from selected day and time', () => {
     const date = new Date(2026, 1, 14, 9, 30);
-    expect(buildLoggedAt(date, '07:45')).toBe('2026-02-14T07:45:00');
+    const loggedAt = buildLoggedAt(date, '07:45');
+    const parsed = new Date(loggedAt);
+
+    expect(Number.isNaN(parsed.getTime())).toBe(false);
+    expect(loggedAt.endsWith('Z')).toBe(true);
+    expect(parsed.getFullYear()).toBe(2026);
+    expect(parsed.getMonth()).toBe(1);
+    expect(parsed.getDate()).toBe(14);
+    expect(parsed.getHours()).toBe(7);
+    expect(parsed.getMinutes()).toBe(45);
   });
 
   it('falls back to noon when time is empty', () => {
     const date = new Date(2026, 5, 1, 8, 0);
-    expect(buildLoggedAt(date, '')).toBe('2026-06-01T12:00:00');
+    const parsed = new Date(buildLoggedAt(date, ''));
+
+    expect(parsed.getFullYear()).toBe(2026);
+    expect(parsed.getMonth()).toBe(5);
+    expect(parsed.getDate()).toBe(1);
+    expect(parsed.getHours()).toBe(12);
+    expect(parsed.getMinutes()).toBe(0);
   });
 
   it('formats fallback date into local HH:mm', () => {
