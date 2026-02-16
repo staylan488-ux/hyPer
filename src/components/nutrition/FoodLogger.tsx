@@ -67,6 +67,15 @@ interface FoodLoggerProps {
 }
 
 export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: FoodLoggerProps) {
+  const initialLogDate = useMemo(() => {
+    if (initialEntry?.date) {
+      const parsed = new Date(`${initialEntry.date}T12:00:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    return new Date(selectedDate);
+  }, [initialEntry?.date, selectedDate]);
+
   const [mode, setMode] = useState<'search' | 'manual' | 'photo'>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
@@ -89,14 +98,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   });
   const [servings, setServings] = useState(initialEntry ? String(initialEntry.servings) : '1');
   const [saving, setSaving] = useState(false);
+  const [entryDate, setEntryDate] = useState<Date>(initialLogDate);
   const [timeValue, setTimeValue] = useState(() =>
-    toLocalTimeInput(initialEntry?.logged_at || null, isToday(selectedDate) ? new Date() : selectedDate)
+    toLocalTimeInput(initialEntry?.logged_at || null, isToday(initialLogDate) ? new Date() : initialLogDate)
   );
   const [mealType, setMealType] = useState<string>(initialEntry?.meal_type || '');
   const [selectedFoodMeta, setSelectedFoodMeta] = useState<SelectedFoodMeta | null>(null);
 
   const loggerMode = initialEntry ? 'edit' : 'create';
-  const dayLabel = useMemo(() => format(selectedDate, 'MMM d, yyyy'), [selectedDate]);
+  const dayLabel = useMemo(() => format(entryDate, 'MMM d, yyyy'), [entryDate]);
 
   const [manualFood, setManualFood] = useState({
     name: '',
@@ -437,8 +447,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
       return;
     }
 
-    const loggedAt = buildLoggedAt(selectedDate, timeValue);
-    const day = format(selectedDate, 'yyyy-MM-dd');
+    const loggedAt = buildLoggedAt(entryDate, timeValue);
+    const day = format(entryDate, 'yyyy-MM-dd');
 
     const fullPayload = {
       food_id: foodId,
@@ -603,8 +613,22 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             <label className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[#6B6B6B] mb-1">
               Date
             </label>
-            <div className="w-full h-10 md:h-auto px-3 md:px-4 py-2 md:py-3 bg-[#1A1A1A] border border-white/10 rounded-[14px] md:rounded-[20px] text-[#9A9A9A] text-sm flex items-center">
-              {dayLabel}
+            <div className="space-y-1">
+              <input
+                type="date"
+                value={format(entryDate, 'yyyy-MM-dd')}
+                max={format(new Date(), 'yyyy-MM-dd')}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  if (!nextValue) return;
+                  const parsed = new Date(`${nextValue}T12:00:00`);
+                  if (!Number.isNaN(parsed.getTime())) {
+                    setEntryDate(parsed);
+                  }
+                }}
+                className="w-full h-10 md:h-auto px-3 md:px-4 py-2 md:py-3 bg-[#1A1A1A] border border-white/10 rounded-[14px] md:rounded-[20px] text-[#E8E4DE] text-sm focus:outline-none focus:border-white/25"
+              />
+              <p className="text-[10px] text-[#6B6B6B]">{dayLabel}</p>
             </div>
           </div>
           <div className="min-w-0 overflow-hidden">
