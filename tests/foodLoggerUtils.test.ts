@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLoggedAt,
   hasMissingColumnError,
+  normalizeFoodName,
+  numbersNearlyEqual,
   shouldDropColumn,
   toLocalTimeInput,
 } from '@/components/nutrition/foodLoggerUtils';
@@ -52,5 +54,15 @@ describe('foodLoggerUtils', () => {
     const error = { message: 'permission denied for table nutrition_logs' };
     expect(hasMissingColumnError(error, 'logged_at')).toBe(false);
     expect(shouldDropColumn(error, 'meal_type')).toBe(false);
+  });
+
+  it('normalizes meal names for consistent matching', () => {
+    expect(normalizeFoodName('  Protein   Shake  ')).toBe('protein shake');
+    expect(normalizeFoodName('Chicken	Breast')).toBe('chicken breast');
+  });
+
+  it('compares numeric macro values with epsilon tolerance', () => {
+    expect(numbersNearlyEqual(24.0, 24.04)).toBe(true);
+    expect(numbersNearlyEqual(24.0, 24.2)).toBe(false);
   });
 });

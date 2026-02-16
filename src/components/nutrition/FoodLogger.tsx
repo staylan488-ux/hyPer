@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
@@ -7,12 +7,23 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import type { Food } from '@/types';
 import { format, isToday } from 'date-fns';
-import { buildLoggedAt, shouldDropColumn, toLocalTimeInput } from './foodLoggerUtils';
+import {
+  buildLoggedAt,
+  normalizeFoodName,
+  numbersNearlyEqual,
+  shouldDropColumn,
+  toLocalTimeInput,
+} from './foodLoggerUtils';
 import { searchUsdaFoods } from './usdaSearch';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
 const MAX_IMAGE_DIMENSION = 1280;
+
+function formatMacroInput(value: number): string {
+  const rounded = Math.round((value || 0) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
 
 interface PhotoDraftResult {
   food: {
@@ -115,11 +126,38 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     carbs: '',
     fat: '',
   });
+  const [savedMeals, setSavedMeals] = useState<Food[]>([]);
+  const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
+  const [manualNameFocused, setManualNameFocused] = useState(false);
+  const [selectedSavedMealId, setSelectedSavedMealId] = useState<string | null>(null);
+  const [saveAsReusableMeal, setSaveAsReusableMeal] = useState(false);
+  const [updatingSavedMeal, setUpdatingSavedMeal] = useState(false);
+  const [savedMealMessage, setSavedMealMessage] = useState<string | null>(null);
+  const [savedMealError, setSavedMealError] = useState<string | null>(null);
   const [photoHint, setPhotoHint] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
+
+  const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
+  const manualSuggestions = useMemo(() => {
+    if (manualNameQuery.length < 2) return [];
+
+    const startsWithMatches = savedMeals.filter((meal) =>
+      normalizeFoodName(meal.name).startsWith(manualNameQuery)
+    );
+    const containsMatches = savedMeals.filter((meal) => {
+      const normalized = normalizeFoodName(meal.name);
+      return !normalized.startsWith(manualNameQuery) && normalized.includes(manualNameQuery);
+    });
+
+    return [...startsWithMatches, ...containsMatches].slice(0, 6);
+  }, [manualNameQuery, savedMeals]);
+  const selectedSavedMeal = useMemo(
+    () => (selectedSavedMealId ? savedMeals.find((meal) => meal.id === selectedSavedMealId) || null : null),
+    [savedMeals, selectedSavedMealId]
+  );
   const searchUSDA = async (query: string) => {
     if (!query.trim()) return;
 
@@ -129,6 +167,149 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     setSearchResults(foods);
     setLoading(false);
   };
+
+  const clearSavedMealFeedback = () => {
+    setSavedMealMessage(null);
+    setSavedMealError(null);
+  };
+
+  const manualMacroValues = useMemo(
+    () => ({
+      name: manualFood.name.trim(),
+      calories: parseFloat(manualFood.calories) || 0,
+      protein: parseFloat(manualFood.protein) || 0,
+      carbs: parseFloat(manualFood.carbs) || 0,
+      fat: parseFloat(manualFood.fat) || 0,
+    }),
+    [manualFood]
+  );
+
+  const insertFoodRecord = async (
+    userId: string,
+    values: { name: string; calories: number; protein: number; carbs: number; fat: number },
+    source: 'saved_meal' | 'manual_entry'
+  ) => {
+    const payload = {
+      user_id: userId,
+      name: values.name,
+      calories: values.calories,
+      protein: values.protein,
+      carbs: values.carbs,
+      fat: values.fat,
+      source,
+    };
+
+    let { data, error } = await supabase
+      .from('foods')
+      .insert({
+        ...payload,
+        serving_size: 1,
+        serving_unit: 'serving',
+      })
+      .select('id')
+      .single();
+
+    if (error && shouldDropColumn(error, 'serving_size')) {
+      ({ data, error } = await supabase
+        .from('foods')
+        .insert(payload)
+        .select('id')
+        .single());
+    }
+
+    if (error || !data) {
+      console.error('Error creating food record:', error);
+      return null;
+    }
+
+    return data.id as string;
+  };
+
+  const isSelectedSavedMealMatch = useMemo(() => {
+    if (!selectedSavedMeal) return false;
+
+    const manualValues = manualMacroValues;
+
+    return (
+      normalizeFoodName(selectedSavedMeal.name) === normalizeFoodName(manualValues.name)
+      && numbersNearlyEqual(selectedSavedMeal.calories, manualValues.calories)
+      && numbersNearlyEqual(selectedSavedMeal.protein, manualValues.protein)
+      && numbersNearlyEqual(selectedSavedMeal.carbs, manualValues.carbs)
+      && numbersNearlyEqual(selectedSavedMeal.fat, manualValues.fat)
+    );
+  }, [manualMacroValues, selectedSavedMeal]);
+
+  const fetchSavedMeals = useCallback(async () => {
+    setLoadingSavedMeals(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setSavedMeals([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('foods')
+        .select('id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id')
+        .eq('user_id', user.id)
+        .in('source', ['saved_meal', 'custom'])
+        .order('created_at', { ascending: false })
+        .limit(120);
+
+      if (error) {
+        console.error('Error fetching saved meals:', error);
+        setSavedMeals([]);
+        return;
+      }
+
+      const uniqueMealsByName = new Map<string, Food>();
+
+      for (const meal of data || []) {
+        const normalizedName = normalizeFoodName(meal.name || '');
+        if (!normalizedName || uniqueMealsByName.has(normalizedName)) continue;
+
+        uniqueMealsByName.set(normalizedName, {
+          id: meal.id,
+          user_id: meal.user_id,
+          name: meal.name,
+          calories: Number(meal.calories) || 0,
+          protein: Number(meal.protein) || 0,
+          carbs: Number(meal.carbs) || 0,
+          fat: Number(meal.fat) || 0,
+          serving_size: Number(meal.serving_size) || 1,
+          serving_unit: meal.serving_unit || 'serving',
+          source: 'custom',
+          fdc_id: meal.fdc_id,
+        });
+      }
+
+      setSavedMeals(Array.from(uniqueMealsByName.values()));
+    } finally {
+      setLoadingSavedMeals(false);
+    }
+  }, []);
+
+  const handleSelectSavedMeal = (meal: Food) => {
+    clearSavedMealFeedback();
+    setManualFood({
+      name: meal.name,
+      calories: formatMacroInput(meal.calories),
+      protein: formatMacroInput(meal.protein),
+      carbs: formatMacroInput(meal.carbs),
+      fat: formatMacroInput(meal.fat),
+    });
+    setSelectedSavedMealId(meal.id);
+    setSaveAsReusableMeal(false);
+    setManualNameFocused(false);
+  };
+
+  useEffect(() => {
+    if (mode !== 'manual') return;
+
+    fetchSavedMeals();
+    clearSavedMealFeedback();
+    setSaveAsReusableMeal(false);
+  }, [mode, fetchSavedMeals]);
 
   const resetPhotoState = () => {
     setPhotoError(null);
@@ -554,8 +735,55 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }
   };
 
+  const handleUpdateSavedMeal = async () => {
+    if (!selectedSavedMealId || updatingSavedMeal) return;
+
+    const { name, calories, protein, carbs, fat } = manualMacroValues;
+    if (!name) {
+      setSavedMealError('Meal name is required to update.');
+      return;
+    }
+
+    setUpdatingSavedMeal(true);
+    clearSavedMealFeedback();
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setSavedMealError('Please sign in again to update saved meals.');
+        return;
+      }
+
+      const nextSavedMealId = await insertFoodRecord(
+        user.id,
+        { name, calories, protein, carbs, fat },
+        'saved_meal'
+      );
+
+      if (!nextSavedMealId) {
+        setSavedMealError('Could not update saved meal. Please try again.');
+        return;
+      }
+
+      await supabase
+        .from('foods')
+        .update({ source: 'manual_entry' })
+        .eq('id', selectedSavedMealId)
+        .eq('user_id', user.id)
+        .in('source', ['saved_meal', 'custom']);
+
+      setSelectedSavedMealId(nextSavedMealId);
+      setSaveAsReusableMeal(false);
+      setSavedMealMessage('Saved meal updated for future logs.');
+      await fetchSavedMeals();
+    } finally {
+      setUpdatingSavedMeal(false);
+    }
+  };
+
   const handleManualSubmit = async () => {
     setSaving(true);
+    clearSavedMealFeedback();
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -563,40 +791,68 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
         return;
       }
 
-      const manualPayload = {
-        user_id: user.id,
-        name: manualFood.name,
-        calories: parseFloat(manualFood.calories) || 0,
-        protein: parseFloat(manualFood.protein) || 0,
-        carbs: parseFloat(manualFood.carbs) || 0,
-        fat: parseFloat(manualFood.fat) || 0,
-        source: 'custom' as const,
-      };
+      const {
+        name: normalizedName,
+        calories,
+        protein,
+        carbs,
+        fat,
+      } = manualMacroValues;
 
-      let { data: food, error: foodError } = await supabase
-        .from('foods')
-        .insert({
-          ...manualPayload,
-          serving_size: 1,
-          serving_unit: 'serving',
-        })
-        .select('id')
-        .single();
-
-      if (foodError && shouldDropColumn(foodError, 'serving_size')) {
-        ({ data: food, error: foodError } = await supabase
-          .from('foods')
-          .insert(manualPayload)
-          .select('id')
-          .single());
-      }
-
-      if (foodError || !food) {
-        console.error('Error creating custom food:', foodError);
+      if (!normalizedName) {
         return;
       }
 
-      await saveNutritionEntry(food.id, parseFloat(servings || '1'));
+      let resolvedFoodId = isSelectedSavedMealMatch && selectedSavedMeal ? selectedSavedMeal.id : null;
+
+      if (!resolvedFoodId && saveAsReusableMeal) {
+        const matchingSavedMeal = savedMeals.find((meal) => (
+          normalizeFoodName(meal.name) === normalizeFoodName(normalizedName)
+          && numbersNearlyEqual(meal.calories, calories)
+          && numbersNearlyEqual(meal.protein, protein)
+          && numbersNearlyEqual(meal.carbs, carbs)
+          && numbersNearlyEqual(meal.fat, fat)
+        ));
+
+        if (matchingSavedMeal) {
+          resolvedFoodId = matchingSavedMeal.id;
+        }
+      }
+
+      if (!resolvedFoodId && saveAsReusableMeal) {
+        resolvedFoodId = await insertFoodRecord(
+          user.id,
+          { name: normalizedName, calories, protein, carbs, fat },
+          'saved_meal'
+        );
+
+        if (!resolvedFoodId) {
+          setSavedMealError('Could not save reusable meal. Please try again.');
+          return;
+        }
+
+        setSelectedSavedMealId(resolvedFoodId);
+        await fetchSavedMeals();
+      }
+
+      if (!resolvedFoodId) {
+        resolvedFoodId = await insertFoodRecord(
+          user.id,
+          { name: normalizedName, calories, protein, carbs, fat },
+          'manual_entry'
+        );
+
+        if (!resolvedFoodId) {
+          console.error('Error creating one-off manual food entry');
+          return;
+        }
+      }
+
+      if (!resolvedFoodId) {
+        return;
+      }
+
+      await saveNutritionEntry(resolvedFoodId, parseFloat(servings || '1'));
     } catch (error) {
       console.error('Error in manual submit:', error);
     } finally {
@@ -835,23 +1091,70 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
               <Input
                 label="Food Name"
                 value={manualFood.name}
-                onChange={(e) => setManualFood({ ...manualFood, name: e.target.value })}
+                onChange={(e) => {
+                  clearSavedMealFeedback();
+                  setManualFood({ ...manualFood, name: e.target.value });
+                }}
+                onFocus={() => setManualNameFocused(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setManualNameFocused(false), 120);
+                }}
                 placeholder="e.g., Chicken Breast"
               />
+
+              {manualNameFocused && manualNameQuery.length >= 2 && (
+                <div className="space-y-1">
+                  <p className="text-[9px] tracking-[0.12em] uppercase text-[#6B6B6B]">
+                    {loadingSavedMeals ? 'Loading saved meals...' : 'Saved meals'}
+                  </p>
+                  {!loadingSavedMeals && manualSuggestions.length > 0 ? (
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                      {manualSuggestions.map((meal) => (
+                        <button
+                          key={meal.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSelectSavedMeal(meal)}
+                          className="w-full text-left p-3 bg-[#1A1A1A] border border-white/5 rounded-[14px] hover:border-white/15 transition-colors"
+                        >
+                          <p className="text-[11px] text-[#E8E4DE] truncate">{meal.name}</p>
+                          <p className="text-[10px] text-[#6B6B6B] tabular-nums mt-1">
+                            {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : !loadingSavedMeals ? (
+                    <p className="text-[10px] text-[#6B6B6B]">No saved meal matches yet.</p>
+                  ) : null}
+                </div>
+              )}
+
+              {selectedSavedMealId && (
+                <p className="text-[10px] text-[#8B9A7D] tracking-[0.08em] uppercase">
+                  {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
+                </p>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Calories"
                   type="number"
                   value={manualFood.calories}
-                  onChange={(e) => setManualFood({ ...manualFood, calories: e.target.value })}
+                  onChange={(e) => {
+                    clearSavedMealFeedback();
+                    setManualFood({ ...manualFood, calories: e.target.value });
+                  }}
                   placeholder="0"
                 />
                 <Input
                   label="Protein (g)"
                   type="number"
                   value={manualFood.protein}
-                  onChange={(e) => setManualFood({ ...manualFood, protein: e.target.value })}
+                  onChange={(e) => {
+                    clearSavedMealFeedback();
+                    setManualFood({ ...manualFood, protein: e.target.value });
+                  }}
                   placeholder="0"
                 />
               </div>
@@ -861,17 +1164,50 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                   label="Carbs (g)"
                   type="number"
                   value={manualFood.carbs}
-                  onChange={(e) => setManualFood({ ...manualFood, carbs: e.target.value })}
+                  onChange={(e) => {
+                    clearSavedMealFeedback();
+                    setManualFood({ ...manualFood, carbs: e.target.value });
+                  }}
                   placeholder="0"
                 />
                 <Input
                   label="Fat (g)"
                   type="number"
                   value={manualFood.fat}
-                  onChange={(e) => setManualFood({ ...manualFood, fat: e.target.value })}
+                  onChange={(e) => {
+                    clearSavedMealFeedback();
+                    setManualFood({ ...manualFood, fat: e.target.value });
+                  }}
                   placeholder="0"
                 />
               </div>
+
+              {!selectedSavedMealId && (
+                <label className="flex items-center gap-2 text-[10px] tracking-[0.08em] uppercase text-[#6B6B6B] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={saveAsReusableMeal}
+                    onChange={(e) => setSaveAsReusableMeal(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border border-white/20 accent-[#8B9A7D]"
+                  />
+                  Save as reusable meal
+                </label>
+              )}
+
+              {selectedSavedMealId && (
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={handleUpdateSavedMeal}
+                  loading={updatingSavedMeal}
+                  disabled={saving || updatingSavedMeal || !timeValue || isSelectedSavedMealMatch}
+                >
+                  Update Saved Meal
+                </Button>
+              )}
+
+              {savedMealMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B9A7D]">{savedMealMessage}</p>}
+              {savedMealError && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{savedMealError}</p>}
 
               <div>
                 <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Servings</label>

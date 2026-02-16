@@ -33,3 +33,11 @@ export function hasMissingColumnError(error: unknown, columnName: string): boole
 export function shouldDropColumn(error: unknown, columnName: string): boolean {
   return hasMissingColumnError(error, columnName);
 }
+
+export function normalizeFoodName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function numbersNearlyEqual(a: number, b: number, epsilon = 0.05): boolean {
+  return Math.abs(a - b) <= epsilon;
+}
