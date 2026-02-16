@@ -33,6 +33,11 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 });
 
+function localDate(yyyyMmDd: string): Date {
+  const [year, month, day] = yyyyMmDd.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
 describe('planSchedule', () => {
   beforeEach(() => {
     localStorageMock.clear();
@@ -101,9 +106,9 @@ describe('planSchedule', () => {
     });
 
     it('clamps days per week to valid range', () => {
-      expect(buildFixedWeekdays(1, 1)).toEqual([1, 2, 4, 5]);
-      expect(buildFixedWeekdays(1, 8)).toEqual([1, 2, 4, 5]);
-      expect(buildFixedWeekdays(1, -5)).toEqual([1, 2, 4, 5]);
+      expect(buildFixedWeekdays(1, 1)).toEqual([1, 4]);
+      expect(buildFixedWeekdays(1, 8)).toEqual([1, 2, 3, 4, 5, 6, 0]);
+      expect(buildFixedWeekdays(1, -5)).toEqual([1, 4]);
     });
 
     it('defaults to 4-day pattern for 2 days per week', () => {
@@ -306,7 +311,7 @@ describe('planSchedule', () => {
         mode: 'fixed',
         weekdays: [1, 3, 5],
       };
-      const result = plannedDayForDate(new Date('2024-01-01'), [], schedule, 0);
+      const result = plannedDayForDate(localDate('2024-01-01'), [], schedule, 0);
       expect(result).toBeNull();
     });
 
@@ -318,9 +323,9 @@ describe('planSchedule', () => {
           mode: 'fixed',
           weekdays: [1, 3, 5],
         };
-        expect(plannedDayForDate(new Date('2024-01-01'), mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
-        expect(plannedDayForDate(new Date('2024-01-03'), mockSplitDays, schedule, 0)?.day_name).toBe('Day B');
-        expect(plannedDayForDate(new Date('2024-01-05'), mockSplitDays, schedule, 0)?.day_name).toBe('Day C');
+        expect(plannedDayForDate(localDate('2024-01-01'), mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
+        expect(plannedDayForDate(localDate('2024-01-03'), mockSplitDays, schedule, 0)?.day_name).toBe('Day B');
+        expect(plannedDayForDate(localDate('2024-01-05'), mockSplitDays, schedule, 0)?.day_name).toBe('Day C');
       });
 
       it('returns null for non-scheduled weekday', () => {
@@ -330,8 +335,8 @@ describe('planSchedule', () => {
           mode: 'fixed',
           weekdays: [1, 3, 5],
         };
-        expect(plannedDayForDate(new Date('2024-01-02'), mockSplitDays, schedule, 0)).toBeNull();
-        expect(plannedDayForDate(new Date('2024-01-07'), mockSplitDays, schedule, 0)).toBeNull();
+        expect(plannedDayForDate(localDate('2024-01-02'), mockSplitDays, schedule, 0)).toBeNull();
+        expect(plannedDayForDate(localDate('2024-01-07'), mockSplitDays, schedule, 0)).toBeNull();
       });
 
       it('cycles through split days when weekdays > splitDays', () => {
@@ -345,12 +350,12 @@ describe('planSchedule', () => {
           { day_id: '1', day_name: 'Upper', exercises: [] },
           { day_id: '2', day_name: 'Lower', exercises: [] },
         ];
-        expect(plannedDayForDate(new Date('2024-01-01'), twoDays, schedule, 0)?.day_name).toBe('Upper');
-        expect(plannedDayForDate(new Date('2024-01-02'), twoDays, schedule, 0)?.day_name).toBe('Lower');
-        expect(plannedDayForDate(new Date('2024-01-03'), twoDays, schedule, 0)?.day_name).toBe('Upper');
-        expect(plannedDayForDate(new Date('2024-01-04'), twoDays, schedule, 0)?.day_name).toBe('Lower');
-        expect(plannedDayForDate(new Date('2024-01-05'), twoDays, schedule, 0)?.day_name).toBe('Upper');
-        expect(plannedDayForDate(new Date('2024-01-06'), twoDays, schedule, 0)?.day_name).toBe('Lower');
+        expect(plannedDayForDate(localDate('2024-01-01'), twoDays, schedule, 0)?.day_name).toBe('Upper');
+        expect(plannedDayForDate(localDate('2024-01-02'), twoDays, schedule, 0)?.day_name).toBe('Lower');
+        expect(plannedDayForDate(localDate('2024-01-03'), twoDays, schedule, 0)?.day_name).toBe('Upper');
+        expect(plannedDayForDate(localDate('2024-01-04'), twoDays, schedule, 0)?.day_name).toBe('Lower');
+        expect(plannedDayForDate(localDate('2024-01-05'), twoDays, schedule, 0)?.day_name).toBe('Upper');
+        expect(plannedDayForDate(localDate('2024-01-06'), twoDays, schedule, 0)?.day_name).toBe('Lower');
       });
 
       it('handles week boundaries correctly', () => {
@@ -360,8 +365,8 @@ describe('planSchedule', () => {
           mode: 'fixed',
           weekdays: [0, 6],
         };
-        expect(plannedDayForDate(new Date('2024-01-06'), mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
-        expect(plannedDayForDate(new Date('2024-01-07'), mockSplitDays, schedule, 0)?.day_name).toBe('Day B');
+        expect(plannedDayForDate(localDate('2024-01-06'), mockSplitDays, schedule, 0)?.day_name).toBe('Day B');
+        expect(plannedDayForDate(localDate('2024-01-07'), mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
       });
     });
 
@@ -373,7 +378,7 @@ describe('planSchedule', () => {
           mode: 'flex',
           weekdays: [],
         };
-        const date = new Date('2024-01-15');
+        const date = localDate('2024-01-15');
 
         expect(plannedDayForDate(date, mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
         expect(plannedDayForDate(date, mockSplitDays, schedule, 1)?.day_name).toBe('Day B');
@@ -393,7 +398,7 @@ describe('planSchedule', () => {
           { day_id: '1', day_name: 'Upper', exercises: [] },
           { day_id: '2', day_name: 'Lower', exercises: [] },
         ];
-        const date = new Date('2024-01-15');
+        const date = localDate('2024-01-15');
 
         expect(plannedDayForDate(date, twoDays, schedule, 0)?.day_name).toBe('Upper');
         expect(plannedDayForDate(date, twoDays, schedule, 1)?.day_name).toBe('Lower');
