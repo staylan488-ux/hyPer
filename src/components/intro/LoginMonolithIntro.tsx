@@ -7,28 +7,28 @@ interface LoginMonolithIntroProps {
   onComplete: () => void;
 }
 
-const letters = ['h', 'y', 'P', 'e', 'r'];
+const composeTransition = { duration: 0.52, ease: [0.22, 1, 0.36, 1] as const };
 
 export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroProps) {
   const reduceMotion = useReducedMotion();
-  const [expanded, setExpanded] = useState(false);
-  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const [showWordmark, setShowWordmark] = useState(false);
 
   useEffect(() => {
     if (!active) return;
 
     if (reduceMotion) {
-      const quick = window.setTimeout(onComplete, 280);
+      const quick = window.setTimeout(onComplete, 300);
       return () => window.clearTimeout(quick);
     }
 
-    const expandTimer = window.setTimeout(() => setExpanded(true), 620);
-    const skeletonTimer = window.setTimeout(() => setShowSkeleton(true), 840);
-    const completeTimer = window.setTimeout(onComplete, 1600);
+    const composeTimer = window.setTimeout(() => setShowCompose(true), 540);
+    const wordmarkTimer = window.setTimeout(() => setShowWordmark(true), 880);
+    const completeTimer = window.setTimeout(onComplete, 1500);
 
     return () => {
-      window.clearTimeout(expandTimer);
-      window.clearTimeout(skeletonTimer);
+      window.clearTimeout(composeTimer);
+      window.clearTimeout(wordmarkTimer);
       window.clearTimeout(completeTimer);
     };
   }, [active, onComplete, reduceMotion]);
@@ -40,14 +40,16 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
       <motion.button
         type="button"
         aria-label="Skip intro"
-        className="fixed inset-0 z-50 bg-[#1A1A1A] px-5 flex items-center justify-center"
+        className="fixed inset-0 z-50 px-5 flex items-center justify-center"
         style={{
-          backgroundImage: 'radial-gradient(circle at 50% 22%, rgba(196, 164, 132, 0.03), transparent 60%)',
+          backgroundColor: 'var(--color-base)',
+          backgroundImage:
+            'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 58%)',
         }}
         initial={{ opacity: 1 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
+        transition={{ duration: 0.34, ease: 'easeOut' }}
         onClick={onComplete}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -56,62 +58,105 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
           }
         }}
       >
-        <motion.div
-          className="w-full max-w-sm rounded-[28px] border border-white/[0.03] bg-[#242424] px-6 overflow-hidden"
-          initial={{ opacity: 0, scale: 0.97, height: 92 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            height: expanded ? 430 : 92,
-          }}
-          transition={reduceMotion ? { duration: 0.2 } : { ...springs.heavy }}
-        >
-          <div className="h-[92px] flex items-center justify-center relative">
-            <motion.p className="text-[12px] tracking-[0.35em] text-[#E8E4DE]">
-              {letters.map((letter, index) => (
-                <motion.span
-                  key={`${letter}-${index}`}
-                  className="inline-block"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={
-                    reduceMotion
-                      ? { duration: 0.15 }
-                      : { ...springs.smooth, delay: 0.1 + (index * 0.06) }
-                  }
-                >
-                  {letter}
-                </motion.span>
-              ))}
-            </motion.p>
+        <div className="relative w-full max-w-sm h-56 flex items-center justify-center overflow-visible">
+          <motion.div
+            className="absolute"
+            initial={{ opacity: 0, y: -18, scale: 0.9 }}
+            animate={{
+              opacity: showCompose ? 0 : 1,
+              y: showCompose ? -8 : 0,
+              scale: showCompose ? 0.72 : 1,
+            }}
+            transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy }}
+          >
+            <motion.span
+              className="inline-block font-display-italic text-[120px] leading-[1.08] text-[var(--color-accent)] pr-[0.2em] pt-[0.08em] -mr-[0.2em] select-none"
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: [0.92, 1.01, 1], opacity: 1 }}
+              transition={reduceMotion ? { duration: 0.18 } : { duration: 0.64, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                backfaceVisibility: 'hidden',
+                transform: 'translateZ(0)',
+                willChange: 'transform, opacity',
+              }}
+            >
+              P
+            </motion.span>
             <motion.div
-              className="absolute bottom-0 left-6 right-6 h-px bg-[#C4A484] origin-left"
-              initial={{ scaleX: 0, opacity: 0 }}
-              animate={{ scaleX: expanded ? 0 : 1, opacity: expanded ? 0 : 1 }}
-              transition={reduceMotion ? { duration: 0.1 } : { duration: 0.46, ease: [0.16, 1, 0.3, 1], delay: 0.42 }}
+              className="absolute inset-0 rounded-full"
+              initial={{ opacity: 0 }}
+              animate={{
+                opacity: [0, 0.18, 0],
+                scale: [0.86, 1.24, 1.46],
+              }}
+              transition={reduceMotion ? { duration: 0.18 } : { duration: 0.7, ease: 'easeOut', delay: 0.12 }}
+              style={{
+                background:
+                  'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 26%, transparent), transparent 72%)',
+                filter: 'blur(4px)',
+              }}
             />
-          </div>
+          </motion.div>
 
           <AnimatePresence>
-            {showSkeleton && (
+            {showCompose && (
               <motion.div
-                className="pb-6"
-                initial={{ opacity: 0, y: 12 }}
+                className="absolute flex items-center"
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={reduceMotion ? { duration: 0.15 } : springs.smooth}
+                transition={reduceMotion ? { duration: 0.14 } : springs.smooth}
               >
-                <p className="text-[10px] tracking-[0.3em] text-[#6B6B6B] text-center mb-4">hyPer</p>
-                <p className="text-3xl font-display-italic text-[#E8E4DE] text-center mb-7">Welcome Back</p>
-                <div className="space-y-3">
-                  <div className="h-12 rounded-[20px] bg-[#1A1A1A] border border-white/10" />
-                  <div className="h-12 rounded-[20px] bg-[#1A1A1A] border border-white/10" />
-                  <div className="h-11 rounded-[28px] bg-[#E8E4DE]/90" />
-                </div>
+                <motion.span
+                  className="text-[12px] tracking-[0.34em] text-[var(--color-text)]"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={reduceMotion ? { duration: 0.12 } : composeTransition}
+                >
+                  hy
+                </motion.span>
+                <motion.span
+                  className="inline-block font-display-italic text-[52px] leading-[1.08] text-[var(--color-accent)] mx-1.5 pr-[0.18em] pt-[0.08em] -mr-[0.18em] select-none"
+                  initial={{ opacity: 0, scale: 0.8, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy, delay: 0.06 }}
+                  style={{
+                    backfaceVisibility: 'hidden',
+                    transform: 'translateZ(0)',
+                    willChange: 'transform, opacity',
+                  }}
+                >
+                  P
+                </motion.span>
+                <motion.span
+                  className="text-[12px] tracking-[0.34em] text-[var(--color-text)]"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={reduceMotion ? { duration: 0.12 } : composeTransition}
+                >
+                  er
+                </motion.span>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+
+          <motion.div
+            className="absolute inset-x-0 top-[70%] h-px bg-[var(--color-accent)] origin-center"
+            initial={{ opacity: 0, scaleX: 0 }}
+            animate={{ opacity: showWordmark ? 0.9 : 0, scaleX: showWordmark ? 1 : 0 }}
+            transition={reduceMotion ? { duration: 0.12 } : { duration: 0.44, ease: [0.16, 1, 0.3, 1] }}
+          />
+
+          <motion.div
+            className="absolute inset-x-0 top-[74%] text-center"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: showWordmark ? 1 : 0, y: showWordmark ? 0 : 8 }}
+            transition={reduceMotion ? { duration: 0.12 } : springs.smooth}
+          >
+            <p className="text-[10px] tracking-[0.32em] text-[var(--color-text)]">hyPer</p>
+            <p className="text-[9px] tracking-[0.14em] uppercase text-[var(--color-muted)] mt-2">Training and Nutrition</p>
+          </motion.div>
+        </div>
       </motion.button>
     </AnimatePresence>
   );
