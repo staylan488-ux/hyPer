@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
@@ -11,6 +11,51 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import type { SplitDay, Workout, WorkoutSet } from '@/types';
+
+interface WorkoutNotesPayload {
+  movementNotes?: Record<string, string>;
+  legacyNote?: string;
+}
+
+function sanitizeMovementNotes(input: unknown): Record<string, string> {
+  if (!input || typeof input !== 'object') return {};
+
+  const next: Record<string, string> = {};
+
+  for (const [exerciseId, noteValue] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof noteValue !== 'string') continue;
+    const trimmed = noteValue.trim();
+    if (!trimmed) continue;
+    next[exerciseId] = trimmed.slice(0, 200);
+  }
+
+  return next;
+}
+
+function parseWorkoutNotes(raw: string | null): { movementNotes: Record<string, string>; legacyNote: string | null } {
+  if (!raw) {
+    return { movementNotes: {}, legacyNote: null };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as WorkoutNotesPayload | Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') {
+      return { movementNotes: {}, legacyNote: raw };
+    }
+
+    if ('movementNotes' in parsed) {
+      const payload = parsed as WorkoutNotesPayload;
+      return {
+        movementNotes: sanitizeMovementNotes(payload.movementNotes),
+        legacyNote: typeof payload.legacyNote === 'string' ? payload.legacyNote : null,
+      };
+    }
+
+    return { movementNotes: sanitizeMovementNotes(parsed), legacyNote: null };
+  } catch {
+    return { movementNotes: {}, legacyNote: raw };
+  }
+}
 
 export function Workout() {
   const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout } = useAppStore();
@@ -25,11 +70,35 @@ export function Workout() {
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
   const [lastCompletedWorkout, setLastCompletedWorkout] = useState<Pick<Workout, 'date' | 'split_day_id'> | null>(null);
   const [completedSinceStartDates, setCompletedSinceStartDates] = useState<string[]>([]);
+  const [movementNotes, setMovementNotes] = useState<Record<string, string>>({});
+  const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
+  const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
+  const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
+  const movementNotesRef = useRef<Record<string, string>>({});
+  const noteSaveTimersRef = useRef<Record<string, number>>({});
+  const lastPersistedNotesRef = useRef<string>('');
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
   const [setupMode, setSetupMode] = useState<PlanMode>('fixed');
   const [setupAnchorDay, setSetupAnchorDay] = useState(1);
+  const currentWorkoutId = currentWorkout?.id || null;
+  const currentWorkoutNotes = currentWorkout?.notes || null;
+
+  useEffect(() => {
+    movementNotesRef.current = movementNotes;
+  }, [movementNotes]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, []);
+
+  useEffect(() => {
+    Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+    noteSaveTimersRef.current = {};
+  }, [currentWorkoutId]);
 
   useEffect(() => {
     let mounted = true;
@@ -127,6 +196,101 @@ export function Workout() {
       cancelled = true;
     };
   }, [userId, activeSplit, planSchedule, weekCursor, currentWorkout]);
+
+  useEffect(() => {
+    if (!currentWorkoutId) {
+      setMovementNotes({});
+      setLegacyWorkoutNote(null);
+      lastPersistedNotesRef.current = '';
+      return;
+    }
+
+    const parsed = parseWorkoutNotes(currentWorkoutNotes);
+    setMovementNotes(parsed.movementNotes);
+    movementNotesRef.current = parsed.movementNotes;
+    setLegacyWorkoutNote(parsed.legacyNote);
+
+    const initialPayload: WorkoutNotesPayload = {
+      movementNotes: parsed.movementNotes,
+      legacyNote: parsed.legacyNote || undefined,
+    };
+    lastPersistedNotesRef.current = JSON.stringify(initialPayload);
+  }, [currentWorkoutId, currentWorkoutNotes]);
+
+  const persistMovementNotes = useCallback(async (exerciseId: string) => {
+    if (!currentWorkoutId || !userId) return;
+
+    setSavingMovementNoteId(exerciseId);
+
+    const payload: WorkoutNotesPayload = {
+      movementNotes: movementNotesRef.current,
+      legacyNote: legacyWorkoutNote || undefined,
+    };
+    const serializedPayload = JSON.stringify(payload);
+
+    if (serializedPayload === lastPersistedNotesRef.current) {
+      setSavingMovementNoteId(null);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('workouts')
+      .update({ notes: serializedPayload })
+      .eq('id', currentWorkoutId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error saving movement note:', error);
+      setSavingMovementNoteId(null);
+      return;
+    }
+
+    setSavingMovementNoteId(null);
+    lastPersistedNotesRef.current = serializedPayload;
+    setSavedMovementNoteId(exerciseId);
+    window.setTimeout(() => {
+      setSavedMovementNoteId((current) => (current === exerciseId ? null : current));
+    }, 1200);
+  }, [currentWorkoutId, legacyWorkoutNote, userId]);
+
+  const queueMovementNotePersist = useCallback((exerciseId: string) => {
+    const existingTimer = noteSaveTimersRef.current[exerciseId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+
+    noteSaveTimersRef.current[exerciseId] = window.setTimeout(() => {
+      delete noteSaveTimersRef.current[exerciseId];
+      void persistMovementNotes(exerciseId);
+    }, 1200);
+  }, [persistMovementNotes]);
+
+  const handleMovementNoteChange = (exerciseId: string, value: string) => {
+    const boundedValue = value.slice(0, 200);
+
+    setMovementNotes((previous) => {
+      const next = { ...previous };
+      if (boundedValue.trim()) {
+        next[exerciseId] = boundedValue;
+      } else {
+        delete next[exerciseId];
+      }
+      movementNotesRef.current = next;
+      return next;
+    });
+
+    queueMovementNotePersist(exerciseId);
+  };
+
+  const handleMovementNoteBlur = (exerciseId: string) => {
+    const timerId = noteSaveTimersRef.current[exerciseId];
+    if (timerId) {
+      window.clearTimeout(timerId);
+      delete noteSaveTimersRef.current[exerciseId];
+    }
+
+    void persistMovementNotes(exerciseId);
+  };
 
   const handleStartWorkout = async (day: SplitDay) => {
     if (startingDayId) return;
@@ -586,6 +750,9 @@ export function Workout() {
           const completedInExercise = sets.filter(s => s.completed).length;
           const isActive = activeExerciseId === exerciseId;
           const allComplete = completedInExercise === sets.length;
+          const movementNote = movementNotes[exerciseId] || '';
+          const hasMovementNote = movementNote.trim().length > 0;
+          const noteCharacters = movementNote.length;
 
           return (
             <motion.div
@@ -627,6 +794,11 @@ export function Workout() {
                     </motion.div>
                     <div>
                       <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
+                      {hasMovementNote && !isActive && (
+                        <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
+                          {movementNote}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <motion.div
@@ -660,6 +832,42 @@ export function Workout() {
                           />
                         </motion.div>
                       ))}
+
+                      <motion.div
+                        className="mt-4 pt-3 border-t border-white/[0.03]"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: sets.length * 0.05, ...springs.smooth }}
+                      >
+                        <label
+                          htmlFor={`movement-note-${exerciseId}`}
+                          className="block text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2"
+                        >
+                          Movement Note
+                        </label>
+                        <textarea
+                          id={`movement-note-${exerciseId}`}
+                          value={movementNote}
+                          onChange={(event) => handleMovementNoteChange(exerciseId, event.target.value)}
+                          onBlur={() => handleMovementNoteBlur(exerciseId)}
+                          rows={1}
+                          maxLength={200}
+                          placeholder="Note - technique, feel, cues..."
+                          className="w-full bg-transparent border-b border-white/10 pb-2 text-sm font-display-italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+                        />
+                        <div className="mt-1.5 flex items-center justify-between">
+                          <div>
+                            {savingMovementNoteId === exerciseId ? (
+                              <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)]">Saving...</p>
+                            ) : savedMovementNoteId === exerciseId ? (
+                              <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-sage)]">Saved</p>
+                            ) : null}
+                          </div>
+                          {noteCharacters >= 160 && (
+                            <p className="text-[10px] tabular-nums text-[var(--color-muted)]">{noteCharacters}/200</p>
+                          )}
+                        </div>
+                      </motion.div>
                     </motion.div>
                   )}
                 </AnimatePresence>
