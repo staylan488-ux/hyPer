@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, Loader2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { Card, Button, Modal } from '@/components/shared';
@@ -74,6 +74,7 @@ export function Workout() {
   const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
+  const [displayOrder, setDisplayOrder] = useState<string[]>([]);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
@@ -344,6 +345,74 @@ export function Workout() {
       setSetupStartDate(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
     }
   }, [setupStartChoice]);
+
+  // ── Exercise ordering (must be before early returns for hook rules) ──
+  const splitDay = activeSplit?.days.find((day) => day.id === currentWorkout?.split_day_id) ?? null;
+  const exerciseOrderById = useMemo(() => new Map(
+    (splitDay?.exercises || []).map((exercise, index) => [
+      exercise.exercise_id,
+      exercise.exercise_order ?? index,
+    ])
+  ), [splitDay?.exercises]);
+
+  const orderedSets = useMemo(() => {
+    if (!currentWorkout) return [];
+    return [...currentWorkout.sets].sort((a, b) => {
+      const orderA = exerciseOrderById.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+      const orderB = exerciseOrderById.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.set_number - b.set_number;
+    });
+  }, [currentWorkout, exerciseOrderById]);
+
+  const exerciseGroups = useMemo(() => orderedSets.reduce<Record<string, WorkoutSet[]>>((acc, set) => {
+    if (!acc[set.exercise_id]) {
+      acc[set.exercise_id] = [];
+    }
+    acc[set.exercise_id].push(set);
+    return acc;
+  }, {}), [orderedSets]);
+
+  const exerciseIds = Object.keys(exerciseGroups);
+  const exerciseIdsKey = exerciseIds.join(',');
+
+  useEffect(() => {
+    setDisplayOrder((prev) => {
+      // Only reset if the set of exercises actually changed (new workout, not just a reorder)
+      const prevKey = [...prev].sort().join(',');
+      const newKey = [...exerciseIds].sort().join(',');
+      if (prevKey === newKey && prev.length > 0) return prev;
+      return exerciseIds;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exerciseIdsKey]);
+
+  const orderedExerciseEntries = useMemo(() => {
+    const entries = Object.entries(exerciseGroups);
+    if (displayOrder.length === 0) return entries;
+    return [...entries].sort((a, b) => {
+      const idxA = displayOrder.indexOf(a[0]);
+      const idxB = displayOrder.indexOf(b[0]);
+      return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
+    });
+  }, [exerciseGroups, displayOrder]);
+
+  const moveExercise = useCallback((exerciseId: string, direction: 'up' | 'down') => {
+    setDisplayOrder((prev) => {
+      const idx = prev.indexOf(exerciseId);
+      if (idx === -1) return prev;
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+      return next;
+    });
+  }, []);
+
+  const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
+  const totalSets = currentWorkout?.sets.length ?? 0;
+  const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
+  // ── End exercise ordering ──
 
   const handleCompleteWorkout = async () => {
     if (completedSets < totalSets && totalSets > 0) {
@@ -684,34 +753,6 @@ export function Workout() {
     );
   }
 
-  const splitDay = activeSplit.days.find((day) => day.id === currentWorkout.split_day_id);
-  const exerciseOrderById = new Map(
-    (splitDay?.exercises || []).map((exercise, index) => [
-      exercise.exercise_id,
-      exercise.exercise_order ?? index,
-    ])
-  );
-
-  const orderedSets = [...currentWorkout.sets].sort((a, b) => {
-    const orderA = exerciseOrderById.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-    const orderB = exerciseOrderById.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-    if (orderA !== orderB) return orderA - orderB;
-    return a.set_number - b.set_number;
-  });
-
-  // Group sets by exercise
-  const exerciseGroups = orderedSets.reduce<Record<string, WorkoutSet[]>>((acc, set) => {
-    if (!acc[set.exercise_id]) {
-      acc[set.exercise_id] = [];
-    }
-    acc[set.exercise_id].push(set);
-    return acc;
-  }, {});
-
-  const completedSets = currentWorkout.sets.filter(s => s.completed).length;
-  const totalSets = currentWorkout.sets.length;
-  const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
-
   return (
     <motion.div
       className="pb-24 px-5 pt-8"
@@ -758,7 +799,7 @@ export function Workout() {
 
       {/* Exercises */}
       <div className="space-y-3">
-        {Object.entries(exerciseGroups).map(([exerciseId, sets], index) => {
+        {orderedExerciseEntries.map(([exerciseId, sets], index) => {
           const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
           const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
           const completedInExercise = sets.filter(s => s.completed).length;
@@ -767,10 +808,13 @@ export function Workout() {
           const movementNote = movementNotes[exerciseId] || '';
           const hasMovementNote = movementNote.trim().length > 0;
           const noteCharacters = movementNote.length;
+          const isFirst = index === 0;
+          const isLast = index === orderedExerciseEntries.length - 1;
 
           return (
             <motion.div
               key={exerciseId}
+              layout
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...springs.smooth, delay: index * 0.05 }}
@@ -815,12 +859,36 @@ export function Workout() {
                       )}
                     </div>
                   </div>
-                  <motion.div
-                    animate={{ rotate: isActive ? 90 : 0 }}
-                    transition={springs.snappy}
-                  >
-                    <ChevronRight className="w-4 h-4 text-[#6B6B6B]" />
-                  </motion.div>
+                  <div className="flex items-center gap-1">
+                    {orderedExerciseEntries.length > 1 && (
+                      <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={isFirst}
+                          onClick={() => moveExercise(exerciseId, 'up')}
+                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                          aria-label={`Move ${exerciseName} up`}
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLast}
+                          onClick={() => moveExercise(exerciseId, 'down')}
+                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                          aria-label={`Move ${exerciseName} down`}
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    <motion.div
+                      animate={{ rotate: isActive ? 90 : 0 }}
+                      transition={springs.snappy}
+                    >
+                      <ChevronRight className="w-4 h-4 text-[#6B6B6B]" />
+                    </motion.div>
+                  </div>
                 </div>
 
                 <AnimatePresence>
