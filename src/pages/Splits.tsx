@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Modal } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useSplitEditStore } from '@/stores/splitEditStore';
 import { SplitBuilder } from '@/components/split/SplitBuilder';
+import { SplitEditor } from '@/components/split/SplitEditor';
+import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { loadPlanSchedule } from '@/lib/planSchedule';
+import type { Split, MuscleGroup } from '@/types';
 
 
 export function Splits() {
@@ -21,9 +25,53 @@ export function Splits() {
   const [showPlanStartPrompt, setShowPlanStartPrompt] = useState(false);
   const [promptSplit, setPromptSplit] = useState<{ id: string; name: string } | null>(null);
 
+  // ── Edit state ──
+  const [showEditor, setShowEditor] = useState(false);
+  const [pickerState, setPickerState] = useState<{
+    isOpen: boolean;
+    dayId: string;
+    mode: 'add' | 'swap';
+    exerciseId?: string;
+    initialMuscleGroup?: MuscleGroup;
+  }>({ isOpen: false, dayId: '', mode: 'add' });
+
+  const { startEdit, swapExercise, addExercise } = useSplitEditStore();
+
   useEffect(() => {
     fetchSplits();
   }, [fetchSplits]);
+
+  const handleEdit = useCallback((split: Split) => {
+    startEdit(split);
+    setShowMenu(null);
+    setShowEditor(true);
+  }, [startEdit]);
+
+  const handlePickExercise = useCallback((dayId: string, mode: 'add' | 'swap', exerciseId?: string) => {
+    // Find the exercise's muscle group for swap pre-filtering
+    const { draft } = useSplitEditStore.getState();
+    let initialMuscleGroup: MuscleGroup | undefined;
+    if (mode === 'swap' && exerciseId && draft) {
+      for (const day of draft.days) {
+        const ex = day.exercises.find((e) => e.id === exerciseId);
+        if (ex) {
+          initialMuscleGroup = ex.exercise.muscle_group;
+          break;
+        }
+      }
+    }
+    setPickerState({ isOpen: true, dayId, mode, exerciseId, initialMuscleGroup });
+  }, []);
+
+  const handleExerciseSelected = useCallback((exercise: { id: string; name: string; muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; equipment: string | null; is_compound: boolean }) => {
+    const { dayId, mode, exerciseId } = pickerState;
+    if (mode === 'swap' && exerciseId) {
+      swapExercise(dayId, exerciseId, exercise);
+    } else {
+      addExercise(dayId, exercise);
+    }
+    setPickerState((prev) => ({ ...prev, isOpen: false }));
+  }, [pickerState, swapExercise, addExercise]);
 
   const handleDelete = async (splitId: string) => {
     if (confirm('Delete this program?')) {
@@ -175,6 +223,13 @@ export function Splits() {
                                 Set Active
                               </button>
                             )}
+                            <button
+                              className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] hover:bg-white/5 active:bg-white/10 flex items-center gap-3"
+                              onClick={() => handleEdit(split)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                              Edit
+                            </button>
                             <button
                               className="w-full px-4 py-3 text-left text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B] hover:bg-white/5 active:bg-white/10 flex items-center gap-3"
                               onClick={() => handleDelete(split.id)}
@@ -345,6 +400,35 @@ export function Splits() {
           }}
         />
       </Modal>
+
+      {/* Split Editor Modal */}
+      <Modal
+        isOpen={showEditor}
+        onClose={() => {
+          const { isDirty, cancelEdit } = useSplitEditStore.getState();
+          if (isDirty) {
+            if (!window.confirm('You have unsaved changes. Discard them?')) return;
+          }
+          cancelEdit();
+          setShowEditor(false);
+        }}
+        title="Edit Program"
+      >
+        <SplitEditor
+          onClose={() => setShowEditor(false)}
+          onSaved={() => void fetchSplits()}
+          onPickExercise={handlePickExercise}
+        />
+      </Modal>
+
+      {/* Exercise Picker (for editor) */}
+      <ExercisePicker
+        isOpen={pickerState.isOpen}
+        onClose={() => setPickerState((prev) => ({ ...prev, isOpen: false }))}
+        onSelect={handleExerciseSelected}
+        initialMuscleGroup={pickerState.initialMuscleGroup}
+        title={pickerState.mode === 'swap' ? 'Swap Exercise' : 'Add Exercise'}
+      />
     </motion.div>
   );
 }
