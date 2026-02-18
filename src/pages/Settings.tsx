@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, LogOut, Palette, Pencil, Target, User, UtensilsCrossed } from 'lucide-react';
+import { Archive, LogOut, Palette, Pencil, Target, User, UtensilsCrossed, Wand2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, Card, CardTitle, Input, Modal, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
@@ -8,6 +8,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
+import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
 
 interface SavedMeal {
   id: string;
@@ -52,6 +53,7 @@ export function Settings() {
   const [savingMealEdit, setSavingMealEdit] = useState(false);
   const [mealManagerMessage, setMealManagerMessage] = useState<string | null>(null);
   const [mealManagerError, setMealManagerError] = useState<string | null>(null);
+  const [showNutritionWizard, setShowNutritionWizard] = useState(false);
 
   useEffect(() => {
     fetchMacroTarget();
@@ -390,57 +392,100 @@ export function Settings() {
             <CardTitle>Daily Targets</CardTitle>
           </div>
 
-          <div className="space-y-4">
-            <Input
-              label="Calories"
-              type="number"
-              inputMode="numeric"
-              value={macros.calories}
-              onChange={(e) => {
+          {showNutritionWizard ? (
+            <NutritionWizard
+              onApply={(targets) => {
                 clearMacroFeedback();
-                setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
+                setMacroDraft({
+                  calories: targets.calories,
+                  protein: targets.protein,
+                  carbs: targets.carbs,
+                  fat: targets.fat,
+                });
+                setShowNutritionWizard(false);
+                setMacroMessage('Targets calculated — review and save above.');
               }}
+              onCancel={() => setShowNutritionWizard(false)}
             />
+          ) : (
+            <div className="space-y-4">
+              <button
+                className="w-full flex items-center justify-between p-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-base)] hover:border-[color-mix(in_srgb,var(--color-border)_100%,var(--color-text)_20%)] transition-colors group"
+                onClick={() => {
+                  clearMacroFeedback();
+                  setShowNutritionWizard(true);
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-[10px] bg-[var(--color-card)]">
+                    <Wand2 className="w-3.5 h-3.5 text-sage" strokeWidth={1.5} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[11px] text-[var(--color-text)]">Calculate my targets</p>
+                    <p className="text-[9px] tracking-[0.08em] uppercase text-[var(--color-muted)]">
+                      Answer a few questions for personalized macros
+                    </p>
+                  </div>
+                </div>
+              </button>
 
-            <div className="grid grid-cols-3 gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-[var(--color-border)]" />
+                <span className="text-[9px] tracking-[0.15em] uppercase text-[var(--color-muted)]">or set manually</span>
+                <div className="flex-1 h-px bg-[var(--color-border)]" />
+              </div>
+
               <Input
-                label="Protein (g)"
+                label="Calories"
                 type="number"
                 inputMode="numeric"
-                value={macros.protein}
+                value={macros.calories}
                 onChange={(e) => {
                   clearMacroFeedback();
-                  setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
+                  setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
                 }}
               />
-              <Input
-                label="Carbs (g)"
-                type="number"
-                inputMode="numeric"
-                value={macros.carbs}
-                onChange={(e) => {
-                  clearMacroFeedback();
-                  setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
-                }}
-              />
-              <Input
-                label="Fat (g)"
-                type="number"
-                inputMode="numeric"
-                value={macros.fat}
-                onChange={(e) => {
-                  clearMacroFeedback();
-                  setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
-                }}
-              />
+
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  label="Protein (g)"
+                  type="number"
+                  inputMode="numeric"
+                  value={macros.protein}
+                  onChange={(e) => {
+                    clearMacroFeedback();
+                    setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
+                  }}
+                />
+                <Input
+                  label="Carbs (g)"
+                  type="number"
+                  inputMode="numeric"
+                  value={macros.carbs}
+                  onChange={(e) => {
+                    clearMacroFeedback();
+                    setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
+                  }}
+                />
+                <Input
+                  label="Fat (g)"
+                  type="number"
+                  inputMode="numeric"
+                  value={macros.fat}
+                  onChange={(e) => {
+                    clearMacroFeedback();
+                    setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
+                  }}
+                />
+              </div>
+
+              <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros} disabled={!macrosChanged}>
+                Save Targets
+              </Button>
+              {macroMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{macroMessage}</p>}
+              {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{macroError}</p>}
             </div>
-
-            <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros} disabled={!macrosChanged}>
-              Save Targets
-            </Button>
-            {macroMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{macroMessage}</p>}
-            {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{macroError}</p>}
-          </div>
+          )}
         </Card>
       </motion.div>
 
