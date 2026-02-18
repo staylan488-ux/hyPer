@@ -22,6 +22,8 @@ type Chain = {
   insert: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  gte: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   select: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -36,6 +38,8 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
     insert: vi.fn(),
     delete: vi.fn(),
     eq: vi.fn(),
+    gte: vi.fn(),
+    lte: vi.fn(),
     order: vi.fn(),
     select: vi.fn(),
     single: vi.fn(),
@@ -47,6 +51,8 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   chain.insert.mockImplementation(() => chain);
   chain.delete.mockImplementation(() => chain);
   chain.eq.mockImplementation(() => chain);
+  chain.gte.mockImplementation(() => chain);
+  chain.lte.mockImplementation(() => chain);
   chain.order.mockImplementation(() => chain);
   chain.select.mockImplementation(() => chain);
   chain.single.mockResolvedValue({ data: null, error: null });
@@ -366,5 +372,99 @@ describe('must-work store contracts', () => {
       { onConflict: 'user_id' }
     );
     expect(useAppStore.getState().macroTarget).toEqual(savedTarget);
+  });
+
+  it('calculates weekly volume from completed sets even when workout is unfinished', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    const workouts = [
+      {
+        id: 'workout-1',
+        completed: false,
+        sets: [
+          {
+            completed: true,
+            exercise: {
+              muscle_group: 'chest',
+              muscle_group_secondary: 'triceps',
+            },
+          },
+          {
+            completed: false,
+            exercise: {
+              muscle_group: 'back',
+              muscle_group_secondary: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    const workoutsChain = createChain({
+      lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().calculateWeeklyVolume();
+
+    const weeklyVolume = useAppStore.getState().weeklyVolume;
+    expect(weeklyVolume).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle_group: 'chest', weekly_sets: 1 }),
+        expect.objectContaining({ muscle_group: 'triceps', weekly_sets: 0.5 }),
+      ])
+    );
+    expect(workoutsChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(workoutsChain.eq).toHaveBeenCalledWith('sets.completed', true);
+    expect(workoutsChain.eq).not.toHaveBeenCalledWith('completed', true);
+  });
+
+  it('does not count incomplete sets in weekly volume', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    useAppStore.setState({
+      weeklyVolume: [{
+        muscle_group: 'chest',
+        weekly_sets: 4,
+        status: 'below_mev',
+      }],
+    });
+
+    const workouts = [
+      {
+        id: 'workout-1',
+        completed: false,
+        sets: [
+          {
+            completed: false,
+            exercise: {
+              muscle_group: 'chest',
+              muscle_group_secondary: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    const workoutsChain = createChain({
+      lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().calculateWeeklyVolume();
+
+    expect(useAppStore.getState().weeklyVolume).toEqual([]);
   });
 });
