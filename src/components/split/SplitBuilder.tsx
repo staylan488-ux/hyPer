@@ -42,8 +42,7 @@ const FOCUS_OPTIONS: Option<ProgramFocus>[] = [
 
 const EQUIPMENT_OPTIONS: Option<EquipmentProfile>[] = [
   { value: 'full_gym', label: 'Full Gym', hint: 'Barbells, machines, cables' },
-  { value: 'limited_gym', label: 'Limited Gym', hint: 'Mostly dumbbells + cables' },
-  { value: 'minimal', label: 'Minimal', hint: 'No guaranteed heavy equipment' },
+  { value: 'dumbbell_only', label: 'Dumbbell Only', hint: 'Dumbbells + bodyweight movements' },
 ];
 
 const SESSION_OPTIONS: Option<SessionLength>[] = [
