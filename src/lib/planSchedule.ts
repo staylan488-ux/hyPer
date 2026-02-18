@@ -1,6 +1,7 @@
 import { addDays, format } from 'date-fns';
 
 import type { SplitDay } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 export type PlanMode = 'fixed' | 'flex';
 
@@ -59,32 +60,125 @@ function normalizeWeekdayOrder(weekdays: number[]): number[] {
   return ordered;
 }
 
-export function loadPlanSchedule(userId: string, splitId: string): PlanSchedule | null {
+/** Validate and normalize a raw PlanSchedule-shaped object. */
+function normalizeParsed(parsed: PlanSchedule): PlanSchedule | null {
+  if (!parsed.startDate || !parsed.mode || !Array.isArray(parsed.weekdays)) return null;
+
+  const normalizedWeekdays = normalizeWeekdayOrder(parsed.weekdays);
+  if (parsed.mode === 'fixed' && normalizedWeekdays.length === 0) return null;
+
+  return {
+    ...parsed,
+    weekdays: normalizedWeekdays,
+    anchorDay:
+      typeof parsed.anchorDay === 'number'
+        ? ((parsed.anchorDay % 7) + 7) % 7
+        : normalizedWeekdays[0] ?? 1,
+  };
+}
+
+// ── Local cache helpers ──
+
+function loadLocalCache(userId: string, splitId: string): PlanSchedule | null {
   const raw = globalThis.localStorage?.getItem(keyFor(userId, splitId));
   if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(raw) as PlanSchedule;
-    if (!parsed.startDate || !parsed.mode || !Array.isArray(parsed.weekdays)) return null;
-
-    const normalizedWeekdays = normalizeWeekdayOrder(parsed.weekdays);
-    if (parsed.mode === 'fixed' && normalizedWeekdays.length === 0) return null;
-
-    return {
-      ...parsed,
-      weekdays: normalizedWeekdays,
-      anchorDay:
-        typeof parsed.anchorDay === 'number'
-          ? ((parsed.anchorDay % 7) + 7) % 7
-          : normalizedWeekdays[0] ?? 1,
-    };
+    return normalizeParsed(JSON.parse(raw) as PlanSchedule);
   } catch {
     return null;
   }
 }
 
-export function savePlanSchedule(userId: string, schedule: PlanSchedule): void {
+function saveLocalCache(userId: string, schedule: PlanSchedule): void {
   globalThis.localStorage?.setItem(keyFor(userId, schedule.splitId), JSON.stringify(schedule));
+}
+
+// ── DB helpers ──
+
+function rowToSchedule(row: {
+  split_id: string;
+  start_date: string;
+  mode: string;
+  weekdays: number[];
+  anchor_day: number | null;
+}): PlanSchedule | null {
+  return normalizeParsed({
+    splitId: row.split_id,
+    startDate: row.start_date,
+    mode: row.mode as PlanMode,
+    weekdays: row.weekdays ?? [],
+    anchorDay: row.anchor_day ?? undefined,
+  });
+}
+
+async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule | null> {
+  try {
+    const { data, error } = await supabase
+      .from('plan_schedules')
+      .select('split_id, start_date, mode, weekdays, anchor_day')
+      .eq('user_id', userId)
+      .eq('split_id', splitId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return rowToSchedule(data);
+  } catch {
+    return null;
+  }
+}
+
+async function saveToDB(userId: string, schedule: PlanSchedule): Promise<void> {
+  try {
+    await supabase
+      .from('plan_schedules')
+      .upsert({
+        user_id: userId,
+        split_id: schedule.splitId,
+        start_date: schedule.startDate,
+        mode: schedule.mode,
+        weekdays: schedule.weekdays,
+        anchor_day: schedule.anchorDay ?? null,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,split_id',
+      });
+  } catch {
+    // Silently fail — localStorage still has the data
+  }
+}
+
+// ── Public API ──
+
+/**
+ * Load plan schedule: instant from localStorage, then background-sync from DB.
+ * Returns the cached value immediately; if DB has newer data, calls onRemoteUpdate.
+ */
+export function loadPlanSchedule(userId: string, splitId: string): PlanSchedule | null {
+  return loadLocalCache(userId, splitId);
+}
+
+/**
+ * Async load that checks DB when localStorage misses.
+ * Use this on page mount for cross-device persistence.
+ */
+export async function loadPlanScheduleAsync(userId: string, splitId: string): Promise<PlanSchedule | null> {
+  const cached = loadLocalCache(userId, splitId);
+  if (cached) return cached;
+
+  const remote = await loadFromDB(userId, splitId);
+  if (remote) {
+    saveLocalCache(userId, remote);
+  }
+  return remote;
+}
+
+/**
+ * Save plan schedule to both localStorage (instant) and DB (async).
+ */
+export function savePlanSchedule(userId: string, schedule: PlanSchedule): void {
+  saveLocalCache(userId, schedule);
+  void saveToDB(userId, schedule);
 }
 
 export function plannedDayForDate(

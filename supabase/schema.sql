@@ -143,6 +143,20 @@ CREATE INDEX idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
 CREATE INDEX idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
 CREATE INDEX idx_foods_user_id ON foods(user_id);
 
+-- Plan Schedules (training start-date & weekday mapping, synced across devices)
+CREATE TABLE IF NOT EXISTS plan_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  split_id UUID NOT NULL REFERENCES splits(id) ON DELETE CASCADE,
+  start_date DATE NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'fixed' CHECK (mode IN ('fixed','flex')),
+  weekdays INTEGER[] NOT NULL DEFAULT '{}',
+  anchor_day INTEGER CHECK (anchor_day IS NULL OR anchor_day BETWEEN 0 AND 6),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, split_id)
+);
+
 -- RLS Policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE splits ENABLE ROW LEVEL SECURITY;
@@ -154,6 +168,7 @@ ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volume_landmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
@@ -235,6 +250,12 @@ CREATE POLICY "Users can update own macro targets" ON macro_targets FOR UPDATE U
 CREATE POLICY "Users can view own volume landmarks" ON volume_landmarks FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own volume landmarks" ON volume_landmarks FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own volume landmarks" ON volume_landmarks FOR UPDATE USING (auth.uid() = user_id);
+
+-- Plan schedules policies
+CREATE POLICY "Users can view own plan schedules" ON plan_schedules FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own plan schedules" ON plan_schedules FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own plan schedules" ON plan_schedules FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own plan schedules" ON plan_schedules FOR DELETE USING (auth.uid() = user_id);
 
 -- Function to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
