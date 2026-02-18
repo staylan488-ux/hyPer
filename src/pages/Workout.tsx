@@ -9,7 +9,7 @@ import { SetLogger } from '@/components/workout/SetLogger';
 import { RestTimer } from '@/components/workout/RestTimer';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
-import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadPlanScheduleAsync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
+import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import type { SplitDay, Workout, WorkoutSet } from '@/types';
 
 interface WorkoutNotesPayload {
@@ -131,42 +131,35 @@ export function Workout() {
       return;
     }
 
-    // Try localStorage first for instant UI
-    const cached = loadPlanSchedule(userId, activeSplit.id);
-
-    if (cached) {
-      setPlanSchedule(cached);
-      setSetupStartDate(cached.startDate);
-      setSetupMode(cached.mode);
-      setSetupStartChoice('pick');
-      setSetupAnchorDay(cached.anchorDay ?? cached.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
-      return;
-    }
-
-    // Cache miss — check DB (cross-device persistence)
-    let cancelled = false;
-    const splitId = activeSplit.id;
     const daysPerWeek = activeSplit.days_per_week;
 
-    void loadPlanScheduleAsync(userId, splitId).then((remote) => {
-      if (cancelled) return;
+    const applySchedule = (schedule: PlanSchedule) => {
+      setPlanSchedule(schedule);
+      setSetupStartDate(schedule.startDate);
+      setSetupMode(schedule.mode);
+      setSetupStartChoice('pick');
+      setSetupAnchorDay(schedule.anchorDay ?? schedule.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
+    };
 
-      if (remote) {
-        setPlanSchedule(remote);
-        setSetupStartDate(remote.startDate);
-        setSetupMode(remote.mode);
-        setSetupStartChoice('pick');
-        setSetupAnchorDay(remote.anchorDay ?? remote.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
-      } else {
-        setPlanSchedule(null);
-        setSetupStartDate(defaultStartDate());
-        setSetupMode('fixed');
-        setSetupStartChoice('today');
-        setSetupAnchorDay(defaultWeekdays(daysPerWeek)[0] ?? 1);
-      }
-    });
+    // Load local cache instantly + background sync from DB
+    const { cached, cancel } = loadWithBackgroundSync(
+      userId,
+      activeSplit.id,
+      applySchedule,  // called if remote is newer or cache was empty
+    );
 
-    return () => { cancelled = true; };
+    if (cached) {
+      applySchedule(cached);
+    } else {
+      // No local cache — reset to defaults until DB responds
+      setPlanSchedule(null);
+      setSetupStartDate(defaultStartDate());
+      setSetupMode('fixed');
+      setSetupStartChoice('today');
+      setSetupAnchorDay(defaultWeekdays(daysPerWeek)[0] ?? 1);
+    }
+
+    return () => { cancel(); };
   }, [userId, activeSplit]);
 
   useEffect(() => {

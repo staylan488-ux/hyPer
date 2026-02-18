@@ -11,6 +11,7 @@ export interface PlanSchedule {
   mode: PlanMode;
   weekdays: number[];
   anchorDay?: number;
+  updatedAt?: string;
 }
 
 function keyFor(userId: string, splitId: string): string {
@@ -102,6 +103,7 @@ function rowToSchedule(row: {
   mode: string;
   weekdays: number[];
   anchor_day: number | null;
+  updated_at?: string;
 }): PlanSchedule | null {
   return normalizeParsed({
     splitId: row.split_id,
@@ -109,6 +111,7 @@ function rowToSchedule(row: {
     mode: row.mode as PlanMode,
     weekdays: row.weekdays ?? [],
     anchorDay: row.anchor_day ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
   });
 }
 
@@ -116,7 +119,7 @@ async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule
   try {
     const { data, error } = await supabase
       .from('plan_schedules')
-      .select('split_id, start_date, mode, weekdays, anchor_day')
+      .select('split_id, start_date, mode, weekdays, anchor_day, updated_at')
       .eq('user_id', userId)
       .eq('split_id', splitId)
       .maybeSingle();
@@ -177,8 +180,47 @@ export async function loadPlanScheduleAsync(userId: string, splitId: string): Pr
  * Save plan schedule to both localStorage (instant) and DB (async).
  */
 export function savePlanSchedule(userId: string, schedule: PlanSchedule): void {
-  saveLocalCache(userId, schedule);
-  void saveToDB(userId, schedule);
+  const stamped = { ...schedule, updatedAt: new Date().toISOString() };
+  saveLocalCache(userId, stamped);
+  void saveToDB(userId, stamped);
+}
+
+/**
+ * Load with background sync: returns cached schedule instantly for fast UI,
+ * then checks DB in the background. If remote is newer (by updated_at),
+ * updates local cache and calls onRemoteUpdate so the component can re-render.
+ *
+ * Returns { cached, cancel } where cancel aborts the background fetch.
+ */
+export function loadWithBackgroundSync(
+  userId: string,
+  splitId: string,
+  onRemoteUpdate: (schedule: PlanSchedule) => void,
+): { cached: PlanSchedule | null; cancel: () => void } {
+  const cached = loadLocalCache(userId, splitId);
+  let cancelled = false;
+
+  void loadFromDB(userId, splitId).then((remote) => {
+    if (cancelled || !remote) return;
+
+    // If no local cache, just populate it
+    if (!cached) {
+      saveLocalCache(userId, remote);
+      onRemoteUpdate(remote);
+      return;
+    }
+
+    // Compare timestamps — only update if remote is strictly newer
+    const localTime = cached.updatedAt ? new Date(cached.updatedAt).getTime() : 0;
+    const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+
+    if (remoteTime > localTime) {
+      saveLocalCache(userId, remote);
+      onRemoteUpdate(remote);
+    }
+  });
+
+  return { cached, cancel: () => { cancelled = true; } };
 }
 
 export function plannedDayForDate(
