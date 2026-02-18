@@ -1,4 +1,23 @@
-﻿import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+// Mock supabase before importing planSchedule (it now imports supabase)
+const supabaseMock = vi.hoisted(() => ({
+  from: vi.fn(() => ({
+    upsert: vi.fn(() => ({ error: null })),
+    select: vi.fn(() => ({
+      eq: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(() => ({ data: null, error: null })),
+        })),
+      })),
+    })),
+  })),
+  auth: { getUser: vi.fn() },
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: supabaseMock,
+}));
 
 import {
   buildFixedWeekdays,

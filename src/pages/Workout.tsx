@@ -9,7 +9,7 @@ import { SetLogger } from '@/components/workout/SetLogger';
 import { RestTimer } from '@/components/workout/RestTimer';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
-import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
+import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadPlanScheduleAsync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import type { SplitDay, Workout, WorkoutSet } from '@/types';
 
 interface WorkoutNotesPayload {
@@ -131,21 +131,42 @@ export function Workout() {
       return;
     }
 
-    const existing = loadPlanSchedule(userId, activeSplit.id);
-    setPlanSchedule(existing);
+    // Try localStorage first for instant UI
+    const cached = loadPlanSchedule(userId, activeSplit.id);
 
-    if (existing) {
-      setSetupStartDate(existing.startDate);
-      setSetupMode(existing.mode);
+    if (cached) {
+      setPlanSchedule(cached);
+      setSetupStartDate(cached.startDate);
+      setSetupMode(cached.mode);
       setSetupStartChoice('pick');
-      setSetupAnchorDay(existing.anchorDay ?? existing.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+      setSetupAnchorDay(cached.anchorDay ?? cached.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
       return;
     }
 
-    setSetupStartDate(defaultStartDate());
-    setSetupMode('fixed');
-    setSetupStartChoice('today');
-    setSetupAnchorDay(defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+    // Cache miss — check DB (cross-device persistence)
+    let cancelled = false;
+    const splitId = activeSplit.id;
+    const daysPerWeek = activeSplit.days_per_week;
+
+    void loadPlanScheduleAsync(userId, splitId).then((remote) => {
+      if (cancelled) return;
+
+      if (remote) {
+        setPlanSchedule(remote);
+        setSetupStartDate(remote.startDate);
+        setSetupMode(remote.mode);
+        setSetupStartChoice('pick');
+        setSetupAnchorDay(remote.anchorDay ?? remote.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
+      } else {
+        setPlanSchedule(null);
+        setSetupStartDate(defaultStartDate());
+        setSetupMode('fixed');
+        setSetupStartChoice('today');
+        setSetupAnchorDay(defaultWeekdays(daysPerWeek)[0] ?? 1);
+      }
+    });
+
+    return () => { cancelled = true; };
   }, [userId, activeSplit]);
 
   useEffect(() => {

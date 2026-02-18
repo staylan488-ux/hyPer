@@ -1,4 +1,4 @@
-﻿-- Migration: Fix split_exercises RLS policies
+-- Migration: Fix split_exercises RLS policies
 -- This fixes the bug where exercises weren't being added to split templates
 
 -- Add INSERT policy for split_exercises
