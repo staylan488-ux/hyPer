@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock supabase before importing planSchedule (it now imports supabase)
-const supabaseMock = vi.hoisted(() => ({
-  from: vi.fn(() => ({
+const supabaseMock = vi.hoisted(() => {
+  const defaultFrom = () => ({
     upsert: vi.fn(() => ({ error: null })),
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -11,9 +11,14 @@ const supabaseMock = vi.hoisted(() => ({
         })),
       })),
     })),
-  })),
-  auth: { getUser: vi.fn() },
-}));
+  });
+
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    from: vi.fn(defaultFrom) as any,
+    auth: { getUser: vi.fn() },
+  };
+});
 
 vi.mock('@/lib/supabase', () => ({
   supabase: supabaseMock,
@@ -22,6 +27,7 @@ vi.mock('@/lib/supabase', () => ({
 import {
   buildFixedWeekdays,
   loadPlanSchedule,
+  loadWithBackgroundSync,
   plannedDayForDate,
   savePlanSchedule,
   defaultStartDate,
@@ -497,6 +503,195 @@ describe('planSchedule', () => {
       expect(defaultWeekdays(6)).toEqual([1, 2, 3, 4, 5, 6]);
       expect(defaultWeekdays(7)).toEqual([1, 2, 3, 4, 5, 6]);
       expect(defaultWeekdays(10)).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+  });
+
+  describe('loadWithBackgroundSync', () => {
+    it('returns null cached and calls onRemoteUpdate when DB has data', async () => {
+      const remoteSchedule = {
+        split_id: 'split1',
+        start_date: '2024-06-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchor_day: 1,
+        updated_at: '2024-06-01T12:00:00Z',
+      };
+
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: remoteSchedule, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { cached } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      expect(cached).toBeNull();
+
+      // Wait for background fetch
+      await vi.waitFor(() => {
+        expect(onRemoteUpdate).toHaveBeenCalledTimes(1);
+      });
+
+      const updated = onRemoteUpdate.mock.calls[0][0] as PlanSchedule;
+      expect(updated.splitId).toBe('split1');
+      expect(updated.startDate).toBe('2024-06-01');
+      expect(updated.updatedAt).toBe('2024-06-01T12:00:00Z');
+    });
+
+    it('returns cached and does NOT call onRemoteUpdate when local is newer', async () => {
+      // Save a schedule with a recent updatedAt — write directly to avoid consuming mock
+      const localSchedule: PlanSchedule = {
+        splitId: 'split1',
+        startDate: '2024-06-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchorDay: 1,
+        updatedAt: '2024-06-02T12:00:00Z',
+      };
+      localStorageMock.setItem(
+        'plan-schedule:user1:split1',
+        JSON.stringify(localSchedule),
+      );
+
+      // DB returns an older version
+      const olderRemote = {
+        split_id: 'split1',
+        start_date: '2024-05-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchor_day: 1,
+        updated_at: '2024-06-01T12:00:00Z',
+      };
+
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: olderRemote, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { cached } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      expect(cached).not.toBeNull();
+      expect(cached?.startDate).toBe('2024-06-01');
+
+      // Wait a tick for the background fetch to complete
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Should NOT have called onRemoteUpdate since local is newer
+      expect(onRemoteUpdate).not.toHaveBeenCalled();
+    });
+
+    it('calls onRemoteUpdate when remote is newer than local cache', async () => {
+      // Save a schedule with an older updatedAt
+      const localSchedule: PlanSchedule = {
+        splitId: 'split1',
+        startDate: '2024-05-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchorDay: 1,
+        updatedAt: '2024-06-01T12:00:00Z',
+      };
+      // Manually write to localStorage to avoid consuming the supabase mock
+      localStorageMock.setItem(
+        'plan-schedule:user1:split1',
+        JSON.stringify(localSchedule),
+      );
+
+      // DB returns a newer version
+      const newerRemote = {
+        split_id: 'split1',
+        start_date: '2024-06-15',
+        mode: 'fixed',
+        weekdays: [2, 4, 6],
+        anchor_day: 2,
+        updated_at: '2024-06-10T12:00:00Z',
+      };
+
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: newerRemote, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { cached } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      expect(cached?.startDate).toBe('2024-05-01');
+
+      await vi.waitFor(() => {
+        expect(onRemoteUpdate).toHaveBeenCalledTimes(1);
+      });
+
+      const updated = onRemoteUpdate.mock.calls[0][0] as PlanSchedule;
+      expect(updated.startDate).toBe('2024-06-15');
+      expect(updated.weekdays).toEqual([2, 4, 6]);
+    });
+
+    it('does not call onRemoteUpdate when cancelled', async () => {
+      const remoteSchedule = {
+        split_id: 'split1',
+        start_date: '2024-06-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchor_day: 1,
+        updated_at: '2024-06-01T12:00:00Z',
+      };
+
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: remoteSchedule, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { cancel } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      // Cancel immediately
+      cancel();
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(onRemoteUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not call onRemoteUpdate when DB returns null', async () => {
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: null, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(onRemoteUpdate).not.toHaveBeenCalled();
     });
   });
 });
