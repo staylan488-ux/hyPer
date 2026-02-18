@@ -626,28 +626,28 @@ export function Workout() {
               <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">Today</p>
               {todayCompletedWorkout ? (
                 <>
-                  <h3 className="text-base text-[var(--color-text)]">Workout completed</h3>
-                  <p className="text-xs text-[#A9A39A]">Great work. You can rest or train a different day.</p>
+                  <h3 className="text-[1rem] text-[var(--color-text)]">Workout completed</h3>
+                  <p className="text-xs text-[var(--color-muted)]">Great work. You can rest or train a different day.</p>
                 </>
               ) : todayPlannedDay ? (
                 <>
                   <h3
-                    className="text-base font-medium tracking-[0.02em]"
+                    className="text-[1rem] font-medium tracking-[0.02em]"
                     style={{ color: 'color-mix(in srgb, var(--color-text) 94%, white 6%)' }}
                   >
                     {todayPlannedDay.day_name}
                   </h3>
-                  <p className="text-xs text-[#A9A39A]">Planned session for today.</p>
+                  <p className="text-xs text-[var(--color-muted)]">Planned session for today.</p>
                   <Button onClick={() => handleStartWorkout(todayPlannedDay)} disabled={startingDayId !== null}>
                     {startingDayId === todayPlannedDay.id ? 'Starting...' : 'Start Today\'s Workout'}
                   </Button>
                 </>
               ) : (
                 <>
-                  <h3 className="text-base font-medium tracking-[0.02em] text-[var(--color-text)]">
+                  <h3 className="text-[1rem] font-medium tracking-[0.02em] text-[var(--color-text)]">
                     Rest Day
                   </h3>
-                  <p className="text-xs text-[#B6B0A8]">No scheduled training today. Recovery is part of progress.</p>
+                  <p className="text-xs text-[var(--color-muted)]">No scheduled training today. Recovery is part of progress.</p>
                 </>
               )}
 
