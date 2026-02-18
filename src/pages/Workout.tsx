@@ -66,6 +66,7 @@ export function Workout() {
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
+  const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
   const [lastCompletedWorkout, setLastCompletedWorkout] = useState<Pick<Workout, 'date' | 'split_day_id'> | null>(null);
@@ -78,6 +79,7 @@ export function Workout() {
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
+  const planScheduleRequestRef = useRef(0);
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
@@ -124,17 +126,26 @@ export function Workout() {
 
   useEffect(() => {
     if (!activeSplit) {
+      planScheduleRequestRef.current += 1;
       setPlanSchedule(null);
+      setPlanScheduleResolving(false);
       return;
     }
 
     if (!userId) {
+      planScheduleRequestRef.current += 1;
+      setPlanSchedule(null);
+      setPlanScheduleResolving(false);
       return;
     }
 
+    const requestId = planScheduleRequestRef.current + 1;
+    planScheduleRequestRef.current = requestId;
     const daysPerWeek = activeSplit.days_per_week;
+    setPlanScheduleResolving(true);
 
     const applySchedule = (schedule: PlanSchedule) => {
+      if (planScheduleRequestRef.current !== requestId) return;
       setPlanSchedule(schedule);
       setSetupStartDate(schedule.startDate);
       setSetupMode(schedule.mode);
@@ -143,7 +154,7 @@ export function Workout() {
     };
 
     // Load local cache instantly + background sync from DB
-    const { cached, cancel } = loadWithBackgroundSync(
+    const { cached, cancel, done } = loadWithBackgroundSync(
       userId,
       activeSplit.id,
       applySchedule,  // called if remote is newer or cache was empty
@@ -159,6 +170,11 @@ export function Workout() {
       setSetupStartChoice('today');
       setSetupAnchorDay(defaultWeekdays(daysPerWeek)[0] ?? 1);
     }
+
+    void done.finally(() => {
+      if (planScheduleRequestRef.current !== requestId) return;
+      setPlanScheduleResolving(false);
+    });
 
     return () => { cancel(); };
   }, [userId, activeSplit]);
@@ -504,11 +520,19 @@ export function Workout() {
         </motion.header>
 
         {!planSchedule ? (
-          <Card variant="slab" className="space-y-5">
-            <div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] mb-1">Start Plan</p>
-              <p className="text-sm text-[#CFC9BF] leading-relaxed">Set your Day 1 and weekly rhythm</p>
-            </div>
+          planScheduleResolving ? (
+            <Card variant="slab" className="py-16">
+              <div className="flex items-center justify-center gap-2 text-[var(--color-muted)]">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-xs tracking-wider">Loading saved plan setup...</span>
+              </div>
+            </Card>
+          ) : (
+            <Card variant="slab" className="space-y-5">
+              <div>
+                <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] mb-1">Start Plan</p>
+                <p className="text-sm text-[#CFC9BF] leading-relaxed">Set your Day 1 and weekly rhythm</p>
+              </div>
 
             <div className="space-y-2">
               <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">When should Day 1 start?</p>
@@ -620,6 +644,7 @@ export function Workout() {
               Save Plan Setup
             </Button>
           </Card>
+          )
         ) : (
           <div className="space-y-4">
             <Card variant="slab" className="space-y-3">
