@@ -38,6 +38,8 @@ interface NutritionLogEntry {
     protein: number;
     carbs: number;
     fat: number;
+    serving_size?: number;
+    serving_unit?: string;
   } | null;
 }
 
@@ -103,7 +105,7 @@ export function Nutrition() {
       const foodIds = [...new Set(logs.map((log) => log.food_id))];
       const { data: foods, error: foodsError } = await supabase
         .from('foods')
-        .select('id, name, calories, protein, carbs, fat')
+        .select('id, name, calories, protein, carbs, fat, serving_size, serving_unit')
         .in('id', foodIds);
 
       if (foodsError) {

@@ -9,10 +9,14 @@ import type { Food } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
   buildLoggedAt,
+  computeAmountFromServings,
+  computeServingsFromAmount,
+  getCompatibleMeasurementUnits,
   normalizeFoodName,
   numbersNearlyEqual,
   shouldDropColumn,
   toLocalTimeInput,
+  type MeasurementUnit,
 } from './foodLoggerUtils';
 import { searchUsdaFoods } from './usdaSearch';
 
@@ -23,6 +27,13 @@ const MAX_IMAGE_DIMENSION = 1280;
 function formatMacroInput(value: number): string {
   const rounded = Math.round((value || 0) * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatMeasurementAmount(value: number): string {
+  if (!Number.isFinite(value)) return '';
+
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }
 
 interface PhotoDraftResult {
@@ -68,6 +79,8 @@ interface EditableNutritionEntry {
     protein: number;
     carbs: number;
     fat: number;
+    serving_size?: number;
+    serving_unit?: string;
   } | null;
 }
 
@@ -101,13 +114,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
       protein: initialEntry.food.protein,
       carbs: initialEntry.food.carbs,
       fat: initialEntry.food.fat,
-      serving_size: 1,
-      serving_unit: 'serving',
+      serving_size: initialEntry.food.serving_size || 1,
+      serving_unit: initialEntry.food.serving_unit || 'serving',
       source: 'custom',
       fdc_id: null,
     };
   });
   const [servings, setServings] = useState(initialEntry ? String(initialEntry.servings) : '1');
+  const [measurementAmount, setMeasurementAmount] = useState(initialEntry ? String(initialEntry.servings) : '1');
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('serving');
   const [saving, setSaving] = useState(false);
   const [entryDate, setEntryDate] = useState<Date>(initialLogDate);
   const [timeValue, setTimeValue] = useState(() =>
@@ -172,6 +187,63 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     setSavedMealMessage(null);
     setSavedMealError(null);
   };
+
+  const selectedFoodCompatibleUnits = useMemo(() => {
+    if (!selectedFood) return ['serving'] as MeasurementUnit[];
+    return getCompatibleMeasurementUnits(selectedFood.serving_unit);
+  }, [selectedFood]);
+
+  const resolvedSelectedFoodServings = useMemo(() => {
+    if (!selectedFood) return null;
+
+    const amount = parseFloat(measurementAmount);
+    if (measurementUnit === 'serving') {
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+      return amount;
+    }
+
+    return computeServingsFromAmount({
+      amount,
+      amountUnitRaw: measurementUnit,
+      servingSize: selectedFood.serving_size,
+      servingUnitRaw: selectedFood.serving_unit,
+    });
+  }, [measurementAmount, measurementUnit, selectedFood]);
+
+  const selectedFoodMeasurementError = useMemo(() => {
+    if (!selectedFood) return null;
+
+    const amount = parseFloat(measurementAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return 'Enter a valid amount greater than zero.';
+    }
+
+    if (resolvedSelectedFoodServings === null) {
+      return `Can't convert ${measurementUnit} to ${selectedFood.serving_unit || 'serving'} for this food.`;
+    }
+
+    return null;
+  }, [measurementAmount, measurementUnit, resolvedSelectedFoodServings, selectedFood]);
+
+  useEffect(() => {
+    if (!selectedFood) return;
+
+    const servingAmount = parseFloat(servings || '1');
+    const safeServingAmount = Number.isFinite(servingAmount) && servingAmount > 0 ? servingAmount : 1;
+
+    setMeasurementUnit('serving');
+    setMeasurementAmount(formatMeasurementAmount(safeServingAmount));
+  }, [selectedFood, servings]);
+
+  const selectedFoodTotalCalories = useMemo(() => {
+    if (!selectedFood || resolvedSelectedFoodServings === null) return 0;
+    return Math.round(selectedFood.calories * resolvedSelectedFoodServings);
+  }, [resolvedSelectedFoodServings, selectedFood]);
+
+  const selectedFoodTotalProtein = useMemo(() => {
+    if (!selectedFood || resolvedSelectedFoodServings === null) return 0;
+    return Math.round(selectedFood.protein * resolvedSelectedFoodServings);
+  }, [resolvedSelectedFoodServings, selectedFood]);
 
   const manualMacroValues = useMemo(
     () => ({
@@ -503,7 +575,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
         confidence: Math.max(0, Math.min(1, Number(draft.confidence) || 0)),
         reasoning: draft.reasoning,
       });
-      setServings(String(Math.max(0.25, Number(draft.food.suggested_servings) || 1)));
+
+      const suggestedServings = Math.max(0.25, Number(draft.food.suggested_servings) || 1);
+      setServings(String(suggestedServings));
+      setMeasurementUnit('serving');
+      setMeasurementAmount(formatMeasurementAmount(suggestedServings));
       resetPhotoState();
     } catch (analysisError) {
       const message = await parseFunctionError(analysisError);
@@ -952,26 +1028,82 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             </div>
           </Card>
 
-          <div>
-            <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Servings</label>
-            <input
-              type="number"
-              value={servings}
-              onChange={(e) => setServings(e.target.value)}
-              min="0.25"
-              step="0.25"
-              className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-3 text-[#E8E4DE] transition-colors"
-            />
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Amount</label>
+              <input
+                type="number"
+                value={measurementAmount}
+                onChange={(event) => setMeasurementAmount(event.target.value)}
+                min="0.01"
+                step="0.01"
+                className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-3 text-[#E8E4DE] transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Unit</label>
+              <select
+                value={measurementUnit}
+                onChange={(event) => {
+                  const nextUnit = event.target.value as MeasurementUnit;
+                  if (!selectedFood) {
+                    setMeasurementUnit(nextUnit);
+                    return;
+                  }
+
+                  const currentServings = measurementUnit === 'serving'
+                    ? parseFloat(measurementAmount)
+                    : computeServingsFromAmount({
+                      amount: parseFloat(measurementAmount),
+                      amountUnitRaw: measurementUnit,
+                      servingSize: selectedFood.serving_size,
+                      servingUnitRaw: selectedFood.serving_unit,
+                    });
+
+                  setMeasurementUnit(nextUnit);
+
+                  if (currentServings === null || !Number.isFinite(currentServings) || currentServings <= 0) {
+                    return;
+                  }
+
+                  if (nextUnit === 'serving') {
+                    setMeasurementAmount(formatMeasurementAmount(currentServings));
+                    return;
+                  }
+
+                  const nextAmount = computeAmountFromServings({
+                    servings: currentServings,
+                    targetUnitRaw: nextUnit,
+                    servingSize: selectedFood.serving_size,
+                    servingUnitRaw: selectedFood.serving_unit,
+                  });
+
+                  if (nextAmount !== null) {
+                    setMeasurementAmount(formatMeasurementAmount(nextAmount));
+                  }
+                }}
+                className="w-full h-12 px-3 py-2 bg-[#1A1A1A] border border-white/10 rounded-[14px] text-[#E8E4DE] text-sm focus:outline-none focus:border-white/25"
+              >
+                {selectedFoodCompatibleUnits.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
+          {selectedFoodMeasurementError && (
+            <p className="text-[10px] tracking-[0.08em] uppercase text-[#8B6B6B]">
+              {selectedFoodMeasurementError}
+            </p>
+          )}
+
           <div className="text-center py-4 bg-[#1A1A1A] rounded-[20px]">
-            <p className="text-2xl tabular-nums text-[#E8E4DE]">
-              {Math.round(selectedFood.calories * parseFloat(servings || '0'))}
-            </p>
+            <p className="text-2xl tabular-nums text-[#E8E4DE]">{selectedFoodTotalCalories}</p>
             <p className="text-[9px] tracking-[0.15em] uppercase text-[#6B6B6B] mt-1">Total Calories</p>
-            <p className="text-[10px] text-[#9A9A9A] mt-2">
-              {Math.round(selectedFood.protein * parseFloat(servings || '0'))}g Protein
-            </p>
+            <p className="text-[10px] text-[#9A9A9A] mt-2">{selectedFoodTotalProtein}g Protein</p>
           </div>
 
           <div className="flex gap-3 pt-2">
@@ -981,6 +1113,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
               onClick={() => {
                 setSelectedFood(null);
                 setSelectedFoodMeta(null);
+                setMeasurementUnit('serving');
+                setMeasurementAmount('1');
               }}
               disabled={saving}
             >
@@ -988,9 +1122,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             </Button>
             <Button
               className="flex-1"
-              onClick={() => handleSaveFromSelectedFood(selectedFood, parseFloat(servings || '1'))}
+              onClick={() => {
+                if (resolvedSelectedFoodServings === null) return;
+                setServings(String(resolvedSelectedFoodServings));
+                void handleSaveFromSelectedFood(selectedFood, resolvedSelectedFoodServings);
+              }}
               loading={saving}
-              disabled={!timeValue}
+              disabled={!timeValue || resolvedSelectedFoodServings === null}
             >
               {loggerMode === 'edit' ? 'Save Changes' : 'Log Entry'}
             </Button>
@@ -1064,8 +1202,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                     type="button"
                     className="w-full flex items-center justify-between p-4 bg-[#1A1A1A] border border-white/5 rounded-[20px] hover:border-white/10 transition-colors text-left active:border-white/20"
                     onClick={() => {
+                      if (saving) return;
+
                       setSelectedFoodMeta(null);
-                      if (!saving) setSelectedFood(food);
+                      setSelectedFood(food);
+                      setMeasurementUnit('serving');
+
+                      const defaultServings = 1;
+                      setServings(String(defaultServings));
+                      setMeasurementAmount(formatMeasurementAmount(defaultServings));
                     }}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
