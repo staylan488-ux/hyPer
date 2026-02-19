@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronUp,
@@ -38,6 +38,24 @@ function clampInt(value: string, min: number, max: number, fallback: number): nu
   return Math.max(min, Math.min(max, Math.round(parsed)));
 }
 
+interface ExerciseInputDraft {
+  minSets: string;
+  targetSets: string;
+  maxSets: string;
+  minReps: string;
+  maxReps: string;
+}
+
+function buildExerciseInputDraft(exercise: DraftExercise): ExerciseInputDraft {
+  return {
+    minSets: String(exercise.target_sets_min),
+    targetSets: String(exercise.target_sets),
+    maxSets: String(exercise.target_sets_max),
+    minReps: String(exercise.target_reps_min),
+    maxReps: String(exercise.target_reps_max),
+  };
+}
+
 // ═══════════════════════════════════
 // EXERCISE ROW
 // ═══════════════════════════════════
@@ -57,6 +75,46 @@ function ExerciseRow({
 }) {
   const { reorderExercise, updateExerciseTargets, removeExercise } =
     useSplitEditStore();
+  const [inputDraft, setInputDraft] = useState<ExerciseInputDraft>(() => buildExerciseInputDraft(exercise));
+
+  const commitSetRangeDraft = (patch: Partial<ExerciseInputDraft> = {}) => {
+    const merged = { ...inputDraft, ...patch };
+
+    const nextMin = clampInt(merged.minSets, 1, 10, exercise.target_sets_min);
+    const nextTarget = clampInt(merged.targetSets, 1, 10, exercise.target_sets);
+    const nextMax = clampInt(merged.maxSets, 1, 10, exercise.target_sets_max);
+
+    const normalized = normalizeSetRange(nextMin, nextTarget, nextMax);
+
+    setInputDraft((prev) => ({
+      ...prev,
+      minSets: String(normalized.minSets),
+      targetSets: String(normalized.targetSets),
+      maxSets: String(normalized.maxSets),
+    }));
+
+    updateExerciseTargets(day.id, exercise.id, {
+      target_sets_min: normalized.minSets,
+      target_sets: normalized.targetSets,
+      target_sets_max: normalized.maxSets,
+    });
+  };
+
+  const commitRepDraft = (field: 'minReps' | 'maxReps', fallback: number) => {
+    const value = inputDraft[field];
+    const clamped = field === 'minReps'
+      ? clampInt(value, 1, 100, fallback)
+      : clampInt(value, 1, 100, fallback);
+
+    const patch = { [field]: String(clamped) } as Partial<ExerciseInputDraft>;
+    setInputDraft((prev) => ({ ...prev, ...patch }));
+
+    if (field === 'minReps') {
+      updateExerciseTargets(day.id, exercise.id, { target_reps_min: clamped });
+    } else {
+      updateExerciseTargets(day.id, exercise.id, { target_reps_max: clamped });
+    }
+  };
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -135,15 +193,14 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={exercise.target_sets_min}
-            onChange={(e) => {
-              const nextMin = clampInt(e.target.value, 1, 10, exercise.target_sets_min);
-              const normalized = normalizeSetRange(nextMin, exercise.target_sets, exercise.target_sets_max);
-              updateExerciseTargets(day.id, exercise.id, {
-                target_sets_min: normalized.minSets,
-                target_sets: normalized.targetSets,
-                target_sets_max: normalized.maxSets,
-              });
+            value={inputDraft.minSets}
+            onChange={(e) => setInputDraft((prev) => ({ ...prev, minSets: e.target.value }))}
+            onBlur={() => commitSetRangeDraft()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitSetRangeDraft();
+              }
             }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
@@ -157,15 +214,14 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={exercise.target_sets}
-            onChange={(e) => {
-              const nextTarget = clampInt(e.target.value, 1, 10, exercise.target_sets);
-              const normalized = normalizeSetRange(exercise.target_sets_min, nextTarget, exercise.target_sets_max);
-              updateExerciseTargets(day.id, exercise.id, {
-                target_sets_min: normalized.minSets,
-                target_sets: normalized.targetSets,
-                target_sets_max: normalized.maxSets,
-              });
+            value={inputDraft.targetSets}
+            onChange={(e) => setInputDraft((prev) => ({ ...prev, targetSets: e.target.value }))}
+            onBlur={() => commitSetRangeDraft()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitSetRangeDraft();
+              }
             }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
@@ -179,15 +235,14 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={exercise.target_sets_max}
-            onChange={(e) => {
-              const nextMax = clampInt(e.target.value, 1, 10, exercise.target_sets_max);
-              const normalized = normalizeSetRange(exercise.target_sets_min, exercise.target_sets, nextMax);
-              updateExerciseTargets(day.id, exercise.id, {
-                target_sets_min: normalized.minSets,
-                target_sets: normalized.targetSets,
-                target_sets_max: normalized.maxSets,
-              });
+            value={inputDraft.maxSets}
+            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxSets: e.target.value }))}
+            onBlur={() => commitSetRangeDraft()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitSetRangeDraft();
+              }
             }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
@@ -201,12 +256,15 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={100}
-            value={exercise.target_reps_min}
-            onChange={(e) =>
-              updateExerciseTargets(day.id, exercise.id, {
-                target_reps_min: clampInt(e.target.value, 1, 100, exercise.target_reps_min),
-              })
-            }
+            value={inputDraft.minReps}
+            onChange={(e) => setInputDraft((prev) => ({ ...prev, minReps: e.target.value }))}
+            onBlur={() => commitRepDraft('minReps', exercise.target_reps_min)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRepDraft('minReps', exercise.target_reps_min);
+              }
+            }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
         </div>
@@ -219,12 +277,15 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={100}
-            value={exercise.target_reps_max}
-            onChange={(e) =>
-              updateExerciseTargets(day.id, exercise.id, {
-                target_reps_max: clampInt(e.target.value, 1, 100, exercise.target_reps_max),
-              })
-            }
+            value={inputDraft.maxReps}
+            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxReps: e.target.value }))}
+            onBlur={() => commitRepDraft('maxReps', exercise.target_reps_max)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRepDraft('maxReps', exercise.target_reps_max);
+              }
+            }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
         </div>
@@ -348,7 +409,7 @@ function DayCard({
             ) : (
               day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
-                  key={exercise.id}
+                  key={`${exercise.id}:${exercise.target_sets_min}:${exercise.target_sets}:${exercise.target_sets_max}:${exercise.target_reps_min}:${exercise.target_reps_max}`}
                   day={day}
                   exercise={exercise}
                   index={exerciseIndex}

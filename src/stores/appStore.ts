@@ -1,12 +1,7 @@
 import { create } from 'zustand';
-import { normalizeSetRange, parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
 import type { Split, SplitDay, Workout, WorkoutSet, MacroTarget, VolumeLandmark, MuscleVolume, MuscleGroup } from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
-
-interface WorkoutSetOverrides {
-  [splitExerciseId: string]: number;
-}
 
 interface AppState {
   activeSplit: Split | null;
@@ -25,8 +20,10 @@ interface AppState {
   setActiveSplit: (splitId: string) => Promise<void>;
 
   // Workout actions
-  startWorkout: (splitDayId: string, overrides?: WorkoutSetOverrides) => Promise<Workout | null>;
+  startWorkout: (splitDayId: string) => Promise<Workout | null>;
   fetchCurrentWorkout: () => Promise<void>;
+  addWorkoutSet: (exerciseId: string) => Promise<void>;
+  removeLastUncompletedSet: (exerciseId: string) => Promise<void>;
   logSet: (exerciseId: string, setNumber: number, weight: number, reps: number, rpe?: number) => Promise<void>;
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => Promise<void>;
   completeWorkout: () => Promise<void>;
@@ -165,7 +162,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().fetchSplits();
   },
 
-  startWorkout: async (splitDayId, overrides) => {
+  startWorkout: async (splitDayId) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -211,19 +208,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (splitExercises) {
       for (const se of splitExercises) {
-        const parsedRange = parseSetRangeNotes(se.notes, se.target_sets);
-        const normalizedRange = normalizeSetRange(parsedRange.minSets, parsedRange.targetSets, parsedRange.maxSets);
-
-        const overrideSetCount = overrides?.[se.id];
-        const safeOverride = typeof overrideSetCount === 'number' && Number.isFinite(overrideSetCount)
-          ? Math.round(overrideSetCount)
-          : null;
-
-        const finalSetCount = safeOverride === null
-          ? normalizedRange.targetSets
-          : Math.max(normalizedRange.minSets, Math.min(normalizedRange.maxSets, safeOverride));
-
-        for (let i = 1; i <= finalSetCount; i++) {
+        for (let i = 1; i <= se.target_sets; i++) {
           await supabase.from('sets').insert({
             workout_id: workout.id,
             exercise_id: se.exercise_id,
@@ -278,6 +263,73 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else if (!currentWorkout) {
       set({ currentWorkout: null });
     }
+  },
+
+  addWorkoutSet: async (exerciseId) => {
+    const { currentWorkout } = get();
+    if (!currentWorkout) return;
+
+    const existingSets = currentWorkout.sets.filter((set) => set.exercise_id === exerciseId);
+    const nextSetNumber = existingSets.length > 0
+      ? Math.max(...existingSets.map((set) => set.set_number)) + 1
+      : 1;
+
+    const { data: createdSet, error } = await supabase
+      .from('sets')
+      .insert({
+        workout_id: currentWorkout.id,
+        exercise_id: exerciseId,
+        set_number: nextSetNumber,
+        completed: false,
+      })
+      .select('*, exercise:exercises!exercise_id(*)')
+      .single();
+
+    if (error || !createdSet) {
+      if (error) console.error('Error adding workout set:', error);
+      return;
+    }
+
+    const latestWorkout = get().currentWorkout;
+    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+
+    set({
+      currentWorkout: {
+        ...latestWorkout,
+        sets: [...latestWorkout.sets, createdSet as WorkoutSet],
+      },
+    });
+  },
+
+  removeLastUncompletedSet: async (exerciseId) => {
+    const { currentWorkout } = get();
+    if (!currentWorkout) return;
+
+    const removableSet = currentWorkout.sets
+      .filter((set) => set.exercise_id === exerciseId && !set.completed)
+      .sort((a, b) => b.set_number - a.set_number)[0];
+
+    if (!removableSet) return;
+
+    const { error } = await supabase
+      .from('sets')
+      .delete()
+      .eq('id', removableSet.id);
+
+    if (error) {
+      console.error('Error removing workout set:', error);
+      return;
+    }
+
+    const latestWorkout = get().currentWorkout;
+    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+
+    set({
+      currentWorkout: {
+        ...latestWorkout,
+        sets: latestWorkout.sets.filter((set) => set.id !== removableSet.id),
+      },
+    });
   },
 
   logSet: async (exerciseId, setNumber, weight, reps, rpe) => {
