@@ -12,6 +12,13 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import {
+  compareSetPerformance,
+  formatSetPerformanceTarget,
+  type PreviousSetSummary,
+  type PreviousWorkoutSummary,
+  type SetPerformanceInput,
+} from '@/lib/workoutProgress';
 import type { SplitDay, Workout, WorkoutSet } from '@/types';
 
 interface WorkoutNotesPayload {
@@ -84,6 +91,7 @@ export function Workout() {
   const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
+  const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<Record<string, Record<number, SetPerformanceInput>>>({});
   const [displayOrder, setDisplayOrder] = useState<string[]>([]);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
@@ -96,6 +104,7 @@ export function Workout() {
   const [setupAnchorDay, setSetupAnchorDay] = useState(1);
   const [setupFlexDayIndex, setSetupFlexDayIndex] = useState(0);
   const currentWorkoutId = currentWorkout?.id || null;
+  const currentWorkoutDate = currentWorkout?.date || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
 
   useEffect(() => {
@@ -261,6 +270,108 @@ export function Workout() {
     };
     lastPersistedNotesRef.current = JSON.stringify(initialPayload);
   }, [currentWorkoutId, currentWorkoutNotes]);
+
+  useEffect(() => {
+    if (!userId || !currentWorkoutId || !currentWorkoutDate || !currentWorkout) {
+      setPreviousWorkoutSetsByExercise({});
+      return;
+    }
+
+    const exerciseIds = Array.from(new Set(currentWorkout.sets.map((set) => set.exercise_id)));
+
+    if (exerciseIds.length === 0) {
+      setPreviousWorkoutSetsByExercise({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchPreviousWorkoutTargets = async () => {
+      const { data: completedWorkouts, error: workoutsError } = await supabase
+        .from('workouts')
+        .select('id')
+        .eq('user_id', userId)
+        .lte('date', currentWorkoutDate)
+        .neq('id', currentWorkoutId)
+        .order('date', { ascending: false })
+        .limit(30);
+
+      if (workoutsError) {
+        console.error('Error loading previous workouts for target-to-beat:', workoutsError);
+        if (!cancelled) setPreviousWorkoutSetsByExercise({});
+        return;
+      }
+
+      const workoutIds = (completedWorkouts || []).map((workout) => (workout as PreviousWorkoutSummary).id);
+
+      if (workoutIds.length === 0) {
+        if (!cancelled) setPreviousWorkoutSetsByExercise({});
+        return;
+      }
+
+      const { data: previousSets, error: previousSetsError } = await supabase
+        .from('sets')
+        .select('workout_id, exercise_id, set_number, weight, reps, completed')
+        .in('workout_id', workoutIds)
+        .in('exercise_id', exerciseIds)
+        .eq('completed', true);
+
+      if (previousSetsError) {
+        console.error('Error loading previous sets for target-to-beat:', previousSetsError);
+        if (!cancelled) setPreviousWorkoutSetsByExercise({});
+        return;
+      }
+
+      const workoutRank = new Map(workoutIds.map((id, index) => [id, index]));
+      const bestByExerciseAndSet = new Map<string, PreviousSetSummary>();
+
+      for (const rawSet of previousSets || []) {
+        const set = rawSet as PreviousSetSummary;
+        const key = `${set.exercise_id}:${set.set_number}`;
+        const currentBest = bestByExerciseAndSet.get(key);
+
+        if (!currentBest) {
+          bestByExerciseAndSet.set(key, set);
+          continue;
+        }
+
+        const currentRank = workoutRank.get(set.workout_id) ?? Number.MAX_SAFE_INTEGER;
+        const bestRank = workoutRank.get(currentBest.workout_id) ?? Number.MAX_SAFE_INTEGER;
+
+        if (currentRank < bestRank) {
+          bestByExerciseAndSet.set(key, set);
+        }
+      }
+
+      const groupedTargets: Record<string, Record<number, SetPerformanceInput>> = {};
+
+      for (const set of bestByExerciseAndSet.values()) {
+        const parsedSetNumber = typeof set.set_number === 'number'
+          ? set.set_number
+          : Number.parseInt(String(set.set_number), 10);
+
+        if (!Number.isFinite(parsedSetNumber)) continue;
+
+        if (!groupedTargets[set.exercise_id]) {
+          groupedTargets[set.exercise_id] = {};
+        }
+
+        groupedTargets[set.exercise_id][parsedSetNumber] = {
+          weight: set.weight,
+          reps: set.reps,
+        };
+      }
+
+      if (cancelled) return;
+      setPreviousWorkoutSetsByExercise(groupedTargets);
+    };
+
+    void fetchPreviousWorkoutTargets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentWorkoutId, currentWorkoutDate, currentWorkout]);
 
   const persistMovementNotes = useCallback(async (exerciseId: string) => {
     if (!currentWorkoutId || !userId) return;
@@ -996,20 +1107,54 @@ export function Workout() {
                         </div>
                       </motion.div>
 
-                      {sets.map((set, idx) => (
-                        <motion.div
-                          key={set.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.05, ...springs.smooth }}
-                        >
-                          <SetLogger
-                            set={set}
-                            setNumber={idx + 1}
-                            onComplete={() => setShowRestTimer(true)}
-                          />
-                        </motion.div>
-                      ))}
+                      {sets.map((set, idx) => {
+                        const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
+                        const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
+                        const performanceStatus = set.completed && previousSetTarget
+                          ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
+                          : 'unknown';
+
+                        const statusLabel = performanceStatus === 'beat'
+                          ? 'Beat'
+                          : performanceStatus === 'matched'
+                            ? 'Matched'
+                            : performanceStatus === 'below'
+                              ? 'Below'
+                              : null;
+
+                        const statusClass = performanceStatus === 'beat'
+                          ? 'text-[#8B9A7D]'
+                          : performanceStatus === 'matched'
+                            ? 'text-[#B6B1A8]'
+                            : 'text-[#C48D8D]';
+
+                        return (
+                          <motion.div
+                            key={set.id}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.05, ...springs.smooth }}
+                          >
+                            {formattedTarget && (
+                              <div className="mb-1.5 flex items-center justify-between rounded-[10px] border border-white/5 bg-[#202020] px-2.5 py-1.5">
+                                <p className="text-[10px] text-[#7C7C7C]">
+                                  Target to beat: <span className="tabular-nums text-[#D4CEC2]">{formattedTarget}</span>
+                                </p>
+                                {statusLabel && (
+                                  <p className={`text-[10px] tracking-[0.08em] uppercase ${statusClass}`}>
+                                    {statusLabel}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            <SetLogger
+                              set={set}
+                              setNumber={idx + 1}
+                              onComplete={() => setShowRestTimer(true)}
+                            />
+                          </motion.div>
+                        );
+                      })}
 
                       <motion.div
                         className="mt-4 pt-3 border-t border-white/[0.03]"
