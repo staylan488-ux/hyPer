@@ -14,6 +14,10 @@ export interface PlanSchedule {
   updatedAt?: string;
 }
 
+function normalizeBySize(value: number, size: number): number {
+  return ((value % size) + size) % size;
+}
+
 function keyFor(userId: string, splitId: string): string {
   return `plan-schedule:${userId}:${splitId}`;
 }
@@ -41,7 +45,7 @@ export function buildFixedWeekdays(anchorDay: number, daysPerWeek: number): numb
     7: [0, 1, 2, 3, 4, 5, 6],
   };
 
-  const normalizedAnchor = ((anchorDay % 7) + 7) % 7;
+  const normalizedAnchor = normalizeBySize(anchorDay, 7);
   const offsets = offsetsByFrequency[Math.max(2, Math.min(7, daysPerWeek))] || offsetsByFrequency[4];
 
   return offsets.map((offset) => (normalizedAnchor + offset) % 7);
@@ -52,7 +56,7 @@ function normalizeWeekdayOrder(weekdays: number[]): number[] {
   const ordered: number[] = [];
 
   for (const day of weekdays) {
-    const normalized = ((day % 7) + 7) % 7;
+    const normalized = normalizeBySize(day, 7);
     if (seen.has(normalized)) continue;
     seen.add(normalized);
     ordered.push(normalized);
@@ -78,7 +82,7 @@ function normalizeParsed(parsed: PlanSchedule): PlanSchedule | null {
     weekdays: normalizedWeekdays,
     anchorDay:
       typeof parsed.anchorDay === 'number'
-        ? ((parsed.anchorDay % 7) + 7) % 7
+        ? normalizeBySize(parsed.anchorDay, 7)
         : fallbackAnchorDay,
   };
 }
@@ -250,7 +254,7 @@ export function plannedDayForDate(
     return splitDays[idx % splitDays.length] || null;
   }
 
-  const normalizedAnchor = ((schedule.anchorDay ?? 0) % splitDays.length + splitDays.length) % splitDays.length;
+  const normalizedAnchor = normalizeBySize(schedule.anchorDay ?? 0, splitDays.length);
   const index = (normalizedAnchor + (completedWorkoutsSinceStart % splitDays.length)) % splitDays.length;
   return splitDays[index] || null;
 }

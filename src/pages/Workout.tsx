@@ -58,6 +58,11 @@ function parseWorkoutNotes(raw: string | null): { movementNotes: Record<string, 
   }
 }
 
+function normalizeIndex(value: number, size: number): number {
+  if (size <= 0) return 0;
+  return ((value % size) + size) % size;
+}
+
 export function Workout() {
   const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
@@ -157,11 +162,7 @@ export function Workout() {
       setSetupMode(schedule.mode);
       setSetupStartChoice('pick');
       setSetupAnchorDay(schedule.anchorDay ?? schedule.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
-      setSetupFlexDayIndex(
-        splitDayCount > 0
-          ? ((schedule.anchorDay ?? 0) % splitDayCount + splitDayCount) % splitDayCount
-          : 0
-      );
+      setSetupFlexDayIndex(normalizeIndex(schedule.anchorDay ?? 0, splitDayCount));
     };
 
     // Load local cache instantly + background sync from DB
@@ -363,7 +364,7 @@ export function Workout() {
       if (setupMode === 'fixed') {
         computedAnchorDay = setupAnchorDay;
       } else if (splitDayCount > 0) {
-        const targetIndex = ((setupFlexDayIndex % splitDayCount) + splitDayCount) % splitDayCount;
+        const targetIndex = normalizeIndex(setupFlexDayIndex, splitDayCount);
         const todayKey = format(new Date(), 'yyyy-MM-dd');
 
         let completedBeforeToday = completedSinceStartDates.filter((dateValue) => (
@@ -382,7 +383,8 @@ export function Workout() {
           completedBeforeToday = count;
         }
 
-        computedAnchorDay = ((targetIndex - (completedBeforeToday % splitDayCount)) % splitDayCount + splitDayCount) % splitDayCount;
+        const completedOffset = completedBeforeToday % splitDayCount;
+        computedAnchorDay = normalizeIndex(targetIndex - completedOffset, splitDayCount);
       }
 
       const schedule: PlanSchedule = {
@@ -418,7 +420,7 @@ export function Workout() {
       return;
     }
 
-    setSetupFlexDayIndex((previous) => ((previous % splitDayCount) + splitDayCount) % splitDayCount);
+    setSetupFlexDayIndex((previous) => normalizeIndex(previous, splitDayCount));
   }, [activeSplit, setupMode]);
 
   // ── Exercise ordering (must be before early returns for hook rules) ──
@@ -569,9 +571,7 @@ export function Workout() {
     if (!planSchedule) return;
 
     const splitDayCount = activeSplit.days.length;
-    const fallbackFlexDay = splitDayCount > 0
-      ? ((planSchedule.anchorDay ?? 0) % splitDayCount + splitDayCount) % splitDayCount
-      : 0;
+    const fallbackFlexDay = normalizeIndex(planSchedule.anchorDay ?? 0, splitDayCount);
 
     const todayPlannedIndex = todayPlannedDay
       ? activeSplit.days.findIndex((day) => day.id === todayPlannedDay.id)
