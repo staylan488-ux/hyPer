@@ -11,6 +11,7 @@ import { SplitEditor } from '@/components/split/SplitEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { loadPlanSchedule } from '@/lib/planSchedule';
+import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { Split, MuscleGroup } from '@/types';
 
 
@@ -316,7 +317,14 @@ export function Splits() {
                                               <p className="text-[11px] text-[#E8E4DE] truncate">{ex.exercise?.name || 'Unknown Exercise'}</p>
                                             </div>
                                             <div className="text-[10px] text-[#6B6B6B] tabular-nums">
-                                              {ex.target_sets}x{ex.target_reps_min}-{ex.target_reps_max}
+                                              {(() => {
+                                                const setRange = parseSetRangeNotes(ex.notes, ex.target_sets);
+                                                const setLabel = setRange.minSets === setRange.maxSets
+                                                  ? `${setRange.targetSets}`
+                                                  : `${setRange.minSets}-${setRange.maxSets}`;
+
+                                                return `${setLabel}x${ex.target_reps_min}-${ex.target_reps_max}`;
+                                              })()}
                                             </div>
                                           </motion.div>
                                         ))}

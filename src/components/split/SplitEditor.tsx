@@ -15,6 +15,7 @@ import {
   fadeUp,
   staggerContainer,
 } from '@/lib/animations';
+import { normalizeSetRange } from '@/lib/setRangeNotes';
 import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 
 // ═══════════════════════════════════
@@ -123,11 +124,33 @@ function ExerciseRow({
         </div>
       </div>
 
-      {/* ── Target inputs: Sets × Min–Max ── */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
+      <div className="grid grid-cols-5 gap-2">
         <div>
           <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
-            Sets
+            Min Sets
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={10}
+            value={exercise.target_sets_min}
+            onChange={(e) => {
+              const nextMin = clampInt(e.target.value, 1, 10, exercise.target_sets_min);
+              const normalized = normalizeSetRange(nextMin, exercise.target_sets, exercise.target_sets_max);
+              updateExerciseTargets(day.id, exercise.id, {
+                target_sets_min: normalized.minSets,
+                target_sets: normalized.targetSets,
+                target_sets_max: normalized.maxSets,
+              });
+            }}
+            className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
+            Target Sets
           </label>
           <input
             type="number"
@@ -135,17 +158,43 @@ function ExerciseRow({
             min={1}
             max={10}
             value={exercise.target_sets}
-            onChange={(e) =>
+            onChange={(e) => {
+              const nextTarget = clampInt(e.target.value, 1, 10, exercise.target_sets);
+              const normalized = normalizeSetRange(exercise.target_sets_min, nextTarget, exercise.target_sets_max);
               updateExerciseTargets(day.id, exercise.id, {
-                target_sets: clampInt(e.target.value, 1, 10, exercise.target_sets),
-              })
-            }
+                target_sets_min: normalized.minSets,
+                target_sets: normalized.targetSets,
+                target_sets_max: normalized.maxSets,
+              });
+            }}
             className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
           />
         </div>
         <div>
           <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
-            Min
+            Max Sets
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={10}
+            value={exercise.target_sets_max}
+            onChange={(e) => {
+              const nextMax = clampInt(e.target.value, 1, 10, exercise.target_sets_max);
+              const normalized = normalizeSetRange(exercise.target_sets_min, exercise.target_sets, nextMax);
+              updateExerciseTargets(day.id, exercise.id, {
+                target_sets_min: normalized.minSets,
+                target_sets: normalized.targetSets,
+                target_sets_max: normalized.maxSets,
+              });
+            }}
+            className="w-full px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[10px] text-xs text-[#E8E4DE] text-center tabular-nums focus:outline-none focus:border-[var(--color-border-strong)]"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
+            Min Reps
           </label>
           <input
             type="number"
@@ -163,7 +212,7 @@ function ExerciseRow({
         </div>
         <div>
           <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
-            Max
+            Max Reps
           </label>
           <input
             type="number"

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { normalizeSetRange, parseSetRangeNotes, serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
 import type { Split, Exercise } from '@/types';
 
@@ -12,6 +13,8 @@ export interface DraftExercise {
   exercise_id: string;
   exercise: Exercise;
   target_sets: number;
+  target_sets_min: number;
+  target_sets_max: number;
   target_reps_min: number;
   target_reps_max: number;
   exercise_order: number;
@@ -63,7 +66,7 @@ interface SplitEditState {
 
   // Exercise-level
   reorderExercise: (dayId: string, exerciseId: string, direction: -1 | 1) => void;
-  updateExerciseTargets: (dayId: string, exerciseId: string, updates: Partial<Pick<DraftExercise, 'target_sets' | 'target_reps_min' | 'target_reps_max'>>) => void;
+  updateExerciseTargets: (dayId: string, exerciseId: string, updates: Partial<Pick<DraftExercise, 'target_sets' | 'target_sets_min' | 'target_sets_max' | 'target_reps_min' | 'target_reps_max'>>) => void;
   swapExercise: (dayId: string, exerciseId: string, newExercise: Exercise) => void;
   addExercise: (dayId: string, exercise: Exercise) => void;
   removeExercise: (dayId: string, exerciseId: string) => void;
@@ -91,16 +94,21 @@ function splitToDraft(split: Split): DraftSplit {
       id: day.id,
       day_name: day.day_name,
       day_order: day.day_order,
-      exercises: (day.exercises || []).map((ex) => ({
-        id: ex.id,
-        exercise_id: ex.exercise_id,
-        exercise: ex.exercise,
-        target_sets: ex.target_sets,
-        target_reps_min: ex.target_reps_min,
-        target_reps_max: ex.target_reps_max,
-        exercise_order: ex.exercise_order,
-        notes: ex.notes,
-      })),
+      exercises: (day.exercises || []).map((ex) => {
+        const parsedRange = parseSetRangeNotes(ex.notes, ex.target_sets);
+        return {
+          id: ex.id,
+          exercise_id: ex.exercise_id,
+          exercise: ex.exercise,
+          target_sets: parsedRange.targetSets,
+          target_sets_min: parsedRange.minSets,
+          target_sets_max: parsedRange.maxSets,
+          target_reps_min: ex.target_reps_min,
+          target_reps_max: ex.target_reps_max,
+          exercise_order: ex.exercise_order,
+          notes: parsedRange.baseNotes,
+        };
+      }),
     })),
   };
 }
@@ -156,15 +164,18 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
         id: day._isNew ? undefined : day.id,
         day_name: day.day_name,
         day_order: day.day_order,
-        exercises: day.exercises.map((ex) => ({
-          id: ex._isNew ? undefined : ex.id,
-          exercise_id: ex.exercise_id,
-          target_sets: ex.target_sets,
-          target_reps_min: ex.target_reps_min,
-          target_reps_max: ex.target_reps_max,
-          exercise_order: ex.exercise_order,
-          notes: ex.notes,
-        })),
+        exercises: day.exercises.map((ex) => {
+          const normalizedRange = normalizeSetRange(ex.target_sets_min, ex.target_sets, ex.target_sets_max);
+          return {
+            id: ex._isNew ? undefined : ex.id,
+            exercise_id: ex.exercise_id,
+            target_sets: normalizedRange.targetSets,
+            target_reps_min: ex.target_reps_min,
+            target_reps_max: ex.target_reps_max,
+            exercise_order: ex.exercise_order,
+            notes: serializeSetRangeNotes(ex.notes, normalizedRange.minSets, normalizedRange.targetSets, normalizedRange.maxSets),
+          };
+        }),
       }));
 
       const { error } = await supabase.rpc('save_split_snapshot', {
@@ -285,9 +296,19 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
           if (day.id !== dayId) return day;
           return {
             ...day,
-            exercises: day.exercises.map((ex) =>
-              ex.id === exerciseId ? { ...ex, ...updates } : ex
-            ),
+            exercises: day.exercises.map((ex) => {
+              if (ex.id !== exerciseId) return ex;
+
+              const next = { ...ex, ...updates };
+              const normalized = normalizeSetRange(next.target_sets_min, next.target_sets, next.target_sets_max);
+
+              return {
+                ...next,
+                target_sets: normalized.targetSets,
+                target_sets_min: normalized.minSets,
+                target_sets_max: normalized.maxSets,
+              };
+            }),
           };
         }),
       }))
@@ -324,6 +345,8 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
             exercise_id: exercise.id,
             exercise,
             target_sets: 3,
+            target_sets_min: 3,
+            target_sets_max: 3,
             target_reps_min: 8,
             target_reps_max: 12,
             exercise_order: day.exercises.length,

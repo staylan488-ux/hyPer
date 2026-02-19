@@ -1,7 +1,12 @@
 import { create } from 'zustand';
+import { normalizeSetRange, parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
 import type { Split, SplitDay, Workout, WorkoutSet, MacroTarget, VolumeLandmark, MuscleVolume, MuscleGroup } from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
+
+interface WorkoutSetOverrides {
+  [splitExerciseId: string]: number;
+}
 
 interface AppState {
   activeSplit: Split | null;
@@ -20,7 +25,7 @@ interface AppState {
   setActiveSplit: (splitId: string) => Promise<void>;
 
   // Workout actions
-  startWorkout: (splitDayId: string) => Promise<Workout | null>;
+  startWorkout: (splitDayId: string, overrides?: WorkoutSetOverrides) => Promise<Workout | null>;
   fetchCurrentWorkout: () => Promise<void>;
   logSet: (exerciseId: string, setNumber: number, weight: number, reps: number, rpe?: number) => Promise<void>;
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => Promise<void>;
@@ -160,7 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().fetchSplits();
   },
 
-  startWorkout: async (splitDayId) => {
+  startWorkout: async (splitDayId, overrides) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -206,7 +211,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (splitExercises) {
       for (const se of splitExercises) {
-        for (let i = 1; i <= se.target_sets; i++) {
+        const parsedRange = parseSetRangeNotes(se.notes, se.target_sets);
+        const normalizedRange = normalizeSetRange(parsedRange.minSets, parsedRange.targetSets, parsedRange.maxSets);
+
+        const overrideSetCount = overrides?.[se.id];
+        const safeOverride = typeof overrideSetCount === 'number' && Number.isFinite(overrideSetCount)
+          ? Math.round(overrideSetCount)
+          : null;
+
+        const finalSetCount = safeOverride === null
+          ? normalizedRange.targetSets
+          : Math.max(normalizedRange.minSets, Math.min(normalizedRange.maxSets, safeOverride));
+
+        for (let i = 1; i <= finalSetCount; i++) {
           await supabase.from('sets').insert({
             workout_id: workout.id,
             exercise_id: se.exercise_id,

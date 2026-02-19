@@ -47,6 +47,8 @@ export interface SplitExercise {
   exercise_id: string;
   exercise: Exercise;
   target_sets: number;
+  target_sets_min?: number;
+  target_sets_max?: number;
   target_reps_min: number;
   target_reps_max: number;
   exercise_order: number;

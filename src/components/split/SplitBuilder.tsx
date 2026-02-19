@@ -13,6 +13,7 @@ import {
   type ProgramFocus,
   type SessionLength,
 } from '@/lib/programDesigner';
+import { normalizeSetRange, serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import type { MuscleGroup, SplitTemplate } from '@/types';
 
 interface SplitBuilderProps {
@@ -79,6 +80,8 @@ type CustomExerciseDraft = {
   exercise_id: string | null;
   name: string;
   target_sets: number;
+  target_sets_min: number;
+  target_sets_max: number;
   target_reps_min: number;
   target_reps_max: number;
   notes: string | null;
@@ -106,6 +109,15 @@ function createLocalId(): string {
   }
 
   return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function clampSetInput(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(10, Math.round(value)));
+}
+
+function normalizeCustomSetRange(exercise: Pick<CustomExerciseDraft, 'target_sets_min' | 'target_sets' | 'target_sets_max'>) {
+  return normalizeSetRange(exercise.target_sets_min, exercise.target_sets, exercise.target_sets_max);
 }
 
 export function SplitBuilder({ onComplete }: SplitBuilderProps) {
@@ -215,6 +227,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               exercise_id: exercise.id,
               name: exercise.name,
               target_sets: 3,
+              target_sets_min: 3,
+              target_sets_max: 3,
               target_reps_min: 8,
               target_reps_max: 12,
               notes: null,
@@ -256,6 +270,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               exercise_id: null,
               name: trimmedName,
               target_sets: 3,
+              target_sets_min: 3,
+              target_sets_max: 3,
               target_reps_min: 8,
               target_reps_max: 12,
               notes: null,
@@ -342,7 +358,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               target_reps_min: exercise.reps_min,
               target_reps_max: exercise.reps_max,
               exercise_order: exerciseOrder,
-              notes: null,
+              notes: serializeSetRangeNotes(null, exercise.sets, exercise.sets, exercise.sets),
             };
           })
           .filter((exercise): exercise is NonNullable<typeof exercise> => exercise !== null),
@@ -373,16 +389,20 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
       if (
         days.some((day) =>
-          day.exercises.some(
-            (exercise) =>
-              exercise.target_sets < 1 ||
-              exercise.target_sets > 6 ||
+          day.exercises.some((exercise) => {
+            const range = normalizeCustomSetRange(exercise);
+            return (
+              range.minSets < 1 ||
+              range.maxSets > 10 ||
+              range.minSets > range.targetSets ||
+              range.targetSets > range.maxSets ||
               exercise.target_reps_min < 1 ||
               exercise.target_reps_max < exercise.target_reps_min
-          )
+            );
+          })
         )
       ) {
-        setCustomError('Please fix sets/reps so each exercise has valid targets.');
+        setCustomError('Please fix set/reps so each exercise has valid min-target-max values.');
         return;
       }
 
@@ -427,14 +447,23 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           day_name: day.day_name,
           day_order: dayIndex,
           exercises: await Promise.all(
-            day.exercises.map(async (exercise, exerciseIndex) => ({
-              exercise_id: await ensureExerciseId(exercise),
-              target_sets: exercise.target_sets,
-              target_reps_min: exercise.target_reps_min,
-              target_reps_max: exercise.target_reps_max,
-              exercise_order: exerciseIndex,
-              notes: exercise.notes,
-            }))
+            day.exercises.map(async (exercise, exerciseIndex) => {
+              const normalizedRange = normalizeCustomSetRange(exercise);
+
+              return {
+                exercise_id: await ensureExerciseId(exercise),
+                target_sets: normalizedRange.targetSets,
+                target_reps_min: exercise.target_reps_min,
+                target_reps_max: exercise.target_reps_max,
+                exercise_order: exerciseIndex,
+                notes: serializeSetRangeNotes(
+                  exercise.notes,
+                  normalizedRange.minSets,
+                  normalizedRange.targetSets,
+                  normalizedRange.maxSets
+                ),
+              };
+            })
           ),
         }))
       );
@@ -885,16 +914,62 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         Remove
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-5 gap-2">
                       <Input
-                        label="Sets"
+                        label="Min Sets"
+                        value={String(exercise.target_sets_min)}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value || 0);
+                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
+                            const nextMin = Number.isNaN(parsed)
+                              ? current.target_sets_min
+                              : clampSetInput(parsed, current.target_sets_min);
+                            const normalized = normalizeSetRange(nextMin, current.target_sets, current.target_sets_max);
+                            return {
+                              ...current,
+                              target_sets_min: normalized.minSets,
+                              target_sets: normalized.targetSets,
+                              target_sets_max: normalized.maxSets,
+                            };
+                          });
+                        }}
+                      />
+                      <Input
+                        label="Target Sets"
                         value={String(exercise.target_sets)}
                         onChange={(event) => {
                           const parsed = Number(event.target.value || 0);
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
-                            ...current,
-                            target_sets: Number.isNaN(parsed) ? current.target_sets : parsed,
-                          }));
+                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
+                            const nextTarget = Number.isNaN(parsed)
+                              ? current.target_sets
+                              : clampSetInput(parsed, current.target_sets);
+                            const normalized = normalizeSetRange(current.target_sets_min, nextTarget, current.target_sets_max);
+                            return {
+                              ...current,
+                              target_sets_min: normalized.minSets,
+                              target_sets: normalized.targetSets,
+                              target_sets_max: normalized.maxSets,
+                            };
+                          });
+                        }}
+                      />
+                      <Input
+                        label="Max Sets"
+                        value={String(exercise.target_sets_max)}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value || 0);
+                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
+                            const nextMax = Number.isNaN(parsed)
+                              ? current.target_sets_max
+                              : clampSetInput(parsed, current.target_sets_max);
+                            const normalized = normalizeSetRange(current.target_sets_min, current.target_sets, nextMax);
+                            return {
+                              ...current,
+                              target_sets_min: normalized.minSets,
+                              target_sets: normalized.targetSets,
+                              target_sets_max: normalized.maxSets,
+                            };
+                          });
                         }}
                       />
                       <Input
