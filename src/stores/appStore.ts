@@ -488,16 +488,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Calculate volume per muscle group
     const volumeMap = new Map<MuscleGroup, number>();
     
+    type CompletedSetRow = {
+      exercise: {
+        muscle_group: MuscleGroup;
+        muscle_group_secondary: MuscleGroup | null;
+      };
+      completed: boolean;
+    };
+
     for (const workout of workouts) {
-      for (const set of workout.sets as { exercise: { muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null }; completed: boolean }[]) {
-        if (set.completed && set.exercise) {
-          const primary = set.exercise.muscle_group;
-          const secondary = set.exercise.muscle_group_secondary;
-          
-          volumeMap.set(primary, (volumeMap.get(primary) || 0) + 1);
-          if (secondary) {
-            volumeMap.set(secondary, (volumeMap.get(secondary) || 0) + 0.5);
-          }
+      const workoutSets = workout.sets as CompletedSetRow[];
+
+      for (const set of workoutSets) {
+        if (!set.completed || !set.exercise) continue;
+
+        const primaryMuscle = set.exercise.muscle_group;
+        const secondaryMuscle = set.exercise.muscle_group_secondary;
+
+        volumeMap.set(primaryMuscle, (volumeMap.get(primaryMuscle) ?? 0) + 1);
+        if (secondaryMuscle) {
+          volumeMap.set(secondaryMuscle, (volumeMap.get(secondaryMuscle) ?? 0) + 0.5);
         }
       }
     }
