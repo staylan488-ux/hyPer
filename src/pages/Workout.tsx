@@ -64,25 +64,14 @@ function normalizeIndex(value: number, size: number): number {
   return ((value % size) + size) % size;
 }
 
-interface StartSetAdjustment {
-  splitExerciseId: string;
-  exerciseName: string;
-  minSets: number;
-  targetSets: number;
-  maxSets: number;
-  selectedSets: number;
-}
-
 export function Workout() {
-  const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout } = useAppStore();
+  const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout, addWorkoutSet, removeLastUncompletedSet } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
-  const [showSetAdjustModal, setShowSetAdjustModal] = useState(false);
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
-  const [pendingStartDay, setPendingStartDay] = useState<SplitDay | null>(null);
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
@@ -96,7 +85,6 @@ export function Workout() {
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
   const [displayOrder, setDisplayOrder] = useState<string[]>([]);
-  const [startSetAdjustments, setStartSetAdjustments] = useState<StartSetAdjustment[]>([]);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
@@ -349,51 +337,15 @@ export function Workout() {
     void persistMovementNotes(exerciseId);
   };
 
-  const handleStartWorkout = async (day: SplitDay, overrides?: Record<string, number>) => {
+  const handleStartWorkout = async (day: SplitDay) => {
     if (startingDayId) return;
 
     try {
       setStartingDayId(day.id);
-      await startWorkout(day.id, overrides);
+      await startWorkout(day.id);
     } finally {
       setStartingDayId(null);
     }
-  };
-
-  const openSetAdjustModal = (day: SplitDay) => {
-    const adjustments = (day.exercises || []).map((exercise) => {
-      const parsedRange = parseSetRangeNotes(exercise.notes, exercise.target_sets);
-      return {
-        splitExerciseId: exercise.id,
-        exerciseName: exercise.exercise?.name || 'Exercise',
-        minSets: parsedRange.minSets,
-        targetSets: parsedRange.targetSets,
-        maxSets: parsedRange.maxSets,
-        selectedSets: parsedRange.targetSets,
-      };
-    });
-
-    setPendingStartDay(day);
-    setStartSetAdjustments(adjustments);
-    setShowSetAdjustModal(true);
-  };
-
-  const closeSetAdjustModal = () => {
-    setShowSetAdjustModal(false);
-    setPendingStartDay(null);
-    setStartSetAdjustments([]);
-  };
-
-  const confirmStartWorkoutWithAdjustments = async () => {
-    if (!pendingStartDay) return;
-
-    const overrides = Object.fromEntries(
-      startSetAdjustments.map((adjustment) => [adjustment.splitExerciseId, adjustment.selectedSets])
-    );
-
-    const dayToStart = pendingStartDay;
-    closeSetAdjustModal();
-    await handleStartWorkout(dayToStart, overrides);
   };
 
   const handleSavePlanSetup = async () => {
@@ -479,6 +431,13 @@ export function Workout() {
       exercise.exercise_id,
       exercise.exercise_order ?? index,
     ])
+  ), [splitDay?.exercises]);
+
+  const exerciseSetRanges = useMemo(() => new Map(
+    (splitDay?.exercises || []).map((exercise) => {
+      const parsedRange = parseSetRangeNotes(exercise.notes, exercise.target_sets);
+      return [exercise.exercise_id, parsedRange] as const;
+    })
   ), [splitDay?.exercises]);
 
   const orderedSets = useMemo(() => {
@@ -712,7 +671,7 @@ export function Workout() {
                     {todayPlannedDay.day_name}
                   </h3>
                   <p className="text-xs text-[var(--color-muted)]">Planned session for today.</p>
-                  <Button onClick={() => openSetAdjustModal(todayPlannedDay)} disabled={startingDayId !== null}>
+                  <Button onClick={() => handleStartWorkout(todayPlannedDay)} disabled={startingDayId !== null}>
                     {startingDayId === todayPlannedDay.id ? 'Starting...' : 'Start Today\'s Workout'}
                   </Button>
                 </>
@@ -814,7 +773,7 @@ export function Workout() {
                       <p className="text-xs text-[#E8E4DE]">{day.day_name}</p>
                       <p className="text-[10px] text-[#6B6B6B]">{day.exercises?.length || 0} exercises</p>
                     </div>
-                    <Button size="sm" onClick={() => openSetAdjustModal(day)} disabled={startingDayId !== null}>
+                    <Button size="sm" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
                       {startingDayId === day.id ? 'Starting...' : 'Start'}
                     </Button>
                   </div>
@@ -853,57 +812,6 @@ export function Workout() {
           />
         </Modal>
 
-        <Modal
-          isOpen={showSetAdjustModal}
-          onClose={closeSetAdjustModal}
-          title="Adjust Sets for Today"
-        >
-          <div className="space-y-3">
-            {startSetAdjustments.length === 0 ? (
-              <p className="text-xs text-[#6B6B6B]">No exercises found for this day.</p>
-            ) : (
-              startSetAdjustments.map((adjustment) => (
-                <div key={adjustment.splitExerciseId} className="rounded-[12px] bg-[#2A2A2A] border border-white/5 px-3 py-2 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-[#E8E4DE] truncate">{adjustment.exerciseName}</p>
-                    <p className="text-[10px] text-[#6B6B6B] tabular-nums">
-                      Range {adjustment.minSets}-{adjustment.maxSets}
-                    </p>
-                  </div>
-                  <input
-                    type="range"
-                    min={adjustment.minSets}
-                    max={adjustment.maxSets}
-                    step={1}
-                    value={adjustment.selectedSets}
-                    onChange={(event) => {
-                      const nextSets = Number(event.target.value || adjustment.selectedSets);
-                      setStartSetAdjustments((previous) => previous.map((entry) => (
-                        entry.splitExerciseId === adjustment.splitExerciseId
-                          ? { ...entry, selectedSets: nextSets }
-                          : entry
-                      )));
-                    }}
-                    className="w-full"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-[#6B6B6B]">Selected sets</p>
-                    <p className="text-xs text-[#E8E4DE] tabular-nums">{adjustment.selectedSets}</p>
-                  </div>
-                </div>
-              ))
-            )}
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Button variant="secondary" onClick={closeSetAdjustModal} disabled={startingDayId !== null}>
-                Cancel
-              </Button>
-              <Button onClick={() => { void confirmStartWorkoutWithAdjustments(); }} disabled={startingDayId !== null || !pendingStartDay}>
-                {startingDayId === pendingStartDay?.id ? 'Starting...' : 'Start Workout'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
       </motion.div>
     );
   }
@@ -965,6 +873,10 @@ export function Workout() {
           const noteCharacters = movementNote.length;
           const isFirst = index === 0;
           const isLast = index === orderedExerciseEntries.length - 1;
+          const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: sets.length, targetSets: sets.length, maxSets: sets.length };
+          const canAddSet = sets.length < setRange.maxSets;
+          const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
+          const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
 
           return (
             <motion.div
@@ -1055,6 +967,35 @@ export function Workout() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={springs.smooth}
                     >
+                      <motion.div
+                        className="mb-2 rounded-[12px] bg-[#242424] border border-white/5 px-3 py-2"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={springs.smooth}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] text-[#6B6B6B]">Range {setRange.minSets}-{setRange.maxSets} • Target {setRange.targetSets}</p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+                              onClick={() => { void removeLastUncompletedSet(exerciseId); }}
+                              disabled={!canRemoveSet}
+                            >
+                              - Remove set
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+                              onClick={() => { void addWorkoutSet(exerciseId); }}
+                              disabled={!canAddSet}
+                            >
+                              + Add set
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+
                       {sets.map((set, idx) => (
                         <motion.div
                           key={set.id}
