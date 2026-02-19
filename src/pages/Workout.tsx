@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Settings2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { Card, Button, Modal } from '@/components/shared';
@@ -7,6 +7,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { SetLogger } from '@/components/workout/SetLogger';
 import { RestTimer } from '@/components/workout/RestTimer';
+import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
@@ -63,7 +64,9 @@ export function Workout() {
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
+  const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
@@ -83,6 +86,7 @@ export function Workout() {
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
   const [setupMode, setSetupMode] = useState<PlanMode>('fixed');
   const [setupAnchorDay, setSetupAnchorDay] = useState(1);
+  const [setupFlexDayIndex, setSetupFlexDayIndex] = useState(0);
   const currentWorkoutId = currentWorkout?.id || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
 
@@ -120,6 +124,7 @@ export function Workout() {
     if (!activeSplit) return;
 
     setSetupAnchorDay(defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+    setSetupFlexDayIndex(0);
   }, [activeSplit]);
 
   useEffect(() => {
@@ -133,6 +138,7 @@ export function Workout() {
     }
 
     const daysPerWeek = activeSplit.days_per_week;
+    const splitDayCount = activeSplit.days.length;
 
     const applySchedule = (schedule: PlanSchedule) => {
       setPlanSchedule(schedule);
@@ -140,6 +146,11 @@ export function Workout() {
       setSetupMode(schedule.mode);
       setSetupStartChoice('pick');
       setSetupAnchorDay(schedule.anchorDay ?? schedule.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
+      setSetupFlexDayIndex(
+        splitDayCount > 0
+          ? ((schedule.anchorDay ?? 0) % splitDayCount + splitDayCount) % splitDayCount
+          : 0
+      );
     };
 
     // Load local cache instantly + background sync from DB
@@ -158,6 +169,7 @@ export function Workout() {
       setSetupMode('fixed');
       setSetupStartChoice('today');
       setSetupAnchorDay(defaultWeekdays(daysPerWeek)[0] ?? 1);
+      setSetupFlexDayIndex(0);
     }
 
     return () => { cancel(); };
@@ -318,24 +330,59 @@ export function Workout() {
     }
   };
 
-  const handleSavePlanSetup = () => {
-    if (!activeSplit || !userId) return;
+  const handleSavePlanSetup = async () => {
+    if (!activeSplit || !userId || savingPlanSchedule) return;
 
-    const computedWeekdays =
-      setupMode === 'fixed'
-        ? buildFixedWeekdays(setupAnchorDay, activeSplit.days_per_week)
-        : [];
+    setSavingPlanSchedule(true);
 
-    const schedule: PlanSchedule = {
-      splitId: activeSplit.id,
-      startDate: setupStartDate,
-      mode: setupMode,
-      weekdays: computedWeekdays,
-      anchorDay: setupMode === 'fixed' ? setupAnchorDay : undefined,
-    };
+    try {
+      const splitDayCount = activeSplit.days.length;
+      const computedWeekdays =
+        setupMode === 'fixed'
+          ? buildFixedWeekdays(setupAnchorDay, activeSplit.days_per_week)
+          : [];
 
-    savePlanSchedule(userId, schedule);
-    setPlanSchedule(schedule);
+      let computedAnchorDay: number | undefined;
+
+      if (setupMode === 'fixed') {
+        computedAnchorDay = setupAnchorDay;
+      } else if (splitDayCount > 0) {
+        const targetIndex = ((setupFlexDayIndex % splitDayCount) + splitDayCount) % splitDayCount;
+        const todayKey = format(new Date(), 'yyyy-MM-dd');
+
+        let completedBeforeToday = completedSinceStartDates.filter((dateValue) => (
+          dateValue >= setupStartDate && dateValue < todayKey
+        )).length;
+
+        const { count, error } = await supabase
+          .from('workouts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('completed', true)
+          .gte('date', setupStartDate)
+          .lt('date', todayKey);
+
+        if (!error && typeof count === 'number') {
+          completedBeforeToday = count;
+        }
+
+        computedAnchorDay = ((targetIndex - (completedBeforeToday % splitDayCount)) % splitDayCount + splitDayCount) % splitDayCount;
+      }
+
+      const schedule: PlanSchedule = {
+        splitId: activeSplit.id,
+        startDate: setupStartDate,
+        mode: setupMode,
+        weekdays: computedWeekdays,
+        anchorDay: computedAnchorDay,
+      };
+
+      savePlanSchedule(userId, schedule);
+      setPlanSchedule(schedule);
+      setShowScheduleEditor(false);
+    } finally {
+      setSavingPlanSchedule(false);
+    }
   };
 
   useEffect(() => {
@@ -345,6 +392,18 @@ export function Workout() {
       setSetupStartDate(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
     }
   }, [setupStartChoice]);
+
+  useEffect(() => {
+    if (!activeSplit) return;
+
+    const splitDayCount = activeSplit.days.length;
+    if (splitDayCount === 0) {
+      setSetupFlexDayIndex(0);
+      return;
+    }
+
+    setSetupFlexDayIndex((previous) => ((previous % splitDayCount) + splitDayCount) % splitDayCount);
+  }, [activeSplit, setupMode]);
 
   // ── Exercise ordering (must be before early returns for hook rules) ──
   const splitDay = activeSplit?.days.find((day) => day.id === currentWorkout?.split_day_id) ?? null;
@@ -472,7 +531,6 @@ export function Workout() {
   }
 
   const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const shortWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
@@ -491,134 +549,76 @@ export function Workout() {
 
   const todayCompletedWorkout = completedInWeek.find((workout) => workout.date === format(today, 'yyyy-MM-dd'));
 
+  const openScheduleEditor = () => {
+    if (!planSchedule) return;
+
+    const splitDayCount = activeSplit.days.length;
+    const fallbackFlexDay = splitDayCount > 0
+      ? ((planSchedule.anchorDay ?? 0) % splitDayCount + splitDayCount) % splitDayCount
+      : 0;
+
+    const todayPlannedIndex = todayPlannedDay
+      ? activeSplit.days.findIndex((day) => day.id === todayPlannedDay.id)
+      : -1;
+
+    setSetupStartDate(planSchedule.startDate);
+    setSetupMode(planSchedule.mode);
+    setSetupStartChoice('pick');
+    setSetupAnchorDay(planSchedule.anchorDay ?? planSchedule.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+    setSetupFlexDayIndex(todayPlannedIndex >= 0 ? todayPlannedIndex : fallbackFlexDay);
+    setShowScheduleEditor(true);
+  };
+
   if (!currentWorkout) {
     return (
       <motion.div
         className="pb-24 px-5 pt-8"
       >
         <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-            {activeSplit.name.toUpperCase()}
-          </p>
-          <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training Plan</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
+                {activeSplit.name.toUpperCase()}
+              </p>
+              <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training Plan</h1>
+            </div>
+            {planSchedule && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-0.5"
+                onClick={openScheduleEditor}
+              >
+                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                Schedule
+              </Button>
+            )}
+          </div>
         </motion.header>
 
         {!planSchedule ? (
-          <Card variant="slab" className="space-y-5">
-            <div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] mb-1">Start Plan</p>
-              <p className="text-sm text-[#CFC9BF] leading-relaxed">Set your Day 1 and weekly rhythm</p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">When should Day 1 start?</p>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => setSetupStartChoice('today')}
-                  className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-                    setupStartChoice === 'today'
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setSetupStartChoice('tomorrow')}
-                  className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-                    setupStartChoice === 'tomorrow'
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
-                >
-                  Tomorrow
-                </button>
-                <button
-                  onClick={() => setSetupStartChoice('pick')}
-                  className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-                    setupStartChoice === 'pick'
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
-                >
-                  Pick date
-                </button>
-              </div>
-
-              {setupStartChoice === 'pick' && (
-                <div className="w-full min-w-0 overflow-hidden rounded-[12px] bg-[#2A2A2A] border border-white/5 px-3 py-2">
-                  <input
-                    type="date"
-                    value={setupStartDate}
-                    onChange={(event) => setSetupStartDate(event.target.value)}
-                    className="w-full min-w-0 bg-transparent text-[#E8E4DE] text-sm outline-none"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Schedule style</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setSetupMode('fixed')}
-                  className={`px-3 py-3 rounded-[12px] text-xs transition-colors ${
-                    setupMode === 'fixed'
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
-                >
-                  Fixed weekly rhythm
-                </button>
-                <button
-                  onClick={() => setSetupMode('flex')}
-                  className={`px-3 py-3 rounded-[12px] text-xs transition-colors ${
-                    setupMode === 'flex'
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
-                >
-                  Flexible sequence
-                </button>
-              </div>
-            </div>
-
-            {setupMode === 'fixed' && (
-              <div className="space-y-2">
-                <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">
-                  Choose first training day
-                </p>
-                <div className="grid grid-cols-7 gap-1">
-                  {shortWeekdayLabels.map((label, weekday) => {
-                    const active = setupAnchorDay === weekday;
-                    return (
-                      <button
-                        key={`${label}-${weekday}`}
-                        onClick={() => setSetupAnchorDay(weekday)}
-                        className={`py-2 rounded-[10px] text-xs transition-colors ${
-                          active
-                            ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                            : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <p className="text-[10px] text-[#6B6B6B]">
-                  Auto plan: {buildFixedWeekdays(setupAnchorDay, activeSplit.days_per_week).map((day) => weekdayLabels[day]).join(' / ')}
-                </p>
-              </div>
-            )}
-
-            <Button
-              className="w-full"
-              onClick={handleSavePlanSetup}
-            >
-              Save Plan Setup
-            </Button>
+          <Card variant="slab">
+            <ScheduleEditor
+              title="Start Plan"
+              description="Set your Day 1 and weekly rhythm"
+              daysPerWeek={activeSplit.days_per_week}
+              splitDays={activeSplit.days}
+              startChoice={setupStartChoice}
+              startDate={setupStartDate}
+              mode={setupMode}
+              anchorDay={setupAnchorDay}
+              flexDayIndex={setupFlexDayIndex}
+              onStartChoiceChange={setSetupStartChoice}
+              onStartDateChange={setSetupStartDate}
+              onModeChange={setSetupMode}
+              onAnchorDayChange={setSetupAnchorDay}
+              onFlexDayIndexChange={setSetupFlexDayIndex}
+              onSave={() => {
+                void handleSavePlanSetup();
+              }}
+              saveLabel="Save Plan Setup"
+              saving={savingPlanSchedule}
+            />
           </Card>
         ) : (
           <div className="space-y-4">
@@ -749,6 +749,35 @@ export function Workout() {
             </Card>
           </div>
         )}
+
+        <Modal
+          isOpen={showScheduleEditor}
+          onClose={() => setShowScheduleEditor(false)}
+          title="Edit Schedule"
+        >
+          <ScheduleEditor
+            title="Adjust Plan"
+            description="Update your start date, scheduling mode, and active training day."
+            daysPerWeek={activeSplit.days_per_week}
+            splitDays={activeSplit.days}
+            startChoice={setupStartChoice}
+            startDate={setupStartDate}
+            mode={setupMode}
+            anchorDay={setupAnchorDay}
+            flexDayIndex={setupFlexDayIndex}
+            onStartChoiceChange={setSetupStartChoice}
+            onStartDateChange={setSetupStartDate}
+            onModeChange={setSetupMode}
+            onAnchorDayChange={setSetupAnchorDay}
+            onFlexDayIndexChange={setSetupFlexDayIndex}
+            onSave={() => {
+              void handleSavePlanSetup();
+            }}
+            onCancel={() => setShowScheduleEditor(false)}
+            saveLabel="Save Changes"
+            saving={savingPlanSchedule}
+          />
+        </Modal>
       </motion.div>
     );
   }

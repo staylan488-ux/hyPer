@@ -283,7 +283,7 @@ describe('planSchedule', () => {
       expect(loaded?.anchorDay).toBe(3);
     });
 
-    it('defaults anchorDay to 1 when weekdays is empty and no anchor specified', () => {
+    it('defaults anchorDay to 0 for flex mode when anchor is not specified', () => {
       const schedule: PlanSchedule = {
         splitId: 'test',
         startDate: '2024-01-01',
@@ -292,7 +292,7 @@ describe('planSchedule', () => {
       };
       savePlanSchedule('user1', schedule);
       const loaded = loadPlanSchedule('user1', 'test');
-      expect(loaded?.anchorDay).toBe(1);
+      expect(loaded?.anchorDay).toBe(0);
     });
 
     it('handles non-numeric anchorDay by using default', () => {
@@ -410,6 +410,21 @@ describe('planSchedule', () => {
         expect(plannedDayForDate(date, mockSplitDays, schedule, 2)?.day_name).toBe('Day C');
         expect(plannedDayForDate(date, mockSplitDays, schedule, 3)?.day_name).toBe('Day A');
         expect(plannedDayForDate(date, mockSplitDays, schedule, 4)?.day_name).toBe('Day B');
+      });
+
+      it('respects anchorDay offset when in flex mode', () => {
+        const schedule: PlanSchedule = {
+          splitId: 'test',
+          startDate: '2024-01-01',
+          mode: 'flex',
+          weekdays: [],
+          anchorDay: 2,
+        };
+        const date = localDate('2024-01-15');
+
+        expect(plannedDayForDate(date, mockSplitDays, schedule, 0)?.day_name).toBe('Day C');
+        expect(plannedDayForDate(date, mockSplitDays, schedule, 1)?.day_name).toBe('Day A');
+        expect(plannedDayForDate(date, mockSplitDays, schedule, 2)?.day_name).toBe('Day B');
       });
 
       it('cycles correctly with 2-day split', () => {
