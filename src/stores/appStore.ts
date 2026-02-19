@@ -466,7 +466,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const weekStart = format(startOfWeek(new Date()), 'yyyy-MM-dd');
     const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
 
-    // Get all completed sets from this week
+    // Get all completed sets from this week, regardless of whether
+    // the parent workout was explicitly marked complete.
     const { data: workouts } = await supabase
       .from('workouts')
       .select(`
@@ -478,7 +479,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         )
       `)
       .eq('user_id', user.id)
-      .eq('completed', true)
+      .eq('sets.completed', true)
       .gte('date', weekStart)
       .lte('date', weekEnd);
 

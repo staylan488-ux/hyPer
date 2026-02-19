@@ -708,5 +708,52 @@ describe('planSchedule', () => {
       await new Promise((r) => setTimeout(r, 50));
       expect(onRemoteUpdate).not.toHaveBeenCalled();
     });
+
+    it('resolves done promise when DB misses', async () => {
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: null, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { done } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      await expect(done).resolves.toBeUndefined();
+      expect(onRemoteUpdate).not.toHaveBeenCalled();
+    });
+
+    it('resolves done promise after applying remote update', async () => {
+      const remoteSchedule = {
+        split_id: 'split1',
+        start_date: '2024-06-20',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchor_day: 1,
+        updated_at: '2024-06-20T12:00:00Z',
+      };
+
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(() => ({ data: remoteSchedule, error: null })),
+            })),
+          })),
+        })),
+        upsert: vi.fn(() => ({ error: null })),
+      });
+
+      const onRemoteUpdate = vi.fn();
+      const { done } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+
+      await expect(done).resolves.toBeUndefined();
+      expect(onRemoteUpdate).toHaveBeenCalledTimes(1);
+    });
   });
 });

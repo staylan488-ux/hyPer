@@ -195,17 +195,18 @@ export function savePlanSchedule(userId: string, schedule: PlanSchedule): void {
  * then checks DB in the background. If remote is newer (by updated_at),
  * updates local cache and calls onRemoteUpdate so the component can re-render.
  *
- * Returns { cached, cancel } where cancel aborts the background fetch.
+ * Returns { cached, cancel, done } where cancel aborts the background fetch
+ * and done resolves when the background fetch settles.
  */
 export function loadWithBackgroundSync(
   userId: string,
   splitId: string,
   onRemoteUpdate: (schedule: PlanSchedule) => void,
-): { cached: PlanSchedule | null; cancel: () => void } {
+): { cached: PlanSchedule | null; cancel: () => void; done: Promise<void> } {
   const cached = loadLocalCache(userId, splitId);
   let cancelled = false;
 
-  void loadFromDB(userId, splitId).then((remote) => {
+  const done = loadFromDB(userId, splitId).then((remote) => {
     if (cancelled || !remote) return;
 
     // If no local cache, just populate it
@@ -225,7 +226,13 @@ export function loadWithBackgroundSync(
     }
   });
 
-  return { cached, cancel: () => { cancelled = true; } };
+  return {
+    cached,
+    cancel: () => {
+      cancelled = true;
+    },
+    done,
+  };
 }
 
 export function plannedDayForDate(
