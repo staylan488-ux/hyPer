@@ -68,13 +68,18 @@ function normalizeParsed(parsed: PlanSchedule): PlanSchedule | null {
   const normalizedWeekdays = normalizeWeekdayOrder(parsed.weekdays);
   if (parsed.mode === 'fixed' && normalizedWeekdays.length === 0) return null;
 
+  const fallbackAnchorDay =
+    parsed.mode === 'fixed'
+      ? normalizedWeekdays[0] ?? 1
+      : 0;
+
   return {
     ...parsed,
     weekdays: normalizedWeekdays,
     anchorDay:
       typeof parsed.anchorDay === 'number'
         ? ((parsed.anchorDay % 7) + 7) % 7
-        : normalizedWeekdays[0] ?? 1,
+        : fallbackAnchorDay,
   };
 }
 
@@ -245,6 +250,7 @@ export function plannedDayForDate(
     return splitDays[idx % splitDays.length] || null;
   }
 
-  const index = completedWorkoutsSinceStart % splitDays.length;
+  const normalizedAnchor = ((schedule.anchorDay ?? 0) % splitDays.length + splitDays.length) % splitDays.length;
+  const index = (normalizedAnchor + (completedWorkoutsSinceStart % splitDays.length)) % splitDays.length;
   return splitDays[index] || null;
 }
