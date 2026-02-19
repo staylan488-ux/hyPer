@@ -134,6 +134,82 @@ describe('must-work store contracts', () => {
     expect(supabaseMock.from).toHaveBeenCalledTimes(1);
   });
 
+  it('applies set overrides with range clamping when starting a workout', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    const createdWorkout = {
+      id: 'workout-new',
+      user_id: 'user-1',
+      split_day_id: 'split-day-1',
+      date: '2026-02-14',
+      notes: null,
+      completed: false,
+    };
+
+    const completeWorkout = {
+      ...createdWorkout,
+      sets: [],
+    } as Workout;
+
+    const workoutsChain = createChain({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: completeWorkout, error: null }),
+      single: vi.fn().mockResolvedValue({ data: createdWorkout, error: null }),
+    });
+
+    const splitExercisesChain = createChain({
+      order: vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'split-ex-1',
+            exercise_id: 'exercise-1',
+            target_sets: 3,
+            notes: '[set-range]{"min":2,"max":4}',
+          },
+          {
+            id: 'split-ex-2',
+            exercise_id: 'exercise-2',
+            target_sets: 3,
+            notes: '[set-range]{"min":1,"max":2}',
+          },
+        ],
+        error: null,
+      }),
+    });
+
+    const setsChain = createChain({
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      if (table === 'split_exercises') return splitExercisesChain;
+      if (table === 'sets') return setsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await useAppStore.getState().startWorkout('split-day-1', {
+      'split-ex-1': 10,
+      'split-ex-2': 0,
+    });
+
+    expect(result).toEqual(completeWorkout);
+    expect(useAppStore.getState().currentWorkout).toEqual(completeWorkout);
+
+    expect(setsChain.insert).toHaveBeenCalledTimes(5);
+
+    const insertPayloads = setsChain.insert.mock.calls.map((call) => call[0]);
+    expect(insertPayloads.filter((payload) => payload.exercise_id === 'exercise-1')).toHaveLength(4);
+    expect(insertPayloads.filter((payload) => payload.exercise_id === 'exercise-2')).toHaveLength(1);
+
+    expect(insertPayloads.find((payload) => payload.exercise_id === 'exercise-1' && payload.set_number === 4)).toBeTruthy();
+    expect(insertPayloads.find((payload) => payload.exercise_id === 'exercise-2' && payload.set_number === 2)).toBeFalsy();
+  });
+
   it('logs a set and updates latest workout state (stale-closure guard)', async () => {
     const firstSet: WorkoutSet = {
       id: 'set-1',
