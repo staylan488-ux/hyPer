@@ -135,6 +135,9 @@ interface AppState {
   removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
   reorderFlexibleExercises: (exerciseIds: string[]) => Promise<void>;
   fetchFlexTemplates: () => Promise<void>;
+  startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
+  renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
+  deleteFlexTemplate: (templateId: string) => Promise<void>;
   saveFlexibleTemplateFromCurrentWorkout: () => Promise<void>;
 
   // Macro targets
@@ -350,6 +353,100 @@ export const useAppStore = create<AppState>((set, get) => ({
     } as FlexDayTemplate));
 
     set({ flexTemplates: templates });
+  },
+
+  startFlexibleWorkoutFromTemplate: async (label) => {
+    const trimmed = label.trim();
+    if (!trimmed) return null;
+
+    return get().startFlexibleWorkout(trimmed, trimmed);
+  },
+
+  renameFlexTemplate: async (templateId, nextLabel, allowOverwrite = false) => {
+    const trimmed = nextLabel.trim();
+    if (!trimmed) return { ok: false, reason: 'Template label is required.' };
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { ok: false, reason: 'Not signed in.' };
+
+    const { flexTemplates } = get();
+    const sourceTemplate = flexTemplates.find((template) => template.id === templateId);
+    if (!sourceTemplate) return { ok: false, reason: 'Template not found.' };
+
+    if (sourceTemplate.label === trimmed) {
+      return { ok: true };
+    }
+
+    const lowered = trimmed.toLowerCase();
+    const conflictTemplate = flexTemplates.find((template) => (
+      template.id !== templateId && template.label.trim().toLowerCase() === lowered
+    ));
+
+    if (conflictTemplate && !allowOverwrite) {
+      return { ok: false, conflictLabel: conflictTemplate.label };
+    }
+
+    if (conflictTemplate && allowOverwrite) {
+      const { error: overwriteError } = await supabase
+        .from('flex_day_templates')
+        .upsert({
+          user_id: user.id,
+          label: trimmed,
+          items: sourceTemplate.items,
+        }, {
+          onConflict: 'user_id,label',
+        });
+
+      if (overwriteError) {
+        console.error('Error overwriting flexible template label:', overwriteError);
+        return { ok: false, reason: 'Could not overwrite existing template.' };
+      }
+
+      const { error: cleanupError } = await supabase
+        .from('flex_day_templates')
+        .delete()
+        .eq('id', templateId);
+
+      if (cleanupError) {
+        console.error('Error removing original template after overwrite:', cleanupError);
+        return { ok: false, reason: 'Template overwrite partially failed.' };
+      }
+
+      await get().fetchFlexTemplates();
+      return { ok: true };
+    }
+
+    const { error } = await supabase
+      .from('flex_day_templates')
+      .update({ label: trimmed })
+      .eq('id', templateId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error renaming flexible template:', error);
+      return { ok: false, reason: 'Could not rename template.' };
+    }
+
+    await get().fetchFlexTemplates();
+    return { ok: true };
+  },
+
+  deleteFlexTemplate: async (templateId) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('flex_day_templates')
+      .delete()
+      .eq('id', templateId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error deleting flexible template:', error);
+      return;
+    }
+
+    await get().fetchFlexTemplates();
   },
 
   fetchCurrentWorkoutDayPlan: async (workoutId) => {
