@@ -483,6 +483,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (existing) {
+      if (existing.split_day_id !== null) {
+        return null;
+      }
+
       await get().fetchCurrentWorkoutDayPlan(existing.id);
       set({ currentWorkout: existing as Workout });
       return existing as Workout;
