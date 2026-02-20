@@ -22,6 +22,8 @@ type Chain = {
   insert: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  neq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
   gte: ReturnType<typeof vi.fn>;
   lte: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
@@ -38,6 +40,8 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
     insert: vi.fn(),
     delete: vi.fn(),
     eq: vi.fn(),
+    neq: vi.fn(),
+    in: vi.fn(),
     gte: vi.fn(),
     lte: vi.fn(),
     order: vi.fn(),
@@ -51,6 +55,8 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   chain.insert.mockImplementation(() => chain);
   chain.delete.mockImplementation(() => chain);
   chain.eq.mockImplementation(() => chain);
+  chain.neq.mockImplementation(() => chain);
+  chain.in.mockImplementation(() => chain);
   chain.gte.mockImplementation(() => chain);
   chain.lte.mockImplementation(() => chain);
   chain.order.mockImplementation(() => chain);
@@ -82,6 +88,9 @@ beforeEach(() => {
     activeSplit: null,
     splits: [],
     currentWorkout: null,
+    workoutMode: 'split',
+    currentWorkoutDayPlan: null,
+    flexTemplates: [],
     macroTarget: null,
     volumeLandmarks: [],
     weeklyVolume: [],
@@ -211,6 +220,54 @@ describe('must-work store contracts', () => {
     );
   });
 
+  it('blocks workout mode switch while a workout is in progress', async () => {
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'workout-open',
+        user_id: 'user-1',
+        split_day_id: null,
+        date: '2026-02-19',
+        notes: null,
+        completed: false,
+        sets: [],
+      },
+      workoutMode: 'split',
+    });
+
+    const result = await useAppStore.getState().setWorkoutMode('flexible');
+
+    expect(result.ok).toBe(false);
+    expect(useAppStore.getState().workoutMode).toBe('split');
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it('persists workout mode when no workout is active', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    useAppStore.setState({ currentWorkout: null, workoutMode: 'split' });
+
+    const preferencesChain = createChain();
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'program_preferences') return preferencesChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await useAppStore.getState().setWorkoutMode('flexible');
+
+    expect(result.ok).toBe(true);
+    expect(useAppStore.getState().workoutMode).toBe('flexible');
+    expect(preferencesChain.upsert).toHaveBeenCalledWith(
+      {
+        user_id: 'user-1',
+        workout_mode: 'flexible',
+      },
+      { onConflict: 'user_id' }
+    );
+  });
+
   it('removes only the last uncompleted set for an exercise', async () => {
     const currentWorkout: Workout = {
       id: 'workout-1',
@@ -274,6 +331,72 @@ describe('must-work store contracts', () => {
 
     expect(setsChain.delete).toHaveBeenCalledTimes(1);
     expect(setsChain.eq).toHaveBeenCalledWith('id', 'set-3');
+  });
+
+  it('saves flexible template from current workout and includes movement notes', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'workout-1',
+        user_id: 'user-1',
+        split_day_id: null,
+        date: '2026-02-19',
+        notes: JSON.stringify({ movementNotes: { 'exercise-1': 'Keep elbows tucked' } }),
+        completed: false,
+        sets: [],
+      },
+      currentWorkoutDayPlan: {
+        id: 'plan-1',
+        workout_id: 'workout-1',
+        day_label: 'Upper',
+        items: [
+          {
+            exercise_id: 'exercise-1',
+            exercise_name: 'Barbell Bench Press',
+            order: 0,
+            target_sets: 3,
+            target_reps_min: 6,
+            target_reps_max: 8,
+            notes: null,
+            hidden: false,
+          },
+        ],
+      },
+    });
+
+    const templateUpsertChain = createChain();
+    const templateFetchChain = createChain({
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'flex_day_templates') {
+        if (templateUpsertChain.select.mock.calls.length > 0 || templateUpsertChain.upsert.mock.calls.length > 0) {
+          return templateFetchChain;
+        }
+        return templateUpsertChain;
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout();
+
+    expect(templateUpsertChain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'user-1',
+        label: 'Upper',
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            exercise_id: 'exercise-1',
+            notes: 'Keep elbows tucked',
+          }),
+        ]),
+      }),
+      { onConflict: 'user_id,label' }
+    );
   });
 
   it('does not remove sets when only completed sets exist', async () => {

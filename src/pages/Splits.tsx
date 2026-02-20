@@ -16,7 +16,17 @@ import type { Split, MuscleGroup } from '@/types';
 
 
 export function Splits() {
-  const { splits, fetchSplits, setActiveSplit, deleteSplit } = useAppStore();
+  const {
+    splits,
+    workoutMode,
+    currentWorkout,
+    fetchSplits,
+    fetchWorkoutMode,
+    fetchCurrentWorkout,
+    setWorkoutMode,
+    setActiveSplit,
+    deleteSplit,
+  } = useAppStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [showBuilder, setShowBuilder] = useState(false);
@@ -39,8 +49,12 @@ export function Splits() {
   const { startEdit, swapExercise, addExercise } = useSplitEditStore();
 
   useEffect(() => {
-    fetchSplits();
-  }, [fetchSplits]);
+    void Promise.all([
+      fetchSplits(),
+      fetchWorkoutMode(),
+      fetchCurrentWorkout(),
+    ]);
+  }, [fetchCurrentWorkout, fetchSplits, fetchWorkoutMode]);
 
   const handleEdit = useCallback((split: Split) => {
     startEdit(split);
@@ -81,6 +95,15 @@ export function Splits() {
     }
   };
 
+  const canSwitchMode = !currentWorkout;
+
+  const handleSetWorkoutMode = async (mode: 'split' | 'flexible') => {
+    const result = await setWorkoutMode(mode);
+    if (!result.ok && result.reason) {
+      window.alert(result.reason);
+    }
+  };
+
   const maybePromptPlanStart = (splitId: string, splitName: string) => {
     if (!user) return;
 
@@ -105,17 +128,49 @@ export function Splits() {
       className="pb-24 px-5 pt-8"
     >
       {/* Header */}
-      <motion.header className="mb-10 flex items-start justify-between" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <div>
-          <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-            {splits.length} {splits.length === 1 ? 'Program' : 'Programs'}
-          </p>
-          <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training</h1>
+      <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
+              {splits.length} {splits.length === 1 ? 'Program' : 'Programs'}
+            </p>
+            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training</h1>
+          </div>
+          <Button size="sm" onClick={() => setShowBuilder(true)}>
+            <Plus className="w-4 h-4 mr-1" />
+            New
+          </Button>
         </div>
-        <Button size="sm" onClick={() => setShowBuilder(true)}>
-          <Plus className="w-4 h-4 mr-1" />
-          New
-        </Button>
+
+        <div className="mt-4 inline-flex items-center gap-1 rounded-[14px] border border-white/10 bg-[#1F1F1F] p-1">
+          <button
+            type="button"
+            className={`px-3 py-1.5 rounded-[10px] text-[10px] tracking-[0.1em] uppercase transition-colors ${
+              workoutMode === 'split'
+                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
+                : 'text-[#9A9A9A] hover:text-[#E8E4DE]'
+            } ${!canSwitchMode ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={!canSwitchMode}
+            onClick={() => { void handleSetWorkoutMode('split'); }}
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1.5 rounded-[10px] text-[10px] tracking-[0.1em] uppercase transition-colors ${
+              workoutMode === 'flexible'
+                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
+                : 'text-[#9A9A9A] hover:text-[#E8E4DE]'
+            } ${!canSwitchMode ? 'opacity-60 cursor-not-allowed' : ''}`}
+            disabled={!canSwitchMode}
+            onClick={() => { void handleSetWorkoutMode('flexible'); }}
+          >
+            Flexible
+          </button>
+        </div>
+        {!canSwitchMode && (
+          <p className="mt-2 text-[10px] text-[#8F8A83]">Finish current workout to switch mode.</p>
+        )}
       </motion.header>
 
       {splits.length === 0 ? (

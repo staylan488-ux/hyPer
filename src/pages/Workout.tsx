@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Settings2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { Card, Button, Modal } from '@/components/shared';
+import { Card, Button, Input, Modal } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { SetLogger } from '@/components/workout/SetLogger';
 import { RestTimer } from '@/components/workout/RestTimer';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
+import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
@@ -19,7 +20,7 @@ import {
   type PreviousWorkoutSummary,
   type SetPerformanceInput,
 } from '@/lib/workoutProgress';
-import type { SplitDay, Workout, WorkoutSet } from '@/types';
+import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
 interface WorkoutNotesPayload {
   movementNotes?: Record<string, string>;
@@ -71,8 +72,35 @@ function normalizeIndex(value: number, size: number): number {
   return ((value % size) + size) % size;
 }
 
+function normalizeFlexibleTargetSets(value: number | null | undefined): number {
+  if (!value || !Number.isFinite(value)) return 3;
+  return Math.max(1, Math.min(12, Math.round(value)));
+}
+
 export function Workout() {
-  const { activeSplit, currentWorkout, startWorkout, fetchCurrentWorkout, fetchSplits, completeWorkout, addWorkoutSet, removeLastUncompletedSet } = useAppStore();
+  const {
+    activeSplit,
+    currentWorkout,
+    workoutMode,
+    currentWorkoutDayPlan,
+    flexTemplates,
+    startWorkout,
+    startFlexibleWorkout,
+    fetchCurrentWorkout,
+    fetchCurrentWorkoutDayPlan,
+    fetchSplits,
+    fetchWorkoutMode,
+    fetchFlexTemplates,
+    completeWorkout,
+    addWorkoutSet,
+    removeLastUncompletedSet,
+    setFlexibleWorkoutLabel,
+    addFlexibleExercise,
+    updateFlexibleExerciseMeta,
+    removeFlexibleExerciseFromPlan,
+    reorderFlexibleExercises,
+    saveFlexibleTemplateFromCurrentWorkout,
+  } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
@@ -103,6 +131,15 @@ export function Workout() {
   const [setupMode, setSetupMode] = useState<PlanMode>('fixed');
   const [setupAnchorDay, setSetupAnchorDay] = useState(1);
   const [setupFlexDayIndex, setSetupFlexDayIndex] = useState(0);
+
+  const [showFlexibleStart, setShowFlexibleStart] = useState(false);
+  const [flexibleDayLabel, setFlexibleDayLabel] = useState('');
+  const [selectedTemplateLabel, setSelectedTemplateLabel] = useState<string>('');
+  const [startingFlexibleWorkout, setStartingFlexibleWorkout] = useState(false);
+  const [showSaveTemplatePrompt, setShowSaveTemplatePrompt] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+
   const currentWorkoutId = currentWorkout?.id || null;
   const currentWorkoutDate = currentWorkout?.date || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
@@ -126,7 +163,12 @@ export function Workout() {
     let mounted = true;
 
     const initializeWorkoutPage = async () => {
-      await Promise.all([fetchSplits(), fetchCurrentWorkout()]);
+      await Promise.all([
+        fetchSplits(),
+        fetchCurrentWorkout(),
+        fetchWorkoutMode(),
+        fetchFlexTemplates(),
+      ]);
       if (mounted) setInitializing(false);
     };
 
@@ -135,7 +177,7 @@ export function Workout() {
     return () => {
       mounted = false;
     };
-  }, [fetchCurrentWorkout, fetchSplits]);
+  }, [fetchCurrentWorkout, fetchFlexTemplates, fetchSplits, fetchWorkoutMode]);
 
   useEffect(() => {
     if (!activeSplit) return;
@@ -605,6 +647,73 @@ export function Workout() {
     });
   }, []);
 
+  useEffect(() => {
+    if (workoutMode !== 'flexible') return;
+
+    if (currentWorkout?.split_day_id === null && currentWorkout.id) {
+      void fetchCurrentWorkoutDayPlan(currentWorkout.id);
+    }
+  }, [workoutMode, currentWorkout?.id, currentWorkout?.split_day_id, fetchCurrentWorkoutDayPlan]);
+
+  const activeFlexibleItems = useMemo(() => (
+    (currentWorkoutDayPlan?.items || [])
+      .filter((item) => !item.hidden)
+      .sort((a, b) => a.order - b.order)
+  ), [currentWorkoutDayPlan?.items]);
+
+  const workoutExerciseMap = useMemo(() => {
+    const map = new Map<string, Exercise>();
+    for (const set of currentWorkout?.sets || []) {
+      if (set.exercise) {
+        map.set(set.exercise_id, set.exercise);
+      }
+    }
+    return map;
+  }, [currentWorkout?.sets]);
+
+  const handleStartFlexibleWorkout = async () => {
+    const trimmed = flexibleDayLabel.trim();
+    if (!trimmed || startingFlexibleWorkout) return;
+
+    try {
+      setStartingFlexibleWorkout(true);
+      await startFlexibleWorkout(trimmed, selectedTemplateLabel || undefined);
+      setShowFlexibleStart(false);
+    } finally {
+      setStartingFlexibleWorkout(false);
+    }
+  };
+
+  const handleFlexibleTargetSetsChange = (exerciseId: string, value: number) => {
+    const targetSets = normalizeFlexibleTargetSets(value);
+    void updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets });
+  };
+
+  const handleFlexibleReorder = async (exerciseId: string, direction: 'up' | 'down') => {
+    const idx = activeFlexibleItems.findIndex((item) => item.exercise_id === exerciseId);
+    if (idx === -1) return;
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= activeFlexibleItems.length) return;
+
+    const next = [...activeFlexibleItems];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+
+    await reorderFlexibleExercises(next.map((item) => item.exercise_id));
+  };
+
+  const handleSaveTemplateAtCompletion = async () => {
+    try {
+      setSavingTemplate(true);
+      await saveFlexibleTemplateFromCurrentWorkout();
+      setShowSaveTemplatePrompt(false);
+      await completeWorkout();
+      await fetchFlexTemplates();
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;
   const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
@@ -615,11 +724,23 @@ export function Workout() {
       setShowCompleteConfirm(true);
       return;
     }
+
+    if (workoutMode === 'flexible' && currentWorkout?.split_day_id === null) {
+      setShowSaveTemplatePrompt(true);
+      return;
+    }
+
     await completeWorkout();
   };
 
   const handleConfirmComplete = async () => {
     setShowCompleteConfirm(false);
+
+    if (workoutMode === 'flexible' && currentWorkout?.split_day_id === null) {
+      setShowSaveTemplatePrompt(true);
+      return;
+    }
+
     await completeWorkout();
   };
 
@@ -645,7 +766,7 @@ export function Workout() {
     );
   }
 
-  if (!activeSplit) {
+  if (workoutMode === 'split' && !activeSplit) {
     return (
       <motion.div
         className="pb-24 px-5 pt-8"
@@ -667,6 +788,9 @@ export function Workout() {
     );
   }
 
+  const splitDays = activeSplit?.days || [];
+  const splitDaysPerWeek = activeSplit?.days_per_week || 0;
+
   const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
@@ -681,7 +805,7 @@ export function Workout() {
   const today = new Date();
   const todayPlannedDay =
     planSchedule && startDate && !isBefore(today, startDate)
-      ? plannedDayForDate(today, activeSplit.days, planSchedule, completedBefore(today))
+      ? plannedDayForDate(today, splitDays, planSchedule, completedBefore(today))
       : null;
 
   const todayCompletedWorkout = completedInWeek.find((workout) => workout.date === format(today, 'yyyy-MM-dd'));
@@ -689,22 +813,102 @@ export function Workout() {
   const openScheduleEditor = () => {
     if (!planSchedule) return;
 
-    const splitDayCount = activeSplit.days.length;
+    const splitDayCount = splitDays.length;
     const fallbackFlexDay = normalizeIndex(planSchedule.anchorDay ?? 0, splitDayCount);
 
     const todayPlannedIndex = todayPlannedDay
-      ? activeSplit.days.findIndex((day) => day.id === todayPlannedDay.id)
+      ? splitDays.findIndex((day) => day.id === todayPlannedDay.id)
       : -1;
 
     setSetupStartDate(planSchedule.startDate);
     setSetupMode(planSchedule.mode);
     setSetupStartChoice('pick');
-    setSetupAnchorDay(planSchedule.anchorDay ?? planSchedule.weekdays?.[0] ?? defaultWeekdays(activeSplit.days_per_week)[0] ?? 1);
+    setSetupAnchorDay(planSchedule.anchorDay ?? planSchedule.weekdays?.[0] ?? defaultWeekdays(splitDaysPerWeek)[0] ?? 1);
     setSetupFlexDayIndex(todayPlannedIndex >= 0 ? todayPlannedIndex : fallbackFlexDay);
     setShowScheduleEditor(true);
   };
 
   if (!currentWorkout) {
+    if (workoutMode === 'flexible') {
+      return (
+        <motion.div className="pb-24 px-5 pt-8">
+          <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+            <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Flexible Training</p>
+            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Start Session</h1>
+          </motion.header>
+
+          <Card variant="slab" className="space-y-4">
+            <p className="text-xs text-[var(--color-muted)]">Name your day and start training without a rigid split.</p>
+            {flexTemplates.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Quick Start</p>
+                <div className="flex flex-wrap gap-2">
+                  {flexTemplates.slice(0, 4).map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className="px-3 py-1.5 rounded-[12px] border border-white/10 text-[10px] tracking-[0.08em] uppercase text-[#9A9A9A] hover:text-[#E8E4DE] hover:border-white/20 transition-colors"
+                      onClick={() => {
+                        setFlexibleDayLabel(template.label);
+                        setSelectedTemplateLabel(template.label);
+                        setShowFlexibleStart(true);
+                      }}
+                    >
+                      {template.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button onClick={() => setShowFlexibleStart(true)}>
+              Start Flexible Workout
+            </Button>
+          </Card>
+
+          <Modal
+            isOpen={showFlexibleStart}
+            onClose={() => setShowFlexibleStart(false)}
+            title="Start Flexible Workout"
+          >
+            <div className="pt-4 space-y-4">
+              <Input
+                label="Day Label"
+                value={flexibleDayLabel}
+                onChange={(event) => setFlexibleDayLabel(event.target.value)}
+                placeholder="Upper, Push, Arms, etc."
+                maxLength={40}
+              />
+
+              {flexTemplates.length > 0 && (
+                <div>
+                  <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Quick Start Template (optional)</p>
+                  <select
+                    value={selectedTemplateLabel}
+                    onChange={(event) => setSelectedTemplateLabel(event.target.value)}
+                    className="w-full px-3 py-2 bg-[#1A1A1A] border border-white/10 rounded-[12px] text-sm text-[#E8E4DE]"
+                  >
+                    <option value="">None</option>
+                    {flexTemplates.map((template) => (
+                      <option key={template.id} value={template.label}>{template.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={() => { void handleStartFlexibleWorkout(); }}
+                disabled={!flexibleDayLabel.trim() || startingFlexibleWorkout}
+                loading={startingFlexibleWorkout}
+              >
+                {startingFlexibleWorkout ? 'Starting...' : 'Start Workout'}
+              </Button>
+            </div>
+          </Modal>
+        </motion.div>
+      );
+    }
+
     return (
       <motion.div
         className="pb-24 px-5 pt-8"
@@ -713,7 +917,7 @@ export function Workout() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-                {activeSplit.name.toUpperCase()}
+                {activeSplit?.name.toUpperCase()}
               </p>
               <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training Plan</h1>
             </div>
@@ -744,8 +948,8 @@ export function Workout() {
               <ScheduleEditor
                 title="Start Plan"
                 description="Set your Day 1 and weekly rhythm"
-                daysPerWeek={activeSplit.days_per_week}
-                splitDays={activeSplit.days}
+                daysPerWeek={activeSplit?.days_per_week || 0}
+                splitDays={activeSplit?.days || []}
                 startChoice={setupStartChoice}
                 startDate={setupStartDate}
                 mode={setupMode}
@@ -831,7 +1035,7 @@ export function Workout() {
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
-                  const plannedDay = plannedDayForDate(date, activeSplit.days, planSchedule, completedBefore(date));
+                  const plannedDay = plannedDayForDate(date, activeSplit?.days || [], planSchedule, completedBefore(date));
                   const isToday = isSameDay(date, today);
 
                   let status: 'completed' | 'planned' | 'rest' | 'missed' = 'rest';
@@ -878,7 +1082,7 @@ export function Workout() {
             <Card variant="slab" className="space-y-3">
               <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B]">Train a different day</p>
               <div className="space-y-2">
-                {activeSplit.days.map((day) => (
+                {(activeSplit?.days || []).map((day) => (
                   <div key={day.id} className="flex items-center justify-between rounded-[12px] bg-[#2A2A2A] border border-white/5 px-3 py-2">
                     <div>
                       <p className="text-xs text-[#E8E4DE]">{day.day_name}</p>
@@ -902,8 +1106,8 @@ export function Workout() {
           <ScheduleEditor
             title="Adjust Plan"
             description="Update your start date, scheduling mode, and active training day."
-            daysPerWeek={activeSplit.days_per_week}
-            splitDays={activeSplit.days}
+            daysPerWeek={activeSplit?.days_per_week || 0}
+            splitDays={activeSplit?.days || []}
             startChoice={setupStartChoice}
             startDate={setupStartDate}
             mode={setupMode}
@@ -971,7 +1175,287 @@ export function Workout() {
         </div>
       </motion.header>
 
-      {/* Exercises */}
+      {workoutMode === 'flexible' && currentWorkout.split_day_id === null ? (
+        <div className="space-y-3">
+          <Card variant="slab" className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Input
+                label="Day Label"
+                value={currentWorkoutDayPlan?.day_label || ''}
+                onChange={(event) => { void setFlexibleWorkoutLabel(event.target.value); }}
+                placeholder="Upper / Push / Legs"
+                className="flex-1"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-5"
+                onClick={() => setShowExercisePicker(true)}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Add Exercise
+              </Button>
+            </div>
+            <p className="text-[10px] text-[#6B6B6B]">Edit order, set targets, and notes anytime.</p>
+          </Card>
+
+          {activeFlexibleItems.length === 0 ? (
+            <Card variant="slab" className="text-center py-10">
+              <p className="text-xs text-[#6B6B6B] mb-3">No exercises yet.</p>
+              <Button size="sm" onClick={() => setShowExercisePicker(true)}>
+                Add First Exercise
+              </Button>
+            </Card>
+          ) : (
+            activeFlexibleItems.map((item, index) => {
+              const exerciseId = item.exercise_id;
+              const sets = (exerciseGroups[exerciseId] || []).sort((a, b) => a.set_number - b.set_number);
+              const exerciseName = item.exercise_name || workoutExerciseMap.get(exerciseId)?.name || 'Exercise';
+              const completedInExercise = sets.filter((set) => set.completed).length;
+              const isActive = activeExerciseId === exerciseId;
+              const allComplete = sets.length > 0 && completedInExercise === sets.length;
+              const movementNote = movementNotes[exerciseId] || item.notes || '';
+              const hasMovementNote = movementNote.trim().length > 0;
+              const noteCharacters = movementNote.length;
+              const canMoveUp = index > 0;
+              const canMoveDown = index < activeFlexibleItems.length - 1;
+
+              return (
+                <motion.div
+                  key={exerciseId}
+                  layout
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...springs.smooth, delay: index * 0.05 }}
+                >
+                  <Card
+                    variant="slab"
+                    className={`transition-all ${
+                      allComplete ? 'bg-sage-tint border-l-sage' :
+                      isActive ? 'border-l-accent border-white/10' : ''
+                    }`}
+                  >
+                    <div
+                      className="flex items-center justify-between cursor-pointer"
+                      onClick={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                    >
+                      <div className="flex items-center gap-4">
+                        <motion.div
+                          className={`w-8 h-8 rounded-[12px] flex items-center justify-center ${allComplete ? 'bg-[#8B9A7D]/20' : 'bg-[#2E2E2E]'}`}
+                          animate={allComplete ? { scale: [1, 1.1, 1] } : {}}
+                          transition={{ duration: 0.3 }}
+                        >
+                          {allComplete ? (
+                            <svg className="w-4 h-4 text-[#8B9A7D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <motion.path
+                                d="M5 13l4 4L19 7"
+                                initial={{ pathLength: 0 }}
+                                animate={{ pathLength: 1 }}
+                                transition={{ duration: 0.4, ease: 'easeOut' }}
+                                strokeDasharray="0 1"
+                              />
+                            </svg>
+                          ) : (
+                            <span className="text-[10px] text-[#6B6B6B] tabular-nums">{completedInExercise}/{sets.length || normalizeFlexibleTargetSets(item.target_sets)}</span>
+                          )}
+                        </motion.div>
+                        <div>
+                          <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
+                          {hasMovementNote && !isActive && (
+                            <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
+                              {movementNote}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={!canMoveUp}
+                          onClick={() => { void handleFlexibleReorder(exerciseId, 'up'); }}
+                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canMoveDown}
+                          onClick={() => { void handleFlexibleReorder(exerciseId, 'down'); }}
+                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { void removeFlexibleExerciseFromPlan(exerciseId); }}
+                          className="p-1.5 rounded-[8px] text-[#8B6B6B] hover:text-[#D39B9B] hover:bg-white/5 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <motion.div
+                          animate={{ rotate: isActive ? 90 : 0 }}
+                          transition={springs.snappy}
+                        >
+                          <ChevronRight className="w-4 h-4 text-[#6B6B6B]" />
+                        </motion.div>
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {isActive && (
+                        <motion.div
+                          className="mt-5 pt-5 border-t border-white/5 space-y-2"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={springs.smooth}
+                        >
+                          <motion.div
+                            className="mb-2 rounded-[12px] bg-[#242424] border border-white/5 px-3 py-2"
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={springs.smooth}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] text-[#6B6B6B]">Target sets</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={12}
+                                  value={normalizeFlexibleTargetSets(item.target_sets)}
+                                  onChange={(event) => {
+                                    handleFlexibleTargetSetsChange(exerciseId, Number(event.target.value));
+                                  }}
+                                  className="w-16 px-2 py-1 rounded-[8px] bg-[#1A1A1A] border border-white/10 text-xs text-[#E8E4DE]"
+                                />
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+                                  onClick={() => { void removeLastUncompletedSet(exerciseId); }}
+                                  disabled={!sets.some((set) => !set.completed)}
+                                >
+                                  - Remove set
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 transition-colors"
+                                  onClick={() => { void addWorkoutSet(exerciseId); }}
+                                >
+                                  + Add set
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+
+                          {sets.map((set, idx) => {
+                            const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
+                            const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
+                            const performanceStatus = set.completed && previousSetTarget
+                              ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
+                              : 'unknown';
+
+                            const statusLabel = performanceStatus === 'beat'
+                              ? 'Beat'
+                              : performanceStatus === 'matched'
+                                ? 'Matched'
+                                : performanceStatus === 'below'
+                                  ? 'Below'
+                                  : null;
+
+                            const statusClass = performanceStatus === 'beat'
+                              ? 'text-[#8B9A7D]'
+                              : performanceStatus === 'matched'
+                                ? 'text-[#B6B1A8]'
+                                : 'text-[#C48D8D]';
+
+                            return (
+                              <motion.div
+                                key={set.id}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.05, ...springs.smooth }}
+                              >
+                                {formattedTarget && (
+                                  <div className="mb-1.5 flex items-center justify-between rounded-[10px] border border-white/5 bg-[#202020] px-2.5 py-1.5">
+                                    <p className="text-[10px] text-[#7C7C7C]">
+                                      Target to beat: <span className="tabular-nums text-[#D4CEC2]">{formattedTarget}</span>
+                                    </p>
+                                    {statusLabel && (
+                                      <p className={`text-[10px] tracking-[0.08em] uppercase ${statusClass}`}>
+                                        {statusLabel}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                <SetLogger
+                                  set={set}
+                                  setNumber={idx + 1}
+                                  onComplete={() => setShowRestTimer(true)}
+                                />
+                              </motion.div>
+                            );
+                          })}
+
+                          <motion.div
+                            className="mt-4 pt-3 border-t border-white/[0.03]"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: sets.length * 0.05, ...springs.smooth }}
+                          >
+                            <label
+                              htmlFor={`movement-note-${exerciseId}`}
+                              className="block text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2"
+                            >
+                              Movement Note
+                            </label>
+                            <textarea
+                              id={`movement-note-${exerciseId}`}
+                              value={movementNote}
+                              onChange={(event) => {
+                                handleMovementNoteChange(exerciseId, event.target.value);
+                                void updateFlexibleExerciseMeta(exerciseId, { notes: event.target.value.slice(0, 200) });
+                              }}
+                              onBlur={() => handleMovementNoteBlur(exerciseId)}
+                              rows={1}
+                              maxLength={200}
+                              placeholder="Note - technique, feel, cues..."
+                              className="w-full bg-transparent border-b border-white/10 pb-2 text-sm font-display-italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+                            />
+                            <div className="mt-1.5 flex items-center justify-between">
+                              <div>
+                                {savingMovementNoteId === exerciseId ? (
+                                  <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)]">Saving...</p>
+                                ) : savedMovementNoteId === exerciseId ? (
+                                  <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-sage)]">Saved</p>
+                                ) : null}
+                              </div>
+                              {noteCharacters >= 160 && (
+                                <p className="text-[10px] tabular-nums text-[var(--color-muted)]">{noteCharacters}/200</p>
+                              )}
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                </motion.div>
+              );
+            })
+          )}
+
+          <ExercisePicker
+            isOpen={showExercisePicker}
+            onClose={() => setShowExercisePicker(false)}
+            onSelect={(exercise) => {
+              setShowExercisePicker(false);
+              void addFlexibleExercise(exercise);
+            }}
+            title="Add Exercise"
+          />
+        </div>
+      ) : (
+      /* Exercises */
       <div className="space-y-3">
         {orderedExerciseEntries.map(([exerciseId, sets], index) => {
           const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
@@ -1199,6 +1683,7 @@ export function Workout() {
           );
         })}
       </div>
+      )}
 
       {/* Rest Timer Modal */}
       <Modal
@@ -1237,6 +1722,41 @@ export function Workout() {
               onClick={handleConfirmComplete}
             >
               Finish
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showSaveTemplatePrompt}
+        onClose={() => setShowSaveTemplatePrompt(false)}
+        title="Save Quick-Start Template?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[#E8E4DE]">
+            Save this day as quick-start template <span className="font-medium">{currentWorkoutDayPlan?.day_label || 'Template'}</span>?
+          </p>
+          <p className="text-xs text-[#6B6B6B]">
+            If this label already exists, it will be overwritten with your latest exercise order and notes.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                setShowSaveTemplatePrompt(false);
+                void completeWorkout();
+              }}
+            >
+              Skip
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => { void handleSaveTemplateAtCompletion(); }}
+              loading={savingTemplate}
+              disabled={savingTemplate}
+            >
+              {savingTemplate ? 'Saving...' : 'Save Template'}
             </Button>
           </div>
         </div>

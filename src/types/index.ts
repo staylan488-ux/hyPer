@@ -55,6 +55,8 @@ export interface SplitExercise {
   notes: string | null;
 }
 
+export type WorkoutMode = 'split' | 'flexible';
+
 export interface Workout {
   id: string;
   user_id: string;
@@ -63,6 +65,31 @@ export interface Workout {
   notes: string | null;
   completed: boolean;
   sets: WorkoutSet[];
+}
+
+export interface FlexiblePlanItem {
+  exercise_id: string;
+  exercise_name?: string | null;
+  order: number;
+  target_sets?: number | null;
+  target_reps_min?: number | null;
+  target_reps_max?: number | null;
+  notes?: string | null;
+  hidden?: boolean;
+}
+
+export interface WorkoutDayPlan {
+  id: string;
+  workout_id: string;
+  day_label: string;
+  items: FlexiblePlanItem[];
+}
+
+export interface FlexDayTemplate {
+  id: string;
+  user_id: string;
+  label: string;
+  items: FlexiblePlanItem[];
 }
 
 export interface WorkoutSet {

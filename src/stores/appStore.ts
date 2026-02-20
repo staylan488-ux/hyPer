@@ -1,12 +1,105 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
-import type { Split, SplitDay, Workout, WorkoutSet, MacroTarget, VolumeLandmark, MuscleVolume, MuscleGroup } from '@/types';
+import type {
+  Split,
+  SplitDay,
+  Workout,
+  WorkoutSet,
+  MacroTarget,
+  VolumeLandmark,
+  MuscleVolume,
+  MuscleGroup,
+  WorkoutMode,
+  WorkoutDayPlan,
+  FlexDayTemplate,
+  FlexiblePlanItem,
+  Exercise,
+} from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
+
+const WORKOUT_MODE_STORAGE_KEY = 'program:workout-mode';
+
+function readWorkoutModeFallback(): WorkoutMode {
+  try {
+    const stored = globalThis.localStorage?.getItem(WORKOUT_MODE_STORAGE_KEY);
+    return stored === 'flexible' ? 'flexible' : 'split';
+  } catch {
+    return 'split';
+  }
+}
+
+function writeWorkoutModeFallback(mode: WorkoutMode): void {
+  try {
+    globalThis.localStorage?.setItem(WORKOUT_MODE_STORAGE_KEY, mode);
+  } catch {
+    // no-op
+  }
+}
+
+function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const value = item as Record<string, unknown>;
+      const exerciseId = typeof value.exercise_id === 'string' ? value.exercise_id : null;
+      if (!exerciseId) return null;
+
+      const order = typeof value.order === 'number' && Number.isFinite(value.order)
+        ? value.order
+        : index;
+
+      return {
+        exercise_id: exerciseId,
+        order,
+        exercise_name: typeof value.exercise_name === 'string' ? value.exercise_name : null,
+        target_sets: typeof value.target_sets === 'number' ? value.target_sets : null,
+        target_reps_min: typeof value.target_reps_min === 'number' ? value.target_reps_min : null,
+        target_reps_max: typeof value.target_reps_max === 'number' ? value.target_reps_max : null,
+        notes: typeof value.notes === 'string' ? value.notes : null,
+        hidden: Boolean(value.hidden),
+      } as FlexiblePlanItem;
+    })
+    .filter((item): item is FlexiblePlanItem => Boolean(item))
+    .sort((a, b) => a.order - b.order)
+    .map((item, index) => ({ ...item, order: index }));
+}
+
+function normalizeTargetSets(value: number | null | undefined): number {
+  if (!value || !Number.isFinite(value)) return 3;
+  return Math.max(1, Math.min(12, Math.round(value)));
+}
+
+function parseMovementNotesMap(raw: string | null): Record<string, string> {
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown> & { movementNotes?: Record<string, unknown> };
+    const source = parsed?.movementNotes && typeof parsed.movementNotes === 'object'
+      ? parsed.movementNotes
+      : parsed;
+
+    const next: Record<string, string> = {};
+    for (const [exerciseId, value] of Object.entries(source || {})) {
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      next[exerciseId] = trimmed.slice(0, 200);
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
 
 interface AppState {
   activeSplit: Split | null;
   splits: Split[];
   currentWorkout: Workout | null;
+  workoutMode: WorkoutMode;
+  currentWorkoutDayPlan: WorkoutDayPlan | null;
+  flexTemplates: FlexDayTemplate[];
   macroTarget: MacroTarget | null;
   volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
@@ -21,6 +114,7 @@ interface AppState {
 
   // Workout actions
   startWorkout: (splitDayId: string) => Promise<Workout | null>;
+  startFlexibleWorkout: (dayLabel: string, templateLabel?: string | null) => Promise<Workout | null>;
   fetchCurrentWorkout: () => Promise<void>;
   addWorkoutSet: (exerciseId: string) => Promise<void>;
   removeLastUncompletedSet: (exerciseId: string) => Promise<void>;
@@ -30,6 +124,18 @@ interface AppState {
   fetchWorkoutsByMonth: (month: Date) => Promise<Workout[]>;
   fetchWorkoutById: (workoutId: string) => Promise<Workout | null>;
   deleteWorkout: (workoutId: string) => Promise<void>;
+
+  // Flexible programming
+  fetchWorkoutMode: () => Promise<void>;
+  setWorkoutMode: (mode: WorkoutMode) => Promise<{ ok: boolean; reason?: string }>;
+  fetchCurrentWorkoutDayPlan: (workoutId?: string) => Promise<void>;
+  setFlexibleWorkoutLabel: (label: string) => Promise<void>;
+  addFlexibleExercise: (exercise: Exercise) => Promise<void>;
+  updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
+  removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
+  reorderFlexibleExercises: (exerciseIds: string[]) => Promise<void>;
+  fetchFlexTemplates: () => Promise<void>;
+  saveFlexibleTemplateFromCurrentWorkout: () => Promise<void>;
 
   // Macro targets
   fetchMacroTarget: () => Promise<void>;
@@ -45,6 +151,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeSplit: null,
   splits: [],
   currentWorkout: null,
+  workoutMode: 'split',
+  currentWorkoutDayPlan: null,
+  flexTemplates: [],
   macroTarget: null,
   volumeLandmarks: [],
   weeklyVolume: [],
@@ -162,6 +271,120 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().fetchSplits();
   },
 
+  fetchWorkoutMode: async () => {
+    const fallbackMode = readWorkoutModeFallback();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      set({ workoutMode: fallbackMode });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('program_preferences')
+      .select('workout_mode')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching workout mode, using local fallback:', error);
+      set({ workoutMode: fallbackMode });
+      return;
+    }
+
+    const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
+    set({ workoutMode: mode });
+    writeWorkoutModeFallback(mode);
+  },
+
+  setWorkoutMode: async (mode) => {
+    const { currentWorkout } = get();
+
+    if (currentWorkout && !currentWorkout.completed) {
+      return { ok: false, reason: 'Finish current workout before switching modes.' };
+    }
+
+    set({ workoutMode: mode });
+    writeWorkoutModeFallback(mode);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { ok: true };
+
+    const { error } = await supabase
+      .from('program_preferences')
+      .upsert({
+        user_id: user.id,
+        workout_mode: mode,
+      }, {
+        onConflict: 'user_id',
+      });
+
+    if (error) {
+      console.error('Error saving workout mode remotely, kept local mode:', error);
+      return { ok: true };
+    }
+
+    return { ok: true };
+  },
+
+  fetchFlexTemplates: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('flex_day_templates')
+      .select('id, user_id, label, items')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching flex templates:', error);
+      return;
+    }
+
+    const templates = (data || []).map((row) => ({
+      id: row.id,
+      user_id: row.user_id,
+      label: row.label,
+      items: normalizeFlexiblePlanItems(row.items),
+    } as FlexDayTemplate));
+
+    set({ flexTemplates: templates });
+  },
+
+  fetchCurrentWorkoutDayPlan: async (workoutId) => {
+    const targetWorkoutId = workoutId || get().currentWorkout?.id;
+    if (!targetWorkoutId) {
+      set({ currentWorkoutDayPlan: null });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('workout_day_plans')
+      .select('id, workout_id, day_label, items')
+      .eq('workout_id', targetWorkoutId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching workout day plan:', error);
+      return;
+    }
+
+    if (!data) {
+      set({ currentWorkoutDayPlan: null });
+      return;
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: data.id,
+        workout_id: data.workout_id,
+        day_label: data.day_label,
+        items: normalizeFlexiblePlanItems(data.items),
+      },
+    });
+  },
+
   startWorkout: async (splitDayId) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
@@ -182,7 +405,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (existing) {
-      set({ currentWorkout: existing as Workout });
+      set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
       return existing as Workout;
     }
 
@@ -231,7 +454,117 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (completeWorkout) {
-      set({ currentWorkout: completeWorkout as Workout });
+      set({ currentWorkout: completeWorkout as Workout, currentWorkoutDayPlan: null });
+      return completeWorkout as Workout;
+    }
+
+    return null;
+  },
+
+  startFlexibleWorkout: async (dayLabel, templateLabel) => {
+    const label = dayLabel.trim();
+    if (!label) return null;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    const { data: existing, error: existingError } = await supabase
+      .from('workouts')
+      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .eq('completed', false)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error('Error checking existing workout:', existingError);
+    }
+
+    if (existing) {
+      await get().fetchCurrentWorkoutDayPlan(existing.id);
+      set({ currentWorkout: existing as Workout });
+      return existing as Workout;
+    }
+
+    const { data: workout, error } = await supabase
+      .from('workouts')
+      .insert({
+        user_id: user.id,
+        split_day_id: null,
+        date: today,
+        completed: false,
+      })
+      .select()
+      .single();
+
+    if (error || !workout) return null;
+
+    let templateItems: FlexiblePlanItem[] = [];
+
+    if (templateLabel?.trim()) {
+      const { data: template } = await supabase
+        .from('flex_day_templates')
+        .select('items')
+        .eq('user_id', user.id)
+        .eq('label', templateLabel.trim())
+        .maybeSingle();
+
+      templateItems = normalizeFlexiblePlanItems(template?.items);
+    }
+
+    const { data: createdPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .insert({
+        workout_id: workout.id,
+        day_label: label,
+        items: templateItems,
+      })
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError) {
+      console.error('Error creating flexible workout plan:', planError);
+    }
+
+    if (templateItems.length > 0) {
+      for (const item of templateItems) {
+        if (item.hidden) continue;
+        const targetSets = normalizeTargetSets(item.target_sets);
+        for (let setNumber = 1; setNumber <= targetSets; setNumber += 1) {
+          await supabase.from('sets').insert({
+            workout_id: workout.id,
+            exercise_id: item.exercise_id,
+            set_number: setNumber,
+            completed: false,
+          });
+        }
+      }
+    }
+
+    const { data: completeWorkout, error: fetchError } = await supabase
+      .from('workouts')
+      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .eq('id', workout.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error fetching flexible workout:', fetchError);
+    }
+
+    if (completeWorkout) {
+      set({
+        currentWorkout: completeWorkout as Workout,
+        currentWorkoutDayPlan: createdPlan
+          ? {
+              id: createdPlan.id,
+              workout_id: createdPlan.workout_id,
+              day_label: createdPlan.day_label,
+              items: normalizeFlexiblePlanItems(createdPlan.items),
+            }
+          : null,
+      });
       return completeWorkout as Workout;
     }
 
@@ -259,9 +592,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (workout && !workout.completed) {
-      set({ currentWorkout: workout as Workout });
+      const nextWorkout = workout as Workout;
+      set({ currentWorkout: nextWorkout });
+
+      if (nextWorkout.split_day_id === null) {
+        await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
+      } else {
+        set({ currentWorkoutDayPlan: null });
+      }
     } else if (!currentWorkout) {
-      set({ currentWorkout: null });
+      set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
   },
 
@@ -299,6 +639,299 @@ export const useAppStore = create<AppState>((set, get) => ({
         sets: [...latestWorkout.sets, createdSet as WorkoutSet],
       },
     });
+  },
+
+  setFlexibleWorkoutLabel: async (label) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+
+    const { data, error } = await supabase
+      .from('workout_day_plans')
+      .update({ day_label: trimmed })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (error || !data) {
+      if (error) console.error('Error updating flexible day label:', error);
+      return;
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: data.id,
+        workout_id: data.workout_id,
+        day_label: data.day_label,
+        items: normalizeFlexiblePlanItems(data.items),
+      },
+    });
+  },
+
+  addFlexibleExercise: async (exercise) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+
+    const existing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exercise.id);
+
+    const nextItems = existing
+      ? currentWorkoutDayPlan.items.map((item) => (
+          item.exercise_id === exercise.id
+            ? { ...item, hidden: false, exercise_name: exercise.name }
+            : item
+        ))
+      : [
+          ...currentWorkoutDayPlan.items,
+          {
+            exercise_id: exercise.id,
+            exercise_name: exercise.name,
+            order: currentWorkoutDayPlan.items.length,
+            target_sets: 3,
+            target_reps_min: 8,
+            target_reps_max: 12,
+            notes: null,
+            hidden: false,
+          },
+        ];
+
+    const normalizedItems = nextItems
+      .sort((a, b) => a.order - b.order)
+      .map((item, index) => ({ ...item, order: index }));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: normalizedItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error adding flexible exercise:', planError);
+      return;
+    }
+
+    const existingSetsCount = currentWorkout.sets.filter((set) => set.exercise_id === exercise.id).length;
+    if (existingSetsCount === 0) {
+      const targetSets = normalizeTargetSets(existing?.target_sets ?? 3);
+      for (let setNumber = 1; setNumber <= targetSets; setNumber += 1) {
+        await supabase.from('sets').insert({
+          workout_id: currentWorkout.id,
+          exercise_id: exercise.id,
+          set_number: setNumber,
+          completed: false,
+        });
+      }
+
+      const { data: refreshedWorkout } = await supabase
+        .from('workouts')
+        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .eq('id', currentWorkout.id)
+        .maybeSingle();
+
+      if (refreshedWorkout) {
+        set({ currentWorkout: refreshedWorkout as Workout });
+      }
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
+  updateFlexibleExerciseMeta: async (exerciseId, updates) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+    const workout = currentWorkout;
+
+    const nextItems = currentWorkoutDayPlan.items.map((item) => (
+      item.exercise_id === exerciseId ? { ...item, ...updates } : item
+    ));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error updating flexible exercise metadata:', planError);
+      return;
+    }
+
+    const setsConfigChanged = typeof updates.target_sets === 'number' && Number.isFinite(updates.target_sets);
+
+    if (setsConfigChanged) {
+      const desiredSets = normalizeTargetSets(updates.target_sets);
+      const existingSets = workout.sets
+        .filter((set) => set.exercise_id === exerciseId)
+        .sort((a, b) => a.set_number - b.set_number);
+
+      if (existingSets.length < desiredSets) {
+        for (let setNumber = existingSets.length + 1; setNumber <= desiredSets; setNumber += 1) {
+          await supabase.from('sets').insert({
+            workout_id: workout.id,
+            exercise_id: exerciseId,
+            set_number: setNumber,
+            completed: false,
+          });
+        }
+      }
+
+      if (existingSets.length > desiredSets) {
+        const removable = existingSets
+          .filter((set) => !set.completed)
+          .sort((a, b) => b.set_number - a.set_number);
+
+        for (const set of removable) {
+          if (set.set_number <= desiredSets) break;
+          await supabase.from('sets').delete().eq('id', set.id);
+        }
+      }
+
+      const { data: refreshedWorkout } = await supabase
+        .from('workouts')
+        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .eq('id', workout.id)
+        .maybeSingle();
+
+      if (refreshedWorkout) {
+        set({ currentWorkout: refreshedWorkout as Workout });
+      }
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
+  removeFlexibleExerciseFromPlan: async (exerciseId) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+
+    const nextItems = currentWorkoutDayPlan.items.map((item) => (
+      item.exercise_id === exerciseId ? { ...item, hidden: true } : item
+    ));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error removing flexible exercise from plan:', planError);
+      return;
+    }
+
+    const uncompletedSetIds = currentWorkout.sets
+      .filter((set) => set.exercise_id === exerciseId && !set.completed)
+      .map((set) => set.id);
+
+    if (uncompletedSetIds.length > 0) {
+      await supabase.from('sets').delete().in('id', uncompletedSetIds);
+
+      const { data: refreshedWorkout } = await supabase
+        .from('workouts')
+        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .eq('id', currentWorkout.id)
+        .maybeSingle();
+
+      if (refreshedWorkout) {
+        set({ currentWorkout: refreshedWorkout as Workout });
+      }
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
+  reorderFlexibleExercises: async (exerciseIds) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+
+    const orderedMap = new Map(exerciseIds.map((id, index) => [id, index]));
+
+    const nextItems = [...currentWorkoutDayPlan.items]
+      .sort((a, b) => {
+        const orderA = orderedMap.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+        const orderB = orderedMap.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.order - b.order;
+      })
+      .map((item, index) => ({ ...item, order: index }));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error reordering flexible exercises:', planError);
+      return;
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
+  saveFlexibleTemplateFromCurrentWorkout: async () => {
+    const { currentWorkoutDayPlan, currentWorkout } = get();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !currentWorkoutDayPlan) return;
+
+    const label = currentWorkoutDayPlan.day_label.trim();
+    if (!label) return;
+
+    const movementNotes = parseMovementNotesMap(currentWorkout?.notes || null);
+    const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => ({
+      ...item,
+      notes: movementNotes[item.exercise_id] ?? item.notes ?? null,
+    }));
+
+    const { error } = await supabase
+      .from('flex_day_templates')
+      .upsert({
+        user_id: user.id,
+        label,
+        items: itemsWithNotes,
+      }, {
+        onConflict: 'user_id,label',
+      });
+
+    if (error) {
+      console.error('Error saving flexible template:', error);
+      return;
+    }
+
+    await get().fetchFlexTemplates();
   },
 
   removeLastUncompletedSet: async (exerciseId) => {
@@ -398,7 +1031,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .update({ completed: true })
       .eq('id', currentWorkout.id);
 
-    set({ currentWorkout: null });
+    set({ currentWorkout: null, currentWorkoutDayPlan: null });
     await get().calculateWeeklyVolume();
   },
 
