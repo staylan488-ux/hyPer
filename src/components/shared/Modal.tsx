@@ -8,9 +8,10 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: ReactNode;
+  contentClassName?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, contentClassName = '' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
               </motion.button>
             </div>
             <motion.div
-              className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-4 sm:pb-6"
+              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-4 sm:pb-6 ${contentClassName}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1, duration: 0.2 }}

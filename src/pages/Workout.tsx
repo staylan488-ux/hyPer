@@ -134,6 +134,7 @@ export function Workout() {
 
   const [showFlexibleStart, setShowFlexibleStart] = useState(false);
   const [flexibleDayLabel, setFlexibleDayLabel] = useState('');
+  const [inSessionFlexibleDayLabel, setInSessionFlexibleDayLabel] = useState('');
   const [selectedTemplateLabel, setSelectedTemplateLabel] = useState<string>('');
   const [startingFlexibleWorkout, setStartingFlexibleWorkout] = useState(false);
   const [showSaveTemplatePrompt, setShowSaveTemplatePrompt] = useState(false);
@@ -655,6 +656,12 @@ export function Workout() {
     }
   }, [workoutMode, currentWorkout?.id, currentWorkout?.split_day_id, fetchCurrentWorkoutDayPlan]);
 
+  useEffect(() => {
+    if (workoutMode !== 'flexible' || currentWorkout?.split_day_id !== null) return;
+
+    setInSessionFlexibleDayLabel(currentWorkoutDayPlan?.day_label || '');
+  }, [workoutMode, currentWorkout?.split_day_id, currentWorkoutDayPlan?.id, currentWorkoutDayPlan?.day_label]);
+
   const activeFlexibleItems = useMemo(() => (
     (currentWorkoutDayPlan?.items || [])
       .filter((item) => !item.hidden)
@@ -693,6 +700,19 @@ export function Workout() {
   const handleFlexibleTargetSetsChange = (exerciseId: string, value: number) => {
     const targetSets = normalizeFlexibleTargetSets(value);
     void updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets });
+  };
+
+  const handleInSessionDayLabelBlur = () => {
+    if (!currentWorkoutDayPlan || currentWorkout?.split_day_id !== null) return;
+
+    const trimmedDraft = inSessionFlexibleDayLabel.trim();
+    if (!trimmedDraft) {
+      setInSessionFlexibleDayLabel(currentWorkoutDayPlan.day_label || '');
+      return;
+    }
+
+    if (trimmedDraft === currentWorkoutDayPlan.day_label) return;
+    void setFlexibleWorkoutLabel(trimmedDraft);
   };
 
   const handleFlexibleReorder = async (exerciseId: string, direction: 'up' | 'down') => {
@@ -1187,8 +1207,9 @@ export function Workout() {
             <div className="flex items-center justify-between gap-3">
               <Input
                 label="Day Label"
-                value={currentWorkoutDayPlan?.day_label || ''}
-                onChange={(event) => { void setFlexibleWorkoutLabel(event.target.value); }}
+                value={inSessionFlexibleDayLabel}
+                onChange={(event) => setInSessionFlexibleDayLabel(event.target.value)}
+                onBlur={handleInSessionDayLabelBlur}
                 placeholder="Upper / Push / Legs"
                 className="flex-1"
               />

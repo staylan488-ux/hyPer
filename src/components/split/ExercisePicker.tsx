@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import { Loader2, Search, Dumbbell } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Modal, Input } from '@/components/shared';
 import { supabase } from '@/lib/supabase';
-import { springs, staggerContainer, fadeUp } from '@/lib/animations';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
 
@@ -35,6 +33,7 @@ function ExercisePickerContent({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | 'all'>(
     initialMuscleGroup ?? 'all'
   );
@@ -77,8 +76,8 @@ function ExercisePickerContent({
     }
 
     // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
+    if (deferredSearchQuery.trim()) {
+      const query = deferredSearchQuery.toLowerCase().trim();
       result = result.filter(
         (exercise) =>
           exercise.name.toLowerCase().includes(query) ||
@@ -88,7 +87,7 @@ function ExercisePickerContent({
     }
 
     return result;
-  }, [exercises, selectedMuscle, searchQuery]);
+  }, [deferredSearchQuery, exercises, selectedMuscle]);
 
   const handleSelect = (exercise: Exercise) => {
     onSelect(exercise);
@@ -146,7 +145,7 @@ function ExercisePickerContent({
       </div>
 
       {/* Exercise list */}
-      <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
+      <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1 overscroll-contain touch-pan-y">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Loader2 className="w-5 h-5 animate-spin text-[var(--color-muted)]" />
@@ -166,52 +165,42 @@ function ExercisePickerContent({
             </p>
           </div>
         ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${selectedMuscle}-${searchQuery}`}
-              className="space-y-1.5"
-              variants={staggerContainer}
-              initial="hidden"
-              animate="visible"
-            >
-              {filteredExercises.map((exercise) => (
-                <motion.button
-                  key={exercise.id}
-                  variants={fadeUp}
-                  transition={springs.smooth}
-                  onClick={() => handleSelect(exercise)}
-                  className="w-full text-left px-3.5 py-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:bg-[var(--color-surface-high)] transition-colors group"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-[var(--color-text)] group-hover:text-[#E8E4DE] transition-colors truncate">
-                      {exercise.name}
-                    </p>
-                    {exercise.is_compound && (
-                      <span className="flex-shrink-0 px-2 py-0.5 rounded-[10px] bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[9px] tracking-[0.1em] uppercase">
-                        Compound
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                      {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
+          <div key={selectedMuscle} className="space-y-1.5">
+            {filteredExercises.map((exercise) => (
+              <button
+                key={exercise.id}
+                onClick={() => handleSelect(exercise)}
+                className="w-full text-left px-3.5 py-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:bg-[var(--color-surface-high)] transition-colors group"
+                type="button"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-[var(--color-text)] group-hover:text-[#E8E4DE] transition-colors truncate">
+                    {exercise.name}
+                  </p>
+                  {exercise.is_compound && (
+                    <span className="flex-shrink-0 px-2 py-0.5 rounded-[10px] bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[9px] tracking-[0.1em] uppercase">
+                      Compound
                     </span>
-                    {exercise.muscle_group_secondary && (
-                      <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                        {MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}
-                      </span>
-                    )}
-                    {exercise.equipment && (
-                      <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                        {exercise.equipment}
-                      </span>
-                    )}
-                  </div>
-                </motion.button>
-              ))}
-            </motion.div>
-          </AnimatePresence>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
+                    {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
+                  </span>
+                  {exercise.muscle_group_secondary && (
+                    <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
+                      {MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}
+                    </span>
+                  )}
+                  {exercise.equipment && (
+                    <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
+                      {exercise.equipment}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -226,7 +215,12 @@ export function ExercisePicker({
   title,
 }: ExercisePickerProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title || 'Choose Exercise'}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title || 'Choose Exercise'}
+      contentClassName="touch-pan-y"
+    >
       <ExercisePickerContent
         onClose={onClose}
         onSelect={onSelect}
