@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
+import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Modal } from '@/components/shared';
@@ -12,7 +12,7 @@ import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { loadPlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import type { Split, MuscleGroup } from '@/types';
+import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
 
 
 export function Splits() {
@@ -20,10 +20,15 @@ export function Splits() {
     splits,
     workoutMode,
     currentWorkout,
+    flexTemplates,
     fetchSplits,
     fetchWorkoutMode,
     fetchCurrentWorkout,
+    fetchFlexTemplates,
     setWorkoutMode,
+    startFlexibleWorkoutFromTemplate,
+    renameFlexTemplate,
+    deleteFlexTemplate,
     setActiveSplit,
     deleteSplit,
   } = useAppStore();
@@ -33,8 +38,15 @@ export function Splits() {
   const [showMenu, setShowMenu] = useState<string | null>(null);
   const [expandedSplit, setExpandedSplit] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [showPlanStartPrompt, setShowPlanStartPrompt] = useState(false);
   const [promptSplit, setPromptSplit] = useState<{ id: string; name: string } | null>(null);
+
+  const [templateToDelete, setTemplateToDelete] = useState<FlexDayTemplate | null>(null);
+  const [templateToRename, setTemplateToRename] = useState<FlexDayTemplate | null>(null);
+  const [renamingTemplate, setRenamingTemplate] = useState(false);
+  const [startingTemplateLabel, setStartingTemplateLabel] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // ── Edit state ──
   const [showEditor, setShowEditor] = useState(false);
@@ -53,8 +65,9 @@ export function Splits() {
       fetchSplits(),
       fetchWorkoutMode(),
       fetchCurrentWorkout(),
+      fetchFlexTemplates(),
     ]);
-  }, [fetchCurrentWorkout, fetchSplits, fetchWorkoutMode]);
+  }, [fetchCurrentWorkout, fetchFlexTemplates, fetchSplits, fetchWorkoutMode]);
 
   const handleEdit = useCallback((split: Split) => {
     startEdit(split);
@@ -101,6 +114,81 @@ export function Splits() {
     const result = await setWorkoutMode(mode);
     if (!result.ok && result.reason) {
       window.alert(result.reason);
+      return;
+    }
+
+    if (mode === 'flexible') {
+      setShowBuilder(false);
+      setShowMenu(null);
+      setExpandedSplit(null);
+      setExpandedDay(null);
+      await fetchFlexTemplates();
+    }
+  };
+
+  const handleStartFromTemplate = async (templateLabel: string) => {
+    try {
+      setStartingTemplateLabel(templateLabel);
+      const started = await startFlexibleWorkoutFromTemplate(templateLabel);
+
+      if (!started) {
+        window.alert('You already have an in-progress split workout today. Finish it before starting from a flexible template.');
+        return;
+      }
+
+      navigate('/workout');
+    } finally {
+      setStartingTemplateLabel(null);
+    }
+  };
+
+  const handleOpenRenameTemplate = (template: FlexDayTemplate) => {
+    setTemplateToRename(template);
+    setRenameValue(template.label);
+  };
+
+  const handleConfirmRenameTemplate = async () => {
+    if (!templateToRename) return;
+
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      window.alert('Template label is required.');
+      return;
+    }
+
+    try {
+      setRenamingTemplate(true);
+      const result = await renameFlexTemplate(templateToRename.id, trimmed, false);
+
+      if (!result.ok && result.conflictLabel) {
+        const confirmed = window.confirm(`A template named "${result.conflictLabel}" already exists. Overwrite it?`);
+        if (!confirmed) return;
+
+        const overwriteResult = await renameFlexTemplate(templateToRename.id, trimmed, true);
+        if (!overwriteResult.ok && overwriteResult.reason) {
+          window.alert(overwriteResult.reason);
+          return;
+        }
+      } else if (!result.ok && result.reason) {
+        window.alert(result.reason);
+        return;
+      }
+
+      setTemplateToRename(null);
+      setRenameValue('');
+    } finally {
+      setRenamingTemplate(false);
+    }
+  };
+
+  const handleConfirmDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+
+    await deleteFlexTemplate(templateToDelete.id);
+    setTemplateToDelete(null);
+
+    if (expandedTemplateId === templateToDelete.id) {
+      setExpandedTemplateId(null);
     }
   };
 
@@ -132,14 +220,18 @@ export function Splits() {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-              {splits.length} {splits.length === 1 ? 'Program' : 'Programs'}
+              {workoutMode === 'flexible'
+                ? `${flexTemplates.length} ${flexTemplates.length === 1 ? 'Template' : 'Templates'}`
+                : `${splits.length} ${splits.length === 1 ? 'Program' : 'Programs'}`}
             </p>
             <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training</h1>
           </div>
-          <Button size="sm" onClick={() => setShowBuilder(true)}>
-            <Plus className="w-4 h-4 mr-1" />
-            New
-          </Button>
+          {workoutMode === 'split' && (
+            <Button size="sm" onClick={() => setShowBuilder(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              New
+            </Button>
+          )}
         </div>
 
         <div className="mt-4 inline-flex items-center gap-1 rounded-[14px] border border-white/10 bg-[#1F1F1F] p-1">
@@ -173,7 +265,118 @@ export function Splits() {
         )}
       </motion.header>
 
-      {splits.length === 0 ? (
+      {workoutMode === 'flexible' ? (
+        <div className="space-y-3">
+          <Card variant="slab" className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Flexible Templates</p>
+              <p className="text-xs text-[#9A9A9A] mt-1">
+                {flexTemplates.length} saved {flexTemplates.length === 1 ? 'template' : 'templates'}
+              </p>
+            </div>
+            <Button onClick={() => navigate('/workout')}>Start Flexible Workout</Button>
+          </Card>
+
+          {flexTemplates.length === 0 ? (
+            <Card variant="slab" className="text-center py-16">
+              <p className="text-xs text-[#6B6B6B] mb-6">No flexible templates yet. Complete a flexible workout to auto-save one.</p>
+              <Button onClick={() => navigate('/workout')}>
+                Start Flexible Workout
+              </Button>
+            </Card>
+          ) : (
+            flexTemplates.map((template, index) => {
+              const isExpanded = expandedTemplateId === template.id;
+              const visibleItems = template.items.filter((item) => !item.hidden);
+
+              return (
+                <motion.div
+                  key={template.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...springs.smooth, delay: index * 0.06 }}
+                >
+                  <Card variant="slab">
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        className="flex-1 text-left"
+                        onClick={() => setExpandedTemplateId(isExpanded ? null : template.id)}
+                      >
+                        <h3 className="text-sm text-[#E8E4DE]">{template.label}</h3>
+                        <p className="text-[10px] text-[#6B6B6B] mt-1">{visibleItems.length} exercises</p>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          onClick={() => { void handleStartFromTemplate(template.label); }}
+                          disabled={Boolean(startingTemplateLabel)}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          {startingTemplateLabel === template.label ? 'Starting...' : 'Start'}
+                        </Button>
+                        <button
+                          type="button"
+                          className="p-2 rounded-[10px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 transition-colors"
+                          onClick={() => handleOpenRenameTemplate(template)}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-2 rounded-[10px] text-[#8B6B6B] hover:text-[#D39B9B] hover:bg-white/5 transition-colors"
+                          onClick={() => setTemplateToDelete(template)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
+                          <ChevronDown className="w-4 h-4 text-[#6B6B6B]" />
+                        </motion.div>
+                      </div>
+                    </div>
+
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          className="mt-4 pt-4 border-t border-white/5 space-y-2"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={springs.smooth}
+                        >
+                          {visibleItems.length > 0 ? (
+                            visibleItems.map((item, itemIndex) => {
+                              const repsLabel = typeof item.target_reps_min === 'number' && typeof item.target_reps_max === 'number'
+                                ? `${item.target_reps_min}-${item.target_reps_max}`
+                                : '—';
+                              const setsLabel = typeof item.target_sets === 'number' ? `${item.target_sets}` : '—';
+
+                              return (
+                                <div key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="flex items-center gap-3 px-3 py-2 rounded-[12px] bg-[#242424]">
+                                  <div className="w-6 h-6 rounded-[8px] bg-[#2E2E2E] flex items-center justify-center text-[9px] text-[#6B6B6B] tabular-nums">
+                                    {itemIndex + 1}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] text-[#E8E4DE] truncate">{item.exercise_name || 'Exercise'}</p>
+                                  </div>
+                                  <p className="text-[10px] text-[#6B6B6B] tabular-nums">{setsLabel}x{repsLabel}</p>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-[10px] text-[#6B6B6B] py-2">No visible exercises.</p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
+      ) : splits.length === 0 ? (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
           <Card variant="slab" className="text-center py-16">
             <p className="text-xs text-[#6B6B6B] mb-6">No programs created</p>
@@ -404,6 +607,77 @@ export function Splits() {
           })}
         </div>
       )}
+
+      <Modal
+        isOpen={Boolean(templateToRename)}
+        onClose={() => {
+          if (renamingTemplate) return;
+          setTemplateToRename(null);
+          setRenameValue('');
+        }}
+        title="Rename Template"
+      >
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            maxLength={40}
+            placeholder="Template label"
+            className="w-full rounded-[14px] border border-white/10 bg-[#1A1A1A] px-4 py-3 text-sm text-[#E8E4DE] placeholder:text-[#6B6B6B] outline-none focus:border-[#C4A484]"
+          />
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                setTemplateToRename(null);
+                setRenameValue('');
+              }}
+              disabled={renamingTemplate}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => { void handleConfirmRenameTemplate(); }}
+              disabled={renamingTemplate}
+            >
+              {renamingTemplate ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(templateToDelete)}
+        onClose={() => setTemplateToDelete(null)}
+        title="Delete Template"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[#E8E4DE]">
+            Delete <span className="font-semibold">{templateToDelete?.label}</span>?
+          </p>
+          <p className="text-xs text-[#6B6B6B] leading-relaxed">
+            This removes the template from your flexible dashboard.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setTemplateToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => { void handleConfirmDeleteTemplate(); }}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={showPlanStartPrompt}
