@@ -677,7 +677,13 @@ export function Workout() {
 
     try {
       setStartingFlexibleWorkout(true);
-      await startFlexibleWorkout(trimmed, selectedTemplateLabel || undefined);
+      const started = await startFlexibleWorkout(trimmed, selectedTemplateLabel || undefined);
+
+      if (!started) {
+        window.alert('You already have an in-progress split workout today. Finish it before starting a flexible workout.');
+        return;
+      }
+
       setShowFlexibleStart(false);
     } finally {
       setStartingFlexibleWorkout(false);
