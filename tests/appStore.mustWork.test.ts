@@ -763,4 +763,179 @@ describe('must-work store contracts', () => {
 
     expect(useAppStore.getState().weeklyVolume).toEqual([]);
   });
+
+  it('adds flexible superset and inserts partner sets', async () => {
+    const fetchWorkoutChain = createChain({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'workout-1',
+          user_id: 'user-1',
+          split_day_id: null,
+          date: '2026-02-21',
+          notes: null,
+          completed: false,
+          sets: [
+            {
+              id: 'set-a1',
+              workout_id: 'workout-1',
+              exercise_id: 'exercise-a',
+              set_number: 1,
+              completed: false,
+              weight: null,
+              reps: null,
+              rpe: null,
+              completed_at: null,
+            },
+            {
+              id: 'set-a2',
+              workout_id: 'workout-1',
+              exercise_id: 'exercise-a',
+              set_number: 2,
+              completed: false,
+              weight: null,
+              reps: null,
+              rpe: null,
+              completed_at: null,
+            },
+            {
+              id: 'set-a3',
+              workout_id: 'workout-1',
+              exercise_id: 'exercise-a',
+              set_number: 3,
+              completed: false,
+              weight: null,
+              reps: null,
+              rpe: null,
+              completed_at: null,
+            },
+          ],
+        },
+        error: null,
+      }),
+    });
+
+    const plansChain = createChain({
+      single: vi.fn().mockResolvedValue({
+        data: {
+          id: 'plan-1',
+          workout_id: 'workout-1',
+          day_label: 'Upper',
+          items: [
+            {
+              exercise_id: 'exercise-a',
+              exercise_name: 'Bench Press',
+              order: 0,
+              target_sets: 3,
+              target_reps_min: 8,
+              target_reps_max: 12,
+              notes: null,
+              hidden: false,
+              superset_group_id: 'group-1',
+            },
+            {
+              exercise_id: 'exercise-b',
+              exercise_name: 'Row',
+              order: 1,
+              target_sets: 3,
+              target_reps_min: 8,
+              target_reps_max: 12,
+              notes: null,
+              hidden: false,
+              superset_group_id: 'group-1',
+            },
+          ],
+        },
+        error: null,
+      }),
+    });
+
+    const setsInsertChain = createChain();
+
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'workout-1',
+        user_id: 'user-1',
+        split_day_id: null,
+        date: '2026-02-21',
+        notes: null,
+        completed: false,
+        sets: [
+          {
+            id: 'set-a1',
+            workout_id: 'workout-1',
+            exercise_id: 'exercise-a',
+            set_number: 1,
+            completed: false,
+            weight: null,
+            reps: null,
+            rpe: null,
+            completed_at: null,
+          },
+          {
+            id: 'set-a2',
+            workout_id: 'workout-1',
+            exercise_id: 'exercise-a',
+            set_number: 2,
+            completed: false,
+            weight: null,
+            reps: null,
+            rpe: null,
+            completed_at: null,
+          },
+          {
+            id: 'set-a3',
+            workout_id: 'workout-1',
+            exercise_id: 'exercise-a',
+            set_number: 3,
+            completed: false,
+            weight: null,
+            reps: null,
+            rpe: null,
+            completed_at: null,
+          },
+        ],
+      },
+      currentWorkoutDayPlan: {
+        id: 'plan-1',
+        workout_id: 'workout-1',
+        day_label: 'Upper',
+        items: [
+          {
+            exercise_id: 'exercise-a',
+            exercise_name: 'Bench Press',
+            order: 0,
+            target_sets: 3,
+            target_reps_min: 8,
+            target_reps_max: 12,
+            notes: null,
+            hidden: false,
+            superset_group_id: null,
+          },
+        ],
+      },
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workout_day_plans') return plansChain;
+      if (table === 'sets') return setsInsertChain;
+      if (table === 'workouts') return fetchWorkoutChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().addFlexibleSuperset('exercise-a', {
+      id: 'exercise-b',
+      name: 'Row',
+      muscle_group: 'back',
+      muscle_group_secondary: null,
+      equipment: 'barbell',
+      is_compound: true,
+    });
+
+    expect(plansChain.update).toHaveBeenCalled();
+    expect(setsInsertChain.insert).toHaveBeenCalledTimes(3);
+
+    const updatedPlan = useAppStore.getState().currentWorkoutDayPlan;
+    const groupIds = new Set((updatedPlan?.items || []).map((item) => item.superset_group_id).filter(Boolean));
+    expect(groupIds.size).toBe(1);
+  });
 });

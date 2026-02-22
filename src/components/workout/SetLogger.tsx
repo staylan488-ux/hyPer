@@ -9,10 +9,11 @@ import type { WorkoutSet } from '@/types';
 interface SetLoggerProps {
   set: WorkoutSet;
   setNumber: number;
-  onComplete?: () => void;
+  onComplete?: (set: WorkoutSet) => void;
+  onBeforeComplete?: (set: WorkoutSet) => Promise<true | string> | true | string;
 }
 
-export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
+export function SetLogger({ set, setNumber, onComplete, onBeforeComplete }: SetLoggerProps) {
   const { logSet } = useAppStore();
   const [weight, setWeight] = useState(set.weight?.toString() || '');
   const [reps, setReps] = useState(set.reps?.toString() || '');
@@ -25,6 +26,17 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
 
     try {
       setSaving(true);
+
+      if (onBeforeComplete) {
+        const verdict = await onBeforeComplete(set);
+        if (verdict !== true) {
+          if (typeof verdict === 'string' && verdict.trim()) {
+            window.alert(verdict);
+          }
+          return;
+        }
+      }
+
       await logSet(
         set.exercise_id,
         set.set_number,
@@ -34,7 +46,7 @@ export function SetLogger({ set, setNumber, onComplete }: SetLoggerProps) {
       );
 
       setIsEditing(false);
-      onComplete?.();
+      onComplete?.(set);
     } catch (error) {
       console.error('Failed to log set:', error);
     } finally {

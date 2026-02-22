@@ -86,6 +86,7 @@ type CustomExerciseDraft = {
   target_reps_max: number;
   notes: string | null;
   custom_muscle_group: MuscleGroup;
+  superset_group_id: string | null;
 };
 
 type CustomDayDraft = {
@@ -120,6 +121,14 @@ function normalizeCustomSetRange(exercise: Pick<CustomExerciseDraft, 'target_set
   return normalizeSetRange(exercise.target_sets_min, exercise.target_sets, exercise.target_sets_max);
 }
 
+function createSupersetGroupId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `superset-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const { createSplit } = useAppStore();
   const [step, setStep] = useState<Step>('choose');
@@ -144,6 +153,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState<MuscleGroup>('core');
   const [customError, setCustomError] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<{ message: string; tone: 'ok' | 'info' } | null>(null);
+  const [supersetSourceLocalId, setSupersetSourceLocalId] = useState<string | null>(null);
 
   const recommendedTemplate = useMemo(
     () => recommendProgramTemplate(splitTemplates, guidedAnswers),
@@ -202,12 +212,64 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
   useEffect(() => {
     setTapFeedback(null);
+    setSupersetSourceLocalId(null);
   }, [activeCustomDayIndex, step]);
 
   const activeCustomDay = days[activeCustomDayIndex];
 
+  const addSupersetExerciseToCustomDay = (sourceLocalId: string, exercise: { id: string; name: string }) => {
+    if (!activeCustomDay) return;
+
+    if (activeCustomDay.exercises.some((item) => item.exercise_id === exercise.id)) {
+      setTapFeedback({ message: `${exercise.name} is already added`, tone: 'info' });
+      return;
+    }
+
+    setDays((current) =>
+      current.map((day, dayIndex) => {
+        if (dayIndex !== activeCustomDayIndex) return day;
+
+        const sourceIndex = day.exercises.findIndex((entry) => entry.local_id === sourceLocalId);
+        if (sourceIndex < 0) return day;
+
+        const source = day.exercises[sourceIndex];
+        const supersetGroupId = source.superset_group_id || createSupersetGroupId();
+
+        const nextExercises = day.exercises.map((entry) => (
+          entry.local_id === source.local_id
+            ? { ...entry, superset_group_id: supersetGroupId }
+            : entry
+        ));
+
+        nextExercises.splice(sourceIndex + 1, 0, {
+          local_id: createLocalId(),
+          exercise_id: exercise.id,
+          name: exercise.name,
+          target_sets: source.target_sets,
+          target_sets_min: source.target_sets_min,
+          target_sets_max: source.target_sets_max,
+          target_reps_min: source.target_reps_min,
+          target_reps_max: source.target_reps_max,
+          notes: null,
+          custom_muscle_group: source.custom_muscle_group,
+          superset_group_id: supersetGroupId,
+        });
+
+        return { ...day, exercises: nextExercises };
+      })
+    );
+
+    setSupersetSourceLocalId(null);
+    setTapFeedback({ message: `Added ${exercise.name} as superset`, tone: 'ok' });
+  };
+
   const addExerciseToCustomDay = (exercise: { id: string; name: string }) => {
     if (!activeCustomDay) return;
+
+    if (supersetSourceLocalId) {
+      addSupersetExerciseToCustomDay(supersetSourceLocalId, exercise);
+      return;
+    }
 
     if (activeCustomDay.exercises.some((item) => item.exercise_id === exercise.id)) {
       setTapFeedback({ message: `${exercise.name} is already added`, tone: 'info' });
@@ -233,6 +295,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               target_reps_max: 12,
               notes: null,
               custom_muscle_group: 'core',
+              superset_group_id: null,
             },
           ],
         };
@@ -276,6 +339,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               target_reps_max: 12,
               notes: null,
               custom_muscle_group: customExerciseMuscle,
+              superset_group_id: null,
             },
           ],
         };
@@ -295,11 +359,37 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
     setDays((current) =>
       current.map((day, index) => {
         if (index !== dayIndex) return day;
+
+        const source = day.exercises.find((exercise) => exercise.local_id === localId);
+        if (!source) return day;
+
+        const nextSource = updater(source);
+        const setsChanged = (
+          nextSource.target_sets !== source.target_sets
+          || nextSource.target_sets_min !== source.target_sets_min
+          || nextSource.target_sets_max !== source.target_sets_max
+        );
+
         return {
           ...day,
-          exercises: day.exercises.map((exercise) =>
-            exercise.local_id === localId ? updater(exercise) : exercise
-          ),
+          exercises: day.exercises.map((exercise) => {
+            if (exercise.local_id === localId) return nextSource;
+
+            if (
+              setsChanged
+              && source.superset_group_id
+              && exercise.superset_group_id === source.superset_group_id
+            ) {
+              return {
+                ...exercise,
+                target_sets: nextSource.target_sets,
+                target_sets_min: nextSource.target_sets_min,
+                target_sets_max: nextSource.target_sets_max,
+              };
+            }
+
+            return exercise;
+          }),
         };
       })
     );
@@ -309,9 +399,19 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
     setDays((current) =>
       current.map((day, index) => {
         if (index !== dayIndex) return day;
+
+        const removing = day.exercises.find((exercise) => exercise.local_id === localId);
+        const groupId = removing?.superset_group_id || null;
+
         return {
           ...day,
-          exercises: day.exercises.filter((exercise) => exercise.local_id !== localId),
+          exercises: day.exercises
+            .filter((exercise) => exercise.local_id !== localId)
+            .map((exercise) => (
+              groupId && exercise.superset_group_id === groupId
+                ? { ...exercise, superset_group_id: null }
+                : exercise
+            )),
         };
       })
     );
@@ -323,12 +423,35 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         if (index !== dayIndex) return day;
         const currentIndex = day.exercises.findIndex((exercise) => exercise.local_id === localId);
         if (currentIndex < 0) return day;
+
+        const moving = day.exercises[currentIndex];
+        if (moving.superset_group_id) {
+          const groupIndices = day.exercises
+            .map((exercise, exerciseIndex) => ({ exercise, exerciseIndex }))
+            .filter(({ exercise }) => exercise.superset_group_id === moving.superset_group_id)
+            .map(({ exerciseIndex }) => exerciseIndex)
+            .sort((a, b) => a - b);
+
+          if (groupIndices.length === 2) {
+            const start = groupIndices[0];
+            const end = groupIndices[1];
+            const targetStart = direction === -1 ? start - 1 : end + 1;
+            if (targetStart < 0 || targetStart >= day.exercises.length) return day;
+
+            const nextExercises = [...day.exercises];
+            const block = nextExercises.splice(start, 2);
+            const insertAt = direction === -1 ? start - 1 : start + 1;
+            nextExercises.splice(insertAt, 0, ...block);
+            return { ...day, exercises: nextExercises };
+          }
+        }
+
         const targetIndex = currentIndex + direction;
         if (targetIndex < 0 || targetIndex >= day.exercises.length) return day;
 
         const nextExercises = [...day.exercises];
-        const [moving] = nextExercises.splice(currentIndex, 1);
-        nextExercises.splice(targetIndex, 0, moving);
+        const [single] = nextExercises.splice(currentIndex, 1);
+        nextExercises.splice(targetIndex, 0, single);
         return { ...day, exercises: nextExercises };
       })
     );
@@ -443,29 +566,42 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
       };
 
       const splitDays = await Promise.all(
-        days.map(async (day, dayIndex) => ({
-          day_name: day.day_name,
-          day_order: dayIndex,
-          exercises: await Promise.all(
-            day.exercises.map(async (exercise, exerciseIndex) => {
-              const normalizedRange = normalizeCustomSetRange(exercise);
+        days.map(async (day, dayIndex) => {
+          const normalizedSupersetIds = new Map<string, string>();
 
-              return {
-                exercise_id: await ensureExerciseId(exercise),
-                target_sets: normalizedRange.targetSets,
-                target_reps_min: exercise.target_reps_min,
-                target_reps_max: exercise.target_reps_max,
-                exercise_order: exerciseIndex,
-                notes: serializeSetRangeNotes(
-                  exercise.notes,
-                  normalizedRange.minSets,
-                  normalizedRange.targetSets,
-                  normalizedRange.maxSets
-                ),
-              };
-            })
-          ),
-        }))
+          return {
+            day_name: day.day_name,
+            day_order: dayIndex,
+            exercises: await Promise.all(
+              day.exercises.map(async (exercise, exerciseIndex) => {
+                const normalizedRange = normalizeCustomSetRange(exercise);
+
+                let supersetGroupId: string | null = null;
+                if (exercise.superset_group_id) {
+                  if (!normalizedSupersetIds.has(exercise.superset_group_id)) {
+                    normalizedSupersetIds.set(exercise.superset_group_id, createSupersetGroupId());
+                  }
+                  supersetGroupId = normalizedSupersetIds.get(exercise.superset_group_id) || null;
+                }
+
+                return {
+                  exercise_id: await ensureExerciseId(exercise),
+                  target_sets: normalizedRange.targetSets,
+                  target_reps_min: exercise.target_reps_min,
+                  target_reps_max: exercise.target_reps_max,
+                  exercise_order: exerciseIndex,
+                  notes: serializeSetRangeNotes(
+                    exercise.notes,
+                    normalizedRange.minSets,
+                    normalizedRange.targetSets,
+                    normalizedRange.maxSets
+                  ),
+                  superset_group_id: supersetGroupId,
+                };
+              })
+            ),
+          };
+        })
       );
 
       const created = await createSplit({
@@ -906,13 +1042,53 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                 activeCustomDay.exercises.map((exercise, exerciseIndex) => (
                   <Card key={exercise.local_id} variant="slab" className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-[#E8E4DE]">{exerciseIndex + 1}. {exercise.name}</p>
-                      <button
-                        onClick={() => removeCustomExercise(activeCustomDayIndex, exercise.local_id)}
-                        className="text-[10px] text-[#B07A7A] hover:text-[#D69393]"
-                      >
-                        Remove
-                      </button>
+                      <div>
+                        <p className="text-xs text-[#E8E4DE]">{exerciseIndex + 1}. {exercise.name}</p>
+                        {exercise.superset_group_id && (
+                          <p className="text-[9px] tracking-[0.12em] uppercase text-[#A8B89A]">Superset</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {exercise.superset_group_id ? (
+                          <button
+                            onClick={() => {
+                              const groupId = exercise.superset_group_id;
+                              setDays((current) =>
+                                current.map((day, dayIndex) => {
+                                  if (dayIndex !== activeCustomDayIndex) return day;
+                                  return {
+                                    ...day,
+                                    exercises: day.exercises.map((entry) => (
+                                      entry.superset_group_id === groupId
+                                        ? { ...entry, superset_group_id: null }
+                                        : entry
+                                    )),
+                                  };
+                                })
+                              );
+                            }}
+                            className="text-[10px] text-[#8B9A7D] hover:text-[#BFD0AF]"
+                          >
+                            Remove Superset
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSupersetSourceLocalId(exercise.local_id);
+                              setTapFeedback({ message: 'Select a partner exercise from library', tone: 'info' });
+                            }}
+                            className="text-[10px] text-[#9A9A9A] hover:text-[#E8E4DE]"
+                          >
+                            Add Superset
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removeCustomExercise(activeCustomDayIndex, exercise.local_id)}
+                          className="text-[10px] text-[#B07A7A] hover:text-[#D69393]"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-5 gap-2">
                       <Input
