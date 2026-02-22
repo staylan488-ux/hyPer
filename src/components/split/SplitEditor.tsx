@@ -7,6 +7,8 @@ import {
   X,
   Plus,
   ArrowRightLeft,
+  Link2,
+  Unlink2,
 } from 'lucide-react';
 import { Button, Input, Card } from '@/components/shared';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -25,7 +27,7 @@ import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 interface SplitEditorProps {
   onClose: () => void;
   onSaved: () => void;
-  onPickExercise: (dayId: string, mode: 'add' | 'swap', exerciseId?: string) => void;
+  onPickExercise: (dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => void;
 }
 
 // ═══════════════════════════════════
@@ -73,7 +75,7 @@ function ExerciseRow({
   total: number;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
-  const { reorderExercise, updateExerciseTargets, removeExercise } =
+  const { reorderExercise, updateExerciseTargets, removeExercise, clearExerciseSuperset } =
     useSplitEditStore();
   const [inputDraft, setInputDraft] = useState<ExerciseInputDraft>(() => buildExerciseInputDraft(exercise));
 
@@ -151,6 +153,27 @@ function ExerciseRow({
 
         {/* Reorder + remove */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {exercise.superset_group_id ? (
+            <motion.button
+              type="button"
+              className="p-1.5 rounded-[8px] text-[#8B9A7D] hover:text-[#BFD0AF] hover:bg-[var(--color-surface)] transition-colors"
+              onClick={() => clearExerciseSuperset(day.id, exercise.id)}
+              whileTap={{ scale: 0.85 }}
+              title="Remove Superset"
+            >
+              <Unlink2 className="w-3 h-3" />
+            </motion.button>
+          ) : (
+            <motion.button
+              type="button"
+              className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-[var(--color-surface)] transition-colors"
+              onClick={() => onPickExercise(day.id, 'superset', exercise.id)}
+              whileTap={{ scale: 0.85 }}
+              title="Add Superset"
+            >
+              <Link2 className="w-3 h-3" />
+            </motion.button>
+          )}
           <motion.button
             type="button"
             className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-[var(--color-surface)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
@@ -183,6 +206,12 @@ function ExerciseRow({
       </div>
 
       {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
+      {exercise.superset_group_id && (
+        <div className="rounded-[10px] border border-[#8B9A7D]/35 bg-[#8B9A7D]/10 px-2.5 py-1">
+          <p className="text-[9px] tracking-[0.12em] uppercase text-[#A8B89A]">Superset</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-5 gap-2">
         <div>
           <label className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1">
@@ -409,7 +438,7 @@ function DayCard({
             ) : (
               day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
-                  key={`${exercise.id}:${exercise.target_sets_min}:${exercise.target_sets}:${exercise.target_sets_max}:${exercise.target_reps_min}:${exercise.target_reps_max}`}
+                  key={`${exercise.id}:${exercise.target_sets_min}:${exercise.target_sets}:${exercise.target_sets_max}:${exercise.target_reps_min}:${exercise.target_reps_max}:${exercise.superset_group_id || 'none'}`}
                   day={day}
                   exercise={exercise}
                   index={exerciseIndex}

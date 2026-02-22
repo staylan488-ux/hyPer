@@ -53,6 +53,7 @@ export interface SplitExercise {
   target_reps_max: number;
   exercise_order: number;
   notes: string | null;
+  superset_group_id?: string | null;
 }
 
 export type WorkoutMode = 'split' | 'flexible';
@@ -76,6 +77,7 @@ export interface FlexiblePlanItem {
   target_reps_max?: number | null;
   notes?: string | null;
   hidden?: boolean;
+  superset_group_id?: string | null;
 }
 
 export interface WorkoutDayPlan {

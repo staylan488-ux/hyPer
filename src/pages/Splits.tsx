@@ -53,12 +53,13 @@ export function Splits() {
   const [pickerState, setPickerState] = useState<{
     isOpen: boolean;
     dayId: string;
-    mode: 'add' | 'swap';
+    mode: 'add' | 'swap' | 'superset';
     exerciseId?: string;
     initialMuscleGroup?: MuscleGroup;
+    excludeExerciseIds?: string[];
   }>({ isOpen: false, dayId: '', mode: 'add' });
 
-  const { startEdit, swapExercise, addExercise } = useSplitEditStore();
+  const { startEdit, swapExercise, addExercise, addSupersetExercise } = useSplitEditStore();
 
   useEffect(() => {
     void Promise.all([
@@ -75,11 +76,19 @@ export function Splits() {
     setShowEditor(true);
   }, [startEdit]);
 
-  const handlePickExercise = useCallback((dayId: string, mode: 'add' | 'swap', exerciseId?: string) => {
-    // Find the exercise's muscle group for swap pre-filtering
+  const handlePickExercise = useCallback((dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => {
     const { draft } = useSplitEditStore.getState();
     let initialMuscleGroup: MuscleGroup | undefined;
-    if (mode === 'swap' && exerciseId && draft) {
+    let excludeExerciseIds: string[] = [];
+
+    if (draft) {
+      const day = draft.days.find((entry) => entry.id === dayId);
+      if (day) {
+        excludeExerciseIds = day.exercises.map((entry) => entry.exercise_id);
+      }
+    }
+
+    if ((mode === 'swap' || mode === 'superset') && exerciseId && draft) {
       for (const day of draft.days) {
         const ex = day.exercises.find((e) => e.id === exerciseId);
         if (ex) {
@@ -88,18 +97,30 @@ export function Splits() {
         }
       }
     }
-    setPickerState({ isOpen: true, dayId, mode, exerciseId, initialMuscleGroup });
+
+    setPickerState({
+      isOpen: true,
+      dayId,
+      mode,
+      exerciseId,
+      initialMuscleGroup,
+      excludeExerciseIds,
+    });
   }, []);
 
   const handleExerciseSelected = useCallback((exercise: { id: string; name: string; muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; equipment: string | null; is_compound: boolean }) => {
     const { dayId, mode, exerciseId } = pickerState;
+
     if (mode === 'swap' && exerciseId) {
       swapExercise(dayId, exerciseId, exercise);
+    } else if (mode === 'superset' && exerciseId) {
+      addSupersetExercise(dayId, exerciseId, exercise);
     } else {
       addExercise(dayId, exercise);
     }
+
     setPickerState((prev) => ({ ...prev, isOpen: false }));
-  }, [pickerState, swapExercise, addExercise]);
+  }, [pickerState, swapExercise, addExercise, addSupersetExercise]);
 
   const handleDelete = async (splitId: string) => {
     if (confirm('Delete this program?')) {
@@ -764,7 +785,14 @@ export function Splits() {
         onClose={() => setPickerState((prev) => ({ ...prev, isOpen: false }))}
         onSelect={handleExerciseSelected}
         initialMuscleGroup={pickerState.initialMuscleGroup}
-        title={pickerState.mode === 'swap' ? 'Swap Exercise' : 'Add Exercise'}
+        excludeExerciseIds={pickerState.excludeExerciseIds}
+        title={
+          pickerState.mode === 'swap'
+            ? 'Swap Exercise'
+            : pickerState.mode === 'superset'
+              ? 'Add Superset Exercise'
+              : 'Add Exercise'
+        }
       />
     </motion.div>
   );

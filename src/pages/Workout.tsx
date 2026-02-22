@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Plus, Settings2, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Plus, Settings2, Trash2, X, Link2, Unlink2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { Card, Button, Input, Modal } from '@/components/shared';
@@ -77,6 +77,28 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
+type SupersetRole = 'A' | 'B';
+
+type SupersetFlow = {
+  groupId: string;
+  role: SupersetRole;
+  partnerExerciseId: string;
+};
+
+function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
+  const map = new Map<string, SupersetFlow>();
+
+  for (const group of orderedExerciseIdsByGroup) {
+    if (group.exerciseIds.length !== 2) continue;
+
+    const [exerciseA, exerciseB] = group.exerciseIds;
+    map.set(exerciseA, { groupId: group.groupId, role: 'A', partnerExerciseId: exerciseB });
+    map.set(exerciseB, { groupId: group.groupId, role: 'B', partnerExerciseId: exerciseA });
+  }
+
+  return map;
+}
+
 export function Workout() {
   const {
     activeSplit,
@@ -96,6 +118,8 @@ export function Workout() {
     removeLastUncompletedSet,
     setFlexibleWorkoutLabel,
     addFlexibleExercise,
+    addFlexibleSuperset,
+    clearFlexibleSuperset,
     updateFlexibleExerciseMeta,
     removeFlexibleExerciseFromPlan,
     reorderFlexibleExercises,
@@ -140,6 +164,7 @@ export function Workout() {
   const [showSaveTemplatePrompt, setShowSaveTemplatePrompt] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [supersetPickerSourceExerciseId, setSupersetPickerSourceExerciseId] = useState<string | null>(null);
 
   const currentWorkoutId = currentWorkout?.id || null;
   const currentWorkoutDate = currentWorkout?.date || null;
@@ -668,6 +693,50 @@ export function Workout() {
       .sort((a, b) => a.order - b.order)
   ), [currentWorkoutDayPlan?.items]);
 
+  const splitSupersetByExerciseId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const exercise of splitDay?.exercises || []) {
+      if (exercise.superset_group_id) {
+        map.set(exercise.exercise_id, exercise.superset_group_id);
+      }
+    }
+    return map;
+  }, [splitDay?.exercises]);
+
+  const flexibleSupersetByExerciseId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of activeFlexibleItems) {
+      if (item.superset_group_id) {
+        map.set(item.exercise_id, item.superset_group_id);
+      }
+    }
+    return map;
+  }, [activeFlexibleItems]);
+
+  const supersetByExerciseId = workoutMode === 'flexible' && currentWorkout?.split_day_id === null
+    ? flexibleSupersetByExerciseId
+    : splitSupersetByExerciseId;
+
+  const orderedSupersetGroups = useMemo(() => {
+    const orderedExerciseIds = workoutMode === 'flexible' && currentWorkout?.split_day_id === null
+      ? activeFlexibleItems.map((item) => item.exercise_id)
+      : orderedExerciseEntries.map(([exerciseId]) => exerciseId);
+
+    const grouped = new Map<string, string[]>();
+    for (const exerciseId of orderedExerciseIds) {
+      const groupId = supersetByExerciseId.get(exerciseId);
+      if (!groupId) continue;
+
+      const current = grouped.get(groupId) || [];
+      current.push(exerciseId);
+      grouped.set(groupId, current);
+    }
+
+    return Array.from(grouped.entries()).map(([groupId, exerciseIds]) => ({ groupId, exerciseIds }));
+  }, [activeFlexibleItems, currentWorkout?.split_day_id, orderedExerciseEntries, supersetByExerciseId, workoutMode]);
+
+  const supersetFlowMap = useMemo(() => buildSupersetFlowMap(orderedSupersetGroups), [orderedSupersetGroups]);
+
   const workoutExerciseMap = useMemo(() => {
     const map = new Map<string, Exercise>();
     for (const set of currentWorkout?.sets || []) {
@@ -719,6 +788,32 @@ export function Workout() {
     const idx = activeFlexibleItems.findIndex((item) => item.exercise_id === exerciseId);
     if (idx === -1) return;
 
+    const groupId = activeFlexibleItems[idx]?.superset_group_id || null;
+
+    if (groupId) {
+      const groupIndices = activeFlexibleItems
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.superset_group_id === groupId)
+        .map(({ index }) => index)
+        .sort((a, b) => a - b);
+
+      if (groupIndices.length === 2) {
+        const start = groupIndices[0];
+        const end = groupIndices[1];
+        const targetStart = direction === 'up' ? start - 1 : end + 1;
+
+        if (targetStart < 0 || targetStart >= activeFlexibleItems.length) return;
+
+        const next = [...activeFlexibleItems];
+        const block = next.splice(start, 2);
+        const insertAt = direction === 'up' ? start - 1 : start + 1;
+        next.splice(insertAt, 0, ...block);
+
+        await reorderFlexibleExercises(next.map((item) => item.exercise_id));
+        return;
+      }
+    }
+
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= activeFlexibleItems.length) return;
 
@@ -738,6 +833,66 @@ export function Workout() {
     } finally {
       setSavingTemplate(false);
     }
+  };
+
+  const handleSetLogged = (loggedSet: WorkoutSet) => {
+    if (loggedSet.completed) return;
+
+    const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
+
+    if (!supersetFlow) {
+      setShowRestTimer(true);
+      return;
+    }
+
+    if (supersetFlow.role === 'B') {
+      setShowRestTimer(true);
+    }
+  };
+
+  const splitSupersetPartnerByExerciseId = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const exercise of splitDay?.exercises || []) {
+      if (!exercise.superset_group_id) continue;
+      const current = grouped.get(exercise.superset_group_id) || [];
+      current.push(exercise.exercise_id);
+      grouped.set(exercise.superset_group_id, current);
+    }
+
+    const partnerMap = new Map<string, string>();
+    for (const exerciseIds of grouped.values()) {
+      if (exerciseIds.length !== 2) continue;
+      partnerMap.set(exerciseIds[0], exerciseIds[1]);
+      partnerMap.set(exerciseIds[1], exerciseIds[0]);
+    }
+
+    return partnerMap;
+  }, [splitDay?.exercises]);
+
+  const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => {
+    if (candidateSet.completed) return true;
+
+    const supersetFlow = supersetFlowMap.get(candidateSet.exercise_id);
+    if (!supersetFlow || !currentWorkout) return true;
+
+    const candidateNumber = candidateSet.set_number;
+    const partnerSets = currentWorkout.sets
+      .filter((set) => set.exercise_id === supersetFlow.partnerExerciseId);
+
+    if (supersetFlow.role === 'A') {
+      const partnerPrevRound = partnerSets.find((set) => set.set_number === candidateNumber - 1);
+      if (candidateNumber > 1 && !partnerPrevRound?.completed) {
+        return `Complete B${candidateNumber - 1} before starting A${candidateNumber}.`;
+      }
+      return true;
+    }
+
+    const matchingA = partnerSets.find((set) => set.set_number === candidateNumber);
+    if (!matchingA?.completed) {
+      return `Complete A${candidateNumber} before logging B${candidateNumber}.`;
+    }
+
+    return true;
   };
 
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
@@ -1217,7 +1372,10 @@ export function Workout() {
                 variant="secondary"
                 size="sm"
                 className="mt-5"
-                onClick={() => setShowExercisePicker(true)}
+                onClick={() => {
+                  setSupersetPickerSourceExerciseId(null);
+                  setShowExercisePicker(true);
+                }}
               >
                 <Plus className="w-3.5 h-3.5 mr-1" />
                 Add Exercise
@@ -1246,6 +1404,10 @@ export function Workout() {
               const noteCharacters = movementNote.length;
               const canMoveUp = index > 0;
               const canMoveDown = index < activeFlexibleItems.length - 1;
+              const supersetGroupId = item.superset_group_id || null;
+              const supersetPartner = supersetGroupId
+                ? activeFlexibleItems.find((candidate) => candidate.exercise_id !== exerciseId && candidate.superset_group_id === supersetGroupId)
+                : null;
 
               return (
                 <motion.div
@@ -1288,6 +1450,11 @@ export function Workout() {
                         </motion.div>
                         <div>
                           <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
+                          {supersetPartner && (
+                            <p className="mt-0.5 text-[10px] tracking-[0.08em] uppercase text-[#A8B89A]">
+                              Superset with {supersetPartner.exercise_name || workoutExerciseMap.get(supersetPartner.exercise_id)?.name || 'Exercise'}
+                            </p>
+                          )}
                           {hasMovementNote && !isActive && (
                             <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
                               {movementNote}
@@ -1312,6 +1479,28 @@ export function Workout() {
                         >
                           <ChevronDown className="w-3.5 h-3.5" />
                         </button>
+                        {supersetGroupId ? (
+                          <button
+                            type="button"
+                            onClick={() => { void clearFlexibleSuperset(exerciseId); }}
+                            className="p-1.5 rounded-[8px] text-[#8B9A7D] hover:text-[#BFD0AF] hover:bg-white/5 transition-colors"
+                            title="Remove Superset"
+                          >
+                            <Unlink2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSupersetPickerSourceExerciseId(exerciseId);
+                              setShowExercisePicker(true);
+                            }}
+                            className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 transition-colors"
+                            title="Add Superset"
+                          >
+                            <Link2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => { void removeFlexibleExerciseFromPlan(exerciseId); }}
@@ -1418,7 +1607,8 @@ export function Workout() {
                                 <SetLogger
                                   set={set}
                                   setNumber={idx + 1}
-                                  onComplete={() => setShowRestTimer(true)}
+                                  onBeforeComplete={validateSupersetOrderBeforeLog}
+                                  onComplete={handleSetLogged}
                                 />
                               </motion.div>
                             );
@@ -1473,12 +1663,23 @@ export function Workout() {
 
           <ExercisePicker
             isOpen={showExercisePicker}
-            onClose={() => setShowExercisePicker(false)}
+            onClose={() => {
+              setShowExercisePicker(false);
+              setSupersetPickerSourceExerciseId(null);
+            }}
             onSelect={(exercise) => {
               setShowExercisePicker(false);
+
+              if (supersetPickerSourceExerciseId) {
+                void addFlexibleSuperset(supersetPickerSourceExerciseId, exercise);
+                setSupersetPickerSourceExerciseId(null);
+                return;
+              }
+
               void addFlexibleExercise(exercise);
             }}
-            title="Add Exercise"
+            excludeExerciseIds={activeFlexibleItems.map((item) => item.exercise_id)}
+            title={supersetPickerSourceExerciseId ? 'Add Superset Exercise' : 'Add Exercise'}
           />
         </div>
       ) : (
@@ -1495,6 +1696,11 @@ export function Workout() {
           const noteCharacters = movementNote.length;
           const isFirst = index === 0;
           const isLast = index === orderedExerciseEntries.length - 1;
+          const supersetGroupId = splitSupersetByExerciseId.get(exerciseId) || null;
+          const supersetPartnerId = splitSupersetPartnerByExerciseId.get(exerciseId) || null;
+          const supersetPartnerName = supersetPartnerId
+            ? (workoutExerciseMap.get(supersetPartnerId)?.name || 'Exercise')
+            : null;
           const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: sets.length, targetSets: sets.length, maxSets: sets.length };
           const canAddSet = sets.length < setRange.maxSets;
           const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
@@ -1541,6 +1747,11 @@ export function Workout() {
                     </motion.div>
                     <div>
                       <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
+                      {supersetGroupId && supersetPartnerName && (
+                        <p className="mt-0.5 text-[10px] tracking-[0.08em] uppercase text-[#A8B89A]">
+                          Superset with {supersetPartnerName}
+                        </p>
+                      )}
                       {hasMovementNote && !isActive && (
                         <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
                           {movementNote}

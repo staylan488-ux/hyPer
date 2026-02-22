@@ -59,6 +59,7 @@ function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
         target_reps_max: typeof value.target_reps_max === 'number' ? value.target_reps_max : null,
         notes: typeof value.notes === 'string' ? value.notes : null,
         hidden: Boolean(value.hidden),
+        superset_group_id: typeof value.superset_group_id === 'string' ? value.superset_group_id : null,
       } as FlexiblePlanItem;
     })
     .filter((item): item is FlexiblePlanItem => Boolean(item))
@@ -107,7 +108,7 @@ interface AppState {
 
   // Split actions
   fetchSplits: () => Promise<void>;
-  createSplit: (split: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null }[] }[] }) => Promise<Split | null>;
+  createSplit: (split: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => Promise<Split | null>;
   updateSplit: (id: string, updates: Partial<Split>) => Promise<void>;
   deleteSplit: (id: string) => Promise<void>;
   setActiveSplit: (splitId: string) => Promise<void>;
@@ -131,6 +132,8 @@ interface AppState {
   fetchCurrentWorkoutDayPlan: (workoutId?: string) => Promise<void>;
   setFlexibleWorkoutLabel: (label: string) => Promise<void>;
   addFlexibleExercise: (exercise: Exercise) => Promise<void>;
+  addFlexibleSuperset: (baseExerciseId: string, partner: Exercise) => Promise<void>;
+  clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
   removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
   reorderFlexibleExercises: (exerciseIds: string[]) => Promise<void>;
@@ -200,7 +203,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  createSplit: async (splitData: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null }[] }[] }) => {
+  createSplit: async (splitData: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -242,6 +245,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             target_reps_max: ex.target_reps_max,
             exercise_order: j,
             notes: ex.notes,
+            superset_group_id: ex.superset_group_id ?? null,
           });
         }
       }
@@ -794,6 +798,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             target_reps_max: 12,
             notes: null,
             hidden: false,
+            superset_group_id: null,
           },
         ];
 
@@ -846,14 +851,149 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  addFlexibleSuperset: async (baseExerciseId, partner) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+
+    const baseIndex = currentWorkoutDayPlan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (baseIndex < 0) return;
+
+    if (currentWorkoutDayPlan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+
+    const baseItem = currentWorkoutDayPlan.items[baseIndex];
+
+    if (baseItem.superset_group_id) {
+      const members = currentWorkoutDayPlan.items.filter((item) => item.superset_group_id === baseItem.superset_group_id && !item.hidden);
+      if (members.length >= 2) return;
+    }
+
+    const groupId = baseItem.superset_group_id || globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    const nextItems = [...currentWorkoutDayPlan.items].map((item) => {
+      if (item.exercise_id === baseExerciseId) {
+        return { ...item, superset_group_id: groupId };
+      }
+      return item;
+    });
+
+    const partnerItem: FlexiblePlanItem = {
+      exercise_id: partner.id,
+      exercise_name: partner.name,
+      order: (baseItem.order ?? baseIndex) + 1,
+      target_sets: baseItem.target_sets ?? 3,
+      target_reps_min: baseItem.target_reps_min ?? 8,
+      target_reps_max: baseItem.target_reps_max ?? 12,
+      notes: null,
+      hidden: false,
+      superset_group_id: groupId,
+    };
+
+    nextItems.splice(baseIndex + 1, 0, partnerItem);
+
+    const normalizedItems = nextItems
+      .sort((a, b) => a.order - b.order)
+      .map((item, index) => ({ ...item, order: index }));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: normalizedItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error adding flexible superset:', planError);
+      return;
+    }
+
+    for (let setNumber = 1; setNumber <= normalizeTargetSets(partnerItem.target_sets); setNumber += 1) {
+      await supabase.from('sets').insert({
+        workout_id: currentWorkout.id,
+        exercise_id: partner.id,
+        set_number: setNumber,
+        completed: false,
+      });
+    }
+
+    const { data: refreshedWorkout } = await supabase
+      .from('workouts')
+      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .eq('id', currentWorkout.id)
+      .maybeSingle();
+
+    if (refreshedWorkout) {
+      set({ currentWorkout: refreshedWorkout as Workout });
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
+  clearFlexibleSuperset: async (exerciseId) => {
+    const { currentWorkoutDayPlan } = get();
+    if (!currentWorkoutDayPlan) return;
+
+    const target = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId);
+    if (!target?.superset_group_id) return;
+
+    const nextItems = currentWorkoutDayPlan.items.map((item) => (
+      item.superset_group_id === target.superset_group_id
+        ? { ...item, superset_group_id: null }
+        : item
+    ));
+
+    const { data: updatedPlan, error: planError } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', currentWorkoutDayPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (planError || !updatedPlan) {
+      if (planError) console.error('Error clearing flexible superset:', planError);
+      return;
+    }
+
+    set({
+      currentWorkoutDayPlan: {
+        id: updatedPlan.id,
+        workout_id: updatedPlan.workout_id,
+        day_label: updatedPlan.day_label,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      },
+    });
+  },
+
   updateFlexibleExerciseMeta: async (exerciseId, updates) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
     const workout = currentWorkout;
 
-    const nextItems = currentWorkoutDayPlan.items.map((item) => (
-      item.exercise_id === exerciseId ? { ...item, ...updates } : item
-    ));
+    const source = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId);
+    const sourceGroupId = source?.superset_group_id || null;
+    const hasSetUpdate = typeof updates.target_sets === 'number' && Number.isFinite(updates.target_sets);
+
+    const nextItems = currentWorkoutDayPlan.items.map((item) => {
+      if (item.exercise_id === exerciseId) {
+        const next = { ...item, ...updates };
+        if (hasSetUpdate) {
+          next.target_sets = normalizeTargetSets(updates.target_sets);
+        }
+        return next;
+      }
+
+      if (hasSetUpdate && sourceGroupId && item.superset_group_id === sourceGroupId) {
+        return { ...item, target_sets: normalizeTargetSets(updates.target_sets) };
+      }
+
+      return item;
+    });
 
     const { data: updatedPlan, error: planError } = await supabase
       .from('workout_day_plans')
@@ -867,33 +1007,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const setsConfigChanged = typeof updates.target_sets === 'number' && Number.isFinite(updates.target_sets);
-
-    if (setsConfigChanged) {
+    if (hasSetUpdate) {
       const desiredSets = normalizeTargetSets(updates.target_sets);
-      const existingSets = workout.sets
-        .filter((set) => set.exercise_id === exerciseId)
-        .sort((a, b) => a.set_number - b.set_number);
+      const affectedExerciseIds = sourceGroupId
+        ? currentWorkoutDayPlan.items
+            .filter((item) => item.superset_group_id === sourceGroupId)
+            .map((item) => item.exercise_id)
+        : [exerciseId];
 
-      if (existingSets.length < desiredSets) {
-        for (let setNumber = existingSets.length + 1; setNumber <= desiredSets; setNumber += 1) {
-          await supabase.from('sets').insert({
-            workout_id: workout.id,
-            exercise_id: exerciseId,
-            set_number: setNumber,
-            completed: false,
-          });
+      for (const affectedExerciseId of affectedExerciseIds) {
+        const existingSets = workout.sets
+          .filter((set) => set.exercise_id === affectedExerciseId)
+          .sort((a, b) => a.set_number - b.set_number);
+
+        if (existingSets.length < desiredSets) {
+          for (let setNumber = existingSets.length + 1; setNumber <= desiredSets; setNumber += 1) {
+            await supabase.from('sets').insert({
+              workout_id: workout.id,
+              exercise_id: affectedExerciseId,
+              set_number: setNumber,
+              completed: false,
+            });
+          }
         }
-      }
 
-      if (existingSets.length > desiredSets) {
-        const removable = existingSets
-          .filter((set) => !set.completed)
-          .sort((a, b) => b.set_number - a.set_number);
+        if (existingSets.length > desiredSets) {
+          const removable = existingSets
+            .filter((set) => !set.completed)
+            .sort((a, b) => b.set_number - a.set_number);
 
-        for (const set of removable) {
-          if (set.set_number <= desiredSets) break;
-          await supabase.from('sets').delete().eq('id', set.id);
+          for (const set of removable) {
+            if (set.set_number <= desiredSets) break;
+            await supabase.from('sets').delete().eq('id', set.id);
+          }
         }
       }
 
@@ -922,9 +1068,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
-    const nextItems = currentWorkoutDayPlan.items.map((item) => (
-      item.exercise_id === exerciseId ? { ...item, hidden: true } : item
-    ));
+    const removing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId);
+    const removingGroupId = removing?.superset_group_id || null;
+
+    const nextItems = currentWorkoutDayPlan.items.map((item) => {
+      if (item.exercise_id === exerciseId) {
+        return { ...item, hidden: true, superset_group_id: null };
+      }
+
+      if (removingGroupId && item.superset_group_id === removingGroupId) {
+        return { ...item, superset_group_id: null };
+      }
+
+      return item;
+    });
 
     const { data: updatedPlan, error: planError } = await supabase
       .from('workout_day_plans')

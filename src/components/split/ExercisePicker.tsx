@@ -13,6 +13,7 @@ interface ExercisePickerProps {
   initialMuscleGroup?: MuscleGroup;
   /** Title shown in the header */
   title?: string;
+  excludeExerciseIds?: string[];
 }
 
 const ALL_MUSCLE_GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
@@ -25,15 +26,18 @@ function ExercisePickerContent({
   onClose,
   onSelect,
   initialMuscleGroup,
+  excludeExerciseIds = [],
 }: {
   onClose: () => void;
   onSelect: (exercise: Exercise) => void;
   initialMuscleGroup?: MuscleGroup;
+  excludeExerciseIds?: string[];
 }) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const excludedSet = useMemo(() => new Set(excludeExerciseIds), [excludeExerciseIds]);
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | 'all'>(
     initialMuscleGroup ?? 'all'
   );
@@ -64,7 +68,7 @@ function ExercisePickerContent({
   }, []);
 
   const filteredExercises = useMemo(() => {
-    let result = exercises;
+    let result = exercises.filter((exercise) => !excludedSet.has(exercise.id));
 
     // Filter by muscle group
     if (selectedMuscle !== 'all') {
@@ -87,7 +91,7 @@ function ExercisePickerContent({
     }
 
     return result;
-  }, [deferredSearchQuery, exercises, selectedMuscle]);
+  }, [deferredSearchQuery, excludedSet, exercises, selectedMuscle]);
 
   const handleSelect = (exercise: Exercise) => {
     onSelect(exercise);
@@ -213,6 +217,7 @@ export function ExercisePicker({
   onSelect,
   initialMuscleGroup,
   title,
+  excludeExerciseIds,
 }: ExercisePickerProps) {
   return (
     <Modal
@@ -225,6 +230,7 @@ export function ExercisePicker({
         onClose={onClose}
         onSelect={onSelect}
         initialMuscleGroup={initialMuscleGroup}
+        excludeExerciseIds={excludeExerciseIds}
       />
     </Modal>
   );
