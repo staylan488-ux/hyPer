@@ -37,26 +37,16 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
 
   return (
     <AnimatePresence>
-      <motion.button
-        type="button"
-        aria-label="Skip intro"
-        className="fixed inset-0 z-50 px-5 flex items-center justify-center"
+      <motion.div
+        className="fixed inset-0 z-20 px-5 flex items-center justify-center pointer-events-none"
         style={{
-          backgroundColor: 'var(--color-base)',
           backgroundImage:
-            'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 58%)',
+            'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%)',
         }}
         initial={{ opacity: 1 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.34, ease: 'easeOut' }}
-        onClick={onComplete}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onComplete();
-          }
-        }}
       >
         <div className="relative w-full max-w-sm h-56 flex items-center justify-center overflow-visible">
           <motion.div
@@ -157,7 +147,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
             <p className="text-[9px] tracking-[0.14em] uppercase text-[var(--color-muted)] mt-2">Training and Nutrition</p>
           </motion.div>
         </div>
-      </motion.button>
+      </motion.div>
     </AnimatePresence>
   );
 }

@@ -1,10 +1,22 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Input, Card } from '@/components/shared';
 import { LoginMonolithIntro } from '@/components/intro/LoginMonolithIntro';
 import { markLoginIntroPlayed, shouldPlayLoginIntro } from '@/components/intro/introState';
 import { springs } from '@/lib/animations';
+
+const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
+const EXISTING_ACCOUNT_MESSAGE = 'An account with this email already exists. Please sign in instead.';
+
+function mapSignupError(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('already registered') || normalized.includes('already exists') || normalized.includes('already been registered') || normalized.includes('already used')) {
+    return { message: EXISTING_ACCOUNT_MESSAGE, existingAccount: true };
+  }
+
+  return { message, existingAccount: false };
+}
 
 export function AuthForm() {
   const reduceMotion = useReducedMotion();
@@ -13,24 +25,79 @@ export function AuthForm() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [signupSuccess, setSignupSuccess] = useState<string | null>(null);
+  const [showSignInPrompt, setShowSignInPrompt] = useState(false);
+  const [signupButtonLocked, setSignupButtonLocked] = useState(false);
   const [showIntro, setShowIntro] = useState(() => shouldPlayLoginIntro() && !reduceMotion);
+  const signupTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { signIn, signUp, signInWithGoogle, loading } = useAuthStore();
+
+  const clearSignupSignals = useCallback(() => {
+    setSignupSuccess(null);
+    setShowSignInPrompt(false);
+    setSignupButtonLocked(false);
+    if (signupTransitionRef.current) {
+      clearTimeout(signupTransitionRef.current);
+      signupTransitionRef.current = null;
+    }
+  }, []);
+
+  const switchToLogin = useCallback(() => {
+    clearSignupSignals();
+    setIsLogin(true);
+    setError(null);
+  }, [clearSignupSignals]);
+
+  useEffect(() => {
+    return () => {
+      if (signupTransitionRef.current) {
+        clearTimeout(signupTransitionRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (isLogin) {
+      clearSignupSignals();
       const { error } = await signIn(email, password);
       if (error) setError(error.message);
-    } else {
-      const { error } = await signUp(email, password, displayName);
-      if (error) setError(error.message);
+      return;
     }
+
+    if (signupButtonLocked) return;
+
+    const { error } = await signUp(email, password, displayName);
+    if (error) {
+      const mapped = mapSignupError(error.message);
+      setError(mapped.message);
+      setShowSignInPrompt(mapped.existingAccount);
+      setSignupSuccess(null);
+      setSignupButtonLocked(false);
+      return;
+    }
+
+    setSignupSuccess(SIGNUP_SUCCESS_MESSAGE);
+    setShowSignInPrompt(false);
+    setSignupButtonLocked(true);
+    setDisplayName('');
+    setEmail('');
+    setPassword('');
+
+    if (signupTransitionRef.current) {
+      clearTimeout(signupTransitionRef.current);
+    }
+
+    signupTransitionRef.current = setTimeout(() => {
+      switchToLogin();
+    }, 1300);
   };
 
   const handleGoogleSignIn = async () => {
+    clearSignupSignals();
     setError(null);
     const { error } = await signInWithGoogle();
     if (error) setError(error.message);
@@ -122,6 +189,20 @@ export function AuthForm() {
               />
 
               <AnimatePresence>
+                {!isLogin && signupSuccess && (
+                  <motion.p
+                    className="text-[10px] tracking-wide text-[#A8B89A] text-center py-2"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={springs.smooth}
+                  >
+                    {signupSuccess}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
                 {error && (
                   <motion.p
                     className="text-[10px] tracking-wide text-[#8B6B6B] text-center py-2"
@@ -135,12 +216,33 @@ export function AuthForm() {
                 )}
               </AnimatePresence>
 
+              <AnimatePresence>
+                {!isLogin && showSignInPrompt && (
+                  <motion.div
+                    className="text-center pb-1"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={springs.smooth}
+                  >
+                    <button
+                      type="button"
+                      onClick={switchToLogin}
+                      className="text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] hover:text-white"
+                    >
+                      Go to Sign In
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <Button
                 type="submit"
                 className="w-full"
-                loading={loading}
+                loading={loading && !(signupButtonLocked && !isLogin)}
+                disabled={!isLogin && signupButtonLocked}
               >
-                {isLogin ? 'Sign In' : 'Create Account'}
+                {isLogin ? 'Sign In' : signupButtonLocked ? 'Check your email' : 'Create Account'}
               </Button>
             </form>
           </Card>
@@ -194,8 +296,14 @@ export function AuthForm() {
           <motion.button
             type="button"
             onClick={() => {
-              setIsLogin(!isLogin);
+              const nextIsLogin = !isLogin;
+              clearSignupSignals();
+              setIsLogin(nextIsLogin);
               setError(null);
+              if (!nextIsLogin) {
+                setSignupSuccess(null);
+                setShowSignInPrompt(false);
+              }
             }}
             className="text-[#E8E4DE] hover:text-white"
             whileTap={{ scale: 0.95 }}
