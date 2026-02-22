@@ -6,6 +6,7 @@ const supabaseMock = vi.hoisted(() => ({
     getSession: vi.fn(),
     onAuthStateChange: vi.fn(),
     signOut: vi.fn(),
+    signInWithPassword: vi.fn(),
   },
 }));
 
@@ -41,6 +42,7 @@ beforeEach(() => {
   supabaseMock.auth.getSession.mockReset();
   supabaseMock.auth.onAuthStateChange.mockReset();
   supabaseMock.auth.signOut.mockReset();
+  supabaseMock.auth.signInWithPassword.mockReset();
 
   useAuthStore.setState({
     user: null,
@@ -133,6 +135,21 @@ describe('auth session must-work behavior', () => {
     expect(state.user).toBeNull();
     expect(state.session).toBeNull();
     expect(state.profile).toBeNull();
+  });
+
+  it('blocks password sign-in when email is unverified', async () => {
+    supabaseMock.auth.signInWithPassword.mockResolvedValue({
+      data: { user: { id: 'user-3', email_confirmed_at: null } },
+      error: null,
+    });
+    supabaseMock.auth.signOut.mockResolvedValue({ error: null });
+
+    const result = await useAuthStore.getState().signIn('new@user.com', 'password123');
+
+    expect(result.error?.message).toBe('Please verify your email before signing in.');
+    expect(supabaseMock.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().session).toBeNull();
   });
 
   it('updates display name and syncs profile state', async () => {
