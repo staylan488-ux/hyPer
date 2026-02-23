@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import type {
   Split,
   SplitDay,
@@ -72,26 +73,27 @@ function normalizeTargetSets(value: number | null | undefined): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
-function parseMovementNotesMap(raw: string | null): Record<string, string> {
-  if (!raw) return {};
+function normalizeWorkoutPlanItems(items: FlexiblePlanItem[]): FlexiblePlanItem[] {
+  return items
+    .map((item, index) => ({
+      ...item,
+      order: Number.isFinite(item.order) ? item.order : index,
+      target_sets: normalizeTargetSets(item.target_sets),
+      target_reps_min: typeof item.target_reps_min === 'number' ? item.target_reps_min : 8,
+      target_reps_max: typeof item.target_reps_max === 'number' ? item.target_reps_max : 12,
+      notes: item.notes ?? null,
+      hidden: Boolean(item.hidden),
+      superset_group_id: item.superset_group_id ?? null,
+    }))
+    .sort((a, b) => a.order - b.order)
+    .map((item, index) => ({ ...item, order: index }));
+}
 
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown> & { movementNotes?: Record<string, unknown> };
-    const source = parsed?.movementNotes && typeof parsed.movementNotes === 'object'
-      ? parsed.movementNotes
-      : parsed;
-
-    const next: Record<string, string> = {};
-    for (const [exerciseId, value] of Object.entries(source || {})) {
-      if (typeof value !== 'string') continue;
-      const trimmed = value.trim();
-      if (!trimmed) continue;
-      next[exerciseId] = trimmed.slice(0, 200);
-    }
-    return next;
-  } catch {
-    return {};
+function randomSupersetGroupId(): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
   }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 interface AppState {
@@ -125,6 +127,19 @@ interface AppState {
   fetchWorkoutsByMonth: (month: Date) => Promise<Workout[]>;
   fetchWorkoutById: (workoutId: string) => Promise<Workout | null>;
   deleteWorkout: (workoutId: string) => Promise<void>;
+  addSetToWorkout: (workoutId: string, exerciseId: string) => Promise<WorkoutSet | null>;
+  removeSetFromWorkout: (workoutId: string, exerciseId: string, setId: string) => Promise<void>;
+  addExerciseToWorkout: (workoutId: string, exercise: Exercise) => Promise<WorkoutSet | null>;
+  removeExerciseFromWorkout: (workoutId: string, exerciseId: string) => Promise<void>;
+  syncWorkoutCompletion: (workoutId: string) => Promise<{ totalSets: number; completedSets: number; completed: boolean }>;
+  updateWorkoutNotes: (workoutId: string, notes: string | null) => Promise<void>;
+  fetchWorkoutDayPlanByWorkoutId: (workoutId: string) => Promise<WorkoutDayPlan | null>;
+  ensureWorkoutDayPlan: (workoutId: string, fallbackLabel?: string) => Promise<WorkoutDayPlan | null>;
+  updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[]) => Promise<WorkoutDayPlan | null>;
+  addSupersetToWorkout: (workoutId: string, baseExerciseId: string, partner: Exercise) => Promise<void>;
+  clearWorkoutSuperset: (workoutId: string, exerciseId: string) => Promise<void>;
+  updateWorkoutExerciseTargetSets: (workoutId: string, exerciseId: string, targetSets: number) => Promise<void>;
+  reorderWorkoutExercises: (workoutId: string, exerciseIds: string[]) => Promise<void>;
 
   // Flexible programming
   fetchWorkoutMode: () => Promise<void>;
@@ -1168,7 +1183,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const label = currentWorkoutDayPlan.day_label.trim();
     if (!label) return;
 
-    const movementNotes = parseMovementNotesMap(currentWorkout?.notes || null);
+    const movementNotes = parseWorkoutNotes(currentWorkout?.notes || null).movementNotes;
     const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => ({
       ...item,
       notes: movementNotes[item.exercise_id] ?? item.notes ?? null,
@@ -1269,14 +1284,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateSet: async (setId, updates) => {
+    const { error } = await supabase.from('sets').update(updates).eq('id', setId);
+    if (error) {
+      console.error('Error updating set:', error);
+      return;
+    }
+
     const { currentWorkout } = get();
     if (!currentWorkout) return;
+    if (!currentWorkout.sets.some((set) => set.id === setId)) return;
 
-    await supabase.from('sets').update(updates).eq('id', setId);
+    const updatedSets = currentWorkout.sets.map((set) => (
+      set.id === setId ? { ...set, ...updates } : set
+    ));
 
-    const updatedSets = currentWorkout.sets.map(s =>
-      s.id === setId ? { ...s, ...updates } : s
-    );
     set({ currentWorkout: { ...currentWorkout, sets: updatedSets } });
   },
 
@@ -1348,6 +1369,618 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error deleting workout:', error);
       throw error;
     }
+  },
+
+  addSetToWorkout: async (workoutId, exerciseId) => {
+    const { data: existingSets, error: fetchError } = await supabase
+      .from('sets')
+      .select('set_number')
+      .eq('workout_id', workoutId)
+      .eq('exercise_id', exerciseId)
+      .order('set_number', { ascending: true });
+
+    if (fetchError) {
+      console.error('Error fetching existing sets:', fetchError);
+      return null;
+    }
+
+    const nextSetNumber = existingSets && existingSets.length > 0
+      ? Math.max(...existingSets.map((set) => Number(set.set_number) || 0)) + 1
+      : 1;
+
+    const { data: createdSet, error } = await supabase
+      .from('sets')
+      .insert({
+        workout_id: workoutId,
+        exercise_id: exerciseId,
+        set_number: nextSetNumber,
+        completed: false,
+      })
+      .select('*, exercise:exercises!exercise_id(*)')
+      .single();
+
+    if (error || !createdSet) {
+      if (error) console.error('Error adding set to workout:', error);
+      return null;
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id === workoutId) {
+      set({
+        currentWorkout: {
+          ...currentWorkout,
+          sets: [...currentWorkout.sets, createdSet as WorkoutSet],
+        },
+      });
+    }
+
+    return createdSet as WorkoutSet;
+  },
+
+  removeSetFromWorkout: async (workoutId, exerciseId, setId) => {
+    const { error: deleteError } = await supabase
+      .from('sets')
+      .delete()
+      .eq('id', setId)
+      .eq('workout_id', workoutId)
+      .eq('exercise_id', exerciseId);
+
+    if (deleteError) {
+      console.error('Error removing set from workout:', deleteError);
+      return;
+    }
+
+    const { data: remainingSets, error: remainingError } = await supabase
+      .from('sets')
+      .select('id, set_number')
+      .eq('workout_id', workoutId)
+      .eq('exercise_id', exerciseId)
+      .order('set_number', { ascending: true });
+
+    if (remainingError) {
+      console.error('Error fetching remaining sets for compaction:', remainingError);
+      return;
+    }
+
+    for (const [index, row] of (remainingSets || []).entries()) {
+      const desiredSetNumber = index + 1;
+      if ((row.set_number as number) === desiredSetNumber) continue;
+
+      const { error: renumberError } = await supabase
+        .from('sets')
+        .update({ set_number: desiredSetNumber })
+        .eq('id', row.id);
+
+      if (renumberError) {
+        console.error('Error compacting set numbers:', renumberError);
+      }
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id !== workoutId) return;
+
+    const otherExerciseSets = currentWorkout.sets.filter((set) => set.exercise_id !== exerciseId);
+    const compactedExerciseSets = currentWorkout.sets
+      .filter((set) => set.exercise_id === exerciseId && set.id !== setId)
+      .sort((a, b) => a.set_number - b.set_number)
+      .map((set, index) => ({ ...set, set_number: index + 1 }));
+
+    set({
+      currentWorkout: {
+        ...currentWorkout,
+        sets: [...otherExerciseSets, ...compactedExerciseSets],
+      },
+    });
+  },
+
+  addExerciseToWorkout: async (workoutId, exercise) => {
+    const createdSet = await get().addSetToWorkout(workoutId, exercise.id);
+    if (!createdSet) return null;
+
+    const plan = await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan) return createdSet;
+
+    const existing = plan.items.find((item) => item.exercise_id === exercise.id);
+    const nextItems = existing
+      ? plan.items.map((item) => (
+          item.exercise_id === exercise.id
+            ? {
+                ...item,
+                hidden: false,
+                exercise_name: exercise.name,
+                target_sets: item.target_sets ?? 1,
+              }
+            : item
+        ))
+      : [
+          ...plan.items,
+          {
+            exercise_id: exercise.id,
+            exercise_name: exercise.name,
+            order: plan.items.length,
+            target_sets: 1,
+            target_reps_min: 8,
+            target_reps_max: 12,
+            notes: null,
+            hidden: false,
+            superset_group_id: null,
+          },
+        ];
+
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    return createdSet;
+  },
+
+  removeExerciseFromWorkout: async (workoutId, exerciseId) => {
+    const { error } = await supabase
+      .from('sets')
+      .delete()
+      .eq('workout_id', workoutId)
+      .eq('exercise_id', exerciseId);
+
+    if (error) {
+      console.error('Error removing exercise from workout:', error);
+      return;
+    }
+
+    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
+    if (plan) {
+      const removing = plan.items.find((item) => item.exercise_id === exerciseId);
+      const removingGroupId = removing?.superset_group_id || null;
+
+      const nextItems = plan.items.map((item) => {
+        if (item.exercise_id === exerciseId) {
+          return { ...item, hidden: true, superset_group_id: null };
+        }
+
+        if (removingGroupId && item.superset_group_id === removingGroupId) {
+          return { ...item, superset_group_id: null };
+        }
+
+        return item;
+      });
+
+      await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id === workoutId) {
+      set({
+        currentWorkout: {
+          ...currentWorkout,
+          sets: currentWorkout.sets.filter((set) => set.exercise_id !== exerciseId),
+        },
+      });
+    }
+  },
+
+  syncWorkoutCompletion: async (workoutId) => {
+    const { data: sets, error } = await supabase
+      .from('sets')
+      .select('id, completed')
+      .eq('workout_id', workoutId);
+
+    if (error) {
+      console.error('Error syncing workout completion:', error);
+      return { totalSets: 0, completedSets: 0, completed: false };
+    }
+
+    const totalSets = (sets || []).length;
+    const completedSets = (sets || []).filter((set) => Boolean(set.completed)).length;
+    const completed = totalSets > 0 && completedSets === totalSets;
+
+    const { error: updateError } = await supabase
+      .from('workouts')
+      .update({ completed })
+      .eq('id', workoutId);
+
+    if (updateError) {
+      console.error('Error persisting workout completion state:', updateError);
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id === workoutId) {
+      set({ currentWorkout: { ...currentWorkout, completed } });
+    }
+
+    return { totalSets, completedSets, completed };
+  },
+
+  updateWorkoutNotes: async (workoutId, notes) => {
+    const { error } = await supabase
+      .from('workouts')
+      .update({ notes })
+      .eq('id', workoutId);
+
+    if (error) {
+      console.error('Error updating workout notes:', error);
+      return;
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id === workoutId) {
+      set({ currentWorkout: { ...currentWorkout, notes } });
+    }
+  },
+
+  fetchWorkoutDayPlanByWorkoutId: async (workoutId) => {
+    const { data, error } = await supabase
+      .from('workout_day_plans')
+      .select('id, workout_id, day_label, items')
+      .eq('workout_id', workoutId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching workout day plan by workout id:', error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    const plan: WorkoutDayPlan = {
+      id: data.id,
+      workout_id: data.workout_id,
+      day_label: data.day_label,
+      items: normalizeFlexiblePlanItems(data.items),
+    };
+
+    const { currentWorkoutDayPlan, currentWorkout } = get();
+    if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id !== plan.id) {
+      set({ currentWorkoutDayPlan: plan });
+    }
+
+    return plan;
+  },
+
+  ensureWorkoutDayPlan: async (workoutId, fallbackLabel) => {
+    const existing = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
+    if (existing) return existing;
+
+    const { data: workout, error: workoutError } = await supabase
+      .from('workouts')
+      .select('id, split_day_id')
+      .eq('id', workoutId)
+      .maybeSingle();
+
+    if (workoutError || !workout) {
+      if (workoutError) console.error('Error fetching workout for day plan creation:', workoutError);
+      return null;
+    }
+
+    const { data: workoutSets, error: setsError } = await supabase
+      .from('sets')
+      .select('exercise_id, set_number, exercise:exercises!exercise_id(id, name)')
+      .eq('workout_id', workoutId)
+      .order('set_number', { ascending: true });
+
+    if (setsError) {
+      console.error('Error fetching workout sets for day plan creation:', setsError);
+      return null;
+    }
+
+    const setCountByExercise = new Map<string, number>();
+    const setExerciseNames = new Map<string, string>();
+    for (const row of workoutSets || []) {
+      const exerciseId = row.exercise_id as string;
+      setCountByExercise.set(exerciseId, (setCountByExercise.get(exerciseId) || 0) + 1);
+      const exercise = row.exercise as { name?: string } | null;
+      if (exercise?.name) {
+        setExerciseNames.set(exerciseId, exercise.name);
+      }
+    }
+
+    const splitDayId = (workout.split_day_id as string | null) ?? null;
+    let dayLabel = fallbackLabel?.trim() || 'Workout';
+    let splitExerciseRows: Array<{
+      exercise_id: string;
+      target_sets: number | null;
+      target_reps_min: number | null;
+      target_reps_max: number | null;
+      notes: string | null;
+      exercise_order: number;
+      superset_group_id: string | null;
+      exercise: { name?: string } | null;
+    }> = [];
+
+    if (splitDayId) {
+      const { data: splitDayRow } = await supabase
+        .from('split_days')
+        .select('day_name')
+        .eq('id', splitDayId)
+        .maybeSingle();
+
+      if (splitDayRow?.day_name) {
+        dayLabel = splitDayRow.day_name;
+      }
+
+      const { data: splitExercises, error: splitError } = await supabase
+        .from('split_exercises')
+        .select('exercise_id, target_sets, target_reps_min, target_reps_max, notes, exercise_order, superset_group_id, exercise:exercises!exercise_id(name)')
+        .eq('split_day_id', splitDayId)
+        .order('exercise_order', { ascending: true });
+
+      if (splitError) {
+        console.error('Error fetching split exercise metadata for day plan creation:', splitError);
+      } else {
+        splitExerciseRows = (splitExercises || []) as typeof splitExerciseRows;
+      }
+    }
+
+    const orderedExerciseIds: string[] = [];
+    const splitExerciseById = new Map(splitExerciseRows.map((row) => [row.exercise_id, row]));
+
+    for (const row of splitExerciseRows) {
+      if (!orderedExerciseIds.includes(row.exercise_id)) {
+        orderedExerciseIds.push(row.exercise_id);
+      }
+    }
+
+    for (const row of workoutSets || []) {
+      const exerciseId = row.exercise_id as string;
+      if (!orderedExerciseIds.includes(exerciseId)) {
+        orderedExerciseIds.push(exerciseId);
+      }
+    }
+
+    const items: FlexiblePlanItem[] = orderedExerciseIds.map((exerciseId, index) => {
+      const splitMeta = splitExerciseById.get(exerciseId);
+      const splitExerciseName = splitMeta?.exercise?.name || null;
+      const setCount = setCountByExercise.get(exerciseId) || 0;
+
+      return {
+        exercise_id: exerciseId,
+        exercise_name: splitExerciseName || setExerciseNames.get(exerciseId) || null,
+        order: index,
+        target_sets: normalizeTargetSets(splitMeta?.target_sets ?? (setCount > 0 ? setCount : 1)),
+        target_reps_min: splitMeta?.target_reps_min ?? 8,
+        target_reps_max: splitMeta?.target_reps_max ?? 12,
+        notes: splitMeta?.notes ?? null,
+        hidden: false,
+        superset_group_id: splitMeta?.superset_group_id ?? null,
+      };
+    });
+
+    const { data: createdPlan, error: createError } = await supabase
+      .from('workout_day_plans')
+      .insert({
+        workout_id: workoutId,
+        day_label: dayLabel,
+        items: normalizeWorkoutPlanItems(items),
+      })
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (createError || !createdPlan) {
+      if (createError) console.error('Error creating workout day plan:', createError);
+      return null;
+    }
+
+    return {
+      id: createdPlan.id,
+      workout_id: createdPlan.workout_id,
+      day_label: createdPlan.day_label,
+      items: normalizeFlexiblePlanItems(createdPlan.items),
+    };
+  },
+
+  updateWorkoutDayPlanItems: async (workoutId, items) => {
+    const existingPlan = await get().ensureWorkoutDayPlan(workoutId);
+    if (!existingPlan) return null;
+
+    const normalizedItems = normalizeWorkoutPlanItems(items);
+
+    const { data: updatedPlan, error } = await supabase
+      .from('workout_day_plans')
+      .update({ items: normalizedItems })
+      .eq('id', existingPlan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+
+    if (error || !updatedPlan) {
+      if (error) console.error('Error updating workout day plan items:', error);
+      return null;
+    }
+
+    const nextPlan: WorkoutDayPlan = {
+      id: updatedPlan.id,
+      workout_id: updatedPlan.workout_id,
+      day_label: updatedPlan.day_label,
+      items: normalizeFlexiblePlanItems(updatedPlan.items),
+    };
+
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
+      set({ currentWorkoutDayPlan: nextPlan });
+    }
+
+    return nextPlan;
+  },
+
+  addSupersetToWorkout: async (workoutId, baseExerciseId, partner) => {
+    const plan = await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan) return;
+
+    const baseIndex = plan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (baseIndex < 0) return;
+    if (plan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+
+    const baseItem = plan.items[baseIndex];
+    if (baseItem.superset_group_id) {
+      const members = plan.items.filter((item) => !item.hidden && item.superset_group_id === baseItem.superset_group_id);
+      if (members.length >= 2) return;
+    }
+
+    const groupId = baseItem.superset_group_id || randomSupersetGroupId();
+    const nextItems = [...plan.items].map((item) => (
+      item.exercise_id === baseExerciseId
+        ? { ...item, superset_group_id: groupId }
+        : item
+    ));
+
+    const partnerItem: FlexiblePlanItem = {
+      exercise_id: partner.id,
+      exercise_name: partner.name,
+      order: (baseItem.order ?? baseIndex) + 1,
+      target_sets: normalizeTargetSets(baseItem.target_sets ?? 1),
+      target_reps_min: baseItem.target_reps_min ?? 8,
+      target_reps_max: baseItem.target_reps_max ?? 12,
+      notes: null,
+      hidden: false,
+      superset_group_id: groupId,
+    };
+
+    nextItems.splice(baseIndex + 1, 0, partnerItem);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+
+    const { data: existingSets, error: existingError } = await supabase
+      .from('sets')
+      .select('id')
+      .eq('workout_id', workoutId)
+      .eq('exercise_id', partner.id);
+
+    if (existingError) {
+      console.error('Error checking partner exercise sets:', existingError);
+      return;
+    }
+
+    if ((existingSets || []).length > 0) return;
+
+    const targetSets = normalizeTargetSets(partnerItem.target_sets);
+    const rows = Array.from({ length: targetSets }, (_, index) => ({
+      workout_id: workoutId,
+      exercise_id: partner.id,
+      set_number: index + 1,
+      completed: false,
+    }));
+
+    const { data: createdSets, error: createSetsError } = await supabase
+      .from('sets')
+      .insert(rows)
+      .select('*, exercise:exercises!exercise_id(*)');
+
+    if (createSetsError) {
+      console.error('Error creating partner exercise sets for superset:', createSetsError);
+      return;
+    }
+
+    const { currentWorkout } = get();
+    if (currentWorkout?.id === workoutId && createdSets) {
+      set({
+        currentWorkout: {
+          ...currentWorkout,
+          sets: [...currentWorkout.sets, ...(createdSets as WorkoutSet[])],
+        },
+      });
+    }
+  },
+
+  clearWorkoutSuperset: async (workoutId, exerciseId) => {
+    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
+    if (!plan) return;
+
+    const target = plan.items.find((item) => item.exercise_id === exerciseId);
+    if (!target?.superset_group_id) return;
+
+    const nextItems = plan.items.map((item) => (
+      item.superset_group_id === target.superset_group_id
+        ? { ...item, superset_group_id: null }
+        : item
+    ));
+
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+  },
+
+  updateWorkoutExerciseTargetSets: async (workoutId, exerciseId, targetSets) => {
+    const desiredSets = normalizeTargetSets(targetSets);
+    const plan = await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan) return;
+
+    const source = plan.items.find((item) => item.exercise_id === exerciseId);
+    if (!source) return;
+
+    const sourceGroupId = source.superset_group_id || null;
+    const nextItems = plan.items.map((item) => {
+      if (item.exercise_id === exerciseId) {
+        return { ...item, target_sets: desiredSets };
+      }
+      if (sourceGroupId && item.superset_group_id === sourceGroupId) {
+        return { ...item, target_sets: desiredSets };
+      }
+      return item;
+    });
+
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+
+    const affectedExerciseIds = sourceGroupId
+      ? nextItems.filter((item) => !item.hidden && item.superset_group_id === sourceGroupId).map((item) => item.exercise_id)
+      : [exerciseId];
+
+    for (const affectedExerciseId of affectedExerciseIds) {
+      const { data: existingSets, error: existingError } = await supabase
+        .from('sets')
+        .select('id, set_number, completed')
+        .eq('workout_id', workoutId)
+        .eq('exercise_id', affectedExerciseId)
+        .order('set_number', { ascending: true });
+
+      if (existingError) {
+        console.error('Error fetching sets while updating target sets:', existingError);
+        continue;
+      }
+
+      const sorted = (existingSets || []).slice().sort((a, b) => Number(a.set_number) - Number(b.set_number));
+      if (sorted.length < desiredSets) {
+        const currentMaxSetNumber = sorted.length > 0
+          ? Math.max(...sorted.map((set) => Number(set.set_number) || 0))
+          : 0;
+
+        const rows = Array.from({ length: desiredSets - sorted.length }, (_, index) => ({
+          workout_id: workoutId,
+          exercise_id: affectedExerciseId,
+          set_number: currentMaxSetNumber + index + 1,
+          completed: false,
+        }));
+
+        const { error: insertError } = await supabase.from('sets').insert(rows);
+        if (insertError) {
+          console.error('Error adding sets to match target sets:', insertError);
+        }
+      }
+
+      if (sorted.length > desiredSets) {
+        const removable = sorted
+          .filter((set) => !set.completed && Number(set.set_number) > desiredSets)
+          .sort((a, b) => Number(b.set_number) - Number(a.set_number));
+
+        for (const row of removable) {
+          const { error: deleteError } = await supabase
+            .from('sets')
+            .delete()
+            .eq('id', row.id);
+
+          if (deleteError) {
+            console.error('Error removing sets to match target sets:', deleteError);
+          }
+        }
+      }
+    }
+  },
+
+  reorderWorkoutExercises: async (workoutId, exerciseIds) => {
+    const plan = await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan) return;
+
+    const orderedMap = new Map(exerciseIds.map((id, index) => [id, index]));
+    const nextItems = [...plan.items]
+      .sort((a, b) => {
+        const orderA = orderedMap.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+        const orderB = orderedMap.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.order - b.order;
+      })
+      .map((item, index) => ({ ...item, order: index }));
+
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
   },
 
   fetchMacroTarget: async () => {

@@ -10,6 +10,7 @@ import { RestTimer } from '@/components/workout/RestTimer';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
+import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
@@ -21,51 +22,6 @@ import {
   type SetPerformanceInput,
 } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
-
-interface WorkoutNotesPayload {
-  movementNotes?: Record<string, string>;
-  legacyNote?: string;
-}
-
-function sanitizeMovementNotes(input: unknown): Record<string, string> {
-  if (!input || typeof input !== 'object') return {};
-
-  const next: Record<string, string> = {};
-
-  for (const [exerciseId, noteValue] of Object.entries(input as Record<string, unknown>)) {
-    if (typeof noteValue !== 'string') continue;
-    const trimmed = noteValue.trim();
-    if (!trimmed) continue;
-    next[exerciseId] = trimmed.slice(0, 200);
-  }
-
-  return next;
-}
-
-function parseWorkoutNotes(raw: string | null): { movementNotes: Record<string, string>; legacyNote: string | null } {
-  if (!raw) {
-    return { movementNotes: {}, legacyNote: null };
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as WorkoutNotesPayload | Record<string, unknown>;
-    if (!parsed || typeof parsed !== 'object') {
-      return { movementNotes: {}, legacyNote: raw };
-    }
-
-    if ('movementNotes' in parsed) {
-      const payload = parsed as WorkoutNotesPayload;
-      return {
-        movementNotes: sanitizeMovementNotes(payload.movementNotes),
-        legacyNote: typeof payload.legacyNote === 'string' ? payload.legacyNote : null,
-      };
-    }
-
-    return { movementNotes: sanitizeMovementNotes(parsed), legacyNote: null };
-  } catch {
-    return { movementNotes: {}, legacyNote: raw };
-  }
-}
 
 function normalizeIndex(value: number, size: number): number {
   if (size <= 0) return 0;
@@ -336,7 +292,10 @@ export function Workout() {
       movementNotes: parsed.movementNotes,
       legacyNote: parsed.legacyNote || undefined,
     };
-    lastPersistedNotesRef.current = JSON.stringify(initialPayload);
+    lastPersistedNotesRef.current = serializeWorkoutNotes(
+      initialPayload.movementNotes || {},
+      initialPayload.legacyNote
+    );
   }, [currentWorkoutId, currentWorkoutNotes]);
 
   useEffect(() => {
@@ -446,11 +405,10 @@ export function Workout() {
 
     setSavingMovementNoteId(exerciseId);
 
-    const payload: WorkoutNotesPayload = {
-      movementNotes: movementNotesRef.current,
-      legacyNote: legacyWorkoutNote || undefined,
-    };
-    const serializedPayload = JSON.stringify(payload);
+    const serializedPayload = serializeWorkoutNotes(
+      movementNotesRef.current,
+      legacyWorkoutNote || undefined
+    );
 
     if (serializedPayload === lastPersistedNotesRef.current) {
       setSavingMovementNoteId(null);
