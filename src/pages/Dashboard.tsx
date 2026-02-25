@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Dumbbell, UtensilsCrossed, TrendingUp, ArrowRight, History } from 'lucide-react';
+import { Dumbbell, UtensilsCrossed, TrendingUp, ArrowRight, History, LayoutGrid } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
@@ -111,10 +111,10 @@ export function Dashboard() {
       >
       {/* Header */}
       <motion.header className="mb-12" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
+        <p className="text-[10px] tracking-[0.25em] uppercase text-[var(--color-muted)] mb-1">
           {activeSplit ? activeSplit.name.toUpperCase() : 'NO PROGRAM ACTIVE'}
         </p>
-        <h1 className="text-4xl font-display-italic text-[#E8E4DE] tracking-tight">
+        <h1 className="text-4xl font-display-italic text-[var(--color-text)] tracking-tight">
           {profile?.display_name ? `Welcome, ${profile.display_name}` : 'Welcome Back'}
         </h1>
         <p className="text-body text-dim mt-2">{format(new Date(), 'EEEE, MMMM d')}</p>
@@ -122,17 +122,17 @@ export function Dashboard() {
 
       {/* Quick Actions */}
       <motion.div className="grid grid-cols-2 gap-3 mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Link to="/workout">
+        <Link to="/train">
           <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}>
             <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group bg-accent-tint border-l-accent">
               <motion.div
-                className="p-4 rounded-[20px] bg-[#2E2E2E] mb-3 group-hover:bg-[#383838] transition-colors"
+                className="p-4 rounded-[var(--radius-md)] bg-[var(--color-surface-high)] mb-3 group-hover:bg-[color-mix(in_srgb,var(--color-surface-high)_88%,var(--color-text)_12%)] transition-colors"
                 whileHover={{ rotate: -12 }}
                 transition={springs.bouncy}
               >
-                <Dumbbell className="w-5 h-5 text-[#E8E4DE]" strokeWidth={1.5} />
+                <Dumbbell className="w-5 h-5 text-[var(--color-text)]" strokeWidth={1.5} />
               </motion.div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">
+              <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-text-dim)]">
                 {currentWorkout ? 'Continue' : 'Begin'}
               </p>
             </Card>
@@ -143,27 +143,44 @@ export function Dashboard() {
           <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}>
             <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group bg-sage-tint border-l-sage">
               <motion.div
-                className="p-4 rounded-[20px] bg-[#2E2E2E] mb-3 group-hover:bg-[#383838] transition-colors"
+                className="p-4 rounded-[var(--radius-md)] bg-[var(--color-surface-high)] mb-3 group-hover:bg-[color-mix(in_srgb,var(--color-surface-high)_88%,var(--color-text)_12%)] transition-colors"
                 whileHover={{ rotate: 12 }}
                 transition={springs.bouncy}
               >
-                <UtensilsCrossed className="w-5 h-5 text-[#E8E4DE]" strokeWidth={1.5} />
+                <UtensilsCrossed className="w-5 h-5 text-[var(--color-text)]" strokeWidth={1.5} />
               </motion.div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">
+              <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-text-dim)]">
                 Nutrition
               </p>
             </Card>
           </motion.div>
         </Link>
 
-        <Link to="/history" className="col-span-2">
+        <Link to="/train/program">
+          <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} transition={springs.snappy}>
+            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group bg-accent-tint-strong border-l-accent">
+              <motion.div
+                className="p-4 rounded-[var(--radius-md)] bg-[var(--color-surface-high)] mb-3 group-hover:bg-[color-mix(in_srgb,var(--color-surface-high)_88%,var(--color-text)_12%)] transition-colors"
+                whileHover={{ rotate: 8 }}
+                transition={springs.bouncy}
+              >
+                <LayoutGrid className="w-5 h-5 text-[var(--color-text)]" strokeWidth={1.5} />
+              </motion.div>
+              <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-text-dim)]">
+                Program
+              </p>
+            </Card>
+          </motion.div>
+        </Link>
+
+        <Link to="/history">
           <motion.div whileHover={{ scale: 1.01, y: -1 }} whileTap={{ scale: 0.99 }} transition={springs.snappy}>
-            <Card variant="slab" className="flex items-center justify-center py-4 hover:border-white/10 transition-all cursor-pointer group border-l-rose">
-              <div className="p-3 rounded-[16px] bg-[#2E2E2E] mr-3 group-hover:bg-[#383838] transition-colors">
-                <History className="w-4 h-4 text-[#E8E4DE]" strokeWidth={1.5} />
+            <Card variant="slab" className="flex flex-col items-center justify-center py-6 hover:border-white/10 transition-all cursor-pointer group border-l-rose">
+              <div className="p-4 rounded-[var(--radius-md)] bg-[var(--color-surface-high)] mb-3 group-hover:bg-[color-mix(in_srgb,var(--color-surface-high)_88%,var(--color-text)_12%)] transition-colors">
+                <History className="w-5 h-5 text-[var(--color-text)]" strokeWidth={1.5} />
               </div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">
-                Training History
+              <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-text-dim)]">
+                History
               </p>
             </Card>
           </motion.div>
@@ -226,7 +243,7 @@ export function Dashboard() {
             <CardTitle>Weekly Volume</CardTitle>
             <Link
               to="/analysis"
-              className="flex items-center gap-1 text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] transition-colors"
+              className="flex items-center gap-1 text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)] hover:text-[var(--color-text-dim)] transition-colors"
             >
               Details
               <ArrowRight className="w-3 h-3" />
@@ -248,7 +265,7 @@ export function Dashboard() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Card variant="slab">
           <div className="flex items-center gap-2 mb-5">
-            <TrendingUp className="w-4 h-4 text-[#C4A484]" strokeWidth={1.5} />
+            <TrendingUp className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.5} />
             <CardTitle>Insights</CardTitle>
           </div>
 
@@ -280,10 +297,10 @@ export function Dashboard() {
                     transition={{ delay: index * 0.08, ...springs.smooth }}
                   >
                     <div>
-                      <p className="text-body text-[#E8E4DE] capitalize">
+                      <p className="text-body text-[var(--color-text)] capitalize">
                         {mv.muscle_group.replace('_', ' ')}
                       </p>
-                      <p className="number-medium text-[#9A9A9A] tabular-nums">
+                      <p className="number-medium text-[var(--color-text-dim)] tabular-nums">
                         {mv.weekly_sets} <span className="text-[10px] uppercase tracking-wider">sets/wk</span>
                       </p>
                     </div>
@@ -303,16 +320,16 @@ export function Dashboard() {
 function getVolumeStatusColor(status: string): string {
   switch (status) {
     case 'below_mev':
-      return '#8B6B6B';
+      return 'var(--color-volume-below-mev)';
     case 'mev_mav':
-      return '#A68B6B';
+      return 'var(--color-volume-mev-mav)';
     case 'mav':
-      return '#8B9A7D';
+      return 'var(--color-volume-mav)';
     case 'approaching_mrv':
-      return '#9A8B7D';
+      return 'var(--color-volume-approaching-mrv)';
     case 'above_mrv':
-      return '#7D6B6B';
+      return 'var(--color-volume-above-mrv)';
     default:
-      return '#6B6B6B';
+      return 'var(--color-muted)';
   }
 }

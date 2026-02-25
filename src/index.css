@@ -2,42 +2,45 @@
 
 @theme {
   /* ═════════════════════════════════════
-     HIGH-FASHION BRUTALIST PALETTE (DARK)
-     Inspired by YZY / Entire Studios
+     WARM CARBON PALETTE
+     Editorial / tactile / mobile-first
      ═════════════════════════════════════ */
-  
+
   /* Base (runtime values overridden by .dark/.light) */
-  --color-base: #1A1A1A;
-  --color-surface: #242424;
-  --color-surface-high: #2E2E2E;
-  --color-muted: #6B6B6B;
-  --color-text: #E8E4DE;
-  --color-text-dim: #9A9A9A;
-  
-  /* Accent Colors (YZY Muted) */
-  --color-accent: #C4A484;         /* Dusty tan */
-  --color-sage: #8B9A7D;           /* Muted sage - success/optimal */
-  --color-rose: #A68B8B;           /* Dusty rose - warning */
-  --color-stone: #8B8580;          /* Warm stone */
-  
-  /* Status Colors (Desaturated) */
-  --color-success: #8B9A7D;        /* Sage */
-  --color-warning: #C9A9A6;        /* Rose */
-  --color-danger: #8B6B6B;         /* Muted red */
-  
-  /* Volume Status (Editorial) */
-  --color-volume-below-mev: #8B6B6B;
-  --color-volume-mev-mav: #A68B6B;
-  --color-volume-mav: #8B9A7D;
-  --color-volume-approaching-mrv: #9A8B7D;
-  --color-volume-above-mrv: #7D6B6B;
-  
-  /* Massive Radius - Puffer Volume Aesthetic */
-  --radius-sm: 12px;
-  --radius-md: 20px;
-  --radius-lg: 28px;
-  --radius-xl: 36px;
-  --radius-2xl: 48px;
+  --color-base: #1C1A17;
+  --color-surface-1: #242220;
+  --color-surface-2: #2E2B28;
+  --color-surface-3: #3A3633;
+  --color-surface: var(--color-surface-1);
+  --color-surface-high: var(--color-surface-2);
+  --color-muted: #7F786F;
+  --color-text: #EDE7DF;
+  --color-text-dim: #B0A79B;
+
+  /* Accent colors */
+  --color-accent: #C4A484;
+  --color-sage: #8B9A7D;
+  --color-rose: #A68B8B;
+  --color-stone: #8B8580;
+
+  /* Status colors */
+  --color-success: #8B9A7D;
+  --color-warning: #C9A9A6;
+  --color-danger: #C47070;
+
+  /* Volume status (single-hue progression) */
+  --color-volume-below-mev: color-mix(in srgb, var(--color-accent) 24%, var(--color-base));
+  --color-volume-mev-mav: color-mix(in srgb, var(--color-accent) 40%, var(--color-base));
+  --color-volume-mav: color-mix(in srgb, var(--color-accent) 58%, var(--color-base));
+  --color-volume-approaching-mrv: color-mix(in srgb, var(--color-accent) 76%, var(--color-base));
+  --color-volume-above-mrv: color-mix(in srgb, var(--color-accent) 92%, var(--color-base));
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
   --radius-full: 9999px;
   
   /* Typography */
@@ -50,55 +53,63 @@
 
 :root,
 .dark {
-  --color-base: #1A1A1A;
-  --color-surface: #242424;
-  --color-surface-high: #2E2E2E;
-  --color-muted: #6B6B6B;
-  --color-text: #E8E4DE;
-  --color-text-dim: #9A9A9A;
+  --color-base: #1C1A17;
+  --color-surface-1: #242220;
+  --color-surface-2: #2E2B28;
+  --color-surface-3: #3A3633;
+  --color-surface: var(--color-surface-1);
+  --color-surface-high: var(--color-surface-2);
+  --color-muted: #7F786F;
+  --color-text: #EDE7DF;
+  --color-text-dim: #B0A79B;
   --color-accent: #C4A484;
   --color-sage: #8B9A7D;
   --color-rose: #A68B8B;
   --color-stone: #8B8580;
   --color-success: #8B9A7D;
   --color-warning: #C9A9A6;
-  --color-danger: #8B6B6B;
-  --color-border: rgba(255, 255, 255, 0.05);
-  --color-border-strong: rgba(255, 255, 255, 0.1);
-  --color-border-soft: rgba(255, 255, 255, 0.03);
-  --noise-opacity: 0.025;
+  --color-danger: #C47070;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --color-border-soft: rgba(255, 255, 255, 0.04);
+  --noise-opacity: 0.02;
   --noise-filter: none;
   --overlay-backdrop: rgba(0, 0, 0, 0.8);
-  --button-primary-bg: var(--color-text);
-  --button-primary-fg: var(--color-base);
-  --button-primary-hover: color-mix(in srgb, var(--color-text) 90%, var(--color-accent) 10%);
-  --button-primary-active: color-mix(in srgb, var(--color-text) 84%, var(--color-accent) 16%);
+  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%);
+  --button-primary-bg: var(--color-accent);
+  --button-primary-fg: #1C1A17;
+  --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
+  --button-primary-active: color-mix(in srgb, var(--color-accent) 84%, var(--color-base) 16%);
 }
 
 .light {
-  --color-base: #F7F6F3;
-  --color-surface: #FFFFFF;
-  --color-surface-high: #F2F0EC;
-  --color-muted: #8C867C;
-  --color-text: #25221D;
-  --color-text-dim: #6F685F;
+  --color-base: #F5F0EA;
+  --color-surface-1: #E8E2DA;
+  --color-surface-2: #DDD4CA;
+  --color-surface-3: #D0C5BA;
+  --color-surface: var(--color-surface-1);
+  --color-surface-high: var(--color-surface-2);
+  --color-muted: #837B71;
+  --color-text: #2A241D;
+  --color-text-dim: #665D53;
   --color-accent: #A98A63;
   --color-sage: #6E8560;
-  --color-rose: #9A7272;
-  --color-stone: #847B73;
+  --color-rose: #9C7676;
+  --color-stone: #86796D;
   --color-success: #6E8560;
-  --color-warning: #A48376;
-  --color-danger: #8B5E5E;
-  --color-border: rgba(0, 0, 0, 0.04);
-  --color-border-strong: rgba(0, 0, 0, 0.08);
+  --color-warning: #A58679;
+  --color-danger: #B46A6A;
+  --color-border: rgba(0, 0, 0, 0.06);
+  --color-border-strong: rgba(0, 0, 0, 0.11);
   --color-border-soft: rgba(0, 0, 0, 0.03);
-  --noise-opacity: 0.012;
+  --noise-opacity: 0.01;
   --noise-filter: none;
   --overlay-backdrop: rgba(20, 16, 12, 0.5);
-  --button-primary-bg: #58524A;
-  --button-primary-fg: #F7F5F1;
-  --button-primary-hover: #4F4942;
-  --button-primary-active: #454039;
+  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 60%);
+  --button-primary-bg: var(--color-accent);
+  --button-primary-fg: #1F1A14;
+  --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
+  --button-primary-active: color-mix(in srgb, var(--color-accent) 82%, var(--color-base) 18%);
 }
 
 * {
@@ -122,6 +133,9 @@ html.dark {
 body {
   font-family: var(--font-mono);
   background-color: var(--color-base);
+  background-image: var(--surface-atmosphere);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

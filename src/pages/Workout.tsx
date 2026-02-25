@@ -919,8 +919,8 @@ export function Workout() {
 
         <Card variant="slab" className="text-center py-16">
           <p className="text-xs text-[#6B6B6B] mb-6">No program active</p>
-          <Button onClick={() => window.location.href = '/splits'}>
-            Select Program
+          <Button onClick={() => window.location.href = '/train/program'}>
+            Open Program
           </Button>
         </Card>
       </motion.div>

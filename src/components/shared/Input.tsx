@@ -31,9 +31,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           className={`
             w-full px-3 py-2 md:px-4 md:py-3
-            bg-[var(--color-base)]
+            bg-[var(--color-surface-1)]
             border border-[var(--color-border-strong)]
-            rounded-[20px]
+            rounded-[var(--radius-md)]
             text-[var(--color-text)]
             text-sm
             placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]
