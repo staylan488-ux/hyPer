@@ -23,11 +23,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
         className="min-h-screen flex items-center justify-center px-5 bg-[var(--color-base)]"
         style={{ backgroundImage: 'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 58%)' }}
       >
-        <motion.div
-          className="w-full max-w-sm rounded-[28px] border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-6 py-8 text-center"
-          initial={{ opacity: 0, y: 10, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={springs.smooth}
+          <motion.div
+            className="w-full max-w-sm rounded-[var(--radius-xl)] border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-6 py-8 text-center"
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={springs.smooth}
         >
           <motion.p
             className="text-[10px] tracking-[0.32em] text-[var(--color-muted)] mb-5"
@@ -93,7 +93,7 @@ function App() {
           }
         />
         <Route
-          path="/workout"
+          path="/train"
           element={
             <PrivateRoute>
               <AppLayout>
@@ -113,7 +113,7 @@ function App() {
           }
         />
         <Route
-          path="/splits"
+          path="/train/program"
           element={
             <PrivateRoute>
               <AppLayout>
@@ -122,6 +122,9 @@ function App() {
             </PrivateRoute>
           }
         />
+        <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
+        <Route path="/workout" element={<Navigate to="/train" replace />} />
+        <Route path="/splits" element={<Navigate to="/train/program" replace />} />
         <Route
           path="/settings"
           element={

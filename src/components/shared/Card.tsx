@@ -10,17 +10,17 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onD
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
-      default: 'bg-[var(--color-surface)] border border-[var(--color-border)]',
-      elevated: 'bg-[var(--color-surface-high)] border border-[var(--color-border-strong)]',
+      default: 'bg-[var(--color-surface-1)] border border-[var(--color-border)]',
+      elevated: 'bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] shadow-[0_2px_20px_color-mix(in_srgb,var(--color-base)_62%,transparent)]',
       outlined: 'bg-[var(--color-base)] border border-[var(--color-border-strong)]',
-      slab: 'bg-[var(--color-surface)] border border-[var(--color-border-soft)]',
+      slab: 'bg-[var(--color-surface-2)] border border-[var(--color-border-soft)]',
     };
 
     if (!animated) {
       return (
         <div
           ref={ref}
-          className={`rounded-[28px] p-5 ${variants[variant]} ${className}`}
+          className={`rounded-[var(--radius-lg)] p-5 ${variants[variant]} ${className}`}
           {...props}
         >
           {children}
@@ -31,10 +31,10 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        className={`rounded-[28px] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_color-mix(in_srgb,var(--color-text)_16%,transparent)] hover:border-[var(--color-border-strong)] ${variants[variant]} ${className}`}
+        className={`rounded-[var(--radius-lg)] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_color-mix(in_srgb,var(--color-text)_10%,transparent)] hover:border-[var(--color-border-strong)] ${variants[variant]} ${className}`}
         transition={springs.smooth}
         whileHover={{ y: -1 }}
-        whileTap={{ scale: 0.985 }}
+        whileTap={{ scale: 0.995 }}
         {...props}
       >
         {children}

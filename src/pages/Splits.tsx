@@ -157,7 +157,7 @@ export function Splits() {
         return;
       }
 
-      navigate('/workout');
+      navigate('/train');
     } finally {
       setStartingTemplateLabel(null);
     }
@@ -295,13 +295,13 @@ export function Splits() {
                 {flexTemplates.length} saved {flexTemplates.length === 1 ? 'template' : 'templates'}
               </p>
             </div>
-            <Button onClick={() => navigate('/workout')}>Start Flexible Workout</Button>
+            <Button onClick={() => navigate('/train')}>Start Flexible Workout</Button>
           </Card>
 
           {flexTemplates.length === 0 ? (
             <Card variant="slab" className="text-center py-16">
               <p className="text-xs text-[#6B6B6B] mb-6">No flexible templates yet. Complete a flexible workout to auto-save one.</p>
-              <Button onClick={() => navigate('/workout')}>
+              <Button onClick={() => navigate('/train')}>
                 Start Flexible Workout
               </Button>
             </Card>
@@ -730,7 +730,7 @@ export function Splits() {
               className="flex-1"
               onClick={() => {
                 setShowPlanStartPrompt(false);
-                navigate('/workout');
+                navigate('/train');
               }}
             >
               Set Now

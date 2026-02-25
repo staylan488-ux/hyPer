@@ -14,6 +14,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       inline-flex items-center justify-center
       font-medium transition-all duration-200
       focus:outline-none
+      focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_35%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
       disabled:opacity-40 disabled:cursor-not-allowed
       uppercase tracking-wider text-xs
     `;
@@ -23,33 +24,33 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
         hover:bg-[var(--button-primary-hover)]
         active:bg-[var(--button-primary-active)]
-        rounded-[28px]
+        rounded-[var(--radius-lg)]
       `,
       secondary: `
-        bg-[var(--color-surface-high)] text-[var(--color-text)]
+        bg-[var(--color-surface-2)] text-[var(--color-text)]
         border border-[var(--color-border-strong)]
-        hover:bg-[color-mix(in_srgb,var(--color-surface-high)_90%,var(--color-text)_10%)] hover:border-[var(--color-border-strong)]
-        active:bg-[color-mix(in_srgb,var(--color-surface-high)_86%,var(--color-text)_14%)] active:border-[var(--color-border-strong)]
-        rounded-[28px]
+        hover:bg-[color-mix(in_srgb,var(--color-surface-2)_86%,var(--color-text)_14%)] hover:border-[var(--color-border-strong)]
+        active:bg-[color-mix(in_srgb,var(--color-surface-2)_80%,var(--color-text)_20%)] active:border-[var(--color-border-strong)]
+        rounded-[var(--radius-lg)]
       `,
       danger: `
-        bg-[var(--color-danger)] text-[var(--color-text)]
-        hover:bg-[color-mix(in_srgb,var(--color-danger)_88%,var(--color-base)_12%)]
-        active:bg-[color-mix(in_srgb,var(--color-danger)_82%,var(--color-base)_18%)]
-        rounded-[28px]
+        bg-[var(--color-danger)] text-[var(--color-base)]
+        hover:bg-[color-mix(in_srgb,var(--color-danger)_90%,var(--color-text)_10%)]
+        active:bg-[color-mix(in_srgb,var(--color-danger)_84%,var(--color-base)_16%)]
+        rounded-[var(--radius-lg)]
       `,
       ghost: `
         bg-transparent text-[var(--color-text-dim)]
         hover:text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)]
         active:text-[var(--color-text)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)]
-        rounded-[20px]
+        rounded-[var(--radius-md)]
       `,
     };
 
     const sizes = {
-      sm: 'px-4 py-2 text-[10px]',
-      md: 'px-6 py-3 text-xs',
-      lg: 'px-8 py-4 text-xs',
+      sm: 'px-4 min-h-9 text-[10px]',
+      md: 'px-6 min-h-12 text-xs',
+      lg: 'px-8 min-h-12 text-xs',
     };
 
     const isDisabled = disabled || loading;
@@ -59,8 +60,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
-        whileTap={isDisabled ? undefined : { scale: 0.96, y: 1 }}
-        whileHover={isDisabled ? undefined : { scale: 1.01 }}
+        whileTap={isDisabled ? undefined : { scale: 0.995 }}
+        whileHover={isDisabled ? undefined : { scale: 1.005 }}
         transition={springs.snappy}
         {...props}
       >

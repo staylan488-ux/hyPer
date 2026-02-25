@@ -45,13 +45,13 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
           onClick={(e) => e.target === overlayRef.current && onClose()}
         >
           <motion.div
-            className="w-full sm:max-w-lg bg-[var(--color-base)] rounded-t-[36px] sm:rounded-[36px] max-h-[90vh] border border-[var(--color-border)] flex flex-col overflow-hidden"
+            className="w-full sm:max-w-lg bg-[var(--color-surface-1)] rounded-t-[var(--radius-xl)] sm:rounded-[var(--radius-xl)] max-h-[90vh] border border-[var(--color-border-strong)] flex flex-col overflow-hidden"
             initial={{ opacity: 0, y: 60, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.98 }}
             transition={springs.smooth}
           >
-            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--color-border)] bg-[var(--color-base)]">
+            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--color-border)] bg-[var(--color-surface-1)]">
               {title && (
                 <h2 className="text-xs font-medium tracking-[0.15em] uppercase text-[var(--color-text)]">
                   {title}
@@ -60,7 +60,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
               <motion.button
                 type="button"
                 onClick={onClose}
-                className="p-3 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)] rounded-[14px] transition-colors"
+                className="p-3 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)] rounded-[var(--radius-md)] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
                 <X className="w-4 h-4 text-[var(--color-muted)]" />
