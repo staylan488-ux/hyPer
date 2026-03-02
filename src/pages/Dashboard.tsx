@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { MacroGauge } from '@/components/dashboard/MacroGauge';
 import { VolumeChart } from '@/components/dashboard/VolumeChart';
+import { AdherenceDashboard } from '@/components/dashboard/AdherenceDashboard';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
@@ -260,6 +261,11 @@ export function Dashboard() {
           )}
         </Card>
       </motion.div>
+
+      {/* Adherence Dashboard */}
+      <div className="mb-8">
+        <AdherenceDashboard />
+      </div>
 
       {/* Recommendations */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
