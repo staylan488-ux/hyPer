@@ -573,6 +573,17 @@ export function History() {
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
+              const firstWorkout = dayWorkouts[0] || null;
+              const firstWorkoutTitle = firstWorkout
+                ? resolveWorkoutTitle({
+                    splitDayName: firstWorkout.split_day?.day_name,
+                    dayLabel: firstWorkout.day_label || null,
+                    exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
+                  })
+                : '';
+              const workoutSummaryLabel = dayWorkouts.length > 1
+                ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
+                : firstWorkoutTitle;
 
               return (
                 <button
@@ -583,7 +594,8 @@ export function History() {
                       setSelectedMonth(startOfMonth(day));
                     }
                   }}
-                  className={`h-10 rounded-[12px] text-xs tabular-nums transition-all relative ${
+                  title={workoutSummaryLabel || undefined}
+                  className={`min-h-16 rounded-[12px] text-xs tabular-nums transition-all relative px-1 py-1.5 ${
                     isSelected
                       ? 'bg-[#E8E4DE] text-[#1A1A1A]'
                       : inMonth
@@ -598,10 +610,21 @@ export function History() {
                       transition={springs.smooth}
                     />
                   )}
-                  <span className="relative z-10">{format(day, 'd')}</span>
+                  <div className="relative z-10 flex h-full flex-col items-start">
+                    <span className="text-xs">{format(day, 'd')}</span>
+                    {workoutSummaryLabel && (
+                      <span
+                        className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight ${
+                          isSelected ? 'text-[#1A1A1A]/85' : 'text-[#BEB8AE]'
+                        }`}
+                      >
+                        {workoutSummaryLabel}
+                      </span>
+                    )}
+                  </div>
                   {dayWorkouts.length > 0 && (
                     <motion.span
-                      className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full z-10 ${
+                      className={`absolute bottom-1 right-1.5 w-1.5 h-1.5 rounded-full z-10 ${
                         isSelected ? 'bg-[#1A1A1A]' : 'bg-[#8B9A7D]'
                       }`}
                       initial={{ scale: 0 }}

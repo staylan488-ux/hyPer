@@ -942,6 +942,9 @@ export function Workout() {
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;
   const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
+  const currentSessionTitle = currentWorkout?.split_day_id === null
+    ? currentWorkoutDayPlan?.day_label || 'Flexible Session'
+    : splitDay?.day_name || 'Session';
   const sessionDurationLabel = currentWorkoutCreatedAt
     ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
     : '—';
@@ -1371,10 +1374,7 @@ export function Workout() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">In Progress</p>
-            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Session</h1>
-            <p className="mt-2 text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
-              Elapsed {sessionDurationLabel}
-            </p>
+            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">{currentSessionTitle}</h1>
           </div>
           <Button
             variant="secondary"
@@ -1383,6 +1383,17 @@ export function Workout() {
           >
             Complete
           </Button>
+        </div>
+
+        <div className="mb-5 flex items-center gap-2">
+          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
+            <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Elapsed</p>
+            <p className="text-lg font-display text-[#E8E4DE] tabular-nums">{sessionDurationLabel}</p>
+          </div>
+          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
+            <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Sets</p>
+            <p className="text-lg font-display text-[#E8E4DE] tabular-nums">{completedSets}/{totalSets}</p>
+          </div>
         </div>
 
         {/* Progress */}

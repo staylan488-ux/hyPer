@@ -229,6 +229,24 @@ export function Dashboard() {
         </Link>
       </motion.div>
 
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <Card variant="slab" className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <CardTitle>Training Hours</CardTitle>
+            <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">8 weeks</span>
+          </div>
+          {loading ? (
+            <div className="flex items-end gap-3 h-40">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="shimmer flex-1 h-[45%]" />
+              ))}
+            </div>
+          ) : (
+            <TrainingHoursHistogram points={trainingHours} />
+          )}
+        </Card>
+      </motion.div>
+
       {/* Daily Macros */}
       <motion.div className="mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <div className="flex items-center justify-between mb-4">
@@ -299,24 +317,6 @@ export function Dashboard() {
             </div>
           ) : (
             <VolumeChart volumeData={weeklyVolume} />
-          )}
-        </Card>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <CardTitle>Training Hours</CardTitle>
-            <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">8 weeks</span>
-          </div>
-          {loading ? (
-            <div className="flex items-end gap-3 h-40">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="shimmer flex-1 h-[45%]" />
-              ))}
-            </div>
-          ) : (
-            <TrainingHoursHistogram points={trainingHours} />
           )}
         </Card>
       </motion.div>
