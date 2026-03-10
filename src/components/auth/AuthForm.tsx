@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Input, Card } from '@/components/shared';
@@ -26,21 +26,19 @@ export function AuthForm() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [signupSuccess, setSignupSuccess] = useState<string | null>(null);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [signupButtonLocked, setSignupButtonLocked] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const [showIntro, setShowIntro] = useState(() => shouldPlayLoginIntro() && !reduceMotion);
-  const signupTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { signIn, signUp, signInWithGoogle, loading } = useAuthStore();
+  const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, loading } = useAuthStore();
 
   const clearSignupSignals = useCallback(() => {
     setSignupSuccess(null);
+    setPendingVerificationEmail(null);
     setShowSignInPrompt(false);
     setSignupButtonLocked(false);
-    if (signupTransitionRef.current) {
-      clearTimeout(signupTransitionRef.current);
-      signupTransitionRef.current = null;
-    }
   }, []);
 
   const switchToLogin = useCallback(() => {
@@ -48,14 +46,6 @@ export function AuthForm() {
     setIsLogin(true);
     setError(null);
   }, [clearSignupSignals]);
-
-  useEffect(() => {
-    return () => {
-      if (signupTransitionRef.current) {
-        clearTimeout(signupTransitionRef.current);
-      }
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,19 +71,11 @@ export function AuthForm() {
     }
 
     setSignupSuccess(SIGNUP_SUCCESS_MESSAGE);
+    setPendingVerificationEmail(email);
     setShowSignInPrompt(false);
     setSignupButtonLocked(true);
     setDisplayName('');
-    setEmail('');
     setPassword('');
-
-    if (signupTransitionRef.current) {
-      clearTimeout(signupTransitionRef.current);
-    }
-
-    signupTransitionRef.current = setTimeout(() => {
-      switchToLogin();
-    }, 1300);
   };
 
   const handleGoogleSignIn = async () => {
@@ -101,6 +83,26 @@ export function AuthForm() {
     setError(null);
     const { error } = await signInWithGoogle();
     if (error) setError(error.message);
+  };
+
+  const handleResendVerification = async () => {
+    const targetEmail = pendingVerificationEmail || email;
+    if (!targetEmail || resendingVerification) return;
+
+    setResendingVerification(true);
+    setError(null);
+
+    try {
+      const { error } = await resendSignupConfirmation(targetEmail);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      setSignupSuccess(`Verification email resent to ${targetEmail}. Check spam or promotions if it doesn't appear.`);
+    } finally {
+      setResendingVerification(false);
+    }
   };
 
   const finishIntro = useCallback(() => {
@@ -190,15 +192,30 @@ export function AuthForm() {
 
               <AnimatePresence>
                 {!isLogin && signupSuccess && (
-                  <motion.p
-                    className="text-[10px] tracking-wide text-[#A8B89A] text-center py-2"
+                  <motion.div
+                    className="rounded-[14px] border border-[#8B9A7D]/35 bg-[#8B9A7D]/10 px-3 py-3 text-center"
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
                     transition={springs.smooth}
                   >
-                    {signupSuccess}
-                  </motion.p>
+                    <p className="text-[10px] tracking-wide text-[#A8B89A]">
+                      {signupSuccess}
+                    </p>
+                    <p className="mt-2 text-[10px] tracking-wide text-[#6B6B6B]">
+                      Verification emails can land in spam, junk, or promotions.
+                    </p>
+                    {(pendingVerificationEmail || email) && (
+                      <button
+                        type="button"
+                        onClick={() => { void handleResendVerification(); }}
+                        disabled={resendingVerification}
+                        className="mt-3 text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] hover:text-white disabled:opacity-50"
+                      >
+                        {resendingVerification ? 'Resending...' : 'Resend Verification Email'}
+                      </button>
+                    )}
+                  </motion.div>
                 )}
               </AnimatePresence>
 
