@@ -13,6 +13,7 @@ export interface PreviousSetSummary {
   set_number: number | string;
   weight: number | string | null;
   reps: number | string | null;
+  rpe?: number | string | null;
 }
 
 export type SetPerformanceResult = 'beat' | 'matched' | 'below' | 'unknown';

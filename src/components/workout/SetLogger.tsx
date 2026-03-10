@@ -1,25 +1,36 @@
 import { useState } from 'react';
-import { Check, Pencil } from 'lucide-react';
+import { Check, Copy, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { springs } from '@/lib/animations';
 import type { WorkoutSet } from '@/types';
+import type { AutofillSetValues } from '@/lib/setAutofill';
 
 interface SetLoggerProps {
   set: WorkoutSet;
   setNumber: number;
+  autofillValues?: AutofillSetValues | null;
   onComplete?: (set: WorkoutSet) => void;
   onBeforeComplete?: (set: WorkoutSet) => Promise<true | string> | true | string;
 }
 
-export function SetLogger({ set, setNumber, onComplete, onBeforeComplete }: SetLoggerProps) {
+export function SetLogger({ set, setNumber, autofillValues, onComplete, onBeforeComplete }: SetLoggerProps) {
   const { logSet } = useAppStore();
   const [weight, setWeight] = useState(set.weight?.toString() || '');
   const [reps, setReps] = useState(set.reps?.toString() || '');
   const [rpe, setRpe] = useState(set.rpe?.toString() || '');
   const [isEditing, setIsEditing] = useState(!set.completed);
   const [saving, setSaving] = useState(false);
+  const autofillLabel = autofillValues?.source === 'current_workout' ? 'Use Last Set' : 'Use Last Workout';
+
+  const handleAutofill = () => {
+    if (!autofillValues) return;
+
+    setWeight(autofillValues.weight);
+    setReps(autofillValues.reps);
+    setRpe(autofillValues.rpe);
+  };
 
   const handleSave = async () => {
     if (!weight || !reps || saving) return;
@@ -148,6 +159,17 @@ export function SetLogger({ set, setNumber, onComplete, onBeforeComplete }: SetL
       </div>
 
       <div className="pt-4">
+        {autofillValues && (
+          <Button
+            variant="secondary"
+            className="w-full mb-2"
+            onClick={handleAutofill}
+            disabled={saving}
+          >
+            <Copy className="w-3 h-3 mr-2" strokeWidth={2} />
+            {autofillLabel}
+          </Button>
+        )}
         <Button
           variant="primary"
           className="w-full"

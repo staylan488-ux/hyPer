@@ -6,6 +6,7 @@ import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
+import { formatWorkoutDuration, getWorkoutDurationMs, resolveWorkoutTitle } from '@/lib/workoutSessions';
 import { springs } from '@/lib/animations';
 import type { Exercise, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 import {
@@ -26,6 +27,7 @@ interface WorkoutWithSplit extends Workout {
   split_day?: {
     day_name: string;
   } | null;
+  day_label?: string | null;
 }
 
 interface SetEditorProps {
@@ -222,9 +224,24 @@ export function History() {
       }
 
       const splitDayMap = new Map(splitDays.map((splitDay) => [splitDay.id, splitDay.day_name]));
+      const flexibleWorkoutIds = workouts
+        .filter((workout) => workout.split_day_id === null)
+        .map((workout) => workout.id);
+
+      let workoutPlanLabels = new Map<string, string>();
+      if (flexibleWorkoutIds.length > 0) {
+        const { data: planRows } = await supabase
+          .from('workout_day_plans')
+          .select('workout_id, day_label')
+          .in('workout_id', flexibleWorkoutIds);
+
+        workoutPlanLabels = new Map((planRows || []).map((plan) => [plan.workout_id, plan.day_label]));
+      }
+
       const workoutsWithSplit: WorkoutWithSplit[] = workouts.map((workout) => ({
         ...workout,
         split_day: workout.split_day_id ? { day_name: splitDayMap.get(workout.split_day_id) || 'Unknown' } : null,
+        day_label: workoutPlanLabels.get(workout.id) || null,
       }));
 
       setMonthWorkouts(workoutsWithSplit);
@@ -260,7 +277,7 @@ export function History() {
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
       .filter((workout) => workout.date === selectedDateKey)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => new Date(a.created_at || `${a.date}T00:00:00`).getTime() - new Date(b.created_at || `${b.date}T00:00:00`).getTime());
   }, [monthWorkouts, selectedDateKey]);
 
   const workoutsByDay = useMemo(() => {
@@ -286,6 +303,7 @@ export function History() {
       return {
         ...(workout as WorkoutWithSplit),
         split_day: item.split_day,
+        day_label: plan?.day_label ?? item.day_label ?? null,
       };
     }));
 
@@ -306,6 +324,11 @@ export function History() {
     if (Object.prototype.hasOwnProperty.call(workoutPlans, workoutId)) return;
     const plan = await fetchWorkoutDayPlanByWorkoutId(workoutId);
     setWorkoutPlans((prev) => ({ ...prev, [workoutId]: plan || null }));
+    if (plan?.day_label) {
+      setMonthWorkouts((prev) => prev.map((workout) => (
+        workout.id === workoutId ? { ...workout, day_label: plan.day_label } : workout
+      )));
+    }
   }, [fetchWorkoutDayPlanByWorkoutId, workoutPlans]);
 
   const persistMovementNotes = useCallback(async (workoutId: string, exerciseId: string) => {
@@ -550,6 +573,17 @@ export function History() {
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
+              const firstWorkout = dayWorkouts[0] || null;
+              const firstWorkoutTitle = firstWorkout
+                ? resolveWorkoutTitle({
+                    splitDayName: firstWorkout.split_day?.day_name,
+                    dayLabel: firstWorkout.day_label || null,
+                    exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
+                  })
+                : '';
+              const workoutSummaryLabel = dayWorkouts.length > 1
+                ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
+                : firstWorkoutTitle;
 
               return (
                 <button
@@ -560,7 +594,8 @@ export function History() {
                       setSelectedMonth(startOfMonth(day));
                     }
                   }}
-                  className={`h-10 rounded-[12px] text-xs tabular-nums transition-all relative ${
+                  title={workoutSummaryLabel || undefined}
+                  className={`min-h-16 rounded-[12px] text-xs tabular-nums transition-all relative px-1 py-1.5 ${
                     isSelected
                       ? 'bg-[#E8E4DE] text-[#1A1A1A]'
                       : inMonth
@@ -575,10 +610,21 @@ export function History() {
                       transition={springs.smooth}
                     />
                   )}
-                  <span className="relative z-10">{format(day, 'd')}</span>
+                  <div className="relative z-10 flex h-full flex-col items-start">
+                    <span className="text-xs">{format(day, 'd')}</span>
+                    {workoutSummaryLabel && (
+                      <span
+                        className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight ${
+                          isSelected ? 'text-[#1A1A1A]/85' : 'text-[#BEB8AE]'
+                        }`}
+                      >
+                        {workoutSummaryLabel}
+                      </span>
+                    )}
+                  </div>
                   {dayWorkouts.length > 0 && (
                     <motion.span
-                      className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full z-10 ${
+                      className={`absolute bottom-1 right-1.5 w-1.5 h-1.5 rounded-full z-10 ${
                         isSelected ? 'bg-[#1A1A1A]' : 'bg-[#8B9A7D]'
                       }`}
                       initial={{ scale: 0 }}
@@ -616,6 +662,15 @@ export function History() {
               const groupedSets = groupSetsByExercise(workout.sets);
               const plan = workoutPlans[workout.id] || null;
               const progress = progressFromSets(workout.sets);
+              const resolvedTitle = resolveWorkoutTitle({
+                splitDayName: workout.split_day?.day_name,
+                dayLabel: workout.day_label || plan?.day_label || null,
+                exerciseNames: workout.sets.map((set) => set.exercise?.name || null),
+              });
+              const durationLabel = formatWorkoutDuration(getWorkoutDurationMs(workout));
+              const subtitle = durationLabel === '—'
+                ? `${progress.completedSets}/${progress.totalSets} sets`
+                : `${durationLabel} • ${progress.completedSets}/${progress.totalSets} sets`;
 
               const plannedVisible = plan
                 ? plan.items.filter((item) => !item.hidden).sort((a, b) => a.order - b.order)
@@ -672,8 +727,8 @@ export function History() {
                           )}
                         </div>
                         <div>
-                          <p className="text-sm text-[#E8E4DE]">{workout.split_day?.day_name || plan?.day_label || 'Workout'}</p>
-                          <p className="text-[10px] text-[#6B6B6B]">{progress.completedSets}/{progress.totalSets} sets</p>
+                          <p className="text-sm text-[#E8E4DE]">{resolvedTitle}</p>
+                          <p className="text-[10px] text-[#6B6B6B]">{subtitle}</p>
                         </div>
                       </div>
                       <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>

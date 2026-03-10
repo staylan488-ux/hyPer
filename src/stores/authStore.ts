@@ -2,6 +2,37 @@ import { create } from 'zustand';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
+const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
+
+type SignUpResult = {
+  error: Error | null;
+  existingAccount: boolean;
+};
+
+function getAuthRedirectTo() {
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return undefined;
+  }
+
+  return `${window.location.origin}/`;
+}
+
+function isExistingAccountMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes('already registered')
+    || normalized.includes('already exists')
+    || normalized.includes('already been registered')
+    || normalized.includes('already used');
+}
+
+function isExistingAccountSignUpResponse(data: { user: User | null; session: Session | null }) {
+  if (!data.user || data.session) {
+    return false;
+  }
+
+  return Array.isArray(data.user.identities) && data.user.identities.length === 0;
+}
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -9,7 +40,8 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
+  resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   updateDisplayName: (displayName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -76,22 +108,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signUp: async (email: string, password: string, displayName?: string) => {
     set({ loading: true });
-    const { error } = await supabase.auth.signUp({
+    const emailRedirectTo = getAuthRedirectTo();
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { display_name: displayName },
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
       },
     });
+
+    if (error) {
+      set({ loading: false });
+
+      if (isExistingAccountMessage(error.message)) {
+        return { error: new Error(EXISTING_ACCOUNT_SIGNUP_MESSAGE), existingAccount: true };
+      }
+
+      return { error: new Error(error.message), existingAccount: false };
+    }
+
+    if (isExistingAccountSignUpResponse(data)) {
+      set({ loading: false });
+      return {
+        error: new Error(EXISTING_ACCOUNT_SIGNUP_MESSAGE),
+        existingAccount: true,
+      };
+    }
+
     set({ loading: false });
-    return { error };
+    return { error: null, existingAccount: false };
+  },
+
+  resendSignupConfirmation: async (email: string) => {
+    set({ loading: true });
+    const emailRedirectTo = getAuthRedirectTo();
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
+      },
+    });
+
+    set({ loading: false });
+    return { error: error ? new Error(error.message) : null };
   },
 
   signInWithGoogle: async () => {
+    const redirectTo = getAuthRedirectTo();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/`,
+        ...(redirectTo ? { redirectTo } : {}),
         skipBrowserRedirect: true,
       },
     });

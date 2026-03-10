@@ -874,8 +874,8 @@ describe('must-work store contracts', () => {
     const setsChain = createChain();
     setsChain.eq.mockImplementation(() => Promise.resolve({
       data: [
-        { id: 'set-1', completed: true },
-        { id: 'set-2', completed: true },
+        { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+        { id: 'set-2', completed: true, completed_at: '2026-03-10T12:35:00.000Z' },
       ],
       error: null,
     }));
@@ -897,9 +897,72 @@ describe('must-work store contracts', () => {
       completedSets: 2,
       completed: true,
     });
-    expect(workoutsChain.update).toHaveBeenCalledWith({ completed: true });
+    expect(workoutsChain.update).toHaveBeenCalledWith({
+      completed: true,
+      completed_at: '2026-03-10T12:35:00.000Z',
+    });
     expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-1');
     expect(useAppStore.getState().currentWorkout?.completed).toBe(true);
+    expect(useAppStore.getState().currentWorkout?.completed_at).toBe('2026-03-10T12:35:00.000Z');
+  });
+
+  it('marks a workout complete with the latest completed set timestamp', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: null },
+    });
+
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'workout-1',
+        user_id: 'user-1',
+        split_day_id: 'split-day-1',
+        date: '2026-03-10',
+        notes: null,
+        completed: false,
+        created_at: '2026-03-10T11:00:00.000Z',
+        completed_at: null,
+        sets: [
+          {
+            id: 'set-1',
+            workout_id: 'workout-1',
+            exercise_id: 'exercise-1',
+            set_number: 1,
+            weight: 185,
+            reps: 8,
+            rpe: 8,
+            completed: true,
+            completed_at: '2026-03-10T11:20:00.000Z',
+          },
+          {
+            id: 'set-2',
+            workout_id: 'workout-1',
+            exercise_id: 'exercise-1',
+            set_number: 2,
+            weight: 185,
+            reps: 8,
+            rpe: 8,
+            completed: true,
+            completed_at: '2026-03-10T11:42:00.000Z',
+          },
+        ],
+      },
+    });
+
+    const workoutsChain = createChain();
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().completeWorkout();
+
+    expect(workoutsChain.update).toHaveBeenCalledWith({
+      completed: true,
+      completed_at: '2026-03-10T11:42:00.000Z',
+    });
+    expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-1');
+    expect(useAppStore.getState().currentWorkout).toBeNull();
   });
 
   it('sets active split and refreshes splits', async () => {

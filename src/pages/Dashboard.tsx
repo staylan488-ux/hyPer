@@ -2,16 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Dumbbell, UtensilsCrossed, TrendingUp, ArrowRight, History, LayoutGrid } from 'lucide-react';
 import { motion } from 'motion/react';
-import { format } from 'date-fns';
+import { format, startOfWeek, subWeeks } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { MacroGauge } from '@/components/dashboard/MacroGauge';
 import { VolumeChart } from '@/components/dashboard/VolumeChart';
+import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { AdherenceDashboard } from '@/components/dashboard/AdherenceDashboard';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
+import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
 
 interface NutritionTotals {
   calories: number;
@@ -41,6 +43,7 @@ export function Dashboard() {
     carbs: 0,
     fat: 0,
   });
+  const [trainingHours, setTrainingHours] = useState<TrainingHoursPoint[]>([]);
 
   const fetchNutritionTotals = useCallback(async () => {
     try {
@@ -89,6 +92,43 @@ export function Dashboard() {
     }
   }, []);
 
+  const fetchTrainingHours = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setTrainingHours(buildWeeklyTrainingHours([]));
+        return;
+      }
+
+      const from = format(startOfWeek(subWeeks(new Date(), 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+      const { data: workouts, error } = await supabase
+        .from('workouts')
+        .select('date, completed, completed_at, created_at')
+        .eq('user_id', user.id)
+        .eq('completed', true)
+        .gte('date', from)
+        .order('date', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching training hours:', error);
+        setTrainingHours(buildWeeklyTrainingHours([]));
+        return;
+      }
+
+      setTrainingHours(buildWeeklyTrainingHours((workouts || []) as Array<{
+        date: string;
+        completed: boolean;
+        completed_at: string | null;
+        created_at: string;
+      }>));
+    } catch (error) {
+      console.error('Error fetching training hours:', error);
+      setTrainingHours(buildWeeklyTrainingHours([]));
+    }
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(async () => {
       await Promise.all([
@@ -98,12 +138,13 @@ export function Dashboard() {
         calculateWeeklyVolume(),
         fetchCurrentWorkout(),
         fetchNutritionTotals(),
+        fetchTrainingHours(),
       ]);
       setLoading(false);
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchVolumeLandmarks]);
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchTrainingHours, fetchVolumeLandmarks]);
 
   return (
     <>
@@ -186,6 +227,24 @@ export function Dashboard() {
             </Card>
           </motion.div>
         </Link>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <Card variant="slab" className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <CardTitle>Training Hours</CardTitle>
+            <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">8 weeks</span>
+          </div>
+          {loading ? (
+            <div className="flex items-end gap-3 h-40">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="shimmer flex-1 h-[45%]" />
+              ))}
+            </div>
+          ) : (
+            <TrainingHoursHistogram points={trainingHours} />
+          )}
+        </Card>
       </motion.div>
 
       {/* Daily Macros */}

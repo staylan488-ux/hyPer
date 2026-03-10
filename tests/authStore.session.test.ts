@@ -7,6 +7,8 @@ const supabaseMock = vi.hoisted(() => ({
     onAuthStateChange: vi.fn(),
     signOut: vi.fn(),
     signInWithPassword: vi.fn(),
+    signUp: vi.fn(),
+    resend: vi.fn(),
   },
 }));
 
@@ -43,6 +45,8 @@ beforeEach(() => {
   supabaseMock.auth.onAuthStateChange.mockReset();
   supabaseMock.auth.signOut.mockReset();
   supabaseMock.auth.signInWithPassword.mockReset();
+  supabaseMock.auth.signUp.mockReset();
+  supabaseMock.auth.resend.mockReset();
 
   useAuthStore.setState({
     user: null,
@@ -150,6 +154,60 @@ describe('auth session must-work behavior', () => {
     expect(supabaseMock.auth.signOut).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState().user).toBeNull();
     expect(useAuthStore.getState().session).toBeNull();
+  });
+
+  it('flags an obfuscated existing-account signup response as an existing account', async () => {
+    supabaseMock.auth.signUp.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-4',
+          identities: [],
+        },
+        session: null,
+      },
+      error: null,
+    });
+
+    const result = await useAuthStore.getState().signUp('google-user@example.com', 'password123', 'Alex');
+
+    expect(result.existingAccount).toBe(true);
+    expect(result.error?.message).toBe(
+      'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.',
+    );
+    expect(useAuthStore.getState().loading).toBe(false);
+  });
+
+  it('maps duplicate signup errors to the existing-account guidance', async () => {
+    supabaseMock.auth.signUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { message: 'User already registered' },
+    });
+
+    const result = await useAuthStore.getState().signUp('existing-user@example.com', 'password123', 'Alex');
+
+    expect(result.existingAccount).toBe(true);
+    expect(result.error?.message).toBe(
+      'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.',
+    );
+    expect(useAuthStore.getState().loading).toBe(false);
+  });
+
+  it('keeps a real signup response as a verification flow', async () => {
+    supabaseMock.auth.signUp.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-5',
+          identities: [{ identity_id: 'identity-1' }],
+        },
+        session: null,
+      },
+      error: null,
+    });
+
+    const result = await useAuthStore.getState().signUp('new-user@example.com', 'password123', 'Alex');
+
+    expect(result).toEqual({ error: null, existingAccount: false });
+    expect(useAuthStore.getState().loading).toBe(false);
   });
 
   it('updates display name and syncs profile state', async () => {

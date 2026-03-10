@@ -65,6 +65,8 @@ export interface Workout {
   date: string;
   notes: string | null;
   completed: boolean;
+  completed_at?: string | null;
+  created_at?: string;
   sets: WorkoutSet[];
 }
 
