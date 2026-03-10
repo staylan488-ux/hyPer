@@ -167,6 +167,7 @@ export interface Database {
           date: string
           notes: string | null
           completed: boolean
+          completed_at: string | null
           created_at: string
         }
         Insert: {
@@ -176,6 +177,7 @@ export interface Database {
           date: string
           notes?: string | null
           completed?: boolean
+          completed_at?: string | null
           created_at?: string
         }
         Update: {
@@ -185,6 +187,7 @@ export interface Database {
           date?: string
           notes?: string | null
           completed?: boolean
+          completed_at?: string | null
           created_at?: string
         }
       }

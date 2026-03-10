@@ -96,6 +96,20 @@ function randomSupersetGroupId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function resolveWorkoutCompletedAt(
+  sets: Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>,
+  fallback = new Date().toISOString(),
+): string {
+  const latestCompletedAt = sets
+    .filter((set) => set.completed && typeof set.completed_at === 'string')
+    .map((set) => new Date(set.completed_at as string).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp))
+    .sort((a, b) => b - a)[0];
+
+  if (!latestCompletedAt) return fallback;
+  return new Date(latestCompletedAt).toISOString();
+}
+
 interface AppState {
   activeSplit: Split | null;
   splits: Split[];
@@ -1305,9 +1319,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
+    const completedAt = resolveWorkoutCompletedAt(currentWorkout.sets);
+
     await supabase
       .from('workouts')
-      .update({ completed: true })
+      .update({ completed: true, completed_at: completedAt })
       .eq('id', currentWorkout.id);
 
     set({ currentWorkout: null, currentWorkoutDayPlan: null });
@@ -1330,7 +1346,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       .eq('user_id', user.id)
       .gte('date', from)
       .lte('date', to)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching workouts by month:', error);
@@ -1557,7 +1574,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   syncWorkoutCompletion: async (workoutId) => {
     const { data: sets, error } = await supabase
       .from('sets')
-      .select('id, completed')
+      .select('id, completed, completed_at')
       .eq('workout_id', workoutId);
 
     if (error) {
@@ -1568,10 +1585,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const totalSets = (sets || []).length;
     const completedSets = (sets || []).filter((set) => Boolean(set.completed)).length;
     const completed = totalSets > 0 && completedSets === totalSets;
+    const completedAt = completed
+      ? resolveWorkoutCompletedAt((sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>)
+      : null;
 
     const { error: updateError } = await supabase
       .from('workouts')
-      .update({ completed })
+      .update({ completed, completed_at: completedAt })
       .eq('id', workoutId);
 
     if (updateError) {
@@ -1580,7 +1600,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { currentWorkout } = get();
     if (currentWorkout?.id === workoutId) {
-      set({ currentWorkout: { ...currentWorkout, completed } });
+      set({ currentWorkout: { ...currentWorkout, completed, completed_at: completedAt } });
     }
 
     return { totalSets, completedSets, completed };

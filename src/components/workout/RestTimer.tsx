@@ -3,47 +3,79 @@ import { Play, Pause, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/shared';
 import { springs } from '@/lib/animations';
+import {
+  clearRestTimerSession,
+  createRestTimerSession,
+  getRestTimerRemainingSeconds,
+  isRestTimerForWorkout,
+  pauseRestTimerSession,
+  playRestTimerSound,
+  readRestTimerSession,
+  resumeRestTimerSession,
+  saveRestTimerSession,
+  syncRestTimerSession,
+  type RestTimerSession,
+} from '@/lib/restTimer';
 
 interface RestTimerProps {
+  workoutId: string;
   onComplete: () => void;
   defaultSeconds?: number;
+  sessionSeed?: number;
 }
 
 const PRESET_TIMES = [60, 90, 120, 180, 300];
 
-export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
-  const [seconds, setSeconds] = useState(defaultSeconds);
-  const [timeLeft, setTimeLeft] = useState(defaultSeconds);
-  const [isRunning, setIsRunning] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+function getInitialSession(workoutId: string, defaultSeconds: number, sessionSeed: number): RestTimerSession {
+  const storedSession = readRestTimerSession();
+  const syncedSession = storedSession ? syncRestTimerSession(storedSession) : null;
+
+  if (sessionSeed > 0 || !syncedSession || !isRestTimerForWorkout(syncedSession, workoutId)) {
+    const nextSession = createRestTimerSession(workoutId, defaultSeconds);
+    saveRestTimerSession(nextSession);
+    return nextSession;
+  }
+
+  saveRestTimerSession(syncedSession);
+  return syncedSession;
+}
+
+export function RestTimer({ workoutId, onComplete, defaultSeconds = 90, sessionSeed = 0 }: RestTimerProps) {
+  const [session, setSession] = useState<RestTimerSession | null>(() => (
+    getInitialSession(workoutId, defaultSeconds, sessionSeed)
+  ));
+  const completionHandledRef = useRef(false);
+
+  const isRunning = session?.status === 'running';
 
   useEffect(() => {
-    if (!isRunning || timeLeft <= 0) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      return;
-    }
+    if (!isRunning) return;
 
-    intervalRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          if ('vibrate' in navigator) {
-            navigator.vibrate([200, 100, 200]);
-          }
-          setIsRunning(false);
-          return 0;
-        }
-        return prev - 1;
+    const intervalId = window.setInterval(() => {
+      setSession((current) => {
+        if (!current) return current;
+        const nextSession = syncRestTimerSession(current);
+        saveRestTimerSession(nextSession);
+        return nextSession;
       });
     }, 1000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      window.clearInterval(intervalId);
     };
-  }, [isRunning, timeLeft]);
+  }, [isRunning]);
+
+  useEffect(() => {
+    if (session?.status !== 'completed' || completionHandledRef.current) return;
+
+    completionHandledRef.current = true;
+
+    if ('vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200]);
+    }
+
+    void playRestTimerSound();
+  }, [session]);
 
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -51,19 +83,40 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const timeLeft = session ? getRestTimerRemainingSeconds(session) : defaultSeconds;
+  const seconds = session?.durationSeconds ?? defaultSeconds;
   const progress = ((seconds - timeLeft) / seconds) * 100;
   const isWarning = timeLeft <= 10 && timeLeft > 0 && isRunning;
   const isComplete = timeLeft === 0;
 
   const handleReset = () => {
-    setTimeLeft(seconds);
-    setIsRunning(false);
+    const nextSession = pauseRestTimerSession(createRestTimerSession(workoutId, seconds));
+    saveRestTimerSession(nextSession);
+    setSession(nextSession);
+    completionHandledRef.current = false;
   };
 
   const handleSetTime = (newSeconds: number) => {
-    setSeconds(newSeconds);
-    setTimeLeft(newSeconds);
-    setIsRunning(true);
+    const nextSession = createRestTimerSession(workoutId, newSeconds);
+    saveRestTimerSession(nextSession);
+    setSession(nextSession);
+    completionHandledRef.current = false;
+  };
+
+  const handleToggleRunning = () => {
+    if (!session) return;
+
+    const nextSession = session.status === 'running'
+      ? pauseRestTimerSession(session)
+      : resumeRestTimerSession(session);
+
+    saveRestTimerSession(nextSession);
+    setSession(nextSession);
+  };
+
+  const handleContinue = () => {
+    clearRestTimerSession();
+    onComplete();
   };
 
   return (
@@ -117,7 +170,7 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
       <div className="flex justify-center gap-3 mb-8">
         <motion.button
           className="w-14 h-14 rounded-[20px] bg-[#2E2E2E] border border-white/5 flex items-center justify-center hover:bg-[#383838] transition-colors"
-          onClick={() => setIsRunning(!isRunning)}
+          onClick={handleToggleRunning}
           whileTap={{ scale: 0.9 }}
           transition={springs.snappy}
         >
@@ -156,7 +209,7 @@ export function RestTimer({ onComplete, defaultSeconds = 90 }: RestTimerProps) {
         ))}
       </div>
 
-      <Button variant="secondary" onClick={onComplete} className="w-full">
+      <Button variant="secondary" onClick={handleContinue} className="w-full">
         Continue
       </Button>
     </div>

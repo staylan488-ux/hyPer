@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   notes TEXT,
   completed BOOLEAN DEFAULT false,
+  completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

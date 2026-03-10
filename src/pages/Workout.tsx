@@ -11,15 +11,17 @@ import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
+import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
+import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import {
   compareSetPerformance,
   formatSetPerformanceTarget,
   type PreviousSetSummary,
   type PreviousWorkoutSummary,
-  type SetPerformanceInput,
 } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
@@ -31,6 +33,15 @@ function normalizeIndex(value: number, size: number): number {
 function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   if (!value || !Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(12, Math.round(value)));
+}
+
+function normalizeOptionalMetric(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value.trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 type SupersetRole = 'A' | 'B';
@@ -89,6 +100,8 @@ export function Workout() {
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [restTimerSeed, setRestTimerSeed] = useState(0);
+  const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
@@ -99,8 +112,9 @@ export function Workout() {
   const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
-  const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<Record<string, Record<number, SetPerformanceInput>>>({});
+  const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
   const [displayOrder, setDisplayOrder] = useState<string[]>([]);
+  const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
@@ -125,6 +139,7 @@ export function Workout() {
   const currentWorkoutId = currentWorkout?.id || null;
   const currentWorkoutDate = currentWorkout?.date || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
+  const currentWorkoutCreatedAt = currentWorkout?.created_at || null;
 
   useEffect(() => {
     movementNotesRef.current = movementNotes;
@@ -139,6 +154,51 @@ export function Workout() {
   useEffect(() => {
     Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
     noteSaveTimersRef.current = {};
+    setFlexibleTargetSetDrafts({});
+  }, [currentWorkoutId]);
+
+  useEffect(() => {
+    if (!currentWorkoutCreatedAt) return;
+
+    setSessionElapsedNow(Date.now());
+    const intervalId = window.setInterval(() => {
+      setSessionElapsedNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentWorkoutCreatedAt]);
+
+  useEffect(() => {
+    if (!currentWorkoutId) {
+      setShowRestTimer(false);
+      return;
+    }
+
+    const syncStoredRestTimer = () => {
+      const storedSession = readRestTimerSession();
+      if (!storedSession || !isRestTimerForWorkout(storedSession, currentWorkoutId)) return;
+
+      const syncedSession = syncRestTimerSession(storedSession);
+      saveRestTimerSession(syncedSession);
+      setShowRestTimer(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncStoredRestTimer();
+      }
+    };
+
+    syncStoredRestTimer();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', syncStoredRestTimer);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', syncStoredRestTimer);
+    };
   }, [currentWorkoutId]);
 
   useEffect(() => {
@@ -338,7 +398,7 @@ export function Workout() {
 
       const { data: previousSets, error: previousSetsError } = await supabase
         .from('sets')
-        .select('workout_id, exercise_id, set_number, weight, reps, completed')
+        .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
         .in('workout_id', workoutIds)
         .in('exercise_id', exerciseIds)
         .eq('completed', true);
@@ -370,7 +430,7 @@ export function Workout() {
         }
       }
 
-      const groupedTargets: Record<string, Record<number, SetPerformanceInput>> = {};
+      const groupedTargets: PreviousWorkoutSetMap = {};
 
       for (const set of bestByExerciseAndSet.values()) {
         const parsedSetNumber = typeof set.set_number === 'number'
@@ -384,8 +444,9 @@ export function Workout() {
         }
 
         groupedTargets[set.exercise_id][parsedSetNumber] = {
-          weight: set.weight,
-          reps: set.reps,
+          weight: normalizeOptionalMetric(set.weight),
+          reps: normalizeOptionalMetric(set.reps),
+          rpe: normalizeOptionalMetric(set.rpe),
         };
       }
 
@@ -724,9 +785,30 @@ export function Workout() {
     }
   };
 
-  const handleFlexibleTargetSetsChange = (exerciseId: string, value: number) => {
-    const targetSets = normalizeFlexibleTargetSets(value);
-    void updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets });
+  const handleFlexibleTargetSetDraftChange = (exerciseId: string, value: string) => {
+    setFlexibleTargetSetDrafts((prev) => ({
+      ...prev,
+      [exerciseId]: value,
+    }));
+  };
+
+  const handleFlexibleTargetSetBlur = (exerciseId: string, fallbackValue: number) => {
+    const draftValue = flexibleTargetSetDrafts[exerciseId];
+    if (typeof draftValue !== 'string') return;
+
+    const parsed = Number.parseInt(draftValue, 10);
+    setFlexibleTargetSetDrafts((prev) => {
+      const next = { ...prev };
+      delete next[exerciseId];
+      return next;
+    });
+
+    if (!Number.isFinite(parsed)) return;
+
+    const targetSets = normalizeFlexibleTargetSets(parsed);
+    if (targetSets !== fallbackValue) {
+      void updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets });
+    }
   };
 
   const handleInSessionDayLabelBlur = () => {
@@ -787,6 +869,8 @@ export function Workout() {
       await saveFlexibleTemplateFromCurrentWorkout();
       setShowSaveTemplatePrompt(false);
       await completeWorkout();
+      clearRestTimerSession();
+      setShowRestTimer(false);
       await fetchFlexTemplates();
     } finally {
       setSavingTemplate(false);
@@ -799,11 +883,13 @@ export function Workout() {
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
 
     if (!supersetFlow) {
+      setRestTimerSeed((current) => current + 1);
       setShowRestTimer(true);
       return;
     }
 
     if (supersetFlow.role === 'B') {
+      setRestTimerSeed((current) => current + 1);
       setShowRestTimer(true);
     }
   };
@@ -856,6 +942,9 @@ export function Workout() {
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;
   const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
+  const sessionDurationLabel = currentWorkoutCreatedAt
+    ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
+    : '—';
   // ── End exercise ordering ──
 
   const handleCompleteWorkout = async () => {
@@ -870,6 +959,8 @@ export function Workout() {
     }
 
     await completeWorkout();
+    clearRestTimerSession();
+    setShowRestTimer(false);
   };
 
   const handleConfirmComplete = async () => {
@@ -881,6 +972,8 @@ export function Workout() {
     }
 
     await completeWorkout();
+    clearRestTimerSession();
+    setShowRestTimer(false);
   };
 
   if (initializing) {
@@ -1279,6 +1372,9 @@ export function Workout() {
           <div>
             <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">In Progress</p>
             <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Session</h1>
+            <p className="mt-2 text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
+              Elapsed {sessionDurationLabel}
+            </p>
           </div>
           <Button
             variant="secondary"
@@ -1355,6 +1451,11 @@ export function Workout() {
               const sets = (exerciseGroups[exerciseId] || []).sort((a, b) => a.set_number - b.set_number);
               const exerciseName = item.exercise_name || workoutExerciseMap.get(exerciseId)?.name || 'Exercise';
               const completedInExercise = sets.filter((set) => set.completed).length;
+              const flexibleTargetSet = normalizeFlexibleTargetSets(item.target_sets);
+              const flexibleTargetDraft = flexibleTargetSetDrafts[exerciseId];
+              const flexibleTargetInputValue = typeof flexibleTargetDraft === 'string'
+                ? flexibleTargetDraft
+                : String(flexibleTargetSet);
               const isActive = activeExerciseId === exerciseId;
               const allComplete = sets.length > 0 && completedInExercise === sets.length;
               const movementNote = movementNotes[exerciseId] || item.notes || '';
@@ -1497,9 +1598,15 @@ export function Workout() {
                                   type="number"
                                   min={1}
                                   max={12}
-                                  value={normalizeFlexibleTargetSets(item.target_sets)}
+                                  value={flexibleTargetInputValue}
                                   onChange={(event) => {
-                                    handleFlexibleTargetSetsChange(exerciseId, Number(event.target.value));
+                                    handleFlexibleTargetSetDraftChange(exerciseId, event.target.value);
+                                  }}
+                                  onBlur={() => handleFlexibleTargetSetBlur(exerciseId, flexibleTargetSet)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      (event.currentTarget as HTMLInputElement).blur();
+                                    }
                                   }}
                                   className="w-16 px-2 py-1 rounded-[8px] bg-[#1A1A1A] border border-white/10 text-xs text-[#E8E4DE]"
                                 />
@@ -1525,6 +1632,12 @@ export function Workout() {
                           {sets.map((set, idx) => {
                             const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
                             const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
+                            const autofillValues = getSetAutofillValues({
+                              exerciseId,
+                              setNumber: set.set_number,
+                              currentExerciseSets: sets,
+                              previousWorkoutSetsByExercise,
+                            });
                             const performanceStatus = set.completed && previousSetTarget
                               ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
                               : 'unknown';
@@ -1565,6 +1678,7 @@ export function Workout() {
                                 <SetLogger
                                   set={set}
                                   setNumber={idx + 1}
+                                  autofillValues={autofillValues}
                                   onBeforeComplete={validateSupersetOrderBeforeLog}
                                   onComplete={handleSetLogged}
                                 />
@@ -1790,6 +1904,12 @@ export function Workout() {
                       {sets.map((set, idx) => {
                         const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
                         const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
+                        const autofillValues = getSetAutofillValues({
+                          exerciseId,
+                          setNumber: set.set_number,
+                          currentExerciseSets: sets,
+                          previousWorkoutSetsByExercise,
+                        });
                         const performanceStatus = set.completed && previousSetTarget
                           ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
                           : 'unknown';
@@ -1830,7 +1950,8 @@ export function Workout() {
                             <SetLogger
                               set={set}
                               setNumber={idx + 1}
-                              onComplete={() => setShowRestTimer(true)}
+                              autofillValues={autofillValues}
+                              onComplete={handleSetLogged}
                             />
                           </motion.div>
                         );
@@ -1888,6 +2009,9 @@ export function Workout() {
         title="Rest"
       >
         <RestTimer
+          key={`${currentWorkout.id}:${restTimerSeed}`}
+          workoutId={currentWorkout.id}
+          sessionSeed={restTimerSeed}
           onComplete={() => setShowRestTimer(false)}
         />
       </Modal>
