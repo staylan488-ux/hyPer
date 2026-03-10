@@ -7,16 +7,6 @@ import { markLoginIntroPlayed, shouldPlayLoginIntro } from '@/components/intro/i
 import { springs } from '@/lib/animations';
 
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
-const EXISTING_ACCOUNT_MESSAGE = 'An account with this email already exists. Please sign in instead.';
-
-function mapSignupError(message: string) {
-  const normalized = message.toLowerCase();
-  if (normalized.includes('already registered') || normalized.includes('already exists') || normalized.includes('already been registered') || normalized.includes('already used')) {
-    return { message: EXISTING_ACCOUNT_MESSAGE, existingAccount: true };
-  }
-
-  return { message, existingAccount: false };
-}
 
 export function AuthForm() {
   const reduceMotion = useReducedMotion();
@@ -60,12 +50,12 @@ export function AuthForm() {
 
     if (signupButtonLocked) return;
 
-    const { error } = await signUp(email, password, displayName);
+    const { error, existingAccount } = await signUp(email, password, displayName);
     if (error) {
-      const mapped = mapSignupError(error.message);
-      setError(mapped.message);
-      setShowSignInPrompt(mapped.existingAccount);
+      setError(error.message);
+      setShowSignInPrompt(existingAccount);
       setSignupSuccess(null);
+      setPendingVerificationEmail(null);
       setSignupButtonLocked(false);
       return;
     }
