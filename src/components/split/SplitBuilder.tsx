@@ -543,20 +543,39 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
         const { data, error } = await supabase
           .from('exercises')
-          .upsert(
+          .insert(
             {
               name: exercise.name,
               muscle_group: exercise.custom_muscle_group,
               muscle_group_secondary: null,
               equipment: null,
               is_compound: false,
-            },
-            { onConflict: 'name' }
+            }
           )
           .select('id, name')
           .single();
 
-        if (error || !data) {
+        if (error) {
+          if (error.code === '23505') {
+            const { data: duplicateRow, error: duplicateError } = await supabase
+              .from('exercises')
+              .select('id, name')
+              .eq('name', exercise.name)
+              .single();
+
+            if (duplicateError || !duplicateRow) {
+              throw new Error(`Could not create exercise: ${exercise.name}`);
+            }
+
+            const duplicateId = duplicateRow.id as string;
+            normalizedToId.set(normalizedName, duplicateId);
+            return duplicateId;
+          }
+
+          throw new Error(`Could not create exercise: ${exercise.name}`);
+        }
+
+        if (!data) {
           throw new Error(`Could not create exercise: ${exercise.name}`);
         }
 

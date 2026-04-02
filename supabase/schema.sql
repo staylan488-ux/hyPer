@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS plan_schedules (
 
 -- RLS Policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_exercises ENABLE ROW LEVEL SECURITY;
@@ -175,6 +176,10 @@ ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Exercises policies
+CREATE POLICY "Authenticated users can view exercises" ON exercises FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can insert exercises" ON exercises FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Splits policies
 CREATE POLICY "Users can view own splits" ON splits FOR SELECT USING (auth.uid() = user_id);
@@ -260,13 +265,17 @@ CREATE POLICY "Users can delete own plan schedules" ON plan_schedules FOR DELETE
 
 -- Function to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 BEGIN
   INSERT INTO public.profiles (id, display_name)
   VALUES (NEW.id, NEW.raw_user_meta_data->>'display_name');
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Trigger to create profile on signup
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
