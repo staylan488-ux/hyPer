@@ -27,6 +27,7 @@ type Chain = {
   gte: ReturnType<typeof vi.fn>;
   lte: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
   select: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -45,6 +46,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
     gte: vi.fn(),
     lte: vi.fn(),
     order: vi.fn(),
+    limit: vi.fn(),
     select: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
@@ -60,6 +62,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   chain.gte.mockImplementation(() => chain);
   chain.lte.mockImplementation(() => chain);
   chain.order.mockImplementation(() => chain);
+  chain.limit.mockImplementation(() => chain);
   chain.select.mockImplementation(() => chain);
   chain.single.mockResolvedValue({ data: null, error: null });
   chain.maybeSingle.mockResolvedValue({ data: null, error: null });
@@ -99,7 +102,7 @@ beforeEach(() => {
 });
 
 describe('must-work store contracts', () => {
-  it('resumes today\'s in-progress workout instead of creating duplicate', async () => {
+  it('resumes the latest in-progress workout instead of creating duplicate after midnight', async () => {
     supabaseMock.auth.getUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
     });
@@ -111,6 +114,7 @@ describe('must-work store contracts', () => {
       date: '2026-02-14',
       notes: null,
       completed: false,
+      created_at: '2026-02-14T23:30:00.000Z',
       sets: [
         {
           id: 'set-1',
@@ -140,7 +144,43 @@ describe('must-work store contracts', () => {
     expect(result).toEqual(existingWorkout);
     expect(useAppStore.getState().currentWorkout).toEqual(existingWorkout);
     expect(workoutsChain.insert).not.toHaveBeenCalled();
+    expect(workoutsChain.eq).toHaveBeenCalledWith('completed', false);
+    expect(workoutsChain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(workoutsChain.limit).toHaveBeenCalledWith(1);
     expect(supabaseMock.from).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches the latest incomplete workout even when the calendar day has rolled over', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    const overnightWorkout: Workout = {
+      id: 'workout-overnight',
+      user_id: 'user-1',
+      split_day_id: 'split-day-1',
+      date: '2026-02-14',
+      notes: null,
+      completed: false,
+      created_at: '2026-02-14T23:45:00.000Z',
+      sets: [],
+    };
+
+    const workoutsChain = createChain({
+      maybeSingle: vi.fn().mockResolvedValue({ data: overnightWorkout, error: null }),
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toEqual(overnightWorkout);
+    expect(workoutsChain.eq).toHaveBeenCalledWith('completed', false);
+    expect(workoutsChain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(workoutsChain.limit).toHaveBeenCalledWith(1);
   });
 
   it('adds a new set with next set number and updates workout state', async () => {

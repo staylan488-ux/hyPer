@@ -519,15 +519,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const today = format(new Date(), 'yyyy-MM-dd');
-
-    // Check if workout already exists for today with exercise data
+    // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
       .eq('user_id', user.id)
-      .eq('date', today)
       .eq('completed', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (existingError) {
@@ -538,6 +537,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
       return existing as Workout;
     }
+
+    const today = format(new Date(), 'yyyy-MM-dd');
 
     const { data: workout, error } = await supabase
       .from('workouts')
@@ -598,14 +599,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const today = format(new Date(), 'yyyy-MM-dd');
-
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
       .eq('user_id', user.id)
-      .eq('date', today)
       .eq('completed', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (existingError) {
@@ -621,6 +621,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ currentWorkout: existing as Workout });
       return existing as Workout;
     }
+
+    const today = format(new Date(), 'yyyy-MM-dd');
 
     const { data: workout, error } = await supabase
       .from('workouts')
@@ -710,14 +712,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!user) return;
 
     const { currentWorkout } = get();
-    
-    const today = format(new Date(), 'yyyy-MM-dd');
 
     const { data: workout, error } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
       .eq('user_id', user.id)
-      .eq('date', today)
+      .eq('completed', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
