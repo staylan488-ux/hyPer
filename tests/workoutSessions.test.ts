@@ -47,13 +47,13 @@ describe('workoutSessions helpers', () => {
   it('aggregates weekly training hours over a rolling 8-week window', () => {
     const points = buildWeeklyTrainingHours([
       {
-        date: '2026-03-09',
+        date: '2026-03-10',
         completed: true,
         created_at: '2026-03-09T17:00:00.000Z',
         completed_at: '2026-03-09T18:30:00.000Z',
       },
       {
-        date: '2026-03-03',
+        date: '2026-03-04',
         completed: true,
         created_at: '2026-03-03T17:00:00.000Z',
         completed_at: '2026-03-03T17:45:00.000Z',
@@ -76,6 +76,28 @@ describe('workoutSessions helpers', () => {
       weekStart: '2026-03-02',
       totalMinutes: 45,
       totalHours: 0.8,
+    });
+  });
+
+  it('anchors weekly training hours to the workout start time when a session crosses into the next week', () => {
+    const points = buildWeeklyTrainingHours([
+      {
+        date: '2026-03-16',
+        completed: true,
+        created_at: '2026-03-15T23:30:00.000Z',
+        completed_at: '2026-03-16T01:00:00.000Z',
+      },
+    ], new Date('2026-03-16T12:00:00.000Z'));
+
+    expect(points.at(-2)).toMatchObject({
+      weekStart: '2026-03-09',
+      totalMinutes: 90,
+      totalHours: 1.5,
+    });
+    expect(points.at(-1)).toMatchObject({
+      weekStart: '2026-03-16',
+      totalMinutes: 0,
+      totalHours: 0,
     });
   });
 });

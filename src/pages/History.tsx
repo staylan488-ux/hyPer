@@ -6,7 +6,7 @@ import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
-import { formatWorkoutDuration, getWorkoutDurationMs, resolveWorkoutTitle } from '@/lib/workoutSessions';
+import { formatWorkoutDuration, getWorkoutDurationMs, getWorkoutStartDateKey, resolveWorkoutTitle } from '@/lib/workoutSessions';
 import { springs } from '@/lib/animations';
 import type { Exercise, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 import {
@@ -276,14 +276,15 @@ export function History() {
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
-      .filter((workout) => workout.date === selectedDateKey)
+      .filter((workout) => (getWorkoutStartDateKey(workout) || workout.date) === selectedDateKey)
       .sort((a, b) => new Date(a.created_at || `${a.date}T00:00:00`).getTime() - new Date(b.created_at || `${b.date}T00:00:00`).getTime());
   }, [monthWorkouts, selectedDateKey]);
 
   const workoutsByDay = useMemo(() => {
     return monthWorkouts.reduce<Record<string, WorkoutWithSplit[]>>((acc, workout) => {
-      if (!acc[workout.date]) acc[workout.date] = [];
-      acc[workout.date].push(workout);
+      const dateKey = getWorkoutStartDateKey(workout) || workout.date;
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(workout);
       return acc;
     }, {});
   }, [monthWorkouts]);

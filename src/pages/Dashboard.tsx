@@ -100,15 +100,14 @@ export function Dashboard() {
         return;
       }
 
-      const from = format(startOfWeek(subWeeks(new Date(), 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const from = startOfWeek(subWeeks(new Date(), 7), { weekStartsOn: 1 }).toISOString();
 
       const { data: workouts, error } = await supabase
         .from('workouts')
         .select('date, completed, completed_at, created_at')
         .eq('user_id', user.id)
         .eq('completed', true)
-        .gte('date', from)
-        .order('date', { ascending: true })
+        .gte('created_at', from)
         .order('created_at', { ascending: true });
 
       if (error) {

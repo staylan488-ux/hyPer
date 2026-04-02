@@ -44,6 +44,24 @@ function toDate(value?: string | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+export function getWorkoutStartDate(workout: Pick<Workout, 'created_at' | 'date'>): Date | null {
+  const createdAt = toDate(workout.created_at);
+  if (createdAt) return createdAt;
+
+  if (!workout.date) return null;
+
+  const parsedDate = parseISO(workout.date);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  return parsedDate;
+}
+
+export function getWorkoutStartDateKey(workout: Pick<Workout, 'created_at' | 'date'>): string | null {
+  const startDate = getWorkoutStartDate(workout);
+  if (!startDate) return null;
+  return format(startDate, 'yyyy-MM-dd');
+}
+
 export function resolveWorkoutTitle(input: WorkoutTitleInput): string {
   const splitDayName = trimValue(input.splitDayName);
   if (splitDayName) return splitDayName;
@@ -110,10 +128,10 @@ export function buildWeeklyTrainingHours(
     const durationMs = getWorkoutDurationMs(workout);
     if (!durationMs) continue;
 
-    const workoutDate = parseISO(workout.date);
-    if (Number.isNaN(workoutDate.getTime())) continue;
+    const workoutStartDate = getWorkoutStartDate(workout);
+    if (!workoutStartDate) continue;
 
-    const weekStart = format(startOfWeek(workoutDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const weekStart = format(startOfWeek(workoutStartDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     const bucket = buckets.get(weekStart);
     if (!bucket) continue;
 
