@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildWeeklyTrainingHours, formatWorkoutDuration, getWorkoutDurationMs, resolveWorkoutTitle } from '@/lib/workoutSessions';
+import {
+  buildWeeklyTrainingHours,
+  formatWorkoutDuration,
+  getWorkoutDurationMs,
+  resolveEditedSetCompletedAt,
+  resolveWorkoutTitle,
+} from '@/lib/workoutSessions';
 
 describe('workoutSessions helpers', () => {
   it('prefers split and flexible labels before falling back to exercise names', () => {
@@ -99,5 +105,35 @@ describe('workoutSessions helpers', () => {
       totalMinutes: 0,
       totalHours: 0,
     });
+  });
+
+  it('preserves existing completion timestamps when editing completed sets', () => {
+    expect(resolveEditedSetCompletedAt({
+      completed: true,
+      existingSetCompletedAt: '2026-03-10T12:35:00.000Z',
+      workoutCompletedAt: '2026-03-10T12:40:00.000Z',
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBe('2026-03-10T12:35:00.000Z');
+
+    expect(resolveEditedSetCompletedAt({
+      completed: true,
+      existingSetCompletedAt: null,
+      workoutCompletedAt: '2026-03-10T12:40:00.000Z',
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBe('2026-03-10T12:40:00.000Z');
+
+    expect(resolveEditedSetCompletedAt({
+      completed: true,
+      existingSetCompletedAt: null,
+      workoutCompletedAt: null,
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBe('2026-03-11T08:00:00.000Z');
+
+    expect(resolveEditedSetCompletedAt({
+      completed: false,
+      existingSetCompletedAt: '2026-03-10T12:35:00.000Z',
+      workoutCompletedAt: '2026-03-10T12:40:00.000Z',
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBeNull();
   });
 });

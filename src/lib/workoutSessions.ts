@@ -62,6 +62,18 @@ export function getWorkoutStartDateKey(workout: Pick<Workout, 'created_at' | 'da
   return format(startDate, 'yyyy-MM-dd');
 }
 
+export function resolveEditedSetCompletedAt(input: {
+  completed: boolean;
+  existingSetCompletedAt?: string | null;
+  workoutCompletedAt?: string | null;
+  nowIso?: string;
+}): string | null {
+  if (!input.completed) return null;
+  if (input.existingSetCompletedAt) return input.existingSetCompletedAt;
+  if (input.workoutCompletedAt) return input.workoutCompletedAt;
+  return input.nowIso || new Date().toISOString();
+}
+
 export function resolveWorkoutTitle(input: WorkoutTitleInput): string {
   const splitDayName = trimValue(input.splitDayName);
   if (splitDayName) return splitDayName;

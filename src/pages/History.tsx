@@ -6,7 +6,13 @@ import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
-import { formatWorkoutDuration, getWorkoutDurationMs, getWorkoutStartDateKey, resolveWorkoutTitle } from '@/lib/workoutSessions';
+import {
+  formatWorkoutDuration,
+  getWorkoutDurationMs,
+  getWorkoutStartDateKey,
+  resolveEditedSetCompletedAt,
+  resolveWorkoutTitle,
+} from '@/lib/workoutSessions';
 import { springs } from '@/lib/animations';
 import type { Exercise, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 import {
@@ -414,6 +420,7 @@ export function History() {
 
   const handleUpdateSet = async (workoutSet: WorkoutSet, updates: { weight: number | null; reps: number | null; rpe: number | null }) => {
     const completed = updates.weight !== null && updates.reps !== null;
+    const workout = monthWorkouts.find((entry) => entry.id === workoutSet.workout_id);
 
     await runMutation(workoutSet.workout_id, async () => {
       await updateSet(workoutSet.id, {
@@ -421,7 +428,11 @@ export function History() {
         reps: updates.reps,
         rpe: updates.rpe,
         completed,
-        completed_at: completed ? new Date().toISOString() : null,
+        completed_at: resolveEditedSetCompletedAt({
+          completed,
+          existingSetCompletedAt: workoutSet.completed_at,
+          workoutCompletedAt: workout?.completed_at,
+        }),
       });
     });
 
