@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS plan_schedules (
 
 -- RLS Policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_exercises ENABLE ROW LEVEL SECURITY;
@@ -175,6 +176,10 @@ ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Exercises policies
+CREATE POLICY "Authenticated users can view exercises" ON exercises FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can insert exercises" ON exercises FOR INSERT TO authenticated WITH CHECK (true);
 
 -- Splits policies
 CREATE POLICY "Users can view own splits" ON splits FOR SELECT USING (auth.uid() = user_id);
