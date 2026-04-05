@@ -1,4 +1,4 @@
-import { addWeeks, format, parseISO, startOfWeek, subWeeks } from 'date-fns';
+import { addWeeks, differenceInHours, format, parseISO, startOfWeek, subWeeks } from 'date-fns';
 
 import type { Workout } from '@/types';
 
@@ -72,6 +72,20 @@ export function resolveEditedSetCompletedAt(input: {
   if (input.existingSetCompletedAt) return input.existingSetCompletedAt;
   if (input.workoutCompletedAt) return input.workoutCompletedAt;
   return input.nowIso || new Date().toISOString();
+}
+
+export function canResumeWorkout(
+  workout: Pick<Workout, 'completed' | 'created_at' | 'date'>,
+  now: Date = new Date(),
+): boolean {
+  if (workout.completed) return false;
+
+  const startedAt = getWorkoutStartDate(workout);
+  if (!startedAt) return false;
+
+  if (startedAt.getTime() > now.getTime()) return false;
+
+  return differenceInHours(now, startedAt) <= 24;
 }
 
 export function resolveWorkoutTitle(input: WorkoutTitleInput): string {
