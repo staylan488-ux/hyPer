@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildWeeklyTrainingHours,
+  canResumeWorkout,
   formatWorkoutDuration,
   getWorkoutDurationMs,
   resolveEditedSetCompletedAt,
@@ -135,5 +136,27 @@ describe('workoutSessions helpers', () => {
       workoutCompletedAt: '2026-03-10T12:40:00.000Z',
       nowIso: '2026-03-11T08:00:00.000Z',
     })).toBeNull();
+  });
+
+  it('only resumes incomplete workouts that started within the last 24 hours', () => {
+    const now = new Date('2026-04-05T12:00:00.000Z');
+
+    expect(canResumeWorkout({
+      completed: false,
+      date: '2026-04-04',
+      created_at: '2026-04-04T23:00:00.000Z',
+    }, now)).toBe(true);
+
+    expect(canResumeWorkout({
+      completed: false,
+      date: '2026-04-03',
+      created_at: '2026-04-03T10:00:00.000Z',
+    }, now)).toBe(false);
+
+    expect(canResumeWorkout({
+      completed: true,
+      date: '2026-04-05',
+      created_at: '2026-04-05T08:00:00.000Z',
+    }, now)).toBe(false);
   });
 });
