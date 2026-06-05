@@ -17,6 +17,8 @@ export interface TrainingHoursPoint {
   totalHours: number;
 }
 
+const MAX_RECORDED_WORKOUT_DURATION_MS = 3 * 60 * 60 * 1000;
+
 function trimValue(value?: string | null): string {
   return value?.trim() || '';
 }
@@ -97,7 +99,7 @@ export function getWorkoutDurationMs(workout: Pick<Workout, 'completed_at' | 'cr
   const durationMs = completedAt.getTime() - createdAt.getTime();
   if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
 
-  return durationMs;
+  return Math.min(durationMs, MAX_RECORDED_WORKOUT_DURATION_MS);
 }
 
 export function formatWorkoutDuration(durationMs: number | null): string {
