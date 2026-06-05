@@ -50,6 +50,18 @@ describe('workoutSessions helpers', () => {
     expect(formatWorkoutDuration(null)).toBe('—');
   });
 
+  it('caps recorded workout duration at 3 hours', () => {
+    expect(getWorkoutDurationMs({
+      created_at: '2026-03-10T10:00:00.000Z',
+      completed_at: '2026-03-10T14:30:00.000Z',
+    })).toBe(3 * 60 * 60 * 1000);
+
+    expect(formatWorkoutDuration(getWorkoutDurationMs({
+      created_at: '2026-03-10T10:00:00.000Z',
+      completed_at: '2026-03-10T14:30:00.000Z',
+    }))).toBe('3h');
+  });
+
   it('aggregates weekly training hours over a rolling 8-week window', () => {
     const points = buildWeeklyTrainingHours([
       {
@@ -82,6 +94,23 @@ describe('workoutSessions helpers', () => {
       weekStart: '2026-03-02',
       totalMinutes: 45,
       totalHours: 0.8,
+    });
+  });
+
+  it('uses capped workout durations when aggregating weekly training hours', () => {
+    const points = buildWeeklyTrainingHours([
+      {
+        date: '2026-03-10',
+        completed: true,
+        created_at: '2026-03-10T10:00:00.000Z',
+        completed_at: '2026-03-10T15:45:00.000Z',
+      },
+    ], new Date('2026-03-10T16:00:00.000Z'));
+
+    expect(points.at(-1)).toMatchObject({
+      weekStart: '2026-03-09',
+      totalMinutes: 180,
+      totalHours: 3,
     });
   });
 
