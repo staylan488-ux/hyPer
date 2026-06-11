@@ -16,7 +16,7 @@ const TONE: Record<StripTone, string> = {
   stone: 'var(--color-stone)',
 };
 
-const EMPTY = 'color-mix(in srgb, var(--color-text) 14%, transparent)';
+const EMPTY = 'color-mix(in srgb, var(--color-text) 7%, transparent)';
 
 interface TickStripProps {
   total: number;

@@ -59,7 +59,7 @@ export function BottomNav() {
                   <motion.span
                     layoutId="nav-tick"
                     className="absolute -top-[1px] w-9 h-[3px] rounded-full bg-[var(--color-accent)]"
-                    style={{ boxShadow: '0 0 12px color-mix(in srgb, var(--color-accent) 70%, transparent)' }}
+                    style={{ boxShadow: '0 8px 22px 4px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
                     transition={springs.smooth}
                   />
                 )}
@@ -69,7 +69,7 @@ export function BottomNav() {
                       isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
                     }`}
                     strokeWidth={isActive ? 2 : 1.6}
-                    style={isActive ? { filter: 'drop-shadow(0 0 8px color-mix(in srgb, var(--color-accent) 55%, transparent))' } : undefined}
+                    style={isActive ? { filter: 'drop-shadow(0 2px 10px color-mix(in srgb, var(--color-accent) 35%, transparent))' } : undefined}
                   />
                   <span
                     className={`text-[11px] font-semibold transition-colors duration-200 ${

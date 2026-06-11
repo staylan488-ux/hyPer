@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
+  Calendar,
   CalendarRange,
   ChartNoAxesColumn,
   Check,
@@ -10,7 +11,6 @@ import {
   Dumbbell,
   Flame,
   History as HistoryIcon,
-  LayoutGrid,
   Moon,
   Play,
   Plus,
@@ -232,7 +232,7 @@ export function Dashboard() {
         {/* Header */}
         <motion.header className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
           <p className="t-label mb-1">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="text-[26px] font-bold tracking-[-0.02em] leading-tight text-[var(--color-text)]">{greeting}</h1>
+          <h1 className="text-[26px] font-semibold tracking-[0.005em] leading-tight text-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
         {/* ── Next action hero ── */}
@@ -260,7 +260,7 @@ export function Dashboard() {
               </div>
               {hasAnyNutrition && !loading && (
                 <span className="flex items-baseline gap-1.5">
-                  <span className="t-numeral text-[20px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <span className="t-numeral-light text-[20px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
                   <span className="text-[13px] text-[var(--color-muted)]">kcal left</span>
                 </span>
               )}
@@ -323,7 +323,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.12 }}
         >
-          <StationLink to="/train/program" icon={<LayoutGrid className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
+          <StationLink to="/train/program" icon={<Calendar className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
           <StationLink to="/history" icon={<HistoryIcon className="w-5 h-5" strokeWidth={1.75} />} label="History" sub="Past sessions" />
           <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-5 h-5" strokeWidth={1.75} />} label="Progress" sub="Track results" />
         </motion.nav>
@@ -525,7 +525,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNode; label: string; sub: string }) {
   return (
     <Link to={to}>
-      <div className="pressable panel flex flex-col gap-2 p-3 min-h-[88px]">
+      <div className="pressable panel panel-wave flex flex-col gap-2 p-3 min-h-[88px]">
         <span className="text-[var(--color-accent)]">{icon}</span>
         <span>
           <span className="block text-[14px] font-bold text-[var(--color-text)]">{label}</span>
@@ -548,7 +548,7 @@ function FuelRow({ label, current, target, unit, tone }: { label: string; curren
       <p className="t-label-sm mb-0.5">{label}</p>
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="flex items-baseline gap-1.5">
-          <span className="t-numeral text-[19px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
+          <span className="t-numeral-light text-[19px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
           <span className="text-[13px] text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
         </span>
         <span className="t-data text-[15px]" style={{ color: toneVar }}>{pct}%</span>
