@@ -247,7 +247,7 @@ export function Nutrition() {
 
       {/* Macro strips */}
       <motion.section
-        className="panel p-4 mb-4"
+        className="panel-sage p-4 mb-4"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.04 }}

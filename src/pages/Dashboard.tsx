@@ -252,7 +252,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.08 }}
         >
-          <div className="panel p-5">
+          <div className="panel-sage p-5">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2} />

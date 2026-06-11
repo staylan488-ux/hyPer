@@ -90,9 +90,9 @@
   --raised-shadow: 0 1px 0 rgba(243, 238, 229, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
   --grad-amber: linear-gradient(180deg, #F7BE63 0%, #EE9D2F 100%);
   --glow-amber: 0 6px 22px rgba(240, 162, 60, 0.28), 0 1px 6px rgba(240, 162, 60, 0.2);
-  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 55%);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 3.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 60%);
-  --ember-bleed-sage: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-sage) 9%, transparent), transparent 55%);
+  --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 10%, transparent), transparent 58%);
   --button-primary-bg: var(--color-accent);
   --button-primary-fg: #221503;
   --button-primary-hover: color-mix(in srgb, var(--color-accent) 92%, white 8%);
@@ -130,9 +130,9 @@
   --raised-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 24px rgba(43, 36, 27, 0.08);
   --grad-amber: linear-gradient(180deg, #D69B3A 0%, #B0791F 100%);
   --glow-amber: 0 6px 20px rgba(176, 121, 31, 0.25), 0 1px 5px rgba(176, 121, 31, 0.18);
-  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 55%);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 2.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
-  --ember-bleed-sage: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-sage) 7%, transparent), transparent 55%);
+  --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 8%, transparent), transparent 58%);
   --button-primary-bg: var(--color-accent);
   --button-primary-fg: #FCF9F3;
   --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
@@ -418,9 +418,10 @@ body::after {
 
 .panel-sage {
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in srgb, var(--color-sage) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-sage) 18%, transparent);
   background-color: var(--color-surface-1);
   background-image: var(--ember-bleed-sage);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--color-sage) 4%, transparent);
 }
 
 /* Inset control well — like a milled slot in steel */
