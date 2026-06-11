@@ -20,6 +20,7 @@ import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
 import { Button, RailStrip, Screen, TickStrip, VolumeRail } from '@/components/shared';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
@@ -524,7 +525,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNode; label: string; sub: string }) {
   return (
-    <Link to={to}>
+    <Link to={to} onClick={() => tapHaptic()}>
       <div className="pressable panel panel-wave flex flex-col gap-2 p-3 min-h-[88px]">
         <span className="text-[var(--color-accent)]">{icon}</span>
         <span>

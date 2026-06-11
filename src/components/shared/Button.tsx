@@ -1,6 +1,7 @@
 import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -9,7 +10,7 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, ...props }, ref) => {
+  ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
     const baseStyles = `
       inline-flex items-center justify-center
       [font-family:var(--font-display)] uppercase tracking-[0.16em] font-medium
@@ -61,6 +62,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={isDisabled}
         whileTap={isDisabled ? undefined : { scale: 0.98 }}
         transition={springs.snappy}
+        onClick={(event) => {
+          if (!isDisabled) tapHaptic();
+          onClick?.(event);
+        }}
         {...props}
       >
         {loading && (

@@ -28,6 +28,7 @@ import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
@@ -2048,7 +2049,10 @@ function SetCountButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        tapHaptic();
+        onClick();
+      }}
       disabled={disabled}
       aria-label={ariaLabel}
       className="pressable flex items-center justify-center w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline-strong text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"

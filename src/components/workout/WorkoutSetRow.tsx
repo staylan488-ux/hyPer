@@ -3,6 +3,7 @@ import { Check, Pencil, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppStore } from '@/stores/appStore';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 import { compareSetPerformance, formatSetPerformanceTarget } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
@@ -53,6 +54,7 @@ export function WorkoutSetRow({
 
   const handleAutofill = () => {
     if (!autofillValues) return;
+    tapHaptic();
     setWeight(autofillValues.weight);
     setReps(autofillValues.reps);
     setRpe(autofillValues.rpe);
@@ -60,6 +62,7 @@ export function WorkoutSetRow({
 
   const handleSave = async () => {
     if (!weight || !reps || saving) return;
+    tapHaptic();
 
     try {
       setSaving(true);

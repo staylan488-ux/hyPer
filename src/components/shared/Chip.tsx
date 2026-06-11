@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { tapHaptic } from '@/lib/haptics';
 
 interface ChipProps {
   children: ReactNode;
@@ -25,7 +26,10 @@ export function Chip({ children, selected = false, onClick, tone = 'neutral', si
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        tapHaptic();
+        onClick?.();
+      }}
       disabled={disabled}
       className={`pressable inline-flex items-center justify-center gap-1.5 rounded-full border font-medium whitespace-nowrap disabled:opacity-40 disabled:pointer-events-none ${sizing} ${toneStyles} ${className}`}
     >

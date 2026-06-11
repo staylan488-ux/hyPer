@@ -19,6 +19,7 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Modal } from './Modal';
 import { Chip } from './Chip';
+import { tapHaptic } from '@/lib/haptics';
 
 /* ───────────────────────── DateField ───────────────────────── */
 
@@ -189,6 +190,7 @@ function WheelColumn({
       const el = ref.current;
       if (!el) return;
       const next = Math.min(items.length - 1, Math.max(0, Math.round(el.scrollTop / ITEM_H)));
+      if (next !== index) tapHaptic();
       onIndexChange(next);
     }, 90);
   };
