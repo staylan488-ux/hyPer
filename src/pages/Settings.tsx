@@ -503,6 +503,9 @@ export function Settings() {
         <p className="text-[10px] font-medium text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
           Built on peer-reviewed research
         </p>
+        <p className="t-data-sm text-[9px] text-[color-mix(in_srgb,var(--color-muted)_55%,transparent)] mt-2">
+          build {__BUILD_ID__}
+        </p>
       </motion.footer>
 
       {/* Macro calculator — focused sheet */}
