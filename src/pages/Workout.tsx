@@ -1,12 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Loader2, Plus, Settings2, Trash2, X, Link2, Unlink2 } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Dumbbell,
+  Link2,
+  Loader2,
+  Minus,
+  Moon,
+  Plus,
+  Settings2,
+  Trash2,
+  Unlink2,
+  X,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { Card, Button, Input, Modal } from '@/components/shared';
+import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
-import { SetLogger } from '@/components/workout/SetLogger';
-import { RestTimer } from '@/components/workout/RestTimer';
+import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
+import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
@@ -17,12 +34,6 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
-import {
-  compareSetPerformance,
-  formatSetPerformanceTarget,
-  type PreviousSetSummary,
-  type PreviousWorkoutSummary,
-} from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
 function normalizeIndex(value: number, size: number): number {
@@ -50,6 +61,24 @@ type SupersetFlow = {
   groupId: string;
   role: SupersetRole;
   partnerExerciseId: string;
+};
+
+type PreviousWorkoutSummary = { id: string };
+type PreviousSetSummary = {
+  workout_id: string;
+  exercise_id: string;
+  set_number: number | string;
+  weight: number | string | null;
+  reps: number | string | null;
+  rpe: number | string | null;
+  completed: boolean;
+};
+
+type CompletionSummary = {
+  title: string;
+  completedSets: number;
+  totalSets: number;
+  duration: string;
 };
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
@@ -93,6 +122,7 @@ export function Workout() {
     saveFlexibleTemplateFromCurrentWorkout,
   } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
+  const navigate = useNavigate();
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
@@ -115,6 +145,7 @@ export function Workout() {
   const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
   const [displayOrder, setDisplayOrder] = useState<string[]>([]);
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
+  const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
@@ -126,7 +157,6 @@ export function Workout() {
   const [setupAnchorDay, setSetupAnchorDay] = useState(1);
   const [setupFlexDayIndex, setSetupFlexDayIndex] = useState(0);
 
-  const [showFlexibleStart, setShowFlexibleStart] = useState(false);
   const [flexibleDayLabel, setFlexibleDayLabel] = useState('');
   const [inSessionFlexibleDayLabel, setInSessionFlexibleDayLabel] = useState('');
   const [selectedTemplateLabel, setSelectedTemplateLabel] = useState<string>('');
@@ -778,8 +808,6 @@ export function Workout() {
         window.alert('You already have an in-progress split workout today. Finish it before starting a flexible workout.');
         return;
       }
-
-      setShowFlexibleStart(false);
     } finally {
       setStartingFlexibleWorkout(false);
     }
@@ -863,20 +891,6 @@ export function Workout() {
     await reorderFlexibleExercises(next.map((item) => item.exercise_id));
   };
 
-  const handleSaveTemplateAtCompletion = async () => {
-    try {
-      setSavingTemplate(true);
-      await saveFlexibleTemplateFromCurrentWorkout();
-      setShowSaveTemplatePrompt(false);
-      await completeWorkout();
-      clearRestTimerSession();
-      setShowRestTimer(false);
-      await fetchFlexTemplates();
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
-
   const handleSetLogged = (loggedSet: WorkoutSet) => {
     if (loggedSet.completed) return;
 
@@ -950,6 +964,15 @@ export function Workout() {
     : '—';
   // ── End exercise ordering ──
 
+  const captureCompletionSummary = () => {
+    setCompletionSummary({
+      title: currentSessionTitle,
+      completedSets,
+      totalSets,
+      duration: sessionDurationLabel,
+    });
+  };
+
   const handleCompleteWorkout = async () => {
     if (completedSets < totalSets && totalSets > 0) {
       setShowCompleteConfirm(true);
@@ -961,6 +984,7 @@ export function Workout() {
       return;
     }
 
+    captureCompletionSummary();
     await completeWorkout();
     clearRestTimerSession();
     setShowRestTimer(false);
@@ -974,51 +998,73 @@ export function Workout() {
       return;
     }
 
+    captureCompletionSummary();
     await completeWorkout();
     clearRestTimerSession();
     setShowRestTimer(false);
   };
 
+  const handleSaveTemplateAtCompletion = async () => {
+    try {
+      setSavingTemplate(true);
+      await saveFlexibleTemplateFromCurrentWorkout();
+      setShowSaveTemplatePrompt(false);
+      captureCompletionSummary();
+      await completeWorkout();
+      clearRestTimerSession();
+      setShowRestTimer(false);
+      await fetchFlexTemplates();
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleSkipTemplateAtCompletion = () => {
+    setShowSaveTemplatePrompt(false);
+    captureCompletionSummary();
+    void completeWorkout();
+    clearRestTimerSession();
+    setShowRestTimer(false);
+  };
+
+  /* ═══════════════ Initializing ═══════════════ */
+
   if (initializing) {
     return (
-      <motion.div
-        className="pb-24 px-5 pt-8"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-      >
-        <header className="mb-8">
-          <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Training</p>
-          <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Begin Session</h1>
+      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <header className="mb-6">
+          <p className="t-label-sm mb-1">Train</p>
+          <h1 className="t-title">Session</h1>
         </header>
-
-        <Card variant="slab" className="text-center py-16">
-          <div className="flex items-center justify-center gap-2 text-[#9A9A9A]">
+        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+          <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-xs tracking-wider">Loading program...</span>
+            <span className="text-xs font-medium">Loading program…</span>
           </div>
-        </Card>
+        </div>
       </motion.div>
     );
   }
 
+  /* ═══════════════ No program (split mode) ═══════════════ */
+
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div
-        className="pb-24 px-5 pt-8"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-      >
-        <header className="mb-8">
-          <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Training</p>
-          <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Begin Session</h1>
+      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <header className="mb-6">
+          <p className="t-label-sm mb-1">Train</p>
+          <h1 className="t-title">Session</h1>
         </header>
-
-        <Card variant="slab" className="text-center py-16">
-          <p className="text-xs text-[#6B6B6B] mb-6">No program active</p>
-          <Button onClick={() => window.location.href = '/train/program'}>
-            Open Program
-          </Button>
-        </Card>
+        <EmptyState
+          icon={Dumbbell}
+          title="No program yet"
+          body="A program turns sessions into a plan: days, exercises, and weekly volume that adds up. The guided builder takes two minutes."
+          action={
+            <Button size="lg" onClick={() => navigate('/train/program')}>
+              Build my program
+            </Button>
+          }
+        />
       </motion.div>
     );
   }
@@ -1026,7 +1072,7 @@ export function Workout() {
   const splitDays = activeSplit?.days || [];
   const splitDaysPerWeek = activeSplit?.days_per_week || 0;
 
-  const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekdayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
@@ -1063,121 +1109,107 @@ export function Workout() {
     setShowScheduleEditor(true);
   };
 
+  /* ═══════════════ Pre-session ═══════════════ */
+
   if (!currentWorkout) {
     if (workoutMode === 'flexible') {
-      return (
-        <motion.div className="pb-24 px-5 pt-8">
-          <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-            <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Flexible Training</p>
-            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Start Session</h1>
-          </motion.header>
+      const completionSheet = (
+        <CompletionSheet summary={completionSummary} onClose={() => setCompletionSummary(null)} />
+      );
 
-          <Card variant="slab" className="space-y-4">
-            <p className="text-xs text-[var(--color-muted)]">Name your day and start training without a rigid split.</p>
+      return (
+        <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <header className="mb-6">
+            <p className="t-label-sm mb-1">Train · Flexible</p>
+            <h1 className="t-title">Start a session</h1>
+          </header>
+
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
+            <div
+              className="absolute inset-x-0 top-0 h-[2.5px]"
+              style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
+            />
+            <Input
+              label="What are you training?"
+              value={flexibleDayLabel}
+              onChange={(event) => {
+                const next = event.target.value;
+                setFlexibleDayLabel(next);
+                if (selectedTemplateLabel && next !== selectedTemplateLabel) {
+                  setSelectedTemplateLabel('');
+                }
+              }}
+              placeholder="Upper, Push, Arms…"
+              maxLength={40}
+            />
+
             {flexTemplates.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Quick Start</p>
+              <div className="mt-4">
+                <p className="t-label-sm mb-2">Quick start</p>
                 <div className="flex flex-wrap gap-2">
-                  {flexTemplates.slice(0, 4).map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className="px-3 py-1.5 rounded-[12px] border border-white/10 text-[10px] tracking-[0.08em] uppercase text-[#9A9A9A] hover:text-[#E8E4DE] hover:border-white/20 transition-colors"
-                      onClick={() => {
-                        setFlexibleDayLabel(template.label);
-                        setSelectedTemplateLabel(template.label);
-                        setShowFlexibleStart(true);
-                      }}
-                    >
-                      {template.label}
-                    </button>
-                  ))}
+                  {flexTemplates.slice(0, 6).map((template) => {
+                    const selected = selectedTemplateLabel === template.label;
+                    return (
+                      <Chip
+                        key={template.id}
+                        tone="amber"
+                        selected={selected}
+                        onClick={() => {
+                          if (selected) {
+                            setSelectedTemplateLabel('');
+                            setFlexibleDayLabel('');
+                          } else {
+                            setSelectedTemplateLabel(template.label);
+                            setFlexibleDayLabel(template.label);
+                          }
+                        }}
+                      >
+                        {template.label}
+                      </Chip>
+                    );
+                  })}
                 </div>
               </div>
             )}
-            <Button onClick={() => setShowFlexibleStart(true)}>
-              Start Flexible Workout
+
+            <Button
+              size="lg"
+              className="w-full mt-5"
+              onClick={() => { void handleStartFlexibleWorkout(); }}
+              disabled={!flexibleDayLabel.trim() || startingFlexibleWorkout}
+              loading={startingFlexibleWorkout}
+            >
+              {startingFlexibleWorkout ? 'Starting…' : 'Start session'}
             </Button>
-          </Card>
-
-          <Modal
-            isOpen={showFlexibleStart}
-            onClose={() => setShowFlexibleStart(false)}
-            title="Start Flexible Workout"
-          >
-            <div className="pt-4 space-y-4">
-              <Input
-                label="Day Label"
-                value={flexibleDayLabel}
-                onChange={(event) => setFlexibleDayLabel(event.target.value)}
-                placeholder="Upper, Push, Arms, etc."
-                maxLength={40}
-              />
-
-              {flexTemplates.length > 0 && (
-                <div>
-                  <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Quick Start Template (optional)</p>
-                  <select
-                    value={selectedTemplateLabel}
-                    onChange={(event) => setSelectedTemplateLabel(event.target.value)}
-                    className="w-full px-3 py-2 bg-[#1A1A1A] border border-white/10 rounded-[12px] text-sm text-[#E8E4DE]"
-                  >
-                    <option value="">None</option>
-                    {flexTemplates.map((template) => (
-                      <option key={template.id} value={template.label}>{template.label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <Button
-                className="w-full"
-                onClick={() => { void handleStartFlexibleWorkout(); }}
-                disabled={!flexibleDayLabel.trim() || startingFlexibleWorkout}
-                loading={startingFlexibleWorkout}
-              >
-                {startingFlexibleWorkout ? 'Starting...' : 'Start Workout'}
-              </Button>
-            </div>
-          </Modal>
+          </div>
+          {completionSheet}
         </motion.div>
       );
     }
 
     return (
-      <motion.div
-        className="pb-24 px-5 pt-8"
-      >
-        <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-                {activeSplit?.name.toUpperCase()}
-              </p>
-              <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Training Plan</h1>
-            </div>
-            {planSchedule && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-0.5"
-                onClick={openScheduleEditor}
-              >
-                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-                Schedule
-              </Button>
-            )}
+      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <header className="mb-6 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="t-label-sm mb-1 truncate">Train · {activeSplit?.name}</p>
+            <h1 className="t-title">Today</h1>
           </div>
-        </motion.header>
+          {planSchedule && (
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={openScheduleEditor}>
+              <Settings2 className="w-3.5 h-3.5" />
+              Schedule
+            </Button>
+          )}
+        </header>
 
         {!planSchedule ? (
           planScheduleResolving ? (
-            <Card variant="slab" className="py-16">
-              <div className="flex items-center justify-center gap-2 text-[var(--color-muted)]">
+            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+              <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-xs tracking-wider">Loading saved plan setup...</span>
+                <span className="text-xs font-medium">Loading saved plan setup…</span>
               </div>
-            </Card>
+            </div>
           ) : (
             <Card variant="slab">
               <ScheduleEditor
@@ -1205,68 +1237,92 @@ export function Workout() {
           )
         ) : (
           <div className="space-y-4">
-            <Card variant="slab" className="space-y-3">
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">Today</p>
-              {todayCompletedWorkout ? (
-                <>
-                  <h3 className="text-[1rem] text-[var(--color-text)]">Workout completed</h3>
-                  <p className="text-xs text-[var(--color-muted)]">Great work. You can rest or train a different day.</p>
-                </>
-              ) : todayPlannedDay ? (
-                <>
-                  <h3
-                    className="text-[1rem] font-medium tracking-[0.02em]"
-                    style={{ color: 'color-mix(in srgb, var(--color-text) 94%, white 6%)' }}
-                  >
-                    {todayPlannedDay.day_name}
-                  </h3>
-                  <p className="text-xs text-[var(--color-muted)]">Planned session for today.</p>
-                  <Button onClick={() => handleStartWorkout(todayPlannedDay)} disabled={startingDayId !== null}>
-                    {startingDayId === todayPlannedDay.id ? 'Starting...' : 'Start Today\'s Workout'}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <h3 className="text-[1rem] font-medium tracking-[0.02em] text-[var(--color-text)]">
-                    Rest Day
-                  </h3>
-                  <p className="text-xs text-[var(--color-muted)]">No scheduled training today. Recovery is part of progress.</p>
-                </>
-              )}
+            {/* Today hero */}
+            {todayCompletedWorkout ? (
+              <div className="rounded-[var(--radius-lg)] bg-sage-tint hairline p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-sage)]">
+                    <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />
+                  </span>
+                  <span className="t-label text-[var(--color-sage)]">Trained today</span>
+                </div>
+                <p className="t-display text-[1.4rem] text-[var(--color-text)]">The work is banked.</p>
+                <p className="t-caption mt-1.5">Rest, or pick a different day below.</p>
+              </div>
+            ) : todayPlannedDay ? (
+              <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
+                <div
+                  className="absolute inset-x-0 top-0 h-[2.5px]"
+                  style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
+                />
+                <p className="t-label text-[var(--color-accent)] mb-1.5">Today</p>
+                <h2 className="t-title mb-2">{todayPlannedDay.day_name}</h2>
+                <div className="flex items-center gap-3 mb-4">
+                  <TickStrip total={Math.min(todayPlannedDay.exercises?.length || 0, 16)} filled={0} tone="amber" size="sm" />
+                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                    {todayPlannedDay.exercises?.length || 0} exercises ·{' '}
+                    {(todayPlannedDay.exercises || []).reduce((sum, ex) => sum + (ex.target_sets || 0), 0)} sets
+                  </span>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={() => handleStartWorkout(todayPlannedDay)}
+                  disabled={startingDayId !== null}
+                  loading={startingDayId === todayPlannedDay.id}
+                >
+                  <Dumbbell className="w-4 h-4" strokeWidth={2.25} />
+                  {startingDayId === todayPlannedDay.id ? 'Starting…' : "Start today's workout"}
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Moon className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
+                  <span className="t-label">Rest day</span>
+                </div>
+                <p className="t-display text-[1.3rem] text-[var(--color-text-dim)]">Recovery is part of the program.</p>
+              </div>
+            )}
 
-              {lastCompletedWorkout && (
-                <p className="text-[10px] text-[#8F8A83]">
-                  Last trained: {format(parseISO(`${lastCompletedWorkout.date}T00:00:00`), 'EEE, MMM d')}
-                </p>
-              )}
-            </Card>
+            {lastCompletedWorkout && (
+              <p className="t-caption px-1">
+                Last trained {format(parseISO(`${lastCompletedWorkout.date}T00:00:00`), 'EEE, MMM d')}
+              </p>
+            )}
 
-            <Card variant="slab" className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B]">Week View</p>
-                <div className="flex gap-2">
+            {/* Week strip */}
+            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="t-label-sm">{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}</span>
+                <div className="flex items-center gap-1">
                   <button
-                    className="px-2 py-1 rounded-[8px] bg-[#2A2A2A] border border-white/5 text-[10px] text-[#9A9A9A]"
+                    type="button"
+                    aria-label="Previous week"
+                    className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
                     onClick={() => setWeekCursor((current) => addDays(current, -7))}
                   >
-                    Prev
+                    <ChevronLeft className="w-4 h-4" strokeWidth={2} />
                   </button>
                   <button
-                    className="px-2 py-1 rounded-[8px] bg-[#2A2A2A] border border-white/5 text-[10px] text-[#9A9A9A]"
+                    type="button"
+                    className="pressable px-2.5 py-1.5 rounded-[var(--radius-xs)] text-[11px] font-semibold text-[var(--color-text-dim)]"
                     onClick={() => setWeekCursor(new Date())}
                   >
-                    This Week
+                    Now
                   </button>
                   <button
-                    className="px-2 py-1 rounded-[8px] bg-[#2A2A2A] border border-white/5 text-[10px] text-[#9A9A9A]"
+                    type="button"
+                    aria-label="Next week"
+                    className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
                     onClick={() => setWeekCursor((current) => addDays(current, 7))}
                   >
-                    Next
+                    <ChevronRight className="w-4 h-4" strokeWidth={2} />
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-7 gap-2">
+              <div className="grid grid-cols-7 gap-1.5">
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
@@ -1280,64 +1336,67 @@ export function Workout() {
                     status = isBefore(date, today) && !isToday ? 'missed' : 'planned';
                   }
 
-                  const statusClass =
+                  const cellClass =
                     status === 'completed'
-                      ? 'bg-[#253427] text-[#9AC39A] border-[#3D5C3F]'
-                    : status === 'planned'
-                        ? 'bg-[var(--color-surface-high)] text-[var(--color-text-dim)] border-[var(--color-border-strong)]'
-                        : status === 'missed'
-                          ? 'bg-[#3A2A2A] text-[#D39B9B] border-[#5C3D3D]'
-                          : 'bg-[var(--color-surface)] text-[var(--color-muted)] border-[var(--color-border)]';
+                      ? 'bg-sage-tint'
+                      : status === 'missed'
+                        ? 'bg-rose-tint'
+                        : status === 'planned'
+                          ? 'bg-[var(--color-surface-2)]'
+                          : 'bg-transparent';
 
                   return (
                     <div
                       key={dateKey}
-                      className={`relative rounded-[12px] border p-2 ${statusClass} ${
-                        isToday ? 'ring-1 ring-[#E8E4DE]/35' : ''
+                      className={`relative flex flex-col items-center gap-1 rounded-[var(--radius-sm)] py-2 border ${cellClass} ${
+                        isToday ? 'border-[color-mix(in_srgb,var(--color-accent)_55%,transparent)]' : 'border-[var(--color-border)]'
                       }`}
                     >
-                      <p className="text-[9px] tracking-[0.08em] uppercase">{weekdayLabels[date.getDay()]}</p>
-                      <p className="text-xs tabular-nums">{format(date, 'd')}</p>
-                      {status === 'completed' && (
-                        <div className="absolute bottom-1 right-1">
-                          <Check className="w-3 h-3" strokeWidth={2.5} />
-                        </div>
-                      )}
-                      {status === 'missed' && (
-                        <div className="absolute bottom-1 right-1">
-                          <X className="w-3 h-3" strokeWidth={2.5} />
-                        </div>
-                      )}
+                      <span className="t-label-sm text-[9px]">{weekdayLetters[date.getDay()]}</span>
+                      <span className={`t-data-sm ${isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                        {format(date, 'd')}
+                      </span>
+                      <span className="h-3 flex items-center">
+                        {status === 'completed' ? (
+                          <Check className="w-3 h-3 text-[var(--color-sage)]" strokeWidth={3} />
+                        ) : status === 'missed' ? (
+                          <X className="w-3 h-3 text-[var(--color-rose)]" strokeWidth={2.5} />
+                        ) : status === 'planned' ? (
+                          <span className="w-[3px] h-2.5 rounded-full bg-[var(--color-stone)]" />
+                        ) : (
+                          <span className="w-1 h-1 rounded-full bg-[color-mix(in_srgb,var(--color-muted)_35%,transparent)]" />
+                        )}
+                      </span>
                     </div>
                   );
                 })}
               </div>
-            </Card>
+            </div>
 
-            <Card variant="slab" className="space-y-3">
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B]">Train a different day</p>
+            {/* Other days */}
+            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+              <p className="t-label-sm mb-3">Train a different day</p>
               <div className="space-y-2">
                 {(activeSplit?.days || []).map((day) => (
-                  <div key={day.id} className="flex items-center justify-between rounded-[12px] bg-[#2A2A2A] border border-white/5 px-3 py-2">
-                    <div>
-                      <p className="text-xs text-[#E8E4DE]">{day.day_name}</p>
-                      <p className="text-[10px] text-[#6B6B6B]">{day.exercises?.length || 0} exercises</p>
+                  <div
+                    key={day.id}
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">{day.day_name}</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">{day.exercises?.length || 0} exercises</p>
                     </div>
-                    <Button size="sm" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
-                      {startingDayId === day.id ? 'Starting...' : 'Start'}
+                    <Button size="sm" variant="secondary" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
+                      {startingDayId === day.id ? 'Starting…' : 'Start'}
                     </Button>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           </div>
         )}
 
-        <Modal
-          isOpen={showScheduleEditor}
-          onClose={() => setShowScheduleEditor(false)}
-          title="Edit Schedule"
-        >
+        <Modal isOpen={showScheduleEditor} onClose={() => setShowScheduleEditor(false)} title="Edit Schedule">
           <ScheduleEditor
             title="Adjust Plan"
             description="Update your start date, scheduling mode, and active training day."
@@ -1362,71 +1421,60 @@ export function Workout() {
           />
         </Modal>
 
+        <CompletionSheet summary={completionSummary} onClose={() => setCompletionSummary(null)} />
       </motion.div>
     );
   }
 
+  /* ═══════════════ In session ═══════════════ */
+
+  const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
+
   return (
-    <motion.div
-      className="pb-24 px-5 pt-8"
-    >
-      <motion.header className="mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">In Progress</p>
-            <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">{currentSessionTitle}</h1>
+    <motion.div className={`px-5 ${showRestTimer ? 'pb-44' : 'pb-nav'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {/* Sticky session header */}
+      <div
+        className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-4 border-b border-[var(--color-border)]"
+        style={{
+          top: 0,
+          backgroundColor: 'color-mix(in srgb, var(--color-base) 86%, transparent)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <div className="min-w-0">
+            <p className="t-label-sm flex items-center gap-1.5 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-breathe" />
+              In session
+            </p>
+            <h1 className="t-heading truncate">{currentSessionTitle}</h1>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleCompleteWorkout}
-          >
-            Complete
-          </Button>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <p className="t-data text-[var(--color-text)]">{sessionDurationLabel}</p>
+              <p className="text-[10px] font-semibold text-[var(--color-muted)] tabular-nums">
+                {completedSets}/{totalSets} sets
+              </p>
+            </div>
+            <Button size="sm" onClick={handleCompleteWorkout}>
+              Finish
+            </Button>
+          </div>
         </div>
+        {totalSets > 0 && totalSets <= 40 ? (
+          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" live={completedSets < totalSets} />
+        ) : (
+          <RailStrip value={progress / 100} tone="amber" size="sm" />
+        )}
+      </div>
 
-        <div className="mb-5 flex items-center gap-2">
-          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
-            <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Elapsed</p>
-            <p className="text-lg font-display text-[#E8E4DE] tabular-nums">{sessionDurationLabel}</p>
-          </div>
-          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2">
-            <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Sets</p>
-            <p className="text-lg font-display text-[#E8E4DE] tabular-nums">{completedSets}/{totalSets}</p>
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div className="text-center mb-3">
-          <motion.p
-            className="number-hero text-[#E8E4DE] mb-2"
-            key={progress}
-            initial={{ scale: 1 }}
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 0.3 }}
-          >
-            {Math.round(progress)}%
-          </motion.p>
-          <div className="h-2 bg-[#2E2E2E] rounded-[999px] overflow-hidden mb-2">
-            <motion.div
-              className="h-full gradient-progress-stone-sage"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </div>
-          <p className="label-section">
-            {completedSets}/{totalSets} sets
-          </p>
-        </div>
-      </motion.header>
-
-      {workoutMode === 'flexible' && currentWorkout.split_day_id === null ? (
+      {isFlexibleSession ? (
         <div className="space-y-3">
-          <Card variant="slab" className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+            <div className="flex items-end gap-3">
               <Input
-                label="Day Label"
+                label="Day label"
                 value={inSessionFlexibleDayLabel}
                 onChange={(event) => setInSessionFlexibleDayLabel(event.target.value)}
                 onBlur={handleInSessionDayLabelBlur}
@@ -1435,27 +1483,31 @@ export function Workout() {
               />
               <Button
                 variant="secondary"
-                size="sm"
-                className="mt-5"
+                size="md"
+                className="shrink-0"
                 onClick={() => {
                   setSupersetPickerSourceExerciseId(null);
                   setShowExercisePicker(true);
                 }}
               >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Add Exercise
+                <Plus className="w-4 h-4" strokeWidth={2.25} />
+                Add
               </Button>
             </div>
-            <p className="text-[10px] text-[#6B6B6B]">Edit order, set targets, and notes anytime.</p>
-          </Card>
+          </div>
 
           {activeFlexibleItems.length === 0 ? (
-            <Card variant="slab" className="text-center py-10">
-              <p className="text-xs text-[#6B6B6B] mb-3">No exercises yet.</p>
-              <Button size="sm" onClick={() => setShowExercisePicker(true)}>
-                Add First Exercise
-              </Button>
-            </Card>
+            <EmptyState
+              icon={Dumbbell}
+              title="Nothing on the bar yet"
+              body="Add your first movement and the session starts counting."
+              action={
+                <Button onClick={() => setShowExercisePicker(true)}>
+                  <Plus className="w-4 h-4" strokeWidth={2.25} />
+                  Add first exercise
+                </Button>
+              }
+            />
           ) : (
             activeFlexibleItems.map((item, index) => {
               const exerciseId = item.exercise_id;
@@ -1470,276 +1522,134 @@ export function Workout() {
               const isActive = activeExerciseId === exerciseId;
               const allComplete = sets.length > 0 && completedInExercise === sets.length;
               const movementNote = movementNotes[exerciseId] || item.notes || '';
-              const hasMovementNote = movementNote.trim().length > 0;
-              const noteCharacters = movementNote.length;
               const canMoveUp = index > 0;
               const canMoveDown = index < activeFlexibleItems.length - 1;
               const supersetGroupId = item.superset_group_id || null;
               const supersetPartner = supersetGroupId
                 ? activeFlexibleItems.find((candidate) => candidate.exercise_id !== exerciseId && candidate.superset_group_id === supersetGroupId)
                 : null;
+              const supersetRole = supersetFlowMap.get(exerciseId)?.role;
+              const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
 
               return (
-                <motion.div
+                <ExerciseCard
                   key={exerciseId}
-                  layout
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ ...springs.smooth, delay: index * 0.05 }}
-                >
-                  <Card
-                    variant="slab"
-                    className={`transition-all ${
-                      allComplete ? 'bg-sage-tint border-l-sage' :
-                      isActive ? 'border-l-accent border-white/10' : ''
-                    }`}
-                  >
-                    <div
-                      className="flex items-center justify-between cursor-pointer"
-                      onClick={() => setActiveExerciseId(isActive ? null : exerciseId)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <motion.div
-                          className={`w-8 h-8 rounded-[12px] flex items-center justify-center ${allComplete ? 'bg-[#8B9A7D]/20' : 'bg-[#2E2E2E]'}`}
-                          animate={allComplete ? { scale: [1, 1.1, 1] } : {}}
-                          transition={{ duration: 0.3 }}
+                  index={index}
+                  exerciseName={exerciseName}
+                  completedCount={completedInExercise}
+                  totalCount={sets.length || flexibleTargetSet}
+                  allComplete={allComplete}
+                  isActive={isActive}
+                  onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                  supersetLabel={
+                    supersetPartner
+                      ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartner.exercise_name || workoutExerciseMap.get(supersetPartner.exercise_id)?.name || 'Exercise'}`
+                      : null
+                  }
+                  notePreview={!isActive && movementNote.trim() ? movementNote : null}
+                  controls={
+                    <>
+                      <IconControl ariaLabel="Move up" disabled={!canMoveUp} onClick={() => { void handleFlexibleReorder(exerciseId, 'up'); }}>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </IconControl>
+                      <IconControl ariaLabel="Move down" disabled={!canMoveDown} onClick={() => { void handleFlexibleReorder(exerciseId, 'down'); }}>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </IconControl>
+                      {supersetGroupId ? (
+                        <IconControl ariaLabel="Remove superset" tone="sage" onClick={() => { void clearFlexibleSuperset(exerciseId); }}>
+                          <Unlink2 className="w-3.5 h-3.5" />
+                        </IconControl>
+                      ) : (
+                        <IconControl
+                          ariaLabel="Add superset"
+                          onClick={() => {
+                            setSupersetPickerSourceExerciseId(exerciseId);
+                            setShowExercisePicker(true);
+                          }}
                         >
-                          {allComplete ? (
-                            <svg className="w-4 h-4 text-[#8B9A7D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <motion.path
-                                d="M5 13l4 4L19 7"
-                                initial={{ pathLength: 0 }}
-                                animate={{ pathLength: 1 }}
-                                transition={{ duration: 0.4, ease: 'easeOut' }}
-                                strokeDasharray="0 1"
-                              />
-                            </svg>
-                          ) : (
-                            <span className="text-[10px] text-[#6B6B6B] tabular-nums">{completedInExercise}/{sets.length || normalizeFlexibleTargetSets(item.target_sets)}</span>
-                          )}
-                        </motion.div>
-                        <div>
-                          <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
-                          {supersetPartner && (
-                            <p className="mt-0.5 text-[10px] tracking-[0.08em] uppercase text-[#A8B89A]">
-                              Superset with {supersetPartner.exercise_name || workoutExerciseMap.get(supersetPartner.exercise_id)?.name || 'Exercise'}
-                            </p>
-                          )}
-                          {hasMovementNote && !isActive && (
-                            <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
-                              {movementNote}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          disabled={!canMoveUp}
-                          onClick={() => { void handleFlexibleReorder(exerciseId, 'up'); }}
-                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!canMoveDown}
-                          onClick={() => { void handleFlexibleReorder(exerciseId, 'down'); }}
-                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                        {supersetGroupId ? (
-                          <button
-                            type="button"
-                            onClick={() => { void clearFlexibleSuperset(exerciseId); }}
-                            className="p-1.5 rounded-[8px] text-[#8B9A7D] hover:text-[#BFD0AF] hover:bg-white/5 transition-colors"
-                            title="Remove Superset"
-                          >
-                            <Unlink2 className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSupersetPickerSourceExerciseId(exerciseId);
-                              setShowExercisePicker(true);
-                            }}
-                            className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 transition-colors"
-                            title="Add Superset"
-                          >
-                            <Link2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => { void removeFlexibleExerciseFromPlan(exerciseId); }}
-                          className="p-1.5 rounded-[8px] text-[#8B6B6B] hover:text-[#D39B9B] hover:bg-white/5 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        <motion.div
-                          animate={{ rotate: isActive ? 90 : 0 }}
-                          transition={springs.snappy}
-                        >
-                          <ChevronRight className="w-4 h-4 text-[#6B6B6B]" />
-                        </motion.div>
-                      </div>
-                    </div>
-
-                    <AnimatePresence>
-                      {isActive && (
-                        <motion.div
-                          className="mt-5 pt-5 border-t border-white/5 space-y-2"
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={springs.smooth}
-                        >
-                          <motion.div
-                            className="mb-2 rounded-[12px] bg-[#242424] border border-white/5 px-3 py-2"
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={springs.smooth}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-[10px] text-[#6B6B6B]">Target sets</p>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={12}
-                                  value={flexibleTargetInputValue}
-                                  onChange={(event) => {
-                                    handleFlexibleTargetSetDraftChange(exerciseId, event.target.value);
-                                  }}
-                                  onBlur={() => handleFlexibleTargetSetBlur(exerciseId, flexibleTargetSet)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                      (event.currentTarget as HTMLInputElement).blur();
-                                    }
-                                  }}
-                                  className="w-16 px-2 py-1 rounded-[8px] bg-[#1A1A1A] border border-white/10 text-xs text-[#E8E4DE]"
-                                />
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
-                                  onClick={() => { void removeLastUncompletedSet(exerciseId); }}
-                                  disabled={!sets.some((set) => !set.completed)}
-                                >
-                                  - Remove set
-                                </button>
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 transition-colors"
-                                  onClick={() => { void addWorkoutSet(exerciseId); }}
-                                >
-                                  + Add set
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-
-                          {sets.map((set, idx) => {
-                            const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
-                            const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
-                            const autofillValues = getSetAutofillValues({
-                              exerciseId,
-                              setNumber: set.set_number,
-                              currentExerciseSets: sets,
-                              previousWorkoutSetsByExercise,
-                            });
-                            const performanceStatus = set.completed && previousSetTarget
-                              ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
-                              : 'unknown';
-
-                            const statusLabel = performanceStatus === 'beat'
-                              ? 'Beat'
-                              : performanceStatus === 'matched'
-                                ? 'Matched'
-                                : performanceStatus === 'below'
-                                  ? 'Below'
-                                  : null;
-
-                            const statusClass = performanceStatus === 'beat'
-                              ? 'text-[#8B9A7D]'
-                              : performanceStatus === 'matched'
-                                ? 'text-[#B6B1A8]'
-                                : 'text-[#C48D8D]';
-
-                            return (
-                              <motion.div
-                                key={set.id}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.05, ...springs.smooth }}
-                              >
-                                {formattedTarget && (
-                                  <div className="mb-1.5 flex items-center justify-between rounded-[10px] border border-white/5 bg-[#202020] px-2.5 py-1.5">
-                                    <p className="text-[10px] text-[#7C7C7C]">
-                                      Target to beat: <span className="tabular-nums text-[#D4CEC2]">{formattedTarget}</span>
-                                    </p>
-                                    {statusLabel && (
-                                      <p className={`text-[10px] tracking-[0.08em] uppercase ${statusClass}`}>
-                                        {statusLabel}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                                <SetLogger
-                                  set={set}
-                                  setNumber={idx + 1}
-                                  autofillValues={autofillValues}
-                                  onBeforeComplete={validateSupersetOrderBeforeLog}
-                                  onComplete={handleSetLogged}
-                                />
-                              </motion.div>
-                            );
-                          })}
-
-                          <motion.div
-                            className="mt-4 pt-3 border-t border-white/[0.03]"
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: sets.length * 0.05, ...springs.smooth }}
-                          >
-                            <label
-                              htmlFor={`movement-note-${exerciseId}`}
-                              className="block text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2"
-                            >
-                              Movement Note
-                            </label>
-                            <textarea
-                              id={`movement-note-${exerciseId}`}
-                              value={movementNote}
-                              onChange={(event) => {
-                                handleMovementNoteChange(exerciseId, event.target.value);
-                                void updateFlexibleExerciseMeta(exerciseId, { notes: event.target.value.slice(0, 200) });
-                              }}
-                              onBlur={() => handleMovementNoteBlur(exerciseId)}
-                              rows={1}
-                              maxLength={200}
-                              placeholder="Note - technique, feel, cues..."
-                              className="w-full bg-transparent border-b border-white/10 pb-2 text-sm font-display-italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
-                            />
-                            <div className="mt-1.5 flex items-center justify-between">
-                              <div>
-                                {savingMovementNoteId === exerciseId ? (
-                                  <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)]">Saving...</p>
-                                ) : savedMovementNoteId === exerciseId ? (
-                                  <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-sage)]">Saved</p>
-                                ) : null}
-                              </div>
-                              {noteCharacters >= 160 && (
-                                <p className="text-[10px] tabular-nums text-[var(--color-muted)]">{noteCharacters}/200</p>
-                              )}
-                            </div>
-                          </motion.div>
-                        </motion.div>
+                          <Link2 className="w-3.5 h-3.5" />
+                        </IconControl>
                       )}
-                    </AnimatePresence>
-                  </Card>
-                </motion.div>
+                      <IconControl ariaLabel="Remove exercise" tone="berry" onClick={() => { void removeFlexibleExerciseFromPlan(exerciseId); }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </IconControl>
+                    </>
+                  }
+                >
+                  {/* Target sets + add/remove */}
+                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                    <label className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-[var(--color-muted)]">Target sets</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={12}
+                        value={flexibleTargetInputValue}
+                        onChange={(event) => {
+                          handleFlexibleTargetSetDraftChange(exerciseId, event.target.value);
+                        }}
+                        onBlur={() => handleFlexibleTargetSetBlur(exerciseId, flexibleTargetSet)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            (event.currentTarget as HTMLInputElement).blur();
+                          }
+                        }}
+                        className="well w-14 min-h-9 text-center t-data-sm text-[var(--color-text)] outline-none"
+                      />
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <SetCountButton
+                        ariaLabel="Remove set"
+                        disabled={!sets.some((set) => !set.completed)}
+                        onClick={() => { void removeLastUncompletedSet(exerciseId); }}
+                      >
+                        <Minus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                      </SetCountButton>
+                      <SetCountButton ariaLabel="Add set" onClick={() => { void addWorkoutSet(exerciseId); }}>
+                        <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                      </SetCountButton>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {sets.map((set, idx) => (
+                      <motion.div
+                        key={set.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.04, ...springs.smooth }}
+                      >
+                        <WorkoutSetRow
+                          set={set}
+                          setNumber={idx + 1}
+                          autofillValues={getSetAutofillValues({
+                            exerciseId,
+                            setNumber: set.set_number,
+                            currentExerciseSets: sets,
+                            previousWorkoutSetsByExercise,
+                          })}
+                          previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
+                          isNext={set.id === firstUncompletedSetId}
+                          onBeforeComplete={validateSupersetOrderBeforeLog}
+                          onComplete={handleSetLogged}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <MovementNote
+                    exerciseId={exerciseId}
+                    value={movementNote}
+                    saving={savingMovementNoteId === exerciseId}
+                    saved={savedMovementNoteId === exerciseId}
+                    onChange={(value) => {
+                      handleMovementNoteChange(exerciseId, value);
+                      void updateFlexibleExerciseMeta(exerciseId, { notes: value.slice(0, 200) });
+                    }}
+                    onBlur={() => handleMovementNoteBlur(exerciseId)}
+                  />
+                </ExerciseCard>
               );
             })
           )}
@@ -1766,319 +1676,150 @@ export function Workout() {
           />
         </div>
       ) : (
-      /* Exercises */
-      <div className="space-y-3">
-        {orderedExerciseEntries.map(([exerciseId, sets], index) => {
-          const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
-          const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
-          const completedInExercise = sets.filter(s => s.completed).length;
-          const isActive = activeExerciseId === exerciseId;
-          const allComplete = completedInExercise === sets.length;
-          const movementNote = movementNotes[exerciseId] || '';
-          const hasMovementNote = movementNote.trim().length > 0;
-          const noteCharacters = movementNote.length;
-          const isFirst = index === 0;
-          const isLast = index === orderedExerciseEntries.length - 1;
-          const supersetGroupId = splitSupersetByExerciseId.get(exerciseId) || null;
-          const supersetPartnerId = splitSupersetPartnerByExerciseId.get(exerciseId) || null;
-          const supersetPartnerName = supersetPartnerId
-            ? (workoutExerciseMap.get(supersetPartnerId)?.name || 'Exercise')
-            : null;
-          const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: sets.length, targetSets: sets.length, maxSets: sets.length };
-          const canAddSet = sets.length < setRange.maxSets;
-          const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
-          const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
+        <div className="space-y-3">
+          {orderedExerciseEntries.map(([exerciseId, sets], index) => {
+            const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
+            const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
+            const completedInExercise = sets.filter(s => s.completed).length;
+            const isActive = activeExerciseId === exerciseId;
+            const allComplete = completedInExercise === sets.length;
+            const movementNote = movementNotes[exerciseId] || '';
+            const isFirst = index === 0;
+            const isLast = index === orderedExerciseEntries.length - 1;
+            const supersetPartnerId = splitSupersetPartnerByExerciseId.get(exerciseId) || null;
+            const supersetPartnerName = supersetPartnerId
+              ? (workoutExerciseMap.get(supersetPartnerId)?.name || 'Exercise')
+              : null;
+            const supersetRole = supersetFlowMap.get(exerciseId)?.role;
+            const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: sets.length, targetSets: sets.length, maxSets: sets.length };
+            const canAddSet = sets.length < setRange.maxSets;
+            const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
+            const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
+            const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
 
-          return (
-            <motion.div
-              key={exerciseId}
-              layout
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...springs.smooth, delay: index * 0.05 }}
-            >
-              <Card
-                variant="slab"
-                className={`transition-all ${
-                  allComplete ? 'bg-sage-tint border-l-sage' :
-                  isActive ? 'border-l-accent border-white/10' : ''
-                }`}
+            return (
+              <ExerciseCard
+                key={exerciseId}
+                index={index}
+                exerciseName={exerciseName}
+                completedCount={completedInExercise}
+                totalCount={sets.length}
+                allComplete={allComplete}
+                isActive={isActive}
+                onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                supersetLabel={
+                  supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
+                }
+                notePreview={!isActive && movementNote.trim() ? movementNote : null}
+                controls={
+                  orderedExerciseEntries.length > 1 ? (
+                    <>
+                      <IconControl ariaLabel={`Move ${exerciseName} up`} disabled={isFirst} onClick={() => moveExercise(exerciseId, 'up')}>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </IconControl>
+                      <IconControl ariaLabel={`Move ${exerciseName} down`} disabled={isLast} onClick={() => moveExercise(exerciseId, 'down')}>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </IconControl>
+                    </>
+                  ) : null
+                }
               >
-                <div
-                  className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setActiveExerciseId(isActive ? null : exerciseId)}
-                >
-                  <div className="flex items-center gap-4">
-                    <motion.div
-                      className={`w-8 h-8 rounded-[12px] flex items-center justify-center ${allComplete ? 'bg-[#8B9A7D]/20' : 'bg-[#2E2E2E]'}`}
-                      animate={allComplete ? { scale: [1, 1.1, 1] } : {}}
-                      transition={{ duration: 0.3 }}
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <span className="text-[11px] font-medium text-[var(--color-muted)]">
+                    Range {setRange.minSets}–{setRange.maxSets} · Target {setRange.targetSets}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <SetCountButton
+                      ariaLabel="Remove set"
+                      disabled={!canRemoveSet}
+                      onClick={() => { void removeLastUncompletedSet(exerciseId); }}
                     >
-                      {allComplete ? (
-                        <svg className="w-4 h-4 text-[#8B9A7D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <motion.path
-                            d="M5 13l4 4L19 7"
-                            initial={{ pathLength: 0 }}
-                            animate={{ pathLength: 1 }}
-                            transition={{ duration: 0.4, ease: 'easeOut' }}
-                            strokeDasharray="0 1"
-                          />
-                        </svg>
-                      ) : (
-                        <span className="text-[10px] text-[#6B6B6B] tabular-nums">{completedInExercise}/{sets.length}</span>
-                      )}
-                    </motion.div>
-                    <div>
-                      <p className="text-sm text-[#E8E4DE]">{exerciseName}</p>
-                      {supersetGroupId && supersetPartnerName && (
-                        <p className="mt-0.5 text-[10px] tracking-[0.08em] uppercase text-[#A8B89A]">
-                          Superset with {supersetPartnerName}
-                        </p>
-                      )}
-                      {hasMovementNote && !isActive && (
-                        <p className="mt-0.5 text-xs font-display-italic text-[var(--color-text-dim)] truncate max-w-[220px]">
-                          {movementNote}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {orderedExerciseEntries.length > 1 && (
-                      <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          disabled={isFirst}
-                          onClick={() => moveExercise(exerciseId, 'up')}
-                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                          aria-label={`Move ${exerciseName} up`}
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLast}
-                          onClick={() => moveExercise(exerciseId, 'down')}
-                          className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                          aria-label={`Move ${exerciseName} down`}
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    <motion.div
-                      animate={{ rotate: isActive ? 90 : 0 }}
-                      transition={springs.snappy}
-                    >
-                      <ChevronRight className="w-4 h-4 text-[#6B6B6B]" />
-                    </motion.div>
+                      <Minus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                    </SetCountButton>
+                    <SetCountButton ariaLabel="Add set" disabled={!canAddSet} onClick={() => { void addWorkoutSet(exerciseId); }}>
+                      <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                    </SetCountButton>
                   </div>
                 </div>
 
-                <AnimatePresence>
-                  {isActive && (
+                <div className="space-y-1.5">
+                  {sets.map((set, idx) => (
                     <motion.div
-                      className="mt-5 pt-5 border-t border-white/5 space-y-2"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={springs.smooth}
+                      key={set.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04, ...springs.smooth }}
                     >
-                      <motion.div
-                        className="mb-2 rounded-[12px] bg-[#242424] border border-white/5 px-3 py-2"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={springs.smooth}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] text-[#6B6B6B]">Range {setRange.minSets}-{setRange.maxSets} • Target {setRange.targetSets}</p>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
-                              onClick={() => { void removeLastUncompletedSet(exerciseId); }}
-                              disabled={!canRemoveSet}
-                            >
-                              - Remove set
-                            </button>
-                            <button
-                              type="button"
-                              className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 disabled:opacity-35 disabled:pointer-events-none transition-colors"
-                              onClick={() => { void addWorkoutSet(exerciseId); }}
-                              disabled={!canAddSet}
-                            >
-                              + Add set
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-
-                      {sets.map((set, idx) => {
-                        const previousSetTarget = previousWorkoutSetsByExercise[exerciseId]?.[set.set_number];
-                        const formattedTarget = previousSetTarget ? formatSetPerformanceTarget(previousSetTarget) : '';
-                        const autofillValues = getSetAutofillValues({
+                      <WorkoutSetRow
+                        set={set}
+                        setNumber={idx + 1}
+                        autofillValues={getSetAutofillValues({
                           exerciseId,
                           setNumber: set.set_number,
                           currentExerciseSets: sets,
                           previousWorkoutSetsByExercise,
-                        });
-                        const performanceStatus = set.completed && previousSetTarget
-                          ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousSetTarget)
-                          : 'unknown';
-
-                        const statusLabel = performanceStatus === 'beat'
-                          ? 'Beat'
-                          : performanceStatus === 'matched'
-                            ? 'Matched'
-                            : performanceStatus === 'below'
-                              ? 'Below'
-                              : null;
-
-                        const statusClass = performanceStatus === 'beat'
-                          ? 'text-[#8B9A7D]'
-                          : performanceStatus === 'matched'
-                            ? 'text-[#B6B1A8]'
-                            : 'text-[#C48D8D]';
-
-                        return (
-                          <motion.div
-                            key={set.id}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx * 0.05, ...springs.smooth }}
-                          >
-                            {formattedTarget && (
-                              <div className="mb-1.5 flex items-center justify-between rounded-[10px] border border-white/5 bg-[#202020] px-2.5 py-1.5">
-                                <p className="text-[10px] text-[#7C7C7C]">
-                                  Target to beat: <span className="tabular-nums text-[#D4CEC2]">{formattedTarget}</span>
-                                </p>
-                                {statusLabel && (
-                                  <p className={`text-[10px] tracking-[0.08em] uppercase ${statusClass}`}>
-                                    {statusLabel}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            <SetLogger
-                              set={set}
-                              setNumber={idx + 1}
-                              autofillValues={autofillValues}
-                              onComplete={handleSetLogged}
-                            />
-                          </motion.div>
-                        );
-                      })}
-
-                      <motion.div
-                        className="mt-4 pt-3 border-t border-white/[0.03]"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: sets.length * 0.05, ...springs.smooth }}
-                      >
-                        <label
-                          htmlFor={`movement-note-${exerciseId}`}
-                          className="block text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2"
-                        >
-                          Movement Note
-                        </label>
-                        <textarea
-                          id={`movement-note-${exerciseId}`}
-                          value={movementNote}
-                          onChange={(event) => handleMovementNoteChange(exerciseId, event.target.value)}
-                          onBlur={() => handleMovementNoteBlur(exerciseId)}
-                          rows={1}
-                          maxLength={200}
-                          placeholder="Note - technique, feel, cues..."
-                          className="w-full bg-transparent border-b border-white/10 pb-2 text-sm font-display-italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
-                        />
-                        <div className="mt-1.5 flex items-center justify-between">
-                          <div>
-                            {savingMovementNoteId === exerciseId ? (
-                              <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)]">Saving...</p>
-                            ) : savedMovementNoteId === exerciseId ? (
-                              <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-sage)]">Saved</p>
-                            ) : null}
-                          </div>
-                          {noteCharacters >= 160 && (
-                            <p className="text-[10px] tabular-nums text-[var(--color-muted)]">{noteCharacters}/200</p>
-                          )}
-                        </div>
-                      </motion.div>
+                        })}
+                        previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
+                        isNext={set.id === firstUncompletedSetId}
+                        onBeforeComplete={validateSupersetOrderBeforeLog}
+                        onComplete={handleSetLogged}
+                      />
                     </motion.div>
-                  )}
-                </AnimatePresence>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </div>
+                  ))}
+                </div>
+
+                <MovementNote
+                  exerciseId={exerciseId}
+                  value={movementNote}
+                  saving={savingMovementNoteId === exerciseId}
+                  saved={savedMovementNoteId === exerciseId}
+                  onChange={(value) => handleMovementNoteChange(exerciseId, value)}
+                  onBlur={() => handleMovementNoteBlur(exerciseId)}
+                />
+              </ExerciseCard>
+            );
+          })}
+        </div>
       )}
 
-      {/* Rest Timer Modal */}
-      <Modal
-        isOpen={showRestTimer}
-        onClose={() => setShowRestTimer(false)}
-        title="Rest"
-      >
-        <RestTimer
+      {/* Ambient rest timer */}
+      {showRestTimer && (
+        <RestTimerPill
           key={`${currentWorkout.id}:${restTimerSeed}`}
           workoutId={currentWorkout.id}
           sessionSeed={restTimerSeed}
-          onComplete={() => setShowRestTimer(false)}
+          onDismiss={() => setShowRestTimer(false)}
         />
-      </Modal>
+      )}
 
-      {/* Complete Confirmation Modal */}
-      <Modal
-        isOpen={showCompleteConfirm}
-        onClose={() => setShowCompleteConfirm(false)}
-        title="Finish Workout?"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-[#E8E4DE]">
-            You've completed <span className="text-[#E8E4DE] font-medium">{completedSets}</span> out of <span className="text-[#E8E4DE] font-medium">{totalSets}</span> sets.
-          </p>
-          <p className="text-xs text-[#6B6B6B]">
-            Are you sure you want to finish this workout? Remaining sets will not be logged.
-          </p>
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => setShowCompleteConfirm(false)}
-            >
-              Keep Training
+      {/* Complete Confirmation */}
+      <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
+        <div className="space-y-4 pt-1">
+          <div className="flex items-center gap-3">
+            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="amber" size="sm" />
+            <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
+          </div>
+          <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
+              Keep training
             </Button>
-            <Button
-              className="flex-1"
-              onClick={handleConfirmComplete}
-            >
+            <Button className="flex-1" onClick={handleConfirmComplete}>
               Finish
             </Button>
           </div>
         </div>
       </Modal>
 
-      <Modal
-        isOpen={showSaveTemplatePrompt}
-        onClose={() => setShowSaveTemplatePrompt(false)}
-        title="Save Quick-Start Template?"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-[#E8E4DE]">
-            Save this day as quick-start template <span className="font-medium">{currentWorkoutDayPlan?.day_label || 'Template'}</span>?
+      {/* Save template prompt (flexible) */}
+      <Modal isOpen={showSaveTemplatePrompt} onClose={() => setShowSaveTemplatePrompt(false)} title="Save as quick start?">
+        <div className="space-y-4 pt-1">
+          <p className="t-body text-[var(--color-text)]">
+            Keep <span className="font-semibold">{currentWorkoutDayPlan?.day_label || 'this day'}</span> as a one-tap template?
           </p>
-          <p className="text-xs text-[#6B6B6B]">
-            If this label already exists, it will be overwritten with your latest exercise order and notes.
-          </p>
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => {
-                setShowSaveTemplatePrompt(false);
-                void completeWorkout();
-              }}
-            >
+          <p className="t-caption">An existing template with this label will be replaced with today's exercises and notes.</p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={handleSkipTemplateAtCompletion}>
               Skip
             </Button>
             <Button
@@ -2087,11 +1828,247 @@ export function Workout() {
               loading={savingTemplate}
               disabled={savingTemplate}
             >
-              {savingTemplate ? 'Saving...' : 'Save Template'}
+              {savingTemplate ? 'Saving…' : 'Save template'}
             </Button>
           </div>
         </div>
       </Modal>
+
+      <CompletionSheet summary={completionSummary} onClose={() => setCompletionSummary(null)} />
     </motion.div>
+  );
+}
+
+/* ───────────────────────── in-session building blocks ───────────────────────── */
+
+function ExerciseCard({
+  index,
+  exerciseName,
+  completedCount,
+  totalCount,
+  allComplete,
+  isActive,
+  onToggle,
+  supersetLabel,
+  notePreview,
+  controls,
+  children,
+}: {
+  index: number;
+  exerciseName: string;
+  completedCount: number;
+  totalCount: number;
+  allComplete: boolean;
+  isActive: boolean;
+  onToggle: () => void;
+  supersetLabel: string | null;
+  notePreview: string | null;
+  controls: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
+    >
+      <div
+        className={`rounded-[var(--radius-lg)] border transition-colors ${
+          allComplete
+            ? 'bg-sage-tint border-[color-mix(in_srgb,var(--color-sage)_25%,transparent)]'
+            : isActive
+              ? 'bg-[var(--color-surface-2)] border-[color-mix(in_srgb,var(--color-accent)_30%,transparent)]'
+              : 'bg-[var(--color-surface-1)] border-[var(--color-border)]'
+        }`}
+      >
+        <button type="button" className="w-full text-left px-4 py-3.5" onClick={onToggle}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                {allComplete && (
+                  <motion.span
+                    className="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-[var(--color-sage)] shrink-0"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.15, 1] }}
+                    transition={{ duration: 0.35 }}
+                  >
+                    <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={4} />
+                  </motion.span>
+                )}
+                <h3 className="t-heading text-[15px] truncate">{exerciseName}</h3>
+              </div>
+              {supersetLabel && (
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-[var(--color-stone)]">
+                  <Link2 className="w-3 h-3" strokeWidth={2.25} />
+                  Superset {supersetLabel}
+                </p>
+              )}
+              {notePreview && (
+                <p className="mt-0.5 text-xs t-display text-[var(--color-text-dim)] truncate">{notePreview}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {controls}
+              <motion.span animate={{ rotate: isActive ? 90 : 0 }} transition={springs.snappy} className="p-1">
+                <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" />
+              </motion.span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 mt-2">
+            <TickStrip total={Math.min(totalCount, 12)} filled={Math.min(completedCount, 12)} tone={allComplete ? 'sage' : 'amber'} size="sm" />
+            <span className="t-data-sm text-[var(--color-muted)]">
+              {completedCount}/{totalCount}
+            </span>
+          </div>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {isActive && (
+            <motion.div
+              className="overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={springs.smooth}
+            >
+              <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border)]">{children}</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+function IconControl({
+  children,
+  onClick,
+  disabled,
+  ariaLabel,
+  tone = 'neutral',
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  tone?: 'neutral' | 'sage' | 'berry';
+}) {
+  const color =
+    tone === 'sage'
+      ? 'text-[var(--color-sage)]'
+      : tone === 'berry'
+        ? 'text-[color-mix(in_srgb,var(--color-danger)_75%,var(--color-muted))]'
+        : 'text-[var(--color-muted)] hover:text-[var(--color-text)]';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className={`pressable p-2 rounded-[var(--radius-xs)] transition-colors disabled:opacity-25 disabled:pointer-events-none ${color}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SetCountButton({
+  children,
+  onClick,
+  disabled,
+  ariaLabel,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className="pressable flex items-center justify-center w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MovementNote({
+  exerciseId,
+  value,
+  saving,
+  saved,
+  onChange,
+  onBlur,
+}: {
+  exerciseId: string;
+  value: string;
+  saving: boolean;
+  saved: boolean;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <div className="mt-3 pt-3 border-t border-[var(--color-border-soft)]">
+      <textarea
+        id={`movement-note-${exerciseId}`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        rows={1}
+        maxLength={200}
+        placeholder="Note — technique, feel, cues…"
+        aria-label="Movement note"
+        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm t-display text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+      />
+      <div className="mt-1 flex items-center justify-between min-h-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-muted)]">
+          {saving ? 'Saving…' : saved ? <span className="text-[var(--color-sage)]">Saved</span> : ''}
+        </span>
+        {value.length >= 160 && <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{value.length}/200</span>}
+      </div>
+    </div>
+  );
+}
+
+function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | null; onClose: () => void }) {
+  return (
+    <Modal isOpen={summary !== null} onClose={onClose}>
+      {summary && (
+        <div className="text-center pt-2 pb-3">
+          <motion.span
+            className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-sage)] mb-4"
+            initial={{ scale: 0 }}
+            animate={{ scale: [0, 1.15, 1] }}
+            transition={{ duration: 0.45 }}
+          >
+            <Check className="w-6 h-6 text-[var(--color-base)]" strokeWidth={3} />
+          </motion.span>
+          <p className="t-display text-[1.6rem] text-[var(--color-text)] mb-1">Session banked.</p>
+          <p className="t-caption mb-5">{summary.title}</p>
+          <div className="flex justify-center mb-5">
+            <TickStrip total={Math.min(summary.totalSets, 30)} filled={Math.min(summary.completedSets, 30)} tone="sage" />
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 mb-6">
+            <div className="well py-3">
+              <p className="t-data-lg text-[var(--color-text)]">{summary.completedSets}<span className="text-[var(--color-muted)]">/{summary.totalSets}</span></p>
+              <p className="t-label-sm mt-0.5">sets</p>
+            </div>
+            <div className="well py-3">
+              <p className="t-data-lg text-[var(--color-text)]">{summary.duration}</p>
+              <p className="t-label-sm mt-0.5">duration</p>
+            </div>
+          </div>
+          <Button size="lg" className="w-full" onClick={onClose}>
+            Done
+          </Button>
+        </div>
+      )}
+    </Modal>
   );
 }
