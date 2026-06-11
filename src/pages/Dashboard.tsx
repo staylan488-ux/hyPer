@@ -230,14 +230,14 @@ export function Dashboard() {
     <>
       <Screen>
         {/* Header */}
-        <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <p className="t-label mb-1.5">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="text-[2rem] font-bold tracking-[-0.02em] leading-tight text-[var(--color-text)]">{greeting}</h1>
+        <motion.header className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+          <p className="t-label mb-1">{format(new Date(), 'EEEE, MMMM d')}</p>
+          <h1 className="text-[26px] font-bold tracking-[-0.02em] leading-tight text-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
         {/* ── Next action hero ── */}
         <motion.section
-          className="mb-4"
+          className="mb-3"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.04 }}
@@ -247,20 +247,20 @@ export function Dashboard() {
 
         {/* ── Fuel strip ── */}
         <motion.section
-          className="mb-4"
+          className="mb-3"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.08 }}
         >
-          <div className="panel-sage p-5">
-            <div className="flex items-center justify-between mb-5">
+          <div className="panel-sage p-4">
+            <div className="flex items-center justify-between mb-3.5">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2} />
                 <span className="t-label text-[var(--color-sage)]">Fuel</span>
               </div>
               {hasAnyNutrition && !loading && (
                 <span className="flex items-baseline gap-1.5">
-                  <span className="t-numeral text-[22px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <span className="t-numeral text-[20px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
                   <span className="text-[13px] text-[var(--color-muted)]">kcal left</span>
                 </span>
               )}
@@ -272,7 +272,7 @@ export function Dashboard() {
                 <div className="shimmer h-2 w-3/4" />
               </div>
             ) : hasAnyNutrition ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <FuelRow
                   label="Calories"
                   current={nutritionTotals.calories}
@@ -292,11 +292,11 @@ export function Dashboard() {
               <p className="t-caption mb-1">Nothing logged today. Targets make every meal a decision, not a guess.</p>
             )}
 
-            <div className="mt-5 flex gap-2">
+            <div className="mt-3.5 flex gap-2">
               <Link to="/nutrition" className="flex-1">
                 <button
                   type="button"
-                  className="pressable w-full flex items-center justify-center gap-2.5 min-h-12 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] text-[15px] font-semibold text-[var(--color-text)]"
+                  className="pressable w-full flex items-center justify-center gap-2.5 min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] text-[14px] font-semibold text-[var(--color-text)]"
                 >
                   <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sage-tint-strong">
                     <Plus className="w-3.5 h-3.5 text-[var(--color-sage)]" strokeWidth={2.75} />
@@ -316,16 +316,27 @@ export function Dashboard() {
           </div>
         </motion.section>
 
+        {/* ── Stations — always part of the first screen ── */}
+        <motion.nav
+          className="grid grid-cols-3 gap-2 mb-3"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.smooth, delay: 0.12 }}
+        >
+          <StationLink to="/train/program" icon={<LayoutGrid className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
+          <StationLink to="/history" icon={<HistoryIcon className="w-5 h-5" strokeWidth={1.75} />} label="History" sub="Past sessions" />
+          <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-5 h-5" strokeWidth={1.75} />} label="Progress" sub="Track results" />
+        </motion.nav>
+
         {/* ── One insight, only when it exists ── */}
         {insight && (
           <motion.section
-            className="mb-4"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.smooth, delay: 0.12 }}
+            transition={{ ...springs.smooth, delay: 0.16 }}
           >
             <Link to="/analysis" className="block">
-              <div className="pressable panel p-5">
+              <div className="pressable panel p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <ChartNoAxesColumn className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.75} />
@@ -348,18 +359,6 @@ export function Dashboard() {
             </Link>
           </motion.section>
         )}
-
-        {/* ── Stations ── */}
-        <motion.nav
-          className="grid grid-cols-3 gap-2.5"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.16 }}
-        >
-          <StationLink to="/train/program" icon={<LayoutGrid className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
-          <StationLink to="/history" icon={<HistoryIcon className="w-5 h-5" strokeWidth={1.75} />} label="History" sub="Past sessions" />
-          <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-5 h-5" strokeWidth={1.75} />} label="Progress" sub="Track results" />
-        </motion.nav>
       </Screen>
       <DashboardMonolithIntro />
     </>
@@ -381,25 +380,25 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'resume') {
     return (
-      <div className="panel-hot p-5 relative overflow-hidden">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="panel-hot p-4 relative overflow-hidden">
+        <div className="flex items-center gap-2 mb-2">
           <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-breathe" />
           <span className="t-label text-[var(--color-accent)]">{hero.title}</span>
         </div>
-        <p className="mb-3 flex items-baseline gap-2">
-          <span className="t-numeral text-[46px] text-[var(--color-text)]">
+        <p className="mb-2.5 flex items-baseline gap-2">
+          <span className="t-numeral text-[40px] text-[var(--color-text)]">
             {hero.completedSets}<span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
           </span>
           <span className="text-lg font-medium text-[var(--color-muted)]">sets</span>
         </p>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-5" />
+        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-4" />
         <Link to="/train">
           <Button size="lg" className="w-full">
             <Play className="w-[18px] h-[18px]" strokeWidth={2.5} fill="currentColor" />
             Resume session
           </Button>
         </Link>
-        <Link to="/train" className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-[var(--color-border)]">
+        <Link to="/train" className="flex items-center justify-between gap-2 mt-3.5 pt-3 border-t border-[var(--color-border)]">
           <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--color-text-dim)]">
             <Clock className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={2} />
             {hero.elapsed} elapsed
@@ -526,7 +525,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNode; label: string; sub: string }) {
   return (
     <Link to={to}>
-      <div className="pressable panel flex flex-col gap-3 p-3.5 min-h-[108px]">
+      <div className="pressable panel flex flex-col gap-2 p-3 min-h-[88px]">
         <span className="text-[var(--color-accent)]">{icon}</span>
         <span>
           <span className="block text-[14px] font-bold text-[var(--color-text)]">{label}</span>
@@ -546,10 +545,10 @@ function FuelRow({ label, current, target, unit, tone }: { label: string; curren
 
   return (
     <div>
-      <p className="t-label-sm mb-1">{label}</p>
-      <div className="flex items-baseline justify-between mb-2">
+      <p className="t-label-sm mb-0.5">{label}</p>
+      <div className="flex items-baseline justify-between mb-1.5">
         <span className="flex items-baseline gap-1.5">
-          <span className="t-numeral text-[22px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
+          <span className="t-numeral text-[19px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
           <span className="text-[13px] text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
         </span>
         <span className="t-data text-[15px]" style={{ color: toneVar }}>{pct}%</span>
