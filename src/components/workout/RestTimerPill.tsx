@@ -87,6 +87,41 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     void playRestTimerSound();
   }, [session]);
 
+  // Keep the screen awake while a rest timer is running, so the phone can sit
+  // on the bench with the countdown visible. iOS releases the lock whenever the
+  // page is hidden, so re-acquire on return. Fails quietly (e.g. Low Power Mode).
+  useEffect(() => {
+    if (!isRunning || !('wakeLock' in navigator)) return;
+
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    const acquire = async () => {
+      try {
+        if (!cancelled && document.visibilityState === 'visible') {
+          sentinel = await navigator.wakeLock.request('screen');
+        }
+      } catch {
+        // Wake lock denied (battery saver, unsupported) — timer still works.
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void acquire();
+      }
+    };
+
+    void acquire();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      void sentinel?.release().catch(() => {});
+    };
+  }, [isRunning]);
+
   const timeLeft = session ? getRestTimerRemainingSeconds(session) : defaultSeconds;
   const seconds = session?.durationSeconds ?? defaultSeconds;
   const remainingRatio = seconds > 0 ? timeLeft / seconds : 0;
