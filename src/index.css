@@ -49,10 +49,10 @@
   --radius-2xl: 32px;
   --radius-full: 9999px;
 
-  /* Typography — one premium geometric family, weight-driven hierarchy + mono for data */
-  --font-sans: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  /* Typography — the Plex instrument family: words in Sans, measured numbers in Mono */
+  --font-sans: 'IBM Plex Sans', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans', -apple-system, 'SF Pro Display', system-ui, sans-serif;
 
   /* Spacing */
   --spacing-section: 2.5rem;
