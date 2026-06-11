@@ -1,6 +1,7 @@
 import { type ReactNode, useId } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -37,7 +38,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
-            onClick={() => onChange(option.value)}
+            onClick={() => {
+              if (!selected) tapHaptic();
+              onChange(option.value);
+            }}
             className={`relative flex-1 flex items-center justify-center gap-1.5 font-semibold rounded-[8px] transition-colors duration-150 ${item} ${
               selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}

@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, Leaf, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home', matchPaths: ['/'] },
@@ -53,6 +54,9 @@ export function BottomNav() {
                 to={to}
                 aria-label={label}
                 className="relative flex-1 flex flex-col items-center justify-center gap-1"
+                onClick={() => {
+                  if (!isActive) tapHaptic();
+                }}
               >
                 {/* glowing dash above the active station */}
                 {isActive && (

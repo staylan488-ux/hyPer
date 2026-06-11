@@ -1,4 +1,5 @@
 import { Minus, Plus } from 'lucide-react';
+import { tapHaptic } from '@/lib/haptics';
 
 interface StepperProps {
   value: number | string;
@@ -17,7 +18,10 @@ export function Stepper({ value, onDecrement, onIncrement, canDecrement = true, 
     <div className={`well flex items-center ${className}`}>
       <button
         type="button"
-        onClick={onDecrement}
+        onClick={() => {
+          tapHaptic();
+          onDecrement();
+        }}
         disabled={!canDecrement}
         aria-label="Decrease"
         className="pressable flex items-center justify-center min-w-11 min-h-11 text-[var(--color-text-dim)] disabled:opacity-25 disabled:pointer-events-none"
@@ -30,7 +34,10 @@ export function Stepper({ value, onDecrement, onIncrement, canDecrement = true, 
       </div>
       <button
         type="button"
-        onClick={onIncrement}
+        onClick={() => {
+          tapHaptic();
+          onIncrement();
+        }}
         disabled={!canIncrement}
         aria-label="Increase"
         className="pressable flex items-center justify-center min-w-11 min-h-11 text-[var(--color-text-dim)] disabled:opacity-25 disabled:pointer-events-none"

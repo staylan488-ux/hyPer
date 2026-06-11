@@ -3,6 +3,7 @@ import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip } from '@/components/shared';
 import { springs } from '@/lib/animations';
+import { tapHaptic } from '@/lib/haptics';
 import {
   clearRestTimerSession,
   createRestTimerSession,
@@ -129,6 +130,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const isComplete = timeLeft === 0;
 
   const handleReset = () => {
+    tapHaptic();
     const nextSession = pauseRestTimerSession(createRestTimerSession(workoutId, seconds));
     saveRestTimerSession(nextSession);
     setSession(nextSession);
@@ -136,6 +138,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   };
 
   const handleSetTime = (newSeconds: number) => {
+    tapHaptic();
     const nextSession = createRestTimerSession(workoutId, newSeconds);
     saveRestTimerSession(nextSession);
     setSession(nextSession);
@@ -144,6 +147,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   const handleToggleRunning = () => {
     if (!session) return;
+    tapHaptic();
 
     const nextSession = session.status === 'running' ? pauseRestTimerSession(session) : resumeRestTimerSession(session);
 
@@ -152,6 +156,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   };
 
   const handleDismiss = () => {
+    tapHaptic();
     clearRestTimerSession();
     setExpanded(false);
     onDismiss();
