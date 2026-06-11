@@ -9,6 +9,7 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
 import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
+import { tapHaptic } from '@/lib/haptics';
 
 interface SavedMeal {
   id: string;
@@ -503,9 +504,14 @@ export function Settings() {
         <p className="text-[10px] font-medium text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
           Built on peer-reviewed research
         </p>
-        <p className="t-data-sm text-[9px] text-[color-mix(in_srgb,var(--color-muted)_55%,transparent)] mt-2">
+        {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
+        <button
+          type="button"
+          onClick={() => tapHaptic()}
+          className="t-data-sm text-[9px] text-[color-mix(in_srgb,var(--color-muted)_55%,transparent)] mt-2 px-3 py-2"
+        >
           build {__BUILD_ID__}
-        </p>
+        </button>
       </motion.footer>
 
       {/* Macro calculator — focused sheet */}
