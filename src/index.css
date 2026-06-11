@@ -695,12 +695,36 @@ input, textarea, select, button {
 .dark .text-\[\#6B6B6B\] { color: var(--color-muted); }
 .dark .text-\[\#8B9A7D\] { color: var(--color-sage); }
 .dark .text-\[\#C4A484\] { color: var(--color-accent); }
+.dark .text-\[\#8B6B6B\] { color: color-mix(in srgb, var(--color-danger) 70%, var(--color-muted)); }
+.dark .text-\[\#A8B89A\] { color: var(--color-sage); }
+.dark .text-\[\#D39B9B\] { color: var(--color-danger); }
+.dark .text-\[\#C48D8D\] { color: var(--color-rose); }
+.dark .text-\[\#B6B1A8\] { color: var(--color-text-dim); }
+.dark .text-\[\#C9C5BD\] { color: var(--color-text-dim); }
+.dark .text-\[\#7C7C7C\] { color: var(--color-muted); }
+.dark .text-\[\#D4CEC2\] { color: var(--color-text-dim); }
+.dark .text-\[\#B07A7A\] { color: color-mix(in srgb, var(--color-danger) 70%, var(--color-muted)); }
 .dark .bg-\[\#1A1A1A\] { background-color: var(--color-base); }
 .dark .bg-\[\#242424\] { background-color: var(--color-surface-1); }
 .dark .bg-\[\#2A2A2A\] { background-color: var(--color-surface-2); }
 .dark .bg-\[\#2E2E2E\] { background-color: var(--color-surface-2); }
 .dark .bg-\[\#1F1F1F\] { background-color: var(--color-surface-1); }
 .dark .bg-\[\#383838\] { background-color: var(--color-surface-3); }
+.dark .bg-\[\#1E1E1E\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#202020\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#171717\] { background-color: var(--color-well); }
+.dark .bg-\[\#121212\] { background-color: var(--color-well); }
+
+.light .bg-\[\#1E1E1E\] { background-color: var(--color-surface) !important; }
+.light .bg-\[\#202020\] { background-color: var(--color-surface) !important; }
+.light .bg-\[\#171717\] { background-color: var(--color-well) !important; }
+.light .bg-\[\#121212\] { background-color: var(--color-well) !important; }
+.light .text-\[\#A8B89A\] { color: var(--color-sage) !important; }
+.light .text-\[\#D39B9B\] { color: var(--color-danger) !important; }
+.light .text-\[\#C48D8D\] { color: var(--color-rose) !important; }
+.light .text-\[\#B07A7A\] { color: var(--color-danger) !important; }
+.light .text-\[\#7C7C7C\] { color: var(--color-muted) !important; }
+.light .text-\[\#D4CEC2\] { color: var(--color-text-dim) !important; }
 
 /* ═════════════════════════════════════
    EASING CURVES

@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Card, CardTitle, Modal, Button, Input } from '@/components/shared';
+import { Modal, Button, Input, TickStrip, Toast } from '@/components/shared';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
@@ -512,44 +512,32 @@ export function History() {
   };
 
   return (
-    <motion.div className="pb-24 px-5 pt-8">
-      <AnimatePresence>
-        {showSuccess && (
-          <motion.div
-            className="fixed safe-area-top-offset left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 bg-[#8B9A7D] text-[#1A1A1A] rounded-[20px] text-xs tracking-wider shadow-lg"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={springs.smooth}
-          >
-            <Check className="w-4 h-4" />
-            Saved
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <motion.div className="px-5 pt-6 pb-nav">
+      <Toast show={showSuccess} message="Saved" />
 
-      <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">Training</p>
-        <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">History</h1>
+      <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <p className="t-label-sm mb-1">Training ledger</p>
+        <h1 className="t-title">History</h1>
       </motion.header>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 mb-5">
+          <div className="flex items-center justify-between mb-3">
             <motion.button
               onClick={() => {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
+              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
               whileTap={{ scale: 0.9, x: -2 }}
+              aria-label="Previous month"
             >
-              <ChevronLeft className="w-4 h-4 text-[#9A9A9A]" />
+              <ChevronLeft className="w-4 h-4" />
             </motion.button>
             <AnimatePresence mode="wait">
               <motion.h3
                 key={format(selectedMonth, 'yyyy-MM')}
-                className="text-xs tracking-[0.15em] uppercase text-[#E8E4DE]"
+                className="t-heading"
                 initial={{ opacity: 0, x: monthDirection * 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: monthDirection * -20 }}
@@ -563,16 +551,17 @@ export function History() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
+              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
               whileTap={{ scale: 0.9, x: 2 }}
+              aria-label="Next month"
             >
-              <ChevronRight className="w-4 h-4 text-[#9A9A9A]" />
+              <ChevronRight className="w-4 h-4" />
             </motion.button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 mb-2">
+          <div className="grid grid-cols-7 gap-1 mb-1">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="text-center text-[10px] text-[#6B6B6B] py-1">
+              <div key={`${day}-${index}`} className="t-label-sm text-center py-1">
                 {day}
               </div>
             ))}
@@ -607,27 +596,27 @@ export function History() {
                     }
                   }}
                   title={workoutSummaryLabel || undefined}
-                  className={`min-h-16 rounded-[12px] text-xs tabular-nums transition-all relative px-1 py-1.5 ${
+                  className={`min-h-16 rounded-[var(--radius-sm)] t-data-sm transition-all relative px-1 py-1.5 ${
                     isSelected
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
+                      ? 'text-[var(--color-base)]'
                       : inMonth
-                        ? 'text-[#E8E4DE] hover:bg-white/5 active:bg-white/10'
-                        : 'text-[#5A5A5A] hover:bg-white/5 active:bg-white/10'
-                  } ${isTodayDate && !isSelected ? 'ring-1 ring-[#C4A484]/30' : ''}`}
+                        ? 'text-[var(--color-text)] active:bg-[var(--color-surface-2)]'
+                        : 'text-[var(--color-muted)] active:bg-[var(--color-surface-2)]'
+                  } ${isTodayDate && !isSelected ? 'ring-1 ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]' : ''}`}
                 >
                   {isSelected && (
                     <motion.div
-                      className="absolute inset-0 bg-[#E8E4DE] rounded-[12px]"
+                      className="absolute inset-0 bg-[var(--color-text)] rounded-[var(--radius-sm)]"
                       layoutId="history-day-selected"
                       transition={springs.smooth}
                     />
                   )}
                   <div className="relative z-10 flex h-full flex-col items-start">
-                    <span className="text-xs">{format(day, 'd')}</span>
+                    <span className={`text-xs ${isSelected ? 'font-semibold' : ''}`}>{format(day, 'd')}</span>
                     {workoutSummaryLabel && (
                       <span
-                        className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight ${
-                          isSelected ? 'text-[#1A1A1A]/85' : 'text-[#BEB8AE]'
+                        className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight font-sans ${
+                          isSelected ? 'text-[color-mix(in_srgb,var(--color-base)_85%,transparent)]' : 'text-[var(--color-text-dim)]'
                         }`}
                       >
                         {workoutSummaryLabel}
@@ -637,7 +626,7 @@ export function History() {
                   {dayWorkouts.length > 0 && (
                     <motion.span
                       className={`absolute bottom-1 right-1.5 w-1.5 h-1.5 rounded-full z-10 ${
-                        isSelected ? 'bg-[#1A1A1A]' : 'bg-[#8B9A7D]'
+                        isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-sage)]'
                       }`}
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
@@ -648,26 +637,34 @@ export function History() {
               );
             })}
           </div>
-        </Card>
+        </div>
       </motion.div>
 
       {loading ? (
-        <div className="text-center py-8 text-[#6B6B6B] text-xs tracking-wider">Loading...</div>
+        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="shimmer h-10 w-10" />
+              <div className="flex-1 space-y-1.5">
+                <div className="shimmer h-3.5 w-1/2" />
+                <div className="shimmer h-2.5 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <motion.div className="space-y-3" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <CardTitle>{format(selectedDate, 'EEEE')}</CardTitle>
-              <p className="text-[10px] text-[#6B6B6B] mt-1">
-                {selectedDayWorkouts.length} session{selectedDayWorkouts.length !== 1 ? 's' : ''}
-              </p>
-            </div>
+          <div className="flex items-baseline justify-between mb-1 px-1">
+            <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
+            <span className="t-data-sm text-[10px] text-[var(--color-muted)]">
+              {selectedDayWorkouts.length} session{selectedDayWorkouts.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
           {selectedDayWorkouts.length === 0 ? (
-            <Card variant="slab" className="text-center py-12">
-              <p className="text-editorial">No sessions recorded.</p>
-            </Card>
+            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline text-center py-10 px-5">
+              <p className="t-display text-[15px] text-[var(--color-text-dim)]">No sessions recorded.</p>
+            </div>
           ) : (
             selectedDayWorkouts.map((workout, workoutIndex) => {
               const isExpanded = expandedWorkout === workout.id;
@@ -728,23 +725,31 @@ export function History() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: workoutIndex * 0.06, ...springs.smooth }}
                 >
-                  <Card variant="slab" className="overflow-hidden">
+                  <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline p-4 overflow-hidden">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-[14px] bg-[#2E2E2E] flex items-center justify-center">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 ${progress.completed ? 'bg-sage-tint' : 'well'}`}>
                           {progress.completed ? (
-                            <Check className="w-4 h-4 text-[#8B9A7D]" />
+                            <Check className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2.5} />
                           ) : (
-                            <span className="text-[10px] text-[#6B6B6B]">{progress.percent}%</span>
+                            <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{progress.percent}%</span>
                           )}
                         </div>
-                        <div>
-                          <p className="text-sm text-[#E8E4DE]">{resolvedTitle}</p>
-                          <p className="text-[10px] text-[#6B6B6B]">{subtitle}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[var(--color-text)] truncate">{resolvedTitle}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <TickStrip
+                              total={Math.min(progress.totalSets, 16)}
+                              filled={Math.min(progress.completedSets, 16)}
+                              tone={progress.completed ? 'sage' : 'amber'}
+                              size="sm"
+                            />
+                            <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{subtitle}</span>
+                          </div>
                         </div>
                       </div>
                       <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
-                        <ChevronDown className="w-4 h-4 text-[#6B6B6B]" />
+                        <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" />
                       </motion.div>
                     </div>
 
@@ -1025,16 +1030,16 @@ export function History() {
 
                           <motion.button
                             onClick={() => setShowDeleteConfirm(workout.id)}
-                            className="w-full mt-4 py-3 rounded-[16px] border border-[#8B6B6B]/30 text-[#8B6B6B] text-[10px] tracking-[0.1em] uppercase hover:bg-[#8B6B6B]/10 transition-colors flex items-center justify-center gap-2"
+                            className="w-full mt-4 min-h-11 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] text-[var(--color-danger)] text-xs font-semibold hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
                             whileTap={{ scale: 0.98 }}
                           >
-                            <Trash2 className="w-3 h-3" />
-                            Delete Session
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete session
                           </motion.button>
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </Card>
+                  </div>
                 </motion.div>
               );
             })
@@ -1062,7 +1067,8 @@ export function History() {
               Cancel
             </Button>
             <Button
-              className="flex-1 bg-[#8B6B6B] hover:bg-[#9B7B7B]"
+              variant="danger"
+              className="flex-1"
               onClick={() => showDeleteConfirm && void handleDeleteWorkout(showDeleteConfirm)}
             >
               Delete
