@@ -49,10 +49,10 @@
   --radius-2xl: 32px;
   --radius-full: 9999px;
 
-  /* Typography — one family, weight-driven hierarchy + mono for data */
-  --font-sans: 'Archivo', system-ui, sans-serif;
+  /* Typography — one premium geometric family, weight-driven hierarchy + mono for data */
+  --font-sans: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'Archivo', system-ui, sans-serif;
+  --font-display: 'Inter', -apple-system, 'SF Pro Display', system-ui, sans-serif;
 
   /* Spacing */
   --spacing-section: 2.5rem;
@@ -67,9 +67,9 @@
   --color-surface-3: #27211B;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #837767;
+  --color-muted: #6F6557;
   --color-text: #F3EEE5;
-  --color-text-dim: #B5AA99;
+  --color-text-dim: #A99E8D;
   --color-accent: #F0A23C;
   --color-accent-deep: #C97F1F;
   --color-sage: #A6C25C;
@@ -88,8 +88,8 @@
   --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 52%);
   --well-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(243, 238, 229, 0.04);
   --raised-shadow: 0 1px 0 rgba(243, 238, 229, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
-  --grad-amber: linear-gradient(180deg, #F7BE63 0%, #EE9D2F 100%);
-  --glow-amber: 0 14px 44px rgba(240, 162, 60, 0.14), 0 3px 14px rgba(240, 162, 60, 0.08);
+  --grad-amber: linear-gradient(180deg, #FFC766 0%, #F2A23C 55%, #E08D22 100%);
+  --glow-amber: 0 18px 56px rgba(240, 162, 60, 0.18), 0 4px 18px rgba(240, 162, 60, 0.08);
   --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 3.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 60%);
   --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 10%, transparent), transparent 58%);
@@ -107,9 +107,9 @@
   --color-surface-3: #E5DDD0;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #8A8071;
+  --color-muted: #9C927F;
   --color-text: #2B241B;
-  --color-text-dim: #6A6052;
+  --color-text-dim: #756A59;
   --color-accent: #B0791F;
   --color-accent-deep: #8F6017;
   --color-sage: #6B8430;
@@ -128,8 +128,8 @@
   --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 54%);
   --well-shadow: inset 0 1.5px 3px rgba(43, 36, 27, 0.10), inset 0 0 0 1px rgba(43, 36, 27, 0.04);
   --raised-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 24px rgba(43, 36, 27, 0.08);
-  --grad-amber: linear-gradient(180deg, #D69B3A 0%, #B0791F 100%);
-  --glow-amber: 0 14px 40px rgba(176, 121, 31, 0.13), 0 3px 12px rgba(176, 121, 31, 0.08);
+  --grad-amber: linear-gradient(180deg, #E2A744 0%, #C2861F 55%, #A8701A 100%);
+  --glow-amber: 0 18px 50px rgba(176, 121, 31, 0.15), 0 4px 16px rgba(176, 121, 31, 0.08);
   --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 2.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
   --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 8%, transparent), transparent 58%);
@@ -291,20 +291,20 @@ body::after {
   line-height: 1.1;
 }
 
-/* Hero numerals — large, crisp, deliberately not heavy */
+/* Hero numerals — tall, sharp, elegant; never blocky */
 .t-numeral {
   font-family: var(--font-sans);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 
 .t-numeral-light {
   font-family: var(--font-sans);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 1;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 
@@ -416,11 +416,20 @@ body::after {
   background-image: var(--ember-bleed);
 }
 
+/* Hot panel: hairline gradient border lit from the top-left, fading to dark */
 .panel-hot {
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-  background-color: var(--color-surface-2);
-  background-image: var(--ember-bleed-hot);
+  border: 1px solid transparent;
+  background:
+    var(--ember-bleed-hot) padding-box,
+    linear-gradient(var(--color-surface-2), var(--color-surface-2)) padding-box,
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--color-accent) 55%, transparent) 0%,
+      color-mix(in srgb, var(--color-accent) 18%, transparent) 32%,
+      var(--color-border) 62%,
+      var(--color-border-soft) 100%
+    ) border-box;
   box-shadow: 0 0 70px 8px color-mix(in srgb, var(--color-accent) 4%, transparent);
 }
 
@@ -443,7 +452,7 @@ body::after {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 130' preserveAspectRatio='none'%3E%3Cpath d='M-10 96 Q 50 62 105 82 T 215 64' fill='none' stroke='%23F0A23C' stroke-opacity='0.09' stroke-width='1.5'/%3E%3Cpath d='M-10 118 Q 64 84 124 102 T 215 88' fill='none' stroke='%23F0A23C' stroke-opacity='0.05' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 130' preserveAspectRatio='none'%3E%3Cpath d='M-10 96 Q 50 62 105 82 T 215 64' fill='none' stroke='%23F0A23C' stroke-opacity='0.045' stroke-width='1.5'/%3E%3Cpath d='M-10 118 Q 64 84 124 102 T 215 88' fill='none' stroke='%23F0A23C' stroke-opacity='0.025' stroke-width='1.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-size: 100% 100%;
 }

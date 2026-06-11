@@ -16,7 +16,7 @@ const TONE: Record<StripTone, string> = {
   stone: 'var(--color-stone)',
 };
 
-const EMPTY = 'color-mix(in srgb, var(--color-text) 7%, transparent)';
+const EMPTY = 'color-mix(in srgb, var(--color-text) 4.5%, transparent)';
 
 interface TickStripProps {
   total: number;
@@ -54,9 +54,9 @@ export function TickStrip({ total, filled, tone = 'amber', size = 'md', live = f
   }
 
   const dims = {
-    sm: 'w-3.5 h-[5px]',
-    md: 'w-5 h-1.5',
-    lg: 'w-7 h-2',
+    sm: 'w-3.5 h-[3px]',
+    md: 'w-5 h-[3px]',
+    lg: 'w-7 h-1',
   }[size];
 
   return (
@@ -107,6 +107,7 @@ export function RailStrip({ value, tone = 'sage', notch, size = 'md', overTone =
         initial={false}
         animate={{ width: `${clamped * 100}%`, backgroundColor: over ? TONE[overTone] : TONE[tone] }}
         transition={{ type: 'spring', stiffness: 200, damping: 28 }}
+        style={{ boxShadow: `0 0 12px color-mix(in srgb, ${over ? TONE[overTone] : TONE[tone]} 40%, transparent)` }}
       />
       {notch !== undefined && notch > 0 && notch <= 1 && (
         <span

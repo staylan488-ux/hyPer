@@ -232,7 +232,7 @@ export function Dashboard() {
         {/* Header */}
         <motion.header className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
           <p className="t-label mb-1">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="text-[26px] font-semibold tracking-[0.005em] leading-tight text-[var(--color-text)]">{greeting}</h1>
+          <h1 className="text-[26px] font-medium tracking-[-0.01em] leading-[1.3] text-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
         {/* ── Next action hero ── */}
@@ -399,7 +399,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           </Button>
         </Link>
         <Link to="/train" className="flex items-center justify-between gap-2 mt-3.5 pt-3 border-t border-[var(--color-border)]">
-          <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--color-text-dim)]">
+          <span className="flex items-center gap-2 text-[13px] font-normal text-[var(--color-muted)]">
             <Clock className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={2} />
             {hero.elapsed} elapsed
           </span>

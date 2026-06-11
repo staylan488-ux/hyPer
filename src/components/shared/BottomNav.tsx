@@ -58,8 +58,11 @@ export function BottomNav() {
                 {isActive && (
                   <motion.span
                     layoutId="nav-tick"
-                    className="absolute -top-[1px] w-9 h-[3px] rounded-full bg-[var(--color-accent)]"
-                    style={{ boxShadow: '0 8px 22px 4px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 2px 8px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
+                    className="absolute -top-[1px] w-6 h-1 rounded-full bg-[var(--color-accent)]"
+                    style={{
+                      boxShadow:
+                        '0 12px 30px 10px color-mix(in srgb, var(--color-accent) 18%, transparent), 0 4px 14px 3px color-mix(in srgb, var(--color-accent) 26%, transparent)',
+                    }}
                     transition={springs.smooth}
                   />
                 )}
