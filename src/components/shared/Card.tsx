@@ -11,8 +11,8 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
       default: 'bg-[var(--color-surface-1)] border border-[var(--color-border)]',
-      elevated: 'bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] shadow-[0_2px_20px_color-mix(in_srgb,var(--color-base)_62%,transparent)]',
-      outlined: 'bg-[var(--color-base)] border border-[var(--color-border-strong)]',
+      elevated: 'bg-[var(--color-surface-2)] border border-[var(--color-border)] raised',
+      outlined: 'bg-transparent border border-[var(--color-border-strong)]',
       slab: 'bg-[var(--color-surface-2)] border border-[var(--color-border-soft)]',
     };
 
@@ -31,9 +31,8 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        className={`rounded-[var(--radius-lg)] p-5 transition-shadow duration-300 hover:shadow-[0_2px_20px_color-mix(in_srgb,var(--color-text)_10%,transparent)] hover:border-[var(--color-border-strong)] ${variants[variant]} ${className}`}
+        className={`rounded-[var(--radius-lg)] p-5 ${variants[variant]} ${className}`}
         transition={springs.smooth}
-        whileHover={{ y: -1 }}
         whileTap={{ scale: 0.995 }}
         {...props}
       >
@@ -52,7 +51,7 @@ export const CardHeader = ({ className = '', children, ...props }: HTMLAttribute
 );
 
 export const CardTitle = ({ className = '', children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
-  <h3 className={`text-[10px] font-medium tracking-[0.2em] uppercase text-[var(--color-text-dim)] ${className}`} {...props}>
+  <h3 className={`t-label-sm ${className}`} {...props}>
     {children}
   </h3>
 );

@@ -14,43 +14,34 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full">
         {label && (
-          <motion.label
-            htmlFor={inputId}
-            className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[var(--color-muted)] mb-1 md:mb-2"
-            animate={{
-              color: isFocused ? 'var(--color-text-dim)' : 'var(--color-muted)',
-              x: isFocused ? 2 : 0,
-            }}
-            transition={{ duration: 0.2 }}
-          >
+          <label htmlFor={inputId} className="t-label-sm block mb-1.5">
             {label}
-          </motion.label>
+          </label>
         )}
         <motion.input
           ref={ref}
           id={inputId}
           className={`
-            w-full px-3 py-2 md:px-4 md:py-3
-            bg-[var(--color-surface-1)]
-            border border-[var(--color-border-strong)]
-            rounded-[var(--radius-md)]
+            w-full px-3.5 min-h-11 py-2
+            bg-[var(--color-well)]
+            rounded-[var(--radius-sm)]
             text-[var(--color-text)]
-            text-sm
+            text-sm font-medium
             placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]
-            transition-colors duration-200
+            transition-colors duration-150
             focus:outline-none
-            focus:border-[var(--color-border-strong)]
-            focus:bg-[var(--color-base)]
             disabled:opacity-40 disabled:cursor-not-allowed
-            ${error ? 'border-[var(--color-danger)]' : ''}
             ${className}
           `}
+          style={{ boxShadow: 'var(--well-shadow)' }}
           animate={{
-            boxShadow: isFocused
-              ? '0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent)'
-              : '0 0 0 0px color-mix(in srgb, var(--color-accent) 0%, transparent)',
+            boxShadow: error
+              ? 'var(--well-shadow), 0 0 0 1.5px color-mix(in srgb, var(--color-danger) 55%, transparent)'
+              : isFocused
+                ? 'var(--well-shadow), 0 0 0 1.5px color-mix(in srgb, var(--color-accent) 45%, transparent)'
+                : 'var(--well-shadow), 0 0 0 0px transparent',
           }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.15 }}
           onFocus={(e) => {
             setIsFocused(true);
             onFocus?.(e);
@@ -63,7 +54,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         />
         {error && (
           <motion.p
-            className="mt-2 text-xs text-[var(--color-danger)]"
+            className="mt-1.5 text-xs text-[var(--color-danger)]"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}

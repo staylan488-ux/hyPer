@@ -28,12 +28,17 @@ export function BottomNav() {
 
   return (
     <motion.nav
-      className="fixed bottom-0 left-0 right-0 bg-[var(--color-surface)] backdrop-blur-md border-t border-[var(--color-border)] safe-area-inset-bottom"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-[var(--color-border)] safe-area-inset-bottom"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-base) 88%, transparent)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
       initial={{ y: 80 }}
       animate={{ y: 0 }}
       transition={springs.smooth}
     >
-      <div className="flex justify-around items-center h-20 max-w-lg mx-auto px-4 gap-1">
+      <div className="flex items-stretch h-[64px] max-w-lg mx-auto px-3">
         {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
           const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
 
@@ -41,34 +46,32 @@ export function BottomNav() {
             <NavLink
               key={to}
               to={to}
-              className="relative flex flex-col items-center justify-center py-2 px-4 rounded-[var(--radius-lg)] transition-colors duration-200 min-w-[68px]"
+              aria-label={label}
+              className="relative flex-1 flex flex-col items-center justify-center gap-1"
             >
+              {/* calibration tick — slides between stations */}
               {isActive && (
-                <motion.div
-                  className="absolute inset-0 bg-[var(--color-surface-high)] rounded-[var(--radius-lg)] border border-[var(--color-border)]"
-                  layoutId="nav-active-pill"
+                <motion.span
+                  layoutId="nav-tick"
+                  className="absolute top-0 w-7 h-[2.5px] rounded-b-full bg-[var(--color-accent)]"
                   transition={springs.smooth}
                 />
               )}
-              <motion.div
-                whileTap={{ scale: 0.85 }}
-                transition={springs.snappy}
-                className="relative z-10 flex flex-col items-center"
-              >
+              <motion.span whileTap={{ scale: 0.86 }} transition={springs.snappy} className="flex flex-col items-center gap-1">
                 <Icon
-                  className={`w-5 h-5 transition-colors duration-200 ${
+                  className={`w-[21px] h-[21px] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
-                  strokeWidth={1.5}
+                  strokeWidth={isActive ? 2 : 1.6}
                 />
                 <span
-                  className={`text-[9px] mt-1.5 tracking-[0.1em] uppercase transition-colors duration-200 ${
+                  className={`text-[10px] font-semibold tracking-[0.04em] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
                   {label}
                 </span>
-              </motion.div>
+              </motion.span>
             </NavLink>
           );
         })}
