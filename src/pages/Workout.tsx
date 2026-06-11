@@ -1882,7 +1882,18 @@ function ExerciseCard({
               : 'bg-[var(--color-surface-1)] border-[var(--color-border)]'
         }`}
       >
-        <button type="button" className="w-full text-left px-4 py-3.5" onClick={onToggle}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="w-full text-left px-4 py-3.5 cursor-pointer"
+          onClick={onToggle}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
+        >
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -1921,7 +1932,7 @@ function ExerciseCard({
               {completedCount}/{totalCount}
             </span>
           </div>
-        </button>
+        </div>
 
         <AnimatePresence initial={false}>
           {isActive && (
