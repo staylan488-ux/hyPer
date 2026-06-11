@@ -247,7 +247,7 @@ export function Nutrition() {
 
       {/* Macro strips */}
       <motion.section
-        className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 mb-4"
+        className="panel p-4 mb-4"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.04 }}
@@ -357,7 +357,7 @@ export function Nutrition() {
       {/* Timeline */}
       <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.smooth, delay: 0.16 }}>
         {loading ? (
-          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 space-y-3">
+          <div className="panel p-4 space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="shimmer h-8 w-12" />
@@ -388,7 +388,7 @@ export function Nutrition() {
             }
           />
         ) : (
-          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline px-4 py-2">
+          <div className="panel px-4 py-2">
             <div className="flex items-center justify-between py-2.5 border-b border-[var(--color-border)]">
               <span className="t-label-sm">Timeline</span>
               <span className="t-data-sm text-[var(--color-muted)]">

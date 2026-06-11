@@ -21,10 +21,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary: `
-        bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
-        hover:bg-[var(--button-primary-hover)]
-        active:bg-[var(--button-primary-active)]
-        shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_4px_14px_color-mix(in_srgb,var(--color-accent)_18%,transparent)]
+        [background:var(--grad-amber)] text-[var(--button-primary-fg)]
+        font-bold
+        hover:brightness-105
+        active:brightness-95
+        shadow-[var(--glow-amber),0_1px_0_rgba(255,255,255,0.25)_inset]
       `,
       secondary: `
         bg-[var(--color-surface-2)] text-[var(--color-text)]

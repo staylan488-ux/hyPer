@@ -5,6 +5,8 @@ import {
   CalendarRange,
   ChartNoAxesColumn,
   Check,
+  ChevronRight,
+  Clock,
   Dumbbell,
   Flame,
   History as HistoryIcon,
@@ -16,7 +18,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
-import { Button, Screen, TickStrip, MacroBar, VolumeRail } from '@/components/shared';
+import { Button, RailStrip, Screen, TickStrip, VolumeRail } from '@/components/shared';
+import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
@@ -34,7 +37,7 @@ interface NutritionTotals {
 
 type HeroState =
   | { kind: 'loading' }
-  | { kind: 'resume'; completedSets: number; totalSets: number; title: string }
+  | { kind: 'resume'; completedSets: number; totalSets: number; title: string; dayName: string; exerciseCount: number; elapsed: string }
   | { kind: 'done'; title: string }
   | { kind: 'planned'; day: SplitDay }
   | { kind: 'rest' }
@@ -67,6 +70,7 @@ export function Dashboard() {
   });
   const [todayDone, setTodayDone] = useState<{ title: string } | null>(null);
   const [flexCompletedCount, setFlexCompletedCount] = useState(0);
+  const [mountedAt] = useState(() => Date.now());
 
   const userId = user?.id;
   const activeSplitId = activeSplit?.id;
@@ -181,11 +185,20 @@ export function Dashboard() {
     if (currentWorkout && !currentWorkout.completed) {
       const total = currentWorkout.sets.length;
       const done = currentWorkout.sets.filter((s) => s.completed).length;
+      const dayName =
+        currentWorkout.split_day_id === null
+          ? 'Flexible'
+          : activeSplit?.days.find((d) => d.id === currentWorkout.split_day_id)?.day_name ?? 'Session';
       return {
         kind: 'resume',
         completedSets: done,
         totalSets: total,
         title: 'Session in progress',
+        dayName,
+        exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
+        elapsed: currentWorkout.created_at
+          ? formatWorkoutDuration(Math.max(0, mountedAt - new Date(currentWorkout.created_at).getTime()))
+          : '—',
       };
     }
 
@@ -203,7 +216,7 @@ export function Dashboard() {
       schedule.mode === 'flex' ? flexCompletedCount : 0
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, todayDone, workoutMode, activeSplit, schedule, flexCompletedCount]);
+  }, [loading, currentWorkout, todayDone, workoutMode, activeSplit, schedule, flexCompletedCount, mountedAt]);
 
   const hour = new Date().getHours();
   const greetingSlot = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -218,8 +231,8 @@ export function Dashboard() {
       <Screen>
         {/* Header */}
         <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <p className="t-label-sm mb-1.5">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="t-display text-[1.75rem] text-[var(--color-text)]">{greeting}</h1>
+          <p className="t-label mb-1.5">{format(new Date(), 'EEEE, MMMM d')}</p>
+          <h1 className="text-[2rem] font-bold tracking-[-0.02em] leading-tight text-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
         {/* ── Next action hero ── */}
@@ -239,15 +252,16 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.08 }}
         >
-          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="panel p-5">
+            <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={1.75} />
-                <span className="t-label">Fuel</span>
+                <Flame className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2} />
+                <span className="t-label text-[var(--color-sage)]">Fuel</span>
               </div>
               {hasAnyNutrition && !loading && (
-                <span className="t-data-sm text-[var(--color-text-dim)]">
-                  {remainingKcal.toLocaleString()} <span className="text-[var(--color-muted)]">kcal left</span>
+                <span className="flex items-baseline gap-1.5">
+                  <span className="t-numeral text-[22px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <span className="text-[13px] text-[var(--color-muted)]">kcal left</span>
                 </span>
               )}
             </div>
@@ -258,37 +272,41 @@ export function Dashboard() {
                 <div className="shimmer h-2 w-3/4" />
               </div>
             ) : hasAnyNutrition ? (
-              <div className="space-y-3.5">
-                <MacroBar
+              <div className="space-y-4">
+                <FuelRow
                   label="Calories"
                   current={nutritionTotals.calories}
                   target={macroTarget?.calories || 2000}
+                  unit=" kcal"
                   tone="amber"
-                  size="sm"
                 />
-                <MacroBar
+                <FuelRow
                   label="Protein"
                   current={nutritionTotals.protein}
                   target={macroTarget?.protein || 150}
-                  unit="g"
+                  unit=" g"
                   tone="sage"
-                  size="sm"
                 />
               </div>
             ) : (
               <p className="t-caption mb-1">Nothing logged today. Targets make every meal a decision, not a guess.</p>
             )}
 
-            <div className="mt-4 flex gap-2">
+            <div className="mt-5 flex gap-2">
               <Link to="/nutrition" className="flex-1">
-                <Button variant="secondary" size="md" className="w-full">
-                  <Plus className="w-4 h-4" strokeWidth={2.25} />
+                <button
+                  type="button"
+                  className="pressable w-full flex items-center justify-center gap-2.5 min-h-12 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] text-[15px] font-semibold text-[var(--color-text)]"
+                >
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sage-tint-strong">
+                    <Plus className="w-3.5 h-3.5 text-[var(--color-sage)]" strokeWidth={2.75} />
+                  </span>
                   Log food
-                </Button>
+                </button>
               </Link>
               {!macroTarget && !loading && (
                 <Link to="/settings" className="flex-1">
-                  <Button variant="ghost" size="md" className="w-full">
+                  <Button variant="ghost" size="md" className="w-full min-h-12">
                     <Target className="w-4 h-4" strokeWidth={2} />
                     Set targets
                   </Button>
@@ -307,7 +325,7 @@ export function Dashboard() {
             transition={{ ...springs.smooth, delay: 0.12 }}
           >
             <Link to="/analysis" className="block">
-              <div className="pressable rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+              <div className="pressable panel p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <ChartNoAxesColumn className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.75} />
@@ -338,9 +356,9 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.smooth, delay: 0.16 }}
         >
-          <StationLink to="/train/program" icon={<LayoutGrid className="w-[18px] h-[18px]" strokeWidth={1.75} />} label="Program" />
-          <StationLink to="/history" icon={<HistoryIcon className="w-[18px] h-[18px]" strokeWidth={1.75} />} label="History" />
-          <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-[18px] h-[18px]" strokeWidth={1.75} />} label="Progress" />
+          <StationLink to="/train/program" icon={<LayoutGrid className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
+          <StationLink to="/history" icon={<HistoryIcon className="w-5 h-5" strokeWidth={1.75} />} label="History" sub="Past sessions" />
+          <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-5 h-5" strokeWidth={1.75} />} label="Progress" sub="Track results" />
         </motion.nav>
       </Screen>
       <DashboardMonolithIntro />
@@ -353,30 +371,43 @@ export function Dashboard() {
 function TodayHero({ hero, programName }: { hero: HeroState; programName: string | null }) {
   if (hero.kind === 'loading') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+      <div className="panel p-5">
         <div className="shimmer h-3 w-20 mb-3" />
-        <div className="shimmer h-7 w-44 mb-4" />
-        <div className="shimmer h-12 w-full" />
+        <div className="shimmer h-9 w-32 mb-4" />
+        <div className="shimmer h-14 w-full" />
       </div>
     );
   }
 
   if (hero.kind === 'resume') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-accent-tint hairline-strong p-5 relative overflow-hidden">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-breathe" />
+      <div className="panel-hot p-5 relative overflow-hidden">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-breathe" />
           <span className="t-label text-[var(--color-accent)]">{hero.title}</span>
         </div>
-        <p className="t-data-xl text-[var(--color-text)] mb-1.5">
-          {hero.completedSets}<span className="text-[var(--color-muted)]">/{hero.totalSets} sets</span>
+        <p className="mb-3 flex items-baseline gap-2">
+          <span className="t-numeral text-[46px] text-[var(--color-text)]">
+            {hero.completedSets}<span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
+          </span>
+          <span className="text-lg font-medium text-[var(--color-muted)]">sets</span>
         </p>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" live className="mb-4" />
+        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-5" />
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Play className="w-4 h-4" strokeWidth={2.5} />
+            <Play className="w-[18px] h-[18px]" strokeWidth={2.5} fill="currentColor" />
             Resume session
           </Button>
+        </Link>
+        <Link to="/train" className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-[var(--color-border)]">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--color-text-dim)]">
+            <Clock className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={2} />
+            {hero.elapsed} elapsed
+          </span>
+          <span className="flex items-center gap-1 text-[13px] font-medium text-[var(--color-muted)]">
+            {hero.dayName} · {hero.exerciseCount} {hero.exerciseCount === 1 ? 'exercise' : 'exercises'}
+            <ChevronRight className="w-4 h-4" strokeWidth={2.25} />
+          </span>
         </Link>
       </div>
     );
@@ -384,14 +415,14 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'done') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-sage-tint hairline p-5">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="panel-sage p-5">
+        <div className="flex items-center gap-2 mb-3">
           <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-sage)]">
             <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />
           </span>
           <span className="t-label text-[var(--color-sage)]">Trained today</span>
         </div>
-        <p className="t-display text-[1.5rem] text-[var(--color-text)] mb-3">The work is banked.</p>
+        <p className="t-display text-[1.6rem] text-[var(--color-text)] mb-4">The work is banked.</p>
         <div className="flex gap-2">
           <Link to="/history" className="flex-1">
             <Button variant="secondary" className="w-full">Review session</Button>
@@ -405,22 +436,16 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     const exercises = hero.day.exercises ?? [];
     const totalSets = exercises.reduce((sum, ex) => sum + (ex.target_sets || 0), 0);
     return (
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
-        <div
-          className="absolute inset-x-0 top-0 h-[2.5px]"
-          style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-        />
-        <p className="t-label text-[var(--color-accent)] mb-1.5">Today · {programName}</p>
-        <h2 className="t-title mb-2">{hero.day.day_name}</h2>
-        <div className="flex items-center gap-3 mb-4">
-          <TickStrip total={Math.min(exercises.length, 16)} filled={0} tone="amber" size="sm" />
-          <span className="t-data-sm text-[var(--color-text-dim)]">
-            {exercises.length} exercises · {totalSets} sets
-          </span>
-        </div>
+      <div className="panel-hot p-5 relative overflow-hidden">
+        <p className="t-label text-[var(--color-accent)] mb-2">Today · {programName}</p>
+        <h2 className="t-numeral text-[34px] text-[var(--color-text)] mb-3">{hero.day.day_name}</h2>
+        <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-2.5" />
+        <p className="text-[13px] font-medium text-[var(--color-muted)] mb-4">
+          {exercises.length} exercises · {totalSets} sets
+        </p>
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Dumbbell className="w-4 h-4" strokeWidth={2.25} />
+            <Dumbbell className="w-[18px] h-[18px]" strokeWidth={2.25} />
             Start workout
           </Button>
         </Link>
@@ -430,12 +455,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'rest') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="panel p-5">
+        <div className="flex items-center gap-2 mb-2.5">
           <Moon className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
           <span className="t-label">Rest day</span>
         </div>
-        <p className="t-display text-[1.4rem] text-[var(--color-text-dim)] mb-3">Growth happens between sessions.</p>
+        <p className="t-display text-[1.5rem] text-[var(--color-text-dim)] mb-3">Growth happens between sessions.</p>
         <Link to="/train">
           <Button variant="ghost" size="sm">Train anyway →</Button>
         </Link>
@@ -445,16 +470,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'flexible') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
-        <div
-          className="absolute inset-x-0 top-0 h-[2.5px]"
-          style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-        />
-        <p className="t-label text-[var(--color-accent)] mb-1.5">Flexible mode</p>
-        <h2 className="t-title mb-3">Build today as you go</h2>
+      <div className="panel-hot p-5 relative overflow-hidden">
+        <p className="t-label text-[var(--color-accent)] mb-2">Flexible mode</p>
+        <h2 className="t-display text-[1.6rem] text-[var(--color-text)] mb-4">Build today as you go</h2>
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Dumbbell className="w-4 h-4" strokeWidth={2.25} />
+            <Dumbbell className="w-[18px] h-[18px]" strokeWidth={2.25} />
             Start session
           </Button>
         </Link>
@@ -464,8 +485,8 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'no-schedule') {
     return (
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5">
-        <p className="t-label text-[var(--color-accent)] mb-1.5">{programName}</p>
+      <div className="panel-hot p-5">
+        <p className="t-label text-[var(--color-accent)] mb-2">{programName}</p>
         <h2 className="t-heading mb-1">Pick your training days</h2>
         <p className="t-caption mb-4">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
         <Link to="/train">
@@ -480,13 +501,9 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   // first-run
   return (
-    <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
-      <div
-        className="absolute inset-x-0 top-0 h-[2.5px]"
-        style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-      />
-      <p className="t-label text-[var(--color-accent)] mb-1.5">Start here</p>
-      <h2 className="t-title mb-1">Build your program</h2>
+    <div className="panel-hot p-5 relative overflow-hidden">
+      <p className="t-label text-[var(--color-accent)] mb-2">Start here</p>
+      <h2 className="t-display text-[1.6rem] text-[var(--color-text)] mb-1.5">Build your program</h2>
       <p className="t-caption mb-4 max-w-[280px]">
         Answer five questions and hyPer assembles an evidence-based split around your week.
       </p>
@@ -506,14 +523,39 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-function StationLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNode; label: string; sub: string }) {
   return (
     <Link to={to}>
-      <div className="pressable rounded-[var(--radius-md)] bg-[var(--color-surface-1)] hairline flex flex-col items-center justify-center gap-1.5 py-3.5">
-        <span className="text-[var(--color-stone)]">{icon}</span>
-        <span className="text-[11px] font-semibold text-[var(--color-text-dim)]">{label}</span>
+      <div className="pressable panel flex flex-col gap-3 p-3.5 min-h-[108px]">
+        <span className="text-[var(--color-accent)]">{icon}</span>
+        <span>
+          <span className="block text-[14px] font-bold text-[var(--color-text)]">{label}</span>
+          <span className="flex items-center gap-0.5 text-[11px] text-[var(--color-muted)] mt-0.5">
+            {sub}
+            <ChevronRight className="w-3 h-3" strokeWidth={2.25} />
+          </span>
+        </span>
       </div>
     </Link>
+  );
+}
+
+function FuelRow({ label, current, target, unit, tone }: { label: string; current: number; target: number; unit: string; tone: 'amber' | 'sage' }) {
+  const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
+  const toneVar = tone === 'amber' ? 'var(--color-accent)' : 'var(--color-sage)';
+
+  return (
+    <div>
+      <p className="t-label-sm mb-1">{label}</p>
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="flex items-baseline gap-1.5">
+          <span className="t-numeral text-[22px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
+          <span className="text-[13px] text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
+        </span>
+        <span className="t-data text-[15px]" style={{ color: toneVar }}>{pct}%</span>
+      </div>
+      <RailStrip value={target > 0 ? current / target : 0} tone={tone} size="md" />
+    </div>
   );
 }
 

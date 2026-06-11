@@ -9,24 +9,24 @@
      ═════════════════════════════════════ */
 
   /* Base (runtime values overridden by .dark/.light) */
-  --color-base: #161412;
-  --color-well: #100F0D;
-  --color-surface-1: #1E1B18;
-  --color-surface-2: #262220;
-  --color-surface-3: #2F2A26;
+  --color-base: #0B0A08;
+  --color-well: #080706;
+  --color-surface-1: #161310;
+  --color-surface-2: #1D1915;
+  --color-surface-3: #27211B;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #82796D;
-  --color-text: #EFE9E0;
-  --color-text-dim: #B3A99C;
+  --color-muted: #837767;
+  --color-text: #F3EEE5;
+  --color-text-dim: #B5AA99;
 
   /* Accent colors */
-  --color-accent: #D9A05B;       /* amber timer light — training action */
-  --color-accent-deep: #B97F3C;
-  --color-sage: #94A87C;         /* protein-label green — nutrition / complete */
-  --color-sage-deep: #76905E;
+  --color-accent: #F0A23C;       /* ember amber — training action */
+  --color-accent-deep: #C97F1F;
+  --color-sage: #A6C25C;         /* fresh lime-sage — nutrition / complete */
+  --color-sage-deep: #84A03C;
   --color-rose: #A68B8B;         /* soft warn */
-  --color-stone: #8E8273;        /* warm steel — controls */
+  --color-stone: #93876F;        /* warm steel — controls */
 
   /* Status colors */
   --color-success: #94A87C;
@@ -41,18 +41,18 @@
   --color-volume-above-mrv: color-mix(in srgb, var(--color-accent) 92%, var(--color-base));
 
   /* Radius scale — controls small, cards medium, sheets large */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
   --radius-2xl: 32px;
   --radius-full: 9999px;
 
-  /* Typography — three voices */
+  /* Typography — one family, weight-driven hierarchy + mono for data */
   --font-sans: 'Archivo', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'Big Shoulders', 'Archivo', sans-serif;
+  --font-display: 'Archivo', system-ui, sans-serif;
 
   /* Spacing */
   --spacing-section: 2.5rem;
@@ -60,37 +60,42 @@
 
 :root,
 .dark {
-  --color-base: #161412;
-  --color-well: #100F0D;
-  --color-surface-1: #1E1B18;
-  --color-surface-2: #262220;
-  --color-surface-3: #2F2A26;
+  --color-base: #0B0A08;
+  --color-well: #080706;
+  --color-surface-1: #161310;
+  --color-surface-2: #1D1915;
+  --color-surface-3: #27211B;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #82796D;
-  --color-text: #EFE9E0;
-  --color-text-dim: #B3A99C;
-  --color-accent: #D9A05B;
-  --color-accent-deep: #B97F3C;
-  --color-sage: #94A87C;
-  --color-sage-deep: #76905E;
+  --color-muted: #837767;
+  --color-text: #F3EEE5;
+  --color-text-dim: #B5AA99;
+  --color-accent: #F0A23C;
+  --color-accent-deep: #C97F1F;
+  --color-sage: #A6C25C;
+  --color-sage-deep: #84A03C;
   --color-rose: #A68B8B;
-  --color-stone: #8E8273;
-  --color-success: #94A87C;
+  --color-stone: #93876F;
+  --color-success: #A6C25C;
   --color-warning: #C9A487;
   --color-danger: #C26565;
-  --color-border: rgba(239, 233, 224, 0.07);
-  --color-border-strong: rgba(239, 233, 224, 0.14);
-  --color-border-soft: rgba(239, 233, 224, 0.04);
+  --color-border: rgba(243, 238, 229, 0.07);
+  --color-border-strong: rgba(243, 238, 229, 0.14);
+  --color-border-soft: rgba(243, 238, 229, 0.04);
   --noise-opacity: 0.02;
   --noise-filter: none;
-  --overlay-backdrop: rgba(8, 7, 6, 0.78);
-  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 56%);
-  --well-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(239, 233, 224, 0.04);
-  --raised-shadow: 0 1px 0 rgba(239, 233, 224, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.32);
+  --overlay-backdrop: rgba(4, 3, 2, 0.8);
+  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 52%);
+  --well-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(243, 238, 229, 0.04);
+  --raised-shadow: 0 1px 0 rgba(243, 238, 229, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
+  --grad-amber: linear-gradient(180deg, #F7BE63 0%, #EE9D2F 100%);
+  --glow-amber: 0 6px 22px rgba(240, 162, 60, 0.28), 0 1px 6px rgba(240, 162, 60, 0.2);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 55%);
+  --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 60%);
+  --ember-bleed-sage: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-sage) 9%, transparent), transparent 55%);
   --button-primary-bg: var(--color-accent);
-  --button-primary-fg: #1B150D;
-  --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
+  --button-primary-fg: #221503;
+  --button-primary-hover: color-mix(in srgb, var(--color-accent) 92%, white 8%);
   --button-primary-active: var(--color-accent-deep);
 }
 
@@ -105,10 +110,10 @@
   --color-muted: #8A8071;
   --color-text: #2B241B;
   --color-text-dim: #6A6052;
-  --color-accent: #9C6F2F;
-  --color-accent-deep: #7E5825;
-  --color-sage: #5C7547;
-  --color-sage-deep: #49603A;
+  --color-accent: #B0791F;
+  --color-accent-deep: #8F6017;
+  --color-sage: #6B8430;
+  --color-sage-deep: #566B25;
   --color-rose: #9C7676;
   --color-stone: #87796A;
   --color-success: #5C7547;
@@ -123,6 +128,11 @@
   --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 54%);
   --well-shadow: inset 0 1.5px 3px rgba(43, 36, 27, 0.10), inset 0 0 0 1px rgba(43, 36, 27, 0.04);
   --raised-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 24px rgba(43, 36, 27, 0.08);
+  --grad-amber: linear-gradient(180deg, #D69B3A 0%, #B0791F 100%);
+  --glow-amber: 0 6px 20px rgba(176, 121, 31, 0.25), 0 1px 5px rgba(176, 121, 31, 0.18);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 55%);
+  --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
+  --ember-bleed-sage: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-sage) 7%, transparent), transparent 55%);
   --button-primary-bg: var(--color-accent);
   --button-primary-fg: #FCF9F3;
   --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
@@ -273,12 +283,21 @@ body::after {
   line-height: 1.05;
 }
 
-/* Brand voice — condensed industrial display, earned moments only */
+/* Brand voice — heavy grotesque statements, earned moments only */
 .t-display {
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* Hero numerals — the mockup's giant bold figures */
+.t-numeral {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Legacy type utilities (kept working, re-tuned) ── */
@@ -309,13 +328,14 @@ body::after {
 
 .font-display {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .font-display-italic {
   font-family: var(--font-display);
   font-style: normal;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .number-hero {
@@ -379,6 +399,30 @@ body::after {
    MATERIAL — wells, raised surfaces, hairlines
    ═════════════════════════════════════ */
 
+/* ── Panels — ember-lit glass cards (replaces flat surface+hairline) ── */
+
+.panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-1);
+  background-image: var(--ember-bleed);
+}
+
+.panel-hot {
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, transparent);
+  background-color: var(--color-surface-2);
+  background-image: var(--ember-bleed-hot);
+  box-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.panel-sage {
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-sage) 22%, transparent);
+  background-color: var(--color-surface-1);
+  background-image: var(--ember-bleed-sage);
+}
+
 /* Inset control well — like a milled slot in steel */
 .well {
   background-color: var(--color-well);
@@ -407,9 +451,9 @@ body::after {
   transform: scale(0.98);
 }
 
-/* Clears the fixed bottom nav + safe area */
+/* Clears the floating bottom nav + safe area */
 .pb-nav {
-  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* ═════════════════════════════════════

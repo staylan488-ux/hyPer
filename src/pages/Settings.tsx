@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, LogOut, Pencil, Wand2 } from 'lucide-react';
+import { Archive, BicepsFlexed, ChevronRight, Droplet, Flame, LogOut, Pencil, Target, Wheat } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
@@ -29,8 +29,8 @@ function SettingsGroup({ label, children, delay = 0 }: { label: string; children
       animate={{ opacity: 1, y: 0 }}
       transition={{ ...springs.smooth, delay }}
     >
-      <p className="t-label-sm mb-2 px-1">{label}</p>
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">{children}</div>
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-accent)] mb-2 px-1">{label}</p>
+      <div className="panel p-4">{children}</div>
     </motion.section>
   );
 }
@@ -384,33 +384,35 @@ export function Settings() {
 
       {/* ── Nutrition targets ── */}
       <SettingsGroup label="Nutrition targets" delay={0.08}>
-        <div className="grid grid-cols-4 gap-1.5 mb-4">
+        <div className="grid grid-cols-4 gap-2 mb-4">
           {[
-            { label: 'kcal', value: macros.calories },
-            { label: 'protein', value: `${macros.protein}g` },
-            { label: 'carbs', value: `${macros.carbs}g` },
-            { label: 'fat', value: `${macros.fat}g` },
+            { label: 'KCAL', value: String(macros.calories), icon: Flame, tone: 'var(--color-accent)' },
+            { label: 'PROTEIN', value: `${macros.protein}g`, icon: BicepsFlexed, tone: 'var(--color-sage)' },
+            { label: 'CARBS', value: `${macros.carbs}g`, icon: Wheat, tone: 'var(--color-accent)' },
+            { label: 'FAT', value: `${macros.fat}g`, icon: Droplet, tone: 'var(--color-accent)' },
           ].map((cell) => (
-            <div key={cell.label} className="well px-1 py-2.5 text-center">
-              <p className="t-data text-[var(--color-text)]">{cell.value}</p>
-              <p className="t-label-sm text-[9px] mt-0.5">{cell.label}</p>
+            <div key={cell.label} className="flex flex-col items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-1 py-3">
+              <cell.icon className="w-5 h-5" strokeWidth={1.75} style={{ color: cell.tone }} />
+              <p className="t-numeral text-[19px] text-[var(--color-text)]">{cell.value}</p>
+              <p className="text-[9px] font-bold tracking-[0.08em]" style={{ color: cell.tone }}>{cell.label}</p>
             </div>
           ))}
         </div>
 
         <button
           type="button"
-          className="pressable w-full flex items-center gap-3 px-3.5 py-3 rounded-[var(--radius-md)] bg-sage-tint border border-[color-mix(in_srgb,var(--color-sage)_28%,transparent)] text-left mb-3"
+          className="pressable w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[var(--radius-md)] bg-sage-tint border border-[color-mix(in_srgb,var(--color-sage)_30%,transparent)] text-left mb-3.5"
           onClick={() => {
             clearMacroFeedback();
             setShowNutritionWizard(true);
           }}
         >
-          <Wand2 className="w-4 h-4 shrink-0 text-[var(--color-sage)]" strokeWidth={1.75} />
-          <span>
-            <span className="block text-[13px] font-semibold text-[var(--color-text)]">Calculate my targets</span>
-            <span className="block text-[11px] text-[var(--color-muted)] mt-0.5">A short guided pass — body stats to macros</span>
+          <Target className="w-5 h-5 shrink-0 text-[var(--color-sage)]" strokeWidth={1.75} />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15px] font-bold text-[var(--color-text)]">Calculate my targets</span>
+            <span className="block text-[12px] text-[var(--color-text-dim)] mt-0.5">A short guided pass — body stats to macros</span>
           </span>
+          <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-sage)]" strokeWidth={2.25} />
         </button>
 
         <div className="grid grid-cols-2 gap-2.5 mb-3">

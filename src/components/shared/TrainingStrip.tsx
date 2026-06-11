@@ -28,35 +28,52 @@ interface TickStripProps {
   className?: string;
 }
 
-/** Discrete ticks: one per set / day / item. Every 5th tick is taller, like a ruler. */
+/** Discrete glowing dash segments: one per set / day / item. Falls back to thin ticks when dense. */
 export function TickStrip({ total, filled, tone = 'amber', size = 'md', live = false, className = '' }: TickStripProps) {
   const safeTotal = Math.max(0, Math.floor(total));
   if (safeTotal === 0) return null;
   const safeFilled = Math.min(safeTotal, Math.max(0, Math.floor(filled)));
-  const dense = safeTotal > 16;
-  const heights = { sm: 8, md: 12, lg: 16 };
-  const base = heights[size];
+  const dense = safeTotal > 12;
+
+  if (dense) {
+    return (
+      <div className={`flex items-center gap-[2px] ${className}`} role="img" aria-label={`${safeFilled} of ${safeTotal}`}>
+        {Array.from({ length: safeTotal }, (_, i) => {
+          const isFilled = i < safeFilled;
+          const isLive = live && i === safeFilled;
+          return (
+            <span
+              key={i}
+              className={`rounded-full w-[2px] h-2.5 ${isLive ? 'animate-tick-live' : ''}`}
+              style={{ backgroundColor: isFilled || isLive ? TONE[tone] : EMPTY }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  const dims = {
+    sm: 'w-3.5 h-[5px]',
+    md: 'w-5 h-1.5',
+    lg: 'w-7 h-2',
+  }[size];
 
   return (
-    <div
-      className={`flex items-end ${dense ? 'gap-[2px]' : 'gap-[3px]'} ${className}`}
-      role="img"
-      aria-label={`${safeFilled} of ${safeTotal}`}
-    >
+    <div className={`flex items-center gap-1.5 ${className}`} role="img" aria-label={`${safeFilled} of ${safeTotal}`}>
       {Array.from({ length: safeTotal }, (_, i) => {
         const isFilled = i < safeFilled;
         const isLive = live && i === safeFilled;
-        const tall = i % 5 === 0;
         return (
           <motion.span
             key={i}
             initial={false}
             animate={{ backgroundColor: isFilled ? TONE[tone] : EMPTY }}
             transition={{ duration: 0.25 }}
-            className={`rounded-full ${dense ? 'w-[2px]' : 'w-[3px]'} ${isLive ? 'animate-tick-live' : ''}`}
+            className={`rounded-full ${dims} ${isLive ? 'animate-tick-live' : ''}`}
             style={{
-              height: tall ? base : Math.round(base * 0.66),
-              backgroundColor: isFilled ? TONE[tone] : isLive ? TONE[tone] : EMPTY,
+              backgroundColor: isFilled || isLive ? TONE[tone] : EMPTY,
+              boxShadow: isFilled ? `0 0 10px color-mix(in srgb, ${TONE[tone]} 45%, transparent)` : 'none',
             }}
           />
         );

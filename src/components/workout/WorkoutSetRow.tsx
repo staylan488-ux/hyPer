@@ -129,7 +129,7 @@ export function WorkoutSetRow({
         <div className="flex items-baseline gap-3 flex-1 min-w-0 t-data text-[var(--color-text)]">
           <span>{set.weight}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">lb</span></span>
           <span>{set.reps}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">reps</span></span>
-          {set.rpe != null && <span className="text-[var(--color-text-dim)]">@{set.rpe}</span>}
+          {set.rpe != null && <span className="text-[var(--color-sage)] font-semibold">@{set.rpe}</span>}
         </div>
         {statusLabel && (
           <span className="text-[10px] font-semibold uppercase tracking-[0.06em] shrink-0" style={{ color: statusColor }}>
@@ -202,10 +202,10 @@ export function WorkoutSetRow({
           whileTap={canLog ? { scale: 0.92 } : undefined}
           transition={springs.snappy}
           aria-label={`Log set ${setNumber}`}
-          className={`flex items-center justify-center w-11 h-11 rounded-[var(--radius-sm)] shrink-0 transition-colors ${
+          className={`flex items-center justify-center w-12 h-12 rounded-[var(--radius-sm)] shrink-0 transition-all ${
             canLog
-              ? 'bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] shadow-[0_1px_0_rgba(255,255,255,0.18)_inset]'
-              : 'bg-[var(--color-surface-2)] text-[var(--color-muted)] opacity-50'
+              ? '[background:var(--grad-amber)] text-[var(--button-primary-fg)] shadow-[var(--glow-amber)]'
+              : 'bg-[var(--color-surface-2)] hairline text-[var(--color-muted)] opacity-60'
           }`}
         >
           {saving ? (

@@ -130,7 +130,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
         <motion.div
           key="rest-pill"
           className="fixed left-0 right-0 z-40 pointer-events-none"
-          style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(5.9rem + env(safe-area-inset-bottom, 0px))' }}
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 24 }}
@@ -162,7 +162,10 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 onClick={() => setExpanded(true)}
                 aria-label="Open rest timer options"
               >
-                <span className="t-data-lg shrink-0 tabular-nums" style={{ color: tone }}>
+                <span
+                  className={`shrink-0 ${isComplete ? 'text-[20px] font-extrabold tracking-tight' : 't-data-lg tabular-nums'}`}
+                  style={{ color: tone, textShadow: isComplete ? `0 0 14px color-mix(in srgb, ${tone} 50%, transparent)` : 'none' }}
+                >
                   {isComplete ? 'Go' : formatTime(timeLeft)}
                 </span>
                 <div className="flex-1 min-w-0">

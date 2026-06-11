@@ -521,7 +521,7 @@ export function History() {
       </motion.header>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 mb-5">
+        <div className="panel p-4 mb-5">
           <div className="flex items-center justify-between mb-3">
             <motion.button
               onClick={() => {
@@ -641,7 +641,7 @@ export function History() {
       </motion.div>
 
       {loading ? (
-        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 space-y-3">
+        <div className="panel p-4 space-y-3">
           {[1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="shimmer h-10 w-10" />
@@ -662,7 +662,7 @@ export function History() {
           </div>
 
           {selectedDayWorkouts.length === 0 ? (
-            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline text-center py-10 px-5">
+            <div className="panel text-center py-10 px-5">
               <p className="t-display text-[15px] text-[var(--color-text-dim)]">No sessions recorded.</p>
             </div>
           ) : (
@@ -725,7 +725,7 @@ export function History() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: workoutIndex * 0.06, ...springs.smooth }}
                 >
-                  <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline p-4 overflow-hidden">
+                  <div className="panel p-4 overflow-hidden">
                     <div className="flex items-center justify-between cursor-pointer" onClick={() => { void handleToggleWorkout(workout); }}>
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={`w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 ${progress.completed ? 'bg-sage-tint' : 'well'}`}>

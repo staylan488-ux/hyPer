@@ -281,7 +281,7 @@ export function Splits() {
             />
           ) : (
             <>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 flex items-center justify-between gap-3">
+              <div className="panel p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="t-label-sm">Quick-start templates</p>
                   <p className="text-xs text-[var(--color-text-dim)] mt-0.5">Saved from your flexible sessions</p>
@@ -302,7 +302,7 @@ export function Splits() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
                   >
-                    <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline p-4">
+                    <div className="panel p-4">
                       <div className="flex items-center justify-between gap-2">
                         <button
                           type="button"

@@ -150,7 +150,7 @@ export function Analysis() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
               >
-                <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline overflow-hidden">
+                <div className="panel overflow-hidden">
                   <button
                     type="button"
                     className="w-full text-left px-4 py-3.5"
@@ -234,7 +234,7 @@ export function Analysis() {
 
       {/* Training hours */}
       <motion.section
-        className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 mb-4"
+        className="panel p-4 mb-4"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.1 }}
@@ -270,7 +270,7 @@ export function Analysis() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.18 }}
       >
-        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline overflow-hidden">
+        <div className="panel overflow-hidden">
           <button
             type="button"
             className="w-full flex items-center justify-between px-4 py-3.5 text-left"

@@ -10,6 +10,7 @@ import {
   Loader2,
   Minus,
   Moon,
+  MoreHorizontal,
   Plus,
   Settings2,
   Trash2,
@@ -1036,7 +1037,7 @@ export function Workout() {
           <p className="t-label-sm mb-1">Train</p>
           <h1 className="t-title">Session</h1>
         </header>
-        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+        <div className="panel p-5">
           <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-xs font-medium">Loading program…</span>
@@ -1124,7 +1125,7 @@ export function Workout() {
             <h1 className="t-title">Start a session</h1>
           </header>
 
-          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
+          <div className="panel-hot p-5 relative overflow-hidden">
             <div
               className="absolute inset-x-0 top-0 h-[2.5px]"
               style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
@@ -1204,7 +1205,7 @@ export function Workout() {
 
         {!planSchedule ? (
           planScheduleResolving ? (
-            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+            <div className="panel p-5">
               <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span className="text-xs font-medium">Loading saved plan setup…</span>
@@ -1239,7 +1240,7 @@ export function Workout() {
           <div className="space-y-4">
             {/* Today hero */}
             {todayCompletedWorkout ? (
-              <div className="rounded-[var(--radius-lg)] bg-sage-tint hairline p-5">
+              <div className="panel-sage p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-sage)]">
                     <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />
@@ -1250,7 +1251,7 @@ export function Workout() {
                 <p className="t-caption mt-1.5">Rest, or pick a different day below.</p>
               </div>
             ) : todayPlannedDay ? (
-              <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-5 relative overflow-hidden">
+              <div className="panel-hot p-5 relative overflow-hidden">
                 <div
                   className="absolute inset-x-0 top-0 h-[2.5px]"
                   style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
@@ -1276,7 +1277,7 @@ export function Workout() {
                 </Button>
               </div>
             ) : (
-              <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-5">
+              <div className="panel p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <Moon className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
                   <span className="t-label">Rest day</span>
@@ -1292,7 +1293,7 @@ export function Workout() {
             )}
 
             {/* Week strip */}
-            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+            <div className="panel p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="t-label-sm">{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}</span>
                 <div className="flex items-center gap-1">
@@ -1374,7 +1375,7 @@ export function Workout() {
             </div>
 
             {/* Other days */}
-            <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+            <div className="panel p-4">
               <p className="t-label-sm mb-3">Train a different day</p>
               <div className="space-y-2">
                 {(activeSplit?.days || []).map((day) => (
@@ -1448,7 +1449,7 @@ export function Workout() {
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-breathe" />
               In session
             </p>
-            <h1 className="t-heading truncate">{currentSessionTitle}</h1>
+            <h1 className="text-[22px] font-bold tracking-[-0.02em] text-[var(--color-text)] truncate">{currentSessionTitle}</h1>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
@@ -1471,7 +1472,7 @@ export function Workout() {
 
       {isFlexibleSession ? (
         <div className="space-y-3">
-          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4">
+          <div className="panel p-4">
             <div className="flex items-end gap-3">
               <Input
                 label="Day label"
@@ -1541,40 +1542,48 @@ export function Workout() {
                   allComplete={allComplete}
                   isActive={isActive}
                   onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                  supersetRole={supersetRole}
                   supersetLabel={
                     supersetPartner
                       ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartner.exercise_name || workoutExerciseMap.get(supersetPartner.exercise_id)?.name || 'Exercise'}`
                       : null
                   }
                   notePreview={!isActive && movementNote.trim() ? movementNote : null}
-                  controls={
-                    <>
-                      <IconControl ariaLabel="Move up" disabled={!canMoveUp} onClick={() => { void handleFlexibleReorder(exerciseId, 'up'); }}>
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </IconControl>
-                      <IconControl ariaLabel="Move down" disabled={!canMoveDown} onClick={() => { void handleFlexibleReorder(exerciseId, 'down'); }}>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </IconControl>
-                      {supersetGroupId ? (
-                        <IconControl ariaLabel="Remove superset" tone="sage" onClick={() => { void clearFlexibleSuperset(exerciseId); }}>
-                          <Unlink2 className="w-3.5 h-3.5" />
-                        </IconControl>
-                      ) : (
-                        <IconControl
-                          ariaLabel="Add superset"
-                          onClick={() => {
+                  menuActions={[
+                    {
+                      label: 'Move up',
+                      icon: <ChevronUp className="w-4 h-4" />,
+                      disabled: !canMoveUp,
+                      onClick: () => { void handleFlexibleReorder(exerciseId, 'up'); },
+                    },
+                    {
+                      label: 'Move down',
+                      icon: <ChevronDown className="w-4 h-4" />,
+                      disabled: !canMoveDown,
+                      onClick: () => { void handleFlexibleReorder(exerciseId, 'down'); },
+                    },
+                    supersetGroupId
+                      ? {
+                          label: 'Unlink superset',
+                          icon: <Unlink2 className="w-4 h-4" />,
+                          tone: 'sage' as const,
+                          onClick: () => { void clearFlexibleSuperset(exerciseId); },
+                        }
+                      : {
+                          label: 'Add superset',
+                          icon: <Link2 className="w-4 h-4" />,
+                          onClick: () => {
                             setSupersetPickerSourceExerciseId(exerciseId);
                             setShowExercisePicker(true);
-                          }}
-                        >
-                          <Link2 className="w-3.5 h-3.5" />
-                        </IconControl>
-                      )}
-                      <IconControl ariaLabel="Remove exercise" tone="berry" onClick={() => { void removeFlexibleExerciseFromPlan(exerciseId); }}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </IconControl>
-                    </>
-                  }
+                          },
+                        },
+                    {
+                      label: 'Remove exercise',
+                      icon: <Trash2 className="w-4 h-4" />,
+                      tone: 'danger' as const,
+                      onClick: () => { void removeFlexibleExerciseFromPlan(exerciseId); },
+                    },
+                  ]}
                 >
                   {/* Target sets + add/remove */}
                   <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -1707,21 +1716,28 @@ export function Workout() {
                 allComplete={allComplete}
                 isActive={isActive}
                 onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                supersetRole={supersetRole}
                 supersetLabel={
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
                 }
                 notePreview={!isActive && movementNote.trim() ? movementNote : null}
-                controls={
-                  orderedExerciseEntries.length > 1 ? (
-                    <>
-                      <IconControl ariaLabel={`Move ${exerciseName} up`} disabled={isFirst} onClick={() => moveExercise(exerciseId, 'up')}>
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </IconControl>
-                      <IconControl ariaLabel={`Move ${exerciseName} down`} disabled={isLast} onClick={() => moveExercise(exerciseId, 'down')}>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </IconControl>
-                    </>
-                  ) : null
+                menuActions={
+                  orderedExerciseEntries.length > 1
+                    ? [
+                        {
+                          label: 'Move up',
+                          icon: <ChevronUp className="w-4 h-4" />,
+                          disabled: isFirst,
+                          onClick: () => moveExercise(exerciseId, 'up'),
+                        },
+                        {
+                          label: 'Move down',
+                          icon: <ChevronDown className="w-4 h-4" />,
+                          disabled: isLast,
+                          onClick: () => moveExercise(exerciseId, 'down'),
+                        },
+                      ]
+                    : []
                 }
               >
                 <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -1841,6 +1857,14 @@ export function Workout() {
 
 /* ───────────────────────── in-session building blocks ───────────────────────── */
 
+type CardMenuAction = {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'default' | 'sage' | 'danger';
+};
+
 function ExerciseCard({
   index,
   exerciseName,
@@ -1849,9 +1873,10 @@ function ExerciseCard({
   allComplete,
   isActive,
   onToggle,
+  supersetRole,
   supersetLabel,
   notePreview,
-  controls,
+  menuActions,
   children,
 }: {
   index: number;
@@ -1861,11 +1886,15 @@ function ExerciseCard({
   allComplete: boolean;
   isActive: boolean;
   onToggle: () => void;
+  supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
   notePreview: string | null;
-  controls: React.ReactNode;
+  menuActions: CardMenuAction[];
   children: React.ReactNode;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const roleColor = supersetRole === 'B' ? 'var(--color-sage)' : 'var(--color-accent)';
+
   return (
     <motion.div
       layout
@@ -1874,18 +1903,21 @@ function ExerciseCard({
       transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
     >
       <div
-        className={`rounded-[var(--radius-lg)] border transition-colors ${
-          allComplete
-            ? 'bg-sage-tint border-[color-mix(in_srgb,var(--color-sage)_25%,transparent)]'
-            : isActive
-              ? 'bg-[var(--color-surface-2)] border-[color-mix(in_srgb,var(--color-accent)_30%,transparent)]'
-              : 'bg-[var(--color-surface-1)] border-[var(--color-border)]'
+        className={`relative transition-colors ${
+          allComplete ? 'panel-sage' : isActive ? 'panel-hot' : 'panel'
         }`}
       >
+        {/* superset role edge */}
+        {supersetRole && (
+          <span
+            className="absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full"
+            style={{ backgroundColor: roleColor, boxShadow: `0 0 10px color-mix(in srgb, ${roleColor} 45%, transparent)` }}
+          />
+        )}
         <div
           role="button"
           tabIndex={0}
-          className="w-full text-left px-4 py-3.5 cursor-pointer"
+          className="w-full text-left px-4 py-4 cursor-pointer"
           onClick={onToggle}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -1894,7 +1926,7 @@ function ExerciseCard({
             }
           }}
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 {allComplete && (
@@ -1907,30 +1939,80 @@ function ExerciseCard({
                     <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={4} />
                   </motion.span>
                 )}
-                <h3 className="t-heading text-[15px] truncate">{exerciseName}</h3>
+                <h3 className="text-[19px] font-bold tracking-[-0.01em] text-[var(--color-text)] truncate">{exerciseName}</h3>
               </div>
               {supersetLabel && (
-                <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-[var(--color-stone)]">
-                  <Link2 className="w-3 h-3" strokeWidth={2.25} />
+                <p className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: roleColor }}>
+                  <Link2 className="w-3.5 h-3.5" strokeWidth={2.25} />
                   Superset {supersetLabel}
                 </p>
               )}
               {notePreview && (
-                <p className="mt-0.5 text-xs italic text-[var(--color-text-dim)] truncate">{notePreview}</p>
+                <p className="mt-1 text-[12px] italic text-[var(--color-text-dim)] truncate">{notePreview}</p>
               )}
             </div>
-            <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-              {controls}
-              <motion.span animate={{ rotate: isActive ? 90 : 0 }} transition={springs.snappy} className="p-1">
+
+            <div className="relative flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
+              {menuActions.length > 0 && (
+                <button
+                  type="button"
+                  aria-label="Exercise options"
+                  className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                  onClick={() => setMenuOpen((open) => !open)}
+                >
+                  <MoreHorizontal className="w-5 h-5" strokeWidth={2} />
+                </button>
+              )}
+              <motion.span
+                animate={{ rotate: isActive ? 90 : 0 }}
+                transition={springs.snappy}
+                className="p-1 cursor-pointer"
+                onClick={onToggle}
+              >
                 <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" />
               </motion.span>
+
+              <AnimatePresence>
+                {menuOpen && (
+                  <motion.div
+                    className="absolute right-0 top-full mt-1 z-20 min-w-[180px] py-1 rounded-[var(--radius-md)] bg-[var(--color-surface-3)] hairline-strong raised overflow-hidden"
+                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={{ duration: 0.14 }}
+                  >
+                    {menuActions.map((action) => (
+                      <button
+                        key={action.label}
+                        type="button"
+                        disabled={action.disabled}
+                        className={`w-full px-4 py-3 text-left text-[13px] font-semibold flex items-center gap-2.5 disabled:opacity-30 disabled:pointer-events-none hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] ${
+                          action.tone === 'danger'
+                            ? 'text-[var(--color-danger)]'
+                            : action.tone === 'sage'
+                              ? 'text-[var(--color-sage)]'
+                              : 'text-[var(--color-text)]'
+                        }`}
+                        onClick={() => {
+                          setMenuOpen(false);
+                          action.onClick();
+                        }}
+                      >
+                        {action.icon}
+                        {action.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 mt-2">
-            <TickStrip total={Math.min(totalCount, 12)} filled={Math.min(completedCount, 12)} tone={allComplete ? 'sage' : 'amber'} size="sm" />
-            <span className="t-data-sm text-[var(--color-muted)]">
-              {completedCount}/{totalCount}
+          <div className="flex items-center gap-3 mt-2.5">
+            <span className="t-data text-[15px] text-[var(--color-text)]">
+              {completedCount}<span className="text-[var(--color-muted)]">/{totalCount}</span>
+              <span className="text-[12px] text-[var(--color-muted)] ml-1">sets</span>
             </span>
+            <TickStrip total={Math.min(totalCount, 12)} filled={Math.min(completedCount, 12)} tone={allComplete ? 'sage' : 'amber'} size="md" />
           </div>
         </div>
 
@@ -1952,39 +2034,6 @@ function ExerciseCard({
   );
 }
 
-function IconControl({
-  children,
-  onClick,
-  disabled,
-  ariaLabel,
-  tone = 'neutral',
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  ariaLabel: string;
-  tone?: 'neutral' | 'sage' | 'berry';
-}) {
-  const color =
-    tone === 'sage'
-      ? 'text-[var(--color-sage)]'
-      : tone === 'berry'
-        ? 'text-[color-mix(in_srgb,var(--color-danger)_75%,var(--color-muted))]'
-        : 'text-[var(--color-muted)] hover:text-[var(--color-text)]';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={`pressable p-2 rounded-[var(--radius-xs)] transition-colors disabled:opacity-25 disabled:pointer-events-none ${color}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function SetCountButton({
   children,
   onClick,
@@ -2002,7 +2051,7 @@ function SetCountButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="pressable flex items-center justify-center w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
+      className="pressable flex items-center justify-center w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline-strong text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
     >
       {children}
     </button>

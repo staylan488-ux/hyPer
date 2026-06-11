@@ -19,7 +19,7 @@ interface EmptyStateProps {
 export function EmptyState({ icon: Icon, title, body, action, preview, className = '' }: EmptyStateProps) {
   return (
     <motion.div
-      className={`rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline px-5 py-7 text-center ${className}`}
+      className={`panel px-5 py-7 text-center ${className}`}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={springs.smooth}

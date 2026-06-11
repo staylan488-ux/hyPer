@@ -966,7 +966,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   if (selectedFood) {
     return (
       <div className="space-y-4 pt-1 pb-2">
-        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline p-4">
+        <div className="panel p-4">
           <h4 className="t-heading mb-2.5">{selectedFood.name}</h4>
           {selectedFoodMeta?.source === 'photo' && (
             <div className="mb-3">
