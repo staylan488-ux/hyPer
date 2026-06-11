@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, LogOut, Palette, Pencil, Target, User, UtensilsCrossed, Wand2 } from 'lucide-react';
+import { Archive, BicepsFlexed, ChevronRight, Droplet, Flame, LogOut, Pencil, Target, Wheat } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Button, Card, CardTitle, Input, Modal, ThemeToggle } from '@/components/shared';
+import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -19,6 +19,20 @@ interface SavedMeal {
   carbs: number;
   fat: number;
   source: string;
+}
+
+function SettingsGroup({ label, children, delay = 0 }: { label: string; children: React.ReactNode; delay?: number }) {
+  return (
+    <motion.section
+      className="mb-5"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ ...springs.smooth, delay }}
+    >
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-accent)] mb-2 px-1">{label}</p>
+      <div className="panel p-4">{children}</div>
+    </motion.section>
+  );
 }
 
 export function Settings() {
@@ -116,8 +130,8 @@ export function Settings() {
   }, [fetchSavedMeals]);
 
   const savedMealsCountLabel = useMemo(() => {
-    if (loadingSavedMeals) return 'Loading meals...';
-    if (savedMeals.length === 0) return 'No meals saved';
+    if (loadingSavedMeals) return 'Loading meals…';
+    if (savedMeals.length === 0) return 'No meals saved yet';
     return `${savedMeals.length} meal${savedMeals.length === 1 ? '' : 's'} saved`;
   }, [loadingSavedMeals, savedMeals.length]);
 
@@ -328,218 +342,207 @@ export function Settings() {
   };
 
   return (
-    <motion.div
-      className="pb-24 px-5 pt-8"
-    >
+    <Screen>
       {/* Header */}
-      <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="text-[10px] tracking-[0.25em] uppercase text-[var(--color-muted)] mb-1">Account</p>
-        <h1 className="text-2xl font-display-italic text-[var(--color-text)] tracking-tight">Profile</h1>
+      <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <p className="t-label-sm mb-1">Account</p>
+        <h1 className="t-title">{profile?.display_name || 'You'}</h1>
       </motion.header>
 
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-4">
-          <div className="flex items-center gap-2 mb-5">
-            <Palette className="w-4 h-4 text-accent" strokeWidth={1.5} />
-            <CardTitle>Appearance</CardTitle>
-          </div>
-          <div className="flex items-center justify-between gap-3 p-3 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-base)]">
-            <div>
-              <p className="text-[11px] tracking-[0.12em] uppercase text-[var(--color-text)]">Theme</p>
-              <p className="text-[10px] text-[var(--color-muted)] mt-1">
-                {theme === 'light' ? 'Bone & Clay light mode' : 'Nocturne dark mode'}
-              </p>
-            </div>
-            <ThemeToggle />
-          </div>
-        </Card>
-      </motion.div>
+      {/* ── Profile ── */}
+      <SettingsGroup label="Profile">
+        <Input
+          label="Display name"
+          value={displayName}
+          onChange={(e) => {
+            clearNameFeedback();
+            setDisplayNameDraft(e.target.value);
+          }}
+          placeholder="Your name"
+        />
+        {displayNameChanged && (
+          <Button className="w-full mt-3" onClick={handleSaveDisplayName} loading={savingName}>
+            Save name
+          </Button>
+        )}
+        {nameMessage && <p className="mt-2 text-[11px] font-semibold text-[var(--color-sage)]">{nameMessage}</p>}
+        {nameError && <p className="mt-2 text-[11px] font-semibold text-[var(--color-danger)]">{nameError}</p>}
+      </SettingsGroup>
 
-      {/* Profile */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-4">
-          <div className="flex items-center gap-2 mb-5">
-            <User className="w-4 h-4 text-accent" strokeWidth={1.5} />
-            <CardTitle>Identity</CardTitle>
+      {/* ── Appearance ── */}
+      <SettingsGroup label="Appearance" delay={0.04}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--color-text)]">Theme</p>
+            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+              {theme === 'light' ? 'Chalk paper light' : 'Charcoal rubber dark'}
+            </p>
           </div>
+          <ThemeToggle />
+        </div>
+      </SettingsGroup>
+
+      {/* ── Nutrition targets ── */}
+      <SettingsGroup label="Nutrition targets" delay={0.08}>
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {[
+            { label: 'KCAL', value: String(macros.calories), icon: Flame, tone: 'var(--color-accent)' },
+            { label: 'PROTEIN', value: `${macros.protein}g`, icon: BicepsFlexed, tone: 'var(--color-sage)' },
+            { label: 'CARBS', value: `${macros.carbs}g`, icon: Wheat, tone: 'var(--color-accent)' },
+            { label: 'FAT', value: `${macros.fat}g`, icon: Droplet, tone: 'var(--color-accent)' },
+          ].map((cell) => (
+            <div key={cell.label} className="flex flex-col items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-1 py-3">
+              <cell.icon className="w-5 h-5" strokeWidth={1.75} style={{ color: cell.tone }} />
+              <p className="t-numeral text-[19px] text-[var(--color-text)]">{cell.value}</p>
+              <p className="text-[9px] font-bold tracking-[0.08em]" style={{ color: cell.tone }}>{cell.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="pressable w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[var(--radius-md)] bg-sage-tint border border-[color-mix(in_srgb,var(--color-sage)_30%,transparent)] text-left mb-3.5"
+          onClick={() => {
+            clearMacroFeedback();
+            setShowNutritionWizard(true);
+          }}
+        >
+          <Target className="w-5 h-5 shrink-0 text-[var(--color-sage)]" strokeWidth={1.75} />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15px] font-bold text-[var(--color-text)]">Calculate my targets</span>
+            <span className="block text-[12px] text-[var(--color-text-dim)] mt-0.5">A short guided pass — body stats to macros</span>
+          </span>
+          <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-sage)]" strokeWidth={2.25} />
+        </button>
+
+        <div className="grid grid-cols-2 gap-2.5 mb-3">
           <Input
-            label="Display Name"
-            value={displayName}
+            label="Calories"
+            type="number"
+            inputMode="numeric"
+            value={macros.calories}
             onChange={(e) => {
-              clearNameFeedback();
-              setDisplayNameDraft(e.target.value);
+              clearMacroFeedback();
+              setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
             }}
-            placeholder="Your name"
           />
-          <Button
-            className="w-full mt-4"
-            onClick={handleSaveDisplayName}
-            loading={savingName}
-            disabled={!displayNameChanged}
-          >
-            Save Name
+          <Input
+            label="Protein (g)"
+            type="number"
+            inputMode="numeric"
+            value={macros.protein}
+            onChange={(e) => {
+              clearMacroFeedback();
+              setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
+            }}
+          />
+          <Input
+            label="Carbs (g)"
+            type="number"
+            inputMode="numeric"
+            value={macros.carbs}
+            onChange={(e) => {
+              clearMacroFeedback();
+              setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
+            }}
+          />
+          <Input
+            label="Fat (g)"
+            type="number"
+            inputMode="numeric"
+            value={macros.fat}
+            onChange={(e) => {
+              clearMacroFeedback();
+              setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
+            }}
+          />
+        </div>
+
+        {macrosChanged && (
+          <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros}>
+            Save targets
           </Button>
-          {nameMessage && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-sage">{nameMessage}</p>}
-          {nameError && <p className="mt-2 text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{nameError}</p>}
-        </Card>
-      </motion.div>
+        )}
+        {macroMessage && <p className="mt-2 text-[11px] font-semibold text-[var(--color-sage)]">{macroMessage}</p>}
+        {macroError && <p className="mt-2 text-[11px] font-semibold text-[var(--color-danger)]">{macroError}</p>}
+      </SettingsGroup>
 
-      {/* Macro Targets */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-4">
-          <div className="flex items-center gap-2 mb-5">
-            <Target className="w-4 h-4 text-sage" strokeWidth={1.5} />
-            <CardTitle>Daily Targets</CardTitle>
+      {/* ── Saved meals ── */}
+      <SettingsGroup label="Saved meals" delay={0.12}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--color-text)]">Reusable meals</p>
+            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">{savedMealsCountLabel}</p>
           </div>
-
-          {showNutritionWizard ? (
-            <NutritionWizard
-              onApply={(targets) => {
-                clearMacroFeedback();
-                setMacroDraft({
-                  calories: targets.calories,
-                  protein: targets.protein,
-                  carbs: targets.carbs,
-                  fat: targets.fat,
-                });
-                setShowNutritionWizard(false);
-                setMacroMessage('Targets calculated — review and save above.');
-              }}
-              onCancel={() => setShowNutritionWizard(false)}
-            />
-          ) : (
-            <div className="space-y-4">
-              <button
-                className="w-full flex items-center justify-between p-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-base)] hover:border-[color-mix(in_srgb,var(--color-border)_100%,var(--color-text)_20%)] transition-colors group"
-                onClick={() => {
-                  clearMacroFeedback();
-                  setShowNutritionWizard(true);
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-[10px] bg-[var(--color-card)]">
-                    <Wand2 className="w-3.5 h-3.5 text-sage" strokeWidth={1.5} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-[11px] text-[var(--color-text)]">Calculate my targets</p>
-                    <p className="text-[9px] tracking-[0.08em] uppercase text-[var(--color-muted)]">
-                      Answer a few questions for personalized macros
-                    </p>
-                  </div>
-                </div>
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-[var(--color-border)]" />
-                <span className="text-[9px] tracking-[0.15em] uppercase text-[var(--color-muted)]">or set manually</span>
-                <div className="flex-1 h-px bg-[var(--color-border)]" />
-              </div>
-
-              <Input
-                label="Calories"
-                type="number"
-                inputMode="numeric"
-                value={macros.calories}
-                onChange={(e) => {
-                  clearMacroFeedback();
-                  setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
-                }}
-              />
-
-              <div className="grid grid-cols-3 gap-3">
-                <Input
-                  label="Protein (g)"
-                  type="number"
-                  inputMode="numeric"
-                  value={macros.protein}
-                  onChange={(e) => {
-                    clearMacroFeedback();
-                    setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
-                  }}
-                />
-                <Input
-                  label="Carbs (g)"
-                  type="number"
-                  inputMode="numeric"
-                  value={macros.carbs}
-                  onChange={(e) => {
-                    clearMacroFeedback();
-                    setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
-                  }}
-                />
-                <Input
-                  label="Fat (g)"
-                  type="number"
-                  inputMode="numeric"
-                  value={macros.fat}
-                  onChange={(e) => {
-                    clearMacroFeedback();
-                    setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
-                  }}
-                />
-              </div>
-
-              <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros} disabled={!macrosChanged}>
-                Save Targets
-              </Button>
-              {macroMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{macroMessage}</p>}
-              {macroError && <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{macroError}</p>}
-            </div>
-          )}
-        </Card>
-      </motion.div>
-
-      {/* Sign Out */}
-      <motion.div className="mt-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-4">
-          <div className="flex items-center gap-2 mb-5">
-            <UtensilsCrossed className="w-4 h-4 text-accent" strokeWidth={1.5} />
-            <CardTitle>Saved Meals</CardTitle>
-          </div>
-          <p className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">{savedMealsCountLabel}</p>
-          <Button variant="secondary" className="w-full mt-4" onClick={openManageMeals}>
-            Manage Meals
+          <Button variant="secondary" size="sm" onClick={openManageMeals}>
+            Manage
           </Button>
-        </Card>
+        </div>
+      </SettingsGroup>
 
-        <Button
-          variant="ghost"
-          className="w-full text-[var(--color-danger)] hover:text-[var(--color-text)]"
+      {/* ── Account ── */}
+      <SettingsGroup label="Account" delay={0.16}>
+        <button
+          type="button"
+          className="pressable w-full flex items-center justify-center gap-2 min-h-11 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--color-danger)] bg-rose-tint"
           onClick={handleSignOut}
         >
-          <LogOut className="w-4 h-4 mr-2" />
-          Sign Out
-        </Button>
-      </motion.div>
+          <LogOut className="w-4 h-4" strokeWidth={2} />
+          Sign out
+        </button>
+      </SettingsGroup>
 
-      {/* App Info */}
-      <motion.div
-        className="mt-12 text-center"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={springs.smooth}
+      {/* App info */}
+      <motion.footer
+        className="mt-10 text-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ ...springs.smooth, delay: 0.2 }}
       >
-        <p className="text-[10px] tracking-[0.15em] text-[var(--color-muted)]">
-          hyPer
-        </p>
-        <p className="text-[9px] tracking-[0.1em] uppercase text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
+        <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">hyPer</p>
+        <p className="text-[10px] font-medium text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
           Built on peer-reviewed research
         </p>
-      </motion.div>
+      </motion.footer>
 
-      <Modal isOpen={manageMealsOpen} onClose={closeManageMeals} title="Saved Meals">
-        <div className="pt-4 space-y-3">
-          {mealManagerMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-sage">{mealManagerMessage}</p>}
-          {mealManagerError && <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-danger)]">{mealManagerError}</p>}
+      {/* Macro calculator — focused sheet */}
+      <Modal
+        isOpen={showNutritionWizard}
+        onClose={() => setShowNutritionWizard(false)}
+        title="Calculate targets"
+      >
+        <div className="pt-1 pb-2">
+          <NutritionWizard
+            onApply={(targets) => {
+              clearMacroFeedback();
+              setMacroDraft({
+                calories: targets.calories,
+                protein: targets.protein,
+                carbs: targets.carbs,
+                fat: targets.fat,
+              });
+              setShowNutritionWizard(false);
+              setMacroMessage('Targets calculated — review and save.');
+            }}
+            onCancel={() => setShowNutritionWizard(false)}
+          />
+        </div>
+      </Modal>
+
+      {/* Saved meals manager */}
+      <Modal isOpen={manageMealsOpen} onClose={closeManageMeals} title="Saved meals">
+        <div className="pt-1 pb-2 space-y-3">
+          {mealManagerMessage && <p className="text-[11px] font-semibold text-[var(--color-sage)]">{mealManagerMessage}</p>}
+          {mealManagerError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{mealManagerError}</p>}
 
           {loadingSavedMeals ? (
             <div className="space-y-2">
-              <div className="h-[56px] rounded-[20px] shimmer" />
-              <div className="h-[56px] rounded-[20px] shimmer" />
-              <div className="h-[56px] rounded-[20px] shimmer" />
+              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
+              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
+              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
             </div>
           ) : savedMeals.length === 0 ? (
-            <p className="text-editorial text-center py-8">
+            <p className="text-sm italic text-[var(--color-text-dim)] text-center py-8">
               Meals you save from the food logger will appear here.
             </p>
           ) : (
@@ -547,16 +550,16 @@ export function Settings() {
               {savedMeals.map((meal) => (
                 <div
                   key={meal.id}
-                  className="p-3 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-base)]"
+                  className="px-3.5 py-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline"
                 >
                   {editingMealId === meal.id ? (
                     <div className="space-y-3">
                       <Input
-                        label="Meal Name"
+                        label="Meal name"
                         value={editingMealDraft.name}
                         onChange={(e) => setEditingMealDraft({ ...editingMealDraft, name: e.target.value })}
                       />
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2.5">
                         <Input
                           label="Calories"
                           type="number"
@@ -569,8 +572,6 @@ export function Settings() {
                           value={editingMealDraft.protein}
                           onChange={(e) => setEditingMealDraft({ ...editingMealDraft, protein: e.target.value })}
                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
                         <Input
                           label="Carbs"
                           type="number"
@@ -605,29 +606,29 @@ export function Settings() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm text-[var(--color-text)] truncate">{meal.name}</p>
-                        <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--color-muted)] mt-1 tabular-nums">
-                          {Math.round(meal.calories)} cal · {Math.round(meal.protein)}p · {Math.round(meal.carbs)}c · {Math.round(meal.fat)}f
+                        <p className="text-sm font-medium text-[var(--color-text)] truncate">{meal.name}</p>
+                        <p className="t-data-sm text-[10px] text-[var(--color-muted)] mt-0.5">
+                          {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center shrink-0">
                         <button
                           type="button"
                           onClick={() => beginEditingMeal(meal)}
-                          className="w-8 h-8 rounded-[14px] flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] transition-colors"
+                          className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                           aria-label={`Edit ${meal.name}`}
                         >
-                          <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                         <button
                           type="button"
                           onClick={() => removeSavedMeal(meal)}
-                          className="w-8 h-8 rounded-[14px] flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)] transition-colors"
+                          className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-danger)] transition-colors"
                           aria-label={`Remove ${meal.name}`}
                         >
-                          <Archive className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          <Archive className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                       </div>
                     </div>
@@ -638,6 +639,6 @@ export function Settings() {
           )}
         </div>
       </Modal>
-    </motion.div>
+    </Screen>
   );
 }

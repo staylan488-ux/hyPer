@@ -6,8 +6,8 @@ const STORAGE_KEY = 'hyper-theme';
 const TRANSITION_CLASS = 'theme-transition-active';
 
 const THEME_COLOR_BY_MODE: Record<ThemeMode, string> = {
-  dark: '#1A1A1A',
-  light: '#F7F6F3',
+  dark: '#0B0A08',
+  light: '#F3EEE6',
 };
 
 function isBrowser() {

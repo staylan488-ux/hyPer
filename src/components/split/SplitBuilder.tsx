@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, Wand2 } from 'lucide-react';
-import { Button, Input, Card } from '@/components/shared';
+import { Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Link2, PenLine, Plus, Search, Unlink2, Wand2, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Button, Chip, Input, SelectSheet, TickStrip } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { splitTemplates } from '@/lib/splitTemplates';
+import { springs } from '@/lib/animations';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
@@ -129,9 +131,21 @@ function createSupersetGroupId(): string {
   return `superset-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/* Guided interview stages — one decision per screen */
+type GuidedStageKey = 'daysPerWeek' | 'focus' | 'equipment' | 'sessionLength' | 'experience';
+
+const GUIDED_STAGES: Array<{ key: GuidedStageKey; question: string; caption: string }> = [
+  { key: 'daysPerWeek', question: 'How many days can you train?', caption: 'Be honest — consistency beats ambition.' },
+  { key: 'focus', question: 'Any area you want to emphasize?', caption: 'Focus shifts volume, it never abandons the rest.' },
+  { key: 'equipment', question: 'What equipment do you have?', caption: 'Movements adapt to what you can actually load.' },
+  { key: 'sessionLength', question: 'How long is a typical session?', caption: 'Sets per day scale to the clock.' },
+  { key: 'experience', question: 'How long have you been lifting?', caption: 'Experience calibrates starting volume.' },
+];
+
 export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const { createSplit } = useAppStore();
   const [step, setStep] = useState<Step>('choose');
+  const [guidedStage, setGuidedStage] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [guidedAnswers, setGuidedAnswers] = useState<ProgramDesignAnswers>({
@@ -638,223 +652,243 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
     }
   };
 
+  /* ── shared bits ── */
+
+  const BackLink = ({ onClick }: { onClick: () => void }) => (
+    <button
+      type="button"
+      className="pressable flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)] hover:text-[var(--color-text)] py-1.5 pr-2 -ml-1 transition-colors disabled:opacity-40"
+      onClick={onClick}
+      disabled={loading}
+    >
+      <ChevronLeft className="w-3.5 h-3.5" strokeWidth={2.25} />
+      Back
+    </button>
+  );
+
+  /* ═══════════ Choose path ═══════════ */
+
   if (step === 'choose') {
     return (
-      <div className="space-y-4">
-        <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] text-center mb-8">
-          Build a program your way
-        </p>
+      <div className="space-y-3 pt-2 pb-2">
+        <p className="t-caption text-center mb-4">Two ways to a program. Both end with a plan you own.</p>
 
         <button
-          className="w-full flex items-center justify-between p-5 bg-[#242424] border border-white/5 rounded-[24px] hover:border-white/10 transition-colors group"
-          onClick={() => setStep('guided')}
+          type="button"
+          className="pressable w-full flex items-center justify-between gap-3 p-4 bg-[var(--color-surface-2)] hairline-strong rounded-[var(--radius-lg)] text-left relative overflow-hidden"
+          onClick={() => {
+            setGuidedStage(0);
+            setStep('guided');
+          }}
         >
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-[16px] bg-[#2E2E2E]">
-              <Wand2 className="w-5 h-5 text-[#E8E4DE]" strokeWidth={1.5} />
-            </div>
-            <div className="text-left">
-              <p className="text-sm text-[#E8E4DE]">Guided Builder</p>
-              <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">
-                Answer a few questions and auto-generate
-              </p>
-            </div>
+          <div
+            className="absolute inset-y-0 left-0 w-[2.5px]"
+            style={{ background: 'linear-gradient(to bottom, var(--color-accent), transparent 85%)' }}
+          />
+          <div className="flex items-center gap-3.5">
+            <span className="flex items-center justify-center w-11 h-11 rounded-[var(--radius-md)] well shrink-0">
+              <Wand2 className="w-5 h-5 text-[var(--color-accent)]" strokeWidth={1.75} />
+            </span>
+            <span>
+              <span className="block t-heading text-[15px]">Guided builder</span>
+              <span className="block text-xs text-[var(--color-muted)] mt-0.5">Five questions → an evidence-based split</span>
+            </span>
           </div>
-          <ChevronRight className="w-4 h-4 text-[#6B6B6B] group-hover:text-[#9A9A9A] transition-colors" />
+          <ChevronRight className="w-4 h-4 text-[var(--color-muted)] shrink-0" />
         </button>
 
         <button
-          className="w-full flex items-center justify-between p-5 bg-[#242424] border border-white/5 rounded-[24px] hover:border-white/10 transition-colors group"
+          type="button"
+          className="pressable w-full flex items-center justify-between gap-3 p-4 bg-[var(--color-surface-1)] hairline rounded-[var(--radius-lg)] text-left"
           onClick={() => setStep('custom-name')}
         >
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-[16px] bg-[#2E2E2E]">
-              <span className="text-lg">✏️</span>
-            </div>
-            <div className="text-left">
-              <p className="text-sm text-[#E8E4DE]">Custom</p>
-              <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">Build manually</p>
-            </div>
+          <div className="flex items-center gap-3.5">
+            <span className="flex items-center justify-center w-11 h-11 rounded-[var(--radius-md)] well shrink-0">
+              <PenLine className="w-5 h-5 text-[var(--color-stone)]" strokeWidth={1.75} />
+            </span>
+            <span>
+              <span className="block t-heading text-[15px]">Custom</span>
+              <span className="block text-xs text-[var(--color-muted)] mt-0.5">Build every day by hand</span>
+            </span>
           </div>
-          <ChevronRight className="w-4 h-4 text-[#6B6B6B] group-hover:text-[#9A9A9A] transition-colors" />
+          <ChevronRight className="w-4 h-4 text-[var(--color-muted)] shrink-0" />
         </button>
       </div>
     );
   }
 
+  /* ═══════════ Guided interview — one decision per stage ═══════════ */
+
   if (step === 'guided') {
-    const renderOptionRow = (
-      options: Array<Option<string | number>>,
-      selected: string | number,
-      onSelect: (value: string | number) => void
-    ) => (
-      <div className="grid grid-cols-1 gap-2">
-        {options.map((option) => {
-          const active = selected === option.value;
-          return (
-            <button
-              key={`${option.value}`}
-              className={`w-full text-left p-3 rounded-[14px] border transition-colors ${
-                active
-                  ? 'bg-[#E8E4DE] text-[#1A1A1A] border-[#E8E4DE]'
-                  : 'bg-[#242424] text-[#9A9A9A] border-white/5 hover:border-white/10'
-              }`}
-              onClick={() => onSelect(option.value)}
-            >
-              <p className="text-xs font-medium">{option.label}</p>
-              <p className={`text-[10px] mt-1 ${active ? 'text-[#3D3D3D]' : 'text-[#6B6B6B]'}`}>
-                {option.hint}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-    );
+    const stage = GUIDED_STAGES[guidedStage];
+    const isLastStage = guidedStage === GUIDED_STAGES.length - 1;
+
+    const stageOptions: Array<Option<string | number>> =
+      stage.key === 'daysPerWeek' ? DAY_OPTIONS
+      : stage.key === 'focus' ? FOCUS_OPTIONS
+      : stage.key === 'equipment' ? EQUIPMENT_OPTIONS
+      : stage.key === 'sessionLength' ? SESSION_OPTIONS
+      : EXPERIENCE_OPTIONS;
+
+    const selectedValue = guidedAnswers[stage.key];
+
+    const selectOption = (value: string | number) => {
+      setGuidedAnswers((current) => ({
+        ...current,
+        [stage.key]: stage.key === 'daysPerWeek' ? Number(value) : value,
+      }));
+    };
 
     return (
-      <div className="space-y-5">
-        <button
-          className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] transition-colors"
-          onClick={() => setStep('choose')}
+      <div className="pt-1 pb-2">
+        <div className="flex items-center justify-between mb-4">
+          <BackLink onClick={() => (guidedStage === 0 ? setStep('choose') : setGuidedStage((s) => s - 1))} />
+          <div className="flex items-center gap-2.5">
+            <TickStrip total={GUIDED_STAGES.length} filled={guidedStage} tone="amber" size="sm" live />
+            <span className="t-data-sm text-[var(--color-muted)]">{guidedStage + 1}/{GUIDED_STAGES.length}</span>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={stage.key}
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={springs.smooth}
+          >
+            <h3 className="t-heading text-[17px] mb-1">{stage.question}</h3>
+            <p className="t-caption mb-4">{stage.caption}</p>
+
+            <div className="space-y-2 mb-4">
+              {stageOptions.map((option) => {
+                const active = selectedValue === option.value;
+                return (
+                  <button
+                    key={`${option.value}`}
+                    type="button"
+                    className={`pressable w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-colors flex items-center justify-between gap-3 ${
+                      active
+                        ? 'bg-accent-tint-strong border-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]'
+                        : 'bg-[var(--color-surface-2)] border-[var(--color-border)]'
+                    }`}
+                    onClick={() => selectOption(option.value)}
+                  >
+                    <span>
+                      <span className={`block text-sm font-semibold ${active ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
+                        {option.label}
+                      </span>
+                      <span className="block text-[11px] text-[var(--color-muted)] mt-0.5">{option.hint}</span>
+                    </span>
+                    <span
+                      className={`flex items-center justify-center w-5 h-5 rounded-full border shrink-0 ${
+                        active
+                          ? 'bg-[var(--color-accent)] border-[var(--color-accent)]'
+                          : 'border-[var(--color-border-strong)]'
+                      }`}
+                    >
+                      {active && <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Live recommendation preview — updates with every answer */}
+        <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-1)] hairline px-4 py-3 mb-4">
+          <p className="t-label-sm mb-1 flex items-center gap-1.5">
+            <Wand2 className="w-3 h-3 text-[var(--color-accent)]" strokeWidth={2} />
+            Currently building
+          </p>
+          <p className="text-sm font-semibold text-[var(--color-text)]">{guidedTemplate.name}</p>
+          <p className="t-data-sm text-[11px] text-[var(--color-muted)] mt-0.5">
+            {guidedTemplate.days_per_week} days/week · {guidedTemplate.days.reduce((acc, day) => acc + day.exercises.length, 0)} exercises
+          </p>
+        </div>
+
+        <Button
+          size="lg"
+          className="w-full"
+          onClick={() => (isLastStage ? setStep('guided-review') : setGuidedStage((s) => s + 1))}
           disabled={loading}
         >
-          <ChevronLeft className="w-3 h-3" />
-          Back
-        </button>
-
-        <Card variant="slab" className="space-y-5">
-          <div>
-            <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] mb-1">Program Interview</p>
-            <h4 className="text-sm text-[#E8E4DE]">Tell us how you train</h4>
-          </div>
-
-          <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Days per week</p>
-            {renderOptionRow(DAY_OPTIONS, guidedAnswers.daysPerWeek, (value) =>
-              setGuidedAnswers((current) => ({ ...current, daysPerWeek: Number(value) }))
-            )}
-          </div>
-
-          <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Focus</p>
-            {renderOptionRow(FOCUS_OPTIONS, guidedAnswers.focus, (value) =>
-              setGuidedAnswers((current) => ({ ...current, focus: value as ProgramFocus }))
-            )}
-          </div>
-
-          <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Equipment</p>
-            {renderOptionRow(EQUIPMENT_OPTIONS, guidedAnswers.equipment, (value) =>
-              setGuidedAnswers((current) => ({ ...current, equipment: value as EquipmentProfile }))
-            )}
-          </div>
-
-          <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Session length</p>
-            {renderOptionRow(SESSION_OPTIONS, guidedAnswers.sessionLength, (value) =>
-              setGuidedAnswers((current) => ({ ...current, sessionLength: value as SessionLength }))
-            )}
-          </div>
-
-          <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Training experience</p>
-            {renderOptionRow(EXPERIENCE_OPTIONS, guidedAnswers.experience, (value) =>
-              setGuidedAnswers((current) => ({ ...current, experience: value as ExperienceLevel }))
-            )}
-          </div>
-        </Card>
-
-        <Card variant="slab">
-          <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Recommended</p>
-          <h4 className="text-sm text-[#E8E4DE] mb-2">{guidedTemplate.name}</h4>
-          <p className="text-[10px] text-[#6B6B6B] leading-relaxed">{guidedTemplate.description}</p>
-        </Card>
-
-        <Button className="w-full" onClick={() => setStep('guided-review')} disabled={loading}>
-          Review Program
+          {isLastStage ? 'Review my program' : 'Continue'}
+          <ChevronRight className="w-4 h-4" strokeWidth={2.5} />
         </Button>
       </div>
     );
   }
 
-  if (step === 'guided-review') {
-    return (
-      <div className="space-y-5">
-        <button
-          className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] transition-colors disabled:opacity-40"
-          onClick={() => setStep('guided')}
-          disabled={loading}
-        >
-          <ChevronLeft className="w-3 h-3" />
-          Back
-        </button>
+  /* ═══════════ Guided review ═══════════ */
 
-        <Card variant="slab" className="space-y-3">
-          <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Guided Recommendation</p>
-          <h4 className="text-sm text-[#E8E4DE]">{guidedTemplate.name}</h4>
-          <p className="text-[10px] text-[#6B6B6B] leading-relaxed">{guidedTemplate.description}</p>
-          <div className="flex flex-wrap gap-2">
-            <span className="px-3 py-1 bg-[#1A1A1A] text-[9px] tracking-[0.1em] uppercase rounded-[10px] text-[#9A9A9A]">
-              {guidedTemplate.days_per_week} days/week
-            </span>
-            <span className="px-3 py-1 bg-[#1A1A1A] text-[9px] tracking-[0.1em] uppercase rounded-[10px] text-[#9A9A9A]">
-              {guidedTemplate.days.reduce((acc, day) => acc + day.exercises.length, 0)} exercises
+  if (step === 'guided-review') {
+    const totalExercises = guidedTemplate.days.reduce((acc, day) => acc + day.exercises.length, 0);
+
+    return (
+      <div className="pt-1 pb-2">
+        <div className="mb-4">
+          <BackLink onClick={() => setStep('guided')} />
+        </div>
+
+        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline-strong p-4 mb-3 relative overflow-hidden">
+          <div
+            className="absolute inset-x-0 top-0 h-[2.5px]"
+            style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
+          />
+          <p className="t-label text-[var(--color-accent)] mb-1">Your program</p>
+          <h4 className="t-heading text-[17px] mb-1.5">{guidedTemplate.name}</h4>
+          <p className="text-xs text-[var(--color-text-dim)] leading-relaxed mb-3">{guidedTemplate.description}</p>
+          <div className="flex items-center gap-3">
+            <TickStrip total={guidedTemplate.days_per_week} filled={guidedTemplate.days_per_week} tone="amber" size="sm" />
+            <span className="t-data-sm text-[var(--color-muted)]">
+              {guidedTemplate.days_per_week} days/week · {totalExercises} exercises
             </span>
           </div>
-        </Card>
+        </div>
 
-        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-          {guidedTemplate.days.map((day, dayIndex) => (
-            <Card key={day.day_name} variant="slab" className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-[#E8E4DE]">{day.day_name}</p>
-                <span className="text-[10px] text-[#6B6B6B] tabular-nums">{day.exercises.length} exercises</span>
+        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 mb-4 overscroll-contain">
+          {guidedTemplate.days.map((day) => (
+            <div key={day.day_name} className="rounded-[var(--radius-md)] bg-[var(--color-surface-1)] hairline px-3.5 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[13px] font-semibold text-[var(--color-text)]">{day.day_name}</p>
+                <TickStrip total={Math.min(day.exercises.length, 10)} filled={0} tone="stone" size="sm" />
               </div>
               <div className="space-y-1">
                 {day.exercises.slice(0, 4).map((exercise, exerciseIndex) => (
-                  <div key={`${exercise.name}-${exerciseIndex}`} className="flex items-center justify-between text-[10px]">
-                    <span className="text-[#9A9A9A]">{exerciseIndex + 1}. {exercise.name}</span>
-                    <span className="text-[#6B6B6B] tabular-nums">
-                      {exercise.sets}x{exercise.reps_min}-{exercise.reps_max}
+                  <div key={`${exercise.name}-${exerciseIndex}`} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-[var(--color-text-dim)] truncate">{exercise.name}</span>
+                    <span className="t-data-sm text-[10px] text-[var(--color-muted)] shrink-0">
+                      {exercise.sets}×{exercise.reps_min}–{exercise.reps_max}
                     </span>
                   </div>
                 ))}
                 {day.exercises.length > 4 && (
-                  <p className="text-[10px] text-[#6B6B6B]">+{day.exercises.length - 4} more exercises</p>
+                  <p className="text-[10px] text-[var(--color-muted)]">+{day.exercises.length - 4} more</p>
                 )}
               </div>
-              {dayIndex < guidedTemplate.days.length - 1 && <div className="h-px bg-white/5" />}
-            </Card>
+            </div>
           ))}
         </div>
 
-        <Button className="w-full" disabled={loading} onClick={() => createFromTemplate(guidedTemplate)}>
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Creating Program...
-            </>
-          ) : (
-            'Build My Program'
-          )}
+        <Button size="lg" className="w-full" disabled={loading} loading={loading} onClick={() => createFromTemplate(guidedTemplate)}>
+          {loading ? 'Creating program…' : 'Build my program'}
         </Button>
+        <p className="t-caption text-center mt-2">You can edit every day and exercise after it's created.</p>
       </div>
     );
   }
 
+  /* ═══════════ Custom: name ═══════════ */
+
   if (step === 'custom-name') {
     return (
-      <div className="space-y-5">
-        <button
-          className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] mb-4 transition-colors"
-          onClick={() => setStep('choose')}
-        >
-          <ChevronLeft className="w-3 h-3" />
-          Back
-        </button>
+      <div className="pt-1 pb-2 space-y-4">
+        <BackLink onClick={() => setStep('choose')} />
 
         <Input
-          label="Program Name"
+          label="Program name"
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="e.g., My Upper/Lower"
@@ -864,19 +898,20 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           label="Description"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="Optional description..."
+          placeholder="Optional description…"
         />
 
         <div>
-          <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-3">Days per Week</label>
-          <div className="flex gap-2">
+          <span className="t-label-sm block mb-2">Days per week</span>
+          <div className="grid grid-cols-4 gap-2">
             {[3, 4, 5, 6].map((dayCount) => (
               <button
                 key={dayCount}
-                className={`flex-1 py-3 rounded-[16px] text-sm transition-all ${
+                type="button"
+                className={`pressable min-h-12 rounded-[var(--radius-md)] t-data-lg border transition-colors ${
                   daysPerWeek === dayCount
-                    ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                    : 'bg-[#2E2E2E] text-[#9A9A9A] border border-white/5 hover:border-white/10'
+                    ? 'bg-accent-tint-strong text-[var(--color-accent)] border-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]'
+                    : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border-[var(--color-border)]'
                 }`}
                 onClick={() => setDaysPerWeek(dayCount)}
               >
@@ -887,7 +922,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         </div>
 
         <Button
-          className="w-full mt-6"
+          size="lg"
+          className="w-full"
           disabled={!name}
           onClick={() => {
             setDays(
@@ -901,48 +937,53 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           }}
         >
           Continue
+          <ChevronRight className="w-4 h-4" strokeWidth={2.5} />
         </Button>
       </div>
     );
   }
+
+  /* ═══════════ Custom: day names ═══════════ */
 
   if (step === 'custom-days') {
     return (
-      <div className="space-y-5">
-        <button
-          className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] mb-4 transition-colors"
-          onClick={() => setStep('custom-name')}
-        >
-          <ChevronLeft className="w-3 h-3" />
-          Back
-        </button>
+      <div className="pt-1 pb-2 space-y-4">
+        <BackLink onClick={() => setStep('custom-name')} />
 
-        <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B] mb-4">Name each training day</p>
+        <div>
+          <h3 className="t-heading mb-1">Name each training day</h3>
+          <p className="t-caption">Push, Pull, Legs — whatever you call them on the floor.</p>
+        </div>
 
-        {days.map((day, index) => (
-          <div key={index} className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-[10px] bg-[#2E2E2E] flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] text-[#6B6B6B] tabular-nums">{String(index + 1).padStart(2, '0')}</span>
+        <div className="space-y-2.5">
+          {days.map((day, index) => (
+            <div key={index} className="flex items-center gap-3">
+              <span className="well flex items-center justify-center w-9 h-9 shrink-0 t-data-sm text-[var(--color-muted)]">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <Input
+                value={day.day_name}
+                onChange={(event) => {
+                  const next = [...days];
+                  next[index] = { ...next[index], day_name: event.target.value };
+                  setDays(next);
+                }}
+                placeholder="e.g., Push, Pull, Legs"
+                className="flex-1"
+              />
             </div>
-            <Input
-              value={day.day_name}
-              onChange={(event) => {
-                const next = [...days];
-                next[index] = { ...next[index], day_name: event.target.value };
-                setDays(next);
-              }}
-              placeholder="e.g., Push, Pull, Legs"
-              className="flex-1"
-            />
-          </div>
-        ))}
+          ))}
+        </div>
 
-        <Button className="w-full mt-6" onClick={() => setStep('custom-exercises')} disabled={loading}>
-          Continue to Exercise Setup
+        <Button size="lg" className="w-full" onClick={() => setStep('custom-exercises')} disabled={loading}>
+          Continue to exercises
+          <ChevronRight className="w-4 h-4" strokeWidth={2.5} />
         </Button>
       </div>
     );
   }
+
+  /* ═══════════ Custom: exercises ═══════════ */
 
   if (step === 'custom-exercises') {
     const filteredExercises = exerciseLibrary.filter((exercise) =>
@@ -950,60 +991,46 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
     );
 
     return (
-      <div className="space-y-5">
-        <button
-          className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] hover:text-[#9A9A9A] mb-2 transition-colors"
-          onClick={() => setStep('custom-days')}
-        >
-          <ChevronLeft className="w-3 h-3" />
-          Back
-        </button>
+      <div className="pt-1 pb-2 space-y-4">
+        <BackLink onClick={() => setStep('custom-days')} />
 
-        <Card variant="slab" className="space-y-3">
-          <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B]">Custom Program Builder</p>
-          <h4 className="text-sm text-[#E8E4DE]">Add exercises for each training day</h4>
-          <p className="text-[10px] text-[#6B6B6B]">Choose or type exercises, then set target sets and rep ranges.</p>
-        </Card>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5 -mx-1 px-1">
           {days.map((day, index) => (
-            <button
+            <Chip
               key={`${day.day_name}-${index}`}
+              tone="amber"
+              size="sm"
+              selected={activeCustomDayIndex === index}
               onClick={() => setActiveCustomDayIndex(index)}
-              className={`px-3 py-2 rounded-[12px] text-[10px] tracking-[0.08em] uppercase whitespace-nowrap transition-colors ${
-                activeCustomDayIndex === index
-                  ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                  : 'bg-[#2E2E2E] text-[#9A9A9A] border border-white/5'
-              }`}
             >
               {day.day_name}
-            </button>
+              <span className="t-data-sm text-[10px] opacity-70">{day.exercises.length}</span>
+            </Chip>
           ))}
         </div>
 
         {activeCustomDay && (
-          <Card variant="slab" className="space-y-4">
+          <>
+            {/* Library search */}
             <div>
-              <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Editing</p>
-              <h4 className="text-sm text-[#E8E4DE]">{activeCustomDay.day_name}</h4>
-            </div>
-
-            <div className="space-y-2">
-              <Input
-                value={exerciseQuery}
-                onChange={(event) => setExerciseQuery(event.target.value)}
-                placeholder="Search exercise library..."
-              />
+              <div className="well flex items-center gap-2 pl-3.5 pr-2 min-h-11 mb-1.5">
+                <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={2} />
+                <input
+                  value={exerciseQuery}
+                  onChange={(event) => setExerciseQuery(event.target.value)}
+                  placeholder="Search exercise library…"
+                  className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[var(--color-text)] outline-none placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]"
+                />
+              </div>
               {tapFeedback && (
-                <p
-                  className={`text-[10px] ${
-                    tapFeedback.tone === 'ok' ? 'text-[#9AC39A]' : 'text-[#9FA6B0]'
-                  }`}
-                >
+                <p className={`text-[11px] font-medium mb-1 ${tapFeedback.tone === 'ok' ? 'text-[var(--color-sage)]' : 'text-[var(--color-stone)]'}`}>
                   {tapFeedback.message}
                 </p>
               )}
-              <div className="max-h-[140px] overflow-y-auto space-y-1 pr-1">
+              {supersetSourceLocalId && (
+                <p className="text-[11px] font-medium text-[var(--color-accent)] mb-1">Pick a superset partner from the list</p>
+              )}
+              <div className="max-h-[150px] overflow-y-auto space-y-1 pr-1 overscroll-contain">
                 {filteredExercises.slice(0, 8).map((exercise) => {
                   const alreadyAdded = activeCustomDay.exercises.some(
                     (entry) => entry.exercise_id === exercise.id
@@ -1012,16 +1039,19 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                   return (
                     <button
                       key={exercise.id}
+                      type="button"
                       onClick={() => addExerciseToCustomDay(exercise)}
-                      className={`w-full text-left px-3 py-2 rounded-[10px] border text-[11px] transition-colors flex items-center justify-between ${
+                      className={`pressable w-full text-left px-3 py-2.5 rounded-[var(--radius-sm)] border text-[13px] font-medium flex items-center justify-between gap-2 transition-colors ${
                         alreadyAdded
-                          ? 'bg-[#243124] border-[#355235] text-[#A6C6A6]'
-                          : 'bg-[#2A2A2A] border-white/5 text-[#C9C5BD] hover:border-white/10'
+                          ? 'bg-sage-tint border-[color-mix(in_srgb,var(--color-sage)_30%,transparent)] text-[var(--color-sage)]'
+                          : 'bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-dim)]'
                       }`}
                     >
-                      <span>{exercise.name}</span>
-                      {alreadyAdded && (
-                        <span className="text-[9px] tracking-[0.1em] uppercase">Added</span>
+                      <span className="truncate">{exercise.name}</span>
+                      {alreadyAdded ? (
+                        <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5 shrink-0 text-[var(--color-muted)]" strokeWidth={2.25} />
                       )}
                     </button>
                   );
@@ -1029,47 +1059,77 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Or add custom exercise</p>
-              <Input
-                value={customExerciseName}
-                onChange={(event) => setCustomExerciseName(event.target.value)}
-                placeholder="Type custom exercise name"
-              />
-              <div className="flex gap-2 items-center">
-                <select
-                  value={customExerciseMuscle}
-                  onChange={(event) => setCustomExerciseMuscle(event.target.value as MuscleGroup)}
-                  className="flex-1 px-3 py-2 rounded-[10px] bg-[#2A2A2A] border border-white/5 text-[#C9C5BD] text-xs"
-                >
-                  {MUSCLE_GROUP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <Button onClick={addCustomExerciseToDay} disabled={!customExerciseName.trim()}>
-                  Add
-                </Button>
+            {/* Custom exercise */}
+            <div>
+              <span className="t-label-sm block mb-1.5">Or add your own</span>
+              <div className="space-y-2">
+                <Input
+                  value={customExerciseName}
+                  onChange={(event) => setCustomExerciseName(event.target.value)}
+                  placeholder="Type a custom exercise name"
+                />
+                <div className="flex gap-2">
+                  <SelectSheet
+                    className="flex-1"
+                    title="Muscle group"
+                    value={customExerciseMuscle}
+                    onChange={(value) => setCustomExerciseMuscle(value)}
+                    options={MUSCLE_GROUP_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                  />
+                  <Button variant="secondary" onClick={addCustomExerciseToDay} disabled={!customExerciseName.trim()}>
+                    <Plus className="w-4 h-4" strokeWidth={2.25} />
+                    Add
+                  </Button>
+                </div>
               </div>
             </div>
 
+            {/* Day plan */}
             <div className="space-y-2">
+              <span className="t-label-sm block">{activeCustomDay.day_name} · plan</span>
               {activeCustomDay.exercises.length === 0 ? (
-                <p className="text-[10px] text-[#6B6B6B]">No exercises added yet.</p>
+                <p className="text-[12px] text-[var(--color-muted)] py-3 text-center rounded-[var(--radius-md)] border border-dashed border-[var(--color-border-strong)]">
+                  No exercises yet — add from the library above.
+                </p>
               ) : (
                 activeCustomDay.exercises.map((exercise, exerciseIndex) => (
-                  <Card key={exercise.local_id} variant="slab" className="space-y-2">
+                  <div key={exercise.local_id} className="rounded-[var(--radius-md)] bg-[var(--color-surface-1)] hairline p-3 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs text-[#E8E4DE]">{exerciseIndex + 1}. {exercise.name}</p>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-[var(--color-text)] truncate">
+                          {exerciseIndex + 1}. {exercise.name}
+                        </p>
                         {exercise.superset_group_id && (
-                          <p className="text-[9px] tracking-[0.12em] uppercase text-[#A8B89A]">Superset</p>
+                          <p className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-stone)] mt-0.5">
+                            <Link2 className="w-3 h-3" strokeWidth={2.25} />
+                            Superset
+                          </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center shrink-0">
+                        <button
+                          type="button"
+                          aria-label="Move up"
+                          className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] disabled:opacity-25 disabled:pointer-events-none"
+                          onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, -1)}
+                          disabled={exerciseIndex === 0}
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Move down"
+                          className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] disabled:opacity-25 disabled:pointer-events-none"
+                          onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, 1)}
+                          disabled={exerciseIndex === activeCustomDay.exercises.length - 1}
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
                         {exercise.superset_group_id ? (
                           <button
+                            type="button"
+                            aria-label="Remove superset"
+                            className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-sage)]"
                             onClick={() => {
                               const groupId = exercise.superset_group_id;
                               setDays((current) =>
@@ -1086,35 +1146,37 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                                 })
                               );
                             }}
-                            className="text-[10px] text-[#8B9A7D] hover:text-[#BFD0AF]"
                           >
-                            Remove Superset
+                            <Unlink2 className="w-3.5 h-3.5" />
                           </button>
                         ) : (
                           <button
+                            type="button"
+                            aria-label="Add superset"
+                            className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
                             onClick={() => {
                               setSupersetSourceLocalId(exercise.local_id);
                               setTapFeedback({ message: 'Select a partner exercise from library', tone: 'info' });
                             }}
-                            className="text-[10px] text-[#9A9A9A] hover:text-[#E8E4DE]"
                           >
-                            Add Superset
+                            <Link2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <button
+                          type="button"
+                          aria-label="Remove exercise"
+                          className="pressable p-2 rounded-[var(--radius-xs)] text-[color-mix(in_srgb,var(--color-danger)_75%,var(--color-muted))]"
                           onClick={() => removeCustomExercise(activeCustomDayIndex, exercise.local_id)}
-                          className="text-[10px] text-[#B07A7A] hover:text-[#D69393]"
                         >
-                          Remove
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-5 gap-2">
-                      <Input
-                        label="Min Sets"
-                        value={String(exercise.target_sets_min)}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value || 0);
+                    <div className="grid grid-cols-5 gap-1.5">
+                      <RangeCell
+                        label="Min"
+                        value={exercise.target_sets_min}
+                        onCommit={(parsed) => {
                           updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
                             const nextMin = Number.isNaN(parsed)
                               ? current.target_sets_min
@@ -1129,11 +1191,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                           });
                         }}
                       />
-                      <Input
-                        label="Target Sets"
-                        value={String(exercise.target_sets)}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value || 0);
+                      <RangeCell
+                        label="Sets"
+                        value={exercise.target_sets}
+                        emphasized
+                        onCommit={(parsed) => {
                           updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
                             const nextTarget = Number.isNaN(parsed)
                               ? current.target_sets
@@ -1148,11 +1210,10 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                           });
                         }}
                       />
-                      <Input
-                        label="Max Sets"
-                        value={String(exercise.target_sets_max)}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value || 0);
+                      <RangeCell
+                        label="Max"
+                        value={exercise.target_sets_max}
+                        onCommit={(parsed) => {
                           updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
                             const nextMax = Number.isNaN(parsed)
                               ? current.target_sets_max
@@ -1167,22 +1228,20 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                           });
                         }}
                       />
-                      <Input
-                        label="Min Reps"
-                        value={String(exercise.target_reps_min)}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value || 0);
+                      <RangeCell
+                        label="Reps↓"
+                        value={exercise.target_reps_min}
+                        onCommit={(parsed) => {
                           updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
                             ...current,
                             target_reps_min: Number.isNaN(parsed) ? current.target_reps_min : parsed,
                           }));
                         }}
                       />
-                      <Input
-                        label="Max Reps"
-                        value={String(exercise.target_reps_max)}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value || 0);
+                      <RangeCell
+                        label="Reps↑"
+                        value={exercise.target_reps_max}
+                        onCommit={(parsed) => {
                           updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
                             ...current,
                             target_reps_max: Number.isNaN(parsed) ? current.target_reps_max : parsed,
@@ -1190,44 +1249,49 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         }}
                       />
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        className="text-[10px] px-2 py-1 rounded-[8px] bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]"
-                        onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, -1)}
-                        disabled={exerciseIndex === 0}
-                      >
-                        Move Up
-                      </button>
-                      <button
-                        className="text-[10px] px-2 py-1 rounded-[8px] bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]"
-                        onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, 1)}
-                        disabled={exerciseIndex === activeCustomDay.exercises.length - 1}
-                      >
-                        Move Down
-                      </button>
-                    </div>
-                  </Card>
+                  </div>
                 ))
               )}
             </div>
-          </Card>
+          </>
         )}
 
-        {customError && <p className="text-[11px] text-[#D69393]">{customError}</p>}
+        {customError && <p className="text-[12px] font-medium text-[var(--color-danger)]">{customError}</p>}
 
-        <Button className="w-full" onClick={handleCreateCustom} disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Creating Program...
-            </>
-          ) : (
-            'Create Program'
-          )}
+        <Button size="lg" className="w-full" onClick={handleCreateCustom} disabled={loading} loading={loading}>
+          {loading ? 'Creating program…' : 'Create program'}
         </Button>
       </div>
     );
   }
 
   return null;
+}
+
+/** Compact numeric cell for set/rep ranges */
+function RangeCell({
+  label,
+  value,
+  onCommit,
+  emphasized = false,
+}: {
+  label: string;
+  value: number;
+  onCommit: (parsed: number) => void;
+  emphasized?: boolean;
+}) {
+  return (
+    <label className="flex flex-col items-center gap-1">
+      <span className="t-label-sm text-[9px]">{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        value={String(value)}
+        onChange={(event) => onCommit(Number(event.target.value || 0))}
+        className={`well w-full min-h-10 text-center t-data-sm outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] ${
+          emphasized ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
+        }`}
+      />
+    </label>
+  );
 }

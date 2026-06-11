@@ -2,31 +2,36 @@
 
 @theme {
   /* ═════════════════════════════════════
-     WARM CARBON PALETTE
-     Editorial / tactile / mobile-first
+     IRON LEDGER
+     Precision gym instrument + coaching notebook.
+     Charcoal rubber · chalk · amber timer light ·
+     protein-label green · restrained berry.
      ═════════════════════════════════════ */
 
   /* Base (runtime values overridden by .dark/.light) */
-  --color-base: #1C1A17;
-  --color-surface-1: #242220;
-  --color-surface-2: #2E2B28;
-  --color-surface-3: #3A3633;
+  --color-base: #0B0A08;
+  --color-well: #080706;
+  --color-surface-1: #161310;
+  --color-surface-2: #1D1915;
+  --color-surface-3: #27211B;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #7F786F;
-  --color-text: #EDE7DF;
-  --color-text-dim: #B0A79B;
+  --color-muted: #837767;
+  --color-text: #F3EEE5;
+  --color-text-dim: #B5AA99;
 
   /* Accent colors */
-  --color-accent: #C4A484;
-  --color-sage: #8B9A7D;
-  --color-rose: #A68B8B;
-  --color-stone: #8B8580;
+  --color-accent: #F0A23C;       /* ember amber — training action */
+  --color-accent-deep: #C97F1F;
+  --color-sage: #A6C25C;         /* fresh lime-sage — nutrition / complete */
+  --color-sage-deep: #84A03C;
+  --color-rose: #A68B8B;         /* soft warn */
+  --color-stone: #93876F;        /* warm steel — controls */
 
   /* Status colors */
-  --color-success: #8B9A7D;
-  --color-warning: #C9A9A6;
-  --color-danger: #C47070;
+  --color-success: #94A87C;
+  --color-warning: #C9A487;
+  --color-danger: #C26565;       /* berry — risk / destructive only */
 
   /* Volume status (single-hue progression) */
   --color-volume-below-mev: color-mix(in srgb, var(--color-accent) 24%, var(--color-base));
@@ -35,81 +40,105 @@
   --color-volume-approaching-mrv: color-mix(in srgb, var(--color-accent) 76%, var(--color-base));
   --color-volume-above-mrv: color-mix(in srgb, var(--color-accent) 92%, var(--color-base));
 
-  /* Radius scale */
-  --radius-sm: 8px;
-  --radius-md: 16px;
+  /* Radius scale — controls small, cards medium, sheets large */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 14px;
   --radius-lg: 20px;
   --radius-xl: 28px;
-  --radius-2xl: 36px;
+  --radius-2xl: 32px;
   --radius-full: 9999px;
-  
-  /* Typography */
+
+  /* Typography — Atelier system: Josefin tracked caps display, Jost body, Plex Mono data */
+  --font-sans: 'Jost', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'Instrument Serif', serif;
-  
-  /* Spacing (Generous - Editorial) */
-  --spacing-section: 3rem;
+  --font-display: 'Josefin Sans', 'Jost', sans-serif;
+
+  /* Spacing */
+  --spacing-section: 2.5rem;
 }
 
 :root,
 .dark {
-  --color-base: #1C1A17;
-  --color-surface-1: #242220;
-  --color-surface-2: #2E2B28;
-  --color-surface-3: #3A3633;
+  --color-base: #0B0A08;
+  --color-well: #080706;
+  --color-surface-1: #161310;
+  --color-surface-2: #1D1915;
+  --color-surface-3: #27211B;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #7F786F;
-  --color-text: #EDE7DF;
-  --color-text-dim: #B0A79B;
-  --color-accent: #C4A484;
-  --color-sage: #8B9A7D;
+  --color-muted: #6F6557;
+  --color-text: #F3EEE5;
+  --color-text-dim: #A99E8D;
+  --color-accent: #F0A23C;
+  --color-accent-deep: #C97F1F;
+  --color-sage: #A6C25C;
+  --color-sage-deep: #84A03C;
   --color-rose: #A68B8B;
-  --color-stone: #8B8580;
-  --color-success: #8B9A7D;
-  --color-warning: #C9A9A6;
-  --color-danger: #C47070;
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-strong: rgba(255, 255, 255, 0.12);
-  --color-border-soft: rgba(255, 255, 255, 0.04);
+  --color-stone: #93876F;
+  --color-success: #A6C25C;
+  --color-warning: #C9A487;
+  --color-danger: #C26565;
+  --color-border: rgba(243, 238, 229, 0.07);
+  --color-border-strong: rgba(243, 238, 229, 0.14);
+  --color-border-soft: rgba(243, 238, 229, 0.04);
   --noise-opacity: 0.02;
   --noise-filter: none;
-  --overlay-backdrop: rgba(0, 0, 0, 0.8);
-  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%);
+  --overlay-backdrop: rgba(4, 3, 2, 0.8);
+  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 52%);
+  --well-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(243, 238, 229, 0.04);
+  --raised-shadow: 0 1px 0 rgba(243, 238, 229, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
+  --grad-amber: linear-gradient(180deg, #FFC766 0%, #F2A23C 55%, #E08D22 100%);
+  --glow-amber: 0 18px 56px rgba(240, 162, 60, 0.18), 0 4px 18px rgba(240, 162, 60, 0.08);
+  --strip-track: rgba(5, 4, 3, 0.55);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 3.5%, transparent), transparent 55%);
+  --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 60%);
+  --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 10%, transparent), transparent 58%);
   --button-primary-bg: var(--color-accent);
-  --button-primary-fg: #1C1A17;
-  --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
-  --button-primary-active: color-mix(in srgb, var(--color-accent) 84%, var(--color-base) 16%);
+  --button-primary-fg: #221503;
+  --button-primary-hover: color-mix(in srgb, var(--color-accent) 92%, white 8%);
+  --button-primary-active: var(--color-accent-deep);
 }
 
 .light {
-  --color-base: #F5F0EA;
-  --color-surface-1: #E8E2DA;
-  --color-surface-2: #DDD4CA;
-  --color-surface-3: #D0C5BA;
+  --color-base: #F3EEE6;
+  --color-well: #E9E2D6;
+  --color-surface-1: #FBF8F2;
+  --color-surface-2: #F0EAE0;
+  --color-surface-3: #E5DDD0;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #837B71;
-  --color-text: #2A241D;
-  --color-text-dim: #665D53;
-  --color-accent: #A98A63;
-  --color-sage: #6E8560;
+  --color-muted: #9C927F;
+  --color-text: #2B241B;
+  --color-text-dim: #756A59;
+  --color-accent: #B0791F;
+  --color-accent-deep: #8F6017;
+  --color-sage: #6B8430;
+  --color-sage-deep: #566B25;
   --color-rose: #9C7676;
-  --color-stone: #86796D;
-  --color-success: #6E8560;
-  --color-warning: #A58679;
-  --color-danger: #B46A6A;
-  --color-border: rgba(0, 0, 0, 0.06);
-  --color-border-strong: rgba(0, 0, 0, 0.11);
-  --color-border-soft: rgba(0, 0, 0, 0.03);
-  --noise-opacity: 0.01;
+  --color-stone: #87796A;
+  --color-success: #5C7547;
+  --color-warning: #A0764C;
+  --color-danger: #A14F4F;
+  --color-border: rgba(43, 36, 27, 0.08);
+  --color-border-strong: rgba(43, 36, 27, 0.14);
+  --color-border-soft: rgba(43, 36, 27, 0.04);
+  --noise-opacity: 0.012;
   --noise-filter: none;
-  --overlay-backdrop: rgba(20, 16, 12, 0.5);
-  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 60%);
+  --overlay-backdrop: rgba(24, 19, 13, 0.45);
+  --surface-atmosphere: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 54%);
+  --well-shadow: inset 0 1.5px 3px rgba(43, 36, 27, 0.10), inset 0 0 0 1px rgba(43, 36, 27, 0.04);
+  --raised-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 24px rgba(43, 36, 27, 0.08);
+  --grad-amber: linear-gradient(180deg, #E2A744 0%, #C2861F 55%, #A8701A 100%);
+  --glow-amber: 0 18px 50px rgba(176, 121, 31, 0.15), 0 4px 16px rgba(176, 121, 31, 0.08);
+  --strip-track: rgba(43, 36, 27, 0.08);
+  --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 2.5%, transparent), transparent 55%);
+  --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
+  --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 8%, transparent), transparent 58%);
   --button-primary-bg: var(--color-accent);
-  --button-primary-fg: #1F1A14;
+  --button-primary-fg: #FCF9F3;
   --button-primary-hover: color-mix(in srgb, var(--color-accent) 90%, var(--color-text) 10%);
-  --button-primary-active: color-mix(in srgb, var(--color-accent) 82%, var(--color-base) 18%);
+  --button-primary-active: var(--color-accent-deep);
 }
 
 * {
@@ -131,7 +160,7 @@ html.dark {
 }
 
 body {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   background-color: var(--color-base);
   background-image: var(--surface-atmosphere);
   background-repeat: no-repeat;
@@ -139,8 +168,9 @@ body {
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: 0.02em;
-  line-height: 1.6;
+  letter-spacing: 0;
+  line-height: 1.55;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Noise/grain texture overlay */
@@ -158,25 +188,158 @@ body::after {
 }
 
 /* ═════════════════════════════════════
-   TYPOGRAPHY UTILITIES
+   TYPE VOICES
+   Interface (sans) · Data (mono, tabular) · Brand (serif)
    ═════════════════════════════════════ */
 
-.heading-display {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
+/* Tracked-caps utility — the Atelier voice */
+.t-caps {
+  font-family: var(--font-display);
   text-transform: uppercase;
 }
 
-.heading-section {
-  font-size: 0.625rem;
-  font-weight: 500;
+.t-label {
+  font-family: var(--font-display);
+  font-size: 0.6875rem;     /* 11px */
+  font-weight: 400;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
 
+.t-label-sm {
+  font-family: var(--font-display);
+  font-size: 0.625rem;      /* 10px */
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.t-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;      /* 18px — caps + tracking read large */
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.t-heading {
+  font-family: var(--font-display);
+  font-size: 0.875rem;      /* 14px */
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+.t-body {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.t-caption {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+
+/* Data voice — always mono, always tabular */
+.t-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.t-data-sm {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.t-data-lg {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;       /* 20px */
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.t-data-xl {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.75rem;       /* 28px */
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.t-data-hero {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.5rem;        /* 40px */
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+/* Brand voice — light tracked-caps statements, earned moments only */
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.45;
+}
+
+/* Hero numerals — thin, tall, editorial */
+.t-numeral {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.t-numeral-light {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Legacy type utilities (kept working, re-tuned) ── */
+
+.heading-display {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.heading-section {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
 .number-display {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   letter-spacing: 0;
@@ -184,69 +347,158 @@ body::after {
 
 .font-display {
   font-family: var(--font-display);
+  font-weight: 400;
 }
 
 .font-display-italic {
   font-family: var(--font-display);
-  font-style: italic;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.06em;
 }
 
-/* Editorial Number Scale */
 .number-hero {
-  font-family: var(--font-display);
-  font-size: 2.5rem; /* 40px */
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 2.5rem;
+  font-weight: 500;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
 .number-large {
-  font-family: var(--font-display);
-  font-size: 1.75rem; /* 28px */
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 500;
   line-height: 1.2;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .number-medium {
-  font-family: var(--font-display);
-  font-size: 1.25rem; /* 20px */
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 500;
   line-height: 1.3;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
-/* Editorial Text Scale */
 .text-editorial {
-  font-family: var(--font-display);
-  font-size: 1.125rem; /* 18px */
+  font-family: var(--font-sans);
+  font-size: 1rem;
   font-style: italic;
   line-height: 1.5;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--color-text-dim);
 }
 
 .text-body-lg {
-  font-size: 1rem; /* 16px */
+  font-size: 1rem;
   line-height: 1.6;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .text-body {
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.875rem;
   line-height: 1.6;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .label-section {
-  font-size: 0.6875rem; /* 11px */
-  font-weight: 500;
-  letter-spacing: 0.15em;
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-muted);
+}
+
+/* ═════════════════════════════════════
+   MATERIAL — wells, raised surfaces, hairlines
+   ═════════════════════════════════════ */
+
+/* ── Panels — ember-lit glass cards (replaces flat surface+hairline) ── */
+
+.panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-1);
+  background-image: var(--ember-bleed);
+}
+
+/* Hot panel: hairline gradient border lit from the top-left, fading to dark */
+.panel-hot {
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  background:
+    var(--ember-bleed-hot) padding-box,
+    linear-gradient(var(--color-surface-2), var(--color-surface-2)) padding-box,
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--color-accent) 55%, transparent) 0%,
+      color-mix(in srgb, var(--color-accent) 18%, transparent) 32%,
+      var(--color-border) 62%,
+      var(--color-border-soft) 100%
+    ) border-box;
+  box-shadow: 0 0 70px 8px color-mix(in srgb, var(--color-accent) 4%, transparent);
+}
+
+.panel-sage {
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-sage) 18%, transparent);
+  background-color: var(--color-surface-1);
+  background-image: var(--ember-bleed-sage);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--color-sage) 4%, transparent);
+}
+
+/* Faint abstract contour waves for utility cards */
+.panel-wave {
+  position: relative;
+  overflow: hidden;
+}
+
+.panel-wave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 130' preserveAspectRatio='none'%3E%3Cpath d='M-10 96 Q 50 62 105 82 T 215 64' fill='none' stroke='%23F0A23C' stroke-opacity='0.045' stroke-width='1.5'/%3E%3Cpath d='M-10 118 Q 64 84 124 102 T 215 88' fill='none' stroke='%23F0A23C' stroke-opacity='0.025' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* Inset control well — like a milled slot in steel */
+.well {
+  background-color: var(--color-well);
+  box-shadow: var(--well-shadow);
+  border-radius: var(--radius-sm);
+}
+
+.raised {
+  box-shadow: var(--raised-shadow);
+}
+
+.hairline {
+  border: 1px solid var(--color-border);
+}
+
+.hairline-strong {
+  border: 1px solid var(--color-border-strong);
+}
+
+/* Touch press feedback for non-motion elements */
+.pressable {
+  transition: transform 90ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+
+.pressable:active {
+  transform: scale(0.98);
+}
+
+/* Clears the floating bottom nav + safe area */
+.pb-nav {
+  padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* ═════════════════════════════════════
@@ -271,6 +523,15 @@ body::after {
   background: var(--color-text-dim);
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* ═════════════════════════════════════
    FORM ELEMENTS
    ═════════════════════════════════════ */
@@ -285,13 +546,18 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--color-muted);
   opacity: 0.6;
 }
 
+input, textarea, select, button {
+  font-family: inherit;
+}
+
 /* ═════════════════════════════════════
-   FASHION EDITORIAL UTILITIES
+   SEMANTIC UTILITIES
    ═════════════════════════════════════ */
 
 .grayscale-filter {
@@ -311,61 +577,22 @@ input::placeholder {
   border: 1px solid var(--color-border);
 }
 
-.text-accent {
-  color: var(--color-accent);
-}
+.text-accent { color: var(--color-accent); }
+.text-sage { color: var(--color-sage); }
+.text-rose { color: var(--color-rose); }
 
-.text-sage {
-  color: var(--color-sage);
-}
+.bg-accent-tint { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.bg-accent-tint-strong { background-color: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.bg-sage-tint { background-color: color-mix(in srgb, var(--color-sage) 10%, transparent); }
+.bg-sage-tint-strong { background-color: color-mix(in srgb, var(--color-sage) 16%, transparent); }
+.bg-rose-tint { background-color: color-mix(in srgb, var(--color-rose) 10%, transparent); }
+.bg-rose-tint-strong { background-color: color-mix(in srgb, var(--color-rose) 16%, transparent); }
 
-.text-rose {
-  color: var(--color-rose);
-}
+.border-l-accent { border-left: 3px solid var(--color-accent); }
+.border-l-sage { border-left: 3px solid var(--color-sage); }
+.border-l-rose { border-left: 3px solid var(--color-rose); }
+.border-l-4 { border-left-width: 4px; }
 
-/* Accent Tint Backgrounds */
-.bg-accent-tint {
-  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-
-.bg-accent-tint-strong {
-  background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
-}
-
-.bg-sage-tint {
-  background-color: color-mix(in srgb, var(--color-sage) 10%, transparent);
-}
-
-.bg-sage-tint-strong {
-  background-color: color-mix(in srgb, var(--color-sage) 16%, transparent);
-}
-
-.bg-rose-tint {
-  background-color: color-mix(in srgb, var(--color-rose) 10%, transparent);
-}
-
-.bg-rose-tint-strong {
-  background-color: color-mix(in srgb, var(--color-rose) 16%, transparent);
-}
-
-/* Left-edge Accent Bars */
-.border-l-accent {
-  border-left: 3px solid var(--color-accent);
-}
-
-.border-l-sage {
-  border-left: 3px solid var(--color-sage);
-}
-
-.border-l-rose {
-  border-left: 3px solid var(--color-rose);
-}
-
-.border-l-4 {
-  border-left-width: 4px;
-}
-
-/* Gradient Progress Tracks */
 .gradient-progress-accent {
   background: linear-gradient(
     to right,
@@ -458,6 +685,16 @@ input::placeholder {
   animation: breathe 3s ease-in-out infinite;
 }
 
+/* Amber tick pulse for the live edge of a timer strip */
+@keyframes tick-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.animate-tick-live {
+  animation: tick-live 1.1s ease-in-out infinite;
+}
+
 /* ═════════════════════════════════════
    GLOW EFFECTS
    ═════════════════════════════════════ */
@@ -486,7 +723,27 @@ input::placeholder {
     fill 380ms var(--ease-out-quart), stroke 380ms var(--ease-out-quart) !important;
 }
 
-/* Compatibility layer for legacy hard-coded utility classes */
+/* ═════════════════════════════════════
+   REDUCED MOTION
+   ═════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═════════════════════════════════════
+   COMPATIBILITY LAYER
+   Legacy hard-coded utilities → tokens (both themes).
+   Removed page-by-page as screens are rebuilt.
+   ═════════════════════════════════════ */
+
 .light .text-\[\#E8E4DE\] { color: var(--color-text) !important; }
 .light .text-\[\#9A9A9A\] { color: var(--color-text-dim) !important; }
 .light .text-\[\#6B6B6B\] { color: var(--color-muted) !important; }
@@ -521,6 +778,43 @@ input::placeholder {
 .light .text-\[\#D0CCC4\] {
   color: var(--color-text-dim) !important;
 }
+
+/* Dark theme: map the most common legacy hexes onto the new palette */
+.dark .text-\[\#E8E4DE\] { color: var(--color-text); }
+.dark .text-\[\#9A9A9A\] { color: var(--color-text-dim); }
+.dark .text-\[\#6B6B6B\] { color: var(--color-muted); }
+.dark .text-\[\#8B9A7D\] { color: var(--color-sage); }
+.dark .text-\[\#C4A484\] { color: var(--color-accent); }
+.dark .text-\[\#8B6B6B\] { color: color-mix(in srgb, var(--color-danger) 70%, var(--color-muted)); }
+.dark .text-\[\#A8B89A\] { color: var(--color-sage); }
+.dark .text-\[\#D39B9B\] { color: var(--color-danger); }
+.dark .text-\[\#C48D8D\] { color: var(--color-rose); }
+.dark .text-\[\#B6B1A8\] { color: var(--color-text-dim); }
+.dark .text-\[\#C9C5BD\] { color: var(--color-text-dim); }
+.dark .text-\[\#7C7C7C\] { color: var(--color-muted); }
+.dark .text-\[\#D4CEC2\] { color: var(--color-text-dim); }
+.dark .text-\[\#B07A7A\] { color: color-mix(in srgb, var(--color-danger) 70%, var(--color-muted)); }
+.dark .bg-\[\#1A1A1A\] { background-color: var(--color-base); }
+.dark .bg-\[\#242424\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#2A2A2A\] { background-color: var(--color-surface-2); }
+.dark .bg-\[\#2E2E2E\] { background-color: var(--color-surface-2); }
+.dark .bg-\[\#1F1F1F\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#383838\] { background-color: var(--color-surface-3); }
+.dark .bg-\[\#1E1E1E\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#202020\] { background-color: var(--color-surface-1); }
+.dark .bg-\[\#171717\] { background-color: var(--color-well); }
+.dark .bg-\[\#121212\] { background-color: var(--color-well); }
+
+.light .bg-\[\#1E1E1E\] { background-color: var(--color-surface) !important; }
+.light .bg-\[\#202020\] { background-color: var(--color-surface) !important; }
+.light .bg-\[\#171717\] { background-color: var(--color-well) !important; }
+.light .bg-\[\#121212\] { background-color: var(--color-well) !important; }
+.light .text-\[\#A8B89A\] { color: var(--color-sage) !important; }
+.light .text-\[\#D39B9B\] { color: var(--color-danger) !important; }
+.light .text-\[\#C48D8D\] { color: var(--color-rose) !important; }
+.light .text-\[\#B07A7A\] { color: var(--color-danger) !important; }
+.light .text-\[\#7C7C7C\] { color: var(--color-muted) !important; }
+.light .text-\[\#D4CEC2\] { color: var(--color-text-dim) !important; }
 
 /* ═════════════════════════════════════
    EASING CURVES

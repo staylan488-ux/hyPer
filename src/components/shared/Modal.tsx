@@ -11,6 +11,7 @@ interface ModalProps {
   contentClassName?: string;
 }
 
+/** Bottom sheet on mobile, centered card on larger screens. Grab handle, safe-area aware. */
 export function Modal({ isOpen, onClose, title, children, contentClassName = '' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +36,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
       {isOpen && (
         <motion.div
           ref={overlayRef}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-blur-[2px]"
           style={{ backgroundColor: 'var(--overlay-backdrop)' }}
           variants={backdrop}
           initial="hidden"
@@ -45,21 +46,22 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
           onClick={(e) => e.target === overlayRef.current && onClose()}
         >
           <motion.div
-            className="w-full sm:max-w-lg bg-[var(--color-surface-1)] rounded-t-[var(--radius-xl)] sm:rounded-[var(--radius-xl)] max-h-[90vh] border border-[var(--color-border-strong)] flex flex-col overflow-hidden"
-            initial={{ opacity: 0, y: 60, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.98 }}
+            className="w-full sm:max-w-lg bg-[var(--color-surface-1)] rounded-t-[var(--radius-xl)] sm:rounded-[var(--radius-xl)] max-h-[92dvh] border-t border-x sm:border border-[var(--color-border-strong)] flex flex-col overflow-hidden"
+            initial={{ opacity: 0, y: 80 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 60 }}
             transition={springs.smooth}
           >
-            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-[var(--color-border)] bg-[var(--color-surface-1)]">
-              {title && (
-                <h2 className="text-xs font-medium tracking-[0.15em] uppercase text-[var(--color-text)]">
-                  {title}
-                </h2>
-              )}
+            {/* grab handle */}
+            <div className="flex justify-center pt-2.5 pb-0.5 sm:hidden" aria-hidden>
+              <span className="w-9 h-1 rounded-full bg-[color-mix(in_srgb,var(--color-text)_18%,transparent)]" />
+            </div>
+            <div className="flex items-center justify-between pl-5 pr-2 sm:pl-6 pt-1.5 sm:pt-5 pb-2">
+              {title ? <h2 className="t-heading">{title}</h2> : <span />}
               <motion.button
                 type="button"
                 onClick={onClose}
+                aria-label="Close"
                 className="p-3 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)] rounded-[var(--radius-md)] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
@@ -67,10 +69,10 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
               </motion.button>
             </div>
             <motion.div
-              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-4 sm:pb-6 ${contentClassName}`}
+              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.1, duration: 0.2 }}
+              transition={{ delay: 0.08, duration: 0.2 }}
             >
               {children}
             </motion.div>
