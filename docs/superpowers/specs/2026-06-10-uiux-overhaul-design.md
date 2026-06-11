@@ -31,13 +31,16 @@ gives every surface a functional motif, and keeps both themes intentional.
 
 | Voice | Face | Use |
 |---|---|---|
-| Interface | Schibsted Grotesk | labels, body, forms, buttons, nav |
+| Interface | Archivo | labels, body, forms, buttons, nav |
 | Data | IBM Plex Mono | weights, reps, RPE, macros, timers, calendars — always `tabular-nums` |
-| Brand | Instrument Serif (italic) | wordmark moments, summary statements, celebration |
+| Brand | Big Shoulders (condensed industrial display) | wordmark moments, summary statements, celebration |
 
-Rules: micro-labels max `0.08em` tracking (kill the 0.2em everywhere-caps), data never in serif,
-serif never in forms. Utilities: `.t-label` (11px caps, 0.08em), `.t-body`, `.t-data` (mono tabular),
-`.t-data-lg/-xl/-hero`, `.t-display` (serif italic).
+Rules: micro-labels max `0.08em` tracking (kill the 0.2em everywhere-caps), data never in display,
+display never in forms or long sentences (annotations/coach sentences = Archivo italic).
+Utilities: `.t-label` (11px caps, 0.08em), `.t-body`, `.t-data` (mono tabular),
+`.t-data-lg/-xl/-hero`, `.t-display` (condensed semibold).
+*(Revised 2026-06-10: replaced Schibsted Grotesk + Instrument Serif italic — read as generic
+AI-era styling. Foundry stack chosen for industrial specificity.)*
 
 ## 3. Color tokens
 

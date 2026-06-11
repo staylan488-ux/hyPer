@@ -219,7 +219,7 @@ export function Analysis() {
                             ))}
                           </div>
                           {recommendation && (
-                            <p className="t-display text-[15px] text-[var(--color-text-dim)]">{recommendation.message}</p>
+                            <p className="text-[13px] italic leading-relaxed text-[var(--color-text-dim)]">{recommendation.message}</p>
                           )}
                         </div>
                       </motion.div>

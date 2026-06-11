@@ -50,9 +50,9 @@
   --radius-full: 9999px;
 
   /* Typography — three voices */
-  --font-sans: 'Schibsted Grotesk', system-ui, sans-serif;
+  --font-sans: 'Archivo', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'Instrument Serif', serif;
+  --font-display: 'Big Shoulders', 'Archivo', sans-serif;
 
   /* Spacing */
   --spacing-section: 2.5rem;
@@ -273,13 +273,12 @@ body::after {
   line-height: 1.05;
 }
 
-/* Brand voice — serif, earned moments only */
+/* Brand voice — condensed industrial display, earned moments only */
 .t-display {
   font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.005em;
-  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
 }
 
 /* ── Legacy type utilities (kept working, re-tuned) ── */
@@ -310,11 +309,13 @@ body::after {
 
 .font-display {
   font-family: var(--font-display);
+  font-weight: 600;
 }
 
 .font-display-italic {
   font-family: var(--font-display);
-  font-style: italic;
+  font-style: normal;
+  font-weight: 600;
 }
 
 .number-hero {
@@ -345,11 +346,11 @@ body::after {
 }
 
 .text-editorial {
-  font-family: var(--font-display);
-  font-size: 1.125rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
   font-style: italic;
   line-height: 1.5;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--color-text-dim);
 }
 

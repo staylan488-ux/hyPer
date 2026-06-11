@@ -1916,7 +1916,7 @@ function ExerciseCard({
                 </p>
               )}
               {notePreview && (
-                <p className="mt-0.5 text-xs t-display text-[var(--color-text-dim)] truncate">{notePreview}</p>
+                <p className="mt-0.5 text-xs italic text-[var(--color-text-dim)] truncate">{notePreview}</p>
               )}
             </div>
             <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -2035,7 +2035,7 @@ function MovementNote({
         maxLength={200}
         placeholder="Note — technique, feel, cues…"
         aria-label="Movement note"
-        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm t-display text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
       />
       <div className="mt-1 flex items-center justify-between min-h-4">
         <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-muted)]">

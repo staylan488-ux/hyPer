@@ -540,7 +540,7 @@ export function Settings() {
               <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
             </div>
           ) : savedMeals.length === 0 ? (
-            <p className="t-display text-[15px] text-[var(--color-text-dim)] text-center py-8">
+            <p className="text-sm italic text-[var(--color-text-dim)] text-center py-8">
               Meals you save from the food logger will appear here.
             </p>
           ) : (
