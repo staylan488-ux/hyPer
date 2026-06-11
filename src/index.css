@@ -90,6 +90,7 @@
   --raised-shadow: 0 1px 0 rgba(243, 238, 229, 0.06) inset, 0 8px 24px rgba(0, 0, 0, 0.4);
   --grad-amber: linear-gradient(180deg, #FFC766 0%, #F2A23C 55%, #E08D22 100%);
   --glow-amber: 0 18px 56px rgba(240, 162, 60, 0.18), 0 4px 18px rgba(240, 162, 60, 0.08);
+  --strip-track: rgba(5, 4, 3, 0.55);
   --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 3.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 60%);
   --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 10%, transparent), transparent 58%);
@@ -130,6 +131,7 @@
   --raised-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 8px 24px rgba(43, 36, 27, 0.08);
   --grad-amber: linear-gradient(180deg, #E2A744 0%, #C2861F 55%, #A8701A 100%);
   --glow-amber: 0 18px 50px rgba(176, 121, 31, 0.15), 0 4px 16px rgba(176, 121, 31, 0.08);
+  --strip-track: rgba(43, 36, 27, 0.08);
   --ember-bleed: radial-gradient(120% 90% at 18% 0%, color-mix(in srgb, var(--color-accent) 2.5%, transparent), transparent 55%);
   --ember-bleed-hot: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 60%);
   --ember-bleed-sage: radial-gradient(130% 100% at 20% 0%, color-mix(in srgb, var(--color-sage) 8%, transparent), transparent 58%);
