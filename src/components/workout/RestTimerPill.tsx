@@ -163,7 +163,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 aria-label="Open rest timer options"
               >
                 <span
-                  className={`shrink-0 ${isComplete ? 'text-[20px] font-extrabold tracking-tight' : 't-data-lg tabular-nums'}`}
+                  className={`shrink-0 ${isComplete ? 't-caps text-[15px] font-normal tracking-[0.24em]' : 't-data-lg tabular-nums'}`}
                   style={{ color: tone, textShadow: isComplete ? `0 0 14px color-mix(in srgb, ${tone} 50%, transparent)` : 'none' }}
                 >
                   {isComplete ? 'Go' : formatTime(timeLeft)}

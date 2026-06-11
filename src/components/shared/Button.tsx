@@ -12,7 +12,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, ...props }, ref) => {
     const baseStyles = `
       inline-flex items-center justify-center
-      font-semibold transition-colors duration-150
+      [font-family:var(--font-display)] uppercase tracking-[0.16em] font-medium
+      transition-colors duration-150
       focus:outline-none
       focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_35%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
       disabled:opacity-40 disabled:cursor-not-allowed
@@ -22,7 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const variants = {
       primary: `
         [background:var(--grad-amber)] text-[var(--button-primary-fg)]
-        font-bold
+        font-semibold
         hover:brightness-105
         active:brightness-95
         shadow-[var(--glow-amber),0_1px_0_rgba(255,255,255,0.25)_inset]
@@ -46,9 +47,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes = {
-      sm: 'px-3.5 min-h-9 text-xs gap-1.5',
-      md: 'px-5 min-h-11 text-sm gap-2',
-      lg: 'px-6 min-h-[52px] text-[15px] gap-2',
+      sm: 'px-3.5 min-h-9 text-[10px] gap-1.5',
+      md: 'px-5 min-h-11 text-[12px] gap-2',
+      lg: 'px-6 min-h-[52px] text-[13px] gap-2.5',
     };
 
     const isDisabled = disabled || loading;

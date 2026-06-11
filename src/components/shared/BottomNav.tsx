@@ -75,7 +75,7 @@ export function BottomNav() {
                     style={isActive ? { filter: 'drop-shadow(0 2px 10px color-mix(in srgb, var(--color-accent) 35%, transparent))' } : undefined}
                   />
                   <span
-                    className={`text-[11px] font-semibold transition-colors duration-200 ${
+                    className={`t-caps text-[9px] font-normal tracking-[0.18em] transition-colors duration-200 ${
                       isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
                     }`}
                   >

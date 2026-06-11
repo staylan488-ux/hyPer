@@ -1449,7 +1449,7 @@ export function Workout() {
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-breathe" />
               In session
             </p>
-            <h1 className="text-[22px] font-bold tracking-[-0.02em] text-[var(--color-text)] truncate">{currentSessionTitle}</h1>
+            <h1 className="t-caps text-[17px] font-light tracking-[0.18em] text-[var(--color-text)] truncate">{currentSessionTitle}</h1>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
@@ -1939,7 +1939,7 @@ function ExerciseCard({
                     <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={4} />
                   </motion.span>
                 )}
-                <h3 className="text-[19px] font-bold tracking-[-0.01em] text-[var(--color-text)] truncate">{exerciseName}</h3>
+                <h3 className="t-caps text-[14px] font-normal tracking-[0.14em] text-[var(--color-text)] truncate">{exerciseName}</h3>
               </div>
               {supersetLabel && (
                 <p className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: roleColor }}>

@@ -232,7 +232,7 @@ export function Dashboard() {
         {/* Header */}
         <motion.header className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
           <p className="t-label mb-1">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="text-[26px] font-medium tracking-[-0.01em] leading-[1.3] text-[var(--color-text)]">{greeting}</h1>
+          <h1 className="t-caps text-[19px] font-light tracking-[0.18em] leading-[1.4] text-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
         {/* ── Next action hero ── */}
@@ -528,8 +528,8 @@ function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNo
       <div className="pressable panel panel-wave flex flex-col gap-2 p-3 min-h-[88px]">
         <span className="text-[var(--color-accent)]">{icon}</span>
         <span>
-          <span className="block text-[14px] font-bold text-[var(--color-text)]">{label}</span>
-          <span className="flex items-center gap-0.5 text-[11px] text-[var(--color-muted)] mt-0.5">
+          <span className="t-caps block text-[11px] font-normal tracking-[0.18em] text-[var(--color-text)]">{label}</span>
+          <span className="flex items-center gap-0.5 text-[11px] text-[var(--color-muted)] mt-1">
             {sub}
             <ChevronRight className="w-3 h-3" strokeWidth={2.25} />
           </span>

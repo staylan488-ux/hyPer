@@ -49,10 +49,10 @@
   --radius-2xl: 32px;
   --radius-full: 9999px;
 
-  /* Typography — the Plex instrument family: words in Sans, measured numbers in Mono */
-  --font-sans: 'IBM Plex Sans', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  /* Typography — Atelier system: Josefin tracked caps display, Jost body, Plex Mono data */
+  --font-sans: 'Jost', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --font-display: 'IBM Plex Sans', -apple-system, 'SF Pro Display', system-ui, sans-serif;
+  --font-display: 'Josefin Sans', 'Jost', sans-serif;
 
   /* Spacing */
   --spacing-section: 2.5rem;
@@ -190,39 +190,47 @@ body::after {
    Interface (sans) · Data (mono, tabular) · Brand (serif)
    ═════════════════════════════════════ */
 
+/* Tracked-caps utility — the Atelier voice */
+.t-caps {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+
 .t-label {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.6875rem;     /* 11px */
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 400;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
 
 .t-label-sm {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.625rem;      /* 10px */
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 400;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--color-muted);
 }
 
 .t-title {
-  font-family: var(--font-sans);
-  font-size: 1.375rem;      /* 22px */
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.2;
+  font-family: var(--font-display);
+  font-size: 1.125rem;      /* 18px — caps + tracking read large */
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1.35;
   color: var(--color-text);
 }
 
 .t-heading {
-  font-family: var(--font-sans);
-  font-size: 1rem;          /* 16px */
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
+  font-family: var(--font-display);
+  font-size: 0.875rem;      /* 14px */
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.4;
   color: var(--color-text);
 }
 
@@ -283,27 +291,28 @@ body::after {
   line-height: 1.05;
 }
 
-/* Brand voice — heavy grotesque statements, earned moments only */
+/* Brand voice — light tracked-caps statements, earned moments only */
 .t-display {
   font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  font-weight: 300;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.45;
 }
 
-/* Hero numerals — tall, sharp, elegant; never blocky */
+/* Hero numerals — thin, tall, editorial */
 .t-numeral {
-  font-family: var(--font-sans);
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.01em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 
 .t-numeral-light {
-  font-family: var(--font-sans);
-  font-weight: 400;
-  letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: 0.01em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
@@ -336,14 +345,14 @@ body::after {
 
 .font-display {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .font-display-italic {
   font-family: var(--font-display);
   font-style: normal;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
 }
 
 .number-hero {
