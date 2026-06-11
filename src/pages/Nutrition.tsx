@@ -1,11 +1,10 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
-import { Plus, Check, X, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus, UtensilsCrossed, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Card, CardTitle, Modal } from '@/components/shared';
+import { Button, EmptyState, MacroBar, Modal, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
 import { getLogDate, getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
-import { MacroGauge } from '@/components/dashboard/MacroGauge';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 import {
@@ -43,6 +42,13 @@ interface NutritionLogEntry {
   } | null;
 }
 
+const MEAL_TONES: Record<string, string> = {
+  breakfast: 'var(--color-accent)',
+  lunch: 'var(--color-sage)',
+  dinner: 'var(--color-rose)',
+  snack: 'var(--color-stone)',
+};
+
 function getDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
@@ -71,8 +77,9 @@ export function Nutrition() {
   const [deletedId, setDeletedId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
-  const [monthDirection, setMonthDirection] = useState(0);
+  const [showMonthSheet, setShowMonthSheet] = useState(false);
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
     setLoading(true);
@@ -164,7 +171,17 @@ export function Nutrition() {
     }
   };
 
+  const pickDate = (day: Date) => {
+    setSelectedDate(day);
+    setWeekAnchor(day);
+    if (!isSameMonth(day, selectedMonth)) {
+      setSelectedMonth(startOfMonth(day));
+    }
+  };
+
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
+  const weekStart = useMemo(() => startOfWeek(weekAnchor), [weekAnchor]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const selectedDateKey = getDateKey(selectedDate);
 
   const selectedDayLogs = useMemo(() => {
@@ -199,267 +216,335 @@ export function Nutrition() {
   }, [monthLogs]);
 
   const mealTagLabel = (meal?: string | null) => {
-    if (!meal) return 'No tag';
+    if (!meal) return null;
     return meal.charAt(0).toUpperCase() + meal.slice(1);
   };
 
-  return (
-    <motion.div
-      className="pb-24 px-5 pt-8"
-    >
-      <AnimatePresence>
-        {showSuccess && (
-          <motion.div
-            className="fixed safe-area-top-offset left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 bg-[#8B9A7D] text-[#1A1A1A] rounded-[20px] text-xs tracking-wider shadow-lg"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={springs.smooth}
-          >
-            <Check className="w-4 h-4" />
-            Entry Saved
-          </motion.div>
-        )}
-      </AnimatePresence>
+  const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || 2000) - dayTotals.calories));
 
-      <motion.header className="mb-10" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="text-[10px] tracking-[0.25em] uppercase text-[#6B6B6B] mb-1">
-          {format(selectedDate, 'EEEE').toUpperCase()}
-        </p>
-        <h1 className="text-2xl font-display-italic text-[#E8E4DE] tracking-tight">Nutrition</h1>
-        <p className="text-xs text-[#6B6B6B] mt-1">{format(selectedDate, 'MMMM d, yyyy')}</p>
+  return (
+    <Screen>
+      <Toast show={showSuccess} message="Entry saved" />
+
+      {/* Header */}
+      <motion.header
+        className="mb-5 flex items-start justify-between gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={springs.smooth}
+      >
+        <div className="min-w-0">
+          <p className="t-label-sm mb-1">{isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE')} · {format(selectedDate, 'MMM d')}</p>
+          <h1 className="t-title">Fuel</h1>
+        </div>
+        {!loading && (
+          <div className="text-right shrink-0 pt-0.5">
+            <p className="t-data-lg text-[var(--color-text)]">{remainingKcal.toLocaleString()}</p>
+            <p className="t-label-sm text-[10px]">kcal left</p>
+          </div>
+        )}
       </motion.header>
 
-      <motion.div className="mb-8" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <CardTitle className="mb-4">Daily Intake</CardTitle>
-        <div className="grid grid-cols-4 gap-2">
-          <MacroGauge label="KCAL" current={dayTotals.calories} target={macroTarget?.calories || 2000} unit="" color="default" loading={loading} />
-          <MacroGauge label="PROTEIN" current={dayTotals.protein} target={macroTarget?.protein || 150} unit="g" color="accent" loading={loading} />
-          <MacroGauge label="CARBS" current={dayTotals.carbs} target={macroTarget?.carbs || 200} unit="g" color="default" loading={loading} />
-          <MacroGauge label="FAT" current={dayTotals.fat} target={macroTarget?.fat || 65} unit="g" color="default" loading={loading} />
+      {/* Macro strips */}
+      <motion.section
+        className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 mb-4"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...springs.smooth, delay: 0.04 }}
+      >
+        <MacroBar
+          label="Calories"
+          current={dayTotals.calories}
+          target={macroTarget?.calories || 2000}
+          tone="amber"
+          loading={loading}
+          className="mb-3.5"
+        />
+        <div className="grid grid-cols-3 gap-3">
+          <MacroBar label="Protein" current={dayTotals.protein} target={macroTarget?.protein || 150} unit="g" tone="sage" size="sm" loading={loading} />
+          <MacroBar label="Carbs" current={dayTotals.carbs} target={macroTarget?.carbs || 200} unit="g" tone="stone" size="sm" loading={loading} />
+          <MacroBar label="Fat" current={dayTotals.fat} target={macroTarget?.fat || 65} unit="g" tone="stone" size="sm" loading={loading} />
         </div>
+      </motion.section>
+
+      {/* Primary action */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.smooth, delay: 0.08 }}>
+        <Button
+          size="lg"
+          className="w-full mb-4"
+          onClick={() => {
+            setEditingEntry(null);
+            setShowLogger(true);
+          }}
+        >
+          <Plus className="w-[18px] h-[18px]" strokeWidth={2.5} />
+          Log food
+        </Button>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <Card variant="slab" className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <motion.button
-              onClick={() => {
-                setMonthDirection(-1);
-                setSelectedMonth((prev) => subMonths(prev, 1));
-              }}
-              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
-              whileTap={{ scale: 0.9, x: -2 }}
-            >
-              <ChevronLeft className="w-4 h-4 text-[#9A9A9A]" />
-            </motion.button>
-            <AnimatePresence mode="wait">
-              <motion.h3
-                key={format(selectedMonth, 'yyyy-MM')}
-                className="text-xs tracking-[0.15em] uppercase text-[#E8E4DE]"
-                initial={{ opacity: 0, x: monthDirection * 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: monthDirection * -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                {format(selectedMonth, 'MMMM yyyy')}
-              </motion.h3>
-            </AnimatePresence>
-            <motion.button
-              onClick={() => {
-                setMonthDirection(1);
-                setSelectedMonth((prev) => addMonths(prev, 1));
-              }}
-              className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 transition-colors"
-              whileTap={{ scale: 0.9, x: 2 }}
-            >
-              <ChevronRight className="w-4 h-4 text-[#9A9A9A]" />
-            </motion.button>
-          </div>
+      {/* Week strip + month jump */}
+      <motion.section
+        className="mb-4"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...springs.smooth, delay: 0.12 }}
+      >
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label="Previous week"
+            className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
+            onClick={() => setWeekAnchor((current) => addDays(current, -7))}
+          >
+            <ChevronLeft className="w-4 h-4" strokeWidth={2} />
+          </button>
 
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-              <div key={`${day}-${i}`} className="text-center text-[10px] text-[#6B6B6B] py-1">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day) => {
+          <div className="grid grid-cols-7 gap-1 flex-1">
+            {weekDays.map((day) => {
               const key = getDateKey(day);
-              const dayLogs = logsByDay[key] || [];
               const isSelected = isSameDay(day, selectedDate);
-              const inMonth = isSameMonth(day, selectedMonth);
-              const isTodayDate = isToday(day);
+              const hasLogs = (logsByDay[key] || []).length > 0;
+              const dayIsToday = isToday(day);
 
               return (
                 <button
                   key={key}
-                  onClick={() => {
-                    setSelectedDate(day);
-                    if (!isSameMonth(day, selectedMonth)) {
-                      setSelectedMonth(startOfMonth(day));
-                    }
-                  }}
-                  className={`h-10 rounded-[12px] text-xs tabular-nums transition-all relative ${
+                  type="button"
+                  onClick={() => pickDate(day)}
+                  className={`relative flex flex-col items-center gap-0.5 rounded-[var(--radius-sm)] py-2 border transition-colors ${
                     isSelected
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : inMonth
-                      ? 'text-[#E8E4DE] hover:bg-white/5 active:bg-white/10'
-                      : 'text-[#5A5A5A] hover:bg-white/5 active:bg-white/10'
-                  } ${isTodayDate && !isSelected ? 'ring-1 ring-[#C4A484]/30' : ''}`}
+                      ? 'bg-[var(--color-text)] border-transparent'
+                      : dayIsToday
+                        ? 'bg-[var(--color-surface-2)] border-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]'
+                        : 'bg-[var(--color-surface-1)] border-[var(--color-border)]'
+                  }`}
                 >
-                  {isSelected && (
-                    <motion.div
-                      className="absolute inset-0 bg-[#E8E4DE] rounded-[12px]"
-                      layoutId="calendar-day-selected"
-                      transition={springs.smooth}
-                    />
+                  <span className={`text-[9px] font-semibold uppercase ${isSelected ? 'text-[var(--color-base)]' : 'text-[var(--color-muted)]'}`}>
+                    {format(day, 'EEEEE')}
+                  </span>
+                  <span className={`t-data-sm ${isSelected ? 'text-[var(--color-base)] font-semibold' : 'text-[var(--color-text-dim)]'}`}>
+                    {format(day, 'd')}
+                  </span>
+                  <span
+                    className={`w-1 h-1 rounded-full ${hasLogs ? '' : 'opacity-0'}`}
+                    style={{ backgroundColor: isSelected ? 'var(--color-base)' : 'var(--color-sage)' }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            aria-label="Next week"
+            className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
+            onClick={() => setWeekAnchor((current) => addDays(current, 7))}
+          >
+            <ChevronRight className="w-4 h-4" strokeWidth={2} />
+          </button>
+
+          <button
+            type="button"
+            aria-label="Open month calendar"
+            className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            onClick={() => setShowMonthSheet(true)}
+          >
+            <CalendarDays className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+        </div>
+      </motion.section>
+
+      {/* Timeline */}
+      <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...springs.smooth, delay: 0.16 }}>
+        {loading ? (
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline p-4 space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="shimmer h-8 w-12" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="shimmer h-3.5 w-2/3" />
+                  <div className="shimmer h-2.5 w-1/3" />
+                </div>
+                <div className="shimmer h-3.5 w-12" />
+              </div>
+            ))}
+          </div>
+        ) : selectedDayLogs.length === 0 ? (
+          <EmptyState
+            icon={UtensilsCrossed}
+            title="Nothing logged yet"
+            body={isToday(selectedDate) ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditingEntry(null);
+                  setShowLogger(true);
+                }}
+              >
+                <Plus className="w-4 h-4" strokeWidth={2.25} />
+                Add entry
+              </Button>
+            }
+          />
+        ) : (
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-1)] hairline px-4 py-2">
+            <div className="flex items-center justify-between py-2.5 border-b border-[var(--color-border)]">
+              <span className="t-label-sm">Timeline</span>
+              <span className="t-data-sm text-[var(--color-muted)]">
+                {selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+            <AnimatePresence>
+              {selectedDayLogs.map((log, index) => {
+                const tone = log.meal_type ? MEAL_TONES[log.meal_type] : 'var(--color-muted)';
+                const tagLabel = mealTagLabel(log.meal_type);
+
+                return (
+                  <motion.div
+                    key={log.id}
+                    className="flex items-center gap-3 py-3 border-b border-[var(--color-border-soft)] last:border-0"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{
+                      opacity: deletedId === log.id ? 0 : 1,
+                      x: deletedId === log.id ? 60 : 0,
+                      y: 0,
+                      height: deletedId === log.id ? 0 : 'auto',
+                    }}
+                    exit={{ opacity: 0, x: 60, height: 0 }}
+                    transition={{
+                      ...springs.smooth,
+                      delay: deletedId === log.id ? 0 : Math.min(index * 0.03, 0.25),
+                    }}
+                  >
+                    {/* meal tick */}
+                    <span className="w-[3px] self-stretch rounded-full shrink-0" style={{ backgroundColor: tone }} />
+
+                    <div className="w-14 shrink-0">
+                      <p className="t-data-sm text-[var(--color-text-dim)]">{format(getLogDate(log), 'h:mm a')}</p>
+                      {tagLabel && (
+                        <p className="text-[9px] font-semibold uppercase tracking-[0.06em] mt-0.5" style={{ color: tone }}>
+                          {tagLabel}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[var(--color-text)] truncate">{log.food?.name || 'Unknown Food'}</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">
+                        {log.servings} serving{log.servings !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <p className="t-data-sm text-[var(--color-text)]">
+                        {Math.round((log.food?.calories || 0) * log.servings)} <span className="text-[10px] text-[var(--color-muted)]">kcal</span>
+                      </p>
+                      <p className="t-data-sm text-[10px] text-[var(--color-muted)]">{Math.round((log.food?.protein || 0) * log.servings)}g P</p>
+                    </div>
+
+                    <div className="flex shrink-0 -mr-1">
+                      <motion.button
+                        className="p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                        onClick={() => {
+                          setEditingEntry(log);
+                          setShowLogger(true);
+                        }}
+                        aria-label="Edit entry"
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </motion.button>
+                      <motion.button
+                        className="p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-danger)] transition-colors"
+                        onClick={() => handleDeleteEntry(log.id)}
+                        aria-label="Remove entry"
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
+      </motion.section>
+
+      {/* Month jump sheet */}
+      <Modal isOpen={showMonthSheet} onClose={() => setShowMonthSheet(false)} title="Jump to date">
+        <div className="pt-1 pb-2">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
+              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+            >
+              <ChevronLeft className="w-4 h-4" strokeWidth={2} />
+            </button>
+            <span className="t-heading">{format(selectedMonth, 'MMMM yyyy')}</span>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
+              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+            >
+              <ChevronRight className="w-4 h-4" strokeWidth={2} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 mb-1">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+              <span key={`${d}-${i}`} className="t-label-sm text-center py-1">{d}</span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-y-0.5">
+            {calendarDays.map((day) => {
+              const key = getDateKey(day);
+              const isSelected = isSameDay(day, selectedDate);
+              const inMonth = isSameMonth(day, selectedMonth);
+              const hasLogs = (logsByDay[key] || []).length > 0;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    pickDate(day);
+                    setShowMonthSheet(false);
+                  }}
+                  className={`relative h-10 rounded-[var(--radius-sm)] t-data-sm transition-colors ${
+                    isSelected
+                      ? 'bg-[var(--color-text)] text-[var(--color-base)] font-semibold'
+                      : inMonth
+                        ? 'text-[var(--color-text-dim)] active:bg-[var(--color-surface-2)]'
+                        : 'text-[var(--color-muted)]'
+                  }`}
+                >
+                  {format(day, 'd')}
+                  {hasLogs && !isSelected && (
+                    <span className="absolute left-1/2 -translate-x-1/2 bottom-1 w-1 h-1 rounded-full bg-[var(--color-sage)]" />
                   )}
-                  <span className="relative z-10">{format(day, 'd')}</span>
-                  {dayLogs.length > 0 && (
-                    <motion.span
-                      className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full z-10 ${
-                        isSelected ? 'bg-[#1A1A1A]' : 'bg-[#8B9A7D]'
-                      }`}
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={springs.bouncy}
-                    />
+                  {isToday(day) && !isSelected && (
+                    <span className="absolute left-1/2 -translate-x-1/2 top-1 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
                   )}
                 </button>
               );
             })}
           </div>
-        </Card>
-      </motion.div>
+        </div>
+      </Modal>
 
-      {loading ? (
-        <div className="text-center py-8 text-[#6B6B6B] text-xs tracking-wider">Loading...</div>
-      ) : (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <Card variant="slab">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-[10px] tracking-[0.15em] uppercase text-[#9A9A9A]">Day Timeline</h3>
-                <p className="text-xs text-[#6B6B6B] mt-1">{selectedDayLogs.length} entries</p>
-              </div>
-              <motion.button
-                className="px-3 py-2 rounded-[14px] bg-[#2E2E2E] hover:bg-[#383838] text-[10px] tracking-[0.1em] uppercase text-[#E8E4DE] transition-colors"
-                onClick={() => {
-                  setEditingEntry(null);
-                  setShowLogger(true);
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Plus className="w-3 h-3 inline-block mr-1" />
-                Add
-              </motion.button>
-            </div>
-
-            {selectedDayLogs.length === 0 ? (
-              <motion.button
-                className="w-full py-8 rounded-[20px] border border-dashed border-white/10 hover:border-white/20 hover:text-[#9A9A9A] transition-colors"
-                onClick={() => {
-                  setEditingEntry(null);
-                  setShowLogger(true);
-                }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <p className="text-editorial mb-2">Nothing logged yet.</p>
-                <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">
-                  <Plus className="w-3 h-3 inline-block mr-1" />
-                  Add First Entry
-                </p>
-              </motion.button>
-            ) : (
-              <div className="space-y-1">
-                <AnimatePresence>
-                  {selectedDayLogs.map((log, index) => {
-                    const mealTypeColors = {
-                      breakfast: '#C4A484',
-                      lunch: '#8B9A7D',
-                      dinner: '#A68B8B',
-                      snack: '#8B8580',
-                    };
-                    const borderColor = log.meal_type ? mealTypeColors[log.meal_type] : '#6B6B6B';
-
-                    return (
-                    <motion.div
-                      key={log.id}
-                      className="flex items-center gap-3 py-3 border-b border-white/5 last:border-0 border-l-[3px] pl-3"
-                      style={{ borderLeftColor: borderColor }}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{
-                        opacity: deletedId === log.id ? 0 : 1,
-                        x: deletedId === log.id ? 60 : 0,
-                        y: 0,
-                        height: deletedId === log.id ? 0 : 'auto',
-                      }}
-                      exit={{ opacity: 0, x: 60, height: 0 }}
-                      transition={{
-                        ...springs.smooth,
-                        delay: deletedId === log.id ? 0 : index * 0.04,
-                      }}
-                    >
-                      <div className="w-14 text-center">
-                        <p className="text-[11px] tabular-nums text-[#9A9A9A]">
-                          {format(getLogDate(log), 'hh:mm a')}
-                        </p>
-                        <p className="text-[9px] uppercase tracking-[0.1em] text-[#6B6B6B]">{mealTagLabel(log.meal_type)}</p>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#E8E4DE] truncate">{log.food?.name || 'Unknown Food'}</p>
-                        <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">
-                          {log.servings} serving{log.servings !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-
-                      <div className="text-right tabular-nums">
-                        <p className="text-xs text-[#9A9A9A]">
-                          {Math.round((log.food?.calories || 0) * log.servings)} <span className="text-[9px] text-[#6B6B6B]">kcal</span>
-                        </p>
-                        <p className="text-[10px] text-[#6B6B6B]">{Math.round((log.food?.protein || 0) * log.servings)}g P</p>
-                      </div>
-
-                      <motion.button
-                        className="p-2 rounded-[12px] hover:bg-white/5 active:bg-white/10 text-[#6B6B6B] hover:text-[#9A9A9A] active:text-[#E8E4DE] transition-colors"
-                        onClick={() => {
-                          setEditingEntry(log);
-                          setShowLogger(true);
-                        }}
-                        title="Edit entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </motion.button>
-
-                      <motion.button
-                        className="p-2 rounded-[12px] hover:bg-[#8B6B6B]/20 text-[#6B6B6B] hover:text-[#8B6B6B] transition-colors"
-                        onClick={() => handleDeleteEntry(log.id)}
-                        title="Remove entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </motion.button>
-                    </motion.div>
-                  )})}
-                </AnimatePresence>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-      )}
-
+      {/* Logger sheet */}
       <Modal
         isOpen={showLogger}
         onClose={() => {
           setShowLogger(false);
           setEditingEntry(null);
         }}
-        title={editingEntry ? 'Edit Entry' : 'Log Entry'}
+        title={editingEntry ? 'Edit entry' : 'Log food'}
       >
         <FoodLogger
           selectedDate={selectedDate}
@@ -467,6 +552,6 @@ export function Nutrition() {
           onComplete={handleLogComplete}
         />
       </Modal>
-    </motion.div>
+    </Screen>
   );
 }

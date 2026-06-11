@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { Button, Input, Card } from '@/components/shared';
+import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import type { Food } from '@/types';
@@ -58,7 +58,7 @@ interface SelectedFoodMeta {
 }
 
 const MEAL_OPTIONS = [
-  { value: '', label: 'None' },
+  { value: '', label: 'No tag' },
   { value: 'breakfast', label: 'Breakfast' },
   { value: 'lunch', label: 'Lunch' },
   { value: 'dinner', label: 'Dinner' },
@@ -132,7 +132,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   const [selectedFoodMeta, setSelectedFoodMeta] = useState<SelectedFoodMeta | null>(null);
 
   const loggerMode = initialEntry ? 'edit' : 'create';
-  const dayLabel = useMemo(() => format(entryDate, 'MMM d, yyyy'), [entryDate]);
 
   const [manualFood, setManualFood] = useState({
     name: '',
@@ -154,6 +153,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
   const manualSuggestions = useMemo(() => {
@@ -391,6 +391,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }
     setPhotoPreview(null);
     setPhotoHint('');
+  };
+
+  const handleRetakePhoto = () => {
+    setPhotoError(null);
+    setPhotoFile(null);
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
+    }
+    setPhotoPreview(null);
+    photoInputRef.current?.click();
   };
 
   const fileToCompressedJpegBase64 = (file: File) =>
@@ -936,492 +946,461 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }
   };
 
-  return (
-    <div className="space-y-4 md:space-y-5">
-      <Card variant="slab" className="bg-[#1A1A1A] !p-2.5 md:!p-5 !rounded-[22px] md:!rounded-[28px] overflow-hidden">
-        <p className="text-[9px] md:text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-1.5 md:mb-3">Entry details</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-          <div>
-            <label className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[#6B6B6B] mb-1">
-              Date
-            </label>
-            <div className="space-y-1">
-              <input
-                type="date"
-                value={format(entryDate, 'yyyy-MM-dd')}
-                max={format(new Date(), 'yyyy-MM-dd')}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-                  if (!nextValue) return;
-                  const parsed = new Date(`${nextValue}T12:00:00`);
-                  if (!Number.isNaN(parsed.getTime())) {
-                    setEntryDate(parsed);
-                  }
-                }}
-                className="w-full h-10 md:h-auto px-3 md:px-4 py-2 md:py-3 bg-[#1A1A1A] border border-white/10 rounded-[14px] md:rounded-[20px] text-[#E8E4DE] text-sm focus:outline-none focus:border-white/25"
-              />
-              <p className="text-[10px] text-[#6B6B6B]">{dayLabel}</p>
-            </div>
-          </div>
-          <div className="min-w-0 overflow-hidden">
-            <label className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[#6B6B6B] mb-1">
-              Time
-            </label>
-            <input
-              type="time"
-              value={timeValue}
-              onChange={(e) => setTimeValue(e.target.value)}
-              className="block w-full max-w-full min-w-0 h-10 md:h-auto px-2.5 md:px-4 py-2 md:py-3 bg-[#1A1A1A] border border-white/10 rounded-[14px] md:rounded-[20px] text-[#E8E4DE] text-[16px] md:text-sm focus:outline-none focus:border-white/25 transition-all"
-            />
-          </div>
-        </div>
+  /* ── Shared "when" row: date · time · meal tag ── */
+  const whenRow = (
+    <div className="grid grid-cols-2 gap-2">
+      <DateField value={entryDate} onChange={setEntryDate} max={new Date()} />
+      <TimeField value={timeValue} onChange={setTimeValue} />
+      <SelectSheet
+        className="col-span-2"
+        title="Meal tag"
+        value={mealType}
+        onChange={(value) => setMealType(value)}
+        options={MEAL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+      />
+    </div>
+  );
 
-        <div className="mt-2 md:mt-3">
-          <label className="block text-[10px] font-medium tracking-[0.2em] uppercase text-[#6B6B6B] mb-1">
-            Meal Tag (Optional)
-          </label>
-          <select
-            value={mealType}
-            onChange={(e) => setMealType(e.target.value)}
-            className="w-full h-10 md:h-auto px-3 md:px-4 py-2 md:py-3 bg-[#1A1A1A] border border-white/10 rounded-[14px] md:rounded-[20px] text-[#E8E4DE] text-sm focus:outline-none focus:border-white/25 transition-all"
-          >
-            {MEAL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+  /* ═══════════ Review & confirm stage ═══════════ */
+
+  if (selectedFood) {
+    return (
+      <div className="space-y-4 pt-1 pb-2">
+        <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] hairline p-4">
+          <h4 className="t-heading mb-2.5">{selectedFood.name}</h4>
+          {selectedFoodMeta?.source === 'photo' && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="t-label-sm text-[var(--color-sage)] flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" strokeWidth={2} />
+                  Photo estimate
+                </span>
+                <span className="t-data-sm text-[var(--color-sage)]">{Math.round(selectedFoodMeta.confidence * 100)}%</span>
+              </div>
+              <RailStrip value={selectedFoodMeta.confidence} tone="sage" size="sm" />
+              {selectedFoodMeta.reasoning && (
+                <p className="text-[11px] text-[var(--color-muted)] mt-2">{selectedFoodMeta.reasoning}</p>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: 'kcal', value: Math.round(selectedFood.calories) },
+              { label: 'protein', value: `${Math.round(selectedFood.protein)}g` },
+              { label: 'carbs', value: `${Math.round(selectedFood.carbs)}g` },
+              { label: 'fat', value: `${Math.round(selectedFood.fat)}g` },
+            ].map((cell) => (
+              <div key={cell.label} className="well px-1 py-2 text-center">
+                <p className="t-data text-[var(--color-text)]">{cell.value}</p>
+                <p className="t-label-sm text-[9px] mt-0.5">{cell.label}</p>
+              </div>
             ))}
-          </select>
+          </div>
+          <p className="text-[10px] text-[var(--color-muted)] mt-2">
+            per {formatMeasurementAmount(selectedFood.serving_size || 1)} {selectedFood.serving_unit || 'serving'}
+          </p>
         </div>
-      </Card>
 
-      {selectedFood ? (
-        <div className="space-y-5">
-          <Card variant="slab" className="bg-[#1A1A1A]">
-            <h4 className="text-sm text-[#E8E4DE] mb-3">{selectedFood.name}</h4>
-            {selectedFoodMeta?.source === 'photo' && (
-              <div className="mb-3 space-y-1">
-                <p className="text-[9px] tracking-[0.1em] uppercase text-[#8B9A7D]">
-                  Photo estimate - {Math.round(selectedFoodMeta.confidence * 100)}% confidence
-                </p>
-                {selectedFoodMeta.reasoning && (
-                  <p className="text-[10px] text-[#6B6B6B]">{selectedFoodMeta.reasoning}</p>
-                )}
-              </div>
-            )}
-            <div className="flex gap-4 text-[10px] tabular-nums">
-              <div>
-                <span className="text-[#6B6B6B]">KCAL</span>
-                <p className="text-[#9A9A9A]">{Math.round(selectedFood.calories)}</p>
-              </div>
-              <div>
-                <span className="text-[#6B6B6B]">PRO</span>
-                <p className="text-[#9A9A9A]">{Math.round(selectedFood.protein)}g</p>
-              </div>
-              <div>
-                <span className="text-[#6B6B6B]">CAR</span>
-                <p className="text-[#9A9A9A]">{Math.round(selectedFood.carbs)}g</p>
-              </div>
-              <div>
-                <span className="text-[#6B6B6B]">FAT</span>
-                <p className="text-[#9A9A9A]">{Math.round(selectedFood.fat)}g</p>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-3 items-end">
-            <div>
-              <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Amount</label>
-              <input
-                type="number"
-                value={measurementAmount}
-                onChange={(event) => setMeasurementAmount(event.target.value)}
-                min="0.01"
-                step="0.01"
-                className="w-full text-center text-2xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-3 text-[#E8E4DE] transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Unit</label>
-              <select
-                value={measurementUnit}
-                onChange={(event) => {
-                  const nextUnit = event.target.value as MeasurementUnit;
-                  if (!selectedFood) {
-                    setMeasurementUnit(nextUnit);
-                    return;
-                  }
-
-                  const currentServings = measurementUnit === 'serving'
-                    ? parseFloat(measurementAmount)
-                    : computeServingsFromAmount({
-                      amount: parseFloat(measurementAmount),
-                      amountUnitRaw: measurementUnit,
-                      servingSize: selectedFood.serving_size,
-                      servingUnitRaw: selectedFood.serving_unit,
-                    });
-
+        <div className="grid grid-cols-2 gap-2">
+          <FormField label="Amount" error={selectedFoodMeasurementError ?? undefined}>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={measurementAmount}
+              onChange={(event) => setMeasurementAmount(event.target.value)}
+              min="0.01"
+              step="0.01"
+              className="well w-full min-h-12 px-3 text-center t-data-lg text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+            />
+          </FormField>
+          <FormField label="Unit">
+            <SelectSheet
+              title="Unit"
+              value={measurementUnit}
+              onChange={(nextUnit) => {
+                if (!selectedFood) {
                   setMeasurementUnit(nextUnit);
+                  return;
+                }
 
-                  if (currentServings === null || !Number.isFinite(currentServings) || currentServings <= 0) {
-                    return;
-                  }
-
-                  if (nextUnit === 'serving') {
-                    setMeasurementAmount(formatMeasurementAmount(currentServings));
-                    return;
-                  }
-
-                  const nextAmount = computeAmountFromServings({
-                    servings: currentServings,
-                    targetUnitRaw: nextUnit,
+                const currentServings = measurementUnit === 'serving'
+                  ? parseFloat(measurementAmount)
+                  : computeServingsFromAmount({
+                    amount: parseFloat(measurementAmount),
+                    amountUnitRaw: measurementUnit,
                     servingSize: selectedFood.serving_size,
                     servingUnitRaw: selectedFood.serving_unit,
                   });
 
-                  if (nextAmount !== null) {
-                    setMeasurementAmount(formatMeasurementAmount(nextAmount));
-                  }
-                }}
-                className="w-full h-12 px-3 py-2 bg-[#1A1A1A] border border-white/10 rounded-[14px] text-[#E8E4DE] text-sm focus:outline-none focus:border-white/25"
-              >
-                {selectedFoodCompatibleUnits.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                ))}
-              </select>
-            </div>
+                setMeasurementUnit(nextUnit);
+
+                if (currentServings === null || !Number.isFinite(currentServings) || currentServings <= 0) {
+                  return;
+                }
+
+                if (nextUnit === 'serving') {
+                  setMeasurementAmount(formatMeasurementAmount(currentServings));
+                  return;
+                }
+
+                const nextAmount = computeAmountFromServings({
+                  servings: currentServings,
+                  targetUnitRaw: nextUnit,
+                  servingSize: selectedFood.serving_size,
+                  servingUnitRaw: selectedFood.serving_unit,
+                });
+
+                if (nextAmount !== null) {
+                  setMeasurementAmount(formatMeasurementAmount(nextAmount));
+                }
+              }}
+              options={selectedFoodCompatibleUnits.map((unit) => ({ value: unit, label: unit }))}
+              className="min-h-12"
+            />
+          </FormField>
+        </div>
+
+        {whenRow}
+
+        <div className="flex items-center justify-between rounded-[var(--radius-md)] bg-accent-tint px-4 py-3">
+          <span className="t-label">This entry</span>
+          <span className="t-data-lg text-[var(--color-text)]">
+            {selectedFoodTotalCalories} <span className="text-[12px] text-[var(--color-muted)]">kcal</span>
+            <span className="text-[12px] text-[var(--color-text-dim)] ml-2">{selectedFoodTotalProtein}g protein</span>
+          </span>
+        </div>
+
+        <div className="flex gap-2.5 pt-1">
+          <Button
+            variant="ghost"
+            className="flex-1"
+            onClick={() => {
+              setSelectedFood(null);
+              setSelectedFoodMeta(null);
+              setMeasurementUnit('serving');
+              setMeasurementAmount('1');
+            }}
+            disabled={saving}
+          >
+            Change food
+          </Button>
+          <Button
+            className="flex-[1.6]"
+            size="lg"
+            onClick={() => {
+              if (resolvedSelectedFoodServings === null) return;
+              setServings(String(resolvedSelectedFoodServings));
+              void handleSaveFromSelectedFood(selectedFood, resolvedSelectedFoodServings);
+            }}
+            loading={saving}
+            disabled={!timeValue || resolvedSelectedFoodServings === null}
+          >
+            {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ═══════════ Capture stage ═══════════ */
+
+  return (
+    <div className="space-y-4 pt-1 pb-2">
+      <SegmentedControl
+        value={mode}
+        onChange={(next) => {
+          setMode(next);
+          if (next !== 'photo') setPhotoError(null);
+        }}
+        options={[
+          { value: 'search', label: 'Search' },
+          { value: 'manual', label: 'Manual' },
+          { value: 'photo', label: 'Photo' },
+        ]}
+      />
+
+      {mode === 'search' ? (
+        <>
+          <div className="well flex items-center gap-2 pl-3.5 pr-1.5 py-1.5">
+            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={2} />
+            <input
+              type="text"
+              placeholder="Search the USDA database…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchUSDA(searchQuery)}
+              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[var(--color-text)] outline-none placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]"
+            />
+            <button
+              type="button"
+              className="pressable flex items-center justify-center w-9 h-9 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] text-[var(--color-text)] disabled:opacity-40"
+              onClick={() => searchUSDA(searchQuery)}
+              disabled={loading}
+              aria-label="Search"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" strokeWidth={2.25} />}
+            </button>
           </div>
 
-          {selectedFoodMeasurementError && (
-            <p className="text-[10px] tracking-[0.08em] uppercase text-[#8B6B6B]">
-              {selectedFoodMeasurementError}
+          <div className="max-h-56 md:max-h-64 overflow-y-auto space-y-1.5 overscroll-contain touch-pan-y">
+            {searchResults.map((food, index) => (
+              <motion.button
+                key={food.fdc_id || food.id}
+                type="button"
+                className="pressable w-full flex items-center justify-between gap-3 px-3.5 py-3 bg-[var(--color-surface-2)] hairline rounded-[var(--radius-md)] text-left"
+                onClick={() => {
+                  if (saving) return;
+
+                  setSelectedFoodMeta(null);
+                  setSelectedFood(food);
+                  setMeasurementUnit('serving');
+
+                  const defaultServings = 1;
+                  setServings(String(defaultServings));
+                  setMeasurementAmount(formatMeasurementAmount(defaultServings));
+                }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.smooth }}
+                disabled={saving}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[var(--color-text)] truncate">{food.name}</p>
+                  <p className="t-data-sm text-[var(--color-muted)] mt-0.5">{Math.round(food.calories)} kcal / 100g</p>
+                </div>
+                <span className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] shrink-0">
+                  <Plus className="w-3.5 h-3.5 text-[var(--color-text-dim)]" strokeWidth={2.25} />
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        </>
+      ) : mode === 'manual' ? (
+        <>
+          <Input
+            label="Food name"
+            value={manualFood.name}
+            onChange={(e) => {
+              clearSavedMealFeedback();
+              setManualFood({ ...manualFood, name: e.target.value });
+            }}
+            onFocus={() => setManualNameFocused(true)}
+            onBlur={() => {
+              window.setTimeout(() => setManualNameFocused(false), 120);
+            }}
+            placeholder="e.g., Chicken Breast"
+          />
+
+          {manualNameFocused && manualNameQuery.length >= 2 && (
+            <div>
+              <p className="t-label-sm mb-1.5">{loadingSavedMeals ? 'Loading saved meals…' : 'Saved meals'}</p>
+              {!loadingSavedMeals && manualSuggestions.length > 0 ? (
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                  {manualSuggestions.map((meal) => (
+                    <button
+                      key={meal.id}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleSelectSavedMeal(meal)}
+                      className="pressable w-full text-left px-3 py-2.5 bg-[var(--color-surface-2)] hairline rounded-[var(--radius-sm)]"
+                    >
+                      <p className="text-[13px] font-medium text-[var(--color-text)] truncate">{meal.name}</p>
+                      <p className="t-data-sm text-[10px] text-[var(--color-muted)] mt-0.5">
+                        {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              ) : !loadingSavedMeals ? (
+                <p className="text-[11px] text-[var(--color-muted)]">No saved meal matches yet.</p>
+              ) : null}
+            </div>
+          )}
+
+          {selectedSavedMealId && (
+            <p className="text-[11px] font-semibold text-[var(--color-sage)]">
+              {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
             </p>
           )}
 
-          <div className="text-center py-4 bg-[#1A1A1A] rounded-[20px]">
-            <p className="text-2xl tabular-nums text-[#E8E4DE]">{selectedFoodTotalCalories}</p>
-            <p className="text-[9px] tracking-[0.15em] uppercase text-[#6B6B6B] mt-1">Total Calories</p>
-            <p className="text-[10px] text-[#9A9A9A] mt-2">{selectedFoodTotalProtein}g Protein</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Input
+              label="Calories"
+              type="number"
+              inputMode="decimal"
+              value={manualFood.calories}
+              onChange={(e) => {
+                clearSavedMealFeedback();
+                setManualFood({ ...manualFood, calories: e.target.value });
+              }}
+              placeholder="0"
+            />
+            <Input
+              label="Protein (g)"
+              type="number"
+              inputMode="decimal"
+              value={manualFood.protein}
+              onChange={(e) => {
+                clearSavedMealFeedback();
+                setManualFood({ ...manualFood, protein: e.target.value });
+              }}
+              placeholder="0"
+            />
+            <Input
+              label="Carbs (g)"
+              type="number"
+              inputMode="decimal"
+              value={manualFood.carbs}
+              onChange={(e) => {
+                clearSavedMealFeedback();
+                setManualFood({ ...manualFood, carbs: e.target.value });
+              }}
+              placeholder="0"
+            />
+            <Input
+              label="Fat (g)"
+              type="number"
+              inputMode="decimal"
+              value={manualFood.fat}
+              onChange={(e) => {
+                clearSavedMealFeedback();
+                setManualFood({ ...manualFood, fat: e.target.value });
+              }}
+              placeholder="0"
+            />
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="ghost"
-              className="flex-1"
-              onClick={() => {
-                setSelectedFood(null);
-                setSelectedFoodMeta(null);
-                setMeasurementUnit('serving');
-                setMeasurementAmount('1');
-              }}
-              disabled={saving}
-            >
-              Change Food
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={() => {
-                if (resolvedSelectedFoodServings === null) return;
-                setServings(String(resolvedSelectedFoodServings));
-                void handleSaveFromSelectedFood(selectedFood, resolvedSelectedFoodServings);
-              }}
-              loading={saving}
-              disabled={!timeValue || resolvedSelectedFoodServings === null}
-            >
-              {loggerMode === 'edit' ? 'Save Changes' : 'Log Entry'}
-            </Button>
+          <div className="grid grid-cols-2 gap-2.5 items-end">
+            <FormField label="Servings">
+              <input
+                type="number"
+                inputMode="decimal"
+                value={servings}
+                onChange={(e) => setServings(e.target.value)}
+                min="0.25"
+                step="0.25"
+                className="well w-full min-h-11 px-3 text-center t-data-lg text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+              />
+            </FormField>
+
+            {!selectedSavedMealId && (
+              <button
+                type="button"
+                onClick={() => setSaveAsReusableMeal(!saveAsReusableMeal)}
+                className={`pressable flex items-center gap-2 px-3 min-h-11 rounded-[var(--radius-sm)] border text-left ${
+                  saveAsReusableMeal
+                    ? 'bg-sage-tint border-[color-mix(in_srgb,var(--color-sage)_40%,transparent)]'
+                    : 'bg-[var(--color-surface-2)] border-[var(--color-border)]'
+                }`}
+              >
+                <span
+                  className={`flex items-center justify-center w-4.5 h-4.5 w-[18px] h-[18px] rounded-[5px] border shrink-0 ${
+                    saveAsReusableMeal
+                      ? 'bg-[var(--color-sage)] border-[var(--color-sage)]'
+                      : 'border-[var(--color-border-strong)]'
+                  }`}
+                >
+                  {saveAsReusableMeal && <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />}
+                </span>
+                <span className={`text-[12px] font-medium leading-tight ${saveAsReusableMeal ? 'text-[var(--color-sage)]' : 'text-[var(--color-text-dim)]'}`}>
+                  Save as reusable meal
+                </span>
+              </button>
+            )}
           </div>
-        </div>
+
+          {selectedSavedMealId && (
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={handleUpdateSavedMeal}
+              loading={updatingSavedMeal}
+              disabled={saving || updatingSavedMeal || !timeValue || isSelectedSavedMealMatch}
+            >
+              Update saved meal
+            </Button>
+          )}
+
+          {savedMealMessage && <p className="text-[11px] font-semibold text-[var(--color-sage)]">{savedMealMessage}</p>}
+          {savedMealError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{savedMealError}</p>}
+
+          {whenRow}
+
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={handleManualSubmit}
+            disabled={!manualFood.name || saving || !timeValue}
+            loading={saving}
+          >
+            {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
+          </Button>
+        </>
       ) : (
-        <>
-          <div className="flex gap-2 p-1 bg-[#1A1A1A] rounded-[20px]">
-            <button
-              type="button"
-              className={`flex-1 py-2.5 rounded-[16px] text-[10px] tracking-[0.1em] uppercase transition-all ${
-                mode === 'search' ? 'bg-[#2E2E2E] text-[#E8E4DE]' : 'text-[#6B6B6B]'
-              }`}
-              onClick={() => {
-                setMode('search');
-                setPhotoError(null);
-              }}
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              className={`flex-1 py-2.5 rounded-[16px] text-[10px] tracking-[0.1em] uppercase transition-all ${
-                mode === 'manual' ? 'bg-[#2E2E2E] text-[#E8E4DE]' : 'text-[#6B6B6B]'
-              }`}
-              onClick={() => {
-                setMode('manual');
-                setPhotoError(null);
-              }}
-            >
-              Manual
-            </button>
-            <button
-              type="button"
-              className={`flex-1 py-2.5 rounded-[16px] text-[10px] tracking-[0.1em] uppercase transition-all ${
-                mode === 'photo' ? 'bg-[#2E2E2E] text-[#E8E4DE]' : 'text-[#6B6B6B]'
-              }`}
-              onClick={() => setMode('photo')}
-            >
-              Photo
-            </button>
-          </div>
+        <div className="space-y-3">
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handlePhotoSelect}
+            className="hidden"
+          />
 
-          {mode === 'search' ? (
-            <>
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    placeholder="Search USDA database..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && searchUSDA(searchQuery)}
-                    className="w-full px-4 py-3 bg-[#1A1A1A] border border-white/10 rounded-[20px] text-sm text-[#E8E4DE] placeholder:text-[#6B6B6B]/60 focus:border-white/20 outline-none transition-colors"
-                  />
+          {!photoPreview ? (
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="pressable w-full rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-2)] py-10 flex flex-col items-center gap-2.5"
+            >
+              <span className="flex items-center justify-center w-12 h-12 rounded-full well">
+                <Camera className="w-5 h-5 text-[var(--color-stone)]" strokeWidth={1.75} />
+              </span>
+              <span className="t-heading text-[15px]">Snap your plate</span>
+              <span className="t-caption">Camera or photo library</span>
+            </button>
+          ) : (
+            <div className="relative rounded-[var(--radius-lg)] overflow-hidden hairline-strong">
+              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover" />
+              {photoAnalyzing && (
+                <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)] flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-[var(--color-accent)]" />
+                  <span className="t-label text-[var(--color-text)]">Reading the plate…</span>
                 </div>
+              )}
+              {!photoAnalyzing && (
                 <button
                   type="button"
-                  className="w-12 h-12 flex items-center justify-center bg-[#2E2E2E] rounded-[20px] hover:bg-[#383838] transition-colors disabled:opacity-40"
-                  onClick={() => searchUSDA(searchQuery)}
-                  disabled={loading}
+                  onClick={handleRetakePhoto}
+                  className="pressable absolute top-2.5 right-2.5 flex items-center gap-1.5 px-3 py-2 rounded-full bg-[color-mix(in_srgb,var(--color-base)_75%,transparent)] backdrop-blur text-[11px] font-semibold text-[var(--color-text)]"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin text-[#9A9A9A]" /> : <Search className="w-4 h-4 text-[#E8E4DE]" />}
+                  <RefreshCw className="w-3 h-3" strokeWidth={2.25} />
+                  Retake
                 </button>
-              </div>
-
-              <div className="max-h-48 md:max-h-64 overflow-y-auto space-y-2 overscroll-contain touch-pan-y">
-                {searchResults.map((food, index) => (
-                  <motion.button
-                    key={food.fdc_id || food.id}
-                    type="button"
-                    className="w-full flex items-center justify-between p-4 bg-[#1A1A1A] border border-white/5 rounded-[20px] hover:border-white/10 transition-colors text-left active:border-white/20"
-                    onClick={() => {
-                      if (saving) return;
-
-                      setSelectedFoodMeta(null);
-                      setSelectedFood(food);
-                      setMeasurementUnit('serving');
-
-                      const defaultServings = 1;
-                      setServings(String(defaultServings));
-                      setMeasurementAmount(formatMeasurementAmount(defaultServings));
-                    }}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.04, ...springs.smooth }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={saving}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-[#E8E4DE] truncate">{food.name}</p>
-                      <p className="text-[10px] tabular-nums text-[#6B6B6B] mt-1">
-                        {Math.round(food.calories)} kcal / 100g
-                      </p>
-                    </div>
-                    <div className="ml-3 p-2 rounded-[12px] bg-[#2E2E2E]">
-                      <Plus className="w-3 h-3 text-[#9A9A9A]" />
-                    </div>
-                  </motion.button>
-                ))}
-              </div>
-            </>
-          ) : mode === 'manual' ? (
-            <>
-              <Input
-                label="Food Name"
-                value={manualFood.name}
-                onChange={(e) => {
-                  clearSavedMealFeedback();
-                  setManualFood({ ...manualFood, name: e.target.value });
-                }}
-                onFocus={() => setManualNameFocused(true)}
-                onBlur={() => {
-                  window.setTimeout(() => setManualNameFocused(false), 120);
-                }}
-                placeholder="e.g., Chicken Breast"
-              />
-
-              {manualNameFocused && manualNameQuery.length >= 2 && (
-                <div className="space-y-1">
-                  <p className="text-[9px] tracking-[0.12em] uppercase text-[#6B6B6B]">
-                    {loadingSavedMeals ? 'Loading saved meals...' : 'Saved meals'}
-                  </p>
-                  {!loadingSavedMeals && manualSuggestions.length > 0 ? (
-                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                      {manualSuggestions.map((meal) => (
-                        <button
-                          key={meal.id}
-                          type="button"
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => handleSelectSavedMeal(meal)}
-                          className="w-full text-left p-3 bg-[#1A1A1A] border border-white/5 rounded-[14px] hover:border-white/15 transition-colors"
-                        >
-                          <p className="text-[11px] text-[#E8E4DE] truncate">{meal.name}</p>
-                          <p className="text-[10px] text-[#6B6B6B] tabular-nums mt-1">
-                            {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  ) : !loadingSavedMeals ? (
-                    <p className="text-[10px] text-[#6B6B6B]">No saved meal matches yet.</p>
-                  ) : null}
-                </div>
               )}
-
-              {selectedSavedMealId && (
-                <p className="text-[10px] text-[#8B9A7D] tracking-[0.08em] uppercase">
-                  {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Calories"
-                  type="number"
-                  value={manualFood.calories}
-                  onChange={(e) => {
-                    clearSavedMealFeedback();
-                    setManualFood({ ...manualFood, calories: e.target.value });
-                  }}
-                  placeholder="0"
-                />
-                <Input
-                  label="Protein (g)"
-                  type="number"
-                  value={manualFood.protein}
-                  onChange={(e) => {
-                    clearSavedMealFeedback();
-                    setManualFood({ ...manualFood, protein: e.target.value });
-                  }}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Carbs (g)"
-                  type="number"
-                  value={manualFood.carbs}
-                  onChange={(e) => {
-                    clearSavedMealFeedback();
-                    setManualFood({ ...manualFood, carbs: e.target.value });
-                  }}
-                  placeholder="0"
-                />
-                <Input
-                  label="Fat (g)"
-                  type="number"
-                  value={manualFood.fat}
-                  onChange={(e) => {
-                    clearSavedMealFeedback();
-                    setManualFood({ ...manualFood, fat: e.target.value });
-                  }}
-                  placeholder="0"
-                />
-              </div>
-
-              {!selectedSavedMealId && (
-                <label className="flex items-center gap-2 text-[10px] tracking-[0.08em] uppercase text-[#6B6B6B] cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={saveAsReusableMeal}
-                    onChange={(e) => setSaveAsReusableMeal(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border border-white/20 accent-[#8B9A7D]"
-                  />
-                  Save as reusable meal
-                </label>
-              )}
-
-              {selectedSavedMealId && (
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={handleUpdateSavedMeal}
-                  loading={updatingSavedMeal}
-                  disabled={saving || updatingSavedMeal || !timeValue || isSelectedSavedMealMatch}
-                >
-                  Update Saved Meal
-                </Button>
-              )}
-
-              {savedMealMessage && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B9A7D]">{savedMealMessage}</p>}
-              {savedMealError && <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{savedMealError}</p>}
-
-              <div>
-                <label className="block text-[10px] tracking-[0.2em] uppercase text-[#6B6B6B] mb-2">Servings</label>
-                <input
-                  type="number"
-                  value={servings}
-                  onChange={(e) => setServings(e.target.value)}
-                  min="0.25"
-                  step="0.25"
-                  className="w-full text-center text-xl tabular-nums bg-transparent border-b border-white/10 focus:border-[#E8E4DE] outline-none py-2 text-[#E8E4DE] transition-colors"
-                />
-              </div>
-
-              <Button
-                className="w-full"
-                onClick={handleManualSubmit}
-                disabled={!manualFood.name || saving || !timeValue}
-                loading={saving}
-              >
-                {loggerMode === 'edit' ? 'Save Changes' : 'Log Entry'}
-              </Button>
-            </>
-          ) : (
-            <div className="space-y-4">
-              <Card variant="slab" className="bg-[#1A1A1A] !p-3">
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">Meal Photo</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handlePhotoSelect}
-                      className="block w-full text-xs text-[#9A9A9A] file:mr-3 file:px-3 file:py-2 file:rounded-[12px] file:border-0 file:bg-[#2E2E2E] file:text-[#E8E4DE] file:text-[10px] file:tracking-[0.1em] file:uppercase"
-                    />
-                  </div>
-
-                  {photoPreview && (
-                    <img
-                      src={photoPreview}
-                      alt="Meal preview"
-                      className="w-full h-40 object-cover rounded-[16px] border border-white/10"
-                    />
-                  )}
-
-                  <Input
-                    label="Extra Details (Optional)"
-                    value={photoHint}
-                    onChange={(e) => setPhotoHint(e.target.value)}
-                    placeholder="e.g., large bowl, extra olive oil"
-                  />
-
-                  {photoError && (
-                    <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B6B6B]">{photoError}</p>
-                  )}
-
-                  <Button
-                    className="w-full"
-                    onClick={handleAnalyzePhoto}
-                    loading={photoAnalyzing}
-                    disabled={!photoFile || photoAnalyzing || saving}
-                  >
-                    Analyze Photo
-                  </Button>
-                </div>
-              </Card>
             </div>
           )}
-        </>
+
+          <Input
+            label="Extra details (optional)"
+            value={photoHint}
+            onChange={(e) => setPhotoHint(e.target.value)}
+            placeholder="e.g., large bowl, extra olive oil"
+          />
+
+          {photoError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{photoError}</p>}
+
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={handleAnalyzePhoto}
+            loading={photoAnalyzing}
+            disabled={!photoFile || photoAnalyzing || saving}
+          >
+            {!photoAnalyzing && <Sparkles className="w-4 h-4" strokeWidth={2} />}
+            {photoAnalyzing ? 'Analyzing…' : 'Analyze photo'}
+          </Button>
+        </div>
       )}
     </div>
   );
