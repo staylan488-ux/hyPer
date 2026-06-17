@@ -49,8 +49,10 @@ function formatTime(totalSeconds: number) {
 }
 
 /**
- * Ambient rest timer: a pill docked above the bottom nav that drains in place.
- * Tap to expand for presets — never a blocking modal between sets.
+ * Ambient rest timer: a sharp bar docked above the bottom nav that drains in
+ * place — square corners, a precise mono countdown, a hairline progress rule
+ * and a single lacquer live tick. Tap to expand for presets — never a blocking
+ * modal between sets.
  */
 export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
@@ -178,57 +180,66 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
         >
           <div className="max-w-lg mx-auto px-5">
             <motion.div
-              className="pointer-events-auto flex items-center gap-3 pl-2 pr-1 py-1.5 rounded-full bg-[var(--color-surface-2)] hairline-strong raised"
-              animate={isWarning ? { scale: [1, 1.012, 1] } : {}}
+              className="pointer-events-auto bg-[var(--color-surface-2)] border border-[var(--color-border-strong)]"
+              style={{ borderTop: `2px solid ${tone}` }}
+              animate={isWarning ? { scale: [1, 1.008, 1] } : {}}
               transition={isWarning ? { duration: 1, repeat: Infinity } : springs.smooth}
             >
-              <button
-                type="button"
-                onClick={handleToggleRunning}
-                disabled={isComplete}
-                aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}
-                className="pressable flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-surface-3)] disabled:opacity-40 shrink-0"
-              >
-                {isRunning ? (
-                  <Pause className="w-3.5 h-3.5 text-[var(--color-text)]" fill="currentColor" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 text-[var(--color-text)] ml-0.5" fill="currentColor" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                className="flex items-center gap-3 flex-1 min-w-0 py-1"
-                onClick={() => setExpanded(true)}
-                aria-label="Open rest timer options"
-              >
-                <span
-                  className={`shrink-0 ${isComplete ? 't-caps text-[15px] font-normal tracking-[0.24em]' : 't-data-lg tabular-nums'}`}
-                  style={{ color: tone, textShadow: isComplete ? `0 0 14px color-mix(in srgb, ${tone} 50%, transparent)` : 'none' }}
+              <div className="flex items-center gap-3 pl-3 pr-1 py-1.5">
+                <button
+                  type="button"
+                  onClick={handleToggleRunning}
+                  disabled={isComplete}
+                  aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}
+                  className="pressable flex items-center justify-center w-9 h-9 border border-[var(--color-border-strong)] text-[var(--color-text)] disabled:opacity-40 shrink-0"
                 >
-                  {isComplete ? 'Go' : formatTime(timeLeft)}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <RailStrip
-                    value={isComplete ? 1 : remainingRatio}
-                    tone={isComplete ? 'sage' : isWarning ? 'berry' : 'amber'}
-                    size="sm"
-                  />
-                </div>
-                <span className="t-label-sm shrink-0 flex items-center gap-1">
-                  <Timer className="w-3 h-3" strokeWidth={2} />
-                  {isComplete ? 'rest done' : 'rest'}
-                </span>
-              </button>
+                  {isRunning ? (
+                    <Pause className="w-3.5 h-3.5" fill="currentColor" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 ml-0.5" fill="currentColor" />
+                  )}
+                </button>
 
-              <button
-                type="button"
-                onClick={handleDismiss}
-                aria-label="Dismiss rest timer"
-                className="pressable flex items-center justify-center w-9 h-9 rounded-full text-[var(--color-muted)] hover:text-[var(--color-text)] shrink-0"
-              >
-                <X className="w-4 h-4" strokeWidth={2.25} />
-              </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-3 flex-1 min-w-0 py-1"
+                  onClick={() => setExpanded(true)}
+                  aria-label="Open rest timer options"
+                >
+                  {!isComplete && (
+                    <span
+                      className="shrink-0 w-[3px] h-5 animate-tick-live"
+                      style={{ backgroundColor: tone }}
+                      aria-hidden
+                    />
+                  )}
+                  <span
+                    className={`shrink-0 ${isComplete ? 't-caps text-[15px] font-normal tracking-[0.24em]' : 't-data-lg tabular-nums'}`}
+                    style={{ color: tone }}
+                  >
+                    {isComplete ? 'Go' : formatTime(timeLeft)}
+                  </span>
+                  <span className="t-label-sm shrink-0 ml-auto flex items-center gap-1.5">
+                    <Timer className="w-3 h-3" strokeWidth={1.75} />
+                    {isComplete ? 'rest done' : 'rest'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDismiss}
+                  aria-label="Dismiss rest timer"
+                  className="pressable flex items-center justify-center w-9 h-9 text-[var(--color-muted)] hover:text-[var(--color-text)] shrink-0"
+                >
+                  <X className="w-4 h-4" strokeWidth={1.75} />
+                </button>
+              </div>
+
+              <RailStrip
+                value={isComplete ? 1 : remainingRatio}
+                tone={isComplete ? 'sage' : isWarning ? 'berry' : 'amber'}
+                size="sm"
+              />
             </motion.div>
           </div>
         </motion.div>
@@ -259,35 +270,35 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               type="button"
               onClick={handleToggleRunning}
               disabled={isComplete}
-              className="pressable flex items-center justify-center w-13 h-13 min-w-[52px] min-h-[52px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline-strong disabled:opacity-40"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] text-[var(--color-text)] disabled:opacity-40"
               aria-label={isRunning ? 'Pause' : 'Resume'}
             >
               {isRunning ? (
-                <Pause className="w-5 h-5 text-[var(--color-text)]" />
+                <Pause className="w-5 h-5" />
               ) : (
-                <Play className="w-5 h-5 text-[var(--color-text)] ml-0.5" fill="currentColor" />
+                <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
               )}
             </button>
             <button
               type="button"
               onClick={handleReset}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[var(--radius-md)] hairline text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
               aria-label="Restart timer"
             >
               <RotateCcw className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-5 gap-1.5 mb-5">
+          <div className="grid grid-cols-5 gap-px bg-[var(--color-border)] border border-[var(--color-border)] mb-5">
             {PRESET_TIMES.map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => handleSetTime(preset)}
-                className={`pressable min-h-10 rounded-[var(--radius-sm)] t-data-sm border transition-colors ${
+                className={`pressable min-h-11 t-data-sm transition-colors ${
                   seconds === preset
-                    ? 'bg-accent-tint-strong text-[var(--color-accent)] border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'
-                    : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border-[var(--color-border)]'
+                    ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+                    : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                 }`}
               >
                 {preset >= 60 ? `${preset / 60}m` : `${preset}s`}
@@ -298,7 +309,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <button
             type="button"
             onClick={handleDismiss}
-            className="pressable w-full min-h-12 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline-strong text-sm font-semibold text-[var(--color-text)]"
+            className="pressable w-full min-h-12 bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] text-[11px] uppercase font-medium tracking-[0.22em] text-[var(--color-text)] hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
           >
             Done resting
           </button>

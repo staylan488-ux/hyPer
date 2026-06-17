@@ -26,6 +26,37 @@ interface ScheduleEditorProps {
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const shortWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+/**
+ * FOLIO schedule editor — an editorial form. Tracked-caps eyebrows, hairline
+ * selectable cells that fill with ink when chosen, square corners, and the
+ * resolved weekly rhythm read back as a mono ledger line.
+ */
+function OptionButton({
+  active,
+  onClick,
+  className = '',
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`pressable min-h-11 px-3 border uppercase font-medium tracking-[0.16em] text-[10px] transition-colors ${
+        active
+          ? 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
+          : 'bg-transparent text-[var(--color-text-dim)] border-[var(--color-border-strong)] hover:text-[var(--color-text)] hover:border-[var(--color-text)]'
+      } ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ScheduleEditor({
   title,
   description,
@@ -47,122 +78,81 @@ export function ScheduleEditor({
   saving = false,
 }: ScheduleEditorProps) {
   return (
-    <div className="space-y-5 py-1">
+    <div className="space-y-8 py-1">
       <div>
-        <p className="text-[10px] tracking-[0.15em] uppercase text-[#6B6B6B] mb-1">{title}</p>
-        <p className="text-sm text-[#CFC9BF] leading-relaxed">{description}</p>
+        <p className="t-label mb-2">{title}</p>
+        <p className="t-caption max-w-[42ch]">{description}</p>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">When should Day 1 start?</p>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => onStartChoiceChange('today')}
-            className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-              startChoice === 'today'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-            }`}
-          >
+      <div className="pt-6 border-t border-[var(--color-border)]">
+        <p className="t-label-sm mb-3">When should Day 1 start?</p>
+        <div className="grid grid-cols-3 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+          <OptionButton active={startChoice === 'today'} onClick={() => onStartChoiceChange('today')} className="border-0">
             Today
-          </button>
-          <button
-            type="button"
-            onClick={() => onStartChoiceChange('tomorrow')}
-            className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-              startChoice === 'tomorrow'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-            }`}
-          >
+          </OptionButton>
+          <OptionButton active={startChoice === 'tomorrow'} onClick={() => onStartChoiceChange('tomorrow')} className="border-0">
             Tomorrow
-          </button>
-          <button
-            type="button"
-            onClick={() => onStartChoiceChange('pick')}
-            className={`px-2 py-2 rounded-[10px] text-[11px] transition-colors ${
-              startChoice === 'pick'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-            }`}
-          >
+          </OptionButton>
+          <OptionButton active={startChoice === 'pick'} onClick={() => onStartChoiceChange('pick')} className="border-0">
             Pick date
-          </button>
+          </OptionButton>
         </div>
 
         {startChoice === 'pick' && (
-          <div className="w-full min-w-0 overflow-hidden rounded-[12px] bg-[#2A2A2A] border border-white/5 px-3 py-2">
+          <div className="mt-3 w-full min-w-0 overflow-hidden well px-3 py-2.5">
             <input
               type="date"
               value={startDate}
               onChange={(event) => onStartDateChange(event.target.value)}
-              className="w-full min-w-0 bg-transparent text-[#E8E4DE] text-sm outline-none"
+              className="w-full min-w-0 bg-transparent text-[var(--color-text)] t-data outline-none"
             />
           </div>
         )}
       </div>
 
-      <div className="space-y-2">
-        <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Schedule style</p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onModeChange('fixed')}
-            className={`px-3 py-3 rounded-[12px] text-xs transition-colors ${
-              mode === 'fixed'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-            }`}
-          >
+      <div className="pt-6 border-t border-[var(--color-border)]">
+        <p className="t-label-sm mb-3">Schedule style</p>
+        <div className="grid grid-cols-2 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+          <OptionButton active={mode === 'fixed'} onClick={() => onModeChange('fixed')} className="border-0 min-h-12">
             Fixed weekly rhythm
-          </button>
-          <button
-            type="button"
-            onClick={() => onModeChange('flex')}
-            className={`px-3 py-3 rounded-[12px] text-xs transition-colors ${
-              mode === 'flex'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-            }`}
-          >
+          </OptionButton>
+          <OptionButton active={mode === 'flex'} onClick={() => onModeChange('flex')} className="border-0 min-h-12">
             Flexible sequence
-          </button>
+          </OptionButton>
         </div>
       </div>
 
       {mode === 'fixed' ? (
-        <div className="space-y-2">
-          <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Choose first training day</p>
-          <div className="grid grid-cols-7 gap-1">
+        <div className="pt-6 border-t border-[var(--color-border)]">
+          <p className="t-label-sm mb-3">Choose first training day</p>
+          <div className="grid grid-cols-7 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
             {shortWeekdayLabels.map((label, weekday) => {
               const active = anchorDay === weekday;
               return (
-                <button
-                  type="button"
+                <OptionButton
                   key={`${label}-${weekday}`}
+                  active={active}
                   onClick={() => onAnchorDayChange(weekday)}
-                  className={`py-2 rounded-[10px] text-xs transition-colors ${
-                    active
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
-                  }`}
+                  className="border-0 px-0"
                 >
                   {label}
-                </button>
+                </OptionButton>
               );
             })}
           </div>
 
-          <p className="text-[10px] text-[#6B6B6B]">
-            Auto plan: {buildFixedWeekdays(anchorDay, daysPerWeek).map((day) => weekdayLabels[day]).join(' / ')}
+          <p className="mt-3 flex items-baseline gap-2">
+            <span className="t-label-sm">Auto plan</span>
+            <span className="t-data-sm text-[var(--color-text-dim)]">
+              {buildFixedWeekdays(anchorDay, daysPerWeek).map((day) => weekdayLabels[day]).join(' / ')}
+            </span>
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">Active training day</p>
-          <p className="text-[10px] text-[#6B6B6B]">Choose which split day should be next in your sequence.</p>
-          <div className="grid grid-cols-2 gap-2">
+        <div className="pt-6 border-t border-[var(--color-border)]">
+          <p className="t-label-sm mb-2">Active training day</p>
+          <p className="t-caption mb-3 max-w-[42ch]">Choose which split day should be next in your sequence.</p>
+          <div className="grid grid-cols-2 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
             {splitDays.map((day, index) => {
               const active = index === flexDayIndex;
               return (
@@ -170,10 +160,10 @@ export function ScheduleEditor({
                   type="button"
                   key={day.id}
                   onClick={() => onFlexDayIndexChange(index)}
-                  className={`px-3 py-3 rounded-[12px] text-xs text-left transition-colors ${
+                  className={`pressable min-h-12 px-3.5 text-left text-[13px] font-medium transition-colors ${
                     active
-                      ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                      : 'bg-[#2A2A2A] border border-white/5 text-[#9A9A9A]'
+                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+                      : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                   }`}
                 >
                   {day.day_name}
@@ -185,7 +175,7 @@ export function ScheduleEditor({
       )}
 
       {onCancel ? (
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="grid grid-cols-2 gap-3 pt-2">
           <Button variant="secondary" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>

@@ -5,7 +5,7 @@ import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 
 const navItems = [
-  { to: '/', icon: Home, label: 'Home', matchPaths: ['/'] },
+  { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
   { to: '/train', icon: Dumbbell, label: 'Train', matchPaths: ['/train', '/workout', '/splits'] },
   { to: '/nutrition', icon: Leaf, label: 'Fuel', matchPaths: ['/nutrition'] },
   { to: '/settings', icon: User, label: 'You', matchPaths: ['/settings', '/history', '/analysis'] },
@@ -29,67 +29,52 @@ export function BottomNav() {
 
   return (
     <motion.nav
-      className="fixed bottom-0 left-0 right-0 z-40"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)' }}
+      className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-base)] border-t border-[var(--color-border-strong)]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       initial={{ y: 90 }}
       animate={{ y: 0 }}
       transition={springs.smooth}
     >
-      <div className="max-w-lg mx-auto px-4">
-        <div
-          className="relative flex items-stretch h-[68px] rounded-[24px] border border-[var(--color-border)]"
-          style={{
-            backgroundColor: 'color-mix(in srgb, var(--color-surface-1) 88%, transparent)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
-          }}
-        >
-          {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
-            const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
+      <div className="max-w-lg mx-auto grid grid-cols-4">
+        {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
+          const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
 
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                aria-label={label}
-                className="relative flex-1 flex flex-col items-center justify-center gap-1"
-                onClick={() => {
-                  if (!isActive) tapHaptic();
-                }}
-              >
-                {/* glowing dash above the active station */}
-                {isActive && (
-                  <motion.span
-                    layoutId="nav-tick"
-                    className="absolute -top-[1px] w-6 h-1 rounded-full bg-[var(--color-accent)]"
-                    style={{
-                      boxShadow:
-                        '0 12px 30px 10px color-mix(in srgb, var(--color-accent) 18%, transparent), 0 4px 14px 3px color-mix(in srgb, var(--color-accent) 26%, transparent)',
-                    }}
-                    transition={springs.smooth}
-                  />
-                )}
-                <motion.span whileTap={{ scale: 0.86 }} transition={springs.snappy} className="flex flex-col items-center gap-1">
-                  <Icon
-                    className={`w-[22px] h-[22px] transition-colors duration-200 ${
-                      isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
-                    }`}
-                    strokeWidth={isActive ? 2 : 1.6}
-                    style={isActive ? { filter: 'drop-shadow(0 2px 10px color-mix(in srgb, var(--color-accent) 35%, transparent))' } : undefined}
-                  />
-                  <span
-                    className={`t-caps text-[9px] font-normal tracking-[0.18em] transition-colors duration-200 ${
-                      isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </motion.span>
-              </NavLink>
-            );
-          })}
-        </div>
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              aria-label={label}
+              className="relative flex flex-col items-center justify-center gap-1.5 h-[62px]"
+              onClick={() => {
+                if (!isActive) tapHaptic();
+              }}
+            >
+              {/* lacquer tick over the active station — the one accent */}
+              {isActive && (
+                <motion.span
+                  layoutId="nav-tick"
+                  className="absolute top-0 w-7 h-[2px] bg-[var(--color-accent)]"
+                  transition={springs.smooth}
+                />
+              )}
+              <motion.span whileTap={{ scale: 0.9 }} transition={springs.snappy} className="flex flex-col items-center gap-1.5">
+                <Icon
+                  className={`w-[19px] h-[19px] transition-colors duration-200 ${
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
+                  }`}
+                  strokeWidth={1.5}
+                />
+                <span
+                  className={`text-[9px] font-medium uppercase tracking-[0.2em] [font-family:var(--font-sans)] transition-colors duration-200 ${
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
+                  }`}
+                >
+                  {label}
+                </span>
+              </motion.span>
+            </NavLink>
+          );
+        })}
       </div>
     </motion.nav>
   );

@@ -1,8 +1,10 @@
+import './preview/flag' // DEV-ONLY: must precede the Supabase client import
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { maybeSeedPreview } from './preview/previewSeed' // DEV-ONLY
 
 // Auto-update: when a new version is deployed, the fresh service worker takes
 // over and this helper reloads the app immediately — no relaunch needed.
@@ -25,6 +27,8 @@ registerSW({
     }, 60 * 60 * 1000)
   },
 })
+
+maybeSeedPreview() // DEV-ONLY: seeds the stores when on a /preview URL
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

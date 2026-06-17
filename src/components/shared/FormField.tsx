@@ -12,12 +12,12 @@ interface FormFieldProps {
 export function FormField({ label, children, hint, error, className = '' }: FormFieldProps) {
   return (
     <div className={`w-full ${className}`}>
-      <span className="t-label-sm block mb-1.5">{label}</span>
+      <span className="t-label-sm block mb-2">{label}</span>
       {children}
       {error ? (
-        <p className="mt-1.5 text-xs text-[var(--color-danger)]">{error}</p>
+        <p className="mt-2 text-xs text-[var(--color-accent)]">{error}</p>
       ) : hint ? (
-        <p className="mt-1.5 text-xs text-[var(--color-muted)]">{hint}</p>
+        <p className="mt-2 text-xs text-[var(--color-muted)]">{hint}</p>
       ) : null}
     </div>
   );

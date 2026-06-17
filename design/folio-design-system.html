@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>hyPer — FOLIO Design System</title>
+
+<!--
+  ───────────────────────────────────────────────────────────────
+  TYPE PAIRING — justification
+  ───────────────────────────────────────────────────────────────
+  FRAUNCES (display)  high-contrast "old-style-meets-Didone" with a
+                      live optical-size axis. At hero sizes it cuts
+                      thin hairlines + fat stems (fashion-cover
+                      contrast); at text sizes it stays readable.
+                      Its numerals are gorgeous — which is the whole
+                      point, because DATA IS THE HERO here.
+  GEIST (interface)   a precise neo-grotesque (Vercel, OFL). The
+                      closest free analogue to Söhne / Suisse /
+                      Neue Haas Grotesk: neutral, tight, Swiss. It
+                      does the quiet work so the serif can shout.
+  GEIST MONO (data)   tabular instrument voice for dense ledgers
+                      (set logs, timestamps). Same family as Geist,
+                      so the system stays tight — three voices, one
+                      house. Display serif + neutral grotesque +
+                      mono is the canonical editorial stack; the
+                      drama lives entirely in the contrast between
+                      Fraunces and Geist, never in decoration.
+  ───────────────────────────────────────────────────────────────
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400;1,9..144,500&family=Geist:wght@300..600&family=Geist+Mono:wght@400..500&display=swap" rel="stylesheet" />
+
+<style>
+  /* ════════════════════════════════════════════════════════════
+     FOLIO — tokens
+     Mostly monochrome warm-neutral. ONE accent (Lacquer), spent
+     carefully. No gradients. No glows. No soft-shadow cards.
+     Structure = hairline rules + scale + negative space.
+     ════════════════════════════════════════════════════════════ */
+  :root {
+    /* PAPER — the primary, light, "premium uncoated stock" mode */
+    --paper:    #F4F0E7;
+    --paper-2:  #ECE6D9;
+    --ink:      #1A1612;   /* warm near-black — text + rules        */
+    --ink-2:    #5A5249;   /* secondary text                        */
+    --ink-3:    #978E7E;   /* muted / tracked micro-labels          */
+    --rule:     rgba(26, 22, 18, 0.16);
+    --rule-strong: rgba(26, 22, 18, 0.32);
+    --accent:   #A8352A;   /* LACQUER — the only colour in the room */
+
+    --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --grot:  'Geist', 'Helvetica Neue', Arial, sans-serif;
+    --mono:  'Geist Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+    /* type scale — wide, big jumps (16 → 20 → 28 → 44 → 72 → 112) */
+    --t-fine:   0.8125rem;  /* 13 */
+    --t-body:   1rem;       /* 16 */
+    --t-lead:   1.25rem;    /* 20 */
+    --t-h2:     1.75rem;    /* 28 */
+    --t-h1:     2.75rem;    /* 44 */
+    --t-disp:   4.5rem;     /* 72 */
+    --t-hero:   7rem;       /* 112 */
+
+    --page-x: 26px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* INK — the dark counterpart, "printed on black stock" */
+  .ink {
+    --paper:    #14110C;
+    --paper-2:  #1D1813;
+    --ink:      #EDE7DB;
+    --ink-2:    #A39A8A;
+    --ink-3:    #6E665A;
+    --rule:     rgba(237, 231, 219, 0.16);
+    --rule-strong: rgba(237, 231, 219, 0.30);
+    --accent:   #CC5240;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--grot);
+    font-weight: 400;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .frame {
+    max-width: 430px;
+    margin: 0 auto;
+    background: var(--paper);
+    min-height: 100vh;
+    padding: 0 var(--page-x) 120px;
+    overflow: hidden;
+  }
+
+  /* ── primitives ───────────────────────────────────────────── */
+  .serif { font-family: var(--serif); }
+  .mono  { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .label {
+    font-family: var(--grot);
+    font-size: 0.625rem;          /* 10px */
+    font-weight: 500;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .label--ink { color: var(--ink); }
+  .label--accent { color: var(--accent); }
+
+  .rule-full {
+    border: 0;
+    border-top: 1px solid var(--ink);
+    margin: 0;
+  }
+  .rule-hair { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+  /* a section opens with a tracked label + folio number on one
+     hairline-topped baseline — the recurring editorial device */
+  .sec { padding-top: 56px; }
+  .sec__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ink);
+  }
+  .sec__no { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.1em; color: var(--ink-3); }
+
+  /* staggered "ink developing" reveal on load */
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  .reveal { opacity: 0; animation: rise 0.7s var(--ease) forwards; }
+  .reveal:nth-child(1) { animation-delay: 0.02s; }
+  .reveal:nth-child(2) { animation-delay: 0.09s; }
+  .reveal:nth-child(3) { animation-delay: 0.16s; }
+  .reveal:nth-child(4) { animation-delay: 0.23s; }
+  .reveal:nth-child(5) { animation-delay: 0.30s; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { animation: none; opacity: 1; transform: none; }
+  }
+
+  /* ═══════════════════ COVER / MASTHEAD ═══════════════════════ */
+  .cover { padding-top: 40px; }
+  .cover__top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 12px;
+  }
+  .masthead {
+    font-family: var(--serif);
+    font-variation-settings: 'opsz' 144;
+    font-weight: 360;
+    font-size: var(--t-hero);
+    line-height: 0.9;
+    letter-spacing: -0.045em;
+    margin: 18px 0 0;
+  }
+  .masthead em { font-style: italic; font-weight: 360; color: var(--accent); }
+  .cover__strap {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--t-lead);
+    line-height: 1.4;
+    color: var(--ink-2);
+    max-width: 22ch;
+    margin-top: 22px;
+  }
+  .cover__meta {
+    display: flex; gap: 18px; margin-top: 26px;
+  }
+
+  /* ═══════════════════ THESIS ═════════════════════════════════ */
+  .thesis {
+    font-family: var(--serif);
+    font-weight: 340;
+    font-size: var(--t-h1);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin-top: 28px;
+  }
+  .thesis em { font-style: italic; color: var(--accent); }
+
+  /* ═══════════════════ TYPEFACES ══════════════════════════════ */
+  .spec { padding: 26px 0; border-bottom: 1px solid var(--rule); }
+  .spec__aa {
+    font-size: 4.25rem; line-height: 0.85; letter-spacing: -0.02em;
+  }
+  .spec__row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .spec__name { margin-top: 10px; }
+  .spec__name b { font-weight: 500; font-size: 0.9375rem; }
+  .spec__role { color: var(--ink-3); }
+  .spec__sample { margin-top: 14px; color: var(--ink-2); line-height: 1.45; }
+
+  /* ═══════════════════ SCALE ══════════════════════════════════ */
+  .scale__row {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 7px 0; border-bottom: 1px solid var(--rule);
+    white-space: nowrap; overflow: hidden;
+  }
+  .scale__spec { font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-3); width: 86px; flex: none; }
+  .scale__sample { font-family: var(--serif); color: var(--ink); letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ═══════════════════ PALETTE ════════════════════════════════ */
+  .sw-list { margin-top: 18px; }
+  .sw {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0; border-bottom: 1px solid var(--rule);
+  }
+  .sw__chip { width: 40px; height: 40px; flex: none; border: 1px solid var(--rule-strong); }
+  .sw__name b { font-weight: 500; }
+  .sw__hex { font-family: var(--mono); font-size: 0.75rem; color: var(--ink-3); margin-left: auto; }
+  .accent-note {
+    margin-top: 22px; padding: 20px;
+    border: 1px solid var(--accent);
+  }
+  .accent-note .label { color: var(--accent); }
+
+  /* ═══════════════════ DATA AS HERO ═══════════════════════════ */
+  .hero-num {
+    font-family: var(--serif);
+    font-variation-settings: 'opsz' 144;
+    font-weight: 330;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 0.9;
+    color: var(--ink);
+  }
+  .data-cal { margin-top: 24px; }
+  .data-cal .hero-num { font-size: 6.5rem; }
+  .data-cal__unit { font-family: var(--serif); font-style: italic; font-size: 1.5rem; color: var(--ink-2); margin-left: 8px; }
+
+  .macros { display: flex; gap: 0; margin-top: 40px; }
+  .macro { flex: 1; padding-right: 14px; }
+  .macro + .macro { border-left: 1px solid var(--rule); padding-left: 16px; }
+  .macro .hero-num { font-size: 2.9rem; }
+  .macro__g { font-family: var(--serif); font-style: italic; font-size: 0.95rem; color: var(--ink-2); }
+
+  .setline { margin-top: 44px; display: flex; align-items: baseline; gap: 14px; }
+  .setline .hero-num { font-size: 4.5rem; }
+  .setline__x { font-family: var(--serif); font-style: italic; font-size: 1.75rem; color: var(--ink-3); }
+
+  /* ═══════════════════ GRID / STRUCTURE ═══════════════════════ */
+  .grid-demo { margin-top: 22px; position: relative; }
+  .grid-row {
+    display: grid; grid-template-columns: 84px 1px 1fr;
+    gap: 18px; align-items: baseline; padding: 16px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .grid-row .colrule { background: var(--rule); align-self: stretch; }
+  .grid-row .val { font-family: var(--serif); font-size: 1.9rem; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .grid-note { margin-top: 16px; color: var(--ink-2); font-size: var(--t-fine); line-height: 1.55; }
+
+  /* ═══════════════════ COMPONENTS ═════════════════════════════ */
+  .comp { padding: 22px 0; border-bottom: 1px solid var(--rule); }
+  .comp__label { margin-bottom: 16px; }
+
+  .btn {
+    font-family: var(--grot); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: 0.22em; text-transform: uppercase;
+    border: 0; border-radius: 0; cursor: pointer;
+    padding: 16px 26px; transition: all 0.3s var(--ease);
+  }
+  .btn--solid { background: var(--ink); color: var(--paper); }
+  .btn--solid:hover { background: var(--accent); }
+  .btn--ghost {
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--ink); padding: 15px 25px;
+  }
+  .btn-link {
+    font-family: var(--grot); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink);
+    background: none; border: 0; padding: 6px 0; cursor: pointer;
+    border-bottom: 1px solid var(--accent);
+  }
+  .btn-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  /* ledger / set rows */
+  .ledger__row {
+    display: grid; grid-template-columns: 22px 1fr auto;
+    gap: 12px; align-items: baseline; padding: 13px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ledger__i { font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-3); }
+  .ledger__name { font-family: var(--grot); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; }
+  .ledger__v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 0.9375rem; }
+  .ledger__v .dim { color: var(--ink-3); }
+  .ledger__row--done .ledger__i { color: var(--accent); }
+
+  /* macro "rule" — a hairline track + ink fill + target tick (no pill) */
+  .meter { margin-top: 6px; }
+  .meter__head { display: flex; justify-content: space-between; align-items: baseline; }
+  .meter__val { font-family: var(--serif); font-size: 1.5rem; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .meter__val .of { color: var(--ink-3); font-size: 0.95rem; font-style: italic; }
+  .meter__track { position: relative; height: 1px; background: var(--rule-strong); margin-top: 12px; }
+  .meter__fill { position: absolute; left: 0; top: -1px; height: 3px; background: var(--ink); }
+  .meter__tick { position: absolute; top: -4px; width: 1px; height: 9px; background: var(--accent); }
+  .meter + .meter { margin-top: 26px; }
+
+  /* segmented — tracked caps, active = ink underline */
+  .seg { display: flex; gap: 26px; border-bottom: 1px solid var(--rule); }
+  .seg__opt {
+    font-family: var(--grot); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3);
+    padding: 0 0 12px; background: none; border: 0; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .seg__opt--on { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* bottom nav concept — tracked caps, active gets a lacquer tick. no pill, no glow */
+  .nav {
+    margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--ink); padding-top: 14px;
+  }
+  .nav__item { text-align: center; position: relative; }
+  .nav__tick { display: block; width: 16px; height: 2px; background: transparent; margin: 0 auto 9px; }
+  .nav__item--on .nav__tick { background: var(--accent); }
+  .nav__lab {
+    font-family: var(--grot); font-size: 0.625rem; font-weight: 500;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .nav__item--on .nav__lab { color: var(--ink); }
+
+  /* ═══════════════════ INK COUNTERPART PANEL ══════════════════ */
+  .ink-panel {
+    margin-top: 22px; background: var(--paper); color: var(--ink);
+    padding: 40px 26px 44px; margin-left: calc(-1 * var(--page-x));
+    margin-right: calc(-1 * var(--page-x));
+  }
+  .ink-panel .masthead { font-size: 4rem; margin-top: 12px; }
+  .ink-panel .hero-num { font-size: 5rem; }
+
+  /* ═══════════════════ MOTION ═════════════════════════════════ */
+  .motion__row { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .motion__k { font-family: var(--mono); font-size: 0.6875rem; color: var(--accent); width: 92px; flex: none; }
+  .motion__v { color: var(--ink-2); font-size: var(--t-fine); line-height: 1.5; }
+
+  .colophon { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--ink); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ══════════ COVER ══════════ -->
+  <header class="cover reveal">
+    <div class="cover__top">
+      <span class="label">Design System</span>
+      <span class="label">Folio &middot; No.01</span>
+    </div>
+    <hr class="rule-full" />
+    <h1 class="masthead">hy<em>P</em>er</h1>
+    <p class="cover__strap">A field journal for strength &amp; nourishment.</p>
+    <div class="cover__meta">
+      <span class="label">Vol. Strength</span>
+      <span class="label">Vol. Fuel</span>
+      <span class="label--accent label">Edition MMXXVI</span>
+    </div>
+  </header>
+
+  <!-- ══════════ THESIS ══════════ -->
+  <section class="sec reveal" style="padding-top:40px;">
+    <p class="thesis">Numbers, set like <em>type.</em> Space spent like luxury. One red, used <em>sparingly.</em></p>
+  </section>
+
+  <!-- ══════════ TYPEFACES ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Typefaces</span><span class="sec__no">01 — Three voices</span></div>
+
+    <div class="spec">
+      <div class="spec__row">
+        <span class="serif spec__aa" style="font-variation-settings:'opsz' 144; font-weight:340;">Aa</span>
+        <span class="serif" style="font-style:italic; font-size:2rem; color:var(--accent);">123</span>
+      </div>
+      <div class="spec__name">
+        <b class="serif">Fraunces</b> &nbsp;<span class="label">Display</span>
+        <div class="spec__role label" style="letter-spacing:.14em; margin-top:6px;">The editorial voice — headlines &amp; hero data</div>
+      </div>
+      <p class="spec__sample serif" style="font-size:1.35rem; line-height:1.25; letter-spacing:-.01em;">The most beautiful thing on the screen is a number.</p>
+    </div>
+
+    <div class="spec">
+      <div class="spec__row">
+        <span class="spec__aa" style="font-weight:400;">Aa</span>
+        <span style="font-size:1.5rem; color:var(--ink-3); font-variant-numeric:tabular-nums;">123</span>
+      </div>
+      <div class="spec__name">
+        <b>Geist</b> &nbsp;<span class="label">Interface</span>
+        <div class="spec__role label" style="letter-spacing:.14em; margin-top:6px;">The precise grotesque — body, labels, UI</div>
+      </div>
+      <p class="spec__sample" style="font-size:0.9375rem;">A neutral neo-grotesque doing the quiet work, so the serif can speak. Söhne / Suisse lineage.</p>
+    </div>
+
+    <div class="spec" style="border-bottom:0;">
+      <div class="spec__row">
+        <span class="mono spec__aa" style="font-size:3.25rem;">Aa</span>
+        <span class="mono" style="font-size:1.4rem; color:var(--ink-3);">123</span>
+      </div>
+      <div class="spec__name">
+        <b class="mono">Geist Mono</b> &nbsp;<span class="label">Instrument</span>
+        <div class="spec__role label" style="letter-spacing:.14em; margin-top:6px;">Tabular ledgers — sets, reps, timestamps</div>
+      </div>
+      <p class="spec__sample mono" style="font-size:0.8125rem;">102.5 kg &times; 8 @ RPE 8 &nbsp; 19:42</p>
+    </div>
+  </section>
+
+  <!-- ══════════ SCALE ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Scale</span><span class="sec__no">02 — Wide, big jumps</span></div>
+    <div style="margin-top:18px;">
+      <div class="scale__row"><span class="scale__spec">112 / hero</span><span class="scale__sample" style="font-size:3rem; font-variation-settings:'opsz' 144; font-weight:330;">1840</span></div>
+      <div class="scale__row"><span class="scale__spec">72 / display</span><span class="scale__sample" style="font-size:2.4rem; font-weight:340;">Strength</span></div>
+      <div class="scale__row"><span class="scale__spec">44 / h1</span><span class="scale__sample" style="font-size:1.9rem;">This week</span></div>
+      <div class="scale__row"><span class="scale__spec">28 / h2</span><span class="scale__sample" style="font-size:1.4rem;">Push &middot; Day 3</span></div>
+      <div class="scale__row"><span class="scale__spec">20 / lead</span><span class="scale__sample" style="font-size:1.1rem; font-style:italic;">A quiet lead line</span></div>
+      <div class="scale__row"><span class="scale__spec">16 / body</span><span class="scale__sample" style="font-family:var(--grot); font-size:0.95rem; letter-spacing:0;">Body copy is set in Geist</span></div>
+      <div class="scale__row" style="border-bottom:0;"><span class="scale__spec">10 / label</span><span class="label" style="letter-spacing:.26em;">Tracked-out label</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════ PALETTE ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Palette</span><span class="sec__no">03 — Paper</span></div>
+    <div class="sw-list">
+      <div class="sw"><span class="sw__chip" style="background:#F4F0E7;"></span><span class="sw__name"><b>Paper</b> &middot; <span class="label" style="letter-spacing:.1em;">page</span></span><span class="sw__hex">#F4F0E7</span></div>
+      <div class="sw"><span class="sw__chip" style="background:#ECE6D9;"></span><span class="sw__name"><b>Paper 2</b> &middot; <span class="label" style="letter-spacing:.1em;">inset</span></span><span class="sw__hex">#ECE6D9</span></div>
+      <div class="sw"><span class="sw__chip" style="background:#1A1612;"></span><span class="sw__name"><b>Ink</b> &middot; <span class="label" style="letter-spacing:.1em;">text · rules</span></span><span class="sw__hex">#1A1612</span></div>
+      <div class="sw"><span class="sw__chip" style="background:#5A5249;"></span><span class="sw__name"><b>Ink 2</b> &middot; <span class="label" style="letter-spacing:.1em;">secondary</span></span><span class="sw__hex">#5A5249</span></div>
+      <div class="sw"><span class="sw__chip" style="background:#978E7E;"></span><span class="sw__name"><b>Ink 3</b> &middot; <span class="label" style="letter-spacing:.1em;">muted</span></span><span class="sw__hex">#978E7E</span></div>
+      <div class="sw"><span class="sw__chip" style="background:#A8352A;"></span><span class="sw__name"><b style="color:var(--accent);">Lacquer</b> &middot; <span class="label" style="letter-spacing:.1em;">accent</span></span><span class="sw__hex">#A8352A</span></div>
+    </div>
+    <div class="accent-note">
+      <span class="label">One accent &middot; spent carefully</span>
+      <p style="margin-top:10px; color:var(--ink-2); font-size:var(--t-fine); line-height:1.55;">Lacquer marks one thing at a time — the live set, the number that matters, a destructive edge. Everything else is ink on paper. No second hue. No gradient. No glow.</p>
+    </div>
+  </section>
+
+  <!-- ══════════ DATA AS HERO ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Data as hero</span><span class="sec__no">04 — The point</span></div>
+
+    <div class="data-cal">
+      <span class="label">kcal — remaining today</span>
+      <div style="margin-top:6px;">
+        <span class="hero-num" id="cal">1,840</span><span class="data-cal__unit">kcal</span>
+      </div>
+    </div>
+
+    <div class="macros">
+      <div class="macro">
+        <span class="label">Protein</span>
+        <div style="margin-top:8px;"><span class="hero-num">182</span><span class="macro__g">g</span></div>
+      </div>
+      <div class="macro">
+        <span class="label">Carbs</span>
+        <div style="margin-top:8px;"><span class="hero-num">204</span><span class="macro__g">g</span></div>
+      </div>
+      <div class="macro">
+        <span class="label">Fat</span>
+        <div style="margin-top:8px;"><span class="hero-num">61</span><span class="macro__g">g</span></div>
+      </div>
+    </div>
+
+    <div class="setline">
+      <div>
+        <span class="label">Working set &middot; bench press</span>
+        <div style="margin-top:6px;"><span class="hero-num">102.5</span></div>
+      </div>
+      <span class="setline__x">&times; 8</span>
+    </div>
+  </section>
+
+  <!-- ══════════ GRID / STRUCTURE ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Structure</span><span class="sec__no">05 — Hang &amp; rule</span></div>
+    <div class="grid-demo">
+      <div class="grid-row"><span class="label" style="letter-spacing:.18em;">Volume</span><span class="colrule"></span><span class="val">14 <span style="font-size:0.9rem; font-style:italic; color:var(--ink-3);">sets</span></span></div>
+      <div class="grid-row"><span class="label" style="letter-spacing:.18em;">Bodyweight</span><span class="colrule"></span><span class="val">81.4 <span style="font-size:0.9rem; font-style:italic; color:var(--ink-3);">kg</span></span></div>
+      <div class="grid-row"><span class="label" style="letter-spacing:.18em;">Streak</span><span class="colrule"></span><span class="val">12 <span style="font-size:0.9rem; font-style:italic; color:var(--ink-3);">days</span></span></div>
+    </div>
+    <p class="grid-note">Labels hang in a narrow left column; values sit large to the right, separated by a single hairline column rule. Hierarchy comes from scale and space — not boxes, not shadows.</p>
+  </section>
+
+  <!-- ══════════ COMPONENTS ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Components</span><span class="sec__no">06 — Rebuilt</span></div>
+
+    <div class="comp">
+      <div class="comp__label label">Actions</div>
+      <div class="btn-row">
+        <button class="btn btn--solid">Start session</button>
+        <button class="btn btn--ghost">Log food</button>
+        <button class="btn-link">Edit &rarr;</button>
+      </div>
+    </div>
+
+    <div class="comp">
+      <div class="comp__label label">Segmented</div>
+      <div class="seg">
+        <button class="seg__opt seg__opt--on">Split</button>
+        <button class="seg__opt">Flexible</button>
+      </div>
+    </div>
+
+    <div class="comp">
+      <div class="comp__label label">Set ledger</div>
+      <div class="ledger__row ledger__row--done"><span class="ledger__i">01</span><span class="ledger__name">Incline press</span><span class="ledger__v">100.0<span class="dim"> kg</span> &times; 8</span></div>
+      <div class="ledger__row ledger__row--done"><span class="ledger__i">02</span><span class="ledger__name">Incline press</span><span class="ledger__v">102.5<span class="dim"> kg</span> &times; 8</span></div>
+      <div class="ledger__row"><span class="ledger__i">03</span><span class="ledger__name">Incline press</span><span class="ledger__v dim">— &times; —</span></div>
+    </div>
+
+    <div class="comp">
+      <div class="comp__label label">Macro meter</div>
+      <div class="meter">
+        <div class="meter__head"><span class="label" style="letter-spacing:.18em;">Protein</span><span class="meter__val">182<span class="of"> / 190 g</span></span></div>
+        <div class="meter__track"><span class="meter__fill" style="width:78%;"></span><span class="meter__tick" style="left:82%;"></span></div>
+      </div>
+      <div class="meter">
+        <div class="meter__head"><span class="label" style="letter-spacing:.18em;">Energy</span><span class="meter__val">2,160<span class="of"> / 2,400</span></span></div>
+        <div class="meter__track"><span class="meter__fill" style="width:62%;"></span><span class="meter__tick" style="left:100%;"></span></div>
+      </div>
+    </div>
+
+    <div class="comp" style="border-bottom:0;">
+      <div class="comp__label label">Navigation</div>
+      <nav class="nav">
+        <div class="nav__item nav__item--on"><span class="nav__tick"></span><span class="nav__lab">Today</span></div>
+        <div class="nav__item"><span class="nav__tick"></span><span class="nav__lab">Train</span></div>
+        <div class="nav__item"><span class="nav__tick"></span><span class="nav__lab">Fuel</span></div>
+        <div class="nav__item"><span class="nav__tick"></span><span class="nav__lab">You</span></div>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ══════════ INK COUNTERPART ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Counterpart</span><span class="sec__no">07 — Ink stock</span></div>
+  </section>
+  <div class="ink ink-panel">
+    <div class="cover__top"><span class="label">Edition &middot; dark</span><span class="label">Printed on black</span></div>
+    <hr class="rule-full" />
+    <h2 class="masthead">hy<em>P</em>er</h2>
+    <div style="margin-top:30px;">
+      <span class="label">kcal — remaining</span>
+      <div style="margin-top:4px;"><span class="hero-num">1,840</span></div>
+    </div>
+    <div style="margin-top:22px;" class="btn-row">
+      <button class="btn btn--solid">Start session</button>
+      <button class="btn btn--ghost">Log food</button>
+    </div>
+  </div>
+
+  <!-- ══════════ MOTION ══════════ -->
+  <section class="sec reveal">
+    <div class="sec__head"><span class="label label--ink">Motion</span><span class="sec__no">08 — Restraint</span></div>
+    <div style="margin-top:16px;">
+      <div class="motion__row"><span class="motion__k">develop</span><span class="motion__v">Content rises 14px and fades in on load, staggered 60–70ms — like a print developing. You saw it happen as this page opened.</span></div>
+      <div class="motion__row"><span class="motion__k">page-turn</span><span class="motion__v">Route changes cross-fade or slide horizontally, 360–480ms, ease-out-expo. No bounce, no spring overshoot.</span></div>
+      <div class="motion__row"><span class="motion__k">count</span><span class="motion__v">Hero numerals roll to their value on mount — tabular, calm. The calorie figure above counted up.</span></div>
+      <div class="motion__row" style="border-bottom:0;"><span class="motion__k">banned</span><span class="motion__v">No glow, no pulse, no breathing cards, no neon. Emphasis is scale, weight, the single lacquer rule.</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════ COLOPHON ══════════ -->
+  <footer class="colophon reveal">
+    <span class="label">hyPer &middot; Folio</span>
+    <span class="label">Fraunces · Geist · Geist Mono</span>
+  </footer>
+
+</div>
+
+<script>
+  // tasteful hero count-up — demonstrates the "data animates" principle
+  (function () {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var el = document.getElementById('cal');
+    if (!el || reduce) return;
+    var target = 1840, start = null, dur = 1100;
+    function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+    function step(ts) {
+      if (!start) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(target * eased);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = fmt(target);
+    }
+    el.textContent = '0';
+    setTimeout(function () { requestAnimationFrame(step); }, 350);
+  })();
+</script>
+</body>
+</html>

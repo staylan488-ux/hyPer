@@ -25,8 +25,8 @@ export function EmptyState({ icon: Icon, title, body, action, preview, className
       transition={springs.smooth}
     >
       {Icon && (
-        <div className="mx-auto mb-4 w-12 h-12 rounded-full well flex items-center justify-center">
-          <Icon className="w-5 h-5 text-[var(--color-stone)]" strokeWidth={1.75} />
+        <div className="mx-auto mb-4 w-11 h-11 border border-[var(--color-border-strong)] flex items-center justify-center">
+          <Icon className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
         </div>
       )}
       <h3 className="t-heading mb-1.5">{title}</h3>

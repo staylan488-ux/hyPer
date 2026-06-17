@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Loader2, Search, Dumbbell } from 'lucide-react';
-import { Modal, Input } from '@/components/shared';
+import { Loader2, Search, Dumbbell, ArrowRight } from 'lucide-react';
+import { Modal, Input, Chip } from '@/components/shared';
 import { supabase } from '@/lib/supabase';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
@@ -98,11 +98,25 @@ function ExercisePickerContent({
     onClose();
   };
 
+  // Group the filtered list by primary muscle, preserving name order within each
+  const groupedExercises = useMemo(() => {
+    const groups = new Map<MuscleGroup, Exercise[]>();
+    for (const exercise of filteredExercises) {
+      const list = groups.get(exercise.muscle_group);
+      if (list) {
+        list.push(exercise);
+      } else {
+        groups.set(exercise.muscle_group, [exercise]);
+      }
+    }
+    return Array.from(groups.entries());
+  }, [filteredExercises]);
+
   return (
-    <div className="pt-4 space-y-4">
+    <div className="pt-4 space-y-6">
       {/* Search bar */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -111,98 +125,95 @@ function ExercisePickerContent({
         />
       </div>
 
-      {/* Muscle group filter pills */}
+      {/* Muscle group filter — tracked-caps chips on a hairline */}
       <div>
-        <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2">
-          Muscle Group
-        </p>
+        <p className="t-label mb-3">Muscle group</p>
         <div
           ref={filterScrollRef}
-          className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide"
+          className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar"
         >
-          {/* "All" pill */}
-          <button
+          {/* "All" chip */}
+          <Chip
+            tone="sage"
+            size="sm"
+            selected={selectedMuscle === 'all'}
             onClick={() => setSelectedMuscle('all')}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-[12px] text-[10px] tracking-[0.08em] uppercase whitespace-nowrap transition-colors ${
-              selectedMuscle === 'all'
-                ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                : 'bg-[var(--color-surface-high)] text-[var(--color-text-dim)] border border-[var(--color-border)]'
-            }`}
+            className="shrink-0"
           >
             All
-          </button>
+          </Chip>
 
           {ALL_MUSCLE_GROUPS.map((group) => (
-            <button
+            <Chip
               key={group}
+              tone="sage"
+              size="sm"
+              selected={selectedMuscle === group}
               onClick={() => setSelectedMuscle(group)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-[12px] text-[10px] tracking-[0.08em] uppercase whitespace-nowrap transition-colors ${
-                selectedMuscle === group
-                  ? 'bg-[#E8E4DE] text-[#1A1A1A]'
-                  : 'bg-[var(--color-surface-high)] text-[var(--color-text-dim)] border border-[var(--color-border)]'
-              }`}
+              className="shrink-0"
             >
               {MUSCLE_GROUP_LABELS[group]}
-            </button>
+            </Chip>
           ))}
         </div>
       </div>
 
-      {/* Exercise list */}
+      {/* Exercise list — hairline rows grouped by muscle */}
       <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1 overscroll-contain touch-pan-y">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--color-muted)]" />
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B]">
-              Loading exercises...
-            </p>
+            <Loader2 className="w-5 h-5 animate-spin text-[var(--color-muted)]" strokeWidth={1.5} />
+            <p className="t-label-sm">Loading exercises...</p>
           </div>
         ) : filteredExercises.length === 0 ? (
           /* Empty state */
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <div className="p-3 rounded-[16px] bg-[var(--color-surface-high)]">
-              <Dumbbell className="w-5 h-5 text-[#6B6B6B]" strokeWidth={1.5} />
-            </div>
-            <p className="text-xs text-[var(--color-muted)]">No exercises found</p>
-            <p className="text-[10px] text-[#6B6B6B]">
-              Try a different search or muscle group
-            </p>
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <Dumbbell className="w-6 h-6 text-[var(--color-muted)]" strokeWidth={1.25} />
+            <p className="t-body text-[var(--color-text)]">No exercises found</p>
+            <p className="t-caption">Try a different search or muscle group</p>
           </div>
         ) : (
-          <div key={selectedMuscle} className="space-y-1.5">
-            {filteredExercises.map((exercise) => (
-              <button
-                key={exercise.id}
-                onClick={() => handleSelect(exercise)}
-                className="w-full text-left px-3.5 py-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:bg-[var(--color-surface-high)] transition-colors group"
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-[var(--color-text)] group-hover:text-[#E8E4DE] transition-colors truncate">
-                    {exercise.name}
-                  </p>
-                  {exercise.is_compound && (
-                    <span className="flex-shrink-0 px-2 py-0.5 rounded-[10px] bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[9px] tracking-[0.1em] uppercase">
-                      Compound
-                    </span>
-                  )}
+          <div key={selectedMuscle} className="space-y-7">
+            {groupedExercises.map(([group, groupExercises]) => (
+              <section key={group}>
+                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-text)]">
+                  <span className="t-heading">{MUSCLE_GROUP_LABELS[group]}</span>
+                  <span className="t-data-sm text-[var(--color-muted)]">{groupExercises.length}</span>
                 </div>
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                    {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
-                  </span>
-                  {exercise.muscle_group_secondary && (
-                    <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                      {MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}
-                    </span>
-                  )}
-                  {exercise.equipment && (
-                    <span className="px-2 py-0.5 rounded-[8px] bg-[var(--color-surface-high)] text-[10px] text-[#6B6B6B]">
-                      {exercise.equipment}
-                    </span>
-                  )}
-                </div>
-              </button>
+                <ul>
+                  {groupExercises.map((exercise) => (
+                    <li key={exercise.id} className="border-t border-[var(--color-border)] first:border-t-0">
+                      <button
+                        onClick={() => handleSelect(exercise)}
+                        className="pressable group w-full text-left py-3 flex items-baseline gap-3"
+                        type="button"
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-baseline gap-2">
+                            <span className="t-body text-[var(--color-text)] truncate">
+                              {exercise.name}
+                            </span>
+                            {exercise.is_compound && (
+                              <span className="t-label-sm shrink-0 text-[var(--color-accent)]">
+                                Compound
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-1">
+                            {exercise.muscle_group_secondary && (
+                              <span className="t-caption">+{MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}</span>
+                            )}
+                            {exercise.equipment && (
+                              <span className="t-caption">{exercise.equipment}</span>
+                            )}
+                          </span>
+                        </span>
+                        <ArrowRight className="w-4 h-4 self-center shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
           </div>
         )}

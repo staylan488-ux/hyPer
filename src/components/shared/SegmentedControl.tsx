@@ -16,7 +16,10 @@ interface SegmentedControlProps<T extends string> {
   className?: string;
 }
 
-/** Inset segmented switch — sits in a milled well, selection slides as a raised chalk plate. */
+/**
+ * FOLIO segmented control — tracked-caps tabs on a baseline hairline; the
+ * active one is underscored by an ink rule that slides between options.
+ */
 export function SegmentedControl<T extends string>({
   options,
   value,
@@ -25,11 +28,10 @@ export function SegmentedControl<T extends string>({
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const pad = size === 'sm' ? 'p-0.5' : 'p-1';
-  const item = size === 'sm' ? 'min-h-8 px-2.5 text-xs' : 'min-h-10 px-3 text-[13px]';
+  const item = size === 'sm' ? 'pb-2.5 text-[10px] tracking-[0.18em]' : 'pb-3 text-[11px] tracking-[0.2em]';
 
   return (
-    <div className={`well flex ${pad} ${className}`} role="tablist">
+    <div className={`flex gap-7 border-b border-[var(--color-border)] ${className}`} role="tablist">
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -42,19 +44,18 @@ export function SegmentedControl<T extends string>({
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative flex-1 flex items-center justify-center gap-1.5 font-semibold rounded-[8px] transition-colors duration-150 ${item} ${
+            className={`relative uppercase font-medium [font-family:var(--font-sans)] -mb-px transition-colors duration-200 ${item} ${
               selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}
           >
+            <span className="relative z-10 flex items-center gap-1.5">{option.label}</span>
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}
-                className="absolute inset-0 rounded-[8px] bg-[var(--color-surface-3)] hairline"
+                className="absolute left-0 right-0 bottom-0 h-[2px] bg-[var(--color-text)]"
                 transition={springs.smooth}
-                style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }}
               />
             )}
-            <span className="relative z-10 flex items-center gap-1.5">{option.label}</span>
           </button>
         );
       })}

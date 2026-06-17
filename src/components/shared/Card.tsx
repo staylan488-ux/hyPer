@@ -7,11 +7,12 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onD
   animated?: boolean;
 }
 
+/** FOLIO card — a flat ruled block. Square corners, hairline borders, no shadow. */
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
       default: 'bg-[var(--color-surface-1)] border border-[var(--color-border)]',
-      elevated: 'bg-[var(--color-surface-2)] border border-[var(--color-border)] raised',
+      elevated: 'bg-[var(--color-surface-1)] border border-[var(--color-border-strong)]',
       outlined: 'bg-transparent border border-[var(--color-border-strong)]',
       slab: 'bg-[var(--color-surface-2)] border border-[var(--color-border-soft)]',
     };
@@ -20,7 +21,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       return (
         <div
           ref={ref}
-          className={`rounded-[var(--radius-lg)] p-5 ${variants[variant]} ${className}`}
+          className={`rounded-none p-5 ${variants[variant]} ${className}`}
           {...props}
         >
           {children}
@@ -31,7 +32,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        className={`rounded-[var(--radius-lg)] p-5 ${variants[variant]} ${className}`}
+        className={`rounded-none p-5 ${variants[variant]} ${className}`}
         transition={springs.smooth}
         whileTap={{ scale: 0.995 }}
         {...props}

@@ -38,11 +38,16 @@ Before marking any task complete, run and pass:
 - Keep changes scoped; avoid unrelated refactors.
 - Prefer plan -> implement -> verify workflow for non-trivial tasks.
 
-## Frontend quality bar
-- Present 2-3 visual direction options before major UI redesigns.
-- Design for mobile first, then desktop.
-- Use clear visual hierarchy, intentional spacing, and consistent states.
-- Verify final behavior with existing pages/components conventions.
+## Design system — FOLIO (house style, locked)
+The app uses one committed aesthetic: **editorial luxury** (print magazine / high-fashion, à la Aesop · The Row · Kinfolk). Stay inside it; do not drift back toward generic SaaS/fitness UI.
+- **Type (3 voices, defined in `src/index.css`):** Fraunces (`--font-display`) = serif headlines + hero numbers; Geist (`--font-sans`) = UI/body grotesque; Geist Mono (`--font-mono`) = dense tabular data. Loaded via Google Fonts in `index.html`. Never use the system stack or Inter.
+- **Data is the hero.** Render key numbers (calories, macros, weights, reps, set counts) as large serif objects: `.number-hero` / `.number-large` / `.number-medium` (also `.t-data-xl/lg`). Small dense data uses mono `.t-data` / `.t-data-sm`.
+- **Palette:** warm monochrome paper+ink with ONE accent, "Lacquer" `var(--color-accent)` (deep red). Lacquer marks only one thing at a time (live/active state, the single most important number, or a destructive edge). No second hue.
+- **Structure:** hierarchy from scale, weight, and negative space + hairline rules — not boxes. Square corners (radius tokens are 0; only `--radius-full` for true circles). Section pattern: `mt-10 pt-8 border-t border-[var(--color-border)]` opened by a `.t-label` eyebrow.
+- **BANNED:** gradients, glows/neon, soft drop-shadow floating cards, rounded-rectangle-everything, pastel pill badges, emoji icons, centered/even/equal-weight layouts.
+- **Themes:** Paper (light) is default; Ink (dark) via the toggle. Both are tokenised — only edit `var(--color-*)` tokens, never hardcode hex.
+- **GOTCHA — never use the `text-base` class.** `--color-base` is a theme color, so Tailwind v4 makes `text-base` a *color* utility (= paper), silently making text invisible. For 16px body use `text-[1rem]`.
+- Mobile-first (design at ~380px first), then desktop. Reference screens: `src/pages/Dashboard.tsx`, `src/components/auth/AuthForm.tsx`. Living spec: `design/folio-design-system.html`.
 
 ## Cross-tool handoff protocol
 - Before starting major work, read `TOOL_SWITCHING_CHECKLIST.md`.
