@@ -121,6 +121,7 @@ export interface Food {
   serving_unit: string;
   source: 'custom' | 'usda';
   fdc_id: string | null;
+  serving_label?: string; // display-only, e.g. "1 large"; never written to the DB
 }
 
 export interface NutritionLog {
