@@ -18,7 +18,7 @@ import {
   toLocalTimeInput,
   type MeasurementUnit,
 } from './foodLoggerUtils';
-import { searchUsdaFoods } from './usdaSearch';
+import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from './usdaSearch';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
@@ -104,6 +104,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingFoodId, setLoadingFoodId] = useState<string | null>(null);
   const [selectedFood, setSelectedFood] = useState<Food | null>(() => {
     if (!initialEntry?.food) return null;
     return {
@@ -1148,11 +1149,24 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                 key={food.fdc_id || food.id}
                 type="button"
                 className="pressable w-full flex items-center justify-between gap-3 px-3.5 py-3 bg-[var(--color-surface-2)] hairline rounded-[var(--radius-md)] text-left"
-                onClick={() => {
-                  if (saving) return;
+                onClick={async () => {
+                  if (saving || loadingFoodId) return;
 
                   setSelectedFoodMeta(null);
-                  setSelectedFood(food);
+
+                  let resolvedFood = food;
+                  if (food.source === 'usda' && food.fdc_id) {
+                    setLoadingFoodId(food.fdc_id);
+                    try {
+                      const apiKey = import.meta.env.VITE_USDA_API_KEY;
+                      const detail = await fetchUsdaFoodDetail(food.fdc_id, apiKey);
+                      resolvedFood = applyPortion(food, selectPortionFromDetail(detail));
+                    } finally {
+                      setLoadingFoodId(null);
+                    }
+                  }
+
+                  setSelectedFood(resolvedFood);
                   setMeasurementUnit('serving');
 
                   const defaultServings = 1;
@@ -1162,14 +1176,18 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.smooth }}
-                disabled={saving}
+                disabled={saving || loadingFoodId !== null}
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-[var(--color-text)] truncate">{food.name}</p>
                   <p className="t-data-sm text-[var(--color-muted)] mt-0.5">{Math.round(food.calories)} kcal / 100g</p>
                 </div>
                 <span className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] shrink-0">
-                  <Plus className="w-3.5 h-3.5 text-[var(--color-text-dim)]" strokeWidth={2.25} />
+                  {loadingFoodId === food.fdc_id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-text-dim)]" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 text-[var(--color-text-dim)]" strokeWidth={2.25} />
+                  )}
                 </span>
               </motion.button>
             ))}
