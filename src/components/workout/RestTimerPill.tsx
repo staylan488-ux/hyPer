@@ -24,6 +24,8 @@ interface RestTimerPillProps {
   sessionSeed?: number;
   defaultSeconds?: number;
   onDismiss: () => void;
+  /** Fired when the user explicitly picks a new duration (preset). */
+  onDurationChange?: (seconds: number) => void;
 }
 
 const PRESET_TIMES = [60, 90, 120, 180, 300];
@@ -54,7 +56,7 @@ function formatTime(totalSeconds: number) {
  * and a single lacquer live tick. Tap to expand for presets — never a blocking
  * modal between sets.
  */
-export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss }: RestTimerPillProps) {
+export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
   const [expanded, setExpanded] = useState(false);
   const completionHandledRef = useRef(false);
@@ -145,6 +147,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     saveRestTimerSession(nextSession);
     setSession(nextSession);
     completionHandledRef.current = false;
+    onDurationChange?.(newSeconds);
   };
 
   const handleToggleRunning = () => {
