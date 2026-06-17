@@ -60,11 +60,6 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: [0.92, 1.01, 1], opacity: 1 }}
               transition={reduceMotion ? { duration: 0.18 } : { duration: 0.64, ease: [0.16, 1, 0.3, 1] }}
-              style={{
-                backfaceVisibility: 'hidden',
-                transform: 'translateZ(0)',
-                willChange: 'transform, opacity',
-              }}
             >
               P
             </motion.span>
@@ -92,11 +87,6 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
                   initial={{ opacity: 0, scale: 0.8, y: -8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy, delay: 0.06 }}
-                  style={{
-                    backfaceVisibility: 'hidden',
-                    transform: 'translateZ(0)',
-                    willChange: 'transform, opacity',
-                  }}
                 >
                   P
                 </motion.span>
