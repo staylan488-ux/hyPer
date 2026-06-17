@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, TimeField } from '@/components/shared';
+import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import type { Food } from '@/types';
@@ -256,6 +256,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }),
     [manualFood]
   );
+
+  const manualServingsValue = useMemo(() => {
+    const parsed = parseFloat(servings);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }, [servings]);
 
   const insertFoodRecord = async (
     userId: string,
@@ -958,7 +963,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
 
   /* ── Shared "when" row: date · time · meal tag ── */
   const whenRow = (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-3">
       <DateField value={entryDate} onChange={setEntryDate} max={new Date()} />
       <TimeField value={timeValue} onChange={setTimeValue} />
       <SelectSheet
@@ -975,45 +980,55 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
 
   if (selectedFood) {
     return (
-      <div className="space-y-4 pt-1 pb-2">
-        <div className="panel p-4">
-          <h4 className="t-heading mb-2.5">{selectedFood.name}</h4>
+      <div className="space-y-7 pt-1 pb-2">
+        {/* ── Food header + macro ledger ── */}
+        <div>
+          <span className="t-label-sm block mb-2">{loggerMode === 'edit' ? 'Editing entry' : 'Selected'}</span>
+          <h3 className="t-title pb-4 border-b border-[var(--color-text)]">{selectedFood.name}</h3>
+
           {selectedFoodMeta?.source === 'photo' && (
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="t-label-sm text-[var(--color-sage)] flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" strokeWidth={2} />
+            <div className="mt-5">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="t-label flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3" strokeWidth={1.75} />
                   Photo estimate
                 </span>
-                <span className="t-data-sm text-[var(--color-sage)]">{Math.round(selectedFoodMeta.confidence * 100)}%</span>
+                <span className="t-data-sm text-[var(--color-text-dim)]">{Math.round(selectedFoodMeta.confidence * 100)}%</span>
               </div>
-              <RailStrip value={selectedFoodMeta.confidence} tone="sage" size="sm" />
+              <RailStrip value={selectedFoodMeta.confidence} tone="chalk" size="sm" />
               {selectedFoodMeta.reasoning && (
-                <p className="text-[11px] text-[var(--color-muted)] mt-2">{selectedFoodMeta.reasoning}</p>
+                <p className="t-caption mt-3">{selectedFoodMeta.reasoning}</p>
               )}
             </div>
           )}
-          <div className="grid grid-cols-4 gap-2">
+
+          <div className="grid grid-cols-4 gap-4 mt-6">
             {[
               { label: 'kcal', value: Math.round(selectedFood.calories) },
-              { label: 'protein', value: `${Math.round(selectedFood.protein)}g` },
-              { label: 'carbs', value: `${Math.round(selectedFood.carbs)}g` },
-              { label: 'fat', value: `${Math.round(selectedFood.fat)}g` },
+              { label: 'protein', value: Math.round(selectedFood.protein), unit: 'g' },
+              { label: 'carbs', value: Math.round(selectedFood.carbs), unit: 'g' },
+              { label: 'fat', value: Math.round(selectedFood.fat), unit: 'g' },
             ].map((cell) => (
-              <div key={cell.label} className="well px-1 py-2 text-center">
-                <p className="t-data text-[var(--color-text)]">{cell.value}</p>
-                <p className="t-label-sm text-[9px] mt-0.5">{cell.label}</p>
+              <div key={cell.label} className="border-t border-[var(--color-border)] pt-2.5">
+                <span className="t-label-sm block mb-1.5">{cell.label}</span>
+                <span className="flex items-baseline gap-0.5">
+                  <span className="number-medium text-[var(--color-text)]">{cell.value}</span>
+                  {cell.unit && (
+                    <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">{cell.unit}</span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-[var(--color-muted)] mt-2">
+          <p className="t-caption mt-3">
             {selectedFood.serving_label
               ? `per ${selectedFood.serving_label} (${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'g'})`
               : `per ${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'serving'}`}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {/* ── Amount + unit ── */}
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Amount" error={selectedFoodMeasurementError ?? undefined}>
             <input
               type="number"
@@ -1074,15 +1089,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
 
         {whenRow}
 
-        <div className="flex items-center justify-between rounded-[var(--radius-md)] bg-accent-tint px-4 py-3">
-          <span className="t-label">This entry</span>
-          <span className="t-data-lg text-[var(--color-text)]">
-            {selectedFoodTotalCalories} <span className="text-[12px] text-[var(--color-muted)]">kcal</span>
-            <span className="text-[12px] text-[var(--color-text-dim)] ml-2">{selectedFoodTotalProtein}g protein</span>
-          </span>
+        {/* ── This entry — the one important figure ── */}
+        <div className="border-l-2 border-[var(--color-accent)] pl-5">
+          <span className="t-label block mb-2">This entry</span>
+          <div className="flex items-baseline gap-2">
+            <span className="number-large text-[var(--color-text)]">{selectedFoodTotalCalories}</span>
+            <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">kcal</span>
+            <span className="t-data-sm text-[var(--color-muted)] ml-2">{selectedFoodTotalProtein}g protein</span>
+          </div>
         </div>
 
-        <div className="flex gap-2.5 pt-1">
+        <div className="flex gap-3 pt-1">
           <Button
             variant="ghost"
             className="flex-1"
@@ -1117,7 +1134,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   /* ═══════════ Capture stage ═══════════ */
 
   return (
-    <div className="space-y-4 pt-1 pb-2">
+    <div className="space-y-6 pt-1 pb-2">
       <SegmentedControl
         value={mode}
         onChange={(next) => {
@@ -1133,33 +1150,33 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
 
       {mode === 'search' ? (
         <>
-          <div className="well flex items-center gap-2 pl-3.5 pr-1.5 py-1.5">
-            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={2} />
+          <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
+            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
               placeholder="Search the USDA database…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && searchUSDA(searchQuery)}
-              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[var(--color-text)] outline-none placeholder:text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)]"
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none placeholder:text-[var(--color-muted)]"
             />
             <button
               type="button"
-              className="pressable flex items-center justify-center w-9 h-9 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] text-[var(--color-text)] disabled:opacity-40"
+              className="pressable flex items-center justify-center w-9 h-9 text-[var(--color-text)] disabled:opacity-40"
               onClick={() => searchUSDA(searchQuery)}
               disabled={loading}
               aria-label="Search"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" strokeWidth={2.25} />}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" strokeWidth={1.75} />}
             </button>
           </div>
 
-          <div className="max-h-56 md:max-h-64 overflow-y-auto space-y-1.5 overscroll-contain touch-pan-y">
+          <div className="max-h-56 md:max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
             {searchResults.map((food, index) => (
               <motion.button
                 key={food.fdc_id || food.id}
                 type="button"
-                className="pressable w-full flex items-center justify-between gap-3 px-3.5 py-3 bg-[var(--color-surface-2)] hairline rounded-[var(--radius-md)] text-left"
+                className="pressable group w-full flex items-baseline gap-4 py-3.5 border-t border-[var(--color-border)] text-left"
                 onClick={async () => {
                   if (saving || loadingFoodId) return;
 
@@ -1190,17 +1207,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                 transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.smooth }}
                 disabled={saving || loadingFoodId !== null}
               >
+                <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0 pt-1">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--color-text)] truncate">{food.name}</p>
+                  <p className="t-body font-medium text-[var(--color-text)] truncate">{food.name}</p>
                   <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                     {Math.round(food.calories)} kcal / {food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}
                   </p>
                 </div>
-                <span className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] shrink-0">
+                <span className="flex items-center justify-center w-8 h-8 shrink-0 self-center text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors">
                   {loadingFoodId === food.fdc_id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-text-dim)]" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Plus className="w-3.5 h-3.5 text-[var(--color-text-dim)]" strokeWidth={2.25} />
+                    <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
                   )}
                 </span>
               </motion.button>
@@ -1225,37 +1245,37 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
 
           {manualNameFocused && manualNameQuery.length >= 2 && (
             <div>
-              <p className="t-label-sm mb-1.5">{loadingSavedMeals ? 'Loading saved meals…' : 'Saved meals'}</p>
+              <p className="t-label-sm mb-2.5">{loadingSavedMeals ? 'Loading saved meals…' : 'Saved meals'}</p>
               {!loadingSavedMeals && manualSuggestions.length > 0 ? (
-                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                <div className="max-h-36 overflow-y-auto">
                   {manualSuggestions.map((meal) => (
                     <button
                       key={meal.id}
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSelectSavedMeal(meal)}
-                      className="pressable w-full text-left px-3 py-2.5 bg-[var(--color-surface-2)] hairline rounded-[var(--radius-sm)]"
+                      className="pressable w-full text-left py-2.5 border-t border-[var(--color-border)]"
                     >
-                      <p className="text-[13px] font-medium text-[var(--color-text)] truncate">{meal.name}</p>
-                      <p className="t-data-sm text-[10px] text-[var(--color-muted)] mt-0.5">
+                      <p className="t-body font-medium text-[var(--color-text)] truncate">{meal.name}</p>
+                      <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                         {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                       </p>
                     </button>
                   ))}
                 </div>
               ) : !loadingSavedMeals ? (
-                <p className="text-[11px] text-[var(--color-muted)]">No saved meal matches yet.</p>
+                <p className="t-caption">No saved meal matches yet.</p>
               ) : null}
             </div>
           )}
 
           {selectedSavedMealId && (
-            <p className="text-[11px] font-semibold text-[var(--color-sage)]">
+            <p className="t-label-sm text-[var(--color-text)]">
               {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5">
             <Input
               label="Calories"
               type="number"
@@ -1302,44 +1322,35 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 items-end">
-            <FormField label="Servings">
-              <input
-                type="number"
-                inputMode="decimal"
-                value={servings}
-                onChange={(e) => setServings(e.target.value)}
-                min="0.25"
-                step="0.25"
-                className="well w-full min-h-11 px-3 text-center t-data-lg text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
-              />
-            </FormField>
+          <FormField label="Servings">
+            <Stepper
+              value={formatMeasurementAmount(manualServingsValue)}
+              onDecrement={() => setServings(formatMeasurementAmount(Math.max(0.25, manualServingsValue - 0.25)))}
+              onIncrement={() => setServings(formatMeasurementAmount(manualServingsValue + 0.25))}
+              canDecrement={manualServingsValue > 0.25}
+            />
+          </FormField>
 
-            {!selectedSavedMealId && (
-              <button
-                type="button"
-                onClick={() => setSaveAsReusableMeal(!saveAsReusableMeal)}
-                className={`pressable flex items-center gap-2 px-3 min-h-11 rounded-[var(--radius-sm)] border text-left ${
+          {!selectedSavedMealId && (
+            <button
+              type="button"
+              onClick={() => setSaveAsReusableMeal(!saveAsReusableMeal)}
+              className="pressable flex items-center gap-3 text-left"
+            >
+              <span
+                className={`flex items-center justify-center w-[18px] h-[18px] border shrink-0 ${
                   saveAsReusableMeal
-                    ? 'bg-sage-tint border-[color-mix(in_srgb,var(--color-sage)_40%,transparent)]'
-                    : 'bg-[var(--color-surface-2)] border-[var(--color-border)]'
+                    ? 'bg-[var(--color-text)] border-[var(--color-text)]'
+                    : 'border-[var(--color-border-strong)]'
                 }`}
               >
-                <span
-                  className={`flex items-center justify-center w-4.5 h-4.5 w-[18px] h-[18px] rounded-[5px] border shrink-0 ${
-                    saveAsReusableMeal
-                      ? 'bg-[var(--color-sage)] border-[var(--color-sage)]'
-                      : 'border-[var(--color-border-strong)]'
-                  }`}
-                >
-                  {saveAsReusableMeal && <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />}
-                </span>
-                <span className={`text-[12px] font-medium leading-tight ${saveAsReusableMeal ? 'text-[var(--color-sage)]' : 'text-[var(--color-text-dim)]'}`}>
-                  Save as reusable meal
-                </span>
-              </button>
-            )}
-          </div>
+                {saveAsReusableMeal && <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3} />}
+              </span>
+              <span className={`t-label ${saveAsReusableMeal ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                Save as reusable meal
+              </span>
+            </button>
+          )}
 
           {selectedSavedMealId && (
             <Button
@@ -1353,8 +1364,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             </Button>
           )}
 
-          {savedMealMessage && <p className="text-[11px] font-semibold text-[var(--color-sage)]">{savedMealMessage}</p>}
-          {savedMealError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{savedMealError}</p>}
+          {savedMealMessage && <p className="t-caption text-[var(--color-text)]">{savedMealMessage}</p>}
+          {savedMealError && <p className="t-caption text-[var(--color-accent)]">{savedMealError}</p>}
 
           {whenRow}
 
@@ -1369,7 +1380,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
           </Button>
         </>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-5">
           <input
             ref={photoInputRef}
             type="file"
@@ -1383,17 +1394,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
-              className="pressable w-full rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-2)] py-10 flex flex-col items-center gap-2.5"
+              className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-12 flex flex-col items-center gap-3"
             >
-              <span className="flex items-center justify-center w-12 h-12 rounded-full well">
-                <Camera className="w-5 h-5 text-[var(--color-stone)]" strokeWidth={1.75} />
+              <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
+                <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
               </span>
-              <span className="t-heading text-[15px]">Snap your plate</span>
+              <span className="t-heading">Snap your plate</span>
               <span className="t-caption">Camera or photo library</span>
             </button>
           ) : (
-            <div className="relative rounded-[var(--radius-lg)] overflow-hidden hairline-strong">
-              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover" />
+            <div className="relative overflow-hidden hairline-strong">
+              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover grayscale-filter" />
               {photoAnalyzing && (
                 <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)] flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-5 h-5 animate-spin text-[var(--color-accent)]" />
@@ -1404,9 +1415,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                 <button
                   type="button"
                   onClick={handleRetakePhoto}
-                  className="pressable absolute top-2.5 right-2.5 flex items-center gap-1.5 px-3 py-2 rounded-full bg-[color-mix(in_srgb,var(--color-base)_75%,transparent)] backdrop-blur text-[11px] font-semibold text-[var(--color-text)]"
+                  className="pressable absolute top-2.5 right-2.5 flex items-center gap-1.5 px-3 py-2 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
                 >
-                  <RefreshCw className="w-3 h-3" strokeWidth={2.25} />
+                  <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                   Retake
                 </button>
               )}
@@ -1420,7 +1431,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             placeholder="e.g., large bowl, extra olive oil"
           />
 
-          {photoError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{photoError}</p>}
+          {photoError && <p className="t-caption text-[var(--color-accent)]">{photoError}</p>}
 
           <Button
             className="w-full"
@@ -1429,7 +1440,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             loading={photoAnalyzing}
             disabled={!photoFile || photoAnalyzing || saving}
           >
-            {!photoAnalyzing && <Sparkles className="w-4 h-4" strokeWidth={2} />}
+            {!photoAnalyzing && <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
             {photoAnalyzing ? 'Analyzing…' : 'Analyze photo'}
           </Button>
         </div>

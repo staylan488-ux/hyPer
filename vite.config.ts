@@ -17,9 +17,9 @@ export default defineConfig({
       manifest: {
         name: 'hyPer',
         short_name: 'hyPer',
-        description: 'Science-based training & nutrition tracking',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        description: 'A field journal for strength & nourishment',
+        theme_color: '#F4F0E7',
+        background_color: '#F4F0E7',
         display: 'standalone',
         orientation: 'portrait',
         icons: [

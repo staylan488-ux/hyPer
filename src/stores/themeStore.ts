@@ -6,8 +6,8 @@ const STORAGE_KEY = 'hyper-theme';
 const TRANSITION_CLASS = 'theme-transition-active';
 
 const THEME_COLOR_BY_MODE: Record<ThemeMode, string> = {
-  dark: '#000000',
-  light: '#F3EEE6',
+  dark: '#14110C',
+  light: '#F4F0E7',
 };
 
 function isBrowser() {
@@ -20,14 +20,15 @@ function prefersReducedMotion() {
 }
 
 function resolveInitialTheme(): ThemeMode {
-  if (!isBrowser()) return 'dark';
+  if (!isBrowser()) return 'light';
 
   const saved = window.localStorage.getItem(STORAGE_KEY);
   if (saved === 'light' || saved === 'dark') {
     return saved;
   }
 
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  // FOLIO opens on Paper (light) by default; Ink stays available via toggle.
+  return 'light';
 }
 
 function applyThemeClass(theme: ThemeMode) {

@@ -110,16 +110,19 @@ export function Analysis() {
   return (
     <Screen>
       {/* Header */}
-      <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <motion.header className="mb-8" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <Link
           to="/"
-          className="pressable inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-muted)] hover:text-[var(--color-text)] mb-3 -ml-1 py-1 px-1 transition-colors"
+          className="pressable inline-flex items-center gap-1.5 t-label-sm hover:text-[var(--color-text)] mb-4 -ml-1 py-1 px-1 transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2.25} />
+          <ArrowLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
           Home
         </Link>
-        <p className="t-label-sm mb-1">Progress · week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</p>
-        <h1 className="t-title">Coaching</h1>
+        <div className="flex items-baseline justify-between">
+          <span className="t-label-sm">Progress</span>
+          <span className="t-label-sm">Week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</span>
+        </div>
+        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Coaching</h1>
       </motion.header>
 
       {/* Per-muscle calls */}
@@ -137,11 +140,11 @@ export function Analysis() {
           }
         />
       ) : (
-        <div className="space-y-2.5 mb-6">
+        <div className="mb-12 border-t border-[var(--color-text)]">
           {coached.map(({ mv, call }, index) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
             const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
-            const toneStyle = TONE_STYLES[call.tone];
+            const isHot = call.tone === 'berry';
 
             return (
               <motion.div
@@ -149,83 +152,83 @@ export function Analysis() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
+                className="border-b border-[var(--color-border)]"
               >
-                <div className="panel overflow-hidden">
-                  <button
-                    type="button"
-                    className="w-full text-left px-4 py-3.5"
-                    onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <h3 className="t-heading text-[15px]">
-                        {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
-                      </h3>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-[0.06em]"
-                          style={{ color: toneStyle.text, backgroundColor: toneStyle.bg }}
-                        >
-                          {call.chip}
-                        </span>
-                        <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
-                          <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-                        </motion.span>
-                      </div>
-                    </div>
-
-                    <p className="text-[13px] font-medium text-[var(--color-text-dim)] mb-2.5">{call.headline}</p>
-
-                    <div className="flex items-center gap-3">
-                      <span className="t-data text-[var(--color-text)] shrink-0 w-14">
-                        {mv.weekly_sets}
-                        <span className="text-[10px] text-[var(--color-muted)] ml-0.5">sets</span>
+                <button
+                  type="button"
+                  className="w-full text-left py-5"
+                  onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
+                >
+                  <div className="flex items-baseline justify-between gap-3 mb-3">
+                    <span className="t-label">
+                      {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
+                    </span>
+                    <span className="flex items-center gap-2.5 shrink-0">
+                      <span className={`t-label-sm text-[9px] ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-dim)]'}`}>
+                        {call.chip}
                       </span>
-                      {mv.landmark ? (
-                        <VolumeRail
-                          className="flex-1"
-                          current={mv.weekly_sets}
-                          mev={mv.landmark.mev}
-                          mavLow={mv.landmark.mav_low}
-                          mavHigh={mv.landmark.mav_high}
-                          mrv={mv.landmark.mrv}
-                        />
-                      ) : (
-                        <span className="t-caption">No landmarks set</span>
-                      )}
-                    </div>
-                  </button>
+                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
+                        <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
+                      </motion.span>
+                    </span>
+                  </div>
 
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        className="overflow-hidden"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={springs.smooth}
-                      >
-                        <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border)]">
-                          <div className="grid grid-cols-4 gap-1.5 my-3">
-                            {[
-                              { label: 'MV', value: mv.landmark?.mv },
-                              { label: 'MEV', value: mv.landmark?.mev },
-                              { label: 'MAV', value: mv.landmark ? `${mv.landmark.mav_low}–${mv.landmark.mav_high}` : undefined },
-                              { label: 'MRV', value: mv.landmark?.mrv },
-                            ].map((item) => (
-                              <div key={item.label} className="well text-center py-2.5">
-                                <p className="t-label-sm text-[9px]">{item.label}</p>
-                                <p className="t-data-sm text-[var(--color-text-dim)] mt-0.5">{item.value ?? '—'}</p>
-                              </div>
-                            ))}
-                          </div>
-                          {recommendation && (
-                            <p className="text-[13px] italic leading-relaxed text-[var(--color-text-dim)]">{recommendation.message}</p>
-                          )}
+                  <div className="flex items-end justify-between gap-4 mb-4">
+                    <span className="flex items-baseline gap-1.5">
+                      <span className={`number-large text-[2.5rem] ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
+                        {mv.weekly_sets}
+                      </span>
+                      <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">sets</span>
+                    </span>
+                    <p className="t-caption text-right max-w-[20ch]">{call.headline}</p>
+                  </div>
+
+                  {mv.landmark ? (
+                    <VolumeRail
+                      current={mv.weekly_sets}
+                      mev={mv.landmark.mev}
+                      mavLow={mv.landmark.mav_low}
+                      mavHigh={mv.landmark.mav_high}
+                      mrv={mv.landmark.mrv}
+                    />
+                  ) : (
+                    <span className="t-caption">No landmarks set</span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      className="overflow-hidden"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={springs.smooth}
+                    >
+                      <div className="pb-5 pt-1">
+                        <div className="grid grid-cols-4 border-t border-[var(--color-border)] mb-4">
+                          {[
+                            { label: 'MV', value: mv.landmark?.mv },
+                            { label: 'MEV', value: mv.landmark?.mev },
+                            { label: 'MAV', value: mv.landmark ? `${mv.landmark.mav_low}–${mv.landmark.mav_high}` : undefined },
+                            { label: 'MRV', value: mv.landmark?.mrv },
+                          ].map((item, itemIndex) => (
+                            <div
+                              key={item.label}
+                              className={`py-3 ${itemIndex > 0 ? 'border-l border-[var(--color-border)]' : ''} pl-3`}
+                            >
+                              <p className="t-label-sm text-[9px]">{item.label}</p>
+                              <p className="number-medium text-[1.125rem] text-[var(--color-text)] mt-1">{item.value ?? '—'}</p>
+                            </div>
+                          ))}
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                        {recommendation && (
+                          <p className="text-editorial text-[15px]">{recommendation.message}</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             );
           })}
@@ -234,17 +237,17 @@ export function Analysis() {
 
       {/* Training hours */}
       <motion.section
-        className="panel p-4 mb-4"
+        className="mt-10 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.1 }}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-baseline justify-between mb-5">
           <span className="t-label">Training hours</span>
-          <span className="t-data-sm text-[10px] text-[var(--color-muted)]">8 weeks</span>
+          <span className="t-label-sm">8 weeks</span>
         </div>
         {hoursLoading ? (
-          <div className="flex items-end gap-3 h-36">
+          <div className="flex items-end gap-px h-40 border-b border-[var(--color-border-strong)]">
             {Array.from({ length: 8 }).map((_, index) => (
               <div key={index} className="shimmer flex-1 h-[45%]" />
             ))}
@@ -256,7 +259,7 @@ export function Analysis() {
 
       {/* Adherence */}
       <motion.section
-        className="mb-4"
+        className="mt-10 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.14 }}
@@ -266,56 +269,55 @@ export function Analysis() {
 
       {/* Research explainer — supporting detail, not the primary UI */}
       <motion.section
+        className="mt-10 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.smooth, delay: 0.18 }}
       >
-        <div className="panel overflow-hidden">
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-4 py-3.5 text-left"
-            onClick={() => setShowExplainer(!showExplainer)}
-          >
-            <span className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
-              <span className="t-label">What the landmarks mean</span>
-            </span>
-            <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.snappy}>
-              <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" />
-            </motion.span>
-          </button>
-          <AnimatePresence>
-            {showExplainer && (
-              <motion.div
-                className="overflow-hidden"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={springs.smooth}
-              >
-                <div className="px-4 pb-4 space-y-3 border-t border-[var(--color-border)] pt-3">
-                  {[
-                    { tone: 'stone', label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
-                    { tone: 'amber', label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
-                    { tone: 'sage', label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
-                    { tone: 'berry', label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-start gap-3">
-                      <span
-                        className="w-[3px] h-7 rounded-full mt-0.5 shrink-0"
-                        style={{ backgroundColor: TONE_STYLES[item.tone as CoachingTone].text }}
-                      />
-                      <div>
-                        <p className="text-[12px] font-semibold text-[var(--color-text)]">{item.label}</p>
-                        <p className="text-[11px] text-[var(--color-muted)] mt-0.5">{item.desc}</p>
-                      </div>
+        <button
+          type="button"
+          className="w-full flex items-center justify-between text-left"
+          onClick={() => setShowExplainer(!showExplainer)}
+        >
+          <span className="flex items-center gap-2">
+            <BookOpen className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
+            <span className="t-label">What the landmarks mean</span>
+          </span>
+          <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.snappy}>
+            <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
+          </motion.span>
+        </button>
+        <AnimatePresence>
+          {showExplainer && (
+            <motion.div
+              className="overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={springs.smooth}
+            >
+              <div className="mt-5">
+                {[
+                  { tone: 'stone', label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
+                  { tone: 'amber', label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
+                  { tone: 'sage', label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
+                  { tone: 'berry', label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-start gap-3 py-3 border-t border-[var(--color-border)]">
+                    <span
+                      className="w-[3px] h-8 mt-0.5 shrink-0"
+                      style={{ backgroundColor: TONE_STYLES[item.tone as CoachingTone].text }}
+                    />
+                    <div>
+                      <p className="t-heading text-[12px] normal-case tracking-[0.04em]">{item.label}</p>
+                      <p className="t-caption mt-1">{item.desc}</p>
                     </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.section>
     </Screen>
   );

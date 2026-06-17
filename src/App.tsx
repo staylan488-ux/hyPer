@@ -13,37 +13,32 @@ import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
+import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, initialized } = useAuthStore();
 
   if (!initialized) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center px-5 bg-[var(--color-base)]"
-        style={{ backgroundImage: 'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 58%)' }}
-      >
-          <motion.div
-            className="w-full max-w-sm rounded-[var(--radius-xl)] border border-[var(--color-border-soft)] bg-[var(--color-surface)] px-6 py-8 text-center"
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={springs.smooth}
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-[var(--color-base)]">
+        <motion.div
+          className="w-full max-w-sm text-center"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
         >
-          <motion.p
-            className="text-[10px] tracking-[0.32em] text-[var(--color-muted)] mb-5"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={springs.smooth}
-          >
-            hyPer
-          </motion.p>
+          <p className="t-label-sm mb-6">A field journal</p>
+          <h1 className="[font-family:var(--font-display)] text-[3.5rem] leading-none font-light tracking-[-0.04em] text-[var(--color-text)]">
+            hy<span className="italic text-[var(--color-accent)]">P</span>er
+          </h1>
           <motion.div
-            className="h-px bg-[var(--color-accent)] mb-5"
-            initial={{ scaleX: 0, opacity: 0.2 }}
-            animate={{ scaleX: [0, 1, 1], opacity: [0.2, 1, 0.2] }}
-            transition={{ duration: 1.2, ease: 'easeInOut', repeat: Infinity }}
+            className="h-px bg-[var(--color-accent)] mt-7 mx-auto"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], repeat: Infinity, repeatType: 'reverse' }}
+            style={{ width: '64px', transformOrigin: 'center' }}
           />
-          <p className="text-[10px] tracking-[0.18em] uppercase text-[var(--color-text-dim)]">Preparing your dashboard</p>
+          <p className="mt-7 text-[10px] tracking-[0.24em] uppercase text-[var(--color-muted)]">Preparing your edition</p>
         </motion.div>
       </div>
     );
@@ -82,6 +77,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
         <Route
           path="/"
           element={

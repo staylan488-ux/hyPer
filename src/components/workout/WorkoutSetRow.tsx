@@ -26,9 +26,11 @@ interface WorkoutSetRowProps {
 }
 
 /**
- * Persistent, thumb-first set row. Weight/reps/RPE live in milled wells with the
- * log action on the thumb side. Previous performance rides along as ghost
- * placeholders and a "last" line — never a separate card.
+ * A typographer's ledger row. Completed sets settle into a hairline-ruled line —
+ * a filled ink square, a mono index, the weight×reps as data. The live row keeps
+ * the weight/reps wells with the log action on the thumb side; the single lacquer
+ * accent marks only the set being worked. Previous performance rides along as
+ * ghost placeholders and a "last" line — never a separate card.
  */
 export function WorkoutSetRow({
   set,
@@ -107,45 +109,36 @@ export function WorkoutSetRow({
 
     return (
       <motion.div
-        className="flex items-center gap-3 min-h-12 px-3 bg-sage-tint rounded-[var(--radius-md)]"
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
+        className="flex items-center gap-3 min-h-11 border-b border-[var(--color-border)]"
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={springs.smooth}
       >
         <motion.span
-          className="flex items-center justify-center w-6 h-6 rounded-full bg-[color-mix(in_srgb,var(--color-sage)_22%,transparent)] shrink-0"
+          className="block w-2 h-2 bg-[var(--color-text)] shrink-0"
           initial={{ scale: 0 }}
-          animate={{ scale: [0, 1.15, 1] }}
+          animate={{ scale: 1 }}
           transition={{ ...springs.bouncy, duration: 0.45 }}
-        >
-          <svg className="w-3 h-3 text-[var(--color-sage)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <motion.path
-              d="M5 13l4 4L19 7"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 0.35, delay: 0.08, ease: 'easeOut' }}
-              strokeDasharray="0 1"
-            />
-          </svg>
-        </motion.span>
-        <span className="t-data-sm text-[var(--color-muted)] w-7 shrink-0">{String(setNumber).padStart(2, '0')}</span>
-        <div className="flex items-baseline gap-3 flex-1 min-w-0 t-data text-[var(--color-text)]">
+          aria-hidden
+        />
+        <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0">{String(setNumber).padStart(2, '0')}</span>
+        <div className="flex items-baseline gap-4 flex-1 min-w-0 t-data text-[var(--color-text)]">
           <span>{set.weight}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">lb</span></span>
           <span>{set.reps}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">reps</span></span>
-          {set.rpe != null && <span className="text-[var(--color-sage)] font-semibold">@{set.rpe}</span>}
+          {set.rpe != null && <span className="text-[var(--color-text-dim)]">@{set.rpe}</span>}
         </div>
         {statusLabel && (
-          <span className="text-[10px] font-semibold uppercase tracking-[0.06em] shrink-0" style={{ color: statusColor }}>
+          <span className="t-label-sm text-[10px] shrink-0" style={{ color: statusColor }}>
             {statusLabel}
           </span>
         )}
         <motion.button
-          className="p-2.5 -mr-1 hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] rounded-[var(--radius-sm)] transition-colors shrink-0"
+          className="p-2.5 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors shrink-0"
           onClick={() => setIsEditing(true)}
           whileTap={{ scale: 0.9 }}
           aria-label={`Edit set ${setNumber}`}
         >
-          <Pencil className="w-3 h-3 text-[var(--color-muted)]" />
+          <Pencil className="w-3 h-3" />
         </motion.button>
       </motion.div>
     );
@@ -156,8 +149,8 @@ export function WorkoutSetRow({
 
   return (
     <div
-      className={`rounded-[var(--radius-md)] px-3 py-2.5 bg-[var(--color-surface-1)] border ${
-        isNext ? 'border-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]' : 'border-[var(--color-border)]'
+      className={`px-3 py-2.5 bg-[var(--color-surface-1)] border ${
+        isNext ? 'border-[var(--color-border)] border-l-2 border-l-[var(--color-accent)]' : 'border-[var(--color-border)]'
       }`}
     >
       <div className="flex items-center gap-2.5">
@@ -165,7 +158,7 @@ export function WorkoutSetRow({
           <span className={`t-data-sm ${isNext ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
             {String(setNumber).padStart(2, '0')}
           </span>
-          {isNext && <span className="mt-1 w-[3px] h-2 rounded-full bg-[var(--color-accent)] animate-tick-live" />}
+          {isNext && <span className="mt-1 w-[3px] h-2 bg-[var(--color-accent)] animate-tick-live" />}
         </div>
 
         <div className="grid grid-cols-3 gap-1.5 flex-1 min-w-0">
@@ -205,10 +198,10 @@ export function WorkoutSetRow({
           whileTap={canLog ? { scale: 0.92 } : undefined}
           transition={springs.snappy}
           aria-label={`Log set ${setNumber}`}
-          className={`flex items-center justify-center w-12 h-12 rounded-[var(--radius-sm)] shrink-0 transition-all ${
+          className={`flex items-center justify-center w-12 h-12 shrink-0 border transition-colors ${
             canLog
-              ? '[background:var(--grad-amber)] text-[var(--button-primary-fg)] shadow-[var(--glow-amber)]'
-              : 'bg-[var(--color-surface-2)] hairline text-[var(--color-muted)] opacity-60'
+              ? 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
+              : 'bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-muted)] opacity-60'
           }`}
         >
           {saving ? (
@@ -237,7 +230,7 @@ export function WorkoutSetRow({
               type="button"
               onClick={handleAutofill}
               disabled={saving}
-              className="pressable flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text-dim)] px-2 py-1 -mr-1 rounded-[var(--radius-xs)] hover:text-[var(--color-text)]"
+              className="pressable flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text-dim)] px-2 py-1 -mr-1 hover:text-[var(--color-text)]"
             >
               <RotateCcw className="w-3 h-3" strokeWidth={2.25} />
               {autofillValues.source === 'current_workout' ? 'Repeat last set' : 'Use last workout'}

@@ -34,12 +34,7 @@ export function DashboardMonolithIntro() {
       <motion.button
         type="button"
         aria-label="Skip intro"
-        className="fixed inset-0 z-40 px-5 pt-8"
-        style={{
-          backgroundColor: 'var(--color-base)',
-          backgroundImage:
-            'radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 56%)',
-        }}
+        className="fixed inset-0 z-40 px-5 pt-8 bg-[var(--color-base)]"
         initial={{ opacity: 1 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -54,7 +49,7 @@ export function DashboardMonolithIntro() {
       >
         <div className="max-w-lg mx-auto h-28 flex items-center justify-center relative overflow-visible">
           <motion.span
-            className="inline-block font-display-italic text-[92px] leading-[1.08] text-[var(--color-accent)] pr-[0.2em] pt-[0.08em] -mr-[0.2em] select-none"
+            className="inline-block [font-family:var(--font-display)] font-light text-[92px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
             initial={{ opacity: 0, scale: 0.9, y: -10 }}
             animate={{
               opacity: showCompose ? 0 : 1,
@@ -68,47 +63,55 @@ export function DashboardMonolithIntro() {
               willChange: 'transform, opacity',
             }}
           >
-            P
+            <span className="italic text-[var(--color-accent)]">P</span>
           </motion.span>
 
           <AnimatePresence>
             {showCompose && (
               <motion.div
-                className="absolute flex items-center"
+                className="absolute flex flex-col items-center"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={reduceMotion ? { duration: 0.12 } : springs.smooth}
               >
+                <div className="flex items-baseline">
+                  <motion.span
+                    className="[font-family:var(--font-display)] font-light text-[44px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={reduceMotion ? { duration: 0.12 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    hy
+                  </motion.span>
+                  <motion.span
+                    className="inline-block [font-family:var(--font-display)] italic font-light text-[44px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
+                    initial={{ opacity: 0, scale: 0.84 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={reduceMotion ? { duration: 0.12 } : { ...springs.snappy, delay: 0.04 }}
+                    style={{
+                      backfaceVisibility: 'hidden',
+                      transform: 'translateZ(0)',
+                      willChange: 'transform, opacity',
+                    }}
+                  >
+                    P
+                  </motion.span>
+                  <motion.span
+                    className="[font-family:var(--font-display)] font-light text-[44px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={reduceMotion ? { duration: 0.12 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    er
+                  </motion.span>
+                </div>
                 <motion.span
-                  className="text-[11px] tracking-[0.32em] text-[var(--color-text)]"
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={reduceMotion ? { duration: 0.12 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  hy
-                </motion.span>
-                <motion.span
-                  className="inline-block font-display-italic text-[42px] leading-[1.08] text-[var(--color-accent)] mx-1 pr-[0.18em] pt-[0.08em] -mr-[0.18em] select-none"
-                  initial={{ opacity: 0, scale: 0.84 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={reduceMotion ? { duration: 0.12 } : { ...springs.snappy, delay: 0.04 }}
-                  style={{
-                    backfaceVisibility: 'hidden',
-                    transform: 'translateZ(0)',
-                    willChange: 'transform, opacity',
-                  }}
-                >
-                  P
-                </motion.span>
-                <motion.span
-                  className="text-[11px] tracking-[0.32em] text-[var(--color-text)]"
-                  initial={{ opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={reduceMotion ? { duration: 0.12 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  er
-                </motion.span>
+                  className="block h-px w-12 bg-[var(--color-accent)] mt-4 origin-center"
+                  initial={{ scaleX: 0, opacity: 0 }}
+                  animate={{ scaleX: 1, opacity: 1 }}
+                  transition={reduceMotion ? { duration: 0.12 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+                />
               </motion.div>
             )}
           </AnimatePresence>

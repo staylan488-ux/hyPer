@@ -2,19 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
-  Calendar,
-  CalendarRange,
-  ChartNoAxesColumn,
-  Check,
-  ChevronRight,
-  Clock,
+  ArrowUpRight,
   Dumbbell,
-  Flame,
-  History as HistoryIcon,
-  Moon,
   Play,
   Plus,
-  Target,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
@@ -227,136 +218,138 @@ export function Dashboard() {
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
 
+  const stations: { to: string; index: string; label: string; sub: string }[] = [
+    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan' },
+    { to: '/history', index: '02', label: 'History', sub: 'Past sessions' },
+    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results' },
+  ];
+
   return (
     <>
       <Screen>
-        {/* Header */}
-        <motion.header className="mb-4" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <p className="t-label mb-1">{format(new Date(), 'EEEE, MMMM d')}</p>
-          <h1 className="t-caps text-[19px] font-light tracking-[0.18em] leading-[1.4] text-[var(--color-text)]">{greeting}</h1>
+        {/* ── Dateline ── */}
+        <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+          <div className="flex items-baseline justify-between">
+            <span className="t-label-sm">Today</span>
+            <span className="t-label-sm">{format(new Date(), 'EEE · MMM d')}</span>
+          </div>
+          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">{greeting}</h1>
         </motion.header>
 
-        {/* ── Next action hero ── */}
+        {/* ── Training hero ── */}
         <motion.section
-          className="mb-3"
+          className="mt-9"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.04 }}
+          transition={{ ...springs.smooth, delay: 0.05 }}
         >
           <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
         </motion.section>
 
-        {/* ── Fuel strip ── */}
+        {/* ── Fuel ── */}
         <motion.section
-          className="mb-3"
+          className="mt-10 pt-8 border-t border-[var(--color-border)]"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.08 }}
+          transition={{ ...springs.smooth, delay: 0.1 }}
         >
-          <div className="panel-sage p-4">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2} />
-                <span className="t-label text-[var(--color-sage)]">Fuel</span>
-              </div>
-              {hasAnyNutrition && !loading && (
-                <span className="flex items-baseline gap-1.5">
-                  <span className="t-numeral-light text-[20px] text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
-                  <span className="text-[13px] text-[var(--color-muted)]">kcal left</span>
-                </span>
-              )}
+          <div className="flex items-baseline justify-between mb-4">
+            <span className="t-label">Fuel</span>
+            <Link to="/nutrition" className="t-label-sm flex items-center gap-1 hover:text-[var(--color-text)] transition-colors">
+              Log <ArrowUpRight className="w-3 h-3" strokeWidth={1.75} />
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="space-y-4">
+              <div className="shimmer h-12 w-40" />
+              <div className="shimmer h-px w-full" />
             </div>
-
-            {loading ? (
-              <div className="space-y-3">
-                <div className="shimmer h-2 w-full" />
-                <div className="shimmer h-2 w-3/4" />
+          ) : hasAnyNutrition ? (
+            <>
+              <div className="mb-7">
+                <div className="flex items-baseline gap-2">
+                  <span className="number-hero text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal left</span>
+                </div>
+                <span className="t-label-sm">Energy remaining today</span>
               </div>
-            ) : hasAnyNutrition ? (
-              <div className="space-y-3">
-                <FuelRow
-                  label="Calories"
-                  current={nutritionTotals.calories}
-                  target={macroTarget?.calories || 2000}
-                  unit=" kcal"
-                  tone="amber"
-                />
-                <FuelRow
-                  label="Protein"
-                  current={nutritionTotals.protein}
-                  target={macroTarget?.protein || 150}
-                  unit=" g"
-                  tone="sage"
-                />
+              <div className="space-y-5">
+                <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || 2000} unit=" kcal" />
+                <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || 150} unit=" g" />
               </div>
-            ) : (
-              <p className="t-caption mb-1">Nothing logged today. Targets make every meal a decision, not a guess.</p>
-            )}
+            </>
+          ) : (
+            <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
+          )}
 
-            <div className="mt-3.5 flex gap-2">
-              <Link to="/nutrition" className="flex-1">
-                <button
-                  type="button"
-                  className="pressable w-full flex items-center justify-center gap-2.5 min-h-11 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] text-[14px] font-semibold text-[var(--color-text)]"
-                >
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sage-tint-strong">
-                    <Plus className="w-3.5 h-3.5 text-[var(--color-sage)]" strokeWidth={2.75} />
-                  </span>
-                  Log food
-                </button>
+          <div className="mt-7 flex gap-3">
+            <Link to="/nutrition" className="flex-1">
+              <Button variant="secondary" size="md" className="w-full">
+                <Plus className="w-4 h-4" strokeWidth={1.75} />
+                Log food
+              </Button>
+            </Link>
+            {!macroTarget && !loading && (
+              <Link to="/settings" className="flex-1">
+                <Button variant="ghost" size="md" className="w-full">Set targets</Button>
               </Link>
-              {!macroTarget && !loading && (
-                <Link to="/settings" className="flex-1">
-                  <Button variant="ghost" size="md" className="w-full min-h-12">
-                    <Target className="w-4 h-4" strokeWidth={2} />
-                    Set targets
-                  </Button>
-                </Link>
-              )}
-            </div>
+            )}
           </div>
         </motion.section>
 
-        {/* ── Stations — always part of the first screen ── */}
+        {/* ── Contents / stations ── */}
         <motion.nav
-          className="grid grid-cols-3 gap-2 mb-3"
+          className="mt-10 pt-8 border-t border-[var(--color-border)]"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.12 }}
+          transition={{ ...springs.smooth, delay: 0.14 }}
         >
-          <StationLink to="/train/program" icon={<Calendar className="w-5 h-5" strokeWidth={1.75} />} label="Program" sub="Current plan" />
-          <StationLink to="/history" icon={<HistoryIcon className="w-5 h-5" strokeWidth={1.75} />} label="History" sub="Past sessions" />
-          <StationLink to="/analysis" icon={<ChartNoAxesColumn className="w-5 h-5" strokeWidth={1.75} />} label="Progress" sub="Track results" />
+          <span className="t-label block mb-3">Contents</span>
+          <ul>
+            {stations.map((s) => (
+              <li key={s.to}>
+                <Link
+                  to={s.to}
+                  onClick={() => tapHaptic()}
+                  className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border)]"
+                >
+                  <span className="t-data-sm text-[var(--color-muted)] w-6">{s.index}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="t-heading block">{s.label}</span>
+                    <span className="t-caption">{s.sub}</span>
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+                </Link>
+              </li>
+            ))}
+          </ul>
         </motion.nav>
 
         {/* ── One insight, only when it exists ── */}
         {insight && (
           <motion.section
+            className="mt-10 pt-8 border-t border-[var(--color-border)]"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.smooth, delay: 0.16 }}
+            transition={{ ...springs.smooth, delay: 0.18 }}
           >
-            <Link to="/analysis" className="block">
-              <div className="pressable panel p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <ChartNoAxesColumn className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.75} />
-                    <span className="t-label">This week</span>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-[var(--color-muted)]" />
-                </div>
-                <p className="t-body text-[var(--color-text)] mb-1">{insight.headline}</p>
-                <p className="t-caption mb-3">{insight.detail}</p>
-                {insight.landmark && (
-                  <VolumeRail
-                    current={insight.volume.weekly_sets}
-                    mev={insight.landmark.mev}
-                    mavLow={insight.landmark.mav_low}
-                    mavHigh={insight.landmark.mav_high}
-                    mrv={insight.landmark.mrv}
-                  />
-                )}
+            <Link to="/analysis" className="block group">
+              <div className="flex items-baseline justify-between mb-3">
+                <span className="t-label">This week</span>
+                <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
               </div>
+              <p className="t-display text-[1.5rem] text-[var(--color-text)] mb-2">{insight.headline}</p>
+              <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
+              {insight.landmark && (
+                <VolumeRail
+                  current={insight.volume.weekly_sets}
+                  mev={insight.landmark.mev}
+                  mavLow={insight.landmark.mav_low}
+                  mavHigh={insight.landmark.mav_high}
+                  mrv={insight.landmark.mrv}
+                />
+              )}
             </Link>
           </motion.section>
         )}
@@ -366,48 +359,46 @@ export function Dashboard() {
   );
 }
 
-/* ───────────────────────── hero card ───────────────────────── */
+/* ───────────────────────── hero ───────────────────────── */
+
+function HeroEyebrow({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
+  return <p className={`t-label mb-3 ${accent ? 'text-[var(--color-accent)]' : ''}`}>{children}</p>;
+}
 
 function TodayHero({ hero, programName }: { hero: HeroState; programName: string | null }) {
   if (hero.kind === 'loading') {
     return (
-      <div className="panel p-5">
-        <div className="shimmer h-3 w-20 mb-3" />
-        <div className="shimmer h-9 w-32 mb-4" />
-        <div className="shimmer h-14 w-full" />
+      <div>
+        <div className="shimmer h-3 w-20 mb-4" />
+        <div className="shimmer h-12 w-44 mb-5" />
+        <div className="shimmer h-12 w-full" />
       </div>
     );
   }
 
   if (hero.kind === 'resume') {
     return (
-      <div className="panel-hot p-4 relative overflow-hidden">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-breathe" />
+      <div className="border-l-2 border-[var(--color-accent)] pl-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="w-1.5 h-1.5 bg-[var(--color-accent)] animate-breathe" />
           <span className="t-label text-[var(--color-accent)]">{hero.title}</span>
         </div>
-        <p className="mb-2.5 flex items-baseline gap-2">
-          <span className="t-numeral text-[40px] text-[var(--color-text)]">
+        <div className="flex items-baseline gap-2.5 mb-4">
+          <span className="number-hero text-[var(--color-text)]">
             {hero.completedSets}<span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
           </span>
-          <span className="text-lg font-medium text-[var(--color-muted)]">sets</span>
-        </p>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-4" />
+          <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">sets done</span>
+        </div>
+        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-5" />
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Play className="w-[18px] h-[18px]" strokeWidth={2.5} fill="currentColor" />
+            <Play className="w-4 h-4" strokeWidth={2} fill="currentColor" />
             Resume session
           </Button>
         </Link>
-        <Link to="/train" className="flex items-center justify-between gap-2 mt-3.5 pt-3 border-t border-[var(--color-border)]">
-          <span className="flex items-center gap-2 text-[13px] font-normal text-[var(--color-muted)]">
-            <Clock className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={2} />
-            {hero.elapsed} elapsed
-          </span>
-          <span className="flex items-center gap-1 text-[13px] font-medium text-[var(--color-muted)]">
-            {hero.dayName} · {hero.exerciseCount} {hero.exerciseCount === 1 ? 'exercise' : 'exercises'}
-            <ChevronRight className="w-4 h-4" strokeWidth={2.25} />
-          </span>
+        <Link to="/train" className="flex items-center justify-between gap-2 mt-4 t-caption">
+          <span>{hero.elapsed} elapsed</span>
+          <span>{hero.dayName} · {hero.exerciseCount} {hero.exerciseCount === 1 ? 'exercise' : 'exercises'}</span>
         </Link>
       </div>
     );
@@ -415,19 +406,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'done') {
     return (
-      <div className="panel-sage p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-sage)]">
-            <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />
-          </span>
-          <span className="t-label text-[var(--color-sage)]">Trained today</span>
-        </div>
-        <p className="t-display text-[1.6rem] text-[var(--color-text)] mb-4">The work is banked.</p>
-        <div className="flex gap-2">
-          <Link to="/history" className="flex-1">
-            <Button variant="secondary" className="w-full">Review session</Button>
-          </Link>
-        </div>
+      <div>
+        <HeroEyebrow>Trained today</HeroEyebrow>
+        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-6">The work is banked.</p>
+        <Link to="/history">
+          <Button variant="secondary" size="lg" className="w-full">Review session</Button>
+        </Link>
       </div>
     );
   }
@@ -436,16 +420,18 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     const exercises = hero.day.exercises ?? [];
     const totalSets = exercises.reduce((sum, ex) => sum + (ex.target_sets || 0), 0);
     return (
-      <div className="panel-hot p-5 relative overflow-hidden">
-        <p className="t-label text-[var(--color-accent)] mb-2">Today · {programName}</p>
-        <h2 className="t-numeral text-[34px] text-[var(--color-text)] mb-3">{hero.day.day_name}</h2>
-        <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-2.5" />
-        <p className="text-[13px] font-medium text-[var(--color-muted)] mb-4">
-          {exercises.length} exercises · {totalSets} sets
-        </p>
+      <div>
+        <div className="flex items-baseline justify-between mb-3">
+          <HeroEyebrow accent>Today · {programName}</HeroEyebrow>
+          <span className="t-data-sm text-[var(--color-muted)]">{exercises.length} ex · {totalSets} sets</span>
+        </div>
+        <h2 className="[font-family:var(--font-display)] text-[2.75rem] leading-[0.95] font-light tracking-[-0.03em] text-[var(--color-text)] mb-5">
+          {hero.day.day_name}
+        </h2>
+        <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Dumbbell className="w-[18px] h-[18px]" strokeWidth={2.25} />
+            <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start workout
           </Button>
         </Link>
@@ -455,12 +441,9 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'rest') {
     return (
-      <div className="panel p-5">
-        <div className="flex items-center gap-2 mb-2.5">
-          <Moon className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
-          <span className="t-label">Rest day</span>
-        </div>
-        <p className="t-display text-[1.5rem] text-[var(--color-text-dim)] mb-3">Growth happens between sessions.</p>
+      <div>
+        <HeroEyebrow>Rest day</HeroEyebrow>
+        <p className="t-display text-[1.875rem] leading-[1.08] text-[var(--color-text-dim)] mb-5">Growth happens between sessions.</p>
         <Link to="/train">
           <Button variant="ghost" size="sm">Train anyway →</Button>
         </Link>
@@ -470,12 +453,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'flexible') {
     return (
-      <div className="panel-hot p-5 relative overflow-hidden">
-        <p className="t-label text-[var(--color-accent)] mb-2">Flexible mode</p>
-        <h2 className="t-display text-[1.6rem] text-[var(--color-text)] mb-4">Build today as you go</h2>
+      <div>
+        <HeroEyebrow accent>Flexible mode</HeroEyebrow>
+        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-6">Build today as you go.</p>
         <Link to="/train">
           <Button size="lg" className="w-full">
-            <Dumbbell className="w-[18px] h-[18px]" strokeWidth={2.25} />
+            <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start session
           </Button>
         </Link>
@@ -485,15 +468,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'no-schedule') {
     return (
-      <div className="panel-hot p-5">
-        <p className="t-label text-[var(--color-accent)] mb-2">{programName}</p>
-        <h2 className="t-heading mb-1">Pick your training days</h2>
-        <p className="t-caption mb-4">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
+      <div>
+        <HeroEyebrow accent>{programName}</HeroEyebrow>
+        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-2">Pick your training days.</p>
+        <p className="t-caption mb-6 max-w-[34ch]">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
         <Link to="/train">
-          <Button size="lg" className="w-full">
-            <CalendarRange className="w-4 h-4" strokeWidth={2} />
-            Set plan start
-          </Button>
+          <Button size="lg" className="w-full">Set plan start</Button>
         </Link>
       </div>
     );
@@ -501,20 +481,20 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   // first-run
   return (
-    <div className="panel-hot p-5 relative overflow-hidden">
-      <p className="t-label text-[var(--color-accent)] mb-2">Start here</p>
-      <h2 className="t-display text-[1.6rem] text-[var(--color-text)] mb-1.5">Build your program</h2>
-      <p className="t-caption mb-4 max-w-[280px]">
+    <div>
+      <HeroEyebrow accent>Start here</HeroEyebrow>
+      <p className="t-display text-[2.25rem] leading-[1.02] text-[var(--color-text)] mb-2">Build your program.</p>
+      <p className="t-caption mb-5 max-w-[34ch]">
         Answer five questions and hyPer assembles an evidence-based split around your week.
       </p>
-      <div className="flex items-center gap-3 mb-4 opacity-70" aria-hidden>
-        <TickStrip total={5} filled={0} tone="amber" size="sm" />
-        <span className="t-caption">~2 minutes</span>
+      <div className="flex items-center gap-3 mb-6" aria-hidden>
+        <TickStrip total={5} filled={0} tone="stone" size="sm" />
+        <span className="t-label-sm">~2 minutes</span>
       </div>
       <Link to="/train/program">
         <Button size="lg" className="w-full">
           Get started
-          <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
+          <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
         </Button>
       </Link>
     </div>
@@ -523,38 +503,27 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-function StationLink({ to, icon, label, sub }: { to: string; icon: React.ReactNode; label: string; sub: string }) {
-  return (
-    <Link to={to} onClick={() => tapHaptic()}>
-      <div className="pressable panel panel-wave flex flex-col gap-2 p-3 min-h-[88px]">
-        <span className="text-[var(--color-accent)]">{icon}</span>
-        <span>
-          <span className="t-caps block text-[11px] font-normal tracking-[0.18em] text-[var(--color-text)]">{label}</span>
-          <span className="flex items-center gap-0.5 text-[11px] text-[var(--color-muted)] mt-1">
-            {sub}
-            <ChevronRight className="w-3 h-3" strokeWidth={2.25} />
-          </span>
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-function FuelRow({ label, current, target, unit, tone }: { label: string; current: number; target: number; unit: string; tone: 'amber' | 'sage' }) {
+function FuelRow({ label, current, target, unit }: { label: string; current: number; target: number; unit: string }) {
   const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
-  const toneVar = tone === 'amber' ? 'var(--color-accent)' : 'var(--color-sage)';
+  const over = target > 0 && current > target;
+  const maxScale = Math.max(target * 1.18, current);
 
   return (
     <div>
-      <p className="t-label-sm mb-0.5">{label}</p>
-      <div className="flex items-baseline justify-between mb-1.5">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="t-label-sm">{label}</span>
         <span className="flex items-baseline gap-1.5">
-          <span className="t-numeral-light text-[19px] text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
-          <span className="text-[13px] text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
+          <span className="number-medium text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
+          <span className="t-data-sm text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
         </span>
-        <span className="t-data text-[15px]" style={{ color: toneVar }}>{pct}%</span>
       </div>
-      <RailStrip value={target > 0 ? current / target : 0} tone={tone} size="md" />
+      <RailStrip
+        value={current / maxScale}
+        notch={target / maxScale}
+        tone={over ? 'berry' : 'chalk'}
+        size="md"
+      />
+      <span className="sr-only">{pct}% of target</span>
     </div>
   );
 }

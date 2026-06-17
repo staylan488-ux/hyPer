@@ -291,9 +291,9 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
           </div>
 
           <div className="relative well overflow-hidden">
-            {/* selection band */}
+            {/* selection band — hairline rules above and below, no fill */}
             <div
-              className="pointer-events-none absolute left-2 right-2 top-1/2 -translate-y-1/2 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline"
+              className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 border-y border-[var(--color-border-strong)]"
               style={{ height: ITEM_H }}
             />
             <div className="relative flex">
@@ -319,9 +319,6 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
                 ariaLabel="AM or PM"
               />
             </div>
-            {/* top/bottom fades */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[var(--color-well)] to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[var(--color-well)] to-transparent" />
           </div>
 
           <button

@@ -14,48 +14,28 @@ function StreakPill({
   icon: Icon,
   count,
   label,
-  colorClass,
   delay,
 }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   count: number;
   label: string;
-  colorClass: string;
   delay: number;
 }) {
   const isActive = count > 0;
 
   return (
     <motion.div
-      className={`relative flex flex-col items-center gap-2 rounded-[var(--radius-md)] border p-4 transition-colors ${
-        isActive
-          ? `${colorClass} border-[var(--color-border-strong)]`
-          : 'bg-[var(--color-surface-1)] border-[var(--color-border-soft)]'
-      }`}
-      initial={{ opacity: 0, y: 16, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className="relative border-t border-[var(--color-text)] pt-3"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ delay, ...springs.smooth }}
     >
-      {/* Glow halo when active */}
-      {isActive && (
-        <motion.div
-          className="absolute inset-0 rounded-[var(--radius-md)] opacity-30"
-          style={{
-            background:
-              'radial-gradient(ellipse at 50% 30%, var(--color-accent), transparent 70%)',
-          }}
-          animate={{ opacity: [0.15, 0.3, 0.15] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      )}
-
-      <div className="relative z-10 flex items-center gap-1.5">
-        <Icon className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.5} />
-        <span className="number-large text-[var(--color-text)] tabular-nums">{count}</span>
-      </div>
-      <span className="relative z-10 text-[9px] tracking-[0.18em] uppercase text-[var(--color-muted)] text-center leading-tight">
-        {label}
-      </span>
+      <Icon
+        className={`w-3.5 h-3.5 mb-2 ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}
+        strokeWidth={1.5}
+      />
+      <span className="number-large text-[2rem] text-[var(--color-text)] tabular-nums block leading-none">{count}</span>
+      <span className="t-label-sm mt-2 block">{label}</span>
     </motion.div>
   );
 }
@@ -80,35 +60,32 @@ function WeeklyNutritionChart({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Calorie bars */}
       <div>
-        <p className="text-[9px] tracking-[0.18em] uppercase text-[var(--color-muted)] mb-3">
-          Calories vs Target
-        </p>
-        <div className="flex items-end gap-1.5 h-20">
+        <p className="t-label-sm mb-3">Calories vs Target</p>
+        <div className="flex items-end gap-px h-20 border-b border-[var(--color-border-strong)]">
           {weeklyNutrition.map((day, i) => {
             const pct = calorieTarget > 0 ? Math.min(day.calories / calorieTarget, 1.3) : 0;
             const isHit = day.calories >= calorieTarget * 0.85 && day.calories <= calorieTarget * 1.15;
             const isToday = i === weeklyNutrition.length - 1;
             const heightPct = Math.max(pct * 100, 4);
+            const over = pct > 1.15;
 
             return (
               <div key={day.date} className="flex-1 flex flex-col items-center gap-1.5">
                 <div className="relative w-full h-16 flex items-end">
                   {/* Target line */}
                   <div
-                    className="absolute w-full border-t border-dashed border-[var(--color-muted)]/30"
+                    className="absolute w-full border-t border-dashed border-[var(--color-border-strong)]"
                     style={{ bottom: `${(1 / 1.3) * 100}%` }}
                   />
                   <motion.div
-                    className={`w-full rounded-t-[4px] ${
-                      isHit
-                        ? 'bg-[var(--color-sage)]'
-                        : pct > 1.15
-                          ? 'bg-[var(--color-rose)]'
-                          : 'bg-[var(--color-muted)]'
-                    } ${isToday ? 'opacity-100' : 'opacity-70'}`}
+                    className="w-full"
+                    style={{
+                      backgroundColor: over ? 'var(--color-accent)' : 'var(--color-text)',
+                      opacity: over ? 1 : isHit ? (isToday ? 1 : 0.85) : isToday ? 0.5 : 0.32,
+                    }}
                     initial={{ height: 0 }}
                     animate={{ height: `${heightPct}%` }}
                     transition={{
@@ -119,10 +96,8 @@ function WeeklyNutritionChart({
                   />
                 </div>
                 <span
-                  className={`text-[8px] tracking-[0.1em] uppercase ${
-                    isToday
-                      ? 'text-[var(--color-text)]'
-                      : 'text-[var(--color-muted)]'
+                  className={`t-data-sm text-[9px] ${
+                    isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
                   {format(parseISO(day.date), 'EEE').charAt(0)}
@@ -135,31 +110,28 @@ function WeeklyNutritionChart({
 
       {/* Protein bars */}
       <div>
-        <p className="text-[9px] tracking-[0.18em] uppercase text-[var(--color-muted)] mb-3">
-          Protein vs Target
-        </p>
-        <div className="flex items-end gap-1.5 h-20">
+        <p className="t-label-sm mb-3">Protein vs Target</p>
+        <div className="flex items-end gap-px h-20 border-b border-[var(--color-border-strong)]">
           {weeklyNutrition.map((day, i) => {
             const pct = proteinTarget > 0 ? Math.min(day.protein / proteinTarget, 1.3) : 0;
             const isHit = day.protein >= proteinTarget * 0.85 && day.protein <= proteinTarget * 1.15;
             const isToday = i === weeklyNutrition.length - 1;
             const heightPct = Math.max(pct * 100, 4);
+            const over = pct > 1.15;
 
             return (
               <div key={day.date} className="flex-1 flex flex-col items-center gap-1.5">
                 <div className="relative w-full h-16 flex items-end">
                   <div
-                    className="absolute w-full border-t border-dashed border-[var(--color-muted)]/30"
+                    className="absolute w-full border-t border-dashed border-[var(--color-border-strong)]"
                     style={{ bottom: `${(1 / 1.3) * 100}%` }}
                   />
                   <motion.div
-                    className={`w-full rounded-t-[4px] ${
-                      isHit
-                        ? 'bg-[var(--color-accent)]'
-                        : pct > 1.15
-                          ? 'bg-[var(--color-rose)]'
-                          : 'bg-[var(--color-muted)]'
-                    } ${isToday ? 'opacity-100' : 'opacity-70'}`}
+                    className="w-full"
+                    style={{
+                      backgroundColor: over ? 'var(--color-accent)' : 'var(--color-text)',
+                      opacity: over ? 1 : isHit ? (isToday ? 1 : 0.85) : isToday ? 0.5 : 0.32,
+                    }}
                     initial={{ height: 0 }}
                     animate={{ height: `${heightPct}%` }}
                     transition={{
@@ -170,10 +142,8 @@ function WeeklyNutritionChart({
                   />
                 </div>
                 <span
-                  className={`text-[8px] tracking-[0.1em] uppercase ${
-                    isToday
-                      ? 'text-[var(--color-text)]'
-                      : 'text-[var(--color-muted)]'
+                  className={`t-data-sm text-[9px] ${
+                    isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
                   {format(parseISO(day.date), 'EEE').charAt(0)}
@@ -185,24 +155,18 @@ function WeeklyNutritionChart({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 pt-2 border-t border-white/5">
+      <div className="flex items-center gap-5 pt-3 border-t border-[var(--color-border)]">
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-[var(--color-sage)]" />
-          <span className="text-[8px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
-            On target
-          </span>
+          <span className="w-2.5 h-2.5 bg-[var(--color-text)]" />
+          <span className="t-label-sm text-[8px]">On target</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-[var(--color-muted)]" />
-          <span className="text-[8px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
-            Under
-          </span>
+          <span className="w-2.5 h-2.5 bg-[var(--color-text)] opacity-32" />
+          <span className="t-label-sm text-[8px]">Under</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-[var(--color-rose)]" />
-          <span className="text-[8px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
-            Over
-          </span>
+          <span className="w-2.5 h-2.5 bg-[var(--color-accent)]" />
+          <span className="t-label-sm text-[8px]">Over</span>
         </div>
       </div>
     </div>
@@ -226,21 +190,18 @@ function LiftReadiness({
 
   const statusConfig = {
     high: {
-      dot: 'bg-[var(--color-sage)]',
-      glow: 'shadow-[0_0_6px_var(--color-sage)]',
-      text: 'text-[var(--color-sage)]',
+      mark: 'bg-[var(--color-text)]',
+      text: 'text-[var(--color-text)]',
       badge: 'Ready',
     },
     moderate: {
-      dot: 'bg-[var(--color-accent)]',
-      glow: '',
-      text: 'text-[var(--color-accent)]',
+      mark: 'bg-[var(--color-text-dim)]',
+      text: 'text-[var(--color-text-dim)]',
       badge: 'OK',
     },
     low: {
-      dot: 'bg-[var(--color-rose)]',
-      glow: 'shadow-[0_0_6px_var(--color-rose)]',
-      text: 'text-[var(--color-rose)]',
+      mark: 'bg-[var(--color-accent)]',
+      text: 'text-[var(--color-accent)]',
       badge: 'Recover',
     },
   };
@@ -252,8 +213,7 @@ function LiftReadiness({
   });
 
   return (
-    <motion.div
-      className="grid grid-cols-2 gap-2"
+    <motion.ul
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
@@ -265,31 +225,23 @@ function LiftReadiness({
           item.label;
 
         return (
-          <motion.div
+          <motion.li
             key={item.muscleGroup}
-            className={`flex items-center gap-2.5 py-2.5 px-3 rounded-[var(--radius-sm)] border transition-colors ${
-              item.status === 'high'
-                ? 'bg-sage-tint border-[var(--color-border-strong)]'
-                : item.status === 'low'
-                  ? 'bg-rose-tint border-[var(--color-border-strong)]'
-                  : 'bg-[var(--color-surface-1)] border-[var(--color-border-soft)]'
-            }`}
+            className="flex items-center gap-3 py-2.5 border-t border-[var(--color-border)]"
             variants={fadeUp}
             transition={springs.smooth}
           >
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot} ${cfg.glow}`} />
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-[var(--color-text)] truncate leading-tight">
-                {label}
-              </p>
-            </div>
-            <span className={`text-[8px] tracking-[0.15em] uppercase font-medium flex-shrink-0 ${cfg.text}`}>
+            <span className={`w-[3px] h-4 flex-shrink-0 ${cfg.mark}`} />
+            <span className="flex-1 min-w-0 t-body text-[13px] text-[var(--color-text)] truncate">
+              {label}
+            </span>
+            <span className={`t-label-sm text-[9px] flex-shrink-0 ${cfg.text}`}>
               {cfg.badge}
             </span>
-          </motion.div>
+          </motion.li>
         );
       })}
-    </motion.div>
+    </motion.ul>
   );
 }
 
@@ -303,11 +255,8 @@ function AdherenceSkeleton() {
         <div className="shimmer h-3 w-20 mb-4" />
         <div className="grid grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="rounded-[var(--radius-md)] border border-[var(--color-border-soft)] bg-[var(--color-surface-1)] p-4 flex flex-col items-center gap-2"
-            >
-              <div className="shimmer h-7 w-8" />
+            <div key={i} className="border-t border-[var(--color-border)] pt-3 space-y-2">
+              <div className="shimmer h-8 w-10" />
               <div className="shimmer h-2 w-14" />
             </div>
           ))}
@@ -317,11 +266,11 @@ function AdherenceSkeleton() {
       {/* Chart skeleton */}
       <div>
         <div className="shimmer h-3 w-32 mb-4" />
-        <div className="flex items-end gap-1.5 h-20">
+        <div className="flex items-end gap-px h-20">
           {[60, 85, 45, 70, 90, 55, 40].map((h, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
               <div className="relative w-full h-16 flex items-end">
-                <div className={`shimmer w-full rounded-t-[4px]`} style={{ height: `${h}%` }} />
+                <div className="shimmer w-full" style={{ height: `${h}%` }} />
               </div>
               <div className="shimmer h-2 w-2" />
             </div>
@@ -332,9 +281,9 @@ function AdherenceSkeleton() {
       {/* Readiness skeleton */}
       <div>
         <div className="shimmer h-3 w-24 mb-4" />
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-px">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="shimmer h-10 rounded-[var(--radius-sm)]" />
+            <div key={i} className="shimmer h-9" />
           ))}
         </div>
       </div>
@@ -358,48 +307,43 @@ export function AdherenceDashboard() {
       transition={springs.smooth}
     >
       <Card variant="slab" className="overflow-hidden">
-        {/* Section header with accent left-bar styling */}
-        <div className="flex items-center gap-2 mb-6">
-          <Activity className="w-4 h-4 text-[var(--color-accent)]" strokeWidth={1.5} />
+        {/* Section header */}
+        <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[var(--color-text)]">
+          <Activity className="w-3.5 h-3.5 text-[var(--color-text)]" strokeWidth={1.5} />
           <CardTitle>Adherence</CardTitle>
         </div>
 
         {loading ? (
           <AdherenceSkeleton />
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-9">
             {/* ── Streaks ── */}
             <div>
-              <p className="text-[9px] tracking-[0.18em] uppercase text-[var(--color-muted)] mb-3">
-                Active Streaks
-              </p>
+              <p className="t-label mb-4">Active Streaks</p>
               <div className="grid grid-cols-3 gap-3">
                 <StreakPill
                   icon={Flame}
                   count={streaks.protein}
                   label="Protein"
-                  colorClass="bg-accent-tint"
                   delay={0}
                 />
                 <StreakPill
                   icon={Target}
                   count={streaks.calories}
                   label="Calories"
-                  colorClass="bg-sage-tint"
                   delay={0.06}
                 />
                 <StreakPill
                   icon={Zap}
                   count={streaks.workout}
                   label="Training"
-                  colorClass="bg-accent-tint-strong"
                   delay={0.12}
                 />
               </div>
             </div>
 
             {/* ── Weekly Nutrition ── */}
-            <div>
+            <div className="pt-8 border-t border-[var(--color-border)]">
               <WeeklyNutritionChart
                 weeklyNutrition={weeklyNutrition}
                 calorieTarget={calorieTarget}
@@ -408,10 +352,8 @@ export function AdherenceDashboard() {
             </div>
 
             {/* ── Lift Readiness ── */}
-            <div>
-              <p className="text-[9px] tracking-[0.18em] uppercase text-[var(--color-muted)] mb-3">
-                Lift Readiness
-              </p>
+            <div className="pt-8 border-t border-[var(--color-border)]">
+              <p className="t-label mb-2">Lift Readiness</p>
               <LiftReadiness data={liftReadiness} />
             </div>
           </div>

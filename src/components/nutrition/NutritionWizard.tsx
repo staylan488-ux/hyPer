@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import { Button, Card } from '@/components/shared';
+import { motion } from 'motion/react';
+import { Button } from '@/components/shared';
+import { springs } from '@/lib/animations';
 import {
   calculateMacroTargets,
   cmToFeetInches,
@@ -112,27 +114,34 @@ export function NutritionWizard({ onApply, onCancel }: NutritionWizardProps) {
     selected: T,
     onSelect: (value: T) => void
   ) => (
-    <div className="grid grid-cols-1 gap-2">
+    <ul>
       {options.map((option) => {
         const active = selected === option.value;
         return (
-          <button
-            key={option.value}
-            className={`w-full text-left p-3 rounded-[14px] border transition-colors ${
-              active
-                ? 'bg-[#E8E4DE] text-[#1A1A1A] border-[#E8E4DE]'
-                : 'bg-[var(--color-card)] text-[var(--color-muted)] border-[var(--color-border)] hover:border-[color-mix(in_srgb,var(--color-border)_100%,var(--color-text)_20%)]'
-            }`}
-            onClick={() => onSelect(option.value)}
-          >
-            <p className="text-xs font-medium">{option.label}</p>
-            <p className={`text-[10px] mt-1 ${active ? 'text-[#3D3D3D]' : 'text-[var(--color-muted)]'}`}>
-              {option.hint}
-            </p>
-          </button>
+          <li key={option.value}>
+            <button
+              type="button"
+              aria-pressed={active}
+              className={`pressable w-full text-left flex items-center gap-4 py-4 border-t border-[var(--color-border)] transition-colors ${
+                active ? 'border-l-2 border-l-[var(--color-accent)] pl-4' : 'pl-[calc(1rem+2px)]'
+              }`}
+              onClick={() => onSelect(option.value)}
+            >
+              <span className="flex-1 min-w-0">
+                <span className={`t-heading block normal-case tracking-normal ${active ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                  {option.label}
+                </span>
+                <span className="t-caption">{option.hint}</span>
+              </span>
+              <span
+                className={`shrink-0 w-1.5 h-1.5 ${active ? 'bg-[var(--color-accent)]' : 'bg-transparent border border-[var(--color-border-strong)]'}`}
+                aria-hidden
+              />
+            </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 
   const renderNumericInput = (
@@ -142,21 +151,17 @@ export function NutritionWizard({ onApply, onCancel }: NutritionWizardProps) {
     suffix?: string
   ) => (
     <div>
-      <label className="block text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)] mb-2">
-        {label}
-      </label>
-      <div className="flex items-center gap-2">
+      <label className="t-label-sm block mb-2">{label}</label>
+      <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
         <input
           type="number"
           inputMode="numeric"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 px-4 py-3 rounded-[14px] bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] text-sm tabular-nums focus:outline-none focus:border-[var(--color-text)] transition-colors"
+          className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
         />
         {suffix && (
-          <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] min-w-[2rem]">
-            {suffix}
-          </span>
+          <span className="t-label-sm shrink-0">{suffix}</span>
         )}
       </div>
     </div>
@@ -170,33 +175,48 @@ export function NutritionWizard({ onApply, onCancel }: NutritionWizardProps) {
       : parseFloat(heightCmInput) >= 100);
 
   return (
-    <div className="space-y-5">
-      {/* Back button */}
-      <button
-        className="flex items-center gap-2 text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-        onClick={goBack}
-      >
-        <ChevronLeft className="w-3 h-3" />
-        {stepIndex === 0 ? 'Cancel' : 'Back'}
-      </button>
+    <div className="space-y-7">
+      {/* Step dateline */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 t-label-sm hover:text-[var(--color-text)] transition-colors"
+          onClick={goBack}
+        >
+          <ChevronLeft className="w-3 h-3" strokeWidth={1.75} />
+          {stepIndex === 0 ? 'Cancel' : 'Back'}
+        </button>
+        <span className="t-data-sm text-[var(--color-muted)]">
+          {String(stepIndex + 1).padStart(2, '0')} / {String(STEPS.length).padStart(2, '0')}
+        </span>
+      </div>
+
+      {/* Step progress — hairline ticks */}
+      <div className="flex gap-1.5" aria-hidden>
+        {STEPS.map((s, i) => (
+          <span
+            key={s}
+            className={`h-px flex-1 ${i <= stepIndex ? 'bg-[var(--color-text)]' : 'bg-[var(--color-border)]'}`}
+          />
+        ))}
+      </div>
 
       {/* Step: Units + Sex */}
       {step === 'units' && (
-        <Card variant="slab" className="space-y-5">
-          <div>
-            <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] mb-1">
-              Nutrition Calculator
-            </p>
-            <h4 className="text-sm text-[var(--color-text)]">Units & biological sex</h4>
-            <p className="text-[10px] text-[var(--color-muted)] mt-1">
-              Sex affects basal metabolic rate estimation
-            </p>
+        <motion.div
+          className="space-y-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
+          <div className="pt-1 border-t border-[var(--color-text)]">
+            <p className="t-label mt-5 mb-3">Nutrition calculator</p>
+            <h4 className="t-title">Units &amp; biological sex</h4>
+            <p className="t-caption mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
           </div>
 
           <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2">
-              Unit system
-            </p>
+            <p className="t-label mb-2">Unit system</p>
             {renderOptionRow(UNIT_OPTIONS, unitSystem, (v) => {
               setUnitSystem(v);
               if (v === 'metric') {
@@ -217,190 +237,186 @@ export function NutritionWizard({ onApply, onCancel }: NutritionWizardProps) {
           </div>
 
           <div>
-            <p className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)] mb-2">
-              Biological sex
-            </p>
+            <p className="t-label mb-2">Biological sex</p>
             {renderOptionRow(SEX_OPTIONS, sex, setSex)}
           </div>
 
-          <Button className="w-full" onClick={goNext}>
+          <Button size="lg" className="w-full" onClick={goNext}>
             Continue
           </Button>
-        </Card>
+        </motion.div>
       )}
 
       {/* Step: Body measurements */}
       {step === 'body' && (
-        <Card variant="slab" className="space-y-5">
-          <div>
-            <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] mb-1">
-              Body Measurements
-            </p>
-            <h4 className="text-sm text-[var(--color-text)]">Your current stats</h4>
-            <p className="text-[10px] text-[var(--color-muted)] mt-1">
-              Used to estimate your basal metabolic rate
-            </p>
+        <motion.div
+          className="space-y-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
+          <div className="pt-1 border-t border-[var(--color-text)]">
+            <p className="t-label mt-5 mb-3">Body measurements</p>
+            <h4 className="t-title">Your current stats</h4>
+            <p className="t-caption mt-3 max-w-[34ch]">Used to estimate your basal metabolic rate.</p>
           </div>
 
-          {renderNumericInput('Age', age, setAge, 'yrs')}
+          <div className="space-y-6">
+            {renderNumericInput('Age', age, setAge, 'yrs')}
 
-          {renderNumericInput(
-            'Body weight',
-            weightInput,
-            setWeightInput,
-            unitSystem === 'imperial' ? 'lbs' : 'kg'
-          )}
+            {renderNumericInput(
+              'Body weight',
+              weightInput,
+              setWeightInput,
+              unitSystem === 'imperial' ? 'lbs' : 'kg'
+            )}
 
-          {unitSystem === 'imperial' ? (
-            <div>
-              <label className="block text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)] mb-2">
-                Height
-              </label>
-              <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={heightFeet}
-                  onChange={(e) => setHeightFeet(e.target.value)}
-                  className="min-w-0 px-4 py-3 rounded-[14px] bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] text-sm tabular-nums focus:outline-none focus:border-[var(--color-text)] transition-colors"
-                />
-                <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">ft</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={heightInches}
-                  onChange={(e) => setHeightInches(e.target.value)}
-                  className="min-w-0 px-4 py-3 rounded-[14px] bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] text-sm tabular-nums focus:outline-none focus:border-[var(--color-text)] transition-colors"
-                />
-                <span className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">in</span>
+            {unitSystem === 'imperial' ? (
+              <div>
+                <label className="t-label-sm block mb-2">Height</label>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={heightFeet}
+                      onChange={(e) => setHeightFeet(e.target.value)}
+                      className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+                    />
+                    <span className="t-label-sm shrink-0">ft</span>
+                  </div>
+                  <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={heightInches}
+                      onChange={(e) => setHeightInches(e.target.value)}
+                      className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+                    />
+                    <span className="t-label-sm shrink-0">in</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          ) : (
-            renderNumericInput('Height', heightCmInput, setHeightCmInput, 'cm')
-          )}
+            ) : (
+              renderNumericInput('Height', heightCmInput, setHeightCmInput, 'cm')
+            )}
+          </div>
 
-          <Button className="w-full" onClick={goNext} disabled={!canProceedFromBody}>
+          <Button size="lg" className="w-full" onClick={goNext} disabled={!canProceedFromBody}>
             Continue
           </Button>
-        </Card>
+        </motion.div>
       )}
 
       {/* Step: Activity level */}
       {step === 'activity' && (
-        <Card variant="slab" className="space-y-5">
-          <div>
-            <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] mb-1">
-              Daily Activity
-            </p>
-            <h4 className="text-sm text-[var(--color-text)]">How active are you?</h4>
-            <p className="text-[10px] text-[var(--color-muted)] mt-1">
-              Includes training, daily movement, and job activity
-            </p>
+        <motion.div
+          className="space-y-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
+          <div className="pt-1 border-t border-[var(--color-text)]">
+            <p className="t-label mt-5 mb-3">Daily activity</p>
+            <h4 className="t-title">How active are you?</h4>
+            <p className="t-caption mt-3 max-w-[34ch]">Includes training, daily movement, and job activity.</p>
           </div>
 
           {renderOptionRow(ACTIVITY_OPTIONS, activity, setActivity)}
 
-          <Button className="w-full" onClick={goNext}>
+          <Button size="lg" className="w-full" onClick={goNext}>
             Continue
           </Button>
-        </Card>
+        </motion.div>
       )}
 
       {/* Step: Goal */}
       {step === 'goal' && (
-        <Card variant="slab" className="space-y-5">
-          <div>
-            <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] mb-1">
-              Nutrition Goal
-            </p>
-            <h4 className="text-sm text-[var(--color-text)]">What are you optimizing for?</h4>
-            <p className="text-[10px] text-[var(--color-muted)] mt-1">
-              This sets your calorie surplus or deficit
-            </p>
+        <motion.div
+          className="space-y-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
+          <div className="pt-1 border-t border-[var(--color-text)]">
+            <p className="t-label mt-5 mb-3">Nutrition goal</p>
+            <h4 className="t-title">What are you optimizing for?</h4>
+            <p className="t-caption mt-3 max-w-[34ch]">This sets your calorie surplus or deficit.</p>
           </div>
 
           {renderOptionRow(GOAL_OPTIONS, goal, setGoal)}
 
-          <Button className="w-full" onClick={goNext}>
-            Review Targets
+          <Button size="lg" className="w-full" onClick={goNext}>
+            Review targets
           </Button>
-        </Card>
+        </motion.div>
       )}
 
       {/* Step: Review */}
       {step === 'review' && (
-        <>
-          <Card variant="slab" className="space-y-4">
-            <div>
-              <p className="text-[10px] tracking-[0.15em] uppercase text-[var(--color-muted)] mb-1">
-                Suggested Daily Targets
-              </p>
-              <h4 className="text-sm text-[var(--color-text)]">Based on your profile</h4>
+        <motion.div
+          className="space-y-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
+          <div className="pt-1 border-t border-[var(--color-text)]">
+            <p className="t-label mt-5 mb-3">Suggested daily targets</p>
+            <h4 className="t-title">Based on your profile</h4>
+          </div>
+
+          {/* Calories hero — the data is the point */}
+          <div>
+            <p className="t-label-sm mb-1">Daily calories</p>
+            <div className="flex items-baseline gap-2">
+              <span className="number-hero text-[var(--color-text)]">{result.calories.toLocaleString()}</span>
+              <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
             </div>
-
-            {/* Calories hero */}
-            <div className="p-4 rounded-[18px] bg-[var(--color-base)] border border-[var(--color-border)]">
-              <p className="text-[10px] tracking-[0.12em] uppercase text-[var(--color-muted)]">
-                Daily Calories
-              </p>
-              <p className="text-3xl font-display-italic text-[var(--color-text)] tabular-nums mt-1">
-                {result.calories.toLocaleString()}
-              </p>
-              <p className="text-[10px] text-[var(--color-muted)] mt-1 tabular-nums">
-                TDEE: {result.tdee.toLocaleString()} kcal ·{' '}
-                {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
-              </p>
-            </div>
-
-            {/* Macro breakdown */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="p-3 rounded-[14px] bg-[var(--color-base)] border border-[var(--color-border)] text-center">
-                <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Protein</p>
-                <p className="text-lg font-display-italic text-[var(--color-text)] tabular-nums mt-1">
-                  {result.protein}g
-                </p>
-                <p className="text-[9px] text-[var(--color-muted)] tabular-nums">
-                  {Math.round((result.protein * 4 / result.calories) * 100)}%
-                </p>
-              </div>
-              <div className="p-3 rounded-[14px] bg-[var(--color-base)] border border-[var(--color-border)] text-center">
-                <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Carbs</p>
-                <p className="text-lg font-display-italic text-[var(--color-text)] tabular-nums mt-1">
-                  {result.carbs}g
-                </p>
-                <p className="text-[9px] text-[var(--color-muted)] tabular-nums">
-                  {Math.round((result.carbs * 4 / result.calories) * 100)}%
-                </p>
-              </div>
-              <div className="p-3 rounded-[14px] bg-[var(--color-base)] border border-[var(--color-border)] text-center">
-                <p className="text-[9px] tracking-[0.12em] uppercase text-[var(--color-muted)]">Fat</p>
-                <p className="text-lg font-display-italic text-[var(--color-text)] tabular-nums mt-1">
-                  {result.fat}g
-                </p>
-                <p className="text-[9px] text-[var(--color-muted)] tabular-nums">
-                  {Math.round((result.fat * 9 / result.calories) * 100)}%
-                </p>
-              </div>
-            </div>
-
-            {/* Methodology note */}
-            <p className="text-[9px] tracking-[0.08em] text-[var(--color-muted)] leading-relaxed">
-              Calculated using Mifflin-St Jeor BMR ({result.bmr} kcal) ×{' '}
-              {ACTIVITY_OPTIONS.find((o) => o.value === activity)?.label.toLowerCase()} activity multiplier.
-              Protein set at {goal === 'cut' ? '2.2' : '1.8'} g/kg for{' '}
-              {goal === 'cut' ? 'muscle preservation in a deficit' : 'hypertrophy support'}.
-            </p>
-          </Card>
-
-          <div className="space-y-2">
-            <Button className="w-full" onClick={() => onApply(result)}>
-              Apply These Targets
-            </Button>
-            <p className="text-[10px] text-center text-[var(--color-muted)]">
-              You can fine-tune values manually after applying
+            <p className="t-data-sm text-[var(--color-muted)] mt-2">
+              TDEE {result.tdee.toLocaleString()} kcal · {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
             </p>
           </div>
-        </>
+
+          {/* Macro breakdown — serif numerals on hairline rows */}
+          <dl className="border-t border-[var(--color-text)]">
+            {[
+              { label: 'Protein', grams: result.protein, pct: Math.round((result.protein * 4 / result.calories) * 100) },
+              { label: 'Carbs', grams: result.carbs, pct: Math.round((result.carbs * 4 / result.calories) * 100) },
+              { label: 'Fat', grams: result.fat, pct: Math.round((result.fat * 9 / result.calories) * 100) },
+            ].map((macro) => (
+              <div
+                key={macro.label}
+                className="flex items-baseline justify-between gap-4 py-4 border-b border-[var(--color-border)]"
+              >
+                <dt className="t-label-sm">{macro.label}</dt>
+                <dd className="flex items-baseline gap-3">
+                  <span className="t-data-sm text-[var(--color-muted)] tabular-nums">{macro.pct}%</span>
+                  <span className="flex items-baseline gap-1">
+                    <span className="number-large text-[var(--color-text)]">{macro.grams}</span>
+                    <span className="t-data-sm text-[var(--color-muted)]">g</span>
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {/* Methodology note */}
+          <p className="t-caption max-w-[44ch]">
+            Calculated using Mifflin-St Jeor BMR ({result.bmr} kcal) ×{' '}
+            {ACTIVITY_OPTIONS.find((o) => o.value === activity)?.label.toLowerCase()} activity multiplier.
+            Protein set at {goal === 'cut' ? '2.2' : '1.8'} g/kg for{' '}
+            {goal === 'cut' ? 'muscle preservation in a deficit' : 'hypertrophy support'}.
+          </p>
+
+          <div className="space-y-3">
+            <Button size="lg" className="w-full" onClick={() => onApply(result)}>
+              Apply these targets
+            </Button>
+            <p className="t-caption text-center">
+              You can fine-tune values manually after applying.
+            </p>
+          </div>
+        </motion.div>
       )}
     </div>
   );

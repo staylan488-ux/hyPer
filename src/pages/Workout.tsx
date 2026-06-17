@@ -1034,14 +1034,16 @@ export function Workout() {
   if (initializing) {
     return (
       <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <header className="mb-6">
-          <p className="t-label-sm mb-1">Train</p>
-          <h1 className="t-title">Session</h1>
+        <header className="mb-8">
+          <div className="flex items-baseline justify-between">
+            <span className="t-label-sm">Train</span>
+          </div>
+          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
         </header>
-        <div className="panel p-5">
-          <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-xs font-medium">Loading program…</span>
+        <div className="border-t border-[var(--color-border)]">
+          <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
+            <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
+            <span className="t-label-sm">Loading program</span>
           </div>
         </div>
       </motion.div>
@@ -1053,9 +1055,11 @@ export function Workout() {
   if (workoutMode === 'split' && !activeSplit) {
     return (
       <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <header className="mb-6">
-          <p className="t-label-sm mb-1">Train</p>
-          <h1 className="t-title">Session</h1>
+        <header className="mb-8">
+          <div className="flex items-baseline justify-between">
+            <span className="t-label-sm">Train</span>
+          </div>
+          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
         </header>
         <EmptyState
           icon={Dumbbell}
@@ -1121,16 +1125,15 @@ export function Workout() {
 
       return (
         <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <header className="mb-6">
-            <p className="t-label-sm mb-1">Train · Flexible</p>
-            <h1 className="t-title">Start a session</h1>
+          <header className="mb-8">
+            <div className="flex items-baseline justify-between">
+              <span className="t-label-sm">Train</span>
+              <span className="t-label-sm">Flexible</span>
+            </div>
+            <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</h1>
           </header>
 
-          <div className="panel-hot p-5 relative overflow-hidden">
-            <div
-              className="absolute inset-x-0 top-0 h-[2.5px]"
-              style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-            />
+          <div className="panel-hot p-5">
             <Input
               label="What are you training?"
               value={flexibleDayLabel}
@@ -1191,25 +1194,29 @@ export function Workout() {
 
     return (
       <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <header className="mb-6 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="t-label-sm mb-1 truncate">Train · {activeSplit?.name}</p>
-            <h1 className="t-title">Today</h1>
+        <header className="mb-8">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
+            {planSchedule && (
+              <button
+                type="button"
+                onClick={openScheduleEditor}
+                className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
+              >
+                <Settings2 className="w-3 h-3" strokeWidth={1.75} />
+                Schedule
+              </button>
+            )}
           </div>
-          {planSchedule && (
-            <Button variant="ghost" size="sm" className="shrink-0" onClick={openScheduleEditor}>
-              <Settings2 className="w-3.5 h-3.5" />
-              Schedule
-            </Button>
-          )}
+          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Today</h1>
         </header>
 
         {!planSchedule ? (
           planScheduleResolving ? (
-            <div className="panel p-5">
-              <div className="flex items-center justify-center gap-2 py-14 text-[var(--color-muted)]">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-xs font-medium">Loading saved plan setup…</span>
+            <div className="border-t border-[var(--color-border)]">
+              <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
+                <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
+                <span className="t-label-sm">Loading saved plan setup</span>
               </div>
             </div>
           ) : (
@@ -1242,30 +1249,26 @@ export function Workout() {
             {/* Today hero */}
             {todayCompletedWorkout ? (
               <div className="panel-sage p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-sage)]">
-                    <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={3.5} />
-                  </span>
-                  <span className="t-label text-[var(--color-sage)]">Trained today</span>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="block w-2 h-2 bg-[var(--color-text)]" aria-hidden />
+                  <span className="t-label">Trained today</span>
                 </div>
-                <p className="t-display text-[1.4rem] text-[var(--color-text)]">The work is banked.</p>
-                <p className="t-caption mt-1.5">Rest, or pick a different day below.</p>
+                <p className="t-display text-[1.6rem] text-[var(--color-text)]">The work is banked.</p>
+                <p className="t-caption mt-2">Rest, or pick a different day below.</p>
               </div>
             ) : todayPlannedDay ? (
-              <div className="panel-hot p-5 relative overflow-hidden">
-                <div
-                  className="absolute inset-x-0 top-0 h-[2.5px]"
-                  style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-                />
-                <p className="t-label text-[var(--color-accent)] mb-1.5">Today</p>
-                <h2 className="t-title mb-2">{todayPlannedDay.day_name}</h2>
-                <div className="flex items-center gap-3 mb-4">
-                  <TickStrip total={Math.min(todayPlannedDay.exercises?.length || 0, 16)} filled={0} tone="amber" size="sm" />
-                  <span className="t-data-sm text-[var(--color-text-dim)]">
-                    {todayPlannedDay.exercises?.length || 0} exercises ·{' '}
+              <div className="panel-hot p-5">
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="t-label text-[var(--color-accent)]">Today</p>
+                  <span className="t-data-sm text-[var(--color-muted)]">
+                    {todayPlannedDay.exercises?.length || 0} ex ·{' '}
                     {(todayPlannedDay.exercises || []).reduce((sum, ex) => sum + (ex.target_sets || 0), 0)} sets
                   </span>
                 </div>
+                <h2 className="[font-family:var(--font-display)] text-[2.5rem] leading-[0.95] font-light tracking-[-0.03em] text-[var(--color-text)] mb-5">
+                  {todayPlannedDay.day_name}
+                </h2>
+                <TickStrip total={Math.min(todayPlannedDay.exercises?.length || 0, 16)} filled={0} tone="amber" size="md" className="mb-6" />
                 <Button
                   size="lg"
                   className="w-full"
@@ -1273,17 +1276,17 @@ export function Workout() {
                   disabled={startingDayId !== null}
                   loading={startingDayId === todayPlannedDay.id}
                 >
-                  <Dumbbell className="w-4 h-4" strokeWidth={2.25} />
+                  <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
                   {startingDayId === todayPlannedDay.id ? 'Starting…' : "Start today's workout"}
                 </Button>
               </div>
             ) : (
               <div className="panel p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Moon className="w-4 h-4 text-[var(--color-stone)]" strokeWidth={1.75} />
+                <div className="flex items-center gap-2 mb-3">
+                  <Moon className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
                   <span className="t-label">Rest day</span>
                 </div>
-                <p className="t-display text-[1.3rem] text-[var(--color-text-dim)]">Recovery is part of the program.</p>
+                <p className="t-display text-[1.5rem] text-[var(--color-text-dim)]">Recovery is part of the program.</p>
               </div>
             )}
 
@@ -1294,21 +1297,21 @@ export function Workout() {
             )}
 
             {/* Week strip */}
-            <div className="panel p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="t-label-sm">{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}</span>
+            <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
+              <div className="flex items-center justify-between mb-4">
+                <span className="t-label">{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}</span>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
                     aria-label="Previous week"
-                    className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
+                    className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                     onClick={() => setWeekCursor((current) => addDays(current, -7))}
                   >
-                    <ChevronLeft className="w-4 h-4" strokeWidth={2} />
+                    <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
                   </button>
                   <button
                     type="button"
-                    className="pressable px-2.5 py-1.5 rounded-[var(--radius-xs)] text-[11px] font-semibold text-[var(--color-text-dim)]"
+                    className="pressable px-2.5 py-1.5 t-label-sm hover:text-[var(--color-text)] transition-colors"
                     onClick={() => setWeekCursor(new Date())}
                   >
                     Now
@@ -1316,15 +1319,15 @@ export function Workout() {
                   <button
                     type="button"
                     aria-label="Next week"
-                    className="pressable p-2 rounded-[var(--radius-xs)] text-[var(--color-muted)]"
+                    className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                     onClick={() => setWeekCursor((current) => addDays(current, 7))}
                   >
-                    <ChevronRight className="w-4 h-4" strokeWidth={2} />
+                    <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-7 gap-1.5">
+              <div className="grid grid-cols-7 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
@@ -1338,35 +1341,41 @@ export function Workout() {
                     status = isBefore(date, today) && !isToday ? 'missed' : 'planned';
                   }
 
-                  const cellClass =
-                    status === 'completed'
-                      ? 'bg-sage-tint'
-                      : status === 'missed'
-                        ? 'bg-rose-tint'
-                        : status === 'planned'
-                          ? 'bg-[var(--color-surface-2)]'
-                          : 'bg-transparent';
+                  const completed = status === 'completed';
 
                   return (
                     <div
                       key={dateKey}
-                      className={`relative flex flex-col items-center gap-1 rounded-[var(--radius-sm)] py-2 border ${cellClass} ${
-                        isToday ? 'border-[color-mix(in_srgb,var(--color-accent)_55%,transparent)]' : 'border-[var(--color-border)]'
+                      className={`relative flex flex-col items-center gap-1.5 py-2.5 ${
+                        completed ? 'bg-[var(--color-text)]' : 'bg-[var(--color-surface-1)]'
                       }`}
                     >
-                      <span className="t-label-sm text-[9px]">{weekdayLetters[date.getDay()]}</span>
-                      <span className={`t-data-sm ${isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                      {isToday && (
+                        <span className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--color-accent)]" aria-hidden />
+                      )}
+                      <span className={`t-label-sm text-[9px] ${completed ? 'text-[var(--color-base)]' : ''}`}>
+                        {weekdayLetters[date.getDay()]}
+                      </span>
+                      <span
+                        className={`t-data-sm ${
+                          completed
+                            ? 'text-[var(--color-base)]'
+                            : isToday
+                              ? 'text-[var(--color-text)]'
+                              : 'text-[var(--color-text-dim)]'
+                        }`}
+                      >
                         {format(date, 'd')}
                       </span>
                       <span className="h-3 flex items-center">
                         {status === 'completed' ? (
-                          <Check className="w-3 h-3 text-[var(--color-sage)]" strokeWidth={3} />
+                          <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={2.5} />
                         ) : status === 'missed' ? (
-                          <X className="w-3 h-3 text-[var(--color-rose)]" strokeWidth={2.5} />
+                          <X className="w-3 h-3 text-[var(--color-accent)]" strokeWidth={2} />
                         ) : status === 'planned' ? (
-                          <span className="w-[3px] h-2.5 rounded-full bg-[var(--color-stone)]" />
+                          <span className="w-[2px] h-2.5 bg-[var(--color-text-dim)]" />
                         ) : (
-                          <span className="w-1 h-1 rounded-full bg-[color-mix(in_srgb,var(--color-muted)_35%,transparent)]" />
+                          <span className="w-1 h-1 bg-[color-mix(in_srgb,var(--color-muted)_35%,transparent)]" />
                         )}
                       </span>
                     </div>
@@ -1376,24 +1385,24 @@ export function Workout() {
             </div>
 
             {/* Other days */}
-            <div className="panel p-4">
-              <p className="t-label-sm mb-3">Train a different day</p>
-              <div className="space-y-2">
+            <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
+              <p className="t-label mb-1">Train a different day</p>
+              <ul>
                 {(activeSplit?.days || []).map((day) => (
-                  <div
+                  <li
                     key={day.id}
-                    className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline px-3.5 py-2.5"
+                    className="flex items-center justify-between gap-3 py-3.5 border-t border-[var(--color-border)]"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">{day.day_name}</p>
-                      <p className="text-[11px] text-[var(--color-muted)]">{day.exercises?.length || 0} exercises</p>
+                      <p className="t-heading truncate">{day.day_name}</p>
+                      <p className="t-caption">{day.exercises?.length || 0} exercises</p>
                     </div>
                     <Button size="sm" variant="secondary" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
                       {startingDayId === day.id ? 'Starting…' : 'Start'}
                     </Button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           </div>
         )}
@@ -1436,7 +1445,7 @@ export function Workout() {
     <motion.div className={`px-5 ${showRestTimer ? 'pb-44' : 'pb-nav'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Sticky session header */}
       <div
-        className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-4 border-b border-[var(--color-border)]"
+        className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-5 border-b border-[var(--color-text)]"
         style={{
           top: 0,
           backgroundColor: 'color-mix(in srgb, var(--color-base) 86%, transparent)',
@@ -1444,18 +1453,18 @@ export function Workout() {
           WebkitBackdropFilter: 'blur(16px)',
         }}
       >
-        <div className="flex items-center justify-between gap-3 mb-2.5">
+        <div className="flex items-end justify-between gap-3 mb-3">
           <div className="min-w-0">
-            <p className="t-label-sm flex items-center gap-1.5 mb-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-breathe" />
+            <p className="t-label-sm flex items-center gap-1.5 mb-1.5">
+              <span className="w-1.5 h-1.5 bg-[var(--color-accent)] animate-breathe" />
               In session
             </p>
             <h1 className="t-caps text-[17px] font-light tracking-[0.18em] text-[var(--color-text)] truncate">{currentSessionTitle}</h1>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-4 shrink-0">
             <div className="text-right">
               <p className="t-data text-[var(--color-text)]">{sessionDurationLabel}</p>
-              <p className="text-[10px] font-semibold text-[var(--color-muted)] tabular-nums">
+              <p className="t-data-sm text-[10px] text-[var(--color-muted)]">
                 {completedSets}/{totalSets} sets
               </p>
             </div>
@@ -1911,8 +1920,8 @@ function ExerciseCard({
         {/* superset role edge */}
         {supersetRole && (
           <span
-            className="absolute left-0 top-4 bottom-4 w-[3px] rounded-r-full"
-            style={{ backgroundColor: roleColor, boxShadow: `0 0 10px color-mix(in srgb, ${roleColor} 45%, transparent)` }}
+            className="absolute left-0 top-4 bottom-4 w-[2px]"
+            style={{ backgroundColor: roleColor }}
           />
         )}
         <div
@@ -1932,12 +1941,12 @@ function ExerciseCard({
               <div className="flex items-center gap-2">
                 {allComplete && (
                   <motion.span
-                    className="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-[var(--color-sage)] shrink-0"
+                    className="flex items-center justify-center w-[18px] h-[18px] bg-[var(--color-text)] shrink-0"
                     initial={{ scale: 0 }}
                     animate={{ scale: [0, 1.15, 1] }}
                     transition={{ duration: 0.35 }}
                   >
-                    <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={4} />
+                    <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={3} />
                   </motion.span>
                 )}
                 <h3 className="t-caps text-[14px] font-normal tracking-[0.14em] text-[var(--color-text)] truncate">{exerciseName}</h3>
@@ -2104,31 +2113,31 @@ function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | nu
   return (
     <Modal isOpen={summary !== null} onClose={onClose}>
       {summary && (
-        <div className="text-center pt-2 pb-3">
-          <motion.span
-            className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-sage)] mb-4"
-            initial={{ scale: 0 }}
-            animate={{ scale: [0, 1.15, 1] }}
-            transition={{ duration: 0.45 }}
-          >
-            <Check className="w-6 h-6 text-[var(--color-base)]" strokeWidth={3} />
-          </motion.span>
-          <p className="t-display text-[1.6rem] text-[var(--color-text)] mb-1">Session banked.</p>
-          <p className="t-caption mb-5">{summary.title}</p>
-          <div className="flex justify-center mb-5">
-            <TickStrip total={Math.min(summary.totalSets, 30)} filled={Math.min(summary.completedSets, 30)} tone="sage" />
+        <div className="pt-1 pb-2">
+          <div className="flex items-center gap-2 mb-3">
+            <motion.span
+              className="block w-2.5 h-2.5 bg-[var(--color-text)]"
+              initial={{ scale: 0 }}
+              animate={{ scale: [0, 1.15, 1] }}
+              transition={{ duration: 0.45 }}
+              aria-hidden
+            />
+            <span className="t-label">Session complete</span>
           </div>
-          <div className="grid grid-cols-2 gap-2.5 mb-6">
-            <div className="well py-3">
-              <p className="t-data-lg text-[var(--color-text)]">{summary.completedSets}<span className="text-[var(--color-muted)]">/{summary.totalSets}</span></p>
-              <p className="t-label-sm mt-0.5">sets</p>
+          <p className="t-display text-[2rem] leading-[1.02] text-[var(--color-text)] mb-1.5">Session banked.</p>
+          <p className="t-caption mb-6">{summary.title}</p>
+          <TickStrip total={Math.min(summary.totalSets, 30)} filled={Math.min(summary.completedSets, 30)} tone="sage" className="mb-6" />
+          <div className="grid grid-cols-2 border-t border-[var(--color-border)]">
+            <div className="py-4 pr-4 border-r border-[var(--color-border)]">
+              <p className="number-medium text-[var(--color-text)]">{summary.completedSets}<span className="text-[var(--color-muted)]">/{summary.totalSets}</span></p>
+              <p className="t-label-sm mt-1">sets</p>
             </div>
-            <div className="well py-3">
-              <p className="t-data-lg text-[var(--color-text)]">{summary.duration}</p>
-              <p className="t-label-sm mt-0.5">duration</p>
+            <div className="py-4 pl-4">
+              <p className="number-medium text-[var(--color-text)]">{summary.duration}</p>
+              <p className="t-label-sm mt-1">duration</p>
             </div>
           </div>
-          <Button size="lg" className="w-full" onClick={onClose}>
+          <Button size="lg" className="w-full mt-6" onClick={onClose}>
             Done
           </Button>
         </div>

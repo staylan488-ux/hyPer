@@ -9,48 +9,49 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
   loading?: boolean;
 }
 
+/**
+ * FOLIO button — tracked-caps grotesque, square corners, no gradient or glow.
+ * primary = solid ink (lacquer on press) · secondary = ghost outline that
+ * inverts · danger = lacquer outline that fills · ghost = bare tracked label.
+ */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
     const baseStyles = `
       inline-flex items-center justify-center
-      [font-family:var(--font-display)] uppercase tracking-[0.16em] font-medium
-      transition-colors duration-150
+      [font-family:var(--font-sans)] uppercase font-medium
+      transition-colors duration-200
       focus:outline-none
-      focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_35%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
-      disabled:opacity-40 disabled:cursor-not-allowed
-      rounded-[var(--radius-md)]
+      focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
+      disabled:opacity-35 disabled:cursor-not-allowed
+      rounded-none
     `;
 
     const variants = {
       primary: `
-        [background:var(--grad-amber)] text-[var(--button-primary-fg)]
-        font-semibold
-        hover:brightness-105
-        active:brightness-95
-        shadow-[var(--glow-amber),0_1px_0_rgba(255,255,255,0.25)_inset]
+        bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
+        hover:bg-[var(--button-primary-hover)]
+        active:bg-[var(--button-primary-active)]
       `,
       secondary: `
-        bg-[var(--color-surface-2)] text-[var(--color-text)]
-        border border-[var(--color-border-strong)]
-        hover:bg-[var(--color-surface-3)]
-        active:bg-[color-mix(in_srgb,var(--color-surface-3)_88%,var(--color-base)_12%)]
+        bg-transparent text-[var(--color-text)]
+        border border-[var(--color-text)]
+        hover:bg-[var(--color-text)] hover:text-[var(--color-base)]
       `,
       danger: `
-        bg-[var(--color-danger)] text-[#FCF6F2]
-        hover:bg-[color-mix(in_srgb,var(--color-danger)_90%,var(--color-text)_10%)]
-        active:bg-[color-mix(in_srgb,var(--color-danger)_82%,var(--color-base)_18%)]
+        bg-transparent text-[var(--color-accent)]
+        border border-[var(--color-accent)]
+        hover:bg-[var(--color-accent)] hover:text-[var(--color-base)]
       `,
       ghost: `
         bg-transparent text-[var(--color-text-dim)]
-        hover:text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)]
-        active:text-[var(--color-text)] active:bg-[color-mix(in_srgb,var(--color-text)_12%,transparent)]
+        hover:text-[var(--color-text)]
       `,
     };
 
     const sizes = {
-      sm: 'px-3.5 min-h-9 text-[10px] gap-1.5',
-      md: 'px-5 min-h-11 text-[12px] gap-2',
-      lg: 'px-6 min-h-[52px] text-[13px] gap-2.5',
+      sm: 'px-4 min-h-9 text-[10px] tracking-[0.2em] gap-2',
+      md: 'px-6 min-h-11 text-[11px] tracking-[0.22em] gap-2',
+      lg: 'px-7 min-h-[54px] text-[12px] tracking-[0.24em] gap-2.5',
     };
 
     const isDisabled = disabled || loading;
@@ -60,7 +61,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
-        whileTap={isDisabled ? undefined : { scale: 0.98 }}
+        whileTap={isDisabled ? undefined : { scale: 0.985 }}
         transition={springs.snappy}
         onClick={(event) => {
           if (!isDisabled) tapHaptic();
@@ -70,10 +71,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {loading && (
           <span className="mr-1 flex gap-1">
-            {[0, 0.2, 0.4].map((delay) => (
+            {[0, 0.18, 0.36].map((delay) => (
               <motion.span
                 key={delay}
-                className="w-1.5 h-1.5 rounded-full bg-current"
+                className="w-1 h-1 rounded-full bg-current"
                 animate={{ opacity: [0.3, 1, 0.3] }}
                 transition={{ duration: 1, repeat: Infinity, delay }}
               />

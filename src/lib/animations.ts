@@ -4,28 +4,32 @@ import { type Transition, type Variants } from 'motion/react';
 // SPRING CONFIGS
 // ═══════════════════════════════════
 
+// FOLIO motion — calm and critically damped. No overshoot, no bounce.
+// Emphasis is scale, weight and the single lacquer rule, never a spring wobble.
+const EASE_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
 export const springs = {
-  snappy: { type: 'spring', stiffness: 500, damping: 30 } as Transition,
-  smooth: { type: 'spring', stiffness: 300, damping: 30 } as Transition,
-  bouncy: { type: 'spring', stiffness: 400, damping: 15 } as Transition,
-  gentle: { type: 'spring', stiffness: 200, damping: 20 } as Transition,
-  responsive: { type: 'spring', stiffness: 350, damping: 25 } as Transition,
-  heavy: { type: 'spring', stiffness: 250, damping: 35 } as Transition,
+  snappy: { type: 'tween', duration: 0.26, ease: EASE_EXPO } as Transition,
+  smooth: { type: 'tween', duration: 0.42, ease: EASE_EXPO } as Transition,
+  bouncy: { type: 'tween', duration: 0.46, ease: EASE_EXPO } as Transition,
+  gentle: { type: 'tween', duration: 0.56, ease: EASE_EXPO } as Transition,
+  responsive: { type: 'tween', duration: 0.34, ease: EASE_EXPO } as Transition,
+  heavy: { type: 'tween', duration: 0.6, ease: EASE_EXPO } as Transition,
 };
 
 // ═══════════════════════════════════
 // SHARED VARIANTS
 // ═══════════════════════════════════
 
-/** Fade-up entrance for individual items */
+/** Fade-up entrance for individual items — content "develops" onto the page */
 export const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 12 },
+  hidden: { opacity: 0, y: 14 },
   visible: { opacity: 1, y: 0 },
 };
 
 /** Fade-up entrance triggered by scroll (whileInView) */
 export const inViewFadeUp: Variants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 18 },
   visible: { opacity: 1, y: 0 },
 };
 
@@ -93,34 +97,33 @@ export const staggerContainerSlow: Variants = {
 // ═══════════════════════════════════
 
 export const pageTransition: Variants = {
-  hidden: { opacity: 0 },
+  hidden: { opacity: 0, y: 8 },
   visible: {
     opacity: 1,
-    transition: { duration: 0.2, ease: 'easeOut' },
+    y: 0,
+    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
   },
   exit: {
     opacity: 0,
-    transition: { duration: 0.15, ease: 'easeIn' },
+    transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
 // ═══════════════════════════════════
-// BUTTON PRESS
+// BUTTON PRESS — quiet, no hover lift
 // ═══════════════════════════════════
 
 export const buttonTap = {
-  whileTap: { scale: 0.96, y: 1 },
-  whileHover: { scale: 1.01 },
+  whileTap: { scale: 0.985 },
   transition: springs.snappy,
 };
 
 // ═══════════════════════════════════
-// CARD HOVER
+// CARD PRESS — flat, no elevation change
 // ═══════════════════════════════════
 
 export const cardHover = {
-  whileHover: { y: -2, transition: springs.smooth },
-  whileTap: { scale: 0.985 },
+  whileTap: { scale: 0.99 },
 };
 
 // ═══════════════════════════════════
@@ -128,6 +131,6 @@ export const cardHover = {
 // ═══════════════════════════════════
 
 export const navItemTap = {
-  whileTap: { scale: 0.9 },
+  whileTap: { scale: 0.94 },
   transition: springs.snappy,
 };

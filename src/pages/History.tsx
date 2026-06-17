@@ -62,12 +62,10 @@ function SetEditor({ workoutSet, onSave, onCancel }: SetEditorProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="text-center mb-4">
-        <p className="text-xs text-[#6B6B6B]">Editing Set {workoutSet.set_number}</p>
-      </div>
+    <div className="space-y-5">
+      <p className="t-label-sm">Editing Set {workoutSet.set_number}</p>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-4">
         <Input
           label="Weight (lbs)"
           type="number"
@@ -515,29 +513,32 @@ export function History() {
     <motion.div className="px-5 pt-6 pb-nav">
       <Toast show={showSuccess} message="Saved" />
 
-      <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="t-label-sm mb-1">Training ledger</p>
-        <h1 className="t-title">History</h1>
+      <motion.header className="mb-7" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <div className="flex items-baseline justify-between">
+          <span className="t-label-sm">Training ledger</span>
+          <span className="t-label-sm">{format(new Date(), 'yyyy')}</span>
+        </div>
+        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">History</h1>
       </motion.header>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <div className="panel p-4 mb-5">
-          <div className="flex items-center justify-between mb-3">
+        <div className="mb-9">
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--color-border)]">
             <motion.button
               onClick={() => {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: -2 }}
               aria-label="Previous month"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
             <AnimatePresence mode="wait">
               <motion.h3
                 key={format(selectedMonth, 'yyyy-MM')}
-                className="t-heading"
+                className="t-label"
                 initial={{ opacity: 0, x: monthDirection * 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: monthDirection * -20 }}
@@ -551,23 +552,23 @@ export function History() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: 2 }}
               aria-label="Next month"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 mb-1">
+          <div className="grid grid-cols-7">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="t-label-sm text-center py-1">
+              <div key={`${day}-${index}`} className="t-label-sm text-[9px] text-center pb-2">
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 border-t border-l border-[var(--color-border)]">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
@@ -596,23 +597,26 @@ export function History() {
                     }
                   }}
                   title={workoutSummaryLabel || undefined}
-                  className={`min-h-16 rounded-[var(--radius-sm)] t-data-sm transition-all relative px-1 py-1.5 ${
+                  className={`min-h-16 border-r border-b border-[var(--color-border)] transition-colors relative px-1.5 py-1.5 ${
                     isSelected
                       ? 'text-[var(--color-base)]'
                       : inMonth
                         ? 'text-[var(--color-text)] active:bg-[var(--color-surface-2)]'
                         : 'text-[var(--color-muted)] active:bg-[var(--color-surface-2)]'
-                  } ${isTodayDate && !isSelected ? 'ring-1 ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]' : ''}`}
+                  }`}
                 >
                   {isSelected && (
                     <motion.div
-                      className="absolute inset-0 bg-[var(--color-text)] rounded-[var(--radius-sm)]"
+                      className="absolute inset-0 bg-[var(--color-text)]"
                       layoutId="history-day-selected"
                       transition={springs.smooth}
                     />
                   )}
+                  {isTodayDate && !isSelected && (
+                    <span className="absolute top-1.5 right-1.5 w-1 h-1 bg-[var(--color-accent)] z-10" />
+                  )}
                   <div className="relative z-10 flex h-full flex-col items-start">
-                    <span className={`text-xs ${isSelected ? 'font-semibold' : ''}`}>{format(day, 'd')}</span>
+                    <span className={`t-data-sm text-[11px] ${isSelected ? 'font-semibold' : ''}`}>{format(day, 'd')}</span>
                     {workoutSummaryLabel && (
                       <span
                         className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight font-sans ${
@@ -625,8 +629,8 @@ export function History() {
                   </div>
                   {dayWorkouts.length > 0 && (
                     <motion.span
-                      className={`absolute bottom-1 right-1.5 w-1.5 h-1.5 rounded-full z-10 ${
-                        isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-sage)]'
+                      className={`absolute bottom-1.5 right-1.5 w-1.5 h-1.5 z-10 ${
+                        isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
                       }`}
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
@@ -641,7 +645,7 @@ export function History() {
       </motion.div>
 
       {loading ? (
-        <div className="panel p-4 space-y-3">
+        <div className="space-y-4 pt-8 border-t border-[var(--color-border)]">
           {[1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="shimmer h-10 w-10" />
@@ -653,17 +657,17 @@ export function History() {
           ))}
         </div>
       ) : (
-        <motion.div className="space-y-3" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <div className="flex items-baseline justify-between mb-1 px-1">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+          <div className="flex items-baseline justify-between mb-4 pt-8 border-t border-[var(--color-border)]">
             <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-            <span className="t-data-sm text-[10px] text-[var(--color-muted)]">
+            <span className="t-label-sm">
               {selectedDayWorkouts.length} session{selectedDayWorkouts.length !== 1 ? 's' : ''}
             </span>
           </div>
 
           {selectedDayWorkouts.length === 0 ? (
-            <div className="panel text-center py-10 px-5">
-              <p className="t-display text-[15px] text-[var(--color-text-dim)]">No sessions recorded.</p>
+            <div className="py-12">
+              <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">No sessions recorded.</p>
             </div>
           ) : (
             selectedDayWorkouts.map((workout, workoutIndex) => {
@@ -724,20 +728,21 @@ export function History() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: workoutIndex * 0.06, ...springs.smooth }}
+                  className="border-t border-[var(--color-border)] first:border-t-0"
                 >
-                  <div className="panel p-4 overflow-hidden">
-                    <div className="flex items-center justify-between cursor-pointer" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 ${progress.completed ? 'bg-sage-tint' : 'well'}`}>
+                  <div className="overflow-hidden">
+                    <div className="flex items-center justify-between cursor-pointer py-4" onClick={() => { void handleToggleWorkout(workout); }}>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 border border-[var(--color-border)] flex items-center justify-center shrink-0">
                           {progress.completed ? (
-                            <Check className="w-4 h-4 text-[var(--color-sage)]" strokeWidth={2.5} />
+                            <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
                           ) : (
                             <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{progress.percent}%</span>
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[var(--color-text)] truncate">{resolvedTitle}</p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <p className="t-heading normal-case tracking-[0.01em] text-[14px] text-[var(--color-text)] truncate">{resolvedTitle}</p>
+                          <div className="flex items-center gap-2 mt-1.5">
                             <TickStrip
                               total={Math.min(progress.totalSets, 16)}
                               filled={Math.min(progress.completedSets, 16)}
@@ -749,21 +754,21 @@ export function History() {
                         </div>
                       </div>
                       <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
-                        <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" />
+                        <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.div>
                     </div>
 
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div
-                          className="mt-4 pt-4 border-t border-white/5"
+                          className="pb-4 pt-1"
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={springs.smooth}
                         >
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <p className="text-[10px] text-[#6B6B6B] tracking-[0.1em] uppercase">Exercises</p>
+                          <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
+                            <p className="t-label">Exercises</p>
                             <Button
                               size="sm"
                               variant="secondary"
@@ -819,25 +824,25 @@ export function History() {
                                 transition={{ delay: exIndex * 0.04, ...springs.smooth }}
                               >
                                 <div
-                                  className="flex items-center justify-between py-2 rounded-[12px] px-2 -mx-2 cursor-pointer hover:bg-white/5 active:bg-white/10"
+                                  className="flex items-center justify-between py-2.5 px-2 -mx-2 cursor-pointer hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] transition-colors"
                                   onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
                                 >
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-7 h-7 rounded-[10px] bg-[#2A2A2A] flex items-center justify-center text-[10px] text-[#9A9A9A]">
-                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5 text-[#8B9A7D]" /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-7 h-7 border border-[var(--color-border)] flex items-center justify-center t-data-sm text-[10px] text-[var(--color-muted)] shrink-0">
+                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5 text-[var(--color-text)]" strokeWidth={2} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
                                     </div>
-                                    <div>
-                                      <span className="text-xs text-[#E8E4DE]">{exerciseName}</span>
+                                    <div className="min-w-0">
+                                      <span className="text-[13px] text-[var(--color-text)]">{exerciseName}</span>
                                       {supersetGroupId && supersetPartnerName && (
-                                        <p className="text-[10px] text-[#A8B89A] mt-0.5">Superset with {supersetPartnerName}</p>
+                                        <p className="t-label-sm text-[9px] mt-0.5">Superset with {supersetPartnerName}</p>
                                       )}
                                       {hasMovementNote && !isExerciseExpanded && (
-                                        <p className="text-[10px] text-[#6B6B6B] mt-0.5 truncate max-w-[220px]">{movementNote}</p>
+                                        <p className="t-caption text-[10px] mt-0.5 truncate max-w-[220px]">{movementNote}</p>
                                       )}
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                                  <div className="flex items-center gap-0.5 shrink-0" onClick={(event) => event.stopPropagation()}>
                                     <button
                                       type="button"
                                       disabled={!canMoveUp}
@@ -850,9 +855,9 @@ export function History() {
                                           await reorderWorkoutExercises(workout.id, nextOrder);
                                         });
                                       }}
-                                      className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                      className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
                                     >
-                                      <ChevronUp className="w-3.5 h-3.5" />
+                                      <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
                                     </button>
                                     <button
                                       type="button"
@@ -866,9 +871,9 @@ export function History() {
                                           await reorderWorkoutExercises(workout.id, nextOrder);
                                         });
                                       }}
-                                      className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                      className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
                                     >
-                                      <ChevronDown className="w-3.5 h-3.5" />
+                                      <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
                                     </button>
                                     {supersetGroupId ? (
                                       <button
@@ -878,10 +883,10 @@ export function History() {
                                             await clearWorkoutSuperset(workout.id, exerciseId);
                                           });
                                         }}
-                                        className="p-1.5 rounded-[8px] text-[#8B9A7D] hover:text-[#BFD0AF] hover:bg-white/5 transition-colors"
+                                        className="p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
                                         title="Remove superset"
                                       >
-                                        <Unlink2 className="w-3.5 h-3.5" />
+                                        <Unlink2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                                       </button>
                                     ) : (
                                       <button
@@ -893,22 +898,22 @@ export function History() {
                                             excludeExerciseIds: orderedExerciseIds,
                                           });
                                         }}
-                                        className="p-1.5 rounded-[8px] text-[#6B6B6B] hover:text-[#E8E4DE] hover:bg-white/5 transition-colors"
+                                        className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                         title="Add superset"
                                       >
-                                        <Link2 className="w-3.5 h-3.5" />
+                                        <Link2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                                       </button>
                                     )}
                                     <button
                                       type="button"
                                       onClick={() => { void handleRemoveExercise(workout.id, exerciseId); }}
-                                      className="p-1.5 rounded-[8px] text-[#8B6B6B] hover:text-[#D39B9B] hover:bg-white/5 transition-colors"
+                                      className="p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
                                       title="Remove exercise"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                                     </button>
                                     <motion.div animate={{ rotate: isExerciseExpanded ? 180 : 0 }} transition={springs.snappy}>
-                                      <ChevronDown className="w-3 h-3 text-[#6B6B6B]" />
+                                      <ChevronDown className="w-3 h-3 text-[var(--color-muted)]" strokeWidth={1.5} />
                                     </motion.div>
                                   </div>
                                 </div>
@@ -916,16 +921,14 @@ export function History() {
                                 <AnimatePresence>
                                   {isExerciseExpanded && (
                                     <motion.div
-                                      className="ml-4 mt-2 space-y-2"
+                                      className="ml-4 mt-2 space-y-px"
                                       initial={{ height: 0, opacity: 0 }}
                                       animate={{ height: 'auto', opacity: 1 }}
                                       exit={{ height: 0, opacity: 0 }}
                                       transition={springs.smooth}
                                     >
-                                      <div className="flex items-center justify-between gap-2 rounded-[12px] bg-[#1E1E1E] border border-white/5 p-2.5">
-                                        <div>
-                                          <p className="text-[10px] text-[#6B6B6B] tracking-[0.08em] uppercase">Target Sets</p>
-                                        </div>
+                                      <div className="flex items-center justify-between gap-2 py-2.5 border-t border-[var(--color-border)]">
+                                        <p className="t-label-sm">Target Sets</p>
                                         <div className="flex items-center gap-2">
                                           <input
                                             type="number"
@@ -939,12 +942,12 @@ export function History() {
                                               }));
                                             }}
                                             onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId, currentTargetSets); }}
-                                            className="w-16 px-2 py-1 rounded-[8px] bg-[#121212] border border-white/10 text-xs text-[#E8E4DE]"
+                                            className="w-14 px-2 py-1 well t-data-sm text-[var(--color-text)] text-center focus:outline-none"
                                           />
                                           <button
                                             type="button"
                                             onClick={() => { void handleAddSet(workout.id, exerciseId); }}
-                                            className="px-2 py-1 rounded-[8px] text-[10px] border border-white/10 text-[#6B6B6B] hover:text-[#E8E4DE] hover:border-white/20 transition-colors"
+                                            className="px-2.5 py-1 t-label-sm text-[9px] border border-[var(--color-border-strong)] text-[var(--color-text-dim)] hover:text-[var(--color-text)] hover:border-[var(--color-text)] transition-colors"
                                           >
                                             + Add Set
                                           </button>
@@ -954,47 +957,47 @@ export function History() {
                                       {sets.map((set) => (
                                         <motion.div
                                           key={set.id}
-                                          className="flex items-center justify-between py-2 px-3 bg-[#1A1A1A] rounded-[12px]"
+                                          className="flex items-center justify-between py-2.5 border-t border-[var(--color-border)]"
                                           initial={{ opacity: 0, y: 4 }}
                                           animate={{ opacity: 1, y: 0 }}
                                           transition={springs.smooth}
                                         >
-                                          <div className="flex items-center gap-3">
-                                            <span className="text-[10px] text-[#6B6B6B]">Set {set.set_number}</span>
-                                            <span className="text-xs text-[#9A9A9A] tabular-nums">
-                                              {set.weight || '-'} lbs x {set.reps || '-'}
-                                              {set.rpe ? ` @ ${set.rpe}` : ''}
+                                          <div className="flex items-baseline gap-3">
+                                            <span className="t-data-sm text-[10px] text-[var(--color-muted)] w-10">{set.set_number.toString().padStart(2, '0')}</span>
+                                            <span className="t-data text-[var(--color-text)]">
+                                              {set.weight || '—'} <span className="text-[var(--color-muted)]">lb</span> × {set.reps || '—'}
+                                              {set.rpe ? <span className="text-[var(--color-muted)]"> @ {set.rpe}</span> : ''}
                                             </span>
                                           </div>
-                                          <div className="flex items-center gap-1">
+                                          <div className="flex items-center gap-0.5">
                                             <motion.button
                                               onClick={(event) => {
                                                 event.stopPropagation();
                                                 setEditingSet(set);
                                               }}
-                                              className="p-1.5 rounded-[8px] hover:bg-white/10 transition-colors"
+                                              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                               whileTap={{ scale: 0.9 }}
                                             >
-                                              <Pencil className="w-3 h-3 text-[#6B6B6B]" />
+                                              <Pencil className="w-3 h-3" strokeWidth={1.5} />
                                             </motion.button>
                                             <motion.button
                                               onClick={(event) => {
                                                 event.stopPropagation();
                                                 void handleRemoveSet(workout.id, exerciseId, set.id);
                                               }}
-                                              className="p-1.5 rounded-[8px] hover:bg-white/10 transition-colors"
+                                              className="p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
                                               whileTap={{ scale: 0.9 }}
                                             >
-                                              <X className="w-3 h-3 text-[#8B6B6B]" />
+                                              <X className="w-3 h-3" strokeWidth={1.5} />
                                             </motion.button>
                                           </div>
                                         </motion.div>
                                       ))}
 
-                                      <div className="mt-2 rounded-[12px] bg-[#171717] border border-white/5 p-3">
+                                      <div className="pt-4 border-t border-[var(--color-border)]">
                                         <label
                                           htmlFor={`history-note-${workout.id}-${exerciseId}`}
-                                          className="block text-[10px] tracking-[0.12em] uppercase text-[#6B6B6B] mb-2"
+                                          className="t-label-sm block mb-2"
                                         >
                                           Movement Note
                                         </label>
@@ -1006,18 +1009,18 @@ export function History() {
                                           rows={2}
                                           maxLength={200}
                                           placeholder="Note - technique, feel, cues..."
-                                          className="w-full bg-transparent border-b border-white/10 pb-2 text-sm text-[#E8E4DE] placeholder:text-[#6B6B6B] focus:outline-none focus:border-white/30 resize-none"
+                                          className="w-full bg-transparent border-b border-[var(--color-border-strong)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-text)] transition-colors resize-none"
                                         />
-                                        <div className="mt-1.5 flex items-center justify-between">
+                                        <div className="mt-2 flex items-center justify-between">
                                           <div>
                                             {savingMovementNoteKey === `${workout.id}:${exerciseId}` ? (
-                                              <p className="text-[10px] tracking-[0.1em] uppercase text-[#6B6B6B]">Saving...</p>
+                                              <p className="t-label-sm text-[9px]">Saving...</p>
                                             ) : savedMovementNoteKey === `${workout.id}:${exerciseId}` ? (
-                                              <p className="text-[10px] tracking-[0.1em] uppercase text-[#8B9A7D]">Saved</p>
+                                              <p className="t-label-sm text-[9px] text-[var(--color-text)]">Saved</p>
                                             ) : null}
                                           </div>
                                           {noteCharacterCount >= 160 && (
-                                            <p className="text-[10px] tabular-nums text-[#6B6B6B]">{noteCharacterCount}/200</p>
+                                            <p className="t-data-sm text-[10px] text-[var(--color-muted)]">{noteCharacterCount}/200</p>
                                           )}
                                         </div>
                                       </div>
@@ -1030,10 +1033,10 @@ export function History() {
 
                           <motion.button
                             onClick={() => setShowDeleteConfirm(workout.id)}
-                            className="w-full mt-4 min-h-11 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] text-[var(--color-danger)] text-xs font-semibold hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
+                            className="w-full mt-5 min-h-11 border-t-2 border-[var(--color-accent)] border-x border-b border-[var(--color-border)] text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
                             whileTap={{ scale: 0.98 }}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                             Delete session
                           </motion.button>
                         </motion.div>
@@ -1058,8 +1061,8 @@ export function History() {
       </Modal>
 
       <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete Session">
-        <div className="space-y-4">
-          <p className="text-sm text-[#9A9A9A] text-center">
+        <div className="space-y-5">
+          <p className="t-body text-[var(--color-text-dim)]">
             Are you sure you want to delete this session? This action cannot be undone.
           </p>
           <div className="flex gap-3">

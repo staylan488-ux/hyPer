@@ -11,17 +11,15 @@ interface ChipProps {
   disabled?: boolean;
 }
 
-/** Small tactile pill — quick picks, meal tags, presets. */
+/** FOLIO chip — a sharp little tag, never a pastel pill. Selected fills with ink (or lacquer). */
 export function Chip({ children, selected = false, onClick, tone = 'neutral', size = 'md', className = '', disabled }: ChipProps) {
   const toneStyles = selected
     ? tone === 'amber'
-      ? 'bg-accent-tint-strong text-[var(--color-accent)] border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'
-      : tone === 'sage'
-        ? 'bg-sage-tint-strong text-[var(--color-sage)] border-[color-mix(in_srgb,var(--color-sage)_40%,transparent)]'
-        : 'bg-[var(--color-surface-3)] text-[var(--color-text)] border-[var(--color-border-strong)]'
-    : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] border-[var(--color-border)]';
+      ? 'bg-[var(--color-accent)] text-[var(--color-base)] border-[var(--color-accent)]'
+      : 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
+    : 'bg-transparent text-[var(--color-text-dim)] border-[var(--color-border-strong)] hover:text-[var(--color-text)] hover:border-[var(--color-text)]';
 
-  const sizing = size === 'sm' ? 'min-h-8 px-3 text-xs' : 'min-h-10 px-3.5 text-[13px]';
+  const sizing = size === 'sm' ? 'min-h-8 px-3 text-xs' : 'min-h-10 px-4 text-[13px]';
 
   return (
     <button
@@ -31,7 +29,7 @@ export function Chip({ children, selected = false, onClick, tone = 'neutral', si
         onClick?.();
       }}
       disabled={disabled}
-      className={`pressable inline-flex items-center justify-center gap-1.5 rounded-full border font-medium whitespace-nowrap disabled:opacity-40 disabled:pointer-events-none ${sizing} ${toneStyles} ${className}`}
+      className={`pressable inline-flex items-center justify-center gap-1.5 rounded-none border font-medium whitespace-nowrap transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none ${sizing} ${toneStyles} ${className}`}
     >
       {children}
     </button>

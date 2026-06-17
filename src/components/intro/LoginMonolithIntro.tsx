@@ -39,10 +39,6 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
     <AnimatePresence>
       <motion.div
         className="fixed inset-0 z-20 px-5 flex items-center justify-center pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%)',
-        }}
         initial={{ opacity: 1 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -60,7 +56,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
             transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy }}
           >
             <motion.span
-              className="inline-block font-display-italic text-[120px] leading-[1.08] text-[var(--color-accent)] pr-[0.2em] pt-[0.08em] -mr-[0.2em] select-none"
+              className="inline-block [font-family:var(--font-display)] italic font-light text-[120px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: [0.92, 1.01, 1], opacity: 1 }}
               transition={reduceMotion ? { duration: 0.18 } : { duration: 0.64, ease: [0.16, 1, 0.3, 1] }}
@@ -72,33 +68,19 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
             >
               P
             </motion.span>
-            <motion.div
-              className="absolute inset-0 rounded-full"
-              initial={{ opacity: 0 }}
-              animate={{
-                opacity: [0, 0.18, 0],
-                scale: [0.86, 1.24, 1.46],
-              }}
-              transition={reduceMotion ? { duration: 0.18 } : { duration: 0.7, ease: 'easeOut', delay: 0.12 }}
-              style={{
-                background:
-                  'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 26%, transparent), transparent 72%)',
-                filter: 'blur(4px)',
-              }}
-            />
           </motion.div>
 
           <AnimatePresence>
             {showCompose && (
               <motion.div
-                className="absolute flex items-center"
+                className="absolute flex items-baseline"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={reduceMotion ? { duration: 0.14 } : springs.smooth}
               >
                 <motion.span
-                  className="text-[12px] tracking-[0.34em] text-[var(--color-text)]"
+                  className="[font-family:var(--font-display)] font-light text-[52px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={reduceMotion ? { duration: 0.12 } : composeTransition}
@@ -106,7 +88,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
                   hy
                 </motion.span>
                 <motion.span
-                  className="inline-block font-display-italic text-[52px] leading-[1.08] text-[var(--color-accent)] mx-1.5 pr-[0.18em] pt-[0.08em] -mr-[0.18em] select-none"
+                  className="inline-block [font-family:var(--font-display)] italic font-light text-[52px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
                   initial={{ opacity: 0, scale: 0.8, y: -8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy, delay: 0.06 }}
@@ -119,7 +101,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
                   P
                 </motion.span>
                 <motion.span
-                  className="text-[12px] tracking-[0.34em] text-[var(--color-text)]"
+                  className="[font-family:var(--font-display)] font-light text-[52px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={reduceMotion ? { duration: 0.12 } : composeTransition}
@@ -133,7 +115,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
           <motion.div
             className="absolute inset-x-0 top-[70%] h-px bg-[var(--color-accent)] origin-center"
             initial={{ opacity: 0, scaleX: 0 }}
-            animate={{ opacity: showWordmark ? 0.9 : 0, scaleX: showWordmark ? 1 : 0 }}
+            animate={{ opacity: showWordmark ? 1 : 0, scaleX: showWordmark ? 1 : 0 }}
             transition={reduceMotion ? { duration: 0.12 } : { duration: 0.44, ease: [0.16, 1, 0.3, 1] }}
           />
 
@@ -143,8 +125,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
             animate={{ opacity: showWordmark ? 1 : 0, y: showWordmark ? 0 : 8 }}
             transition={reduceMotion ? { duration: 0.12 } : springs.smooth}
           >
-            <p className="text-[10px] tracking-[0.32em] text-[var(--color-text)]">hyPer</p>
-            <p className="text-[9px] tracking-[0.14em] uppercase text-[var(--color-muted)] mt-2">Training and Nutrition</p>
+            <p className="t-label-sm">Training &amp; Nutrition</p>
           </motion.div>
         </div>
       </motion.div>

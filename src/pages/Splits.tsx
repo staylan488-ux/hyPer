@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, Input, Modal, Screen, SegmentedControl, TickStrip } from '@/components/shared';
+import { Button, EmptyState, Input, Modal, Screen, SegmentedControl } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -233,45 +233,49 @@ export function Splits() {
 
   return (
     <Screen>
-      {/* Header */}
-      <motion.header className="mb-5" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <p className="t-label-sm mb-1">
-              {workoutMode === 'flexible'
-                ? `${flexTemplates.length} ${flexTemplates.length === 1 ? 'template' : 'templates'}`
-                : `${splits.length} ${splits.length === 1 ? 'program' : 'programs'}`}
-            </p>
-            <h1 className="t-title">Program</h1>
-          </div>
+      {/* Masthead */}
+      <motion.header className="mb-7" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <div className="flex items-baseline justify-between">
+          <span className="t-label-sm">Training plan</span>
+          <span className="t-label-sm">
+            {workoutMode === 'flexible'
+              ? `${flexTemplates.length} ${flexTemplates.length === 1 ? 'template' : 'templates'}`
+              : `${splits.length} ${splits.length === 1 ? 'program' : 'programs'}`}
+          </span>
+        </div>
+
+        <div className="mt-3 pt-5 border-t border-[var(--color-text)] flex items-end justify-between gap-3">
+          <h1 className="t-title">Program</h1>
           {workoutMode === 'split' && (
             <Button size="sm" onClick={() => setShowBuilder(true)}>
-              <Plus className="w-4 h-4" strokeWidth={2.5} />
+              <Plus className="w-4 h-4" strokeWidth={1.75} />
               New
             </Button>
           )}
         </div>
 
-        <SegmentedControl
-          size="sm"
-          value={workoutMode}
-          onChange={(mode) => {
-            if (!canSwitchMode) return;
-            void handleSetWorkoutMode(mode);
-          }}
-          options={[
-            { value: 'split', label: 'Split' },
-            { value: 'flexible', label: 'Flexible' },
-          ]}
-          className={`max-w-[220px] ${!canSwitchMode ? 'opacity-60 pointer-events-none' : ''}`}
-        />
-        {!canSwitchMode && (
-          <p className="mt-2 text-[11px] text-[var(--color-muted)]">Finish the current workout to switch modes.</p>
-        )}
+        <div className="mt-6">
+          <SegmentedControl
+            size="sm"
+            value={workoutMode}
+            onChange={(mode) => {
+              if (!canSwitchMode) return;
+              void handleSetWorkoutMode(mode);
+            }}
+            options={[
+              { value: 'split', label: 'Split' },
+              { value: 'flexible', label: 'Flexible' },
+            ]}
+            className={`${!canSwitchMode ? 'opacity-60 pointer-events-none' : ''}`}
+          />
+          {!canSwitchMode && (
+            <p className="mt-3 t-caption">Finish the current workout to switch modes.</p>
+          )}
+        </div>
       </motion.header>
 
       {workoutMode === 'flexible' ? (
-        <div className="space-y-3">
+        <div>
           {flexTemplates.length === 0 ? (
             <EmptyState
               icon={LayoutGrid}
@@ -281,39 +285,45 @@ export function Splits() {
             />
           ) : (
             <>
-              <div className="panel p-4 flex items-center justify-between gap-3">
+              <div className="flex items-baseline justify-between gap-3 mb-1">
                 <div className="min-w-0">
-                  <p className="t-label-sm">Quick-start templates</p>
-                  <p className="text-xs text-[var(--color-text-dim)] mt-0.5">Saved from your flexible sessions</p>
+                  <span className="t-label">Quick-start templates</span>
+                  <p className="t-caption mt-1">Saved from your flexible sessions</p>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => navigate('/train')}>
                   Start session
                 </Button>
               </div>
 
-              {flexTemplates.map((template, index) => {
-                const isExpanded = expandedTemplateId === template.id;
-                const visibleItems = template.items.filter((item) => !item.hidden);
+              <ul className="mt-5">
+                {flexTemplates.map((template, index) => {
+                  const isExpanded = expandedTemplateId === template.id;
+                  const visibleItems = template.items.filter((item) => !item.hidden);
 
-                return (
-                  <motion.div
-                    key={template.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
-                  >
-                    <div className="panel p-4">
-                      <div className="flex items-center justify-between gap-2">
+                  return (
+                    <motion.li
+                      key={template.id}
+                      className="border-t border-[var(--color-border)]"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
+                    >
+                      <div className="flex items-center gap-3 py-4">
                         <button
                           type="button"
-                          className="flex-1 min-w-0 text-left"
+                          className="pressable flex-1 min-w-0 text-left flex items-baseline gap-4"
                           onClick={() => setExpandedTemplateId(isExpanded ? null : template.id)}
                         >
-                          <h3 className="t-heading text-[15px] truncate">{template.label}</h3>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <TickStrip total={Math.min(visibleItems.length, 12)} filled={0} tone="stone" size="sm" />
-                            <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{visibleItems.length} exercises</span>
-                          </div>
+                          <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="t-heading block truncate">{template.label}</span>
+                            <span className="t-caption">{visibleItems.length} {visibleItems.length === 1 ? 'exercise' : 'exercises'}</span>
+                          </span>
+                          <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="self-center shrink-0">
+                            <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
+                          </motion.span>
                         </button>
 
                         <div className="flex items-center shrink-0">
@@ -322,69 +332,70 @@ export function Splits() {
                             onClick={() => { void handleStartFromTemplate(template.label); }}
                             disabled={Boolean(startingTemplateLabel)}
                           >
-                            <Play className="w-3 h-3" strokeWidth={2.5} />
+                            <Play className="w-3 h-3" strokeWidth={1.75} fill="currentColor" />
                             {startingTemplateLabel === template.label ? 'Starting…' : 'Start'}
                           </Button>
                           <button
                             type="button"
                             aria-label="Rename template"
-                            className="pressable p-2 ml-1 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                            className="pressable p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                             onClick={() => handleOpenRenameTemplate(template)}
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <Edit3 className="w-4 h-4" strokeWidth={1.5} />
                           </button>
                           <button
                             type="button"
                             aria-label="Delete template"
-                            className="pressable p-2 rounded-[var(--radius-xs)] text-[color-mix(in_srgb,var(--color-danger)_70%,var(--color-muted))]"
+                            className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
                             onClick={() => setTemplateToDelete(template)}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                           </button>
-                          <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="p-1">
-                            <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" />
-                          </motion.span>
                         </div>
                       </div>
 
                       <AnimatePresence>
                         {isExpanded && (
                           <motion.div
-                            className="mt-3.5 pt-3.5 border-t border-[var(--color-border)] space-y-1.5 overflow-hidden"
+                            className="overflow-hidden"
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={springs.smooth}
                           >
-                            {visibleItems.length > 0 ? (
-                              visibleItems.map((item, itemIndex) => {
-                                const repsLabel = typeof item.target_reps_min === 'number' && typeof item.target_reps_max === 'number'
-                                  ? `${item.target_reps_min}–${item.target_reps_max}`
-                                  : '—';
-                                const setsLabel = typeof item.target_sets === 'number' ? `${item.target_sets}` : '—';
+                            <div className="pb-4 pl-10">
+                              {visibleItems.length > 0 ? (
+                                <ul>
+                                  {visibleItems.map((item, itemIndex) => {
+                                    const repsLabel = typeof item.target_reps_min === 'number' && typeof item.target_reps_max === 'number'
+                                      ? `${item.target_reps_min}–${item.target_reps_max}`
+                                      : '—';
+                                    const setsLabel = typeof item.target_sets === 'number' ? `${item.target_sets}` : '—';
 
-                                return (
-                                  <div key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)] bg-[var(--color-surface-1)]">
-                                    <span className="t-data-sm text-[10px] text-[var(--color-muted)] w-5 shrink-0">
-                                      {String(itemIndex + 1).padStart(2, '0')}
-                                    </span>
-                                    <p className="flex-1 min-w-0 text-[13px] font-medium text-[var(--color-text)] truncate">
-                                      {item.exercise_name || 'Exercise'}
-                                    </p>
-                                    <span className="t-data-sm text-[10px] text-[var(--color-muted)] shrink-0">{setsLabel}×{repsLabel}</span>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <p className="text-[11px] text-[var(--color-muted)] py-2">No visible exercises.</p>
-                            )}
+                                    return (
+                                      <li key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="flex items-baseline gap-3 py-2 border-t border-[var(--color-border-soft)]">
+                                        <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
+                                          {String(itemIndex + 1).padStart(2, '0')}
+                                        </span>
+                                        <p className="flex-1 min-w-0 t-body text-[var(--color-text)] truncate">
+                                          {item.exercise_name || 'Exercise'}
+                                        </p>
+                                        <span className="t-data-sm text-[var(--color-muted)] shrink-0">{setsLabel}×{repsLabel}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="t-caption py-2">No visible exercises.</p>
+                              )}
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
-                    </div>
-                  </motion.div>
-                );
-              })}
+                    </motion.li>
+                  );
+                })}
+              </ul>
             </>
           )}
         </div>
@@ -402,179 +413,164 @@ export function Splits() {
           />
         </motion.div>
       ) : (
-        <div className="space-y-3">
+        <ul>
           {splits.map((split, index) => {
             const isExpanded = expandedSplit === split.id;
+            const totalExercises = split.days.reduce((sum, d) => sum + (d.exercises?.length || 0), 0);
 
             return (
-              <motion.div
+              <motion.li
                 key={split.id}
+                className={`border-t ${split.is_active ? 'border-t-2 border-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
               >
-                <div
-                  className={`relative rounded-[var(--radius-lg)] p-4 border ${
-                    split.is_active
-                      ? 'bg-[var(--color-surface-2)] border-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]'
-                      : 'bg-[var(--color-surface-1)] border-[var(--color-border)]'
-                  }`}
-                >
-                  {split.is_active && (
-                    <div
-                      className="absolute inset-x-0 top-0 h-[2.5px] rounded-t-[var(--radius-lg)]"
-                      style={{ background: 'linear-gradient(to right, var(--color-accent), transparent 70%)' }}
-                    />
-                  )}
-
-                  {/* Program Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <button
-                      type="button"
-                      className="flex-1 min-w-0 text-left"
-                      onClick={() => setExpandedSplit(isExpanded ? null : split.id)}
-                    >
-                      <div className="flex items-center gap-2.5 mb-1">
-                        <h3 className="t-heading text-[15px] truncate">{split.name}</h3>
+                {/* Program Header */}
+                <div className="flex items-start gap-3 py-4">
+                  <button
+                    type="button"
+                    className="pressable flex-1 min-w-0 text-left flex items-baseline gap-4"
+                    onClick={() => setExpandedSplit(isExpanded ? null : split.id)}
+                  >
+                    <span className={`t-data-sm w-6 shrink-0 ${split.is_active ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2.5">
+                        <span className="t-title text-[1.25rem] truncate">{split.name}</span>
                         {split.is_active && (
-                          <span className="shrink-0 px-2 py-0.5 bg-accent-tint-strong text-[9px] font-bold uppercase tracking-[0.07em] text-[var(--color-accent)] rounded-full">
-                            Active
-                          </span>
+                          <span className="t-label-sm shrink-0 text-[var(--color-accent)]">Active</span>
                         )}
-                      </div>
-
+                      </span>
                       {split.description && (
-                        <p className="text-[11px] text-[var(--color-muted)] mb-2.5 line-clamp-2">{split.description}</p>
+                        <span className="t-caption block mt-1 line-clamp-2">{split.description}</span>
                       )}
+                      <span className="t-data-sm text-[var(--color-muted)] block mt-1.5">
+                        {split.days.length} {split.days.length === 1 ? 'day' : 'days'} · {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
+                      </span>
+                    </span>
+                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="self-center shrink-0">
+                      <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
+                    </motion.span>
+                  </button>
 
-                      <div className="flex items-center gap-2.5">
-                        <TickStrip total={split.days.length} filled={split.is_active ? split.days.length : 0} tone="amber" size="sm" />
-                        <span className="t-data-sm text-[10px] text-[var(--color-muted)]">
-                          {split.days.length} days · {split.days.reduce((sum, d) => sum + (d.exercises?.length || 0), 0)} exercises
-                        </span>
-                        <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
-                          <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-                        </motion.span>
-                      </div>
-                    </button>
+                  <div className="relative shrink-0">
+                    <motion.button
+                      className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                      onClick={() => setShowMenu(showMenu === split.id ? null : split.id)}
+                      whileTap={{ scale: 0.9 }}
+                      aria-label="Program options"
+                    >
+                      <MoreVertical className="w-4 h-4" strokeWidth={1.5} />
+                    </motion.button>
 
-                    <div className="relative shrink-0">
-                      <motion.button
-                        className="p-2.5 hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] rounded-[var(--radius-sm)] transition-colors"
-                        onClick={() => setShowMenu(showMenu === split.id ? null : split.id)}
-                        whileTap={{ scale: 0.9 }}
-                        aria-label="Program options"
-                      >
-                        <MoreVertical className="w-4 h-4 text-[var(--color-muted)]" />
-                      </motion.button>
-
-                      <AnimatePresence>
-                        {showMenu === split.id && (
-                          <motion.div
-                            className="absolute right-0 top-full mt-1 bg-[var(--color-surface-3)] hairline-strong rounded-[var(--radius-md)] raised z-10 py-1 min-w-[150px] overflow-hidden"
-                            initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
+                    <AnimatePresence>
+                      {showMenu === split.id && (
+                        <motion.div
+                          className="absolute right-0 top-full mt-1 bg-[var(--color-surface-2)] hairline-strong z-10 min-w-[160px] overflow-hidden"
+                          initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {!split.is_active && (
+                            <button
+                              className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5 transition-colors"
+                              onClick={() => {
+                                void handleSelectSplit(split.id, split.name);
+                              }}
+                            >
+                              <Check className="w-3.5 h-3.5" strokeWidth={1.75} />
+                              Set active
+                            </button>
+                          )}
+                          <button
+                            className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
+                            onClick={() => handleEdit(split)}
                           >
-                            {!split.is_active && (
-                              <button
-                                className="w-full px-4 py-3 text-left text-[12px] font-semibold text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5"
-                                onClick={() => {
-                                  void handleSelectSplit(split.id, split.name);
-                                }}
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                Set active
-                              </button>
-                            )}
-                            <button
-                              className="w-full px-4 py-3 text-left text-[12px] font-semibold text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5"
-                              onClick={() => handleEdit(split)}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                              Edit
-                            </button>
-                            <button
-                              className="w-full px-4 py-3 text-left text-[12px] font-semibold text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] flex items-center gap-2.5"
-                              onClick={() => handleDelete(split.id)}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              Delete
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                            <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
+                            Edit
+                          </button>
+                          <button
+                            className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
+                            onClick={() => handleDelete(split.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                            Delete
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
+                </div>
 
-                  {/* Expanded Program Details */}
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-2 overflow-hidden"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={springs.smooth}
-                      >
+                {/* Expanded Program Details */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      className="overflow-hidden"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={springs.smooth}
+                    >
+                      <ul className="pb-2 pl-10">
                         {split.days.map((day, dayIndex) => {
                           const isDayExpanded = expandedDay === day.id;
                           const exerciseCount = day.exercises?.length || 0;
 
                           return (
-                            <motion.div
+                            <motion.li
                               key={day.id}
-                              className="bg-[var(--color-surface-1)] hairline rounded-[var(--radius-md)] overflow-hidden"
+                              className="border-t border-[var(--color-border-soft)]"
                               initial={{ opacity: 0, x: -8 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: dayIndex * 0.04, ...springs.smooth }}
                             >
                               <button
                                 type="button"
-                                className="w-full flex items-center justify-between px-3.5 py-3 text-left"
+                                className="pressable w-full flex items-center gap-3 py-3 text-left"
                                 onClick={() => setExpandedDay(isDayExpanded ? null : day.id)}
                               >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <span className="well flex items-center justify-center w-8 h-8 shrink-0 t-data-sm text-[10px] text-[var(--color-muted)]">
-                                    {String(dayIndex + 1).padStart(2, '0')}
+                                <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
+                                  {String(dayIndex + 1).padStart(2, '0')}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="t-heading block truncate">{day.day_name}</span>
+                                  <span className="t-caption">
+                                    {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                                   </span>
-                                  <div className="min-w-0">
-                                    <p className="text-[13px] font-semibold text-[var(--color-text)] truncate">{day.day_name}</p>
-                                    <p className="text-[10px] text-[var(--color-muted)]">
-                                      {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
-                                    </p>
-                                  </div>
-                                </div>
-                                <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.snappy}>
-                                  <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" />
+                                </span>
+                                <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.snappy} className="shrink-0">
+                                  <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                                 </motion.span>
                               </button>
 
                               <AnimatePresence>
                                 {isDayExpanded && (
                                   <motion.div
-                                    className="px-3.5 pb-3.5 overflow-hidden"
+                                    className="overflow-hidden"
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: 'auto', opacity: 1 }}
                                     exit={{ height: 0, opacity: 0 }}
                                     transition={springs.smooth}
                                   >
                                     {exerciseCount > 0 ? (
-                                      <div className="space-y-1.5">
+                                      <ul className="pb-3 pl-8">
                                         {day.exercises?.map((ex, exIndex) => (
-                                          <motion.div
+                                          <motion.li
                                             key={ex.id}
-                                            className="flex items-center gap-3 px-3 py-2 bg-[var(--color-surface-2)] rounded-[var(--radius-sm)]"
+                                            className="flex items-baseline gap-3 py-2 border-t border-[var(--color-border-soft)]"
                                             initial={{ opacity: 0, y: 4 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: exIndex * 0.03, ...springs.smooth }}
                                           >
-                                            <span className="t-data-sm text-[10px] text-[var(--color-muted)] w-5 shrink-0">{exIndex + 1}</span>
-                                            <p className="flex-1 min-w-0 text-[12px] font-medium text-[var(--color-text)] truncate">
+                                            <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">{exIndex + 1}</span>
+                                            <p className="flex-1 min-w-0 t-body text-[var(--color-text)] truncate">
                                               {ex.exercise?.name || 'Unknown Exercise'}
                                             </p>
-                                            <span className="t-data-sm text-[10px] text-[var(--color-muted)] shrink-0">
+                                            <span className="t-data-sm text-[var(--color-muted)] shrink-0">
                                               {(() => {
                                                 const setRange = parseSetRangeNotes(ex.notes, ex.target_sets);
                                                 const setLabel = setRange.minSets === setRange.maxSets
@@ -584,26 +580,26 @@ export function Splits() {
                                                 return `${setLabel}×${ex.target_reps_min}–${ex.target_reps_max}`;
                                               })()}
                                             </span>
-                                          </motion.div>
+                                          </motion.li>
                                         ))}
-                                      </div>
+                                      </ul>
                                     ) : (
-                                      <p className="text-[11px] text-[var(--color-muted)] text-center py-3">No exercises assigned</p>
+                                      <p className="t-caption py-3 pl-8">No exercises assigned</p>
                                     )}
                                   </motion.div>
                                 )}
                               </AnimatePresence>
-                            </motion.div>
+                            </motion.li>
                           );
                         })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
+                      </ul>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       <Modal

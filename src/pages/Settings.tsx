@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, BicepsFlexed, ChevronRight, Droplet, Flame, LogOut, Pencil, Target, Wheat } from 'lucide-react';
+import { Archive, ArrowRight, LogOut, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
@@ -22,16 +22,29 @@ interface SavedMeal {
   source: string;
 }
 
-function SettingsGroup({ label, children, delay = 0 }: { label: string; children: React.ReactNode; delay?: number }) {
+function SettingsGroup({
+  label,
+  index,
+  children,
+  delay = 0,
+}: {
+  label: string;
+  index: string;
+  children: React.ReactNode;
+  delay?: number;
+}) {
   return (
     <motion.section
-      className="mb-5"
+      className="mt-10 pt-8 border-t border-[var(--color-border)]"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ ...springs.smooth, delay }}
     >
-      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--color-accent)] mb-2 px-1">{label}</p>
-      <div className="panel p-4">{children}</div>
+      <div className="flex items-baseline justify-between mb-5">
+        <span className="t-label">{label}</span>
+        <span className="t-data-sm text-[var(--color-muted)]">{index}</span>
+      </div>
+      {children}
     </motion.section>
   );
 }
@@ -345,13 +358,16 @@ export function Settings() {
   return (
     <Screen>
       {/* Header */}
-      <motion.header className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-        <p className="t-label-sm mb-1">Account</p>
-        <h1 className="t-title">{profile?.display_name || 'You'}</h1>
+      <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <div className="flex items-baseline justify-between">
+          <span className="t-label-sm">Account</span>
+          <span className="t-label-sm">Settings</span>
+        </div>
+        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">{profile?.display_name || 'You'}</h1>
       </motion.header>
 
       {/* ── Profile ── */}
-      <SettingsGroup label="Profile">
+      <SettingsGroup label="Profile" index="01">
         <Input
           label="Display name"
           value={displayName}
@@ -362,20 +378,24 @@ export function Settings() {
           placeholder="Your name"
         />
         {displayNameChanged && (
-          <Button className="w-full mt-3" onClick={handleSaveDisplayName} loading={savingName}>
+          <Button className="w-full mt-5" onClick={handleSaveDisplayName} loading={savingName}>
             Save name
           </Button>
         )}
-        {nameMessage && <p className="mt-2 text-[11px] font-semibold text-[var(--color-sage)]">{nameMessage}</p>}
-        {nameError && <p className="mt-2 text-[11px] font-semibold text-[var(--color-danger)]">{nameError}</p>}
+        {nameMessage && (
+          <p className="mt-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{nameMessage}</p>
+        )}
+        {nameError && (
+          <p className="mt-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{nameError}</p>
+        )}
       </SettingsGroup>
 
       {/* ── Appearance ── */}
-      <SettingsGroup label="Appearance" delay={0.04}>
-        <div className="flex items-center justify-between gap-3">
+      <SettingsGroup label="Appearance" index="02" delay={0.04}>
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[var(--color-text)]">Theme</p>
-            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+            <p className="t-heading">Theme</p>
+            <p className="t-caption mt-1">
               {theme === 'light' ? 'Chalk paper light' : 'Charcoal rubber dark'}
             </p>
           </div>
@@ -384,39 +404,51 @@ export function Settings() {
       </SettingsGroup>
 
       {/* ── Nutrition targets ── */}
-      <SettingsGroup label="Nutrition targets" delay={0.08}>
-        <div className="grid grid-cols-4 gap-2 mb-4">
+      <SettingsGroup label="Daily targets" index="03" delay={0.08}>
+        {/* Targets as serif numerals — the data is the hero */}
+        <dl>
           {[
-            { label: 'KCAL', value: String(macros.calories), icon: Flame, tone: 'var(--color-accent)' },
-            { label: 'PROTEIN', value: `${macros.protein}g`, icon: BicepsFlexed, tone: 'var(--color-sage)' },
-            { label: 'CARBS', value: `${macros.carbs}g`, icon: Wheat, tone: 'var(--color-accent)' },
-            { label: 'FAT', value: `${macros.fat}g`, icon: Droplet, tone: 'var(--color-accent)' },
+            { label: 'Calories', value: macros.calories.toLocaleString(), unit: 'kcal' },
+            { label: 'Protein', value: String(macros.protein), unit: 'g' },
+            { label: 'Carbs', value: String(macros.carbs), unit: 'g' },
+            { label: 'Fat', value: String(macros.fat), unit: 'g' },
           ].map((cell) => (
-            <div key={cell.label} className="flex flex-col items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-1 py-3">
-              <cell.icon className="w-5 h-5" strokeWidth={1.75} style={{ color: cell.tone }} />
-              <p className="t-numeral text-[19px] text-[var(--color-text)]">{cell.value}</p>
-              <p className="text-[9px] font-bold tracking-[0.08em]" style={{ color: cell.tone }}>{cell.label}</p>
+            <div
+              key={cell.label}
+              className="flex items-baseline justify-between gap-4 py-4 border-t border-[var(--color-border)]"
+            >
+              <dt className="t-label-sm">{cell.label}</dt>
+              <dd className="flex items-baseline gap-1.5">
+                <span className="number-medium text-[var(--color-text)]">{cell.value}</span>
+                <span className="t-data-sm text-[var(--color-muted)]">{cell.unit}</span>
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
 
         <button
           type="button"
-          className="pressable w-full flex items-center gap-3.5 px-4 py-3.5 rounded-[var(--radius-md)] bg-sage-tint border border-[color-mix(in_srgb,var(--color-sage)_30%,transparent)] text-left mb-3.5"
+          className="pressable group mt-2 w-full flex items-center gap-4 py-4 border-t border-[var(--color-border)] text-left"
           onClick={() => {
             clearMacroFeedback();
             setShowNutritionWizard(true);
           }}
         >
-          <Target className="w-5 h-5 shrink-0 text-[var(--color-sage)]" strokeWidth={1.75} />
+          <span className="t-data-sm text-[var(--color-muted)] w-6">→</span>
           <span className="flex-1 min-w-0">
-            <span className="block text-[15px] font-bold text-[var(--color-text)]">Calculate my targets</span>
-            <span className="block text-[12px] text-[var(--color-text-dim)] mt-0.5">A short guided pass — body stats to macros</span>
+            <span className="t-heading block">Calculate my targets</span>
+            <span className="t-caption">A short guided pass — body stats to macros</span>
           </span>
-          <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-sage)]" strokeWidth={2.25} />
+          <ArrowRight
+            className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors"
+            strokeWidth={1.5}
+          />
         </button>
 
-        <div className="grid grid-cols-2 gap-2.5 mb-3">
+        <div className="mt-8 mb-1">
+          <span className="t-label-sm">Set manually</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-4">
           <Input
             label="Calories"
             type="number"
@@ -460,20 +492,24 @@ export function Settings() {
         </div>
 
         {macrosChanged && (
-          <Button className="w-full" onClick={handleSaveMacros} loading={savingMacros}>
+          <Button className="w-full mt-6" onClick={handleSaveMacros} loading={savingMacros}>
             Save targets
           </Button>
         )}
-        {macroMessage && <p className="mt-2 text-[11px] font-semibold text-[var(--color-sage)]">{macroMessage}</p>}
-        {macroError && <p className="mt-2 text-[11px] font-semibold text-[var(--color-danger)]">{macroError}</p>}
+        {macroMessage && (
+          <p className="mt-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{macroMessage}</p>
+        )}
+        {macroError && (
+          <p className="mt-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{macroError}</p>
+        )}
       </SettingsGroup>
 
       {/* ── Saved meals ── */}
-      <SettingsGroup label="Saved meals" delay={0.12}>
-        <div className="flex items-center justify-between gap-3">
+      <SettingsGroup label="Saved meals" index="04" delay={0.12}>
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[var(--color-text)]">Reusable meals</p>
-            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">{savedMealsCountLabel}</p>
+            <p className="t-heading">Reusable meals</p>
+            <p className="t-caption mt-1">{savedMealsCountLabel}</p>
           </div>
           <Button variant="secondary" size="sm" onClick={openManageMeals}>
             Manage
@@ -482,36 +518,34 @@ export function Settings() {
       </SettingsGroup>
 
       {/* ── Account ── */}
-      <SettingsGroup label="Account" delay={0.16}>
-        <button
-          type="button"
-          className="pressable w-full flex items-center justify-center gap-2 min-h-11 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--color-danger)] bg-rose-tint"
-          onClick={handleSignOut}
-        >
-          <LogOut className="w-4 h-4" strokeWidth={2} />
+      <SettingsGroup label="Session" index="05" delay={0.16}>
+        <Button variant="danger" size="lg" className="w-full" onClick={handleSignOut}>
+          <LogOut className="w-4 h-4" strokeWidth={1.75} />
           Sign out
-        </button>
+        </Button>
       </SettingsGroup>
 
-      {/* App info */}
+      {/* App info — colophon */}
       <motion.footer
-        className="mt-10 text-center"
+        className="mt-12 pt-8 border-t border-[var(--color-text)]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ ...springs.smooth, delay: 0.2 }}
       >
-        <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">hyPer</p>
-        <p className="text-[10px] font-medium text-[color-mix(in_srgb,var(--color-muted)_70%,transparent)] mt-1">
-          Built on peer-reviewed research
-        </p>
-        {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
-        <button
-          type="button"
-          onClick={() => tapHaptic()}
-          className="t-data-sm text-[9px] text-[color-mix(in_srgb,var(--color-muted)_55%,transparent)] mt-2 px-3 py-2"
-        >
-          build {__BUILD_ID__}
-        </button>
+        <div className="flex items-baseline justify-between">
+          <h2 className="[font-family:var(--font-display)] text-[2rem] leading-none font-light tracking-[-0.04em] text-[var(--color-text-dim)]">
+            hy<span className="italic text-[var(--color-accent)]">P</span>er
+          </h2>
+          {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
+          <button
+            type="button"
+            onClick={() => tapHaptic()}
+            className="t-data-sm text-[var(--color-muted)] py-2"
+          >
+            build {__BUILD_ID__}
+          </button>
+        </div>
+        <p className="t-label-sm mt-3">Built on peer-reviewed research</p>
       </motion.footer>
 
       {/* Macro calculator — focused sheet */}
@@ -540,35 +574,39 @@ export function Settings() {
 
       {/* Saved meals manager */}
       <Modal isOpen={manageMealsOpen} onClose={closeManageMeals} title="Saved meals">
-        <div className="pt-1 pb-2 space-y-3">
-          {mealManagerMessage && <p className="text-[11px] font-semibold text-[var(--color-sage)]">{mealManagerMessage}</p>}
-          {mealManagerError && <p className="text-[11px] font-semibold text-[var(--color-danger)]">{mealManagerError}</p>}
+        <div className="pt-1 pb-2">
+          {mealManagerMessage && (
+            <p className="mb-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{mealManagerMessage}</p>
+          )}
+          {mealManagerError && (
+            <p className="mb-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{mealManagerError}</p>
+          )}
 
           {loadingSavedMeals ? (
-            <div className="space-y-2">
-              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
-              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
-              <div className="h-[56px] rounded-[var(--radius-md)] shimmer" />
+            <div className="space-y-px">
+              <div className="h-[64px] shimmer" />
+              <div className="h-[64px] shimmer" />
+              <div className="h-[64px] shimmer" />
             </div>
           ) : savedMeals.length === 0 ? (
-            <p className="text-sm italic text-[var(--color-text-dim)] text-center py-8">
+            <p className="text-editorial py-8">
               Meals you save from the food logger will appear here.
             </p>
           ) : (
-            <div className="space-y-2">
+            <ul>
               {savedMeals.map((meal) => (
-                <div
+                <li
                   key={meal.id}
-                  className="px-3.5 py-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] hairline"
+                  className="py-4 border-t border-[var(--color-border)] first:border-t-0"
                 >
                   {editingMealId === meal.id ? (
-                    <div className="space-y-3">
+                    <div className="border-l-2 border-[var(--color-accent)] pl-5 space-y-5">
                       <Input
                         label="Meal name"
                         value={editingMealDraft.name}
                         onChange={(e) => setEditingMealDraft({ ...editingMealDraft, name: e.target.value })}
                       />
-                      <div className="grid grid-cols-2 gap-2.5">
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-5">
                         <Input
                           label="Calories"
                           type="number"
@@ -595,7 +633,7 @@ export function Settings() {
                         />
                       </div>
 
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-3 pt-1">
                         <Button
                           className="flex-1"
                           onClick={saveMealEdit}
@@ -617,8 +655,8 @@ export function Settings() {
                   ) : (
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[var(--color-text)] truncate">{meal.name}</p>
-                        <p className="t-data-sm text-[10px] text-[var(--color-muted)] mt-0.5">
+                        <p className="t-heading truncate normal-case tracking-normal text-[var(--color-text)]">{meal.name}</p>
+                        <p className="t-data-sm text-[var(--color-muted)] mt-1.5">
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
@@ -626,7 +664,7 @@ export function Settings() {
                         <button
                           type="button"
                           onClick={() => beginEditingMeal(meal)}
-                          className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                           aria-label={`Edit ${meal.name}`}
                         >
                           <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -634,7 +672,7 @@ export function Settings() {
                         <button
                           type="button"
                           onClick={() => removeSavedMeal(meal)}
-                          className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-danger)] transition-colors"
+                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
                           aria-label={`Remove ${meal.name}`}
                         >
                           <Archive className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -642,9 +680,9 @@ export function Settings() {
                       </div>
                     </div>
                   )}
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       </Modal>
