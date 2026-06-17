@@ -2,7 +2,8 @@ import { supabase } from '@/lib/supabase';
 
 export interface RestPreferenceEntry {
   restSeconds: number;
-  updatedAt: string; // ISO timestamp
+  // Must be an ISO-8601 UTC string (Date#toISOString) so lexical `>` equals chronological order.
+  updatedAt: string;
 }
 
 /** Map of exerciseId -> preference entry. */
