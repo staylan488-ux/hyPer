@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { applyPortion, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
+import { applyPortion, fetchUsdaFoodDetail, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
 import type { Food } from '@/types';
 
 const baseFood: Food = {
@@ -110,5 +110,40 @@ describe('applyPortion', () => {
 
   it('returns the food unchanged when there is no portion', () => {
     expect(applyPortion(baseFood, null)).toEqual(baseFood);
+  });
+});
+
+describe('fetchUsdaFoodDetail', () => {
+  it('fetches and returns the food detail JSON', async () => {
+    const detail = {
+      fdcId: 123,
+      dataType: 'SR Legacy',
+      foodPortions: [{ gramWeight: 50, amount: 1, modifier: 'large', sequenceNumber: 1 }],
+    };
+    const fetcher = vi.fn(async () => ({ json: async () => detail })) as unknown as typeof fetch;
+
+    const result = await fetchUsdaFoodDetail('123', 'api-key', fetcher);
+
+    expect(result).toEqual(detail);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/fdc/v1/food/123'));
+  });
+
+  it('returns null without an API key and does not call the network', async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+
+    expect(await fetchUsdaFoodDetail('123', undefined, fetcher)).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('returns null and logs when the request throws', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetcher = vi.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    expect(await fetchUsdaFoodDetail('123', 'api-key', fetcher)).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

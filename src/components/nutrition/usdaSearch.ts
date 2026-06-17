@@ -158,3 +158,21 @@ export async function searchUsdaFoods(
     return [];
   }
 }
+
+export async function fetchUsdaFoodDetail(
+  fdcId: string,
+  apiKey: string | undefined,
+  fetcher: typeof fetch = fetch
+): Promise<UsdaFoodDetail | null> {
+  if (!fdcId || !apiKey) return null;
+
+  try {
+    const response = await fetcher(
+      `https://api.nal.usda.gov/fdc/v1/food/${encodeURIComponent(fdcId)}?api_key=${apiKey}`
+    );
+    return (await response.json()) as UsdaFoodDetail;
+  } catch (error) {
+    console.error('USDA food detail error:', error);
+    return null;
+  }
+}
