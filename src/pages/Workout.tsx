@@ -31,6 +31,7 @@ import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
+import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
@@ -133,6 +134,8 @@ export function Workout() {
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [restTimerSeed, setRestTimerSeed] = useState(0);
+  const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
+  const [restTimerSeconds, setRestTimerSeconds] = useState(90);
   const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
@@ -232,6 +235,11 @@ export function Workout() {
       window.removeEventListener('focus', syncStoredRestTimer);
     };
   }, [currentWorkoutId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadRestPreferencesAsync(userId);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -896,17 +904,23 @@ export function Workout() {
   const handleSetLogged = (loggedSet: WorkoutSet) => {
     if (loggedSet.completed) return;
 
+    const startRestForExercise = (exerciseId: string) => {
+      const prefs = userId ? loadRestPreferences(userId) : {};
+      setRestTimerExerciseId(exerciseId);
+      setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
+      setRestTimerSeed((current) => current + 1);
+      setShowRestTimer(true);
+    };
+
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
 
     if (!supersetFlow) {
-      setRestTimerSeed((current) => current + 1);
-      setShowRestTimer(true);
+      startRestForExercise(loggedSet.exercise_id);
       return;
     }
 
     if (supersetFlow.role === 'B') {
-      setRestTimerSeed((current) => current + 1);
-      setShowRestTimer(true);
+      startRestForExercise(loggedSet.exercise_id);
     }
   };
 
@@ -1814,6 +1828,12 @@ export function Workout() {
           key={`${currentWorkout.id}:${restTimerSeed}`}
           workoutId={currentWorkout.id}
           sessionSeed={restTimerSeed}
+          defaultSeconds={restTimerSeconds}
+          onDurationChange={(seconds) => {
+            if (userId && restTimerExerciseId) {
+              saveRestPreference(userId, restTimerExerciseId, seconds);
+            }
+          }}
           onDismiss={() => setShowRestTimer(false)}
         />
       )}
