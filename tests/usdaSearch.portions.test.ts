@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { applyPortion, fetchUsdaFoodDetail, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
+import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
 import type { Food } from '@/types';
 
 const baseFood: Food = {
@@ -145,5 +145,94 @@ describe('fetchUsdaFoodDetail', () => {
     expect(await fetchUsdaFoodDetail('123', 'api-key', fetcher)).toBeNull();
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe('mapUsdaFood serving derivation', () => {
+  it('derives gram serving from search payload for branded food (fdc 2575290 EGG shape)', async () => {
+    const fetcher = vi.fn(async () => ({
+      json: async () => ({
+        foods: [
+          {
+            fdcId: 2575290,
+            description: 'EGG',
+            servingSize: 31.2,
+            servingSizeUnit: 'GRM',
+            householdServingFullText: '1 EGG',
+            foodNutrients: [
+              { nutrientName: 'Energy', value: 513 },
+              { nutrientName: 'Protein', value: 6 },
+              { nutrientName: 'Carbohydrate, by difference', value: 58 },
+              { nutrientName: 'Total lipid (fat)', value: 29 },
+            ],
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const foods = await searchUsdaFoods('egg', 'api-key', fetcher);
+
+    expect(foods).toHaveLength(1);
+    const food = foods[0];
+    expect(food.serving_size).toBeCloseTo(31.2, 1);
+    expect(food.serving_unit).toBe('g');
+    expect(food.serving_label).toBe('1 egg');
+    // 513 * (31.2 / 100) = 160.056
+    expect(food.calories).toBeCloseTo(160.1, 1);
+  });
+
+  it('derives ml serving from search payload for branded food with MLT unit', async () => {
+    const fetcher = vi.fn(async () => ({
+      json: async () => ({
+        foods: [
+          {
+            fdcId: 999001,
+            description: 'Olive Oil',
+            servingSize: 44,
+            servingSizeUnit: 'MLT',
+            householdServingFullText: '3 Tbsp',
+            foodNutrients: [
+              { nutrientName: 'Energy', value: 159 },
+              { nutrientName: 'Protein', value: 0 },
+              { nutrientName: 'Carbohydrate, by difference', value: 0 },
+              { nutrientName: 'Total lipid (fat)', value: 18 },
+            ],
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const foods = await searchUsdaFoods('olive oil', 'api-key', fetcher);
+
+    expect(foods).toHaveLength(1);
+    const food = foods[0];
+    expect(food.serving_unit).toBe('ml');
+    expect(food.serving_size).toBeCloseTo(44, 1);
+    expect(food.serving_label).toBe('3 tbsp');
+  });
+
+  it('falls back to 100 g when search result has no serving data (Foundation food shape)', async () => {
+    const fetcher = vi.fn(async () => ({
+      json: async () => ({
+        foods: [
+          {
+            fdcId: 748967,
+            description: 'Eggs, Grade A, Large, egg whole',
+            foodNutrients: [
+              { nutrientName: 'Energy', value: 148 },
+            ],
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const foods = await searchUsdaFoods('eggs large', 'api-key', fetcher);
+
+    expect(foods).toHaveLength(1);
+    const food = foods[0];
+    expect(food.serving_size).toBe(100);
+    expect(food.serving_unit).toBe('g');
+    expect(food.serving_label).toBeUndefined();
+    expect(food.calories).toBe(148);
   });
 });

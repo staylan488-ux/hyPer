@@ -1166,12 +1166,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
                   setSelectedFoodMeta(null);
 
                   let resolvedFood = food;
-                  if (food.source === 'usda' && food.fdc_id) {
+                  if (food.source === 'usda' && food.fdc_id && !food.serving_label) {
                     setLoadingFoodId(food.fdc_id);
                     try {
                       const apiKey = import.meta.env.VITE_USDA_API_KEY;
                       const detail = await fetchUsdaFoodDetail(food.fdc_id, apiKey);
-                      resolvedFood = applyPortion(food, selectPortionFromDetail(detail));
+                      const portion = selectPortionFromDetail(detail);
+                      if (portion) resolvedFood = applyPortion(food, portion);
                     } finally {
                       setLoadingFoodId(null);
                     }
@@ -1191,7 +1192,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-[var(--color-text)] truncate">{food.name}</p>
-                  <p className="t-data-sm text-[var(--color-muted)] mt-0.5">{Math.round(food.calories)} kcal / 100g</p>
+                  <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
+                    {Math.round(food.calories)} kcal / {food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}
+                  </p>
                 </div>
                 <span className="flex items-center justify-center w-8 h-8 rounded-[var(--radius-xs)] bg-[var(--color-surface-3)] shrink-0">
                   {loadingFoodId === food.fdc_id ? (

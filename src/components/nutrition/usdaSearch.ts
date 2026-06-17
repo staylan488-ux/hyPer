@@ -105,6 +105,11 @@ interface UsdaFood {
   description?: string;
   lowercaseDescription?: string;
   foodNutrients?: UsdaNutrient[];
+  // Serving fields carried by the search response — more reliable than the detail endpoint
+  // for branded foods (detail often omits servingSize) and avoids a 404 for Foundation foods.
+  servingSize?: number;
+  servingSizeUnit?: string;
+  householdServingFullText?: string;
 }
 
 interface UsdaSearchResponse {
@@ -120,7 +125,10 @@ function mapUsdaFood(food: UsdaFood): Food {
     return nutrient?.value || 0;
   };
 
-  return {
+  // Build the per-100 g base first, then apply any serving the search payload already carries.
+  // The search response is a more reliable portion source than the detail endpoint:
+  // branded foods often have servingSize only in the search result, and Foundation detail 404s.
+  const base: Food = {
     id: food.fdcId?.toString() || '',
     user_id: null,
     name: food.description || food.lowercaseDescription || 'Unknown food',
@@ -133,6 +141,9 @@ function mapUsdaFood(food: UsdaFood): Food {
     source: 'usda',
     fdc_id: food.fdcId?.toString() || null,
   };
+
+  // UsdaFood structurally satisfies selectPortionFromDetail's parameter (all read fields are optional).
+  return applyPortion(base, selectPortionFromDetail(food));
 }
 
 export async function searchUsdaFoods(
