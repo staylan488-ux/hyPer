@@ -73,6 +73,15 @@ describe('selectPortionFromDetail', () => {
     expect(portion).toEqual({ size: 28, unit: 'g', label: '1 slice' });
   });
 
+  it('falls back to a gram-weight label when no descriptors exist', () => {
+    const portion = selectPortionFromDetail({
+      dataType: 'SR Legacy',
+      foodPortions: [{ gramWeight: 28, sequenceNumber: 1 }],
+    });
+
+    expect(portion).toEqual({ size: 28, unit: 'g', label: '28 g' });
+  });
+
   it('returns null when no usable portion exists', () => {
     expect(selectPortionFromDetail({ dataType: 'Foundation', foodPortions: [{ gramWeight: 0 }] })).toBeNull();
     expect(selectPortionFromDetail({ dataType: 'Branded', servingSize: 5, servingSizeUnit: 'IU' })).toBeNull();

@@ -47,7 +47,7 @@ function buildPortionLabel(portion: UsdaFoodPortion): string {
   if (description) return cleanLabel(description);
   if (amount && measure && measure.toLowerCase() !== 'undetermined') return cleanLabel(`${amount} ${measure}`);
   if (modifier) return cleanLabel(modifier);
-  return `${portion.gramWeight} g`;
+  return cleanLabel(`${portion.gramWeight} g`);
 }
 
 export function selectPortionFromDetail(detail: UsdaFoodDetail | null | undefined): UsdaPortion | null {
