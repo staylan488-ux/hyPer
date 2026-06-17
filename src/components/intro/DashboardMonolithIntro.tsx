@@ -57,11 +57,6 @@ export function DashboardMonolithIntro() {
               y: showCompose ? -4 : 0,
             }}
             transition={reduceMotion ? { duration: 0.12 } : springs.heavy}
-            style={{
-              backfaceVisibility: 'hidden',
-              transform: 'translateZ(0)',
-              willChange: 'transform, opacity',
-            }}
           >
             <span className="italic text-[var(--color-accent)]">P</span>
           </motion.span>
@@ -89,11 +84,6 @@ export function DashboardMonolithIntro() {
                     initial={{ opacity: 0, scale: 0.84 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={reduceMotion ? { duration: 0.12 } : { ...springs.snappy, delay: 0.04 }}
-                    style={{
-                      backfaceVisibility: 'hidden',
-                      transform: 'translateZ(0)',
-                      willChange: 'transform, opacity',
-                    }}
                   >
                     P
                   </motion.span>
