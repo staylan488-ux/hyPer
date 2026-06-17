@@ -998,7 +998,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             ))}
           </div>
           <p className="text-[10px] text-[var(--color-muted)] mt-2">
-            per {formatMeasurementAmount(selectedFood.serving_size || 1)} {selectedFood.serving_unit || 'serving'}
+            {selectedFood.serving_label
+              ? `per ${selectedFood.serving_label} (${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'g'})`
+              : `per ${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'serving'}`}
           </p>
         </div>
 
