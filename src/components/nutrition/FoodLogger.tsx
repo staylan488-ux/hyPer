@@ -604,10 +604,19 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     let foodId = food.id;
 
     if (food.source === 'usda' && food.fdc_id) {
+      const servingSize = food.serving_size || 100;
+      const servingUnit = food.serving_unit || 'g';
+
+      // Match on the serving basis too: a food cached before portions existed has a
+      // 100 g basis and is tied to historical logs. Reuse only a same-basis row;
+      // otherwise insert a new one. Never mutate existing rows.
       const { data: existingFood, error: lookupError } = await supabase
         .from('foods')
         .select('id')
         .eq('fdc_id', food.fdc_id)
+        .eq('serving_size', servingSize)
+        .eq('serving_unit', servingUnit)
+        .limit(1)
         .maybeSingle();
 
       if (lookupError) {
@@ -625,8 +634,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
             protein: food.protein,
             carbs: food.carbs,
             fat: food.fat,
-            serving_size: food.serving_size || 100,
-            serving_unit: food.serving_unit || 'g',
+            serving_size: servingSize,
+            serving_unit: servingUnit,
             source: 'usda',
             fdc_id: food.fdc_id,
           })
