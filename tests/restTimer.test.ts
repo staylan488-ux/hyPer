@@ -4,6 +4,7 @@ import {
   clearRestTimerSession,
   createRestTimerSession,
   getRestTimerRemainingSeconds,
+  parseRestInput,
   pauseRestTimerSession,
   readRestTimerSession,
   resumeRestTimerSession,
@@ -62,5 +63,33 @@ describe('restTimer helpers', () => {
 
     clearRestTimerSession(storage);
     expect(readRestTimerSession(storage)).toBeNull();
+  });
+});
+
+describe('parseRestInput', () => {
+  it('parses m:ss strings', () => {
+    expect(parseRestInput('4:30')).toBe(270);
+    expect(parseRestInput('0:30')).toBe(30);
+    expect(parseRestInput('10:00')).toBe(600);
+    expect(parseRestInput('60:00')).toBe(3600);
+  });
+
+  it('parses bare numbers as whole minutes', () => {
+    expect(parseRestInput('4')).toBe(240);
+    expect(parseRestInput('1')).toBe(60);
+  });
+
+  it('ignores surrounding whitespace', () => {
+    expect(parseRestInput('  2:15 ')).toBe(135);
+  });
+
+  it('rejects invalid seconds, out-of-range values, and junk', () => {
+    expect(parseRestInput('4:60')).toBeNull(); // seconds must be < 60
+    expect(parseRestInput('0:04')).toBeNull(); // below the 5s floor
+    expect(parseRestInput('61:00')).toBeNull(); // above the 60min ceiling
+    expect(parseRestInput('90')).toBeNull(); // bare 90 = 90min > ceiling
+    expect(parseRestInput('')).toBeNull();
+    expect(parseRestInput('abc')).toBeNull();
+    expect(parseRestInput('4:3:2')).toBeNull();
   });
 });
