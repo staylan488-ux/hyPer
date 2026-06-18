@@ -374,6 +374,32 @@ export interface Database {
           created_at?: string
         }
       }
+      exercise_rest_preferences: {
+        Row: {
+          id: string
+          user_id: string
+          exercise_id: string
+          rest_seconds: number
+          updated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          exercise_id: string
+          rest_seconds: number
+          updated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          exercise_id?: string
+          rest_seconds?: number
+          updated_at?: string
+          created_at?: string
+        }
+      }
     }
   }
 }
