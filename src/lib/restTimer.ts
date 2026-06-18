@@ -165,6 +165,34 @@ export function resumeRestTimerSession(
   };
 }
 
+export const MIN_REST_INPUT_SECONDS = 5;
+export const MAX_REST_INPUT_SECONDS = 3600;
+
+/**
+ * Parse a user-typed rest time: "m:ss" / "mm:ss" (e.g. "4:30") or bare minutes
+ * (e.g. "4" → 4:00). Returns whole seconds, or null if unparseable or outside
+ * the 5s–60min range.
+ */
+export function parseRestInput(raw: string): number | null {
+  const trimmed = raw.trim();
+
+  const clock = trimmed.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (clock) {
+    const seconds = Number(clock[2]);
+    if (seconds > 59) return null;
+    const total = Number(clock[1]) * 60 + seconds;
+    return total >= MIN_REST_INPUT_SECONDS && total <= MAX_REST_INPUT_SECONDS ? total : null;
+  }
+
+  const minutes = trimmed.match(/^\d{1,2}$/);
+  if (minutes) {
+    const total = Number(minutes[0]) * 60;
+    return total >= MIN_REST_INPUT_SECONDS && total <= MAX_REST_INPUT_SECONDS ? total : null;
+  }
+
+  return null;
+}
+
 export async function playRestTimerSound(): Promise<void> {
   if (typeof window === 'undefined') return;
 

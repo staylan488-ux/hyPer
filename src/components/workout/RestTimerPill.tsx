@@ -9,6 +9,7 @@ import {
   createRestTimerSession,
   getRestTimerRemainingSeconds,
   isRestTimerForWorkout,
+  parseRestInput,
   pauseRestTimerSession,
   playRestTimerSound,
   readRestTimerSession,
@@ -28,7 +29,7 @@ interface RestTimerPillProps {
   onDurationChange?: (seconds: number) => void;
 }
 
-const PRESET_TIMES = [60, 90, 120, 180, 300];
+const PRESET_TIMES = [60, 120, 180, 300];
 
 function getInitialSession(workoutId: string, defaultSeconds: number, sessionSeed: number): RestTimerSession {
   const storedSession = readRestTimerSession();
@@ -59,6 +60,9 @@ function formatTime(totalSeconds: number) {
 export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
   const [expanded, setExpanded] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDraft, setCustomDraft] = useState('');
+  const [customError, setCustomError] = useState(false);
   const completionHandledRef = useRef(false);
 
   const isRunning = session?.status === 'running';
@@ -132,6 +136,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const remainingRatio = seconds > 0 ? timeLeft / seconds : 0;
   const isWarning = timeLeft <= 10 && timeLeft > 0 && isRunning;
   const isComplete = timeLeft === 0;
+  const isCustom = !PRESET_TIMES.includes(seconds);
 
   const handleReset = () => {
     tapHaptic();
@@ -147,7 +152,24 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     saveRestTimerSession(nextSession);
     setSession(nextSession);
     completionHandledRef.current = false;
+    setCustomOpen(false);
     onDurationChange?.(newSeconds);
+  };
+
+  const handleOpenCustom = () => {
+    tapHaptic();
+    setCustomDraft(formatTime(seconds));
+    setCustomError(false);
+    setCustomOpen(true);
+  };
+
+  const handleCustomSubmit = () => {
+    const parsed = parseRestInput(customDraft);
+    if (parsed === null) {
+      setCustomError(true);
+      return;
+    }
+    handleSetTime(parsed);
   };
 
   const handleToggleRunning = () => {
@@ -248,7 +270,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
         </motion.div>
       </AnimatePresence>
 
-      <Modal isOpen={expanded} onClose={() => setExpanded(false)} title="Rest timer">
+      <Modal isOpen={expanded} onClose={() => { setExpanded(false); setCustomOpen(false); }} title="Rest timer">
         <div className="pt-1 pb-2">
           <div className="text-center mb-5">
             <motion.p
@@ -299,7 +321,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 type="button"
                 onClick={() => handleSetTime(preset)}
                 className={`pressable min-h-11 t-data-sm transition-colors ${
-                  seconds === preset
+                  !isCustom && seconds === preset
                     ? 'bg-[var(--color-text)] text-[var(--color-base)]'
                     : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                 }`}
@@ -307,7 +329,61 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 {preset >= 60 ? `${preset / 60}m` : `${preset}s`}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={handleOpenCustom}
+              aria-label="Set a custom rest time"
+              className={`pressable min-h-11 transition-colors ${
+                isCustom
+                  ? 'bg-[var(--color-text)] text-[var(--color-base)] t-data-sm tabular-nums'
+                  : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)] t-label-sm'
+              }`}
+            >
+              {isCustom ? formatTime(seconds) : 'Custom'}
+            </button>
           </div>
+
+          <AnimatePresence initial={false}>
+            {customOpen && (
+              <motion.div
+                key="custom-input"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={springs.smooth}
+                className="overflow-hidden"
+              >
+                <div className="flex items-stretch gap-px bg-[var(--color-border)] border border-[var(--color-border)] mb-2">
+                  <input
+                    type="text"
+                    value={customDraft}
+                    onChange={(event) => {
+                      setCustomDraft(event.target.value);
+                      setCustomError(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') handleCustomSubmit();
+                    }}
+                    placeholder="m:ss"
+                    aria-label="Custom rest time, minutes and seconds"
+                    aria-invalid={customError}
+                    autoFocus
+                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-[var(--color-surface-1)] text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none border-l-2 ${customError ? 'border-[var(--color-accent)]' : 'border-transparent'}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCustomSubmit}
+                    className="pressable min-h-11 px-5 bg-[var(--color-surface-2)] text-[var(--color-text)] t-label-sm hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
+                  >
+                    Set
+                  </button>
+                </div>
+                {customError && (
+                  <p className="t-label-sm mb-3 text-[var(--color-accent)]">Try a time like 1:30 or 4:00 — 5s to 60min.</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <button
             type="button"
