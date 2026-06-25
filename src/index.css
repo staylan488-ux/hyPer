@@ -489,6 +489,26 @@ body::after {
   padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* Grounds the docked rest control: fades scrolling content into the base just
+   above the nav, so a fixed launcher/pill never looks stamped onto a mid-list
+   card. Purely decorative — never intercepts taps. */
+.rest-dock-scrim {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(11.5rem + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+  z-index: 30;
+  background: linear-gradient(
+    to top,
+    var(--color-base) 0%,
+    var(--color-base) 42%,
+    color-mix(in srgb, var(--color-base) 32%, transparent) 72%,
+    color-mix(in srgb, var(--color-base) 0%, transparent) 100%
+  );
+}
+
 /* ═════════════════════════════════════════════════════════════
    SCROLLBAR
    ═════════════════════════════════════════════════════════════ */

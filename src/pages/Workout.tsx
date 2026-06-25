@@ -25,6 +25,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
+import { RestTimerLauncher } from '@/components/workout/RestTimerLauncher';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
@@ -901,16 +902,24 @@ export function Workout() {
     await reorderFlexibleExercises(next.map((item) => item.exercise_id));
   };
 
+  const startRestForExercise = (exerciseId: string) => {
+    const prefs = userId ? loadRestPreferences(userId) : {};
+    setRestTimerExerciseId(exerciseId || null);
+    setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
+    setRestTimerSeed((current) => current + 1);
+    setShowRestTimer(true);
+  };
+
+  // Manual rest: start a timer without logging a set (e.g. between warm-ups, or
+  // a mid-session breather). Resolve the duration for the open movement so its
+  // saved preference applies; fall back to last-used / default when no card is
+  // active (empty id won't be persisted by onDurationChange).
+  const handleManualRestStart = () => {
+    startRestForExercise(activeExerciseId ?? '');
+  };
+
   const handleSetLogged = (loggedSet: WorkoutSet) => {
     if (loggedSet.completed) return;
-
-    const startRestForExercise = (exerciseId: string) => {
-      const prefs = userId ? loadRestPreferences(userId) : {};
-      setRestTimerExerciseId(exerciseId);
-      setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
-      setRestTimerSeed((current) => current + 1);
-      setShowRestTimer(true);
-    };
 
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
 
@@ -1456,7 +1465,7 @@ export function Workout() {
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
 
   return (
-    <motion.div className={`px-5 ${showRestTimer ? 'pb-44' : 'pb-nav'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <motion.div className="px-5 pb-44" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Sticky session header */}
       <div
         className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-5 border-b border-[var(--color-text)]"
@@ -1822,8 +1831,11 @@ export function Workout() {
         </div>
       )}
 
-      {/* Ambient rest timer */}
-      {showRestTimer && (
+      {/* Fade list content into the base behind the docked rest control */}
+      <div className="rest-dock-scrim" aria-hidden />
+
+      {/* Ambient rest dock — live countdown when running, manual launcher otherwise */}
+      {showRestTimer ? (
         <RestTimerPill
           key={`${currentWorkout.id}:${restTimerSeed}`}
           workoutId={currentWorkout.id}
@@ -1836,6 +1848,8 @@ export function Workout() {
           }}
           onDismiss={() => setShowRestTimer(false)}
         />
+      ) : (
+        <RestTimerLauncher onStart={handleManualRestStart} />
       )}
 
       {/* Complete Confirmation */}
