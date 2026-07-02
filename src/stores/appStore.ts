@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
+import { canResumeWorkout } from '@/lib/workoutSessions';
 import type {
   Split,
   SplitDay,
@@ -533,7 +534,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error checking existing workout:', existingError);
     }
 
-    if (existing) {
+    if (existing && canResumeWorkout(existing as Workout)) {
       set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
       return existing as Workout;
     }
@@ -612,7 +613,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error checking existing workout:', existingError);
     }
 
-    if (existing) {
+    if (existing && canResumeWorkout(existing as Workout)) {
       if (existing.split_day_id !== null) {
         return null;
       }
@@ -711,8 +712,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { currentWorkout } = get();
-
     const { data: workout, error } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
@@ -727,7 +726,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    if (workout && !workout.completed) {
+    if (workout && canResumeWorkout(workout as Workout)) {
       const nextWorkout = workout as Workout;
       set({ currentWorkout: nextWorkout });
 
@@ -736,7 +735,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         set({ currentWorkoutDayPlan: null });
       }
-    } else if (!currentWorkout) {
+    } else {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
   },
