@@ -4,7 +4,7 @@ Updated: 2026-07-16 (rev 6: release-readiness audit; rev 5: GPS drift fix + paus
 
 ## Rev 6 — release-readiness audit (read-only; no live changes)
 
-- `/Users/alex/Desktop/hyPer-current-ui` is the correct promotion source: branch `codex/activity-sessions-current-ui` is based on `origin/main` at `0da91009`. This revision is the local safety checkpoint for all activity work.
+- `/Users/alex/Desktop/hyPer-current-ui` is the correct promotion source: branch `codex/activity-sessions-current-ui` is based on `origin/main` at `0da91009`. Feature safety checkpoint: `330994ff feat(activity): add multi-source activity hub and GPS tracking`.
 - `/Users/alex/Desktop/hyPer` is a stale, separate clone on `codex/activity-sessions-mvp`, based on older commit `f0f3ebba`, with overlapping uncommitted Phase 1 activity edits. Do not merge or copy that work back into the current branch.
 - Fresh validation on 2026-07-16: `npm run test` PASS (25 files, 303 tests), `npm run lint` PASS, `npm run build` PASS. Existing warnings only: bundle >500 kB and stale Browserslist data.
 - Preview smoke check: `/preview` loads; Settings shows WHOOP and Strava rows; WHOOP preview Connect changes status to `Connected • never synced` and exposes Sync/Disconnect. The existing handoff remains the evidence for the fuller fixture lifecycle.
