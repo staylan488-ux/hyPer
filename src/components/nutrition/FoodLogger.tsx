@@ -20,7 +20,7 @@ import {
 import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from './usdaSearch';
 import { analyzeFoodPhoto, getPhotoWorkerSettings, type PhotoAnalysisProvider } from '@/lib/photoAnalysis';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
-import { isPreviewActive } from '@/preview/flag';
+import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
@@ -1547,7 +1547,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <span className="t-heading">Snap your plate</span>
                 <span className="t-caption">Camera or photo library</span>
               </button>
-              {isPreviewActive() && (
+              {isPreviewActive() && !isAppSandboxActive() && (
                 <Button variant="secondary" className="w-full" onClick={handleUsePreviewPhoto}>
                   Use preview plate
                 </Button>

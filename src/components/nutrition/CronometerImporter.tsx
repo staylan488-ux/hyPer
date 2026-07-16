@@ -3,7 +3,7 @@ import { Check, FileUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/shared';
 import { importCronometerCsv, parseCronometerCsv, type CronometerImportSummary } from '@/lib/cronometerImport';
 import { supabase } from '@/lib/supabase';
-import { isPreviewActive } from '@/preview/flag';
+import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 
 const MAX_CSV_BYTES = 8 * 1024 * 1024;
 const PREVIEW_CSV = `Day,Time,Group,Food Name,Amount,Unit,Energy (kcal),Protein (g),Carbs (g),Fat (g)
@@ -86,7 +86,7 @@ export function CronometerImporter({ onImported }: CronometerImporterProps) {
           <span className="t-heading">{fileName || 'Choose servings.csv'}</span>
           <span className="t-caption">Cronometer CSV, up to 8 MB</span>
         </button>
-        {isPreviewActive() && (
+        {isPreviewActive() && !isAppSandboxActive() && (
           <button
             type="button"
             className="pressable t-label mt-3 text-[var(--color-text-dim)]"

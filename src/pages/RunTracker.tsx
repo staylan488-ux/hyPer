@@ -28,7 +28,7 @@ import {
   paceSecondsPerMile,
 } from '@/lib/activityMetrics';
 import { gpsScenarios } from '@/lib/gpsScenarios';
-import { isPreviewActive } from '@/preview/flag';
+import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 
@@ -119,10 +119,11 @@ export function RunTracker() {
   const { saveTrackedRun } = useAppStore();
   const tracker = useRunTracker();
   const preview = isPreviewActive();
+  const appSandbox = isAppSandboxActive();
 
   const [mode, setMode] = useState<RunMode>('free');
   const [autoLap, setAutoLap] = useState<AutoLapChoice>('400');
-  const [sourceChoice, setSourceChoice] = useState<SourceChoice>(preview ? 'steady5k' : 'gps');
+  const [sourceChoice, setSourceChoice] = useState<SourceChoice>(preview && !appSandbox ? 'steady5k' : 'gps');
   const [finishedRun, setFinishedRun] = useState<FinishedRun | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -409,7 +410,7 @@ export function RunTracker() {
         </p>
       )}
 
-      {preview && (
+      {preview && !appSandbox && (
         <div className="mt-6">
           <label className="t-label-sm block mb-2">Position source</label>
           <SelectSheet

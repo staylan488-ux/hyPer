@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "evidence:import": "node scripts/import-evidence.mjs",
     "photo-worker": "node scripts/photo-food-worker.mjs",
+    "photo-worker:sandbox": "PHOTO_WORKER_ALLOW_PREVIEW=1 node scripts/photo-food-worker.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,6 +1,13 @@
 # Handoff
 
-Updated: 2026-07-16 (rev 9: dynamic nutrition groups, Cronometer import, and local subscription photo worker; rev 8: food-inbox design; rev 7: photo/subscription research; rev 6: release-readiness audit)
+Updated: 2026-07-16 (rev 10: production-like app sandbox; rev 9: dynamic nutrition groups, Cronometer import, and local subscription photo worker; rev 8: food-inbox design; rev 7: photo/subscription research)
+
+## Rev 10 — production-like sandbox entry (implemented; browser-verified)
+
+- Added dev-only `/sandbox`: it latches the existing in-memory Supabase backend, redirects directly to the normal Dashboard, and renders the real app routes without the `/preview` gallery/banner. Sandbox mode hides preview-only Cronometer/photo samples and GPS simulator controls, so the visible UI matches the app. `/preview` remains the fixture/simulator laboratory.
+- Sandbox photo logging calls the real configured local worker instead of the mock result. Start with `npm run photo-worker:sandbox` (explicitly enables the preview-token bypass for private testing only) plus `npm run dev -- --host 127.0.0.1`. Settings health verified both OpenAI and Anthropic installed/authenticated. On iPhone, replace localhost worker URL with its private Tailscale HTTPS URL.
+- Integration boundary: real Codex/Claude inference, a real user-exported Cronometer Servings CSV, and real iPhone GPS for Free/Intervals/Sprints can be tested in `/sandbox` while writes stay in memory. WHOOP/Strava buttons use the real UI but fixture transports in sandbox; real OAuth/account imports still require isolated Supabase staging because they need genuine JWTs, deployed callbacks/functions, secrets, and remote token tables.
+- Browser verification: `/sandbox` redirected to the normal Dashboard; Fuel contained no sample buttons; worker health reported both providers signed in; Run showed only Free/Intervals/Sprints with no simulator selector; 390×844 viewport had no horizontal overflow; no console errors. Final validation remains 313/313 tests PASS, lint PASS, build PASS.
 
 ## Rev 9 — nutrition groups, Cronometer CSV, and local photo worker (implemented; sandbox-verified)
 

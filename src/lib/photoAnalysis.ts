@@ -1,4 +1,4 @@
-import { isPreviewActive } from '@/preview/flag';
+import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 
 export type PhotoAnalysisProvider = 'openai' | 'anthropic';
 
@@ -76,7 +76,7 @@ export async function analyzeFoodPhoto(input: {
   settings?: PhotoWorkerSettings;
 }): Promise<PhotoAnalysisResult> {
   const settings = input.settings || getPhotoWorkerSettings();
-  if (isPreviewActive()) return { ...PREVIEW_RESULT, provider: settings.provider };
+  if (isPreviewActive() && !isAppSandboxActive()) return { ...PREVIEW_RESULT, provider: settings.provider };
   if (!settings.url) throw new Error('Set the photo worker URL in Settings before analyzing a photo.');
 
   const controller = new AbortController();

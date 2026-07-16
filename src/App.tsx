@@ -79,6 +79,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
+        {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
         <Route
           path="/"
           element={
