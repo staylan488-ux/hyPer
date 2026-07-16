@@ -11,6 +11,7 @@ const screens: { to: string; index: string; label: string; sub: string }[] = [
   { to: '/history', index: '05', label: 'History', sub: 'Calendar + past session ledger' },
   { to: '/analysis', index: '06', label: 'Progress', sub: 'Volume landmarks + charts' },
   { to: '/settings', index: '07', label: 'You', sub: 'Profile, targets, theme toggle' },
+  { to: '/train/run', index: '08', label: 'Run', sub: 'Live GPS tracker — simulator scenarios' },
 ];
 
 export function PreviewGallery() {

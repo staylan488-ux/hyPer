@@ -237,6 +237,191 @@ export interface Database {
           created_at?: string
         }
       }
+      activity_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          activity_type: string
+          title: string | null
+          date: string
+          started_at: string | null
+          ended_at: string | null
+          duration_seconds: number | null
+          source: string
+          notes: string | null
+          strain: number | null
+          avg_hr: number | null
+          max_hr: number | null
+          energy_kcal: number | null
+          distance_m: number | null
+          auto_grouped: boolean
+          user_edited: boolean
+          dismissed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          activity_type: string
+          title?: string | null
+          date: string
+          started_at?: string | null
+          ended_at?: string | null
+          duration_seconds?: number | null
+          source?: string
+          notes?: string | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          auto_grouped?: boolean
+          user_edited?: boolean
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          activity_type?: string
+          title?: string | null
+          date?: string
+          started_at?: string | null
+          ended_at?: string | null
+          duration_seconds?: number | null
+          source?: string
+          notes?: string | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          auto_grouped?: boolean
+          user_edited?: boolean
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      whoop_connections: {
+        Row: {
+          user_id: string
+          whoop_user_id: string | null
+          scopes: string | null
+          connected_at: string
+          last_synced_at: string | null
+          last_sync_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          whoop_user_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          whoop_user_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+      }
+      strava_connections: {
+        Row: {
+          user_id: string
+          strava_athlete_id: string | null
+          scopes: string | null
+          connected_at: string
+          last_synced_at: string | null
+          last_sync_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          strava_athlete_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          strava_athlete_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+      }
+      activity_segments: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string | null
+          source: string
+          external_id: string
+          sport: string | null
+          started_at: string
+          ended_at: string
+          duration_seconds: number | null
+          strain: number | null
+          avg_hr: number | null
+          max_hr: number | null
+          energy_kcal: number | null
+          distance_m: number | null
+          raw: Record<string, unknown> | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id?: string | null
+          source: string
+          external_id: string
+          sport?: string | null
+          started_at: string
+          ended_at: string
+          duration_seconds?: number | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          raw?: Record<string, unknown> | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_id?: string | null
+          source?: string
+          external_id?: string
+          sport?: string | null
+          started_at?: string
+          ended_at?: string
+          duration_seconds?: number | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          raw?: Record<string, unknown> | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       foods: {
         Row: {
           id: string

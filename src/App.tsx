@@ -11,6 +11,7 @@ import { Splits } from '@/pages/Splits';
 import { Settings } from '@/pages/Settings';
 import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
+import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
@@ -114,6 +115,16 @@ function App() {
             <PrivateRoute>
               <AppLayout>
                 <Splits />
+              </AppLayout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/train/run"
+          element={
+            <PrivateRoute>
+              <AppLayout>
+                <RunTracker />
               </AppLayout>
             </PrivateRoute>
           }

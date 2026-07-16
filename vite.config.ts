@@ -5,6 +5,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 export default defineConfig({
+  server: {
+    // allow phone testing through the Tailscale HTTPS proxy (dev-only; scoped
+    // to this tailnet's domain)
+    allowedHosts: ['.taileaf222.ts.net'],
+  },
   define: {
     __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'),
   },

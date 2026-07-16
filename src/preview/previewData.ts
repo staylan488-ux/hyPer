@@ -12,6 +12,8 @@ import type {
   VolumeLandmark,
   MuscleVolume,
   Food,
+  ActivitySession,
+  ActivitySegment,
 } from '@/types';
 
 export const PREVIEW_USER_ID = 'preview-user';
@@ -175,6 +177,125 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
   return { id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start), sets };
 });
 
+// blank metric/bookkeeping fields for plain manual entries
+const manualActivityDefaults = {
+  strain: null,
+  avg_hr: null,
+  max_hr: null,
+  energy_kcal: null,
+  distance_m: null,
+  auto_grouped: false,
+  user_edited: false,
+  dismissed_at: null,
+};
+
+/* ── Seeded whoop-style interval run: 8 hard laps recorded as separate WHOOP
+      workouts, grouped into one interval_run session with per-lap segments ── */
+const intervalLapActiveS = 130;
+const intervalLapGapS = 90;
+const intervalStart = at(daysAgo(4), 7, 20);
+const intervalLapAvgHrs = [168, 171, 173, 175, 176, 178, 180, 181];
+const intervalLapMaxHrs = [178, 182, 184, 186, 187, 189, 191, 191];
+
+export const previewActivitySegments: ActivitySegment[] = intervalLapAvgHrs.map((avgHr, i) => {
+  const start = new Date(intervalStart.getTime() + i * (intervalLapActiveS + intervalLapGapS) * 1000);
+  const end = new Date(start.getTime() + intervalLapActiveS * 1000);
+  return {
+    id: `seg_intervals_${i + 1}`,
+    user_id: PREVIEW_USER_ID,
+    session_id: 'act_intervals',
+    source: 'whoop' as const,
+    external_id: `whoop-lap-${i + 1}`,
+    sport: 'running',
+    started_at: iso(start),
+    ended_at: iso(end),
+    duration_seconds: intervalLapActiveS,
+    strain: Math.round((5.4 + i * 0.4) * 10) / 10,
+    avg_hr: avgHr,
+    max_hr: intervalLapMaxHrs[i],
+    energy_kcal: 31,
+    distance_m: 495 + i * 2,
+    raw: null,
+    created_at: iso(at(daysAgo(4), 8, 6)),
+    updated_at: iso(at(daysAgo(4), 8, 6)),
+  };
+});
+
+const intervalSessionEnd = new Date(
+  intervalStart.getTime() + (7 * (intervalLapActiveS + intervalLapGapS) + intervalLapActiveS) * 1000
+);
+
+export const previewActivitySessions: ActivitySession[] = [
+  {
+    id: 'act_today_bike',
+    user_id: PREVIEW_USER_ID,
+    activity_type: 'bike_ride',
+    title: 'Easy lake loop',
+    date: PREVIEW_TODAY,
+    started_at: iso(at(now, 8, 10)),
+    ended_at: iso(at(now, 9, 2)),
+    duration_seconds: 52 * 60,
+    source: 'manual',
+    notes: 'Kept it aerobic.',
+    ...manualActivityDefaults,
+    created_at: iso(at(now, 9, 5)),
+    updated_at: iso(at(now, 9, 5)),
+  },
+  {
+    id: 'act_lower_climb',
+    user_id: PREVIEW_USER_ID,
+    activity_type: 'climbing',
+    title: null,
+    date: ymd(daysAgo(2)),
+    started_at: iso(at(daysAgo(2), 11, 0)),
+    ended_at: iso(at(daysAgo(2), 12, 15)),
+    duration_seconds: 75 * 60,
+    source: 'manual',
+    notes: 'Bouldering volume after lower day.',
+    ...manualActivityDefaults,
+    created_at: iso(at(daysAgo(2), 12, 18)),
+    updated_at: iso(at(daysAgo(2), 12, 18)),
+  },
+  {
+    // grouped from the 8 whoop lap segments above; duration is ACTIVE lap time
+    id: 'act_intervals',
+    user_id: PREVIEW_USER_ID,
+    activity_type: 'interval_run',
+    title: '8x fast lap',
+    date: ymd(daysAgo(4)),
+    started_at: iso(intervalStart),
+    ended_at: iso(intervalSessionEnd),
+    duration_seconds: 8 * intervalLapActiveS,
+    source: 'whoop',
+    notes: 'One hard lap, one float lap.',
+    strain: 8.2,
+    avg_hr: 175,
+    max_hr: 191,
+    energy_kcal: 248,
+    distance_m: 4016,
+    auto_grouped: true,
+    user_edited: false,
+    dismissed_at: null,
+    created_at: iso(at(daysAgo(4), 8, 6)),
+    updated_at: iso(at(daysAgo(4), 8, 6)),
+  },
+  {
+    id: 'act_tennis',
+    user_id: PREVIEW_USER_ID,
+    activity_type: 'tennis',
+    title: null,
+    date: ymd(daysAgo(6)),
+    started_at: iso(at(daysAgo(6), 17, 30)),
+    ended_at: iso(at(daysAgo(6), 18, 45)),
+    duration_seconds: 75 * 60,
+    source: 'manual',
+    notes: null,
+    ...manualActivityDefaults,
+    created_at: iso(at(daysAgo(6), 18, 50)),
+    updated_at: iso(at(daysAgo(6), 18, 50)),
+  },
+];
+
 /* ── Flat table rows for the mock Supabase client ── */
 const stamp = (rows: Record<string, unknown>[]) => rows.map((r) => ({ created_at: iso(daysAgo(40)), ...r }));
 
@@ -201,4 +322,9 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   flex_day_templates: [],
   program_preferences: [],
   plan_schedules: [],
+  activity_sessions: previewActivitySessions.map((activity) => ({ ...activity })),
+  activity_segments: previewActivitySegments.map((segment) => ({ ...segment })),
+  // start disconnected; the Settings "Connect" flows insert mock rows
+  whoop_connections: [],
+  strava_connections: [],
 };

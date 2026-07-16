@@ -1,0 +1,18 @@
+# Function-level config. whoop-oauth must accept the browser redirect from
+# WHOOP's consent screen, which carries no Supabase JWT — auth happens in-code
+# (JWT for action=start/disconnect, HMAC-signed state for the callback).
+[functions.whoop-oauth]
+verify_jwt = false
+
+[functions.whoop-sync]
+verify_jwt = true
+
+# same browser-redirect exemption as whoop-oauth
+[functions.strava-oauth]
+verify_jwt = false
+
+[functions.strava-sync]
+verify_jwt = true
+
+[functions.process-food-photo]
+verify_jwt = true

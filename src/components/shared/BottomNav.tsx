@@ -13,7 +13,9 @@ const navItems = [
 
 export function BottomNav() {
   const location = useLocation();
-  const isSessionRoute = location.pathname.startsWith('/train/session');
+  // chromeless full-screen routes: in-session training and the live run tracker
+  const isSessionRoute =
+    location.pathname.startsWith('/train/session') || location.pathname.startsWith('/train/run');
 
   if (isSessionRoute) {
     return null;

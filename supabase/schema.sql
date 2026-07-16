@@ -78,6 +78,113 @@ CREATE TABLE IF NOT EXISTS sets (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Activity Sessions (non-lifting calendar events)
+CREATE TABLE IF NOT EXISTS activity_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  activity_type TEXT NOT NULL CHECK (
+    activity_type IN (
+      'bike_ride',
+      'climbing',
+      'swimming',
+      'run',
+      'interval_run',
+      'sprint_session',
+      'tennis',
+      'pickleball',
+      'squash',
+      'golf',
+      'other'
+    )
+  ),
+  title TEXT,
+  date DATE NOT NULL,
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'whoop', 'strava', 'gps')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- session-level aggregates rolled up from segments; null for manual entries
+  strain NUMERIC,
+  avg_hr SMALLINT,
+  max_hr SMALLINT,
+  energy_kcal NUMERIC,
+  distance_m NUMERIC,
+  -- import bookkeeping: created by grouping engine / edited by user / soft-deleted
+  auto_grouped BOOLEAN NOT NULL DEFAULT FALSE,
+  user_edited BOOLEAN NOT NULL DEFAULT FALSE,
+  dismissed_at TIMESTAMPTZ,
+  CHECK (ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at)
+);
+
+-- Raw imported/recorded child records of activity_sessions (one row per WHOOP
+-- workout record or GPS lap/sprint rep). UNIQUE (user_id, source, external_id)
+-- makes re-imports idempotent.
+CREATE TABLE IF NOT EXISTS activity_segments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES activity_sessions(id) ON DELETE SET NULL,
+  source TEXT NOT NULL CHECK (source IN ('manual', 'whoop', 'strava', 'gps')),
+  external_id TEXT NOT NULL,
+  sport TEXT,
+  started_at TIMESTAMPTZ NOT NULL,
+  ended_at TIMESTAMPTZ NOT NULL,
+  duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  strain NUMERIC,
+  avg_hr SMALLINT,
+  max_hr SMALLINT,
+  energy_kcal NUMERIC,
+  distance_m NUMERIC,
+  raw JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (ended_at >= started_at),
+  UNIQUE (user_id, source, external_id)
+);
+
+-- WHOOP integration (see migration 20260710091000 for policy rationale):
+-- whoop_connections = safe metadata (owner read-only), whoop_tokens = OAuth
+-- tokens locked to the service role (zero policies + REVOKE)
+CREATE TABLE IF NOT EXISTS whoop_connections (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  whoop_user_id TEXT,
+  scopes TEXT,
+  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_synced_at TIMESTAMPTZ,
+  last_sync_status TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS whoop_tokens (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Strava integration: same split as WHOOP (metadata readable by owner,
+-- tokens locked to the service role)
+CREATE TABLE IF NOT EXISTS strava_connections (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  strava_athlete_id TEXT,
+  scopes TEXT,
+  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_synced_at TIMESTAMPTZ,
+  last_sync_status TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS strava_tokens (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Foods database (custom + USDA)
 CREATE TABLE IF NOT EXISTS foods (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -140,6 +247,10 @@ CREATE INDEX idx_workouts_user_id ON workouts(user_id);
 CREATE INDEX idx_workouts_date ON workouts(date);
 CREATE INDEX idx_sets_workout_id ON sets(workout_id);
 CREATE INDEX idx_sets_exercise_id ON sets(exercise_id);
+CREATE INDEX idx_activity_sessions_user_date ON activity_sessions(user_id, date);
+CREATE INDEX idx_activity_sessions_user_started_at ON activity_sessions(user_id, started_at);
+CREATE INDEX idx_activity_segments_user_started_at ON activity_segments(user_id, started_at);
+CREATE INDEX idx_activity_segments_session ON activity_segments(session_id);
 CREATE INDEX idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
 CREATE INDEX idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
 CREATE INDEX idx_foods_user_id ON foods(user_id);
@@ -166,6 +277,14 @@ ALTER TABLE split_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_segments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whoop_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whoop_tokens ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON whoop_tokens FROM anon, authenticated;
+ALTER TABLE strava_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE strava_tokens ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON strava_tokens FROM anon, authenticated;
 ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
@@ -234,6 +353,23 @@ CREATE POLICY "Users can update own sets" ON sets FOR UPDATE USING (
 CREATE POLICY "Users can delete own sets" ON sets FOR DELETE USING (
   EXISTS (SELECT 1 FROM workouts WHERE workouts.id = sets.workout_id AND workouts.user_id = auth.uid())
 );
+
+-- Activity sessions policies
+CREATE POLICY "Users can view own activity sessions" ON activity_sessions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own activity sessions" ON activity_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own activity sessions" ON activity_sessions FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own activity sessions" ON activity_sessions FOR DELETE USING (auth.uid() = user_id);
+
+-- Activity segments policies
+CREATE POLICY "Users can view own activity segments" ON activity_segments FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own activity segments" ON activity_segments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own activity segments" ON activity_segments FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR DELETE USING (auth.uid() = user_id);
+
+-- WHOOP connection policies: owner may read status; only service role writes.
+-- whoop_tokens intentionally has NO policies.
+CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own strava connection" ON strava_connections FOR SELECT USING (auth.uid() = user_id);
 
 -- Foods policies
 CREATE POLICY "Users can view own foods" ON foods FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);

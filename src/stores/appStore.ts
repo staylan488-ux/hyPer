@@ -1,5 +1,14 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { isPreviewActive } from '@/preview/flag';
+import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
+import { fetchStravaFixtureBatch } from '@/preview/stravaFixtures';
+import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
+import { runStravaSync, type StravaSyncResult } from '@/lib/stravaSync';
+import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
+import { disconnectStravaRemote, fetchStravaBatchRemote, startStravaConnect } from '@/lib/stravaClient';
+import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
+import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import type {
   Split,
@@ -15,6 +24,12 @@ import type {
   FlexDayTemplate,
   FlexiblePlanItem,
   Exercise,
+  ActivitySession,
+  ActivitySessionInput,
+  ActivitySegment,
+  ActivitySegmentInput,
+  WhoopConnection,
+  StravaConnection,
 } from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
 
@@ -155,6 +170,26 @@ interface AppState {
   updateWorkoutExerciseTargetSets: (workoutId: string, exerciseId: string, targetSets: number) => Promise<void>;
   reorderWorkoutExercises: (workoutId: string, exerciseIds: string[]) => Promise<void>;
 
+  // Activity actions
+  fetchActivitySessionsByMonth: (month: Date) => Promise<ActivitySession[]>;
+  createActivitySession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
+  updateActivitySession: (activityId: string, updates: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
+  deleteActivitySession: (activityId: string) => Promise<void>;
+  fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[]>;
+  upsertActivitySegments: (inputs: ActivitySegmentInput[]) => Promise<ActivitySegment[]>;
+  syncWhoop: () => Promise<WhoopSyncResult | null>;
+  whoopConnection: WhoopConnection | null;
+  fetchWhoopConnection: () => Promise<WhoopConnection | null>;
+  // returns a consent URL to redirect to (production) or null (preview: mock-connects in place)
+  connectWhoop: () => Promise<string | null>;
+  disconnectWhoop: () => Promise<void>;
+  syncStrava: () => Promise<StravaSyncResult | null>;
+  stravaConnection: StravaConnection | null;
+  fetchStravaConnection: () => Promise<StravaConnection | null>;
+  connectStrava: () => Promise<string | null>;
+  disconnectStrava: () => Promise<void>;
+  saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
+
   // Flexible programming
   fetchWorkoutMode: () => Promise<void>;
   setWorkoutMode: (mode: WorkoutMode) => Promise<{ ok: boolean; reason?: string }>;
@@ -193,6 +228,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   volumeLandmarks: [],
   weeklyVolume: [],
   loading: false,
+  whoopConnection: null,
+  stravaConnection: null,
 
   fetchSplits: async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1388,6 +1425,498 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error deleting workout:', error);
       throw error;
     }
+  },
+
+  fetchActivitySessionsByMonth: async (month: Date) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const from = format(startOfMonth(month), 'yyyy-MM-dd');
+    const to = format(endOfMonth(month), 'yyyy-MM-dd');
+
+    const { data, error } = await supabase
+      .from('activity_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .is('dismissed_at', null)
+      .gte('date', from)
+      .lte('date', to)
+      .order('date', { ascending: false })
+      .order('started_at', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching activity sessions by month:', error);
+      return [];
+    }
+
+    return (data || []) as ActivitySession[];
+  },
+
+  createActivitySession: async (input) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('activity_sessions')
+      .insert({
+        user_id: user.id,
+        activity_type: input.activity_type,
+        title: input.title ?? null,
+        date: input.date,
+        started_at: input.started_at ?? null,
+        ended_at: input.ended_at ?? null,
+        duration_seconds: input.duration_seconds ?? null,
+        source: input.source ?? 'manual',
+        notes: input.notes ?? null,
+        strain: input.strain ?? null,
+        avg_hr: input.avg_hr ?? null,
+        max_hr: input.max_hr ?? null,
+        energy_kcal: input.energy_kcal ?? null,
+        distance_m: input.distance_m ?? null,
+        auto_grouped: input.auto_grouped ?? false,
+        user_edited: input.user_edited ?? false,
+        dismissed_at: input.dismissed_at ?? null,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      if (error) console.error('Error creating activity session:', error);
+      return null;
+    }
+
+    return data as ActivitySession;
+  },
+
+  updateActivitySession: async (activityId, updates) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('activity_sessions')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', activityId)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      if (error) console.error('Error updating activity session:', error);
+      return null;
+    }
+
+    return data as ActivitySession;
+  },
+
+  deleteActivitySession: async (activityId) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('activity_sessions')
+      .delete()
+      .eq('id', activityId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error deleting activity session:', error);
+      throw error;
+    }
+  },
+
+  fetchActivitySegmentsBySessionIds: async (sessionIds) => {
+    if (sessionIds.length === 0) return [];
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('activity_segments')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('session_id', sessionIds)
+      .order('started_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching activity segments:', error);
+      return [];
+    }
+
+    return (data || []) as ActivitySegment[];
+  },
+
+  upsertActivitySegments: async (inputs) => {
+    if (inputs.length === 0) return [];
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    // session_id is deliberately omitted: on conflict the upsert would null out
+    // existing links and every re-sync would churn sessions. Linkage is owned
+    // exclusively by linkSegmentsToSession-style updates
+    const rows = inputs.map((input) => ({
+      user_id: user.id,
+      source: input.source,
+      external_id: input.external_id,
+      sport: input.sport ?? null,
+      started_at: input.started_at,
+      ended_at: input.ended_at,
+      duration_seconds: input.duration_seconds ?? null,
+      strain: input.strain ?? null,
+      avg_hr: input.avg_hr ?? null,
+      max_hr: input.max_hr ?? null,
+      energy_kcal: input.energy_kcal ?? null,
+      distance_m: input.distance_m ?? null,
+      raw: input.raw ?? null,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { data, error } = await supabase
+      .from('activity_segments')
+      .upsert(rows, { onConflict: 'user_id,source,external_id' })
+      .select();
+
+    if (error) {
+      console.error('Error upserting activity segments:', error);
+      return [];
+    }
+
+    return (data || []) as ActivitySegment[];
+  },
+
+  fetchWhoopConnection: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('whoop_connections')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching whoop connection:', error);
+      return null;
+    }
+
+    const connection = (data as WhoopConnection | null) ?? null;
+    set({ whoopConnection: connection });
+    return connection;
+  },
+
+  connectWhoop: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    if (isPreviewActive()) {
+      // sandbox: connecting just plants a mock metadata row
+      const nowIso = new Date().toISOString();
+      await supabase.from('whoop_connections').upsert(
+        {
+          user_id: user.id,
+          whoop_user_id: 'preview-whoop-user',
+          scopes: 'read:workout offline',
+          connected_at: nowIso,
+          updated_at: nowIso,
+        },
+        { onConflict: 'user_id' },
+      );
+      await get().fetchWhoopConnection();
+      return null;
+    }
+
+    return startWhoopConnect();
+  },
+
+  disconnectWhoop: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    if (isPreviewActive()) {
+      await supabase.from('whoop_connections').delete().eq('user_id', user.id);
+    } else {
+      await disconnectWhoopRemote();
+    }
+    set({ whoopConnection: null });
+  },
+
+  syncWhoop: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // preview drives the identical pipeline from fixture batches; production
+    // fetches raw pages through the whoop-sync Edge Function
+    const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
+
+    // watermark: newest whoop segment already imported
+    const { data: latest } = await supabase
+      .from('activity_segments')
+      .select('started_at')
+      .eq('user_id', user.id)
+      .eq('source', 'whoop')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    try {
+      const result = await runWhoopSync(
+        {
+          fetchBatch,
+          data: {
+            upsertSegments: (inputs) => get().upsertActivitySegments(inputs),
+            fetchWhoopSegmentsInWindow: async (fromIso, toIso) => {
+              const { data, error } = await supabase
+                .from('activity_segments')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('source', 'whoop')
+                .gte('started_at', fromIso)
+                .lte('started_at', toIso)
+                .order('started_at', { ascending: true });
+              if (error) {
+                console.error('Error fetching whoop segments:', error);
+                return [];
+              }
+              return (data || []) as ActivitySegment[];
+            },
+            fetchSessionsInWindow: async (fromIso, toIso) => {
+              // deliberately includes dismissed + user-edited rows (tombstones
+              // must hold) and ALL sources (whoop metrics enrich gps/strava/
+              // manual sessions covering the same time window)
+              const { data, error } = await supabase
+                .from('activity_sessions')
+                .select('*')
+                .eq('user_id', user.id)
+                .gte('started_at', fromIso)
+                .lte('started_at', toIso);
+              if (error) {
+                console.error('Error fetching sessions in window:', error);
+                return [];
+              }
+              return (data || []) as ActivitySession[];
+            },
+            createSession: (input) => get().createActivitySession(input),
+            updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
+            deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
+            linkSegmentsToSession: async (segmentIds, sessionId) => {
+              const { error } = await supabase
+                .from('activity_segments')
+                .update({ session_id: sessionId, updated_at: new Date().toISOString() })
+                .eq('user_id', user.id)
+                .in('id', segmentIds);
+              if (error) console.error('Error linking segments to session:', error);
+            },
+          },
+        },
+        { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
+      );
+
+      // whoop-sync stamps last_synced_at server-side; refresh the status row
+      if (!isPreviewActive()) void get().fetchWhoopConnection();
+      return result;
+    } catch (error) {
+      console.error('Error running whoop sync:', error);
+      return null;
+    }
+  },
+
+  fetchStravaConnection: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('strava_connections')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching strava connection:', error);
+      return null;
+    }
+
+    const connection = (data as StravaConnection | null) ?? null;
+    set({ stravaConnection: connection });
+    return connection;
+  },
+
+  connectStrava: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    if (isPreviewActive()) {
+      const nowIso = new Date().toISOString();
+      await supabase.from('strava_connections').upsert(
+        {
+          user_id: user.id,
+          strava_athlete_id: 'preview-strava-athlete',
+          scopes: 'read,activity:read_all',
+          connected_at: nowIso,
+          updated_at: nowIso,
+        },
+        { onConflict: 'user_id' },
+      );
+      await get().fetchStravaConnection();
+      return null;
+    }
+
+    return startStravaConnect();
+  },
+
+  disconnectStrava: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    if (isPreviewActive()) {
+      await supabase.from('strava_connections').delete().eq('user_id', user.id);
+    } else {
+      await disconnectStravaRemote();
+    }
+    set({ stravaConnection: null });
+  },
+
+  syncStrava: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const fetchBatch = isPreviewActive() ? fetchStravaFixtureBatch : fetchStravaBatchRemote;
+
+    // watermark: newest strava segment already imported
+    const { data: latest } = await supabase
+      .from('activity_segments')
+      .select('started_at')
+      .eq('user_id', user.id)
+      .eq('source', 'strava')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    try {
+      const result = await runStravaSync(
+        {
+          fetchBatch,
+          data: {
+            upsertSegments: (inputs) => get().upsertActivitySegments(inputs),
+            fetchStravaSegmentsInWindow: async (fromIso, toIso) => {
+              const { data, error } = await supabase
+                .from('activity_segments')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('source', 'strava')
+                .gte('started_at', fromIso)
+                .lte('started_at', toIso)
+                .order('started_at', { ascending: true });
+              if (error) {
+                console.error('Error fetching strava segments:', error);
+                return [];
+              }
+              return (data || []) as ActivitySegment[];
+            },
+            fetchSessionsInWindow: async (fromIso, toIso) => {
+              const { data, error } = await supabase
+                .from('activity_sessions')
+                .select('*')
+                .eq('user_id', user.id)
+                .gte('started_at', fromIso)
+                .lte('started_at', toIso);
+              if (error) {
+                console.error('Error fetching sessions in window:', error);
+                return [];
+              }
+              return (data || []) as ActivitySession[];
+            },
+            createSession: (input) => get().createActivitySession(input),
+            updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
+            deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
+            linkSegmentsToSession: async (segmentIds, sessionId) => {
+              const { error } = await supabase
+                .from('activity_segments')
+                .update({ session_id: sessionId, updated_at: new Date().toISOString() })
+                .eq('user_id', user.id)
+                .in('id', segmentIds);
+              if (error) console.error('Error linking segments to session:', error);
+            },
+            relinkSessionSegments: async (fromSessionId, toSessionId) => {
+              const { error } = await supabase
+                .from('activity_segments')
+                .update({ session_id: toSessionId, updated_at: new Date().toISOString() })
+                .eq('user_id', user.id)
+                .eq('session_id', fromSessionId);
+              if (error) console.error('Error relinking session segments:', error);
+            },
+          },
+        },
+        { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
+      );
+
+      if (!isPreviewActive()) void get().fetchStravaConnection();
+      return result;
+    } catch (error) {
+      console.error('Error running strava sync:', error);
+      return null;
+    }
+  },
+
+  saveTrackedRun: async (run) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { session: sessionInput, segments: segmentInputs } = finishedRunToActivity(run, run.runId);
+
+    const session = await get().createActivitySession(sessionInput);
+    if (!session) return null;
+
+    // segment external_ids are stable per run, so a retried save upserts
+    // rather than duplicating splits
+    const segments = await get().upsertActivitySegments(segmentInputs);
+    if (segments.length > 0) {
+      const { error } = await supabase
+        .from('activity_segments')
+        .update({ session_id: session.id, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .in('id', segments.map((segment) => segment.id));
+      if (error) console.error('Error linking run segments:', error);
+    }
+
+    // cross-source merge: if WHOOP already auto-imported this same run, absorb
+    // it — its segments and strain/HR/kcal move onto the recording we just made
+    if (session.started_at && session.ended_at) {
+      const { data: windowSessions } = await supabase
+        .from('activity_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('started_at', new Date(Date.parse(session.started_at) - 6 * 60 * 60 * 1000).toISOString())
+        .lte('started_at', session.ended_at);
+
+      const absorbable = findAbsorbableWhoopSession(
+        session.started_at,
+        session.ended_at,
+        (windowSessions || []) as ActivitySession[],
+      );
+
+      if (absorbable) {
+        await supabase
+          .from('activity_segments')
+          .update({ session_id: session.id, updated_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .eq('session_id', absorbable.id);
+
+        const enriched = await get().updateActivitySession(session.id, {
+          strain: absorbable.strain,
+          avg_hr: absorbable.avg_hr,
+          max_hr: absorbable.max_hr,
+          energy_kcal: absorbable.energy_kcal,
+        });
+        await get().deleteActivitySession(absorbable.id);
+        return enriched ?? session;
+      }
+    }
+
+    return session;
   },
 
   addSetToWorkout: async (workoutId, exerciseId) => {

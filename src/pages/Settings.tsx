@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Archive, ArrowRight, LogOut, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
+import { formatDistanceToNowStrict } from 'date-fns';
 import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
@@ -51,8 +53,23 @@ function SettingsGroup({
 
 export function Settings() {
   const { profile, signOut, updateDisplayName } = useAuthStore();
-  const { macroTarget, fetchMacroTarget, updateMacroTarget } = useAppStore();
+  const {
+    macroTarget,
+    fetchMacroTarget,
+    updateMacroTarget,
+    whoopConnection,
+    fetchWhoopConnection,
+    connectWhoop,
+    disconnectWhoop,
+    syncWhoop,
+    stravaConnection,
+    fetchStravaConnection,
+    connectStrava,
+    disconnectStrava,
+    syncStrava,
+  } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
   const [macroDraft, setMacroDraft] = useState<{
@@ -82,10 +99,173 @@ export function Settings() {
   const [mealManagerMessage, setMealManagerMessage] = useState<string | null>(null);
   const [mealManagerError, setMealManagerError] = useState<string | null>(null);
   const [showNutritionWizard, setShowNutritionWizard] = useState(false);
+  const [whoopBusy, setWhoopBusy] = useState(false);
+  const [whoopMessage, setWhoopMessage] = useState<string | null>(null);
+  const [whoopError, setWhoopError] = useState<string | null>(null);
+  const [stravaBusy, setStravaBusy] = useState(false);
+  const [stravaMessage, setStravaMessage] = useState<string | null>(null);
+  const [stravaError, setStravaError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMacroTarget();
   }, [fetchMacroTarget]);
+
+  useEffect(() => {
+    void fetchWhoopConnection();
+    void fetchStravaConnection();
+  }, [fetchWhoopConnection, fetchStravaConnection]);
+
+  // landing back from a consent screen: /settings?whoop=… or ?strava=…
+  useEffect(() => {
+    const whoopParam = searchParams.get('whoop');
+    const stravaParam = searchParams.get('strava');
+    if (!whoopParam && !stravaParam) return;
+
+    if (whoopParam === 'connected') {
+      setWhoopMessage('WHOOP connected.');
+      void fetchWhoopConnection();
+    } else if (whoopParam) {
+      setWhoopError('WHOOP connection failed. Try again.');
+    }
+
+    if (stravaParam === 'connected') {
+      setStravaMessage('Strava connected.');
+      void fetchStravaConnection();
+    } else if (stravaParam) {
+      setStravaError('Strava connection failed. Try again.');
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('whoop');
+    next.delete('strava');
+    setSearchParams(next, { replace: true });
+  }, [fetchWhoopConnection, fetchStravaConnection, searchParams, setSearchParams]);
+
+  const clearWhoopFeedback = () => {
+    setWhoopMessage(null);
+    setWhoopError(null);
+  };
+
+  const handleWhoopConnect = async () => {
+    clearWhoopFeedback();
+    setWhoopBusy(true);
+    try {
+      const authorizeUrl = await connectWhoop();
+      if (authorizeUrl) {
+        // production: hand the browser to WHOOP's consent screen
+        window.location.href = authorizeUrl;
+        return;
+      }
+      setWhoopMessage('WHOOP connected.');
+    } catch (error) {
+      console.error('Error connecting WHOOP:', error);
+      setWhoopError('Could not start the WHOOP connection.');
+    } finally {
+      setWhoopBusy(false);
+    }
+  };
+
+  const handleWhoopDisconnect = async () => {
+    clearWhoopFeedback();
+    setWhoopBusy(true);
+    try {
+      await disconnectWhoop();
+      setWhoopMessage('WHOOP disconnected.');
+    } catch (error) {
+      console.error('Error disconnecting WHOOP:', error);
+      setWhoopError('Could not disconnect WHOOP.');
+    } finally {
+      setWhoopBusy(false);
+    }
+  };
+
+  const handleWhoopSyncNow = async () => {
+    clearWhoopFeedback();
+    setWhoopBusy(true);
+    try {
+      const result = await syncWhoop();
+      if (!result) {
+        setWhoopError('Sync unavailable.');
+        return;
+      }
+      const changes = result.created + result.updated;
+      setWhoopMessage(changes > 0 ? `Synced — ${result.created} new, ${result.updated} updated.` : 'Up to date.');
+    } catch (error) {
+      console.error('Error syncing WHOOP:', error);
+      setWhoopError('Sync failed. Try again later.');
+    } finally {
+      setWhoopBusy(false);
+    }
+  };
+
+  const whoopStatusLabel = whoopConnection
+    ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+    : 'Not connected';
+
+  const clearStravaFeedback = () => {
+    setStravaMessage(null);
+    setStravaError(null);
+  };
+
+  const handleStravaConnect = async () => {
+    clearStravaFeedback();
+    setStravaBusy(true);
+    try {
+      const authorizeUrl = await connectStrava();
+      if (authorizeUrl) {
+        // production: hand the browser to Strava's consent screen
+        window.location.href = authorizeUrl;
+        return;
+      }
+      setStravaMessage('Strava connected.');
+    } catch (error) {
+      console.error('Error connecting Strava:', error);
+      setStravaError('Could not start the Strava connection.');
+    } finally {
+      setStravaBusy(false);
+    }
+  };
+
+  const handleStravaDisconnect = async () => {
+    clearStravaFeedback();
+    setStravaBusy(true);
+    try {
+      await disconnectStrava();
+      setStravaMessage('Strava disconnected.');
+    } catch (error) {
+      console.error('Error disconnecting Strava:', error);
+      setStravaError('Could not disconnect Strava.');
+    } finally {
+      setStravaBusy(false);
+    }
+  };
+
+  const handleStravaSyncNow = async () => {
+    clearStravaFeedback();
+    setStravaBusy(true);
+    try {
+      const result = await syncStrava();
+      if (!result) {
+        setStravaError('Sync unavailable.');
+        return;
+      }
+      const changes = result.created + result.updated + result.absorbed;
+      setStravaMessage(
+        changes > 0
+          ? `Synced — ${result.created} new, ${result.updated} updated${result.absorbed > 0 ? `, ${result.absorbed} merged` : ''}.`
+          : 'Up to date.',
+      );
+    } catch (error) {
+      console.error('Error syncing Strava:', error);
+      setStravaError('Sync failed. Try again later.');
+    } finally {
+      setStravaBusy(false);
+    }
+  };
+
+  const stravaStatusLabel = stravaConnection
+    ? `Connected${stravaConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(stravaConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+    : 'Not connected';
 
   const clearMealManagerFeedback = () => {
     setMealManagerMessage(null);
@@ -517,8 +697,57 @@ export function Settings() {
         </div>
       </SettingsGroup>
 
+      {/* ── Connected services ── */}
+      <SettingsGroup label="Connected services" index="05" delay={0.16}>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="t-heading">WHOOP</p>
+            <p className="t-caption mt-1">{whoopStatusLabel}</p>
+          </div>
+          {whoopConnection ? (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" disabled={whoopBusy} onClick={() => { void handleWhoopSyncNow(); }}>
+                Sync now
+              </Button>
+              <Button variant="ghost" size="sm" disabled={whoopBusy} onClick={() => { void handleWhoopDisconnect(); }}>
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <Button variant="secondary" size="sm" disabled={whoopBusy} onClick={() => { void handleWhoopConnect(); }}>
+              Connect
+            </Button>
+          )}
+        </div>
+        {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
+        {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
+
+        <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
+          <div>
+            <p className="t-heading">Strava</p>
+            <p className="t-caption mt-1">{stravaStatusLabel}</p>
+          </div>
+          {stravaConnection ? (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaSyncNow(); }}>
+                Sync now
+              </Button>
+              <Button variant="ghost" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaDisconnect(); }}>
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <Button variant="secondary" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaConnect(); }}>
+              Connect
+            </Button>
+          )}
+        </div>
+        {stravaMessage && <p className="t-caption mt-3">{stravaMessage}</p>}
+        {stravaError && <p className="t-caption mt-3 text-[var(--color-accent)]">{stravaError}</p>}
+      </SettingsGroup>
+
       {/* ── Account ── */}
-      <SettingsGroup label="Session" index="05" delay={0.16}>
+      <SettingsGroup label="Session" index="06" delay={0.2}>
         <Button variant="danger" size="lg" className="w-full" onClick={handleSignOut}>
           <LogOut className="w-4 h-4" strokeWidth={1.75} />
           Sign out
