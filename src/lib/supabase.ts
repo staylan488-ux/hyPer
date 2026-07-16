@@ -435,6 +435,8 @@ export interface Database {
           serving_unit: string
           source: string
           fdc_id: string | null
+          external_source: string | null
+          external_id: string | null
           created_at: string
         }
         Insert: {
@@ -449,6 +451,8 @@ export interface Database {
           serving_unit: string
           source?: string
           fdc_id?: string | null
+          external_source?: string | null
+          external_id?: string | null
           created_at?: string
         }
         Update: {
@@ -463,6 +467,75 @@ export interface Database {
           serving_unit?: string
           source?: string
           fdc_id?: string | null
+          external_source?: string | null
+          external_id?: string | null
+          created_at?: string
+        }
+      }
+      nutrition_groups: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          kind: 'meal' | 'snack'
+          label: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date: string
+          kind: 'meal' | 'snack'
+          label?: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          kind?: 'meal' | 'snack'
+          label?: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      nutrition_import_batches: {
+        Row: {
+          id: string
+          user_id: string
+          source: 'cronometer'
+          file_name: string
+          file_hash: string
+          row_count: number
+          imported_count: number
+          skipped_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source: 'cronometer'
+          file_name: string
+          file_hash: string
+          row_count?: number
+          imported_count?: number
+          skipped_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: 'cronometer'
+          file_name?: string
+          file_hash?: string
+          row_count?: number
+          imported_count?: number
+          skipped_count?: number
           created_at?: string
         }
       }
@@ -474,6 +547,12 @@ export interface Database {
           food_id: string
           servings: number
           meal_type: string
+          logged_at: string | null
+          group_id: string | null
+          sort_order: number
+          source: string
+          external_id: string | null
+          import_batch_id: string | null
           created_at: string
         }
         Insert: {
@@ -483,6 +562,12 @@ export interface Database {
           food_id: string
           servings: number
           meal_type?: string
+          logged_at?: string | null
+          group_id?: string | null
+          sort_order?: number
+          source?: string
+          external_id?: string | null
+          import_batch_id?: string | null
           created_at?: string
         }
         Update: {
@@ -492,6 +577,12 @@ export interface Database {
           food_id?: string
           servings?: number
           meal_type?: string
+          logged_at?: string | null
+          group_id?: string | null
+          sort_order?: number
+          source?: string
+          external_id?: string | null
+          import_batch_id?: string | null
           created_at?: string
         }
       }

@@ -138,8 +138,21 @@ const logSeeds: LogSeed[] = [
   ['f_banana', 1, 'snack', 15, 10],
   ['f_whey', 1, 'snack', 15, 12],
 ];
+export const previewNutritionGroups = [
+  { id: 'ng-breakfast', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'breakfast', sort_order: 0 },
+  { id: 'ng-lunch', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'lunch', sort_order: 1 },
+  { id: 'ng-snack-1', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'snack', label: null, sort_order: 2 },
+].map((group) => ({ ...group, created_at: iso(daysAgo(1)), updated_at: iso(daysAgo(1)) }));
+
+const previewGroupByLegacyMeal: Record<string, string> = {
+  breakfast: 'ng-breakfast',
+  lunch: 'ng-lunch',
+  snack: 'ng-snack-1',
+};
+
 export const previewNutritionLogs = logSeeds.map(([foodId, servings, meal, h, m], i) => ({
   id: `nl${i}`, user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, food_id: foodId, servings, meal_type: meal,
+  group_id: previewGroupByLegacyMeal[meal] ?? null, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
   created_at: iso(at(now, h, m)), logged_at: iso(at(now, h, m)),
 }));
 
@@ -312,6 +325,8 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   macro_targets: [{ ...previewMacroTarget, created_at: iso(daysAgo(40)) }],
   volume_landmarks: previewLandmarks.map((l) => ({ ...l, created_at: iso(daysAgo(40)) })),
   foods: stamp(previewFoods.map((f) => ({ ...f }))),
+  nutrition_groups: previewNutritionGroups.map((group) => ({ ...group })),
+  nutrition_import_batches: [],
   nutrition_logs: previewNutritionLogs.map((l) => ({ ...l })),
   workouts: [
     { id: 'w_current', user_id: PREVIEW_USER_ID, split_day_id: 'd1', date: PREVIEW_TODAY, notes: null, completed: false, completed_at: null, created_at: previewCurrentWorkout.created_at },

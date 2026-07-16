@@ -198,7 +198,35 @@ CREATE TABLE IF NOT EXISTS foods (
   serving_unit TEXT NOT NULL DEFAULT 'serving',
   source TEXT DEFAULT 'custom',
   fdc_id TEXT,
+  external_source TEXT,
+  external_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Day-scoped containers for unlimited meals and snacks
+CREATE TABLE IF NOT EXISTS nutrition_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('meal', 'snack')),
+  label TEXT CHECK (label IS NULL OR label IN ('breakfast', 'lunch', 'dinner')),
+  sort_order INTEGER NOT NULL DEFAULT 0 CHECK (sort_order >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS nutrition_import_batches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  source TEXT NOT NULL CHECK (source IN ('cronometer')),
+  file_name TEXT NOT NULL,
+  file_hash TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+  imported_count INTEGER NOT NULL DEFAULT 0 CHECK (imported_count >= 0),
+  skipped_count INTEGER NOT NULL DEFAULT 0 CHECK (skipped_count >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, source, file_hash)
 );
 
 -- Nutrition Logs
@@ -210,7 +238,14 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
   food_id UUID NOT NULL REFERENCES foods(id),
   servings DECIMAL(10,2) NOT NULL DEFAULT 1,
   meal_type TEXT DEFAULT 'snack',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  group_id UUID,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'manual',
+  external_id TEXT,
+  import_batch_id UUID REFERENCES nutrition_import_batches(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT nutrition_logs_group_owner_fk
+    FOREIGN KEY (group_id, user_id) REFERENCES nutrition_groups(id, user_id)
 );
 
 -- Macro Targets
@@ -253,6 +288,11 @@ CREATE INDEX idx_activity_segments_user_started_at ON activity_segments(user_id,
 CREATE INDEX idx_activity_segments_session ON activity_segments(session_id);
 CREATE INDEX idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
 CREATE INDEX idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
+CREATE INDEX idx_nutrition_groups_user_date ON nutrition_groups(user_id, date, sort_order);
+CREATE UNIQUE INDEX idx_nutrition_groups_named_label ON nutrition_groups(user_id, date, label) WHERE label IS NOT NULL;
+CREATE INDEX idx_nutrition_logs_group ON nutrition_logs(group_id, sort_order);
+CREATE UNIQUE INDEX idx_nutrition_logs_external_identity ON nutrition_logs(user_id, source, external_id) WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_foods_external_identity ON foods(user_id, external_source, external_id) WHERE user_id IS NOT NULL AND external_source IS NOT NULL AND external_id IS NOT NULL;
 CREATE INDEX idx_foods_user_id ON foods(user_id);
 
 -- Plan Schedules (training start-date & weekday mapping, synced across devices)
@@ -287,6 +327,8 @@ ALTER TABLE strava_tokens ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON strava_tokens FROM anon, authenticated;
 ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nutrition_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nutrition_import_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volume_landmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
@@ -382,6 +424,14 @@ CREATE POLICY "Users can view own nutrition logs" ON nutrition_logs FOR SELECT U
 CREATE POLICY "Users can insert own nutrition logs" ON nutrition_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own nutrition logs" ON nutrition_logs FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own nutrition logs" ON nutrition_logs FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own nutrition groups" ON nutrition_groups FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own nutrition groups" ON nutrition_groups FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own nutrition groups" ON nutrition_groups FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own nutrition groups" ON nutrition_groups FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own nutrition imports" ON nutrition_import_batches FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own nutrition imports" ON nutrition_import_batches FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own nutrition imports" ON nutrition_import_batches FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own nutrition imports" ON nutrition_import_batches FOR DELETE USING (auth.uid() = user_id);
 
 -- Macro targets policies
 CREATE POLICY "Users can view own macro targets" ON macro_targets FOR SELECT USING (auth.uid() = user_id);

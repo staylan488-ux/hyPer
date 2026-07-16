@@ -243,8 +243,10 @@ export interface Food {
   fat: number;
   serving_size: number;
   serving_unit: string;
-  source: 'custom' | 'usda';
+  source: 'custom' | 'usda' | 'saved_meal' | 'manual_entry' | 'cronometer' | 'photo';
   fdc_id: string | null;
+  external_source?: string | null;
+  external_id?: string | null;
   serving_label?: string; // display-only, e.g. "1 large"; never written to the DB
 }
 
@@ -257,6 +259,34 @@ export interface NutritionLog {
   food?: Food;
   servings: number;
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  group_id?: string | null;
+  sort_order?: number;
+  source?: 'manual' | 'photo_openai' | 'photo_anthropic' | 'cronometer_csv' | 'barcode';
+  external_id?: string | null;
+  import_batch_id?: string | null;
+}
+
+export interface NutritionGroup {
+  id: string;
+  user_id: string;
+  date: string;
+  kind: 'meal' | 'snack';
+  label: 'breakfast' | 'lunch' | 'dinner' | null;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface NutritionImportBatch {
+  id: string;
+  user_id: string;
+  source: 'cronometer';
+  file_name: string;
+  file_hash: string;
+  row_count: number;
+  imported_count: number;
+  skipped_count: number;
+  created_at: string;
 }
 
 export interface MacroTarget {

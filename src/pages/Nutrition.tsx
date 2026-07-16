@@ -1,12 +1,16 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus, UtensilsCrossed, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { CalendarDays, ChevronLeft, ChevronRight, FileUp, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Button, EmptyState, Modal, RailStrip, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
-import { getLogDate, getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { CronometerImporter } from '@/components/nutrition/CronometerImporter';
+import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
+import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import type { NutritionGroup } from '@/types';
 import {
   addDays,
   addMonths,
@@ -30,6 +34,11 @@ interface NutritionLogEntry {
   food_id: string;
   servings: number;
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  group_id?: string | null;
+  sort_order?: number;
+  source?: string;
+  external_id?: string | null;
+  import_batch_id?: string | null;
   food: {
     id: string;
     name: string;
@@ -65,6 +74,7 @@ export function Nutrition() {
   const { macroTarget, fetchMacroTarget } = useAppStore();
   const [showLogger, setShowLogger] = useState(false);
   const [monthLogs, setMonthLogs] = useState<NutritionLogEntry[]>([]);
+  const [monthGroups, setMonthGroups] = useState<NutritionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [deletedId, setDeletedId] = useState<string | null>(null);
@@ -73,6 +83,8 @@ export function Nutrition() {
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
+  const [showGroupSheet, setShowGroupSheet] = useState(false);
+  const [showCronometerImport, setShowCronometerImport] = useState(false);
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
     setLoading(true);
@@ -83,12 +95,26 @@ export function Nutrition() {
       const from = format(startOfMonth(month), 'yyyy-MM-dd');
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
 
-      const { data: logs, error: logsError } = await supabase
-        .from('nutrition_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('date', from)
-        .lte('date', to);
+      const [logsResult, groupsResult] = await Promise.all([
+        supabase
+          .from('nutrition_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', from)
+          .lte('date', to),
+        supabase
+          .from('nutrition_groups')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', from)
+          .lte('date', to)
+          .order('sort_order', { ascending: true }),
+      ]);
+      const { data: logs, error: logsError } = logsResult;
+      const { data: groups, error: groupsError } = groupsResult;
+
+      if (groupsError) console.error('Error fetching nutrition groups:', groupsError);
+      setMonthGroups((groups || []) as NutritionGroup[]);
 
       if (logsError) {
         console.error('Error fetching logs:', logsError);
@@ -183,6 +209,11 @@ export function Nutrition() {
       .sort((a, b) => getLogTimestamp(a) - getLogTimestamp(b));
   }, [monthLogs, selectedDateKey]);
 
+  const selectedDayGroups = useMemo(
+    () => sortNutritionGroups(monthGroups.filter((group) => group.date === selectedDateKey)),
+    [monthGroups, selectedDateKey],
+  );
+
   const dayTotals = useMemo(
     () =>
       selectedDayLogs.reduce(
@@ -208,9 +239,65 @@ export function Nutrition() {
     }, {});
   }, [monthLogs]);
 
-  const mealTagLabel = (meal?: string | null) => {
-    if (!meal) return null;
-    return meal.charAt(0).toUpperCase() + meal.slice(1);
+  const createGroup = async (kind: 'meal' | 'snack', label: NutritionGroup['label']) => {
+    if (label && selectedDayGroups.some((group) => group.label === label)) {
+      setShowGroupSheet(false);
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase.from('nutrition_groups').insert({
+      user_id: user.id,
+      date: selectedDateKey,
+      kind,
+      label,
+      sort_order: selectedDayGroups.length,
+    }).select('*').single();
+
+    if (error || !data) {
+      console.error('Error creating nutrition group:', error);
+      return;
+    }
+
+    setMonthGroups((current) => [...current, data as NutritionGroup]);
+    setShowGroupSheet(false);
+  };
+
+  const moveEntry = async (logId: string, groupId: string | null) => {
+    const group = groupId ? selectedDayGroups.find((candidate) => candidate.id === groupId) || null : null;
+    const nextSortOrder = selectedDayLogs.filter((log) => (log.group_id || null) === groupId).length;
+    const patch = {
+      group_id: groupId,
+      sort_order: nextSortOrder,
+      meal_type: legacyMealTypeForGroup(group),
+    };
+    const { error } = await supabase.from('nutrition_logs').update(patch).eq('id', logId);
+    if (error) {
+      console.error('Error moving nutrition entry:', error);
+      return;
+    }
+    setMonthLogs((current) => current.map((log) => log.id === logId ? { ...log, ...patch } : log));
+  };
+
+  const deleteGroup = async (group: NutritionGroup) => {
+    const name = nutritionGroupLabel(group, selectedDayGroups);
+    if (!confirm(`Delete ${name}? Its foods will move to Unassigned.`)) return;
+    const { error: moveError } = await supabase.from('nutrition_logs')
+      .update({ group_id: null, meal_type: null })
+      .eq('user_id', group.user_id)
+      .eq('group_id', group.id);
+    if (moveError) {
+      console.error('Error unassigning group entries:', moveError);
+      return;
+    }
+    const { error } = await supabase.from('nutrition_groups').delete().eq('id', group.id).eq('user_id', group.user_id);
+    if (error) {
+      console.error('Error deleting nutrition group:', error);
+      return;
+    }
+    setMonthGroups((current) => current.filter((candidate) => candidate.id !== group.id));
+    setMonthLogs((current) => current.map((log) => log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log));
   };
 
   const targetKcal = macroTarget?.calories || 2000;
@@ -341,6 +428,16 @@ export function Nutrition() {
           <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
           Log food
         </Button>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <Button variant="secondary" onClick={() => setShowGroupSheet(true)}>
+            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
+            Add meal
+          </Button>
+          <Button variant="secondary" onClick={() => setShowCronometerImport(true)}>
+            <FileUp className="w-4 h-4" strokeWidth={1.5} />
+            Cronometer
+          </Button>
+        </div>
       </motion.div>
 
       {/* ── Week strip + month jump ── */}
@@ -415,7 +512,7 @@ export function Nutrition() {
         </div>
       </motion.section>
 
-      {/* ── Timeline ── */}
+      {/* ── Unified food inbox + meal groups ── */}
       <motion.section
         className="mt-10 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0, y: 12 }}
@@ -423,7 +520,7 @@ export function Nutrition() {
         transition={{ ...springs.smooth, delay: 0.2 }}
       >
         <div className="flex items-baseline justify-between mb-4">
-          <span className="t-label">Timeline</span>
+          <span className="t-label">Meals</span>
           {!loading && selectedDayLogs.length > 0 && (
             <span className="t-data-sm text-[var(--color-muted)]">
               {selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}
@@ -444,7 +541,7 @@ export function Nutrition() {
               </div>
             ))}
           </div>
-        ) : selectedDayLogs.length === 0 ? (
+        ) : selectedDayLogs.length === 0 && selectedDayGroups.length === 0 ? (
           <EmptyState
             icon={UtensilsCrossed}
             title="Nothing logged yet"
@@ -463,79 +560,20 @@ export function Nutrition() {
             }
           />
         ) : (
-          <ul>
-            <AnimatePresence>
-              {selectedDayLogs.map((log, index) => {
-                const tagLabel = mealTagLabel(log.meal_type);
-
-                return (
-                  <motion.li
-                    key={log.id}
-                    className="flex items-baseline gap-4 py-4 border-t border-[var(--color-border)]"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{
-                      opacity: deletedId === log.id ? 0 : 1,
-                      x: deletedId === log.id ? 60 : 0,
-                      y: 0,
-                      height: deletedId === log.id ? 0 : 'auto',
-                    }}
-                    exit={{ opacity: 0, x: 60, height: 0 }}
-                    transition={{
-                      ...springs.smooth,
-                      delay: deletedId === log.id ? 0 : Math.min(index * 0.03, 0.25),
-                    }}
-                  >
-                    {/* time */}
-                    <span className="t-data-sm text-[var(--color-muted)] w-14 shrink-0 pt-0.5">
-                      {format(getLogDate(log), 'h:mm a')}
-                    </span>
-
-                    {/* food */}
-                    <div className="flex-1 min-w-0">
-                      <p className="t-body font-medium text-[var(--color-text)] truncate">{log.food?.name || 'Unknown Food'}</p>
-                      <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
-                        {log.servings} serving{log.servings !== 1 ? 's' : ''}
-                        {tagLabel && <span className="text-[var(--color-text-dim)]"> · {tagLabel}</span>}
-                        {' · '}
-                        {Math.round((log.food?.protein || 0) * log.servings)}g P
-                      </p>
-                    </div>
-
-                    {/* calories — serif figure */}
-                    <span className="flex items-baseline gap-1 shrink-0">
-                      <span className="number-medium text-[var(--color-text)]">
-                        {Math.round((log.food?.calories || 0) * log.servings)}
-                      </span>
-                      <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
-                    </span>
-
-                    {/* actions */}
-                    <div className="flex shrink-0 -mr-2 self-center">
-                      <motion.button
-                        className="p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                        onClick={() => {
-                          setEditingEntry(log);
-                          setShowLogger(true);
-                        }}
-                        aria-label="Edit entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      </motion.button>
-                      <motion.button
-                        className="p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-                        onClick={() => handleDeleteEntry(log.id)}
-                        aria-label="Remove entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <X className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      </motion.button>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
-          </ul>
+          <NutritionGroupLedger
+            logs={selectedDayLogs}
+            groups={selectedDayGroups}
+            deletedId={deletedId}
+            onEdit={(entry) => {
+              const fullEntry = selectedDayLogs.find((candidate) => candidate.id === entry.id);
+              if (!fullEntry) return;
+              setEditingEntry(fullEntry);
+              setShowLogger(true);
+            }}
+            onDelete={(id) => void handleDeleteEntry(id)}
+            onMove={(id, groupId) => void moveEntry(id, groupId)}
+            onDeleteGroup={(group) => void deleteGroup(group)}
+          />
         )}
       </motion.section>
 
@@ -604,6 +642,39 @@ export function Nutrition() {
         </div>
       </Modal>
 
+      <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
+        <div className="space-y-px pb-2">
+          {[
+            { kind: 'meal' as const, label: null, title: 'Numbered meal', description: 'Meal 1, Meal 2, Meal 3…' },
+            { kind: 'meal' as const, label: 'breakfast' as const, title: 'Breakfast', description: 'Named meal' },
+            { kind: 'meal' as const, label: 'lunch' as const, title: 'Lunch', description: 'Named meal' },
+            { kind: 'meal' as const, label: 'dinner' as const, title: 'Dinner', description: 'Named meal' },
+            { kind: 'snack' as const, label: null, title: 'Numbered snack', description: 'Snack 1, Snack 2, Snack 3…' },
+          ].map((option) => {
+            const alreadyExists = option.label !== null && selectedDayGroups.some((group) => group.label === option.label);
+            return (
+              <button
+                key={`${option.kind}-${option.label || 'numbered'}`}
+                type="button"
+                disabled={alreadyExists}
+                className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border)] text-left disabled:opacity-40"
+                onClick={() => void createGroup(option.kind, option.label)}
+              >
+                <span>
+                  <span className="t-heading block">{option.title}</span>
+                  <span className="t-caption block mt-0.5">{option.description}</span>
+                </span>
+                <span className="t-data-sm text-[var(--color-muted)]">{alreadyExists ? 'Added' : 'Add'}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
+
+      <Modal isOpen={showCronometerImport} onClose={() => setShowCronometerImport(false)} title="Import Cronometer">
+        <CronometerImporter onImported={() => void fetchMonthLogs(selectedMonth)} />
+      </Modal>
+
       {/* Logger sheet */}
       <Modal
         isOpen={showLogger}
@@ -616,6 +687,7 @@ export function Nutrition() {
         <FoodLogger
           selectedDate={selectedDate}
           initialEntry={editingEntry}
+          groups={selectedDayGroups}
           onComplete={handleLogComplete}
         />
       </Modal>

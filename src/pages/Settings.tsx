@@ -3,7 +3,7 @@ import { Archive, ArrowRight, LogOut, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSearchParams } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
+import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
 import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
 import { tapHaptic } from '@/lib/haptics';
+import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 
 interface SavedMeal {
   id: string;
@@ -105,6 +106,9 @@ export function Settings() {
   const [stravaBusy, setStravaBusy] = useState(false);
   const [stravaMessage, setStravaMessage] = useState<string | null>(null);
   const [stravaError, setStravaError] = useState<string | null>(null);
+  const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
+  const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
+  const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMacroTarget();
@@ -114,6 +118,17 @@ export function Settings() {
     void fetchWhoopConnection();
     void fetchStravaConnection();
   }, [fetchWhoopConnection, fetchStravaConnection]);
+
+  const handlePhotoWorkerSave = async () => {
+    savePhotoWorkerSettings(photoWorkerDraft);
+    setPhotoWorkerBusy(true);
+    setPhotoWorkerMessage(null);
+    const status = await checkPhotoWorker(photoWorkerDraft);
+    setPhotoWorkerMessage(status.ok
+      ? `Worker connected. Signed in: ${status.authenticatedProviders.join(', ') || 'none'}. Installed: ${status.providers.join(', ') || 'none'}.`
+      : `Saved, but the worker is offline: ${status.error || 'connection failed'}`);
+    setPhotoWorkerBusy(false);
+  };
 
   // landing back from a consent screen: /settings?whoop=… or ?strava=…
   useEffect(() => {
@@ -697,8 +712,37 @@ export function Settings() {
         </div>
       </SettingsGroup>
 
+      {/* ── Local photo analysis ── */}
+      <SettingsGroup label="Photo analysis" index="05" delay={0.14}>
+        <p className="t-heading">Private Mac worker</p>
+        <p className="t-caption mt-1 mb-5">
+          Uses your local Codex or Claude login. Credentials never enter hyPer. On a phone, enter the worker’s Tailscale HTTPS URL.
+        </p>
+        <div className="space-y-4">
+          <Input
+            label="Worker URL"
+            value={photoWorkerDraft.url}
+            onChange={(event) => setPhotoWorkerDraft((current) => ({ ...current, url: event.target.value }))}
+            placeholder="http://127.0.0.1:8788"
+          />
+          <SelectSheet
+            title="Photo model"
+            value={photoWorkerDraft.provider}
+            onChange={(provider) => setPhotoWorkerDraft((current) => ({ ...current, provider }))}
+            options={[
+              { value: 'openai', label: 'OpenAI Codex', description: 'Uses your local ChatGPT/Codex subscription login.' },
+              { value: 'anthropic', label: 'Anthropic Claude', description: 'Local experimental connector; never use consumer credentials for other users.' },
+            ]}
+          />
+          <Button variant="secondary" className="w-full" loading={photoWorkerBusy} onClick={() => void handlePhotoWorkerSave()}>
+            Save and test worker
+          </Button>
+          {photoWorkerMessage && <p className="t-caption">{photoWorkerMessage}</p>}
+        </div>
+      </SettingsGroup>
+
       {/* ── Connected services ── */}
-      <SettingsGroup label="Connected services" index="05" delay={0.16}>
+      <SettingsGroup label="Connected services" index="06" delay={0.17}>
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="t-heading">WHOOP</p>
@@ -747,7 +791,7 @@ export function Settings() {
       </SettingsGroup>
 
       {/* ── Account ── */}
-      <SettingsGroup label="Session" index="06" delay={0.2}>
+      <SettingsGroup label="Session" index="07" delay={0.2}>
         <Button variant="danger" size="lg" className="w-full" onClick={handleSignOut}>
           <LogOut className="w-4 h-4" strokeWidth={1.75} />
           Sign out

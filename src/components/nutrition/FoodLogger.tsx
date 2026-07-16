@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
-import type { Food } from '@/types';
+import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
   buildLoggedAt,
@@ -19,6 +18,9 @@ import {
   type MeasurementUnit,
 } from './foodLoggerUtils';
 import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from './usdaSearch';
+import { analyzeFoodPhoto, getPhotoWorkerSettings, type PhotoAnalysisProvider } from '@/lib/photoAnalysis';
+import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import { isPreviewActive } from '@/preview/flag';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
@@ -36,19 +38,19 @@ function formatMeasurementAmount(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }
 
-interface PhotoDraftResult {
-  food: {
-    name: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    serving_size: number;
-    serving_unit: string;
-    suggested_servings?: number;
-  };
+interface PhotoReviewItem {
+  id: string;
+  name: string;
+  searchQuery: string;
+  amountGrams: number;
+  basisGrams: number;
+  basisCalories: number;
+  basisProtein: number;
+  basisCarbs: number;
+  basisFat: number;
   confidence: number;
-  reasoning?: string;
+  notes: string;
+  groundedFood: Food | null;
 }
 
 interface SelectedFoodMeta {
@@ -57,14 +59,6 @@ interface SelectedFoodMeta {
   reasoning?: string;
 }
 
-const MEAL_OPTIONS = [
-  { value: '', label: 'No tag' },
-  { value: 'breakfast', label: 'Breakfast' },
-  { value: 'lunch', label: 'Lunch' },
-  { value: 'dinner', label: 'Dinner' },
-  { value: 'snack', label: 'Snack' },
-] as const;
-
 interface EditableNutritionEntry {
   id: string;
   date: string;
@@ -72,6 +66,8 @@ interface EditableNutritionEntry {
   food_id: string;
   servings: number;
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  group_id?: string | null;
+  source?: string;
   food?: {
     id: string;
     name: string;
@@ -88,9 +84,10 @@ interface FoodLoggerProps {
   selectedDate: Date;
   onComplete: () => void;
   initialEntry?: EditableNutritionEntry | null;
+  groups?: NutritionGroup[];
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [] }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -129,7 +126,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   const [timeValue, setTimeValue] = useState(() =>
     toLocalTimeInput(initialEntry?.logged_at || null, isToday(initialLogDate) ? new Date() : initialLogDate)
   );
-  const [mealType, setMealType] = useState<string>(initialEntry?.meal_type || '');
+  const orderedGroups = useMemo(() => sortNutritionGroups(groups), [groups]);
+  const initialGroupId = initialEntry?.group_id
+    || orderedGroups.find((group) => group.label === initialEntry?.meal_type)?.id
+    || '';
+  const [groupId, setGroupId] = useState<string>(initialGroupId);
   const [selectedFoodMeta, setSelectedFoodMeta] = useState<SelectedFoodMeta | null>(null);
 
   const loggerMode = initialEntry ? 'edit' : 'create';
@@ -154,6 +155,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
+  const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
+  const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>('openai');
+  const [photoSummary, setPhotoSummary] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
@@ -397,6 +401,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }
     setPhotoPreview(null);
     setPhotoHint('');
+    setPhotoItems([]);
+    setPhotoSummary('');
   };
 
   const handleRetakePhoto = () => {
@@ -406,6 +412,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
       URL.revokeObjectURL(photoPreview);
     }
     setPhotoPreview(null);
+    setPhotoItems([]);
+    setPhotoSummary('');
     photoInputRef.current?.click();
   };
 
@@ -470,41 +478,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
       image.src = objectUrl;
     });
 
-  const parseFunctionError = async (error: unknown) => {
-    const maybeContext = (error as { context?: { clone?: () => Response; json?: () => Promise<unknown>; text?: () => Promise<string> } })?.context;
-
-    if (error instanceof FunctionsHttpError || maybeContext) {
-      try {
-        const response = typeof maybeContext?.clone === 'function'
-          ? maybeContext.clone()
-          : maybeContext;
-
-        if (response?.json) {
-          const details = await response.json() as { error?: string; message?: string };
-          const serverMessage = details?.error || details?.message;
-          if (typeof serverMessage === 'string' && serverMessage.trim()) {
-            return serverMessage;
-          }
-        }
-
-        if (response?.text) {
-          const text = await response.text();
-          if (text.trim()) {
-            return text;
-          }
-        }
-      } catch {
-        // Fall through to generic error handling below.
-      }
-    }
-
-    if (error instanceof Error && error.message.includes('non-2xx')) {
-      return 'Photo analysis failed on the server. Open Supabase dashboard -> Edge Functions -> process-food-photo -> latest failed invocation.';
-    }
-
-    return error instanceof Error ? error.message : 'Could not analyze photo.';
-  };
-
   const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
     setPhotoError(null);
@@ -534,6 +507,25 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     setPhotoPreview(URL.createObjectURL(file));
   };
 
+  const handleUsePreviewPhoto = () => {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480">
+        <rect width="720" height="480" fill="#d8d0c0"/>
+        <ellipse cx="360" cy="250" rx="260" ry="175" fill="#f6f1e7" stroke="#786f62" stroke-width="8"/>
+        <path d="M180 235c35-75 130-85 170-20-18 85-105 125-170 70z" fill="#b77747"/>
+        <path d="M375 160c80-35 155 15 150 95-75 40-150 20-170-45z" fill="#ece3cf"/>
+        <circle cx="420" cy="315" r="48" fill="#4f7048"/>
+        <circle cx="485" cy="325" r="42" fill="#5f8156"/>
+        <circle cx="455" cy="275" r="38" fill="#55784e"/>
+      </svg>`;
+    const file = new File([svg], 'preview-meal.svg', { type: 'image/svg+xml' });
+
+    setPhotoError(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
   const handleAnalyzePhoto = async () => {
     if (!photoFile || saving) return;
 
@@ -549,57 +541,57 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
         throw new Error('Your session expired. Please sign out and sign back in.');
       }
 
-      const { data, error } = await supabase.functions.invoke('process-food-photo', {
-        body: {
-          imageBase64: preparedImage.imageBase64,
-          mimeType: preparedImage.mimeType,
-          hint: photoHint.trim() || null,
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+      const settings = getPhotoWorkerSettings();
+      const result = await analyzeFoodPhoto({
+        imageBase64: preparedImage.imageBase64,
+        mimeType: preparedImage.mimeType,
+        hint: photoHint,
+        accessToken,
+        settings,
       });
 
-      if (error) {
-        const parsedErrorMessage = await parseFunctionError(error);
-        throw new Error(parsedErrorMessage);
-      }
+      const apiKey = import.meta.env.VITE_USDA_API_KEY;
+      const grounded = await Promise.all(result.items.map(async (item, index): Promise<PhotoReviewItem> => {
+        const matches = apiKey ? await searchUsdaFoods(item.search_query, apiKey) : [];
+        const match = matches.find((food) => food.serving_unit.toLowerCase() === 'g') || null;
+        if (match) {
+          return {
+            id: `photo-${Date.now()}-${index}`,
+            name: item.name,
+            searchQuery: item.search_query,
+            amountGrams: item.estimated_grams,
+            basisGrams: Math.max(1, match.serving_size || 100),
+            basisCalories: match.calories,
+            basisProtein: match.protein,
+            basisCarbs: match.carbs,
+            basisFat: match.fat,
+            confidence: item.confidence,
+            notes: item.notes,
+            groundedFood: match,
+          };
+        }
 
-      const draft = data as PhotoDraftResult | null;
+        return {
+          id: `photo-${Date.now()}-${index}`,
+          name: item.name,
+          searchQuery: item.search_query,
+          amountGrams: item.estimated_grams,
+          basisGrams: item.estimated_grams,
+          basisCalories: item.calories,
+          basisProtein: item.protein_g,
+          basisCarbs: item.carbs_g,
+          basisFat: item.fat_g,
+          confidence: item.confidence,
+          notes: item.notes,
+          groundedFood: null,
+        };
+      }));
 
-      if (!draft?.food?.name) {
-        throw new Error('Could not identify food from this image.');
-      }
-
-      const draftFood: Food = {
-        id: `photo-${Date.now()}`,
-        user_id: null,
-        name: draft.food.name,
-        calories: Math.max(0, Number(draft.food.calories) || 0),
-        protein: Math.max(0, Number(draft.food.protein) || 0),
-        carbs: Math.max(0, Number(draft.food.carbs) || 0),
-        fat: Math.max(0, Number(draft.food.fat) || 0),
-        serving_size: Math.max(1, Number(draft.food.serving_size) || 100),
-        serving_unit: draft.food.serving_unit || 'serving',
-        source: 'custom',
-        fdc_id: null,
-      };
-
-      setSelectedFood(draftFood);
-      setSelectedFoodMeta({
-        source: 'photo',
-        confidence: Math.max(0, Math.min(1, Number(draft.confidence) || 0)),
-        reasoning: draft.reasoning,
-      });
-
-      const suggestedServings = Math.max(0.25, Number(draft.food.suggested_servings) || 1);
-      setServings(String(suggestedServings));
-      setMeasurementUnit('serving');
-      setMeasurementAmount(formatMeasurementAmount(suggestedServings));
-      resetPhotoState();
+      setPhotoProvider(result.provider);
+      setPhotoSummary(result.summary);
+      setPhotoItems(grounded);
     } catch (analysisError) {
-      const message = await parseFunctionError(analysisError);
-      setPhotoError(message);
+      setPhotoError(analysisError instanceof Error ? analysisError.message : 'Could not analyze photo.');
     } finally {
       setPhotoAnalyzing(false);
     }
@@ -722,31 +714,40 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     return foodId;
   };
 
-  const saveNutritionEntry = async (foodId: string, servingsCount: number) => {
+  const saveNutritionEntry = async (
+    foodId: string,
+    servingsCount: number,
+    source = initialEntry?.source || 'manual',
+    shouldComplete = true,
+  ): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       console.error('No user found');
-      return;
+      return false;
     }
 
     const loggedAt = buildLoggedAt(entryDate, timeValue);
     const day = format(entryDate, 'yyyy-MM-dd');
+    const selectedGroup = orderedGroups.find((group) => group.id === groupId) || null;
 
     const fullPayload = {
       food_id: foodId,
       servings: servingsCount,
-      meal_type: mealType || null,
+      meal_type: legacyMealTypeForGroup(selectedGroup) || initialEntry?.meal_type || null,
+      group_id: groupId || null,
+      source,
       date: day,
       logged_at: loggedAt,
     };
 
-    const mealTypeFallbackPayload = {
+    const legacyFullPayload = {
       ...fullPayload,
-      meal_type: undefined,
+      group_id: undefined,
+      source: undefined,
     };
 
     const loggedAtFallbackPayload = {
-      ...fullPayload,
+      ...legacyFullPayload,
       logged_at: undefined,
       created_at: loggedAt,
     };
@@ -757,14 +758,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     };
 
     const mealAndLoggedNoCreatedPayload = {
-      ...fullPayload,
+      ...legacyFullPayload,
       logged_at: undefined,
       meal_type: undefined,
     };
 
     const payloadAttempts = [
       fullPayload,
-      mealTypeFallbackPayload,
+      legacyFullPayload,
       loggedAtFallbackPayload,
       mealAndLoggedFallbackPayload,
       mealAndLoggedNoCreatedPayload,
@@ -785,18 +786,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
           .eq('user_id', user.id);
 
         if (!error) {
-          onComplete();
-          return;
+          if (shouldComplete) onComplete();
+          return true;
         }
 
         lastError = error;
         const shouldRetry =
           shouldDropColumn(error, 'logged_at')
           || shouldDropColumn(error, 'meal_type')
-          || shouldDropColumn(error, 'created_at');
+          || shouldDropColumn(error, 'created_at')
+          || shouldDropColumn(error, 'group_id')
+          || shouldDropColumn(error, 'source');
         if (!shouldRetry) {
           console.error('Error updating entry:', error);
-          return;
+          return false;
         }
       } else {
         const { error } = await supabase
@@ -804,23 +807,26 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
           .insert({ user_id: user.id, ...cleanPayload });
 
         if (!error) {
-          onComplete();
-          return;
+          if (shouldComplete) onComplete();
+          return true;
         }
 
         lastError = error;
         const shouldRetry =
           shouldDropColumn(error, 'logged_at')
           || shouldDropColumn(error, 'meal_type')
-          || shouldDropColumn(error, 'created_at');
+          || shouldDropColumn(error, 'created_at')
+          || shouldDropColumn(error, 'group_id')
+          || shouldDropColumn(error, 'source');
         if (!shouldRetry) {
           console.error('Error logging food:', error);
-          return;
+          return false;
         }
       }
     }
 
     console.error('Error saving nutrition entry after retries:', lastError);
+    return false;
   };
 
   const handleSaveFromSelectedFood = async (food: Food, servingsCount: number) => {
@@ -831,6 +837,59 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
       await saveNutritionEntry(foodId, servingsCount);
     } catch (error) {
       console.error('Error saving nutrition entry:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const photoItemTotals = (item: PhotoReviewItem) => {
+    const factor = item.amountGrams / Math.max(1, item.basisGrams);
+    return {
+      calories: Math.round(item.basisCalories * factor * 10) / 10,
+      protein: Math.round(item.basisProtein * factor * 10) / 10,
+      carbs: Math.round(item.basisCarbs * factor * 10) / 10,
+      fat: Math.round(item.basisFat * factor * 10) / 10,
+    };
+  };
+
+  const handleSavePhotoItems = async () => {
+    if (photoItems.length === 0 || saving) return;
+    if (photoItems.some((item) => !item.name.trim() || !Number.isFinite(item.amountGrams) || item.amountGrams <= 0)) {
+      setPhotoError('Every photo item needs a name and an amount greater than zero.');
+      return;
+    }
+
+    setSaving(true);
+    setPhotoError(null);
+    try {
+      const logSource = photoProvider === 'anthropic' ? 'photo_anthropic' : 'photo_openai';
+      for (const item of photoItems) {
+        const totals = photoItemTotals(item);
+        const food: Food = item.groundedFood || {
+          id: `photo-${item.id}`,
+          user_id: null,
+          name: item.name.trim(),
+          calories: totals.calories,
+          protein: totals.protein,
+          carbs: totals.carbs,
+          fat: totals.fat,
+          serving_size: item.amountGrams,
+          serving_unit: 'g',
+          source: 'custom',
+          fdc_id: null,
+        };
+        const foodId = await upsertFoodIfNeeded(food);
+        if (!foodId) throw new Error(`Could not save ${item.name}.`);
+        const servingsCount = item.groundedFood
+          ? item.amountGrams / Math.max(1, item.basisGrams)
+          : 1;
+        const saved = await saveNutritionEntry(foodId, servingsCount, logSource, false);
+        if (!saved) throw new Error(`Could not log ${item.name}.`);
+      }
+      resetPhotoState();
+      onComplete();
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Could not save the photo items.');
     } finally {
       setSaving(false);
     }
@@ -961,20 +1020,105 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
     }
   };
 
-  /* ── Shared "when" row: date · time · meal tag ── */
+  /* ── Shared "when" row: date · time · destination ── */
   const whenRow = (
     <div className="grid grid-cols-2 gap-3">
       <DateField value={entryDate} onChange={setEntryDate} max={new Date()} />
       <TimeField value={timeValue} onChange={setTimeValue} />
       <SelectSheet
         className="col-span-2"
-        title="Meal tag"
-        value={mealType}
-        onChange={(value) => setMealType(value)}
-        options={MEAL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+        title="Add to"
+        value={groupId}
+        onChange={setGroupId}
+        options={[
+          { value: '', label: 'Unassigned' },
+          ...orderedGroups.map((group) => ({ value: group.id, label: nutritionGroupLabel(group, orderedGroups) })),
+        ]}
       />
     </div>
   );
+
+  if (photoItems.length > 0) {
+    const totalCalories = Math.round(photoItems.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
+    return (
+      <div className="space-y-7 pt-1 pb-2">
+        <div>
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="t-label flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Photo review</span>
+            <span className="t-data-sm text-[var(--color-muted)]">{photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}</span>
+          </div>
+          <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-text)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
+          {photoSummary && <p className="t-caption mt-4">{photoSummary}</p>}
+          <p className="t-caption mt-2">Review portions and remove anything you did not eat. USDA matches calculate nutrition where available.</p>
+        </div>
+
+        <div>
+          {photoItems.map((item, index) => {
+            const totals = photoItemTotals(item);
+            return (
+              <div key={item.id} className="py-5 border-t border-[var(--color-border)]">
+                <div className="flex items-start gap-3">
+                  <span className="t-data-sm text-[var(--color-muted)] pt-3">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="flex-1 min-w-0 grid grid-cols-[1fr_6rem] gap-3">
+                    <Input
+                      label="Food"
+                      value={item.name}
+                      onChange={(event) => setPhotoItems((current) => current.map((candidate) => candidate.id === item.id
+                        ? { ...candidate, name: event.target.value, groundedFood: null }
+                        : candidate))}
+                    />
+                    <Input
+                      label="Grams"
+                      type="number"
+                      inputMode="decimal"
+                      min="1"
+                      value={formatMeasurementAmount(item.amountGrams)}
+                      onChange={(event) => setPhotoItems((current) => current.map((candidate) => candidate.id === item.id
+                        ? { ...candidate, amountGrams: Math.max(0, Number(event.target.value)) }
+                        : candidate))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="pressable p-2 mt-6 text-[var(--color-muted)] hover:text-[var(--color-accent)]"
+                    onClick={() => setPhotoItems((current) => current.filter((candidate) => candidate.id !== item.id))}
+                    aria-label={`Remove ${item.name}`}
+                  >
+                    <X className="w-4 h-4" strokeWidth={1.5} />
+                  </button>
+                </div>
+                <div className="ml-8 mt-3 flex items-center justify-between gap-3">
+                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                    {Math.round(totals.calories)} kcal · P {Math.round(totals.protein)} · C {Math.round(totals.carbs)} · F {Math.round(totals.fat)}
+                  </span>
+                  <span className="t-label-sm text-[var(--color-muted)]">{item.groundedFood ? 'USDA' : `${Math.round(item.confidence * 100)}% estimate`}</span>
+                </div>
+                {item.notes && <p className="t-caption ml-8 mt-2">{item.notes}</p>}
+              </div>
+            );
+          })}
+        </div>
+
+        {photoError && <p className="t-caption text-[var(--color-accent)]">{photoError}</p>}
+        {whenRow}
+
+        <div className="border-l-2 border-[var(--color-accent)] pl-5">
+          <span className="t-label block mb-2">Plate total</span>
+          <div className="flex items-baseline gap-2">
+            <span className="number-large text-[var(--color-text)]">{totalCalories}</span>
+            <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">kcal</span>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <Button variant="ghost" className="flex-1" disabled={saving} onClick={resetPhotoState}>Retake</Button>
+          <Button className="flex-[1.6]" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
+            Log {photoItems.length} item{photoItems.length === 1 ? '' : 's'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   /* ═══════════ Review & confirm stage ═══════════ */
 
@@ -1391,17 +1535,24 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null }: Fo
           />
 
           {!photoPreview ? (
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-12 flex flex-col items-center gap-3"
-            >
-              <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
-                <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
-              </span>
-              <span className="t-heading">Snap your plate</span>
-              <span className="t-caption">Camera or photo library</span>
-            </button>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-12 flex flex-col items-center gap-3"
+              >
+                <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
+                  <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
+                </span>
+                <span className="t-heading">Snap your plate</span>
+                <span className="t-caption">Camera or photo library</span>
+              </button>
+              {isPreviewActive() && (
+                <Button variant="secondary" className="w-full" onClick={handleUsePreviewPhoto}>
+                  Use preview plate
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="relative overflow-hidden hairline-strong">
               <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover grayscale-filter" />

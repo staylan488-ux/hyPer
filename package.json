@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "evidence:import": "node scripts/import-evidence.mjs",
+    "photo-worker": "node scripts/photo-food-worker.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
