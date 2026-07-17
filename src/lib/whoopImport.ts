@@ -243,7 +243,7 @@ function sessionMatchesDraft(session: ActivitySession, draft: ActivitySessionInp
 
 /* ── Cross-source merge: WHOOP metrics onto runs recorded elsewhere ── */
 
-// a whoop workout and a gps/strava/manual session are the same physical event
+// a WHOOP workout and a GPS/manual or legacy-imported session are the same event
 // when their time ranges overlap by at least this share of the shorter one
 export const OVERLAP_MERGE_RATIO = 0.6;
 
@@ -313,7 +313,7 @@ function buildEnrichmentPatch(
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-// after saving a gps/strava run: the auto-imported whoop session for the same
+// after saving a GPS run: the auto-imported WHOOP session for the same
 // window (if any) should be absorbed into the new recording
 export function findAbsorbableWhoopSession(
   startIso: string,
@@ -398,8 +398,8 @@ export function groupSegments(
     }
 
     if (session.source !== 'whoop') {
-      // the cluster's segments live inside a session recorded by gps/strava/
-      // manual entry: metrics-only enrichment, never reshape the host
+      // the cluster's segments live inside a GPS/manual or legacy-imported
+      // session: metrics-only enrichment, never reshape the host
       claimedSessionIds.delete(session.id); // enrich() re-adds
       enrich(session, cluster, draft);
       continue;

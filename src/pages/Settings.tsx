@@ -63,11 +63,6 @@ export function Settings() {
     connectWhoop,
     disconnectWhoop,
     syncWhoop,
-    stravaConnection,
-    fetchStravaConnection,
-    connectStrava,
-    disconnectStrava,
-    syncStrava,
   } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -103,9 +98,6 @@ export function Settings() {
   const [whoopBusy, setWhoopBusy] = useState(false);
   const [whoopMessage, setWhoopMessage] = useState<string | null>(null);
   const [whoopError, setWhoopError] = useState<string | null>(null);
-  const [stravaBusy, setStravaBusy] = useState(false);
-  const [stravaMessage, setStravaMessage] = useState<string | null>(null);
-  const [stravaError, setStravaError] = useState<string | null>(null);
   const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
   const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
   const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
@@ -116,8 +108,7 @@ export function Settings() {
 
   useEffect(() => {
     void fetchWhoopConnection();
-    void fetchStravaConnection();
-  }, [fetchWhoopConnection, fetchStravaConnection]);
+  }, [fetchWhoopConnection]);
 
   const handlePhotoWorkerSave = async () => {
     savePhotoWorkerSettings(photoWorkerDraft);
@@ -130,11 +121,10 @@ export function Settings() {
     setPhotoWorkerBusy(false);
   };
 
-  // landing back from a consent screen: /settings?whoop=… or ?strava=…
+  // landing back from WHOOP's consent screen: /settings?whoop=…
   useEffect(() => {
     const whoopParam = searchParams.get('whoop');
-    const stravaParam = searchParams.get('strava');
-    if (!whoopParam && !stravaParam) return;
+    if (!whoopParam) return;
 
     if (whoopParam === 'connected') {
       setWhoopMessage('WHOOP connected.');
@@ -143,18 +133,10 @@ export function Settings() {
       setWhoopError('WHOOP connection failed. Try again.');
     }
 
-    if (stravaParam === 'connected') {
-      setStravaMessage('Strava connected.');
-      void fetchStravaConnection();
-    } else if (stravaParam) {
-      setStravaError('Strava connection failed. Try again.');
-    }
-
     const next = new URLSearchParams(searchParams);
     next.delete('whoop');
-    next.delete('strava');
     setSearchParams(next, { replace: true });
-  }, [fetchWhoopConnection, fetchStravaConnection, searchParams, setSearchParams]);
+  }, [fetchWhoopConnection, searchParams, setSearchParams]);
 
   const clearWhoopFeedback = () => {
     setWhoopMessage(null);
@@ -215,71 +197,6 @@ export function Settings() {
 
   const whoopStatusLabel = whoopConnection
     ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
-    : 'Not connected';
-
-  const clearStravaFeedback = () => {
-    setStravaMessage(null);
-    setStravaError(null);
-  };
-
-  const handleStravaConnect = async () => {
-    clearStravaFeedback();
-    setStravaBusy(true);
-    try {
-      const authorizeUrl = await connectStrava();
-      if (authorizeUrl) {
-        // production: hand the browser to Strava's consent screen
-        window.location.href = authorizeUrl;
-        return;
-      }
-      setStravaMessage('Strava connected.');
-    } catch (error) {
-      console.error('Error connecting Strava:', error);
-      setStravaError('Could not start the Strava connection.');
-    } finally {
-      setStravaBusy(false);
-    }
-  };
-
-  const handleStravaDisconnect = async () => {
-    clearStravaFeedback();
-    setStravaBusy(true);
-    try {
-      await disconnectStrava();
-      setStravaMessage('Strava disconnected.');
-    } catch (error) {
-      console.error('Error disconnecting Strava:', error);
-      setStravaError('Could not disconnect Strava.');
-    } finally {
-      setStravaBusy(false);
-    }
-  };
-
-  const handleStravaSyncNow = async () => {
-    clearStravaFeedback();
-    setStravaBusy(true);
-    try {
-      const result = await syncStrava();
-      if (!result) {
-        setStravaError('Sync unavailable.');
-        return;
-      }
-      const changes = result.created + result.updated + result.absorbed;
-      setStravaMessage(
-        changes > 0
-          ? `Synced — ${result.created} new, ${result.updated} updated${result.absorbed > 0 ? `, ${result.absorbed} merged` : ''}.`
-          : 'Up to date.',
-      );
-    } catch (error) {
-      console.error('Error syncing Strava:', error);
-      setStravaError('Sync failed. Try again later.');
-    } finally {
-      setStravaBusy(false);
-    }
-  };
-
-  const stravaStatusLabel = stravaConnection
-    ? `Connected${stravaConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(stravaConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
     : 'Not connected';
 
   const clearMealManagerFeedback = () => {
@@ -768,26 +685,13 @@ export function Settings() {
 
         <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
           <div>
-            <p className="t-heading">Strava</p>
-            <p className="t-caption mt-1">{stravaStatusLabel}</p>
+            <p className="t-heading">iPhone GPS</p>
+            <p className="t-caption mt-1">Built in • no paid account</p>
           </div>
-          {stravaConnection ? (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaSyncNow(); }}>
-                Sync now
-              </Button>
-              <Button variant="ghost" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaDisconnect(); }}>
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <Button variant="secondary" size="sm" disabled={stravaBusy} onClick={() => { void handleStravaConnect(); }}>
-              Connect
-            </Button>
-          )}
+          <Button variant="secondary" size="sm" onClick={() => { window.location.href = '/train/run'; }}>
+            Start a run
+          </Button>
         </div>
-        {stravaMessage && <p className="t-caption mt-3">{stravaMessage}</p>}
-        {stravaError && <p className="t-caption mt-3 text-[var(--color-accent)]">{stravaError}</p>}
       </SettingsGroup>
 
       {/* ── Account ── */}

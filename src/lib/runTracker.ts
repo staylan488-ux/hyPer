@@ -479,8 +479,7 @@ export function isWarmingUp(state: TrackerState): boolean {
 const PACE_MILE_M = 1609.344;
 
 // live pace (seconds per mile) over the trailing window, clipped to the
-// current lap so an interval split restarts the readout — the whole point
-// vs. Strava
+// current lap so an interval split restarts the readout
 export function rollingPaceSecPerMile(state: TrackerState, nowMs: number): number | null {
   const config = state.config;
   const cutoff = Math.max(nowMs - config.paceWindowS * 1000, state.lapStartMs);

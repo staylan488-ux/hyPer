@@ -1,6 +1,15 @@
 # Handoff
 
-Updated: 2026-07-16 (rev 10: production-like app sandbox; rev 9: dynamic nutrition groups, Cronometer import, and local subscription photo worker; rev 8: food-inbox design; rev 7: photo/subscription research)
+Updated: 2026-07-16 (rev 12: replace paid Strava connector with built-in GPS; rev 11: isolated Hyper-Dev staging; rev 10: production-like app sandbox)
+
+## Rev 12 — built-in GPS replaces paid Strava connector (implemented; validated)
+
+- Product decision: Strava's API application form is disabled for the user's free account and states API access requires a subscription. The user chose to remove Strava rather than add a paid dependency. No purchase was made.
+- Removed the Strava Settings connector, OAuth return handling, History sync path, store state/actions, client/import/sync libraries, preview fixture, tests, Edge Functions, function config, client database type, schema tables/policies, and the unapplied Strava migration. Production was not touched.
+- Settings now presents `iPhone GPS` as built in with no paid account and links directly to `/train/run`. History sync is WHOOP-only. GPS recordings remain the primary event; WHOOP enriches overlapping GPS sessions with strain, heart rate, and calories.
+- Kept `strava` as a legacy `ActivitySource` value so any old imported activity can remain readable without retaining the live connector. New production schemas no longer create Strava connection/token tables.
+- Validation after removal: `npm run test` PASS (25 files, 299 tests), `npm run lint` PASS, `npm run build` PASS. Existing non-blocking build warnings remain: large bundle and stale Browserslist data.
+- Isolated staging is `Hyper-Dev` ref `nwvgkxqjqihqnjuworqz`; production remains `nnwfaaxmyvqsdnfcdxom` and was never targeted. Staging cleanup of the already-applied Strava tables/functions/secret is the next action.
 
 ## Rev 10 — production-like sandbox entry (implemented; browser-verified)
 
@@ -107,13 +116,13 @@ User requirement: a run recorded in-app (or later via Strava) + the same run rec
 
 ## Current goal
 
-Prepare the combined Activities Hub and unified nutrition workflow for isolated staging. Activities, WHOOP, Strava, GPS tracking, dynamic meal groups, Cronometer CSV import, and local subscription-backed photo review are code-complete and sandbox-verified. No new migration or OAuth/sync function has been applied/deployed remotely; staging E2E gates production changes.
+Finish real-account E2E in isolated `Hyper-Dev` using built-in iPhone GPS plus WHOOP enrichment, then test dynamic nutrition groups, Cronometer CSV import, and subscription-backed photo review. Staging sign-off gates every production change.
 
 ## Verified state
 
 - Worktree `/Users/alex/Desktop/hyPer-current-ui`, branch `codex/activity-sessions-current-ui`, base `origin/main` @ `0da91009` (unchanged upstream).
 - Full plan: `/Users/alex/.claude/plans/compressed-forging-fog.md` (user-approved).
-- **Current validation: `npm run test` 313/313 PASS, `npm run lint` PASS, `npm run build` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. No new migration applied and no function deployed; the four activity/integration migrations plus the nutrition migration remain staging-only candidates.
+- **Current validation: `npm run test` 299/299 PASS, `npm run lint` PASS, `npm run build` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. Isolated staging has the activity, WHOOP, and nutrition migrations plus WHOOP functions; production has none of them.
 - The detailed rev sections ABOVE (rev 5 drift+pause, rev 4 Strava, rev 3 merge, rev 2 miles) are the current source of truth; the per-phase notes BELOW are the original rev-1/2 record and predate those changes (e.g. they say km/277 tests and lack Strava — superseded).
 - Phone testing: `npm run dev -- --host 127.0.0.1` (must bind IPv4 — the tunnel proxies IPv4; default is IPv6-only), then Tailscale serve exposes `https://alexanders-macbook-air.taileaf222.ts.net/`. HTTPS is required for iOS geolocation + wake lock. `vite.config.ts` `server.allowedHosts` allows the `.taileaf222.ts.net` domain (dev-only). Sandbox = `/preview` (fresh Safari tab; preview mode latches per-tab). Real GPS test: Run → Position source → "Real GPS".
 - Sandbox note: the in-app browser pane throttles timers/animations (document reports hidden) — modal exits stick, 10× sim timing drifts; NOT app bugs. Read sandbox results back through the app's own `supabase` client (`supabase.from(...).select()`), NOT a direct `import('previewData')` — that reads a stale module instance.
@@ -207,11 +216,10 @@ Modified files:
 
 ## Sign-off gates (nothing done yet — all gated on user approval)
 
-1. **GATE A** (after isolated-staging sign-off) — apply the 4 activity/integration migrations plus the nutrition migration to production project `nnwfaaxmyvqsdnfcdxom`. Additive only. Do not use production as the first migration target.
+1. **GATE A** (after isolated-staging sign-off) — apply the 3 activity/WHOOP migrations plus the nutrition migration to production project `nnwfaaxmyvqsdnfcdxom`. Do not use production as the first migration target.
 2. **GATE B — WHOOP go-live**: user registers WHOOP dev app (redirect URL exactly `https://nnwfaaxmyvqsdnfcdxom.supabase.co/functions/v1/whoop-oauth/callback`, scopes `read:workout offline`) → `supabase secrets set WHOOP_CLIENT_ID=… WHOOP_CLIENT_SECRET=… WHOOP_STATE_SECRET=$(openssl rand -hex 32) APP_BASE_URL=…` → `supabase functions deploy whoop-oauth whoop-sync` → phone E2E + verify `whoop_tokens` unreadable as `authenticated`.
-3. **GATE B′ — Strava go-live**: user registers Strava API app at strava.com/settings/api (Authorization Callback Domain = `nnwfaaxmyvqsdnfcdxom.supabase.co`) → `supabase secrets set STRAVA_CLIENT_ID=… STRAVA_CLIENT_SECRET=… STRAVA_STATE_SECRET=$(openssl rand -hex 32)` (APP_BASE_URL shared with WHOOP) → `supabase functions deploy strava-oauth strava-sync` → phone E2E, verify `strava_tokens` locked.
-4. **GATE C — iOS field test**: permission prompt from Start gesture, wake lock stowed, pace stability, sprint threshold reliability, interval tap-split, cue audibility, kill→resume, Low Power Mode degradation, standing-still banks no distance, pause freezes clock. Tune exported threshold constants from real traces.
+3. **GATE C — iOS field test**: permission prompt from Start gesture, wake lock stowed, pace stability, sprint threshold reliability, interval tap-split, cue audibility, kill→resume, Low Power Mode degradation, standing-still banks no distance, pause freezes clock. Tune exported threshold constants from real traces.
 
 ## Next action
 
-Create an isolated Supabase staging environment, apply the four activity/integration migrations plus `20260716120000_add_nutrition_groups_and_imports.sql`, deploy/configure the four OAuth/sync functions, run the local photo worker, then test signed-in Cronometer/photo/WHOOP/Strava flows before any production push.
+Clean the already-applied Strava artifacts from isolated staging, then test the user's own staging account through WHOOP connect/sync, iPhone GPS, photo logging, and Cronometer CSV import before any production push.

@@ -334,35 +334,6 @@ export interface Database {
           updated_at?: string
         }
       }
-      strava_connections: {
-        Row: {
-          user_id: string
-          strava_athlete_id: string | null
-          scopes: string | null
-          connected_at: string
-          last_synced_at: string | null
-          last_sync_status: string | null
-          updated_at: string
-        }
-        Insert: {
-          user_id: string
-          strava_athlete_id?: string | null
-          scopes?: string | null
-          connected_at?: string
-          last_synced_at?: string | null
-          last_sync_status?: string | null
-          updated_at?: string
-        }
-        Update: {
-          user_id?: string
-          strava_athlete_id?: string | null
-          scopes?: string | null
-          connected_at?: string
-          last_synced_at?: string | null
-          last_sync_status?: string | null
-          updated_at?: string
-        }
-      }
       activity_segments: {
         Row: {
           id: string

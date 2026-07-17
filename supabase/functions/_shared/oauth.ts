@@ -1,4 +1,5 @@
-// Provider-agnostic helpers shared by the whoop-* and strava-* Edge Functions:
+// Provider-agnostic OAuth helpers used by the WHOOP Edge Functions and kept
+// reusable for future integrations:
 // CORS, JSON responses, and the stateless HMAC-signed OAuth `state` parameter
 // that binds a browser callback to the Supabase user who initiated it.
 

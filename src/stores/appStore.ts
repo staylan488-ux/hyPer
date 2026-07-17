@@ -2,11 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
-import { fetchStravaFixtureBatch } from '@/preview/stravaFixtures';
 import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
-import { runStravaSync, type StravaSyncResult } from '@/lib/stravaSync';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
-import { disconnectStravaRemote, fetchStravaBatchRemote, startStravaConnect } from '@/lib/stravaClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
@@ -29,7 +26,6 @@ import type {
   ActivitySegment,
   ActivitySegmentInput,
   WhoopConnection,
-  StravaConnection,
 } from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
 
@@ -183,11 +179,6 @@ interface AppState {
   // returns a consent URL to redirect to (production) or null (preview: mock-connects in place)
   connectWhoop: () => Promise<string | null>;
   disconnectWhoop: () => Promise<void>;
-  syncStrava: () => Promise<StravaSyncResult | null>;
-  stravaConnection: StravaConnection | null;
-  fetchStravaConnection: () => Promise<StravaConnection | null>;
-  connectStrava: () => Promise<string | null>;
-  disconnectStrava: () => Promise<void>;
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
 
   // Flexible programming
@@ -229,7 +220,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   weeklyVolume: [],
   loading: false,
   whoopConnection: null,
-  stravaConnection: null,
 
   fetchSplits: async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1685,7 +1675,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             },
             fetchSessionsInWindow: async (fromIso, toIso) => {
               // deliberately includes dismissed + user-edited rows (tombstones
-              // must hold) and ALL sources (whoop metrics enrich gps/strava/
+              // must hold) and ALL sources (whoop metrics enrich GPS or
               // manual sessions covering the same time window)
               const { data, error } = await supabase
                 .from('activity_sessions')
@@ -1720,143 +1710,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       return result;
     } catch (error) {
       console.error('Error running whoop sync:', error);
-      return null;
-    }
-  },
-
-  fetchStravaConnection: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase
-      .from('strava_connections')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching strava connection:', error);
-      return null;
-    }
-
-    const connection = (data as StravaConnection | null) ?? null;
-    set({ stravaConnection: connection });
-    return connection;
-  },
-
-  connectStrava: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    if (isPreviewActive()) {
-      const nowIso = new Date().toISOString();
-      await supabase.from('strava_connections').upsert(
-        {
-          user_id: user.id,
-          strava_athlete_id: 'preview-strava-athlete',
-          scopes: 'read,activity:read_all',
-          connected_at: nowIso,
-          updated_at: nowIso,
-        },
-        { onConflict: 'user_id' },
-      );
-      await get().fetchStravaConnection();
-      return null;
-    }
-
-    return startStravaConnect();
-  },
-
-  disconnectStrava: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (isPreviewActive()) {
-      await supabase.from('strava_connections').delete().eq('user_id', user.id);
-    } else {
-      await disconnectStravaRemote();
-    }
-    set({ stravaConnection: null });
-  },
-
-  syncStrava: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-
-    const fetchBatch = isPreviewActive() ? fetchStravaFixtureBatch : fetchStravaBatchRemote;
-
-    // watermark: newest strava segment already imported
-    const { data: latest } = await supabase
-      .from('activity_segments')
-      .select('started_at')
-      .eq('user_id', user.id)
-      .eq('source', 'strava')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    try {
-      const result = await runStravaSync(
-        {
-          fetchBatch,
-          data: {
-            upsertSegments: (inputs) => get().upsertActivitySegments(inputs),
-            fetchStravaSegmentsInWindow: async (fromIso, toIso) => {
-              const { data, error } = await supabase
-                .from('activity_segments')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('source', 'strava')
-                .gte('started_at', fromIso)
-                .lte('started_at', toIso)
-                .order('started_at', { ascending: true });
-              if (error) {
-                console.error('Error fetching strava segments:', error);
-                return [];
-              }
-              return (data || []) as ActivitySegment[];
-            },
-            fetchSessionsInWindow: async (fromIso, toIso) => {
-              const { data, error } = await supabase
-                .from('activity_sessions')
-                .select('*')
-                .eq('user_id', user.id)
-                .gte('started_at', fromIso)
-                .lte('started_at', toIso);
-              if (error) {
-                console.error('Error fetching sessions in window:', error);
-                return [];
-              }
-              return (data || []) as ActivitySession[];
-            },
-            createSession: (input) => get().createActivitySession(input),
-            updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
-            deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
-            linkSegmentsToSession: async (segmentIds, sessionId) => {
-              const { error } = await supabase
-                .from('activity_segments')
-                .update({ session_id: sessionId, updated_at: new Date().toISOString() })
-                .eq('user_id', user.id)
-                .in('id', segmentIds);
-              if (error) console.error('Error linking segments to session:', error);
-            },
-            relinkSessionSegments: async (fromSessionId, toSessionId) => {
-              const { error } = await supabase
-                .from('activity_segments')
-                .update({ session_id: toSessionId, updated_at: new Date().toISOString() })
-                .eq('user_id', user.id)
-                .eq('session_id', fromSessionId);
-              if (error) console.error('Error relinking session segments:', error);
-            },
-          },
-        },
-        { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
-      );
-
-      if (!isPreviewActive()) void get().fetchStravaConnection();
-      return result;
-    } catch (error) {
-      console.error('Error running strava sync:', error);
       return null;
     }
   },

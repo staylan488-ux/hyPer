@@ -165,26 +165,6 @@ CREATE TABLE IF NOT EXISTS whoop_tokens (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Strava integration: same split as WHOOP (metadata readable by owner,
--- tokens locked to the service role)
-CREATE TABLE IF NOT EXISTS strava_connections (
-  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
-  strava_athlete_id TEXT,
-  scopes TEXT,
-  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_synced_at TIMESTAMPTZ,
-  last_sync_status TEXT,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS strava_tokens (
-  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
-  access_token TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 -- Foods database (custom + USDA)
 CREATE TABLE IF NOT EXISTS foods (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -322,9 +302,6 @@ ALTER TABLE activity_segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whoop_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whoop_tokens ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON whoop_tokens FROM anon, authenticated;
-ALTER TABLE strava_connections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE strava_tokens ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON strava_tokens FROM anon, authenticated;
 ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_groups ENABLE ROW LEVEL SECURITY;
@@ -411,8 +388,6 @@ CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR 
 -- WHOOP connection policies: owner may read status; only service role writes.
 -- whoop_tokens intentionally has NO policies.
 CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can view own strava connection" ON strava_connections FOR SELECT USING (auth.uid() = user_id);
-
 -- Foods policies
 CREATE POLICY "Users can view own foods" ON foods FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
 CREATE POLICY "Users can insert own foods" ON foods FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);

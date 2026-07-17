@@ -205,18 +205,6 @@ export interface WhoopConnection {
   updated_at: string;
 }
 
-// safe Strava connection metadata (strava_connections row) — tokens live in a
-// separate service-role-only table, mirroring the WHOOP pattern
-export interface StravaConnection {
-  user_id: string;
-  strava_athlete_id: string | null;
-  scopes: string | null;
-  connected_at: string;
-  last_synced_at: string | null;
-  last_sync_status: string | null;
-  updated_at: string;
-}
-
 export type ActivitySegmentInput = {
   session_id?: string | null;
   source: ActivitySource;

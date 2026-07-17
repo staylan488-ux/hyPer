@@ -27,7 +27,8 @@ export interface WhoopSyncPorts {
   data: {
     upsertSegments: (inputs: ActivitySegmentInput[]) => Promise<ActivitySegment[]>;
     // window reads must INCLUDE dismissed/user-edited sessions so tombstones
-    // hold, and ALL sources so whoop metrics can enrich gps/strava/manual hosts
+    // hold, and ALL sources so whoop metrics can enrich GPS/manual hosts and
+    // any legacy imported activity
     fetchWhoopSegmentsInWindow: (fromIso: string, toIso: string) => Promise<ActivitySegment[]>;
     fetchSessionsInWindow: (fromIso: string, toIso: string) => Promise<ActivitySession[]>;
     createSession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;

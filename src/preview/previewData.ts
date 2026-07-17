@@ -341,5 +341,4 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   activity_segments: previewActivitySegments.map((segment) => ({ ...segment })),
   // start disconnected; the Settings "Connect" flows insert mock rows
   whoop_connections: [],
-  strava_connections: [],
 };

@@ -471,9 +471,6 @@ export function History() {
     syncWhoop,
     whoopConnection,
     fetchWhoopConnection,
-    syncStrava,
-    stravaConnection,
-    fetchStravaConnection,
   } = useAppStore();
 
   const [monthWorkouts, setMonthWorkouts] = useState<WorkoutWithSplit[]>([]);
@@ -609,13 +606,12 @@ export function History() {
 
   useEffect(() => {
     void fetchWhoopConnection();
-    void fetchStravaConnection();
-  }, [fetchWhoopConnection, fetchStravaConnection]);
+  }, [fetchWhoopConnection]);
 
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
   // sandbox always offers sync (fixture transport); production needs a connection
-  const syncAvailable = isPreviewActive() || !!whoopConnection || !!stravaConnection;
+  const syncAvailable = isPreviewActive() || !!whoopConnection;
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
@@ -806,38 +802,19 @@ export function History() {
     }
   };
 
-  const handleSyncSources = useCallback(async () => {
+  const handleSyncWhoop = useCallback(async () => {
     if (syncingWhoop) return;
-    const runStrava = isPreviewActive() || !!stravaConnection;
     const runWhoop = isPreviewActive() || !!whoopConnection;
 
     setSyncingWhoop(true);
     try {
-      // Strava first so its recordings exist as hosts, then WHOOP enriches them
-      // with strain/HR/kcal (or absorbs a matching auto-import) — order makes
-      // the cross-source merge converge to one event
-      let created = 0;
-      let updated = 0;
-      let touched = false;
-
-      if (runStrava) {
-        const strava = await syncStrava();
-        if (strava) {
-          created += strava.created;
-          updated += strava.updated + strava.absorbed;
-          touched = true;
-        }
-      }
-      if (runWhoop) {
-        const whoop = await syncWhoop();
-        if (whoop) {
-          created += whoop.created;
-          updated += whoop.updated;
-          touched = true;
-        }
+      if (!runWhoop) {
+        showToast('Sync unavailable');
+        return;
       }
 
-      if (!touched) {
+      const whoop = await syncWhoop();
+      if (!whoop) {
         showToast('Sync unavailable');
         return;
       }
@@ -847,15 +824,15 @@ export function History() {
       setSegmentsBySession({});
       await fetchMonthWorkouts(selectedMonth);
 
-      const changes = created + updated;
-      showToast(changes > 0 ? `Synced • ${created} new • ${updated} updated` : 'Up to date');
+      const changes = whoop.created + whoop.updated;
+      showToast(changes > 0 ? `Synced • ${whoop.created} new • ${whoop.updated} updated` : 'Up to date');
     } catch (error) {
       console.error('Error syncing activities:', error);
       showToast('Sync failed');
     } finally {
       setSyncingWhoop(false);
     }
-  }, [fetchMonthWorkouts, selectedMonth, showToast, stravaConnection, syncStrava, syncWhoop, syncingWhoop, whoopConnection]);
+  }, [fetchMonthWorkouts, selectedMonth, showToast, syncWhoop, syncingWhoop, whoopConnection]);
 
   const handleSaveActivity = useCallback(async (input: ActivitySessionInput) => {
     if (!activityEditor) return;
@@ -1182,7 +1159,7 @@ export function History() {
                   type="button"
                   className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40"
                   disabled={syncingWhoop}
-                  onClick={() => { void handleSyncSources(); }}
+                  onClick={() => { void handleSyncWhoop(); }}
                 >
                   {syncingWhoop ? 'Syncing…' : 'Sync'}
                 </button>
