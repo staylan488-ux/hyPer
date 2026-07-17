@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
-import { Button, RailStrip, Screen, TickStrip, VolumeRail } from '@/components/shared';
+import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail } from '@/components/shared';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
@@ -269,7 +269,7 @@ export function Dashboard() {
             <>
               <div className="mb-7">
                 <div className="flex items-baseline gap-2">
-                  <span className="number-hero text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
                   <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal left</span>
                 </div>
                 <span className="t-label-sm">Energy remaining today</span>
@@ -385,7 +385,8 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
         </div>
         <div className="flex items-baseline gap-2.5 mb-4">
           <span className="number-hero text-[var(--color-text)]">
-            {hero.completedSets}<span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
+            <RollingNumber value={String(hero.completedSets)} />
+            <span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
           </span>
           <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">sets done</span>
         </div>

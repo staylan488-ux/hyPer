@@ -19,3 +19,4 @@ export { DateField, TimeField } from './DateTimePicker';
 export { Toast } from './Toast';
 export { MacroBar } from './MacroBar';
 export { PaperAtmosphere } from './PaperAtmosphere';
+export { RollingNumber } from './RollingNumber';
