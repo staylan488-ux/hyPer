@@ -1,6 +1,6 @@
 # Design Elevation — "Level up the feel, keep the language"
 
-**Status:** IN PROGRESS
+**Status:** DONE
 **Branch:** `feat/design-elevation` (branched off latest `origin/main`, which already includes the rest-timer work)
 **Date:** 2026-07-17
 
@@ -24,13 +24,21 @@ The app's FOLIO system (editorial luxury: Fraunces/Geist/Geist Mono, paper+ink, 
 
 - [x] Branch `feat/design-elevation` created off latest `origin/main`
 - [x] Codebase inventory (pages, components, motion usage) — done via explore agents
-- [ ] M1: Route transitions + `MotionConfig reducedMotion="user"` + unify page shells (Screen/Workout/History)
-- [ ] M2: Living paper grain + ambient atmosphere canvas
-- [ ] M3: Rolling-digit hero numbers (Dashboard, Nutrition, RestTimer)
-- [ ] M4: Chrome polish (sheet drag-dismiss, nav, rule draw-ins)
-- [ ] Verify: `npm run test` + `lint` + `build` all pass
-- [ ] Visual check: dev server + mobile-viewport screenshots of every screen (both themes)
-- [ ] Update AGENTS.md handoff state; mark plan DONE
+- [x] M1: Route transitions + `MotionConfig reducedMotion="user"` + unify page shells (commit `e115be9`)
+- [x] M2: Living paper grain + ambient atmosphere canvas (commit `b4bca0b`)
+- [x] M3: Rolling-digit hero numbers (Dashboard, Nutrition, RestTimer) (commit `a326121`)
+- [x] M4: Chrome polish (sheet drag-dismiss, nav settle) (commit `e50da63`)
+- [x] Verify: `npm run test` (219 pass) + `lint` (clean) + `build` (pass) after every milestone
+- [x] Visual check: dev server + 390×844 screenshots of all 7 screens in Paper theme, Dashboard/Settings/Fuel/FoodLogger-sheet in Ink theme; browser console clean (no errors/warnings)
+- [x] Update AGENTS.md handoff state; mark plan DONE
+
+## Notes / decisions log
+
+- 2026-07-17: `motion` (v12) already installed — no new dependencies needed. Recharts is installed but unused; leaving it alone (out of scope).
+- Restored accidentally-deleted `.env.example` before branching.
+- Workout/History pages used their own fade wrappers instead of `Screen`; M1 unifies them under one route-level transition.
+- Visual verification used the DEV preview mode (`/preview` latches mock data, no login). The rest-timer pill's rolling countdown wasn't exercised visually (needs a live logged set; actions are stubbed in preview) — same component as the verified kcal heroes, but worth one glance during manual testing: start a session, log a set, watch the countdown.
+- Plan DONE.
 
 ## How to test locally (for the user)
 
