@@ -27,10 +27,11 @@ export interface TrackerConfig {
   maxSpeedMps: number;
   minStepM: number;
   // below this device-reported speed the runner is treated as stationary and
-  // no distance is accrued — the primary defence against standing GPS drift
+  // no distance is accrued. This app tracks runs, so sub-walking-speed values
+  // are much more likely to be handheld movement or GPS drift than a run.
   stationarySpeedMps: number;
-  // when device speed is unavailable, a step must clear this fraction of the
-  // fix's accuracy to count (a 5 m step under 15 m accuracy is noise)
+  // when device speed is unavailable, a step must clear this multiple of the
+  // combined uncertainty of the previous and current fixes.
   driftAccuracyFactor: number;
   warmupSamples: number;
   paceWindowS: number;
@@ -51,8 +52,8 @@ export const TRACKER_DEFAULTS = {
   accuracyMaxM: 30,
   maxSpeedMps: 12.5,
   minStepM: 2,
-  stationarySpeedMps: 0.6, // ~1.3 mph; below any real walk/jog
-  driftAccuracyFactor: 0.75,
+  stationarySpeedMps: 1.2, // ~2.7 mph; conservative start gate for a run tracker
+  driftAccuracyFactor: 1.3,
   warmupSamples: 3,
   paceWindowS: 60,
   paceMinDistanceM: 20,
@@ -109,7 +110,7 @@ export interface TrackerState {
   totalPausedMs: number;
   lapPausedMs: number;
   // ingestion
-  lastPoint: { t: number; lat: number; lon: number } | null;
+  lastPoint: { t: number; lat: number; lon: number; accuracyM?: number } | null;
   lastAcceptedMs: number | null;
   warmupCount: number;
   speedRejectCount: number;
@@ -225,7 +226,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   // warm-up: require N consecutive good fixes before any distance counts
   if (next.warmupCount < config.warmupSamples) {
     next.warmupCount += 1;
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon };
+    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
     next.lastAcceptedMs = sample.t;
     return { state: next, events };
   }
@@ -234,7 +235,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   // anchor and banks no distance
   const prev = next.lastPoint;
   if (!prev) {
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon };
+    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
     next.lastAcceptedMs = sample.t;
     return { state: next, events };
   }
@@ -250,7 +251,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   if (impliedSpeed > config.maxSpeedMps) {
     next.speedRejectCount += 1;
     if (next.speedRejectCount >= 3) {
-      next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon };
+      next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
       next.speedRejectCount = 0;
     }
     return { state: next, events };
@@ -262,7 +263,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   // step is measured from here) but bank NO distance — this is what stops the
   // "distance climbs while standing" drift.
   if (reportedSpeed != null && reportedSpeed < config.stationarySpeedMps) {
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon };
+    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
     next.lastAcceptedMs = sample.t;
     next.emaSpeedMps =
       next.emaSpeedMps == null ? reportedSpeed : next.emaSpeedMps + config.speedEmaAlpha * (reportedSpeed - next.emaSpeedMps);
@@ -271,14 +272,16 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
 
   // jitter floor. With device speed we trust a small real step; without it,
   // require the step to clear the fix's own uncertainty so noise is dropped.
-  const jitterFloor =
-    reportedSpeed != null ? config.minStepM : Math.max(config.minStepM, sample.accuracyM * config.driftAccuracyFactor);
+  const combinedAccuracyM = Math.hypot(prev.accuracyM ?? sample.accuracyM, sample.accuracyM);
+  const jitterFloor = reportedSpeed != null
+    ? config.minStepM
+    : Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
   if (stepM < jitterFloor) {
     next.lastAcceptedMs = sample.t;
     return { state: next, events };
   }
 
-  next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon };
+  next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
   next.lastAcceptedMs = sample.t;
   next.totalDistanceM = state.totalDistanceM + stepM;
 
@@ -647,6 +650,10 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     if (typeof snapshot.state.runId !== 'string') return null;
     // a crash while paused resumes un-paused (the paused span is closed out)
     const state = snapshot.state;
+    state.config = {
+      ...defaultTrackerConfig(state.config.mode, state.config.autoLapM),
+      ...state.config,
+    };
     if (state.pausedAtMs != null) {
       state.totalPausedMs = (state.totalPausedMs ?? 0) + Math.max(0, snapshot.savedAtMs - state.pausedAtMs);
       state.pausedAtMs = null;

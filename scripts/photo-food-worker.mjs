@@ -15,6 +15,8 @@ const JOB_ROOT = path.join(ROOT, '.tmp', 'food-photo-worker');
 const PORT = Number(process.env.PHOTO_WORKER_PORT || 8788);
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const COMMAND_TIMEOUT_MS = 150_000;
+const OPENAI_MODEL = process.env.PHOTO_WORKER_OPENAI_MODEL || 'gpt-5.6-sol';
+const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL || 'opus';
 
 const schemaText = await readFile(SCHEMA_PATH, 'utf8');
 const schema = JSON.parse(schemaText);
@@ -133,6 +135,7 @@ function analysisPrompt(imageName, hint) {
     'Return each visible food, drink, sauce, dressing, and cooking oil as a separate item.',
     'Estimate the edible grams for the pictured amount. Nutrition values are fallback estimates for that pictured amount, not per 100 g.',
     'Use a concise USDA-friendly search_query including preparation state, such as "chicken breast grilled".',
+    'Use a stated plate diameter, clean ruler, or printed size marker when it is visible on the same plane as the food. Do not infer scale from unmeasured utensils.',
     'Do not combine the plate into one meal. Lower confidence when portion size, oil, ingredients, or preparation are uncertain.',
     'The user will review every item before it is logged. Do not provide health or medical advice.',
     `Image file: ${imageName}`,
@@ -147,7 +150,7 @@ async function analyzeWithCodex(jobDir, imagePath, prompt) {
     '--ignore-user-config', '--ignore-rules', '--output-schema', SCHEMA_PATH,
     '--output-last-message', outputPath, '-C', jobDir, '-',
   ];
-  if (process.env.PHOTO_WORKER_OPENAI_MODEL) args.splice(1, 0, '--model', process.env.PHOTO_WORKER_OPENAI_MODEL);
+  args.splice(1, 0, '--model', OPENAI_MODEL);
   await runCommand('codex', args, { cwd: jobDir, stdin: prompt });
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
@@ -157,7 +160,7 @@ async function analyzeWithClaude(jobDir, prompt) {
     '--print', '--output-format', 'json', '--json-schema', claudeSchema,
     '--tools', 'Read', '--permission-mode', 'dontAsk', '--no-session-persistence', '--safe-mode',
   ];
-  if (process.env.PHOTO_WORKER_ANTHROPIC_MODEL) args.push('--model', process.env.PHOTO_WORKER_ANTHROPIC_MODEL);
+  args.push('--model', ANTHROPIC_MODEL);
   args.push(prompt);
   const { stdout } = await runCommand('claude', args, { cwd: jobDir });
   const outer = JSON.parse(stdout);
@@ -166,11 +169,12 @@ async function analyzeWithClaude(jobDir, prompt) {
   return outer;
 }
 
-function normalizeResult(provider, result) {
+function normalizeResult(provider, model, result) {
   const items = Array.isArray(result?.items) ? result.items : [];
   if (items.length === 0) throw new Error('The model returned no food items.');
   return {
     provider,
+    model,
     summary: String(result.summary || ''),
     items: items.slice(0, 12).map((item) => ({
       name: String(item.name || '').trim(),
@@ -198,6 +202,7 @@ const server = createServer(async (request, response) => {
       ok: true,
       providers: installedProviders,
       authenticatedProviders: authenticatedProviders(),
+      models: { openai: OPENAI_MODEL, anthropic: ANTHROPIC_MODEL },
     }, origin);
   }
   if (request.method !== 'POST' || request.url !== '/analyze') {
@@ -230,7 +235,8 @@ const server = createServer(async (request, response) => {
     const result = provider === 'anthropic'
       ? await analyzeWithClaude(jobDir, prompt)
       : await analyzeWithCodex(jobDir, imagePath, prompt);
-    return sendJson(response, 200, normalizeResult(provider, result), origin);
+    const model = provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+    return sendJson(response, 200, normalizeResult(provider, model, result), origin);
   } catch (error) {
     return sendJson(response, 500, { error: error instanceof Error ? error.message : 'Photo analysis failed.' }, origin);
   } finally {

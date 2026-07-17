@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
-import { GripVertical, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, Pencil, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/shared';
 import { getLogDate, getLogTimestamp } from './nutritionLogUtils';
-import { nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { springs } from '@/lib/animations';
 import type { NutritionGroup } from '@/types';
 
@@ -33,15 +33,18 @@ interface NutritionGroupLedgerProps {
   onEdit: (entry: NutritionLedgerEntry) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, groupId: string | null) => void;
+  onReorderGroup: (groupId: string, direction: -1 | 1) => void;
   onDeleteGroup: (group: NutritionGroup) => void;
 }
 
-function sourceLabel(source?: string): string | null {
+function sourceLabel(source?: string): string {
+  if (!source || source === 'manual') return 'Manual';
+  if (source === 'usda') return 'USDA';
   if (source === 'cronometer_csv') return 'Cronometer';
   if (source === 'photo_openai') return 'OpenAI photo';
   if (source === 'photo_anthropic') return 'Claude photo';
   if (source === 'barcode') return 'Barcode';
-  return null;
+  return 'Manual';
 }
 
 function servingLabel(log: NutritionLedgerEntry): string {
@@ -61,6 +64,7 @@ export function NutritionGroupLedger({
   onEdit,
   onDelete,
   onMove,
+  onReorderGroup,
   onDeleteGroup,
 }: NutritionGroupLedgerProps) {
   const [movingEntry, setMovingEntry] = useState<NutritionLedgerEntry | null>(null);
@@ -122,7 +126,7 @@ export function NutritionGroupLedger({
           <p className="t-body font-medium text-[var(--color-text)] truncate">{log.food?.name || 'Unknown Food'}</p>
           <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
             {servingLabel(log)} · {Math.round((log.food?.protein || 0) * log.servings)}g P
-            {provenance && <span className="text-[var(--color-text-dim)]"> · {provenance}</span>}
+            <span className="text-[var(--color-text-dim)]"> · {provenance}</span>
           </p>
         </div>
 
@@ -173,9 +177,29 @@ export function NutritionGroupLedger({
             <span className="t-data-sm text-[var(--color-muted)] ml-2">{entries.length}</span>
           </div>
           {group && (
-            <button type="button" className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
-              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-            </button>
+            <div className="flex items-center -mr-2">
+              <button
+                type="button"
+                className="pressable p-2 text-[var(--color-muted)] disabled:opacity-25"
+                disabled={!moveNutritionGroup(orderedGroups, group.id, -1)}
+                onClick={() => onReorderGroup(group.id, -1)}
+                aria-label={`Move ${title} earlier`}
+              >
+                <ArrowUp className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+              <button
+                type="button"
+                className="pressable p-2 text-[var(--color-muted)] disabled:opacity-25"
+                disabled={!moveNutritionGroup(orderedGroups, group.id, 1)}
+                onClick={() => onReorderGroup(group.id, 1)}
+                aria-label={`Move ${title} later`}
+              >
+                <ArrowDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+              <button type="button" className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
+                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+            </div>
           )}
         </div>
         {entries.length > 0 ? (

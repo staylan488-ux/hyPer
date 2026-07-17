@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
@@ -17,14 +17,23 @@ import {
   toLocalTimeInput,
   type MeasurementUnit,
 } from './foodLoggerUtils';
-import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from './usdaSearch';
+import { applyPortion, selectPortionFromDetail } from './usdaSearch';
 import { analyzeFoodPhoto, getPhotoWorkerSettings, type PhotoAnalysisProvider } from '@/lib/photoAnalysis';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import {
+  fetchUsdaFoodDetailSecure,
+  searchUsdaFoodByBarcodeSecure,
+  searchUsdaFoodsSecure,
+} from '@/lib/usdaClient';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
 const MAX_IMAGE_DIMENSION = 1280;
+
+const BarcodeScanner = lazy(() => import('./BarcodeScanner').then((module) => ({
+  default: module.BarcodeScanner,
+})));
 
 function formatMacroInput(value: number): string {
   const rounded = Math.round((value || 0) * 10) / 10;
@@ -53,11 +62,14 @@ interface PhotoReviewItem {
   groundedFood: Food | null;
 }
 
-interface SelectedFoodMeta {
+type SelectedFoodMeta = {
   source: 'photo';
   confidence: number;
   reasoning?: string;
-}
+} | {
+  source: 'barcode';
+  barcode: string;
+};
 
 interface EditableNutritionEntry {
   id: string;
@@ -97,27 +109,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     return new Date(selectedDate);
   }, [initialEntry?.date, selectedDate]);
 
-  const [mode, setMode] = useState<'search' | 'manual' | 'photo'>('search');
+  const [mode, setMode] = useState<'saved' | 'search' | 'barcode' | 'manual' | 'photo'>(initialEntry ? 'manual' : 'saved');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingFoodId, setLoadingFoodId] = useState<string | null>(null);
-  const [selectedFood, setSelectedFood] = useState<Food | null>(() => {
-    if (!initialEntry?.food) return null;
-    return {
-      id: initialEntry.food.id,
-      user_id: null,
-      name: initialEntry.food.name,
-      calories: initialEntry.food.calories,
-      protein: initialEntry.food.protein,
-      carbs: initialEntry.food.carbs,
-      fat: initialEntry.food.fat,
-      serving_size: initialEntry.food.serving_size || 1,
-      serving_unit: initialEntry.food.serving_unit || 'serving',
-      source: 'custom',
-      fdc_id: null,
-    };
-  });
+  const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [servings, setServings] = useState(initialEntry ? String(initialEntry.servings) : '1');
   const [measurementAmount, setMeasurementAmount] = useState(initialEntry ? String(initialEntry.servings) : '1');
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('serving');
@@ -136,13 +133,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const loggerMode = initialEntry ? 'edit' : 'create';
 
   const [manualFood, setManualFood] = useState({
-    name: '',
-    calories: '',
-    protein: '',
-    carbs: '',
-    fat: '',
+    name: initialEntry?.food?.name || '',
+    calories: initialEntry?.food ? formatMacroInput(initialEntry.food.calories) : '',
+    protein: initialEntry?.food ? formatMacroInput(initialEntry.food.protein) : '',
+    carbs: initialEntry?.food ? formatMacroInput(initialEntry.food.carbs) : '',
+    fat: initialEntry?.food ? formatMacroInput(initialEntry.food.fat) : '',
   });
   const [savedMeals, setSavedMeals] = useState<Food[]>([]);
+  const [savedQuery, setSavedQuery] = useState('');
   const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
   const [manualNameFocused, setManualNameFocused] = useState(false);
   const [selectedSavedMealId, setSelectedSavedMealId] = useState<string | null>(null);
@@ -157,6 +155,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
   const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
   const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>('openai');
+  const [photoModel, setPhotoModel] = useState('');
   const [photoSummary, setPhotoSummary] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -174,6 +173,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
     return [...startsWithMatches, ...containsMatches].slice(0, 6);
   }, [manualNameQuery, savedMeals]);
+  const filteredSavedMeals = useMemo(() => {
+    const query = normalizeFoodName(savedQuery);
+    if (!query) return savedMeals;
+    return savedMeals.filter((meal) => normalizeFoodName(meal.name).includes(query));
+  }, [savedMeals, savedQuery]);
   const selectedSavedMeal = useMemo(
     () => (selectedSavedMealId ? savedMeals.find((meal) => meal.id === selectedSavedMealId) || null : null),
     [savedMeals, selectedSavedMealId]
@@ -182,11 +186,28 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     if (!query.trim()) return;
 
     setLoading(true);
-    const apiKey = import.meta.env.VITE_USDA_API_KEY;
-    const foods = await searchUsdaFoods(query, apiKey);
+    const foods = await searchUsdaFoodsSecure(query);
     setSearchResults(foods);
     setLoading(false);
   };
+
+  const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
+    let food = await searchUsdaFoodByBarcodeSecure(barcode);
+    if (!food) return false;
+
+    if (food.fdc_id && !food.serving_label) {
+      const detail = await fetchUsdaFoodDetailSecure(food.fdc_id);
+      const portion = selectPortionFromDetail(detail);
+      if (portion) food = applyPortion(food, portion);
+    }
+
+    setSelectedFoodMeta({ source: 'barcode', barcode });
+    setSelectedFood(food);
+    setMeasurementUnit('serving');
+    setServings('1');
+    setMeasurementAmount('1');
+    return true;
+  }, []);
 
   const clearSavedMealFeedback = () => {
     setSavedMealMessage(null);
@@ -385,12 +406,22 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setManualNameFocused(false);
   };
 
+  const handleLogSavedMeal = (meal: Food) => {
+    setSelectedFoodMeta(null);
+    setSelectedFood(meal);
+    setMeasurementUnit('serving');
+    setMeasurementAmount('1');
+    setServings('1');
+  };
+
   useEffect(() => {
-    if (mode !== 'manual') return;
+    if (mode !== 'manual' && mode !== 'saved') return;
 
     fetchSavedMeals();
-    clearSavedMealFeedback();
-    setSaveAsReusableMeal(false);
+    if (mode === 'manual') {
+      clearSavedMealFeedback();
+      setSaveAsReusableMeal(false);
+    }
   }, [mode, fetchSavedMeals]);
 
   const resetPhotoState = () => {
@@ -403,6 +434,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setPhotoHint('');
     setPhotoItems([]);
     setPhotoSummary('');
+    setPhotoModel('');
   };
 
   const handleRetakePhoto = () => {
@@ -414,6 +446,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setPhotoPreview(null);
     setPhotoItems([]);
     setPhotoSummary('');
+    setPhotoModel('');
     photoInputRef.current?.click();
   };
 
@@ -550,9 +583,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         settings,
       });
 
-      const apiKey = import.meta.env.VITE_USDA_API_KEY;
       const grounded = await Promise.all(result.items.map(async (item, index): Promise<PhotoReviewItem> => {
-        const matches = apiKey ? await searchUsdaFoods(item.search_query, apiKey) : [];
+        const matches = await searchUsdaFoodsSecure(item.search_query);
         const match = matches.find((food) => food.serving_unit.toLowerCase() === 'g') || null;
         if (match) {
           return {
@@ -588,6 +620,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       }));
 
       setPhotoProvider(result.provider);
+      setPhotoModel(result.model);
       setPhotoSummary(result.summary);
       setPhotoItems(grounded);
     } catch (analysisError) {
@@ -834,7 +867,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     try {
       const foodId = await upsertFoodIfNeeded(food);
       if (!foodId) return;
-      await saveNutritionEntry(foodId, servingsCount);
+      const source = selectedFoodMeta?.source === 'barcode'
+        ? 'barcode'
+        : food.source === 'usda' ? 'usda' : 'manual';
+      await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
       console.error('Error saving nutrition entry:', error);
     } finally {
@@ -1012,7 +1048,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      await saveNutritionEntry(resolvedFoodId, parseFloat(servings || '1'));
+      await saveNutritionEntry(
+        resolvedFoodId,
+        parseFloat(servings || '1'),
+        initialEntry?.source || 'manual',
+      );
     } catch (error) {
       console.error('Error in manual submit:', error);
     } finally {
@@ -1045,7 +1085,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         <div>
           <div className="flex items-baseline justify-between gap-4">
             <span className="t-label flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Photo review</span>
-            <span className="t-data-sm text-[var(--color-muted)]">{photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}</span>
+            <span className="t-data-sm text-[var(--color-muted)]">
+              {photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}{photoModel ? ` · ${photoModel}` : ''}
+            </span>
           </div>
           <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-text)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
           {photoSummary && <p className="t-caption mt-4">{photoSummary}</p>}
@@ -1144,6 +1186,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <p className="t-caption mt-3">{selectedFoodMeta.reasoning}</p>
               )}
             </div>
+          )}
+          {selectedFoodMeta?.source === 'barcode' && (
+            <p className="t-label-sm text-[var(--color-text-dim)]">
+              Barcode {selectedFoodMeta.barcode} · USDA verified
+            </p>
           )}
 
           <div className="grid grid-cols-4 gap-4 mt-6">
@@ -1286,13 +1333,66 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           if (next !== 'photo') setPhotoError(null);
         }}
         options={[
-          { value: 'search', label: 'Search' },
+          { value: 'saved', label: 'Saved' },
+          { value: 'search', label: 'USDA' },
+          { value: 'barcode', label: 'Scan' },
           { value: 'manual', label: 'Manual' },
           { value: 'photo', label: 'Photo' },
         ]}
+        className="gap-4 overflow-x-auto overscroll-contain"
       />
 
-      {mode === 'search' ? (
+      {mode === 'saved' ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
+            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
+            <input
+              type="text"
+              placeholder="Find a saved food…"
+              value={savedQuery}
+              onChange={(event) => setSavedQuery(event.target.value)}
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none placeholder:text-[var(--color-muted)]"
+            />
+          </div>
+
+          {loadingSavedMeals ? (
+            <div className="flex items-center gap-2 py-6 t-caption">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading saved foods…
+            </div>
+          ) : filteredSavedMeals.length > 0 ? (
+            <div className="max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
+              {filteredSavedMeals.map((meal, index) => (
+                <button
+                  key={meal.id}
+                  type="button"
+                  className="pressable group w-full flex items-baseline gap-4 py-3.5 border-t border-[var(--color-border)] text-left"
+                  onClick={() => handleLogSavedMeal(meal)}
+                >
+                  <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0 pt-1">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="t-body font-medium text-[var(--color-text)] truncate">{meal.name}</p>
+                    <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
+                      {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                    </p>
+                  </div>
+                  <Plus className="w-3.5 h-3.5 shrink-0 self-center text-[var(--color-muted)]" strokeWidth={1.75} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="py-7 border-t border-[var(--color-border)]">
+              <p className="t-heading">{savedQuery ? 'No saved foods match' : 'No saved foods yet'}</p>
+              <p className="t-caption mt-2">Create one in Manual and choose “Save as reusable meal.”</p>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={() => setMode('manual')}>
+                Add manually
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : mode === 'search' ? (
         <>
           <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
@@ -1330,8 +1430,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   if (food.source === 'usda' && food.fdc_id && !food.serving_label) {
                     setLoadingFoodId(food.fdc_id);
                     try {
-                      const apiKey = import.meta.env.VITE_USDA_API_KEY;
-                      const detail = await fetchUsdaFoodDetail(food.fdc_id, apiKey);
+                      const detail = await fetchUsdaFoodDetailSecure(food.fdc_id);
                       const portion = selectPortionFromDetail(detail);
                       if (portion) resolvedFood = applyPortion(food, portion);
                     } finally {
@@ -1371,6 +1470,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             ))}
           </div>
         </>
+      ) : mode === 'barcode' ? (
+        <Suspense fallback={<div className="flex items-center gap-2 py-10 t-caption"><Loader2 className="w-4 h-4 animate-spin" />Loading scanner…</div>}>
+          <BarcodeScanner onDetected={handleBarcodeDetected} />
+        </Suspense>
       ) : mode === 'manual' ? (
         <>
           <Input
@@ -1555,7 +1658,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           ) : (
             <div className="relative overflow-hidden hairline-strong">
-              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover grayscale-filter" />
+              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover" />
               {photoAnalyzing && (
                 <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)] flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-5 h-5 animate-spin text-[var(--color-accent)]" />
@@ -1579,8 +1682,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             label="Extra details (optional)"
             value={photoHint}
             onChange={(e) => setPhotoHint(e.target.value)}
-            placeholder="e.g., large bowl, extra olive oil"
+            placeholder="e.g., 27 cm plate, extra olive oil"
           />
+
+          <p className="t-caption">
+            For better portions, shoot in good light and include the plate diameter or a clean ruler or printed 5 cm marker on the same plane as the food. Enter measured grams when available.
+          </p>
 
           {photoError && <p className="t-caption text-[var(--color-accent)]">{photoError}</p>}
 

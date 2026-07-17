@@ -1,4 +1,5 @@
 import type { Food } from '@/types';
+import { barcodeLookupCandidates, barcodesAreEquivalent } from '@/lib/barcodes';
 
 interface UsdaFoodPortion {
   gramWeight?: number;
@@ -110,6 +111,7 @@ interface UsdaFood {
   servingSize?: number;
   servingSizeUnit?: string;
   householdServingFullText?: string;
+  gtinUpc?: string;
 }
 
 interface UsdaSearchResponse {
@@ -167,6 +169,29 @@ export async function searchUsdaFoods(
   } catch (error) {
     console.error('USDA search error:', error);
     return [];
+  }
+}
+
+export async function searchUsdaFoodByBarcode(
+  barcode: string,
+  apiKey: string | undefined,
+  fetcher: typeof fetch = fetch
+): Promise<Food | null> {
+  const candidates = barcodeLookupCandidates(barcode);
+  if (candidates.length === 0 || !apiKey) return null;
+
+  try {
+    const response = await fetcher(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${apiKey}&query=${encodeURIComponent(candidates[0])}&pageSize=50&dataType=Branded`
+    );
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as UsdaSearchResponse;
+    const exactMatch = data.foods?.find((food) => food.gtinUpc && barcodesAreEquivalent(barcode, food.gtinUpc));
+    return exactMatch ? mapUsdaFood(exactMatch) : null;
+  } catch (error) {
+    console.error('USDA barcode lookup error:', error);
+    return null;
   }
 }
 

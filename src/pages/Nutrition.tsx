@@ -1,15 +1,20 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, FileUp, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, EmptyState, Modal, RailStrip, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
-import { CronometerImporter } from '@/components/nutrition/CronometerImporter';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
-import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import {
+  legacyMealTypeForGroup,
+  moveNutritionGroup,
+  normalizeNutritionGroupOrder,
+  nutritionGroupLabel,
+  sortNutritionGroups,
+} from '@/lib/nutritionGroups';
 import type { NutritionGroup } from '@/types';
 import {
   addDays,
@@ -84,7 +89,6 @@ export function Nutrition() {
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
-  const [showCronometerImport, setShowCronometerImport] = useState(false);
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
     setLoading(true);
@@ -260,7 +264,26 @@ export function Nutrition() {
       return;
     }
 
-    setMonthGroups((current) => [...current, data as NutritionGroup]);
+    const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, data as NutritionGroup]);
+    const results = await Promise.all(normalized.map((group) => (
+      supabase
+        .from('nutrition_groups')
+        .update({ sort_order: group.sort_order })
+        .eq('id', group.id)
+        .eq('user_id', group.user_id)
+    )));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      console.error('Error ordering nutrition group:', failed.error);
+      await fetchMonthLogs(selectedMonth);
+      return;
+    }
+
+    const normalizedById = new Map(normalized.map((group) => [group.id, group]));
+    setMonthGroups((current) => [
+      ...current.map((group) => normalizedById.get(group.id) || group),
+      ...(current.some((group) => group.id === data.id) ? [] : [normalizedById.get(data.id) || data as NutritionGroup]),
+    ]);
     setShowGroupSheet(false);
   };
 
@@ -278,6 +301,28 @@ export function Nutrition() {
       return;
     }
     setMonthLogs((current) => current.map((log) => log.id === logId ? { ...log, ...patch } : log));
+  };
+
+  const reorderGroup = async (groupId: string, direction: -1 | 1) => {
+    const reordered = moveNutritionGroup(selectedDayGroups, groupId, direction);
+    if (!reordered) return;
+
+    const results = await Promise.all(reordered.map((group) => (
+      supabase
+        .from('nutrition_groups')
+        .update({ sort_order: group.sort_order })
+        .eq('id', group.id)
+        .eq('user_id', group.user_id)
+    )));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      console.error('Error reordering nutrition groups:', failed.error);
+      await fetchMonthLogs(selectedMonth);
+      return;
+    }
+
+    const reorderedById = new Map(reordered.map((group) => [group.id, group]));
+    setMonthGroups((current) => current.map((group) => reorderedById.get(group.id) || group));
   };
 
   const deleteGroup = async (group: NutritionGroup) => {
@@ -428,14 +473,10 @@ export function Nutrition() {
           <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
           Log food
         </Button>
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <Button variant="secondary" onClick={() => setShowGroupSheet(true)}>
+        <div className="mt-3">
+          <Button variant="secondary" className="w-full" onClick={() => setShowGroupSheet(true)}>
             <Layers3 className="w-4 h-4" strokeWidth={1.5} />
             Add meal
-          </Button>
-          <Button variant="secondary" onClick={() => setShowCronometerImport(true)}>
-            <FileUp className="w-4 h-4" strokeWidth={1.5} />
-            Cronometer
           </Button>
         </div>
       </motion.div>
@@ -572,6 +613,7 @@ export function Nutrition() {
             }}
             onDelete={(id) => void handleDeleteEntry(id)}
             onMove={(id, groupId) => void moveEntry(id, groupId)}
+            onReorderGroup={(groupId, direction) => void reorderGroup(groupId, direction)}
             onDeleteGroup={(group) => void deleteGroup(group)}
           />
         )}
@@ -669,10 +711,6 @@ export function Nutrition() {
             );
           })}
         </div>
-      </Modal>
-
-      <Modal isOpen={showCronometerImport} onClose={() => setShowCronometerImport(false)} title="Import Cronometer">
-        <CronometerImporter onImported={() => void fetchMonthLogs(selectedMonth)} />
       </Modal>
 
       {/* Logger sheet */}

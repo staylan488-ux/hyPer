@@ -120,6 +120,24 @@ describe('ingestion filters', () => {
     expect(state.totalDistanceM).toBeLessThan(5);
   });
 
+  it('ignores phone fidget even when iOS reports a small non-zero speed', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(stationaryDrift.build().map((sample) => ({ ...sample, speedMps: 0.9 })));
+
+    const { state } = drive(tracker, samples);
+
+    expect(state.totalDistanceM).toBe(0);
+  });
+
+  it('uses combined GPS uncertainty when device speed is unavailable', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(stationaryDrift.build().map((sample) => ({ ...sample, speedMps: null })));
+
+    const { state } = drive(tracker, samples);
+
+    expect(state.totalDistanceM).toBeLessThan(5);
+  });
+
   it('still counts real movement even when the fix is noisy', () => {
     // moving at 3 m/s but with device speed reported: distance tracks the move,
     // not inflated by accuracy noise

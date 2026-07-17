@@ -31,13 +31,17 @@ export function BottomNav() {
 
   return (
     <motion.nav
-      className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-base)] border-t border-[var(--color-border-strong)]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="fixed bottom-0 left-0 right-0 z-40 isolate overflow-hidden border-t border-[var(--color-border-strong)]"
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        backgroundColor: 'var(--color-base)',
+      }}
       initial={{ y: 90 }}
       animate={{ y: 0 }}
       transition={springs.smooth}
     >
-      <div className="max-w-lg mx-auto grid grid-cols-4">
+      <span aria-hidden="true" className="absolute inset-0 -z-10 bg-[var(--color-base)]" />
+      <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4 bg-[var(--color-base)]">
         {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
           const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
 

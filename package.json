@@ -17,6 +17,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
     "@tailwindcss/vite": "^4.1.18",
+    "barcode-detector": "3.2.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
     "motion": "^12.34.0",

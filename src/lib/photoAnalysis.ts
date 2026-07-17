@@ -16,6 +16,7 @@ export interface PhotoAnalysisItem {
 
 export interface PhotoAnalysisResult {
   provider: PhotoAnalysisProvider;
+  model: string;
   items: PhotoAnalysisItem[];
   summary: string;
 }
@@ -60,6 +61,7 @@ function normalizeItem(item: PhotoAnalysisItem): PhotoAnalysisItem {
 
 const PREVIEW_RESULT: PhotoAnalysisResult = {
   provider: 'openai',
+  model: 'preview',
   summary: 'Three visible components. Oil is included as a separate low-confidence estimate.',
   items: [
     { name: 'Chicken breast, grilled', search_query: 'chicken breast grilled', estimated_grams: 155, calories: 256, protein_g: 48, carbs_g: 0, fat_g: 5.5, confidence: 0.91, notes: 'Skinless sliced chicken breast.' },
@@ -103,6 +105,7 @@ export async function analyzeFoodPhoto(input: {
     if (items.length === 0) throw new Error('The model did not identify any foods. Add a hint or retake the photo.');
     return {
       provider: payload?.provider === 'anthropic' ? 'anthropic' : 'openai',
+      model: String(payload?.model || 'CLI default'),
       summary: String(payload?.summary || ''),
       items,
     };
@@ -116,17 +119,18 @@ export async function analyzeFoodPhoto(input: {
   }
 }
 
-export async function checkPhotoWorker(settings = getPhotoWorkerSettings()): Promise<{ ok: boolean; providers: string[]; authenticatedProviders: string[]; error?: string }> {
+export async function checkPhotoWorker(settings = getPhotoWorkerSettings()): Promise<{ ok: boolean; providers: string[]; authenticatedProviders: string[]; models: Record<string, string>; error?: string }> {
   try {
     const response = await fetch(`${settings.url.replace(/\/+$/, '')}/health`, { signal: AbortSignal.timeout(5_000) });
-    const payload = await response.json() as { providers?: string[]; authenticatedProviders?: string[]; error?: string };
+    const payload = await response.json() as { providers?: string[]; authenticatedProviders?: string[]; models?: Record<string, string>; error?: string };
     return {
       ok: response.ok,
       providers: payload.providers || [],
       authenticatedProviders: payload.authenticatedProviders || [],
+      models: payload.models || {},
       error: payload.error,
     };
   } catch (error) {
-    return { ok: false, providers: [], authenticatedProviders: [], error: error instanceof Error ? error.message : 'Worker unavailable' };
+    return { ok: false, providers: [], authenticatedProviders: [], models: {}, error: error instanceof Error ? error.message : 'Worker unavailable' };
   }
 }

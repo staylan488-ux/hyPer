@@ -7,6 +7,56 @@ export type NutritionGroupDestination = Pick<NutritionGroup, 'kind' | 'label'> &
 export function sortNutritionGroups(groups: NutritionGroup[]): NutritionGroup[] {
   return [...groups].sort((a, b) => a.sort_order - b.sort_order || a.created_at?.localeCompare(b.created_at || '') || 0);
 }
+
+const NAMED_MEAL_ORDER: Record<NonNullable<NutritionGroup['label']>, number> = {
+  breakfast: 0,
+  lunch: 1,
+  dinner: 2,
+};
+
+export function hasValidNamedMealOrder(groups: NutritionGroup[]): boolean {
+  let lastNamedMealOrder = -1;
+
+  for (const group of sortNutritionGroups(groups)) {
+    if (!group.label) continue;
+    const nextNamedMealOrder = NAMED_MEAL_ORDER[group.label];
+    if (nextNamedMealOrder < lastNamedMealOrder) return false;
+    lastNamedMealOrder = nextNamedMealOrder;
+  }
+
+  return true;
+}
+
+export function normalizeNutritionGroupOrder(groups: NutritionGroup[]): NutritionGroup[] {
+  const ordered = sortNutritionGroups(groups);
+  const namedMeals = ordered
+    .filter((group) => group.label)
+    .sort((a, b) => NAMED_MEAL_ORDER[a.label!] - NAMED_MEAL_ORDER[b.label!]);
+  let namedIndex = 0;
+
+  return ordered.map((group, sortOrder) => ({
+    ...(group.label ? namedMeals[namedIndex++] : group),
+    sort_order: sortOrder,
+  }));
+}
+
+export function moveNutritionGroup(
+  groups: NutritionGroup[],
+  groupId: string,
+  direction: -1 | 1,
+): NutritionGroup[] | null {
+  const ordered = sortNutritionGroups(groups);
+  const currentIndex = ordered.findIndex((group) => group.id === groupId);
+  const destinationIndex = currentIndex + direction;
+  if (currentIndex < 0 || destinationIndex < 0 || destinationIndex >= ordered.length) return null;
+
+  const moved = [...ordered];
+  [moved[currentIndex], moved[destinationIndex]] = [moved[destinationIndex], moved[currentIndex]];
+  const normalized = moved.map((group, sortOrder) => ({ ...group, sort_order: sortOrder }));
+
+  return hasValidNamedMealOrder(normalized) ? normalized : null;
+}
+
 export function nutritionGroupLabel(group: NutritionGroup, groups: NutritionGroup[]): string {
   if (group.label) return group.label.charAt(0).toUpperCase() + group.label.slice(1);
 

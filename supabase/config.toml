@@ -7,5 +7,16 @@ verify_jwt = false
 [functions.whoop-sync]
 verify_jwt = true
 
+# Google redirects to this function without a Supabase JWT. Start/disconnect
+# still require a JWT, and the callback is bound to a signed short-lived state.
+[functions.google-health-oauth]
+verify_jwt = false
+
+[functions.google-health-sync]
+verify_jwt = true
+
+[functions.food-lookup]
+verify_jwt = true
+
 [functions.process-food-photo]
 verify_jwt = true
