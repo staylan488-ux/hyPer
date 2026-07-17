@@ -1,6 +1,27 @@
 # Handoff
 
-Updated: 2026-07-16 (rev 12: replace paid Strava connector with built-in GPS; rev 11: isolated Hyper-Dev staging; rev 10: production-like app sandbox)
+Updated: 2026-07-16 (rev 14: native barcode capture + Eufy/Google Health weight import; rev 13: iPhone nutrition/GPS usability pass; rev 12: replace paid Strava connector with built-in GPS)
+
+## Rev 14 — native barcode capture + Eufy/Google Health weight import (implemented locally; staging deploy pending)
+
+- Added a touch-first iPhone barcode scanner to Log Food. It uses maintained `barcode-detector@3.2.1` with ZXing-C++ WebAssembly, is lazy-loaded, decodes UPC-A/UPC-E/EAN-8/EAN-13 on-device, validates GTIN checksums, supports rear camera/flashlight/manual digits, and serves the WASM from Hyper rather than a CDN. Exact barcode matches are marked `Barcode … · USDA verified` and logged with barcode provenance.
+- Replaced browser-exposed USDA access with authenticated `food-lookup`; `USDA_API_KEY` now remains in an Edge Function secret. USDA FoodData Central is the current free lookup source. FatSecret Premier Free remains the planned licensed primary source after approval; Open Food Facts was not mixed in because it is crowd-sourced and its ODbL/share-alike terms require a deliberate product decision.
+- Research conclusion: Scandit/Scanbot are likely stronger commercial decoders for damaged/distant codes, but require commercial licensing. The current ZXing-C++ WASM route is the best maintained free fit for an iPhone PWA and preserves a clean switch point for a future native Apple VisionKit/ML Kit scanner.
+- Added an Eufy scale import path without scraping or storing Eufy credentials: EufyLife → Fitbit → the new Google Health API reconciled stream → Hyper. Eufy officially continues Fitbit sync but has no supported public scale API. The implementation requests only read-only health metrics, stores OAuth tokens in a service-role-only table, imports 90 days of weight idempotently, auto-syncs stale data in the dashboard background, and shows the latest weight in pounds and kilograms. The Eufy-to-Google-Health hop is standards-supported but must be verified with the user's actual scale because Eufy does not document that exact end-to-end path.
+- New local-only migration: `20260717010000_add_google_health_weight.sql` (`google_health_connections`, service-role-only `google_health_tokens`, owner-scoped `body_measurements`). New functions: `google-health-oauth`, `google-health-sync`, `food-lookup`. Required Hyper-Dev secrets: `USDA_API_KEY`, `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`, `GOOGLE_HEALTH_STATE_SECRET`, and existing `APP_BASE_URL`. Hyper-Dev redirect URI: `https://nwvgkxqjqihqnjuworqz.supabase.co/functions/v1/google-health-oauth/callback`.
+- Browser QA at 390×844 PASS for Log Food's five tabs/scanner/manual fallback, Settings Eufy connector, and Dashboard Body card; no console errors. Real camera, barcode lookup, OAuth, and Eufy weigh-in remain staging E2E tests because the migration/functions/secrets are not deployed.
+- Safety checkpoint: `c13c05bf feat(app): harden iPhone logging and health sync`. Validation: `npm run test` PASS (28 files, 312 tests); `npm run lint` PASS; `npm run build` PASS; `node --check scripts/photo-food-worker.mjs` PASS; `git diff --check` PASS. Existing non-blocking bundle-size and stale Browserslist warnings remain. `npm audit --omit=dev` reports 8 advisories in pre-existing application dependencies (1 low, 1 moderate, 6 high), including Vite/react-router chains; scanner dependencies are not implicated. Dependency remediation needs separate approval. Production was not touched. Preserve unrelated `supabase/.temp/cli-latest` and `.claude/launch.json` changes.
+
+## Rev 13 — iPhone nutrition/GPS usability pass (implemented locally; barcode work completed in rev 14)
+
+- Current uncommitted source changes make the bottom navigation and home-indicator safe area explicitly opaque, add animated/action-specific WHOOP progress and completion announcements, and open Edit Entry directly on editable name/calorie/protein/carbs/fat fields.
+- Log Food now opens with a first-class Saved tab beside USDA/Manual/Photo. USDA, manual, saved, OpenAI photo, Claude photo, legacy Cronometer, and future barcode logs display compact provenance; missing/legacy source values safely display as Manual.
+- Meal sections have touch-friendly earlier/later controls. Numbered meals/snacks are renumbered from their current chronological order; Breakfast/Lunch/Dinner order is enforced during creation and reordering.
+- Removed the user-facing Cronometer CSV button. Official Cronometer documentation confirms automatic Food export to Android Health Connect, but its iPhone Apple Health documentation does not offer nutrition export; an iPhone web app also cannot use native HealthKit. Do not scrape Cronometer credentials. The supported automatic replacement is direct Hyper barcode scanning with USDA now and FatSecret Premier later.
+- Reliable Safari barcode decoding needs a maintained decoder because native `BarcodeDetector` is not dependable in iPhone Safari. Rev 14 implements this with `barcode-detector`/ZXing-C++ WASM rather than the older `@zxing/browser` candidate.
+- Photo preview is now color (analysis was already color), capture guidance recommends a known plate diameter or a clean ruler/printed 5 cm marker on the food plane, and the worker prompt uses known scale while rejecting unmeasured utensils. The private worker now pins OpenAI `gpt-5.6-sol` and Claude `opus`, exposes the selected model in health/results, and the UI displays it. Restart the worker after promotion.
+- GPS now rejects reported speeds below 1.2 m/s for this run-specific tracker and, when device speed is missing, requires displacement to exceed 1.3× the combined uncertainty of both fixes. Restored older runs merge current defaults. Regression tests cover iPhone-like fidget speed and missing-speed drift.
+- Validation: targeted tests PASS; `npm run test` PASS (25 files, 304 tests); `npm run lint` PASS; `npm run build` PASS; `node --check scripts/photo-food-worker.mjs` PASS; `git diff --check` PASS. Existing non-blocking bundle-size and Browserslist warnings remain. Production was not touched. Preserve unrelated `supabase/.temp/cli-latest` and `.claude/launch.json` changes.
 
 ## Rev 12 — built-in GPS replaces paid Strava connector (implemented; validated)
 
@@ -116,13 +137,13 @@ User requirement: a run recorded in-app (or later via Strava) + the same run rec
 
 ## Current goal
 
-Finish real-account E2E in isolated `Hyper-Dev` using built-in iPhone GPS plus WHOOP enrichment, then test dynamic nutrition groups, Cronometer CSV import, and subscription-backed photo review. Staging sign-off gates every production change.
+Finish real-account E2E in isolated `Hyper-Dev`: built-in iPhone GPS + WHOOP enrichment, barcode/USDA lookup, OpenAI/Claude photo review, dynamic nutrition groups, and Eufy weight import through Google Health. Staging sign-off gates every production change.
 
 ## Verified state
 
 - Worktree `/Users/alex/Desktop/hyPer-current-ui`, branch `codex/activity-sessions-current-ui`, base `origin/main` @ `0da91009` (unchanged upstream).
 - Full plan: `/Users/alex/.claude/plans/compressed-forging-fog.md` (user-approved).
-- **Current validation: `npm run test` 299/299 PASS, `npm run lint` PASS, `npm run build` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. Isolated staging has the activity, WHOOP, and nutrition migrations plus WHOOP functions; production has none of them.
+- **Current validation: `npm run test` 312/312 PASS, `npm run lint` PASS, `npm run build` PASS, script syntax PASS, and `git diff --check` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. Isolated staging has the earlier activity, WHOOP, and nutrition work; the new barcode proxy and Google Health work remain local only. Production has none of it.
 - The detailed rev sections ABOVE (rev 5 drift+pause, rev 4 Strava, rev 3 merge, rev 2 miles) are the current source of truth; the per-phase notes BELOW are the original rev-1/2 record and predate those changes (e.g. they say km/277 tests and lack Strava — superseded).
 - Phone testing: `npm run dev -- --host 127.0.0.1` (must bind IPv4 — the tunnel proxies IPv4; default is IPv6-only), then Tailscale serve exposes `https://alexanders-macbook-air.taileaf222.ts.net/`. HTTPS is required for iOS geolocation + wake lock. `vite.config.ts` `server.allowedHosts` allows the `.taileaf222.ts.net` domain (dev-only). Sandbox = `/preview` (fresh Safari tab; preview mode latches per-tab). Real GPS test: Run → Position source → "Real GPS".
 - Sandbox note: the in-app browser pane throttles timers/animations (document reports hidden) — modal exits stick, 10× sim timing drifts; NOT app bugs. Read sandbox results back through the app's own `supabase` client (`supabase.from(...).select()`), NOT a direct `import('previewData')` — that reads a stale module instance.
@@ -222,4 +243,4 @@ Modified files:
 
 ## Next action
 
-Clean the already-applied Strava artifacts from isolated staging, then test the user's own staging account through WHOOP connect/sync, iPhone GPS, photo logging, and Cronometer CSV import before any production push.
+Obtain explicit approval to mutate Hyper-Dev, then apply `20260717010000_add_google_health_weight.sql`, configure the USDA/Google Health secrets and exact staging callback, deploy `food-lookup`, `google-health-oauth`, and `google-health-sync`, and run the real iPhone barcode + Eufy weigh-in tests. Do not touch production.
