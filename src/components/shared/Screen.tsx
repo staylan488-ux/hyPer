@@ -1,5 +1,4 @@
 import { type ReactNode } from 'react';
-import { motion } from 'motion/react';
 
 interface ScreenProps {
   children: ReactNode;
@@ -8,17 +7,15 @@ interface ScreenProps {
   bare?: boolean;
 }
 
-/** Standard page wrapper: generous gutter, top spacing, bottom-nav clearance, entry fade. */
+/**
+ * Standard page wrapper: generous gutter, top spacing, bottom-nav clearance.
+ * Entry motion lives at the route level (AnimatedOutlet) — one turn per page.
+ */
 export function Screen({ children, className = '', bare = false }: ScreenProps) {
   return (
-    <motion.div
-      className={`px-6 pt-7 ${bare ? '' : 'pb-nav'} ${className}`}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-    >
+    <div className={`px-6 pt-7 ${bare ? '' : 'pb-nav'} ${className}`}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
