@@ -18,3 +18,4 @@ export type { SelectSheetOption } from './SelectSheet';
 export { DateField, TimeField } from './DateTimePicker';
 export { Toast } from './Toast';
 export { MacroBar } from './MacroBar';
+export { PaperAtmosphere } from './PaperAtmosphere';

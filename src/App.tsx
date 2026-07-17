@@ -13,6 +13,7 @@ import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
 import { useThemeStore } from '@/stores/themeStore';
 import { pageTransition, springs } from '@/lib/animations';
+import { PaperAtmosphere } from '@/components/shared/PaperAtmosphere';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
 
 function BootSplash() {
@@ -105,6 +106,7 @@ function App() {
   return (
     <MotionConfig reducedMotion="user">
       <BrowserRouter>
+        <PaperAtmosphere />
         <Routes>
           {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
           <Route element={<PrivateLayout />}>
