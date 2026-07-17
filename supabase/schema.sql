@@ -165,41 +165,6 @@ CREATE TABLE IF NOT EXISTS whoop_tokens (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Google Health connection and body-weight history. Safe status metadata is
--- owner-readable; OAuth tokens remain service-role-only.
-CREATE TABLE IF NOT EXISTS google_health_connections (
-  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
-  health_user_id TEXT,
-  scopes TEXT NOT NULL,
-  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_synced_at TIMESTAMPTZ,
-  last_sync_status TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS google_health_tokens (
-  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
-  access_token TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  scopes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS body_measurements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  measured_at TIMESTAMPTZ NOT NULL,
-  weight_kg DECIMAL(7,3) NOT NULL CHECK (weight_kg > 0 AND weight_kg < 700),
-  body_fat_percent DECIMAL(5,2) CHECK (body_fat_percent > 0 AND body_fat_percent < 100),
-  source TEXT NOT NULL CHECK (source IN ('manual', 'google_health')),
-  external_id TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 -- Foods database (custom + USDA)
 CREATE TABLE IF NOT EXISTS foods (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -307,8 +272,6 @@ CREATE INDEX idx_nutrition_groups_user_date ON nutrition_groups(user_id, date, s
 CREATE UNIQUE INDEX idx_nutrition_groups_named_label ON nutrition_groups(user_id, date, label) WHERE label IS NOT NULL;
 CREATE INDEX idx_nutrition_logs_group ON nutrition_logs(group_id, sort_order);
 CREATE UNIQUE INDEX idx_nutrition_logs_external_identity ON nutrition_logs(user_id, source, external_id) WHERE external_id IS NOT NULL;
-CREATE INDEX idx_body_measurements_user_time ON body_measurements(user_id, measured_at DESC);
-CREATE UNIQUE INDEX idx_body_measurements_external_identity ON body_measurements(user_id, source, external_id);
 CREATE UNIQUE INDEX idx_foods_external_identity ON foods(user_id, external_source, external_id) WHERE user_id IS NOT NULL AND external_source IS NOT NULL AND external_id IS NOT NULL;
 CREATE INDEX idx_foods_user_id ON foods(user_id);
 
@@ -339,10 +302,6 @@ ALTER TABLE activity_segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whoop_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whoop_tokens ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON whoop_tokens FROM anon, authenticated;
-ALTER TABLE google_health_connections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE google_health_tokens ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON google_health_tokens FROM anon, authenticated;
-ALTER TABLE body_measurements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_groups ENABLE ROW LEVEL SECURITY;
@@ -429,12 +388,6 @@ CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR 
 -- WHOOP connection policies: owner may read status; only service role writes.
 -- whoop_tokens intentionally has NO policies.
 CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can view own Google Health connection" ON google_health_connections FOR SELECT USING (auth.uid() = user_id);
--- google_health_tokens intentionally has NO policies.
-CREATE POLICY "Users can view own body measurements" ON body_measurements FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own manual body measurements" ON body_measurements FOR INSERT WITH CHECK (auth.uid() = user_id AND source = 'manual');
-CREATE POLICY "Users can update own manual body measurements" ON body_measurements FOR UPDATE USING (auth.uid() = user_id AND source = 'manual') WITH CHECK (auth.uid() = user_id AND source = 'manual');
-CREATE POLICY "Users can delete own body measurements" ON body_measurements FOR DELETE USING (auth.uid() = user_id);
 -- Foods policies
 CREATE POLICY "Users can view own foods" ON foods FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
 CREATE POLICY "Users can insert own foods" ON foods FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);

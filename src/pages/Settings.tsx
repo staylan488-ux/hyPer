@@ -13,13 +13,6 @@ import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/food
 import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
 import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
-import {
-  disconnectGoogleHealth,
-  fetchGoogleHealthConnection,
-  startGoogleHealthConnect,
-  syncGoogleHealth,
-} from '@/lib/googleHealthClient';
-import type { GoogleHealthConnection } from '@/types';
 
 interface SavedMeal {
   id: string;
@@ -105,10 +98,6 @@ export function Settings() {
   const [whoopAction, setWhoopAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
   const [whoopMessage, setWhoopMessage] = useState<string | null>(null);
   const [whoopError, setWhoopError] = useState<string | null>(null);
-  const [googleHealthConnection, setGoogleHealthConnection] = useState<GoogleHealthConnection | null>(null);
-  const [googleHealthAction, setGoogleHealthAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
-  const [googleHealthMessage, setGoogleHealthMessage] = useState<string | null>(null);
-  const [googleHealthError, setGoogleHealthError] = useState<string | null>(null);
   const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
   const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
   const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
@@ -120,18 +109,6 @@ export function Settings() {
   useEffect(() => {
     void fetchWhoopConnection();
   }, [fetchWhoopConnection]);
-
-  const refreshGoogleHealthConnection = useCallback(async () => {
-    try {
-      setGoogleHealthConnection(await fetchGoogleHealthConnection());
-    } catch (error) {
-      console.error('Error fetching Google Health connection:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshGoogleHealthConnection();
-  }, [refreshGoogleHealthConnection]);
 
   const handlePhotoWorkerSave = async () => {
     savePhotoWorkerSettings(photoWorkerDraft);
@@ -160,25 +137,6 @@ export function Settings() {
     next.delete('whoop');
     setSearchParams(next, { replace: true });
   }, [fetchWhoopConnection, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    const googleHealthParam = searchParams.get('google_health');
-    if (!googleHealthParam) return;
-
-    if (googleHealthParam === 'connected') {
-      setGoogleHealthMessage('Google Health connected. Syncing Eufy weight history…');
-      void refreshGoogleHealthConnection();
-      void syncGoogleHealth()
-        .then((result) => setGoogleHealthMessage(`Eufy/Google Health synced · ${result.imported} weight samples checked.`))
-        .catch(() => setGoogleHealthError('Connected, but the first weight sync failed. Try Sync now.'));
-    } else {
-      setGoogleHealthError('Google Health connection failed. Check that this Google account is an allowed test user.');
-    }
-
-    const next = new URLSearchParams(searchParams);
-    next.delete('google_health');
-    setSearchParams(next, { replace: true });
-  }, [refreshGoogleHealthConnection, searchParams, setSearchParams]);
 
   const clearWhoopFeedback = () => {
     setWhoopMessage(null);
@@ -245,63 +203,6 @@ export function Settings() {
         ? 'Disconnecting WHOOP…'
         : whoopConnection
           ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
-          : 'Not connected';
-
-  const clearGoogleHealthFeedback = () => {
-    setGoogleHealthMessage(null);
-    setGoogleHealthError(null);
-  };
-
-  const handleGoogleHealthConnect = async () => {
-    clearGoogleHealthFeedback();
-    setGoogleHealthAction('connect');
-    try {
-      window.location.href = await startGoogleHealthConnect();
-    } catch (error) {
-      console.error('Error connecting Google Health:', error);
-      setGoogleHealthError('Could not start Google Health authorization.');
-      setGoogleHealthAction(null);
-    }
-  };
-
-  const handleGoogleHealthSync = async () => {
-    clearGoogleHealthFeedback();
-    setGoogleHealthAction('sync');
-    try {
-      const result = await syncGoogleHealth();
-      setGoogleHealthMessage(`Up to date · ${result.imported} recent weight samples checked.`);
-      await refreshGoogleHealthConnection();
-    } catch (error) {
-      console.error('Error syncing Google Health:', error);
-      setGoogleHealthError('Weight sync failed. In test mode, reconnect if it has been more than seven days.');
-    } finally {
-      setGoogleHealthAction(null);
-    }
-  };
-
-  const handleGoogleHealthDisconnect = async () => {
-    clearGoogleHealthFeedback();
-    setGoogleHealthAction('disconnect');
-    try {
-      await disconnectGoogleHealth();
-      setGoogleHealthConnection(null);
-      setGoogleHealthMessage('Google Health disconnected. Imported weight history remains in Hyper.');
-    } catch (error) {
-      console.error('Error disconnecting Google Health:', error);
-      setGoogleHealthError('Could not disconnect Google Health.');
-    } finally {
-      setGoogleHealthAction(null);
-    }
-  };
-
-  const googleHealthStatusLabel = googleHealthAction === 'sync'
-    ? 'Syncing Eufy weight data…'
-    : googleHealthAction === 'connect'
-      ? 'Opening Google authorization…'
-      : googleHealthAction === 'disconnect'
-        ? 'Disconnecting Google Health…'
-        : googleHealthConnection
-          ? `Connected${googleHealthConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(googleHealthConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
           : 'Not connected';
 
   const clearMealManagerFeedback = () => {
@@ -788,36 +689,6 @@ export function Settings() {
         <div aria-live="polite">
           {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
           {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
-        </div>
-
-        <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="t-heading">Eufy scale</p>
-              <p className="t-caption mt-1" aria-live="polite">{googleHealthStatusLabel}</p>
-            </div>
-            {googleHealthConnection ? (
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" loading={googleHealthAction === 'sync'} disabled={googleHealthAction !== null} onClick={() => { void handleGoogleHealthSync(); }}>
-                  Sync now
-                </Button>
-                <Button variant="ghost" size="sm" loading={googleHealthAction === 'disconnect'} disabled={googleHealthAction !== null} onClick={() => { void handleGoogleHealthDisconnect(); }}>
-                  Disconnect
-                </Button>
-              </div>
-            ) : (
-              <Button variant="secondary" size="sm" loading={googleHealthAction === 'connect'} disabled={googleHealthAction !== null} onClick={() => { void handleGoogleHealthConnect(); }}>
-                Connect
-              </Button>
-            )}
-          </div>
-          <p className="t-caption mt-3">
-            Automatic path: EufyLife → Fitbit → Google Health → Hyper. Enable Fitbit sync in EufyLife first.
-          </p>
-          <div aria-live="polite">
-            {googleHealthMessage && <p className="t-caption mt-3">{googleHealthMessage}</p>}
-            {googleHealthError && <p className="t-caption mt-3 text-[var(--color-accent)]">{googleHealthError}</p>}
-          </div>
         </div>
 
         <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">

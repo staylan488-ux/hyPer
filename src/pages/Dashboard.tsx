@@ -6,7 +6,6 @@ import {
   Dumbbell,
   Play,
   Plus,
-  Scale,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
@@ -20,13 +19,6 @@ import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 import { loadPlanSchedule, plannedDayForDate, type PlanSchedule } from '@/lib/planSchedule';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
-import type { BodyMeasurement, GoogleHealthConnection } from '@/types';
-import {
-  fetchGoogleHealthConnection,
-  fetchLatestBodyMeasurement,
-  kgToPounds,
-  syncGoogleHealth,
-} from '@/lib/googleHealthClient';
 
 interface NutritionTotals {
   calories: number;
@@ -70,8 +62,6 @@ export function Dashboard() {
   });
   const [todayDone, setTodayDone] = useState<{ title: string } | null>(null);
   const [flexCompletedCount, setFlexCompletedCount] = useState(0);
-  const [latestBodyMeasurement, setLatestBodyMeasurement] = useState<BodyMeasurement | null>(null);
-  const [googleHealthConnection, setGoogleHealthConnection] = useState<GoogleHealthConnection | null>(null);
   const [mountedAt] = useState(() => Date.now());
 
   const userId = user?.id;
@@ -151,35 +141,6 @@ export function Dashboard() {
     }
   }, []);
 
-  const fetchBodySummary = useCallback(async () => {
-    try {
-      const [connection, measurement] = await Promise.all([
-        fetchGoogleHealthConnection(),
-        fetchLatestBodyMeasurement(),
-      ]);
-      setGoogleHealthConnection(connection);
-      setLatestBodyMeasurement(measurement);
-
-      const lastSyncMs = connection?.last_synced_at ? Date.parse(connection.last_synced_at) : 0;
-      if (connection && Date.now() - lastSyncMs > 10 * 60 * 1000) {
-        void syncGoogleHealth()
-          .then(async () => {
-            const [refreshedConnection, refreshedMeasurement] = await Promise.all([
-              fetchGoogleHealthConnection(),
-              fetchLatestBodyMeasurement(),
-            ]);
-            setGoogleHealthConnection(refreshedConnection);
-            setLatestBodyMeasurement(refreshedMeasurement);
-          })
-          .catch((error) => {
-            console.error('Error syncing body measurements:', error);
-          });
-      }
-    } catch (error) {
-      console.error('Error loading body measurement summary:', error);
-    }
-  }, []);
-
   useEffect(() => {
     const timer = setTimeout(async () => {
       await Promise.all([
@@ -191,13 +152,12 @@ export function Dashboard() {
         fetchWorkoutMode(),
         fetchNutritionTotals(),
         fetchTodayStatus(),
-        fetchBodySummary(),
       ]);
       setLoading(false);
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [calculateWeeklyVolume, fetchBodySummary, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode]);
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode]);
 
   // Flex-rotation schedules advance by completed sessions since the plan start
   useEffect(() => {
@@ -336,39 +296,6 @@ export function Dashboard() {
               </Link>
             )}
           </div>
-        </motion.section>
-
-        {/* ── Body ── */}
-        <motion.section
-          className="mt-10 pt-8 border-t border-[var(--color-border)]"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.12 }}
-        >
-          <div className="flex items-baseline justify-between mb-4">
-            <span className="t-label">Body</span>
-            <Link to="/settings" className="t-label-sm flex items-center gap-1 hover:text-[var(--color-text)] transition-colors">
-              {googleHealthConnection ? 'Manage' : 'Connect scale'} <ArrowUpRight className="w-3 h-3" strokeWidth={1.75} />
-            </Link>
-          </div>
-          {latestBodyMeasurement ? (
-            <div className="flex items-end justify-between gap-5">
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="number-hero text-[var(--color-text)]">{kgToPounds(latestBodyMeasurement.weight_kg).toFixed(1)}</span>
-                  <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">lb</span>
-                </div>
-                <p className="t-caption mt-1">
-                  {latestBodyMeasurement.weight_kg.toFixed(1)} kg · {format(new Date(latestBodyMeasurement.measured_at), 'MMM d, h:mm a')}
-                </p>
-              </div>
-              <Scale className="w-6 h-6 text-[var(--color-muted)] mb-2" strokeWidth={1.25} />
-            </div>
-          ) : (
-            <p className="text-editorial">
-              {googleHealthConnection ? 'No weight sample yet. Weigh in with EufyLife open, then sync.' : 'Connect Eufy through Fitbit and Google Health to bring each weigh-in into Hyper.'}
-            </p>
-          )}
         </motion.section>
 
         {/* ── Contents / stations ── */}

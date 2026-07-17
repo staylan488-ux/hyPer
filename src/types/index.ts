@@ -277,29 +277,6 @@ export interface NutritionImportBatch {
   created_at: string;
 }
 
-export interface GoogleHealthConnection {
-  user_id: string;
-  health_user_id: string | null;
-  scopes: string;
-  connected_at: string;
-  last_synced_at: string | null;
-  last_sync_status: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BodyMeasurement {
-  id: string;
-  user_id: string;
-  measured_at: string;
-  weight_kg: number;
-  body_fat_percent: number | null;
-  source: 'manual' | 'google_health';
-  external_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface MacroTarget {
   id: string;
   user_id: string;
