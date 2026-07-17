@@ -1,15 +1,24 @@
 # Handoff
 
-Updated: 2026-07-16 (rev 14: native barcode capture + Eufy/Google Health weight import; rev 13: iPhone nutrition/GPS usability pass; rev 12: replace paid Strava connector with built-in GPS)
+Updated: 2026-07-16 (rev 15: defer Eufy to native Apple Health; rev 14: native barcode capture; rev 13: iPhone nutrition/GPS usability pass)
 
-## Rev 14 — native barcode capture + Eufy/Google Health weight import (implemented locally; staging deploy pending)
+## Rev 15 — Eufy scale import deferred to native Apple Health (implemented and validated locally)
+
+- Product decision: do not ship or test the Eufy → Fitbit → Google Health bridge in the web app. When Hyper becomes a native iPhone app, use the shorter EufyLife → Apple Health → Hyper HealthKit path instead.
+- Removed the Eufy connector and weight card from Settings/Dashboard; removed the Google Health client, OAuth/sync Edge Functions, shared helpers, function config, database/client types, schema tables/policies/indexes, migration, and normalization tests.
+- No Google Health migration or function had been deployed to Hyper-Dev or production, so no remote cleanup is required. `food-lookup` and all barcode/USDA work remain intact.
+- Native implementation requirements for later: an Xcode-signed target, HealthKit capability and read-purpose text, permission for body mass (and body-fat percentage only if desired), anchored/background queries, provider-neutral measurement storage, and explicit source/deduplication handling.
+- Safety checkpoint: `45f1bd2d refactor(health): defer scale sync to native app`.
+- Validation after removal: `npm run test` PASS (27 files, 309 tests); `npm run lint` PASS; `npm run build` PASS; worker syntax, active-reference scan, and `git diff --check` PASS. Browser QA at 390×844 confirmed Today and Settings have no Eufy/Google Health remnants, no horizontal overflow, and no console errors. Existing bundle-size and stale Browserslist warnings remain.
+- Production and Hyper-Dev were not touched. Preserve unrelated `supabase/.temp/cli-latest` and `.claude/launch.json` changes.
+
+## Rev 14 — native barcode capture (implemented locally; staging deploy pending)
 
 - Added a touch-first iPhone barcode scanner to Log Food. It uses maintained `barcode-detector@3.2.1` with ZXing-C++ WebAssembly, is lazy-loaded, decodes UPC-A/UPC-E/EAN-8/EAN-13 on-device, validates GTIN checksums, supports rear camera/flashlight/manual digits, and serves the WASM from Hyper rather than a CDN. Exact barcode matches are marked `Barcode … · USDA verified` and logged with barcode provenance.
 - Replaced browser-exposed USDA access with authenticated `food-lookup`; `USDA_API_KEY` now remains in an Edge Function secret. USDA FoodData Central is the current free lookup source. FatSecret Premier Free remains the planned licensed primary source after approval; Open Food Facts was not mixed in because it is crowd-sourced and its ODbL/share-alike terms require a deliberate product decision.
 - Research conclusion: Scandit/Scanbot are likely stronger commercial decoders for damaged/distant codes, but require commercial licensing. The current ZXing-C++ WASM route is the best maintained free fit for an iPhone PWA and preserves a clean switch point for a future native Apple VisionKit/ML Kit scanner.
-- Added an Eufy scale import path without scraping or storing Eufy credentials: EufyLife → Fitbit → the new Google Health API reconciled stream → Hyper. Eufy officially continues Fitbit sync but has no supported public scale API. The implementation requests only read-only health metrics, stores OAuth tokens in a service-role-only table, imports 90 days of weight idempotently, auto-syncs stale data in the dashboard background, and shows the latest weight in pounds and kilograms. The Eufy-to-Google-Health hop is standards-supported but must be verified with the user's actual scale because Eufy does not document that exact end-to-end path.
-- New local-only migration: `20260717010000_add_google_health_weight.sql` (`google_health_connections`, service-role-only `google_health_tokens`, owner-scoped `body_measurements`). New functions: `google-health-oauth`, `google-health-sync`, `food-lookup`. Required Hyper-Dev secrets: `USDA_API_KEY`, `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`, `GOOGLE_HEALTH_STATE_SECRET`, and existing `APP_BASE_URL`. Hyper-Dev redirect URI: `https://nwvgkxqjqihqnjuworqz.supabase.co/functions/v1/google-health-oauth/callback`.
-- Browser QA at 390×844 PASS for Log Food's five tabs/scanner/manual fallback, Settings Eufy connector, and Dashboard Body card; no console errors. Real camera, barcode lookup, OAuth, and Eufy weigh-in remain staging E2E tests because the migration/functions/secrets are not deployed.
+- New authenticated `food-lookup` Edge Function requires only the `USDA_API_KEY` Hyper-Dev secret. No Google Health configuration is part of staging anymore.
+- Browser QA at 390×844 PASS for Log Food's five tabs, scanner layout, and manual fallback; no console errors. Real iPhone camera and barcode lookup remain staging E2E tests because `food-lookup` is not deployed.
 - Safety checkpoint: `c13c05bf feat(app): harden iPhone logging and health sync`. Validation: `npm run test` PASS (28 files, 312 tests); `npm run lint` PASS; `npm run build` PASS; `node --check scripts/photo-food-worker.mjs` PASS; `git diff --check` PASS. Existing non-blocking bundle-size and stale Browserslist warnings remain. `npm audit --omit=dev` reports 8 advisories in pre-existing application dependencies (1 low, 1 moderate, 6 high), including Vite/react-router chains; scanner dependencies are not implicated. Dependency remediation needs separate approval. Production was not touched. Preserve unrelated `supabase/.temp/cli-latest` and `.claude/launch.json` changes.
 
 ## Rev 13 — iPhone nutrition/GPS usability pass (implemented locally; barcode work completed in rev 14)
@@ -137,13 +146,13 @@ User requirement: a run recorded in-app (or later via Strava) + the same run rec
 
 ## Current goal
 
-Finish real-account E2E in isolated `Hyper-Dev`: built-in iPhone GPS + WHOOP enrichment, barcode/USDA lookup, OpenAI/Claude photo review, dynamic nutrition groups, and Eufy weight import through Google Health. Staging sign-off gates every production change.
+Finish real-account E2E in isolated `Hyper-Dev`: built-in iPhone GPS + WHOOP enrichment, barcode/USDA lookup, OpenAI/Claude photo review, and dynamic nutrition groups. Eufy scale import is deferred until Hyper has a native HealthKit target. Staging sign-off gates every production change.
 
 ## Verified state
 
 - Worktree `/Users/alex/Desktop/hyPer-current-ui`, branch `codex/activity-sessions-current-ui`, base `origin/main` @ `0da91009` (unchanged upstream).
 - Full plan: `/Users/alex/.claude/plans/compressed-forging-fog.md` (user-approved).
-- **Current validation: `npm run test` 312/312 PASS, `npm run lint` PASS, `npm run build` PASS, script syntax PASS, and `git diff --check` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. Isolated staging has the earlier activity, WHOOP, and nutrition work; the new barcode proxy and Google Health work remain local only. Production has none of it.
+- **Current validation: `npm run test` 309/309 PASS, `npm run lint` PASS, `npm run build` PASS, script syntax PASS, active-reference scan PASS, and `git diff --check` PASS (2026-07-16).** Activity safety checkpoint exists at `330994ff`; nutrition/photo checkpoint exists at `5a78c734`. Isolated staging has the earlier activity, WHOOP, and nutrition work; the barcode proxy remains local only, and Google Health/Eufy has been removed. Production has none of it.
 - The detailed rev sections ABOVE (rev 5 drift+pause, rev 4 Strava, rev 3 merge, rev 2 miles) are the current source of truth; the per-phase notes BELOW are the original rev-1/2 record and predate those changes (e.g. they say km/277 tests and lack Strava — superseded).
 - Phone testing: `npm run dev -- --host 127.0.0.1` (must bind IPv4 — the tunnel proxies IPv4; default is IPv6-only), then Tailscale serve exposes `https://alexanders-macbook-air.taileaf222.ts.net/`. HTTPS is required for iOS geolocation + wake lock. `vite.config.ts` `server.allowedHosts` allows the `.taileaf222.ts.net` domain (dev-only). Sandbox = `/preview` (fresh Safari tab; preview mode latches per-tab). Real GPS test: Run → Position source → "Real GPS".
 - Sandbox note: the in-app browser pane throttles timers/animations (document reports hidden) — modal exits stick, 10× sim timing drifts; NOT app bugs. Read sandbox results back through the app's own `supabase` client (`supabase.from(...).select()`), NOT a direct `import('previewData')` — that reads a stale module instance.
@@ -243,4 +252,4 @@ Modified files:
 
 ## Next action
 
-Obtain explicit approval to mutate Hyper-Dev, then apply `20260717010000_add_google_health_weight.sql`, configure the USDA/Google Health secrets and exact staging callback, deploy `food-lookup`, `google-health-oauth`, and `google-health-sync`, and run the real iPhone barcode + Eufy weigh-in tests. Do not touch production.
+Have the independent frontier model perform the read-only code/UI audit, address accepted findings, then obtain explicit approval to configure `USDA_API_KEY` and deploy only `food-lookup` to Hyper-Dev for the real iPhone barcode test. Do not touch production. Revisit Eufy only when starting the native HealthKit app.
