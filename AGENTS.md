@@ -62,57 +62,56 @@ SESSION HANDOFF SUMMARY
 
 ## Current Handoff State
 
-- Updated: 2026-02-25
-- Branch: `feat/ui-warm-carbon-train-nav`
-- Last commit: `d53ca4f feat(ui): shift to train-first navigation and warm-carbon styling`
-- PR URL: not created yet (quick link: `https://github.com/staylan488-ux/hyPer/pull/new/feat/ui-warm-carbon-train-nav`)
+- Updated: 2026-07-17
+- Branch: `main`
+- Status: design elevation LIVE — merged into `main` via pull request (2026-07-17)
 - Working tree: clean
+- Plan file: `docs/plans/2026-07-17-design-elevation.md` (DONE)
 
 ### What Changed
 
-- Introduced train-first route structure (`/train`, `/train/program`) with backward-compatible redirects from legacy paths.
-- Simplified bottom navigation to 4 tabs (Home, Train, Fuel, You) and improved active-route matching.
-- Applied Warm Carbon theme foundation updates: tokenized surfaces, refined radii, tuned accents, and atmospheric background treatment.
-- Updated key entry points so daily flow reaches training/program screens with fewer menu hops.
+Design elevation with the FOLIO language kept intact — the wow comes from motion and material, not new colors:
+
+- Route-level page transitions (pages "turn" instead of hard-swapping); bottom nav stays mounted; one global `MotionConfig reducedMotion="user"`; pages no longer self-animate their entrance.
+- Living paper: animated film-grain canvas + drifting warm light (`PaperAtmosphere`), replacing the static SVG noise; theme-aware, pauses when tab hidden, static under reduced motion.
+- `RollingNumber` letterpress-odometer digits on hero figures (kcal on Today + Fuel, sets-done count, rest-timer countdown).
+- Bottom sheets dismiss by pulling/flicking down from the grab rule or title row; active nav icon settles into place.
 
 ### Files Touched
 
-- `src/App.tsx`
-- `src/components/shared/BottomNav.tsx`
-- `src/components/shared/Button.tsx`
-- `src/components/shared/Card.tsx`
-- `src/components/shared/Input.tsx`
-- `src/components/shared/Modal.tsx`
-- `src/index.css`
-- `src/pages/Dashboard.tsx`
-- `src/pages/Splits.tsx`
-- `src/pages/Workout.tsx`
+- `src/App.tsx` (route shell, MotionConfig, atmosphere mount)
+- `src/lib/animations.ts` (pageTransition timing)
+- `src/index.css` (paperlight/papergrain layers + tokens; static body::after noise removed)
+- `src/components/shared/PaperAtmosphere.tsx` (new), `src/components/shared/RollingNumber.tsx` (new)
+- `src/components/shared/{index.ts,Screen.tsx,Modal.tsx,BottomNav.tsx}`
+- `src/pages/{Dashboard.tsx,Nutrition.tsx,Workout.tsx}`
+- `src/components/workout/RestTimerPill.tsx`
 
 ### Verification
 
-- `npm run test`: PASS
+- `npm run test`: PASS (219)
 - `npm run lint`: PASS
 - `npm run build`: PASS
+- Visual: 390×844 screenshots of all 7 screens (Paper), Dashboard/Settings/Fuel + FoodLogger sheet (Ink); browser console clean
 
 ### Remaining Tasks
 
-- Phase 2 UI work (recommended next):
-  - Rework workout session UX for clearer in-session logging flow.
-  - Move toward persistent set-input visibility.
-  - Reduce modal interruption for rest timer behavior.
+- User local test, then merge `feat/design-elevation` → `main` (or open PR).
+- One manual glance: the rest-timer rolling countdown during a real logged set (actions are stubbed in preview mode).
 
 ### Risks / Gotchas
 
-- Route updates are backward-compatible via redirects, but any external bookmarks should be re-checked for expected behavior.
-- `BottomNav` now hides on `/train/session`; ensure session route behavior is implemented before relying on that state.
+- `Screen` no longer self-animates; the route transition owns page entrances — new pages must not add their own full-page fade.
+- Grain/light layers sit above all UI (z-index 60–61) and must stay `pointer-events: none`.
 - Build still reports the existing large chunk warning; this is non-blocking and pre-existing.
 
 ### Next Recommended Command
 
-- `git status && git log --oneline -5`
+- `npm run dev` then open `http://localhost:5173/preview` (mock data, no login)
 
 ## Short Handoff History
 
 | Date | Branch | Commit | Summary |
 |---|---|---|---|
+| 2026-07-17 | `feat/design-elevation` | `e50da63` | Motion-led design elevation: page turns, living paper, rolling hero numbers, sheet drag-dismiss |
 | 2026-02-25 | `feat/ui-warm-carbon-train-nav` | `d53ca4f` | Train-first nav + Warm Carbon foundation updates |

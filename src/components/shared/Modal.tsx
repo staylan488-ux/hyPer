@@ -1,6 +1,6 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
 import { springs, backdrop } from '@/lib/animations';
 
 interface ModalProps {
@@ -14,6 +14,11 @@ interface ModalProps {
 /** Bottom sheet on mobile, centered panel on larger screens. Square, hairline, safe-area aware. */
 export function Modal({ isOpen, onClose, title, children, contentClassName = '' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dragControls = useDragControls();
+  // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked)
+  const [sheetDrag] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
+  );
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -30,6 +35,17 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
       document.body.style.overflow = '';
     };
   }, [isOpen, onClose]);
+
+  const handleDragEnd = (_: unknown, info: PanInfo) => {
+    // Flick or pull past the threshold dismisses; otherwise it springs home
+    if (info.offset.y > 90 || info.velocity.y > 600) onClose();
+  };
+
+  const startSheetDrag = (e: React.PointerEvent) => {
+    // Buttons inside the header stay tappable — no drag from them
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragControls.start(e);
+  };
 
   return (
     <AnimatePresence>
@@ -52,12 +68,25 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
             transition={springs.smooth}
+            drag={sheetDrag ? 'y' : false}
+            dragListener={false}
+            dragControls={dragControls}
+            dragConstraints={{ top: 0 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
+            onDragEnd={handleDragEnd}
           >
-            {/* grab rule */}
-            <div className="flex justify-center pt-3 pb-1 sm:hidden" aria-hidden>
+            {/* grab rule — the sheet's drag handle on phones */}
+            <div
+              className={`flex justify-center pt-3 pb-1 sm:hidden ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+              aria-hidden
+              onPointerDown={sheetDrag ? startSheetDrag : undefined}
+            >
               <span className="w-10 h-px bg-[var(--color-border-strong)]" />
             </div>
-            <div className="flex items-center justify-between pl-6 pr-3 pt-3 sm:pt-5 pb-3 border-b border-[var(--color-border)]">
+            <div
+              className={`flex items-center justify-between pl-6 pr-3 pt-3 sm:pt-5 pb-3 border-b border-[var(--color-border)] ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+              onPointerDown={sheetDrag ? startSheetDrag : undefined}
+            >
               {title ? <h2 className="t-heading">{title}</h2> : <span />}
               <motion.button
                 type="button"

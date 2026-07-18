@@ -46,6 +46,7 @@ The app uses one committed aesthetic: **editorial luxury** (print magazine / hig
 - **Structure:** hierarchy from scale, weight, and negative space + hairline rules — not boxes. Square corners (radius tokens are 0; only `--radius-full` for true circles). Section pattern: `mt-10 pt-8 border-t border-[var(--color-border)]` opened by a `.t-label` eyebrow.
 - **BANNED:** gradients, glows/neon, soft drop-shadow floating cards, rounded-rectangle-everything, pastel pill badges, emoji icons, centered/even/equal-weight layouts.
 - **Themes:** Paper (light) is default; Ink (dark) via the toggle. Both are tokenised — only edit `var(--color-*)` tokens, never hardcode hex.
+- **Motion (locked the same way):** page entrances live ONLY in `AnimatedOutlet` (`src/App.tsx`) — never add a full-page fade to a page. Shared springs/variants in `src/lib/animations.ts` (expo ease, no bounce). Hero data that changes uses `RollingNumber`. Atmosphere (`PaperAtmosphere`: grain canvas + paperlight) sits above all UI at z 60–61 and must stay `pointer-events: none`. `MotionConfig reducedMotion="user"` is global.
 - **GOTCHA — never use the `text-base` class.** `--color-base` is a theme color, so Tailwind v4 makes `text-base` a *color* utility (= paper), silently making text invisible. For 16px body use `text-[1rem]`.
 - Mobile-first (design at ~380px first), then desktop. Reference screens: `src/pages/Dashboard.tsx`, `src/components/auth/AuthForm.tsx`. Living spec: `design/folio-design-system.html`.
 
