@@ -63,9 +63,8 @@ SESSION HANDOFF SUMMARY
 ## Current Handoff State
 
 - Updated: 2026-07-17
-- Branch: `feat/design-elevation`
-- Last commit: `e50da63 feat(chrome): pull-to-dismiss sheets + settling nav icon`
-- PR URL: not created yet (quick link: `https://github.com/staylan488-ux/hyPer/pull/new/feat/design-elevation`)
+- Branch: `main`
+- Status: design elevation LIVE — merged into `main` via pull request (2026-07-17)
 - Working tree: clean
 - Plan file: `docs/plans/2026-07-17-design-elevation.md` (DONE)
 
