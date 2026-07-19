@@ -4,7 +4,7 @@
 //   batch 1  first import  -> interval run (8 laps) + tennis + single long run
 //   batch 2  exact re-send -> zero changes (idempotence)
 //   batch 3  late 9th lap  -> the SAME interval session grows to 9 splits
-//   batch 4  sprint day    -> 6 short fast efforts group into one sprint session
+//   batch 4  fast reps     -> 6 short efforts group into one split session
 //   batch 5  enrichment    -> a whoop record covering the last ~40 minutes; if
 //                             you saved a tracked run just before syncing, its
 //                             session gains strain/HR/kcal instead of a duplicate
@@ -84,11 +84,11 @@ const longRunRecord = workout('wf-run-1', 'running', daysAgoAt(3, 6, 50), 45 * 6
   distanceM: 8200,
 });
 
-function sprintRecords(): WhoopWorkoutRecord[] {
-  const firstSprint = daysAgoAt(0, 7, 10);
+function fastRepRecords(): WhoopWorkoutRecord[] {
+  const firstRep = daysAgoAt(0, 7, 10);
   return Array.from({ length: 6 }, (_, i) => {
-    const start = new Date(firstSprint.getTime() + i * (58 + 150) * 1000);
-    return workout(`wf-sprint-${i + 1}`, 'running', start, 58, {
+    const start = new Date(firstRep.getTime() + i * (58 + 150) * 1000);
+    return workout(`wf-fast-rep-${i + 1}`, 'running', start, 58, {
       strain: Math.round((3.1 + i * 0.3) * 10) / 10,
       avgHr: 172 + i,
       maxHr: 186 + i,
@@ -124,7 +124,7 @@ const batches: (() => WhoopWorkoutRecord[])[] = [
   () => [...lapRecords(8), tennisRecord, longRunRecord],
   () => [...lapRecords(8), tennisRecord, longRunRecord],
   () => lapRecords(9),
-  () => sprintRecords(),
+  () => fastRepRecords(),
   () => [enrichmentRecord()],
 ];
 

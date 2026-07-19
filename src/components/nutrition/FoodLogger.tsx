@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Check, Loader2, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { Camera, Check, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
@@ -18,18 +18,25 @@ import {
   type MeasurementUnit,
 } from './foodLoggerUtils';
 import { applyPortion, selectPortionFromDetail } from './usdaSearch';
-import { analyzeFoodPhoto, getPhotoWorkerSettings, type PhotoAnalysisProvider } from '@/lib/photoAnalysis';
+import {
+  analyzeFoodPhoto,
+  getPhotoWorkerSettings,
+  type PhotoAnalysisAngle,
+  type PhotoAnalysisProvider,
+} from '@/lib/photoAnalysis';
+import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import {
   fetchUsdaFoodDetailSecure,
+  searchOpenFoodFactsByBarcodeSecure,
   searchUsdaFoodByBarcodeSecure,
   searchUsdaFoodsSecure,
 } from '@/lib/usdaClient';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
-const MAX_IMAGE_DIMENSION = 1280;
+const MAX_IMAGE_DIMENSION = 2048;
 
 const BarcodeScanner = lazy(() => import('./BarcodeScanner').then((module) => ({
   default: module.BarcodeScanner,
@@ -52,15 +59,20 @@ interface PhotoReviewItem {
   name: string;
   searchQuery: string;
   amountGrams: number;
-  basisGrams: number;
-  basisCalories: number;
-  basisProtein: number;
-  basisCarbs: number;
-  basisFat: number;
+  modelAmountGrams: number;
+  modelCalories: number;
+  modelProtein: number;
+  modelCarbs: number;
+  modelFat: number;
   confidence: number;
   notes: string;
   groundedFood: Food | null;
+  groundingCandidates: Food[];
+  persistedFoodId?: string;
 }
+
+type PhotoFiles = Partial<Record<PhotoAnalysisAngle, File>>;
+type PhotoPreviews = Partial<Record<PhotoAnalysisAngle, string>>;
 
 type SelectedFoodMeta = {
   source: 'photo';
@@ -69,6 +81,7 @@ type SelectedFoodMeta = {
 } | {
   source: 'barcode';
   barcode: string;
+  provider: 'usda' | 'open_food_facts';
 };
 
 interface EditableNutritionEntry {
@@ -129,6 +142,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     || '';
   const [groupId, setGroupId] = useState<string>(initialGroupId);
   const [selectedFoodMeta, setSelectedFoodMeta] = useState<SelectedFoodMeta | null>(null);
+  const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+  const entryDateKey = format(entryDate, 'yyyy-MM-dd');
+  const entryUsesSelectedDayGroups = entryDateKey === selectedDateKey;
+
+  useEffect(() => {
+    if (!entryUsesSelectedDayGroups && groupId) setGroupId('');
+  }, [entryUsesSelectedDayGroups, groupId]);
 
   const loggerMode = initialEntry ? 'edit' : 'create';
 
@@ -141,23 +161,43 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   });
   const [savedMeals, setSavedMeals] = useState<Food[]>([]);
   const [savedQuery, setSavedQuery] = useState('');
+  const [managingSavedMeals, setManagingSavedMeals] = useState(false);
   const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
   const [manualNameFocused, setManualNameFocused] = useState(false);
   const [selectedSavedMealId, setSelectedSavedMealId] = useState<string | null>(null);
   const [saveAsReusableMeal, setSaveAsReusableMeal] = useState(false);
   const [updatingSavedMeal, setUpdatingSavedMeal] = useState(false);
+  const [deletingSavedMealId, setDeletingSavedMealId] = useState<string | null>(null);
   const [savedMealMessage, setSavedMealMessage] = useState<string | null>(null);
   const [savedMealError, setSavedMealError] = useState<string | null>(null);
+  const openManualAsSavedMealRef = useRef(false);
+  const [showFoodDescription, setShowFoodDescription] = useState(false);
+  const [foodDescription, setFoodDescription] = useState('');
+  const [foodDescriptionBusy, setFoodDescriptionBusy] = useState(false);
+  const [foodDescriptionError, setFoodDescriptionError] = useState<string | null>(null);
+  const [foodDescriptionResult, setFoodDescriptionResult] = useState<FoodDescriptionResult | null>(null);
   const [photoHint, setPhotoHint] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoPlateDiameter, setPhotoPlateDiameter] = useState('');
+  const [photoIngredients, setPhotoIngredients] = useState('');
+  const [photoFiles, setPhotoFiles] = useState<PhotoFiles>({});
+  const [photoPreviews, setPhotoPreviews] = useState<PhotoPreviews>({});
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
   const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
   const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>('openai');
   const [photoModel, setPhotoModel] = useState('');
   const [photoSummary, setPhotoSummary] = useState('');
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const topPhotoInputRef = useRef<HTMLInputElement>(null);
+  const sidePhotoInputRef = useRef<HTMLInputElement>(null);
+  const photoPreviewsRef = useRef<PhotoPreviews>({});
+
+  useEffect(() => {
+    photoPreviewsRef.current = photoPreviews;
+  }, [photoPreviews]);
+
+  useEffect(() => () => {
+    Object.values(photoPreviewsRef.current).forEach((preview) => URL.revokeObjectURL(preview));
+  }, []);
 
   const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
   const manualSuggestions = useMemo(() => {
@@ -192,7 +232,18 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
-    let food = await searchUsdaFoodByBarcodeSecure(barcode);
+    let food: Food | null = null;
+    let provider: 'usda' | 'open_food_facts' = 'usda';
+    try {
+      food = await searchUsdaFoodByBarcodeSecure(barcode);
+    } catch {
+      // A second independent product source can still satisfy the scan.
+    }
+
+    if (!food) {
+      food = await searchOpenFoodFactsByBarcodeSecure(barcode);
+      provider = 'open_food_facts';
+    }
     if (!food) return false;
 
     if (food.fdc_id && !food.serving_label) {
@@ -201,13 +252,48 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       if (portion) food = applyPortion(food, portion);
     }
 
-    setSelectedFoodMeta({ source: 'barcode', barcode });
+    setSelectedFoodMeta({ source: 'barcode', barcode, provider });
     setSelectedFood(food);
     setMeasurementUnit('serving');
     setServings('1');
     setMeasurementAmount('1');
     return true;
   }, []);
+
+  const handleDescribeFood = async () => {
+    if (foodDescriptionBusy) return;
+
+    setFoodDescriptionBusy(true);
+    setFoodDescriptionError(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('Your session expired. Please sign out and sign back in.');
+
+      const result = await describeFoodWithAi({
+        description: foodDescription,
+        accessToken,
+        settings: getPhotoWorkerSettings(),
+      });
+      setFoodDescriptionResult(result);
+      setManualFood({
+        name: result.name,
+        calories: formatMacroInput(result.calories),
+        protein: formatMacroInput(result.protein_g),
+        carbs: formatMacroInput(result.carbs_g),
+        fat: formatMacroInput(result.fat_g),
+      });
+      setSelectedSavedMealId(null);
+      setSaveAsReusableMeal(true);
+      setManualNameFocused(false);
+      setSavedMealMessage(null);
+      setSavedMealError(null);
+    } catch (error) {
+      setFoodDescriptionError(error instanceof Error ? error.message : 'Could not research this food.');
+    } finally {
+      setFoodDescriptionBusy(false);
+    }
+  };
 
   const clearSavedMealFeedback = () => {
     setSavedMealMessage(null);
@@ -414,40 +500,100 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setServings('1');
   };
 
+  const handleEditSavedMeal = (meal: Food) => {
+    handleSelectSavedMeal(meal);
+    setManagingSavedMeals(false);
+    setMode('manual');
+  };
+
+  const handleAddSavedMeal = () => {
+    clearSavedMealFeedback();
+    setManagingSavedMeals(false);
+    openManualAsSavedMealRef.current = true;
+    setManualFood({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+    setSelectedSavedMealId(null);
+    setFoodDescriptionResult(null);
+    setFoodDescriptionError(null);
+    setManualNameFocused(false);
+    setMode('manual');
+  };
+
+  const handleDeleteSavedMeal = async (meal: Food) => {
+    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`)) return;
+
+    clearSavedMealFeedback();
+    setDeletingSavedMealId(meal.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setSavedMealError('Please sign in again to delete saved meals.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('foods')
+        .update({ source: 'manual_entry' })
+        .eq('id', meal.id)
+        .eq('user_id', user.id)
+        .in('source', ['saved_meal', 'custom']);
+
+      if (error) {
+        setSavedMealError('Could not delete saved meal. Please try again.');
+        return;
+      }
+
+      if (selectedSavedMealId === meal.id) setSelectedSavedMealId(null);
+      setSavedMealMessage('Saved meal deleted. Past logs were not changed.');
+      await fetchSavedMeals();
+    } finally {
+      setDeletingSavedMealId(null);
+    }
+  };
+
   useEffect(() => {
     if (mode !== 'manual' && mode !== 'saved') return;
 
     fetchSavedMeals();
     if (mode === 'manual') {
       clearSavedMealFeedback();
-      setSaveAsReusableMeal(false);
+      setSaveAsReusableMeal(openManualAsSavedMealRef.current);
+      openManualAsSavedMealRef.current = false;
     }
   }, [mode, fetchSavedMeals]);
 
   const resetPhotoState = () => {
     setPhotoError(null);
-    setPhotoFile(null);
-    if (photoPreview) {
-      URL.revokeObjectURL(photoPreview);
-    }
-    setPhotoPreview(null);
+    Object.values(photoPreviews).forEach((preview) => URL.revokeObjectURL(preview));
+    setPhotoFiles({});
+    setPhotoPreviews({});
     setPhotoHint('');
+    setPhotoPlateDiameter('');
+    setPhotoIngredients('');
     setPhotoItems([]);
     setPhotoSummary('');
     setPhotoModel('');
   };
 
-  const handleRetakePhoto = () => {
+  const handleRetakePhoto = (angle: PhotoAnalysisAngle) => {
     setPhotoError(null);
-    setPhotoFile(null);
-    if (photoPreview) {
-      URL.revokeObjectURL(photoPreview);
-    }
-    setPhotoPreview(null);
+    const preview = photoPreviews[angle];
+    if (preview) URL.revokeObjectURL(preview);
+    setPhotoFiles((current) => {
+      const next = { ...current };
+      delete next[angle];
+      return next;
+    });
+    setPhotoPreviews((current) => {
+      const next = { ...current };
+      delete next[angle];
+      return next;
+    });
     setPhotoItems([]);
     setPhotoSummary('');
     setPhotoModel('');
-    photoInputRef.current?.click();
+    const input = angle === 'top' ? topPhotoInputRef.current : sidePhotoInputRef.current;
+    if (input) input.value = '';
+    input?.click();
   };
 
   const fileToCompressedJpegBase64 = (file: File) =>
@@ -511,33 +657,40 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       image.src = objectUrl;
     });
 
-  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = (angle: PhotoAnalysisAngle, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
     setPhotoError(null);
-    if (photoPreview) {
-      URL.revokeObjectURL(photoPreview);
-      setPhotoPreview(null);
-    }
 
     if (!file) {
-      setPhotoFile(null);
+      const existingPreview = photoPreviews[angle];
+      if (existingPreview) URL.revokeObjectURL(existingPreview);
+      setPhotoFiles((current) => {
+        const next = { ...current };
+        delete next[angle];
+        return next;
+      });
+      setPhotoPreviews((current) => {
+        const next = { ...current };
+        delete next[angle];
+        return next;
+      });
       return;
     }
 
     if (!file.type.startsWith('image/')) {
       setPhotoError('Please choose an image file.');
-      setPhotoFile(null);
       return;
     }
 
     if (file.size > MAX_UPLOAD_FILE_BYTES) {
       setPhotoError('Image is too large. Please choose one under 10MB.');
-      setPhotoFile(null);
       return;
     }
 
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    const existingPreview = photoPreviews[angle];
+    if (existingPreview) URL.revokeObjectURL(existingPreview);
+    setPhotoFiles((current) => ({ ...current, [angle]: file }));
+    setPhotoPreviews((current) => ({ ...current, [angle]: URL.createObjectURL(file) }));
   };
 
   const handleUsePreviewPhoto = () => {
@@ -554,19 +707,24 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     const file = new File([svg], 'preview-meal.svg', { type: 'image/svg+xml' });
 
     setPhotoError(null);
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    Object.values(photoPreviews).forEach((preview) => URL.revokeObjectURL(preview));
+    setPhotoFiles({ top: file });
+    setPhotoPreviews({ top: URL.createObjectURL(file) });
   };
 
   const handleAnalyzePhoto = async () => {
-    if (!photoFile || saving) return;
+    if (!photoFiles.top || saving) return;
 
     setPhotoError(null);
     setPhotoAnalyzing(true);
 
     try {
-      const preparedImage = await fileToCompressedJpegBase64(photoFile);
+      const captureEntries = (['top', 'side'] as const)
+        .flatMap((angle) => photoFiles[angle] ? [{ angle, file: photoFiles[angle] as File }] : []);
+      const preparedImages = await Promise.all(captureEntries.map(async ({ angle, file }) => ({
+        angle,
+        ...await fileToCompressedJpegBase64(file),
+      })));
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
 
@@ -575,47 +733,44 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       }
 
       const settings = getPhotoWorkerSettings();
+      const context = [
+        photoPlateDiameter.trim() ? `Measured plate diameter: ${photoPlateDiameter.trim()} cm.` : 'Plate diameter not measured.',
+        photoIngredients.trim() ? `Oils, sauces, dressings, or hidden ingredients: ${photoIngredients.trim()}.` : 'Oils, sauces, dressings, or hidden ingredients were not specified.',
+        photoHint.trim() ? `Other details: ${photoHint.trim()}.` : '',
+      ].filter(Boolean).join(' ');
       const result = await analyzeFoodPhoto({
-        imageBase64: preparedImage.imageBase64,
-        mimeType: preparedImage.mimeType,
-        hint: photoHint,
+        images: preparedImages,
+        hint: context,
         accessToken,
         settings,
       });
 
       const grounded = await Promise.all(result.items.map(async (item, index): Promise<PhotoReviewItem> => {
-        const matches = await searchUsdaFoodsSecure(item.search_query);
-        const match = matches.find((food) => food.serving_unit.toLowerCase() === 'g') || null;
-        if (match) {
-          return {
-            id: `photo-${Date.now()}-${index}`,
-            name: item.name,
-            searchQuery: item.search_query,
-            amountGrams: item.estimated_grams,
-            basisGrams: Math.max(1, match.serving_size || 100),
-            basisCalories: match.calories,
-            basisProtein: match.protein,
-            basisCarbs: match.carbs,
-            basisFat: match.fat,
-            confidence: item.confidence,
-            notes: item.notes,
-            groundedFood: match,
-          };
+        let matches: Food[] = [];
+        try {
+          matches = await searchUsdaFoodsSecure(item.search_query);
+        } catch {
+          // USDA grounding is best-effort; model estimates remain editable/loggable.
         }
-
+        const candidates = matches
+          // Review amounts are grams. Volume matches need density data we do
+          // not have, so offering an ml basis would silently assume 1 g/ml.
+          .filter((food) => food.serving_unit.toLowerCase() === 'g')
+          .slice(0, 3);
         return {
           id: `photo-${Date.now()}-${index}`,
           name: item.name,
           searchQuery: item.search_query,
           amountGrams: item.estimated_grams,
-          basisGrams: item.estimated_grams,
-          basisCalories: item.calories,
-          basisProtein: item.protein_g,
-          basisCarbs: item.carbs_g,
-          basisFat: item.fat_g,
+          modelAmountGrams: item.estimated_grams,
+          modelCalories: item.calories,
+          modelProtein: item.protein_g,
+          modelCarbs: item.carbs_g,
+          modelFat: item.fat_g,
           confidence: item.confidence,
           notes: item.notes,
           groundedFood: null,
+          groundingCandidates: candidates,
         };
       }));
 
@@ -681,6 +836,51 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           foodId = newFood.id;
         }
       }
+    }
+
+    if (food.source === 'open_food_facts' && food.external_id) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No user found while saving barcode food');
+        return null;
+      }
+
+      const { data: existingFood, error: lookupError } = await supabase
+        .from('foods')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('external_source', 'open_food_facts')
+        .eq('external_id', food.external_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (lookupError) console.error('Error looking up Open Food Facts food:', lookupError);
+      if (existingFood) return existingFood.id;
+
+      const { data: newFood, error: insertError } = await supabase
+        .from('foods')
+        .insert({
+          user_id: user.id,
+          name: food.name,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          serving_size: food.serving_size || 1,
+          serving_unit: food.serving_unit || 'serving',
+          source: 'open_food_facts',
+          fdc_id: null,
+          external_source: 'open_food_facts',
+          external_id: food.external_id,
+        })
+        .select('id')
+        .single();
+
+      if (insertError || !newFood) {
+        console.error('Error creating Open Food Facts food:', insertError);
+        return null;
+      }
+      foodId = newFood.id;
     }
 
     if (food.source === 'custom') {
@@ -868,7 +1068,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       const foodId = await upsertFoodIfNeeded(food);
       if (!foodId) return;
       const source = selectedFoodMeta?.source === 'barcode'
-        ? 'barcode'
+        ? selectedFoodMeta.provider === 'open_food_facts' ? 'barcode_open_food_facts' : 'barcode'
         : food.source === 'usda' ? 'usda' : 'manual';
       await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
@@ -879,12 +1079,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const photoItemTotals = (item: PhotoReviewItem) => {
-    const factor = item.amountGrams / Math.max(1, item.basisGrams);
+    const basisGrams = item.groundedFood?.serving_size || item.modelAmountGrams;
+    const factor = item.amountGrams / Math.max(1, basisGrams);
     return {
-      calories: Math.round(item.basisCalories * factor * 10) / 10,
-      protein: Math.round(item.basisProtein * factor * 10) / 10,
-      carbs: Math.round(item.basisCarbs * factor * 10) / 10,
-      fat: Math.round(item.basisFat * factor * 10) / 10,
+      calories: Math.round((item.groundedFood?.calories ?? item.modelCalories) * factor * 10) / 10,
+      protein: Math.round((item.groundedFood?.protein ?? item.modelProtein) * factor * 10) / 10,
+      carbs: Math.round((item.groundedFood?.carbs ?? item.modelCarbs) * factor * 10) / 10,
+      fat: Math.round((item.groundedFood?.fat ?? item.modelFat) * factor * 10) / 10,
     };
   };
 
@@ -897,12 +1098,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
     setSaving(true);
     setPhotoError(null);
+    let savedCount = 0;
     try {
       const logSource = photoProvider === 'anthropic' ? 'photo_anthropic' : 'photo_openai';
       for (const item of photoItems) {
         const totals = photoItemTotals(item);
         const food: Food = item.groundedFood || {
-          id: `photo-${item.id}`,
+          id: item.persistedFoodId || `photo-${item.id}`,
           user_id: null,
           name: item.name.trim(),
           calories: totals.calories,
@@ -916,16 +1118,24 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         };
         const foodId = await upsertFoodIfNeeded(food);
         if (!foodId) throw new Error(`Could not save ${item.name}.`);
+        setPhotoItems((current) => current.map((candidate) => candidate.id === item.id
+          ? { ...candidate, persistedFoodId: foodId }
+          : candidate));
         const servingsCount = item.groundedFood
-          ? item.amountGrams / Math.max(1, item.basisGrams)
+          ? item.amountGrams / Math.max(1, item.groundedFood.serving_size || 100)
           : 1;
         const saved = await saveNutritionEntry(foodId, servingsCount, logSource, false);
         if (!saved) throw new Error(`Could not log ${item.name}.`);
+        savedCount += 1;
+        setPhotoItems((current) => current.filter((candidate) => candidate.id !== item.id));
       }
       resetPhotoState();
       onComplete();
     } catch (error) {
-      setPhotoError(error instanceof Error ? error.message : 'Could not save the photo items.');
+      const message = error instanceof Error ? error.message : 'Could not save the photo items.';
+      setPhotoError(savedCount > 0
+        ? `${message} ${savedCount} already logged item${savedCount === 1 ? ' was' : 's were'} removed from this review. Retry only the remaining items.`
+        : message);
     } finally {
       setSaving(false);
     }
@@ -1063,27 +1273,42 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   /* ── Shared "when" row: date · time · destination ── */
   const whenRow = (
     <div className="grid grid-cols-2 gap-3">
-      <DateField value={entryDate} onChange={setEntryDate} max={new Date()} />
-      <TimeField value={timeValue} onChange={setTimeValue} />
-      <SelectSheet
-        className="col-span-2"
-        title="Add to"
-        value={groupId}
-        onChange={setGroupId}
-        options={[
-          { value: '', label: 'Unassigned' },
-          ...orderedGroups.map((group) => ({ value: group.id, label: nutritionGroupLabel(group, orderedGroups) })),
-        ]}
+      <DateField
+        value={entryDate}
+        onChange={(nextDate) => {
+          setEntryDate(nextDate);
+          if (format(nextDate, 'yyyy-MM-dd') !== selectedDateKey) setGroupId('');
+        }}
+        max={new Date()}
       />
+      <TimeField value={timeValue} onChange={setTimeValue} />
+      {entryUsesSelectedDayGroups ? (
+        <SelectSheet
+          className="col-span-2"
+          title="Add to"
+          value={groupId}
+          onChange={setGroupId}
+          options={[
+            { value: '', label: 'Unassigned' },
+            ...orderedGroups.map((group) => ({ value: group.id, label: nutritionGroupLabel(group, orderedGroups) })),
+          ]}
+        />
+      ) : (
+        <div className="col-span-2 border-t border-[var(--color-border)] pt-3">
+          <span className="t-label-sm block">Add to</span>
+          <span className="t-heading block mt-1">Unassigned on {format(entryDate, 'MMM d')}</span>
+          <span className="t-caption block mt-1">Meal groups shown here belong to {format(selectedDate, 'MMM d')}.</span>
+        </div>
+      )}
     </div>
   );
 
   if (photoItems.length > 0) {
     const totalCalories = Math.round(photoItems.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
     return (
-      <div className="space-y-7 pt-1 pb-2">
+      <div className="space-y-6 pt-1">
         <div>
-          <div className="flex items-baseline justify-between gap-4">
+          <div className="flex flex-col gap-1 min-[420px]:flex-row min-[420px]:items-baseline min-[420px]:justify-between">
             <span className="t-label flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Photo review</span>
             <span className="t-data-sm text-[var(--color-muted)]">
               {photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}{photoModel ? ` · ${photoModel}` : ''}
@@ -1091,22 +1316,35 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           </div>
           <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-text)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
           {photoSummary && <p className="t-caption mt-4">{photoSummary}</p>}
-          <p className="t-caption mt-2">Review portions and remove anything you did not eat. USDA matches calculate nutrition where available.</p>
+          <p className="t-caption mt-2">Review every component and portion. USDA suggestions are never applied until you choose one.</p>
+        </div>
+
+        <div className={`grid gap-3 ${photoPreviews.side ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {(['top', 'side'] as const).map((angle) => photoPreviews[angle] ? (
+            <figure key={angle}>
+              <img
+                src={photoPreviews[angle]}
+                alt={`${angle === 'top' ? 'Top' : 'Side'} meal view`}
+                className="w-full aspect-[4/3] object-cover hairline-strong"
+              />
+              <figcaption className="t-label-sm mt-2">{angle === 'top' ? 'Top view' : '45° view'}</figcaption>
+            </figure>
+          ) : null)}
         </div>
 
         <div>
           {photoItems.map((item, index) => {
             const totals = photoItemTotals(item);
             return (
-              <div key={item.id} className="py-5 border-t border-[var(--color-border)]">
+              <div key={item.id} className="py-4 border-t border-[var(--color-border)]">
                 <div className="flex items-start gap-3">
                   <span className="t-data-sm text-[var(--color-muted)] pt-3">{String(index + 1).padStart(2, '0')}</span>
-                  <div className="flex-1 min-w-0 grid grid-cols-[1fr_6rem] gap-3">
+                  <div className="flex-1 min-w-0 grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,1fr)_6rem]">
                     <Input
                       label="Food"
                       value={item.name}
                       onChange={(event) => setPhotoItems((current) => current.map((candidate) => candidate.id === item.id
-                        ? { ...candidate, name: event.target.value, groundedFood: null }
+                        ? { ...candidate, name: event.target.value, groundedFood: null, persistedFoodId: undefined }
                         : candidate))}
                     />
                     <Input
@@ -1116,47 +1354,89 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       min="1"
                       value={formatMeasurementAmount(item.amountGrams)}
                       onChange={(event) => setPhotoItems((current) => current.map((candidate) => candidate.id === item.id
-                        ? { ...candidate, amountGrams: Math.max(0, Number(event.target.value)) }
+                        ? { ...candidate, amountGrams: Math.max(0, Number(event.target.value)), persistedFoodId: undefined }
                         : candidate))}
                     />
                   </div>
                   <button
                     type="button"
-                    className="pressable p-2 mt-6 text-[var(--color-muted)] hover:text-[var(--color-accent)]"
+                    className="pressable flex items-center justify-center w-11 h-11 min-[420px]:mt-6 text-[var(--color-muted)] hover:text-[var(--color-accent)]"
                     onClick={() => setPhotoItems((current) => current.filter((candidate) => candidate.id !== item.id))}
                     aria-label={`Remove ${item.name}`}
                   >
                     <X className="w-4 h-4" strokeWidth={1.5} />
                   </button>
                 </div>
-                <div className="ml-8 mt-3 flex items-center justify-between gap-3">
-                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                <div className="ml-8 mt-2 space-y-1">
+                  <p className="t-data-sm text-[var(--color-text-dim)]">
                     {Math.round(totals.calories)} kcal · P {Math.round(totals.protein)} · C {Math.round(totals.carbs)} · F {Math.round(totals.fat)}
-                  </span>
-                  <span className="t-label-sm text-[var(--color-muted)]">{item.groundedFood ? 'USDA' : `${Math.round(item.confidence * 100)}% estimate`}</span>
+                  </p>
+                  <p className="t-caption text-[var(--color-muted)]">
+                    {item.groundedFood
+                      ? 'USDA confirmed'
+                      : item.groundingCandidates.length > 0
+                        ? 'Match not chosen'
+                        : `${Math.round(item.confidence * 100)}% estimate`}
+                    {item.notes ? ` · ${item.notes}` : ''}
+                  </p>
                 </div>
-                {item.notes && <p className="t-caption ml-8 mt-2">{item.notes}</p>}
+                {item.groundingCandidates.length > 0 && (
+                  <div className="ml-8 mt-3">
+                    <FormField label="Nutrition source">
+                      <SelectSheet
+                        title={`Match ${item.name}`}
+                        value={item.groundedFood?.id || 'model-estimate'}
+                        onChange={(value) => setPhotoItems((current) => current.map((candidate) => {
+                          if (candidate.id !== item.id) return candidate;
+                          if (value === 'model-estimate') return { ...candidate, groundedFood: null, persistedFoodId: undefined };
+                          const match = candidate.groundingCandidates.find((food) => food.id === value) || null;
+                          return { ...candidate, groundedFood: match, persistedFoodId: undefined };
+                        }))}
+                        options={[
+                          {
+                            value: 'model-estimate',
+                            label: 'Keep model estimate',
+                            description: `${Math.round(item.confidence * 100)}% visual confidence`,
+                          },
+                          ...item.groundingCandidates.map((food) => ({
+                            value: food.id,
+                            label: food.name,
+                            description: `${Math.round(food.calories)} kcal per ${food.serving_label || `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`,
+                          })),
+                        ]}
+                      />
+                    </FormField>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
-        {photoError && <p className="t-caption text-[var(--color-accent)]">{photoError}</p>}
         {whenRow}
 
-        <div className="border-l-2 border-[var(--color-accent)] pl-5">
-          <span className="t-label block mb-2">Plate total</span>
-          <div className="flex items-baseline gap-2">
-            <span className="number-large text-[var(--color-text)]">{totalCalories}</span>
-            <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">kcal</span>
+        <div
+          className="sticky z-20 -mx-6 border-t border-[var(--color-border-strong)] bg-[var(--color-surface-1)] px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
+        >
+          {photoError && (
+            <p className="t-caption mb-3 text-[var(--color-accent)]" role="alert" aria-live="assertive">
+              {photoError}
+            </p>
+          )}
+          <div className="flex items-end gap-2">
+            <div className="min-w-[4.5rem] flex-1 border-l-2 border-[var(--color-accent)] pl-3">
+              <span className="t-label-sm block mb-1">Plate total</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="number-medium text-[var(--color-text)]">{totalCalories}</span>
+                <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
+              </div>
+            </div>
+            <Button variant="ghost" className="shrink-0 !px-3" disabled={saving} onClick={resetPhotoState}>Retake</Button>
+            <Button className="min-w-0 shrink-0 !px-4" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
+              Log {photoItems.length} item{photoItems.length === 1 ? '' : 's'}
+            </Button>
           </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button variant="ghost" className="flex-1" disabled={saving} onClick={resetPhotoState}>Retake</Button>
-          <Button className="flex-[1.6]" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
-            Log {photoItems.length} item{photoItems.length === 1 ? '' : 's'}
-          </Button>
         </div>
       </div>
     );
@@ -1189,7 +1469,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           )}
           {selectedFoodMeta?.source === 'barcode' && (
             <p className="t-label-sm text-[var(--color-text-dim)]">
-              Barcode {selectedFoodMeta.barcode} · USDA verified
+              Barcode {selectedFoodMeta.barcode} ·{' '}
+              {selectedFoodMeta.provider === 'open_food_facts' ? (
+                <a
+                  href="https://world.openfoodfacts.org/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  Open Food Facts
+                </a>
+              ) : 'USDA branded record'}
             </p>
           )}
 
@@ -1330,6 +1620,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         value={mode}
         onChange={(next) => {
           setMode(next);
+          if (next !== 'saved') setManagingSavedMeals(false);
           if (next !== 'photo') setPhotoError(null);
         }}
         options={[
@@ -1339,11 +1630,40 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           { value: 'manual', label: 'Manual' },
           { value: 'photo', label: 'Photo' },
         ]}
-        className="gap-4 overflow-x-auto overscroll-contain"
+        distribution="equal"
+        size="sm"
       />
 
       {mode === 'saved' ? (
         <div className="space-y-4">
+          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[var(--color-border)] pb-2">
+            <span className="t-label-sm">
+              {loadingSavedMeals ? 'Loading' : `${savedMeals.length} saved`}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                onClick={handleAddSavedMeal}
+              >
+                Add
+              </button>
+              {savedMeals.length > 0 && (
+                <button
+                  type="button"
+                  className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)]"
+                  onClick={() => {
+                    clearSavedMealFeedback();
+                    setManagingSavedMeals((current) => !current);
+                  }}
+                  aria-pressed={managingSavedMeals}
+                >
+                  {managingSavedMeals ? 'Done' : 'Edit'}
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
@@ -1355,31 +1675,80 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             />
           </div>
 
+          {savedMealMessage && (
+            <p className="border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]" role="status" aria-live="polite">
+              {savedMealMessage}
+            </p>
+          )}
+          {savedMealError && (
+            <p className="border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]" role="alert">
+              {savedMealError}
+            </p>
+          )}
+
           {loadingSavedMeals ? (
             <div className="flex items-center gap-2 py-6 t-caption">
               <Loader2 className="w-4 h-4 animate-spin" />
               Loading saved foods…
             </div>
           ) : filteredSavedMeals.length > 0 ? (
-            <div className="max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
+            <div className="max-h-64 w-full max-w-full overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
               {filteredSavedMeals.map((meal, index) => (
-                <button
-                  key={meal.id}
-                  type="button"
-                  className="pressable group w-full flex items-baseline gap-4 py-3.5 border-t border-[var(--color-border)] text-left"
-                  onClick={() => handleLogSavedMeal(meal)}
-                >
-                  <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0 pt-1">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="t-body font-medium text-[var(--color-text)] truncate">{meal.name}</p>
-                    <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
-                      {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
-                    </p>
-                  </div>
-                  <Plus className="w-3.5 h-3.5 shrink-0 self-center text-[var(--color-muted)]" strokeWidth={1.75} />
-                </button>
+                <div key={meal.id} className="flex w-full max-w-full min-w-0 items-stretch overflow-hidden border-t border-[var(--color-border)]">
+                  {managingSavedMeals ? (
+                    <>
+                      <div className="flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-2">
+                        <span className="t-data-sm w-6 shrink-0 pt-1 text-[var(--color-muted)]">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="t-body break-words font-medium text-[var(--color-text)]">{meal.name}</p>
+                          <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
+                            {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
+                        onClick={() => handleEditSavedMeal(meal)}
+                        disabled={deletingSavedMealId === meal.id}
+                        aria-label={`Edit saved meal ${meal.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      </button>
+                      <button
+                        type="button"
+                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
+                        onClick={() => void handleDeleteSavedMeal(meal)}
+                        disabled={deletingSavedMealId === meal.id}
+                        aria-label={`Delete saved meal ${meal.name}`}
+                      >
+                        {deletingSavedMealId === meal.id
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 text-left"
+                      onClick={() => handleLogSavedMeal(meal)}
+                      aria-label={`Log ${meal.name}`}
+                    >
+                      <span className="t-data-sm w-6 shrink-0 pt-1 text-[var(--color-muted)]">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="t-body break-words font-medium text-[var(--color-text)]">{meal.name}</p>
+                        <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
+                          {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                        </p>
+                      </div>
+                      <Plus className="h-3.5 w-3.5 shrink-0 self-center text-[var(--color-muted)]" strokeWidth={1.75} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
@@ -1472,10 +1841,100 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         </>
       ) : mode === 'barcode' ? (
         <Suspense fallback={<div className="flex items-center gap-2 py-10 t-caption"><Loader2 className="w-4 h-4 animate-spin" />Loading scanner…</div>}>
-          <BarcodeScanner onDetected={handleBarcodeDetected} />
+          <div className="space-y-4">
+            <BarcodeScanner onDetected={handleBarcodeDetected} />
+            <p className="t-caption">
+              Product fallback data from{' '}
+              <a href="https://world.openfoodfacts.org/" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                Open Food Facts
+              </a>{' '}
+              under the{' '}
+              <a href="https://world.openfoodfacts.org/terms-of-use" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                ODbL
+              </a>.
+            </p>
+          </div>
         </Suspense>
       ) : mode === 'manual' ? (
         <>
+          <div className="border-b border-[var(--color-border)] pb-5">
+            <button
+              type="button"
+              className="pressable flex w-full items-center justify-between gap-4 text-left"
+              onClick={() => setShowFoodDescription((current) => !current)}
+              aria-expanded={showFoodDescription}
+            >
+              <span>
+                <span className="t-label flex items-center gap-2 text-[var(--color-text)]">
+                  <Sparkles className="w-3.5 h-3.5" strokeWidth={1.75} />
+                  Describe with AI
+                </span>
+                <span className="t-caption block mt-1">Research a food and fill editable macros.</span>
+              </span>
+              <span className="t-data-sm text-[var(--color-muted)]">{showFoodDescription ? 'Close' : 'Open'}</span>
+            </button>
+
+            {showFoodDescription && (
+              <div className="space-y-4 mt-4">
+                <FormField label="Food, portion, and preparation">
+                  <textarea
+                    value={foodDescription}
+                    onChange={(event) => {
+                      setFoodDescription(event.target.value.slice(0, 1500));
+                      setFoodDescriptionError(null);
+                    }}
+                    rows={4}
+                    placeholder="e.g., One restaurant chicken burrito bowl with white rice, black beans, cheese, salsa, no guacamole"
+                    className="well w-full min-h-28 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-muted)]"
+                  />
+                </FormField>
+                <p className="t-caption">Include brand or restaurant, amount, raw/cooked state, sauces, oils, and excluded ingredients.</p>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => void handleDescribeFood()}
+                  loading={foodDescriptionBusy}
+                  disabled={foodDescriptionBusy || foodDescription.trim().length < 5}
+                >
+                  Research &amp; fill fields
+                </Button>
+
+                {foodDescriptionError && (
+                  <p className="border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]" role="alert">
+                    {foodDescriptionError}
+                  </p>
+                )}
+
+                {foodDescriptionResult && (
+                  <div className="border-l-2 border-[var(--color-text)] pl-4 space-y-2">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="t-label">Estimate filled below</span>
+                      <span className="t-data-sm text-[var(--color-muted)]">
+                        {foodDescriptionResult.provider === 'anthropic' ? 'Claude' : 'OpenAI'} · {Math.round(foodDescriptionResult.confidence * 100)}%
+                      </span>
+                    </div>
+                    <p className="t-caption">{foodDescriptionResult.serving_description}</p>
+                    {foodDescriptionResult.notes && <p className="t-caption">{foodDescriptionResult.notes}</p>}
+                    {foodDescriptionResult.sources.length > 0 && (
+                      <p className="t-caption">
+                        Sources:{' '}
+                        {foodDescriptionResult.sources.map((source, index) => (
+                          <span key={source.url}>
+                            {index > 0 ? ' · ' : ''}
+                            <a href={source.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                              {source.title}
+                            </a>
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                    <p className="t-caption">Review every field. Logging will also add it to Saved; a package label should win if available.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <Input
             label="Food name"
             value={manualFood.name}
@@ -1629,25 +2088,38 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       ) : (
         <div className="space-y-5">
           <input
-            ref={photoInputRef}
+            ref={topPhotoInputRef}
             type="file"
             accept="image/*"
             capture="environment"
-            onChange={handlePhotoSelect}
+            onChange={(event) => handlePhotoSelect('top', event)}
+            className="hidden"
+          />
+          <input
+            ref={sidePhotoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(event) => handlePhotoSelect('side', event)}
             className="hidden"
           />
 
-          {!photoPreview ? (
+          {!photoPreviews.top ? (
             <div className="space-y-3">
+              <div>
+                <span className="t-label-sm">01 · Required</span>
+                <p className="t-heading mt-1">Top view</p>
+                <p className="t-caption mt-1">Shows every component and how much of the plate it covers.</p>
+              </div>
               <button
                 type="button"
-                onClick={() => photoInputRef.current?.click()}
-                className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-12 flex flex-col items-center gap-3"
+                onClick={() => topPhotoInputRef.current?.click()}
+                className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-10 flex flex-col items-center gap-3"
               >
                 <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
                   <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
                 </span>
-                <span className="t-heading">Snap your plate</span>
+                <span className="t-heading">Take top photo</span>
                 <span className="t-caption">Camera or photo library</span>
               </button>
               {isPreviewActive() && !isAppSandboxActive() && (
@@ -1658,7 +2130,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           ) : (
             <div className="relative overflow-hidden hairline-strong">
-              <img src={photoPreview} alt="Meal preview" className="w-full h-48 object-cover" />
+              <img src={photoPreviews.top} alt="Top view of meal" className="w-full h-52 object-cover" />
               {photoAnalyzing && (
                 <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)] flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-5 h-5 animate-spin text-[var(--color-accent)]" />
@@ -1668,8 +2140,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {!photoAnalyzing && (
                 <button
                   type="button"
-                  onClick={handleRetakePhoto}
-                  className="pressable absolute top-2.5 right-2.5 flex items-center gap-1.5 px-3 py-2 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
+                  onClick={() => handleRetakePhoto('top')}
+                  className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
                 >
                   <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                   Retake
@@ -1677,6 +2149,65 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               )}
             </div>
           )}
+
+          <div className="pt-5 border-t border-[var(--color-border)] space-y-3">
+            <div>
+              <span className="t-label-sm">02 · Recommended</span>
+              <p className="t-heading mt-1">45° side view</p>
+              <p className="t-caption mt-1">Adds height and depth, which improves portion estimates.</p>
+            </div>
+            {photoPreviews.side ? (
+              <div className="relative overflow-hidden hairline-strong">
+                <img src={photoPreviews.side} alt="45 degree view of meal" className="w-full h-44 object-cover" />
+                {photoAnalyzing && (
+                  <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)]" aria-hidden="true" />
+                )}
+                {!photoAnalyzing && (
+                  <button
+                    type="button"
+                    onClick={() => handleRetakePhoto('side')}
+                    className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
+                  >
+                    <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
+                    Retake
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => sidePhotoInputRef.current?.click()}
+                disabled={photoAnalyzing}
+                className="pressable w-full min-h-20 border border-dashed border-[var(--color-border-strong)] px-4 flex items-center gap-4 text-left disabled:opacity-40"
+              >
+                <span className="flex items-center justify-center w-10 h-10 border border-[var(--color-border-strong)] shrink-0">
+                  <ImagePlus className="w-4 h-4 text-[var(--color-text-dim)]" strokeWidth={1.5} />
+                </span>
+                <span>
+                  <span className="t-heading block">Add side photo</span>
+                  <span className="t-caption block mt-0.5">Same plate, about 45° above the table</span>
+                </span>
+              </button>
+            )}
+          </div>
+
+          <Input
+            label="Plate diameter (cm, optional)"
+            type="number"
+            inputMode="decimal"
+            min="1"
+            max="100"
+            value={photoPlateDiameter}
+            onChange={(event) => setPhotoPlateDiameter(event.target.value)}
+            placeholder="e.g., 27"
+          />
+
+          <Input
+            label="Oils, sauces, dressings, hidden ingredients"
+            value={photoIngredients}
+            onChange={(event) => setPhotoIngredients(event.target.value)}
+            placeholder="e.g., 1 tbsp olive oil, sauce on side, or none"
+          />
 
           <Input
             label="Extra details (optional)"
@@ -1686,7 +2217,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           />
 
           <p className="t-caption">
-            For better portions, shoot in good light and include the plate diameter or a clean ruler or printed 5 cm marker on the same plane as the food. Enter measured grams when available.
+            Shoot in good light. A measured plate or printed 5 cm marker on the food plane is useful; unmeasured utensils are not. You will confirm every detected item before logging.
           </p>
 
           {photoError && <p className="t-caption text-[var(--color-accent)]">{photoError}</p>}
@@ -1696,10 +2227,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             size="lg"
             onClick={handleAnalyzePhoto}
             loading={photoAnalyzing}
-            disabled={!photoFile || photoAnalyzing || saving}
+            disabled={!photoFiles.top || photoAnalyzing || saving}
           >
             {!photoAnalyzing && <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
-            {photoAnalyzing ? 'Analyzing…' : 'Analyze photo'}
+            {photoAnalyzing ? 'Analyzing…' : `Analyze ${photoFiles.side ? '2 photos' : 'top photo'}`}
           </Button>
         </div>
       )}

@@ -142,6 +142,7 @@ export const previewNutritionGroups = [
   { id: 'ng-breakfast', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'breakfast', sort_order: 0 },
   { id: 'ng-lunch', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'lunch', sort_order: 1 },
   { id: 'ng-snack-1', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'snack', label: null, sort_order: 2 },
+  { id: 'ng-dinner', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'dinner', sort_order: 3 },
 ].map((group) => ({ ...group, created_at: iso(daysAgo(1)), updated_at: iso(daysAgo(1)) }));
 
 const previewGroupByLegacyMeal: Record<string, string> = {

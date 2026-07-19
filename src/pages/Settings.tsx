@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowRight, LogOut, Pencil } from 'lucide-react';
+import { ArrowRight, LogOut, Pencil, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
@@ -53,6 +53,7 @@ function SettingsGroup({
 }
 
 export function Settings() {
+  const navigate = useNavigate();
   const { profile, signOut, updateDisplayName } = useAuthStore();
   const {
     macroTarget,
@@ -116,7 +117,7 @@ export function Settings() {
     setPhotoWorkerMessage(null);
     const status = await checkPhotoWorker(photoWorkerDraft);
     setPhotoWorkerMessage(status.ok
-      ? `Worker connected. Signed in: ${status.authenticatedProviders.join(', ') || 'none'}. Models: OpenAI ${status.models.openai || 'default'}, Claude ${status.models.anthropic || 'default'}.`
+      ? `Worker connected. Signed in: ${status.authenticatedProviders.join(', ') || 'none'}. Models: OpenAI ${status.models.openai || 'default'} (${status.efforts.openai || 'default'} effort), Claude ${status.models.anthropic || 'default'} (${status.efforts.anthropic || 'default'} effort).`
       : `Saved, but the worker is offline: ${status.error || 'connection failed'}`);
     setPhotoWorkerBusy(false);
   };
@@ -377,7 +378,7 @@ export function Settings() {
   };
 
   const removeSavedMeal = async (meal: SavedMeal) => {
-    if (!confirm(`Remove ${meal.name} from saved meals?`)) return;
+    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`)) return;
 
     clearMealManagerFeedback();
     const { data: { user } } = await supabase.auth.getUser();
@@ -394,7 +395,7 @@ export function Settings() {
       .in('source', ['saved_meal', 'custom']);
 
     if (error) {
-      setMealManagerError('Could not remove saved meal.');
+      setMealManagerError('Could not delete saved meal.');
       return;
     }
 
@@ -402,7 +403,7 @@ export function Settings() {
       setEditingMealId(null);
     }
 
-    setMealManagerMessage('Saved meal removed.');
+    setMealManagerMessage('Saved meal deleted. Past logs were not changed.');
     await fetchSavedMeals();
   };
 
@@ -635,8 +636,8 @@ export function Settings() {
         </div>
       </SettingsGroup>
 
-      {/* ── Local photo analysis ── */}
-      <SettingsGroup label="Photo analysis" index="05" delay={0.14}>
+      {/* ── Local food analysis ── */}
+      <SettingsGroup label="Food analysis" index="05" delay={0.14}>
         <p className="t-heading">Private Mac worker</p>
         <p className="t-caption mt-1 mb-5">
           Uses your local Codex or Claude login. Credentials never enter hyPer. On a phone, enter the worker’s Tailscale HTTPS URL.
@@ -649,7 +650,7 @@ export function Settings() {
             placeholder="http://127.0.0.1:8788"
           />
           <SelectSheet
-            title="Photo model"
+            title="Food model"
             value={photoWorkerDraft.provider}
             onChange={(provider) => setPhotoWorkerDraft((current) => ({ ...current, provider }))}
             options={[
@@ -666,22 +667,22 @@ export function Settings() {
 
       {/* ── Connected services ── */}
       <SettingsGroup label="Connected services" index="06" delay={0.17}>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-4">
           <div>
             <p className="t-heading">WHOOP</p>
             <p className="t-caption mt-1" aria-live="polite">{whoopStatusLabel}</p>
           </div>
           {whoopConnection ? (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" loading={whoopAction === 'sync'} disabled={whoopAction !== null} onClick={() => { void handleWhoopSyncNow(); }}>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <Button className="w-full" variant="secondary" size="sm" loading={whoopAction === 'sync'} disabled={whoopAction !== null} onClick={() => { void handleWhoopSyncNow(); }}>
                 Sync now
               </Button>
-              <Button variant="ghost" size="sm" loading={whoopAction === 'disconnect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopDisconnect(); }}>
+              <Button className="w-full" variant="ghost" size="sm" loading={whoopAction === 'disconnect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopDisconnect(); }}>
                 Disconnect
               </Button>
             </div>
           ) : (
-            <Button variant="secondary" size="sm" loading={whoopAction === 'connect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopConnect(); }}>
+            <Button className="w-full" variant="secondary" size="sm" loading={whoopAction === 'connect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopConnect(); }}>
               Connect
             </Button>
           )}
@@ -696,7 +697,7 @@ export function Settings() {
             <p className="t-heading">iPhone GPS</p>
             <p className="t-caption mt-1">Built in • no paid account</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => { window.location.href = '/train/run'; }}>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/train/run')}>
             Start a run
           </Button>
         </div>
@@ -838,29 +839,29 @@ export function Settings() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-stretch justify-between overflow-hidden">
                       <div className="min-w-0">
-                        <p className="t-heading truncate normal-case tracking-normal text-[var(--color-text)]">{meal.name}</p>
-                        <p className="t-data-sm text-[var(--color-muted)] mt-1.5">
+                        <p className="t-heading break-words pr-2 normal-case tracking-normal text-[var(--color-text)]">{meal.name}</p>
+                        <p className="t-data-sm mt-1.5 break-words pr-2 leading-5 text-[var(--color-muted)]">
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
-                      <div className="flex items-center shrink-0">
+                      <div className="flex shrink-0 items-stretch">
                         <button
                           type="button"
                           onClick={() => beginEditingMeal(meal)}
-                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                          aria-label={`Edit ${meal.name}`}
+                          className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
+                          aria-label={`Edit saved meal ${meal.name}`}
                         >
                           <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                         <button
                           type="button"
                           onClick={() => removeSavedMeal(meal)}
-                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-                          aria-label={`Remove ${meal.name}`}
+                          className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
+                          aria-label={`Delete saved meal ${meal.name}`}
                         >
-                          <Archive className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                       </div>
                     </div>

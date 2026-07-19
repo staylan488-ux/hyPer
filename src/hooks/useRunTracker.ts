@@ -14,7 +14,9 @@ import {
   manualSplit,
   pauseTracker,
   restoreTracker,
+  restoreFinishedRun,
   resumeTracker,
+  serializeFinishedRun,
   serializeTracker,
   type FinishedRun,
   type GpsSample,
@@ -23,6 +25,7 @@ import {
   type TrackerState,
 } from '@/lib/runTracker';
 import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrackerCues';
+import { createDeviceMotionDetector } from '@/lib/deviceMotion';
 
 export interface PositionSource {
   // simulated sources compress delivery but report a consistent clock
@@ -33,13 +36,46 @@ export interface PositionSource {
 
 export function createGeolocationSource(): PositionSource {
   let watchId: number | null = null;
+  let stopped = false;
+  let motionListener: ((event: DeviceMotionEvent) => void) | null = null;
+  const motionDetector = createDeviceMotionDetector();
+
+  const attachMotionListener = () => {
+    if (stopped || motionListener != null) return;
+    motionListener = (event) => {
+      motionDetector.add(Date.now(), event.acceleration, event.accelerationIncludingGravity);
+    };
+    window.addEventListener('devicemotion', motionListener);
+  };
+
+  const startMotionAssist = () => {
+    if (!('DeviceMotionEvent' in window)) return;
+    const constructor = window.DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    };
+    try {
+      const permission = constructor.requestPermission?.();
+      if (permission) {
+        void permission.then((result) => {
+          if (result === 'granted') attachMotionListener();
+        }).catch(() => undefined);
+      } else {
+        attachMotionListener();
+      }
+    } catch {
+      // Motion assist is optional. GPS tracking continues if unavailable or denied.
+    }
+  };
+
   return {
     getNowMs: () => Date.now(),
     start: (onSample, onError) => {
+      stopped = false;
       if (!('geolocation' in navigator)) {
         onError('GPS is not available on this device.');
         return;
       }
+      startMotionAssist();
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           onSample({
@@ -48,6 +84,7 @@ export function createGeolocationSource(): PositionSource {
             lon: position.coords.longitude,
             accuracyM: position.coords.accuracy,
             speedMps: position.coords.speed,
+            motionDetected: motionDetector.isMoving(Date.now()),
           });
         },
         (error) => {
@@ -57,14 +94,20 @@ export function createGeolocationSource(): PositionSource {
               : 'GPS signal lost.',
           );
         },
-        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
       );
     },
     stop: () => {
+      stopped = true;
       if (watchId != null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
+      if (motionListener != null) {
+        window.removeEventListener('devicemotion', motionListener);
+        motionListener = null;
+      }
+      motionDetector.reset();
     },
   };
 }
@@ -112,6 +155,7 @@ const SNAPSHOT_THROTTLE_MS = 5000;
 
 export interface UseRunTracker {
   state: TrackerState | null;
+  finishedRun: FinishedRun | null;
   nowMs: number;
   gpsError: string | null;
   resumable: boolean;
@@ -126,6 +170,13 @@ export interface UseRunTracker {
 
 export function useRunTracker(): UseRunTracker {
   const [state, setState] = useState<TrackerState | null>(null);
+  const [finishedRun, setFinishedRun] = useState<FinishedRun | null>(() => {
+    try {
+      return restoreFinishedRun(localStorage.getItem(RUN_TRACKER_STORAGE_KEY), Date.now());
+    } catch {
+      return null;
+    }
+  });
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [resumable, setResumable] = useState(() => {
@@ -186,10 +237,16 @@ export function useRunTracker(): UseRunTracker {
       const activeSource = source ?? createGeolocationSource();
       const now = activeSource.getNowMs();
       const tracker = createTracker(defaultTrackerConfig(mode, autoLapM), now);
+      setFinishedRun(null);
       stateRef.current = tracker;
       setState(tracker);
       setResumable(false);
-      lastSnapshotRef.current = 0;
+      lastSnapshotRef.current = now;
+      try {
+        localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeTracker(tracker, now));
+      } catch {
+        // storage full/blocked — tracking continues without recovery
+      }
       attachSource(activeSource);
     },
     [attachSource],
@@ -242,8 +299,10 @@ export function useRunTracker(): UseRunTracker {
     const finished: TrackerState = { ...current, status: 'finished' };
     stateRef.current = finished;
     setState(finished);
+    setFinishedRun(run);
+    setResumable(false);
     try {
-      localStorage.removeItem(RUN_TRACKER_STORAGE_KEY);
+      localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeFinishedRun(run, Date.now()));
     } catch {
       // ignore
     }
@@ -254,6 +313,7 @@ export function useRunTracker(): UseRunTracker {
     stopSource();
     stateRef.current = null;
     setState(null);
+    setFinishedRun(null);
     setGpsError(null);
     setResumable(false);
     try {
@@ -309,5 +369,5 @@ export function useRunTracker(): UseRunTracker {
   // stop the GPS watch if the page unmounts mid-run (snapshot allows resume)
   useEffect(() => stopSource, [stopSource]);
 
-  return { state, nowMs, gpsError, resumable, paused: state != null && isPaused(state), start, resume, split, togglePause, finish, discard };
+  return { state, finishedRun, nowMs, gpsError, resumable, paused: state != null && isPaused(state), start, resume, split, togglePause, finish, discard };
 }

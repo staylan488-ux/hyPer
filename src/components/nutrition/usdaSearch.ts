@@ -97,7 +97,10 @@ export function applyPortion(food: Food, portion: UsdaPortion | null): Food {
 }
 
 interface UsdaNutrient {
+  nutrientId?: number;
+  nutrientNumber?: string;
   nutrientName?: string;
+  unitName?: string;
   value?: number;
 }
 
@@ -120,12 +123,22 @@ interface UsdaSearchResponse {
 
 function mapUsdaFood(food: UsdaFood): Food {
   const nutrients = food.foodNutrients || [];
-  const getNutrient = (name: string) => {
-    const nutrient = nutrients.find((item) =>
-      item.nutrientName?.toLowerCase().includes(name.toLowerCase())
-    );
+  const getNutrient = (ids: number[], numbers: string[], names: string[], unit = 'G') => {
+    const normalizedUnit = unit.toUpperCase();
+    const nutrient = nutrients.find((item) => (
+      item.unitName?.toUpperCase() === normalizedUnit
+      && (ids.includes(item.nutrientId ?? -1) || numbers.includes(item.nutrientNumber ?? ''))
+    )) || nutrients.find((item) => (
+      item.unitName?.toUpperCase() === normalizedUnit
+      && names.some((name) => item.nutrientName?.toLowerCase() === name)
+    )) || nutrients.find((item) => (
+      !item.unitName
+      && names.some((name) => item.nutrientName?.toLowerCase() === name)
+    ));
     return nutrient?.value || 0;
   };
+  const caloriesKcal = getNutrient([1008, 2047, 2048], ['208'], ['energy'], 'KCAL');
+  const caloriesKj = caloriesKcal > 0 ? 0 : getNutrient([1062], ['268'], ['energy'], 'KJ');
 
   // Build the per-100 g base first, then apply any serving the search payload already carries.
   // The search response is a more reliable portion source than the detail endpoint:
@@ -134,10 +147,10 @@ function mapUsdaFood(food: UsdaFood): Food {
     id: food.fdcId?.toString() || '',
     user_id: null,
     name: food.description || food.lowercaseDescription || 'Unknown food',
-    calories: getNutrient('energy'),
-    protein: getNutrient('protein'),
-    carbs: getNutrient('carbohydrate'),
-    fat: getNutrient('total lipid (fat)'),
+    calories: caloriesKcal || caloriesKj / 4.184,
+    protein: getNutrient([1003], ['203'], ['protein']),
+    carbs: getNutrient([1005], ['205'], ['carbohydrate, by difference', 'carbohydrate']),
+    fat: getNutrient([1004], ['204'], ['total lipid (fat)', 'fat']),
     serving_size: 100,
     serving_unit: 'g',
     source: 'usda',
@@ -157,7 +170,7 @@ export async function searchUsdaFoods(
 
   try {
     const response = await fetcher(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${apiKey}&query=${encodeURIComponent(query)}&pageSize=10&dataType=Foundation,SR Legacy,Branded`
+      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${apiKey}&query=${encodeURIComponent(query)}&pageSize=10&dataType=Foundation,SR Legacy,Survey (FNDDS)`
     );
     const data = (await response.json()) as UsdaSearchResponse;
 

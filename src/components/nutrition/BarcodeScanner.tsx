@@ -3,10 +3,10 @@ import { Barcode, Flashlight, Keyboard, Loader2, ScanLine } from 'lucide-react';
 import { BarcodeDetector, prepareZXingModule } from 'barcode-detector/ponyfill';
 import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { Button, Input } from '@/components/shared';
-import { hasValidGtinChecksum, normalizeBarcode } from '@/lib/barcodes';
+import { normalizeBarcode, normalizeFoodBarcode } from '@/lib/barcodes';
 import { tapHaptic } from '@/lib/haptics';
 
-const SCAN_INTERVAL_MS = 220;
+const SCAN_INTERVAL_MS = 180;
 const FOOD_BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
 
 prepareZXingModule({
@@ -23,10 +23,12 @@ interface BarcodeScannerProps {
 
 interface TorchCapabilities extends MediaTrackCapabilities {
   torch?: boolean;
+  focusMode?: string[];
 }
 
 interface TorchConstraintSet extends MediaTrackConstraintSet {
   torch?: boolean;
+  focusMode?: string;
 }
 
 function cameraErrorMessage(error: unknown): string {
@@ -67,9 +69,9 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
     setTorchOn(false);
   }, []);
 
-  const resolveBarcode = useCallback(async (rawValue: string) => {
-    const barcode = normalizeBarcode(rawValue);
-    if (!hasValidGtinChecksum(barcode)) {
+  const resolveBarcode = useCallback(async (rawValue: string, format?: string) => {
+    const barcode = normalizeFoodBarcode(rawValue, format);
+    if (!barcode) {
       setState('error');
       setMessage('That barcode is incomplete or failed its checksum. Try again or enter the digits below.');
       return;
@@ -84,7 +86,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       const found = await onDetected(barcode);
       if (!found) {
         setState('error');
-        setMessage('No exact food match was found. Try USDA search or add it manually.');
+        setMessage('Barcode read, but USDA and Open Food Facts had no product record. Use Describe with AI or add it manually.');
       }
     } catch (error) {
       setState('error');
@@ -111,9 +113,9 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
         detectingRef.current = true;
         try {
           const results = await detector.detect(video);
-          const result = results.find((candidate) => hasValidGtinChecksum(candidate.rawValue));
+          const result = results.find((candidate) => normalizeFoodBarcode(candidate.rawValue, candidate.format) !== null);
           if (result && !stoppedRef.current) {
-            void resolveBarcode(result.rawValue);
+            void resolveBarcode(result.rawValue, result.format);
             return;
           }
         } catch {
@@ -144,8 +146,9 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
         audio: false,
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
         },
       });
 
@@ -161,6 +164,9 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
 
       const track = stream.getVideoTracks()[0];
       const capabilities = track?.getCapabilities?.() as TorchCapabilities | undefined;
+      if (track && capabilities?.focusMode?.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as TorchConstraintSet] }).catch(() => {});
+      }
       setTorchAvailable(capabilities?.torch === true);
       stoppedRef.current = false;
       setState('scanning');
@@ -196,7 +202,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       <div className="relative overflow-hidden bg-black aspect-[4/3] hairline-strong">
         <video ref={videoRef} muted playsInline className={`w-full h-full object-cover ${scanning ? 'opacity-100' : 'opacity-35'}`} />
         <div className="absolute inset-[18%_10%] border border-white/80" aria-hidden="true">
-          <span className="absolute left-1/2 top-1/2 w-[82%] h-px -translate-x-1/2 bg-[var(--color-accent)] shadow-[0_0_8px_var(--color-accent)]" />
+          <span className="absolute left-1/2 top-1/2 w-[82%] h-px -translate-x-1/2 bg-[var(--color-accent)]" />
         </div>
         {!scanning && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -207,7 +213,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
           <button
             type="button"
             onClick={() => { void toggleTorch(); }}
-            className="pressable absolute top-3 right-3 flex items-center justify-center w-10 h-10 bg-black/65 text-white"
+            className="pressable absolute top-3 right-3 flex items-center justify-center w-11 h-11 bg-black/65 text-white"
             aria-label={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
           >
             <Flashlight className="w-4 h-4" fill={torchOn ? 'currentColor' : 'none'} />
@@ -252,7 +258,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
           <Button
             variant="secondary"
             className="w-full"
-            disabled={!hasValidGtinChecksum(manualBarcode) || busy}
+            disabled={!normalizeFoodBarcode(manualBarcode) || busy}
             onClick={() => { void resolveBarcode(manualBarcode); }}
           >
             Look up barcode

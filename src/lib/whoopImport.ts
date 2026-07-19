@@ -5,8 +5,8 @@
 //
 // Grouping intent: WHOOP records one workout per hard effort, so an interval
 // session of 8 fast laps arrives as 8 separate records. Consecutive short
-// running records with small gaps are clustered into ONE hyPer session
-// (interval_run or sprint_session); everything else maps 1:1.
+// running records with small gaps are clustered into ONE hyPer split session;
+// everything else maps 1:1.
 import { aggregateSegments } from '@/lib/activityMetrics';
 import type {
   ActivitySegment,
@@ -43,10 +43,6 @@ export interface WhoopWorkoutRecord {
 export const LAP_MERGE_GAP_S = 360;
 // records longer than this are real runs, never treated as laps of a session
 export const LAP_MAX_DURATION_S = 900;
-// a multi-lap cluster is a sprint session when reps are this short and fast
-export const SPRINT_MAX_MEDIAN_DURATION_S = 90;
-export const SPRINT_MIN_MEDIAN_SPEED_MPS = 5.0;
-
 export const KJ_TO_KCAL = 0.239006;
 
 /* ── Sport mapping ── */
@@ -151,13 +147,6 @@ function isLapLike(segment: ActivitySegment): boolean {
   return mapWhoopSport(segment.sport) === 'run' && segmentDuration(segment) <= LAP_MAX_DURATION_S;
 }
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 function clusterSegments(segments: ActivitySegment[]): ActivitySegment[][] {
   const sorted = [...segments].sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at));
   const clusters: ActivitySegment[][] = [];
@@ -180,22 +169,6 @@ function clusterSegments(segments: ActivitySegment[]): ActivitySegment[][] {
 
 function classifyCluster(cluster: ActivitySegment[]): ActivityType {
   if (cluster.length === 1) return mapWhoopSport(cluster[0].sport);
-
-  const durations = cluster.map(segmentDuration);
-  const speeds = cluster
-    .filter((s) => s.distance_m != null && segmentDuration(s) > 0)
-    .map((s) => (s.distance_m as number) / segmentDuration(s));
-
-  const medianDuration = median(durations);
-  const medianSpeed = median(speeds);
-  if (
-    medianDuration != null &&
-    medianDuration <= SPRINT_MAX_MEDIAN_DURATION_S &&
-    medianSpeed != null &&
-    medianSpeed >= SPRINT_MIN_MEDIAN_SPEED_MPS
-  ) {
-    return 'sprint_session';
-  }
   return 'interval_run';
 }
 

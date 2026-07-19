@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowDown, ArrowUp, GripVertical, Pencil, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/shared';
-import { getLogDate, getLogTimestamp } from './nutritionLogUtils';
+import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
 import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { springs } from '@/lib/animations';
 import type { NutritionGroup } from '@/types';
@@ -43,6 +43,8 @@ function sourceLabel(source?: string): string {
   if (source === 'cronometer_csv') return 'Cronometer';
   if (source === 'photo_openai') return 'OpenAI photo';
   if (source === 'photo_anthropic') return 'Claude photo';
+  if (source === 'barcode_fatsecret') return 'FatSecret';
+  if (source === 'barcode_open_food_facts') return 'Open Food Facts';
   if (source === 'barcode') return 'Barcode';
   return 'Manual';
 }
@@ -98,7 +100,7 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`flex items-center gap-2 py-4 border-t border-[var(--color-border)] ${draggedId === log.id ? 'opacity-45' : ''}`}
+        className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-start py-2 border-t border-[var(--color-border)] ${draggedId === log.id ? 'opacity-45' : ''}`}
         initial={{ opacity: 0, y: 8 }}
         animate={{
           opacity: deletedId === log.id ? 0 : 1,
@@ -111,37 +113,41 @@ export function NutritionGroupLedger({
       >
         <button
           type="button"
-          className="pressable p-2 -ml-2 text-[var(--color-muted)] cursor-grab active:cursor-grabbing"
+          className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] cursor-grab active:cursor-grabbing"
           aria-label={`Move ${log.food?.name || 'entry'}`}
           onClick={() => setMovingEntry(log)}
         >
           <GripVertical className="w-4 h-4" strokeWidth={1.5} />
         </button>
 
-        <span className="t-data-sm text-[var(--color-muted)] w-14 shrink-0">
-          {format(getLogDate(log), 'h:mm a')}
-        </span>
+        <div className="min-w-0">
+          <div className="flex items-center justify-between min-h-11">
+            <span className="t-data-sm text-[var(--color-muted)]">
+              {format(getLogDate(log), 'h:mm a')}
+            </span>
+            <div className="flex shrink-0">
+              <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)]" onClick={() => onEdit(log)} aria-label="Edit entry">
+                <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+              <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDelete(log.id)} aria-label="Remove entry">
+                <X className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+            </div>
+          </div>
 
-        <div className="flex-1 min-w-0">
-          <p className="t-body font-medium text-[var(--color-text)] truncate">{log.food?.name || 'Unknown Food'}</p>
-          <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
-            {servingLabel(log)} · {Math.round((log.food?.protein || 0) * log.servings)}g P
-            <span className="text-[var(--color-text-dim)]"> · {provenance}</span>
-          </p>
-        </div>
-
-        <span className="flex items-baseline gap-1 shrink-0">
-          <span className="number-medium text-[var(--color-text)]">{Math.round((log.food?.calories || 0) * log.servings)}</span>
-          <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
-        </span>
-
-        <div className="flex shrink-0 -mr-2">
-          <button type="button" className="pressable p-2 text-[var(--color-muted)]" onClick={() => onEdit(log)} aria-label="Edit entry">
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-          <button type="button" className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDelete(log.id)} aria-label="Remove entry">
-            <X className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
+          <div className="flex items-start justify-between gap-3 pb-3">
+            <div className="min-w-0">
+              <p className="t-body font-medium leading-snug text-[var(--color-text)] break-words">{log.food?.name || 'Unknown Food'}</p>
+              <p className="t-data-sm leading-relaxed text-[var(--color-muted)] mt-1">
+                {servingLabel(log)} <span className="whitespace-nowrap">· {Math.round((log.food?.protein || 0) * log.servings)}g P</span>
+                <span className="text-[var(--color-text-dim)] whitespace-nowrap"> · {provenance}</span>
+              </p>
+            </div>
+            <span className="flex items-baseline gap-1 shrink-0">
+              <span className="number-medium text-[var(--color-text)]">{Math.round((log.food?.calories || 0) * log.servings)}</span>
+              <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
+            </span>
+          </div>
         </div>
       </motion.li>
     );
@@ -150,6 +156,7 @@ export function NutritionGroupLedger({
   const renderDropSection = (group: NutritionGroup | null, entries: NutritionLedgerEntry[]) => {
     const dropId = group?.id || 'inbox';
     const title = group ? nutritionGroupLabel(group, orderedGroups) : 'Unassigned';
+    const totalCalories = Math.round(sumNutritionLogCalories(entries));
     return (
       <section
         key={dropId}
@@ -171,36 +178,43 @@ export function NutritionGroupLedger({
         }}
         className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)]' : 'border-[var(--color-text)]'} transition-colors`}
       >
-        <div className="flex items-center justify-between gap-4 py-3">
-          <div>
+        <div className="flex items-center justify-between gap-2 py-3">
+          <div className="min-w-0">
             <span className="t-heading">{title}</span>
             <span className="t-data-sm text-[var(--color-muted)] ml-2">{entries.length}</span>
           </div>
-          {group && (
-            <div className="flex items-center -mr-2">
-              <button
-                type="button"
-                className="pressable p-2 text-[var(--color-muted)] disabled:opacity-25"
-                disabled={!moveNutritionGroup(orderedGroups, group.id, -1)}
-                onClick={() => onReorderGroup(group.id, -1)}
-                aria-label={`Move ${title} earlier`}
-              >
-                <ArrowUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-              </button>
-              <button
-                type="button"
-                className="pressable p-2 text-[var(--color-muted)] disabled:opacity-25"
-                disabled={!moveNutritionGroup(orderedGroups, group.id, 1)}
-                onClick={() => onReorderGroup(group.id, 1)}
-                aria-label={`Move ${title} later`}
-              >
-                <ArrowDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-              </button>
-              <button type="button" className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
-                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-              </button>
-            </div>
-          )}
+          <div className="flex shrink-0 items-center">
+            {group && (
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] disabled:opacity-25"
+                  disabled={!moveNutritionGroup(orderedGroups, group.id, -1)}
+                  onClick={() => onReorderGroup(group.id, -1)}
+                  aria-label={`Move ${title} earlier`}
+                >
+                  <ArrowUp className="w-3.5 h-3.5" strokeWidth={1.5} />
+                </button>
+                <button
+                  type="button"
+                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] disabled:opacity-25"
+                  disabled={!moveNutritionGroup(orderedGroups, group.id, 1)}
+                  onClick={() => onReorderGroup(group.id, 1)}
+                  aria-label={`Move ${title} later`}
+                >
+                  <ArrowDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+                </button>
+                {!group.label && (
+                  <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
+                    <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  </button>
+                )}
+              </div>
+            )}
+            <span className="t-data-sm min-w-[4.5rem] text-right text-[var(--color-text-dim)] whitespace-nowrap">
+              {totalCalories.toLocaleString()} kcal
+            </span>
+          </div>
         </div>
         {entries.length > 0 ? (
           <ul><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>
@@ -221,7 +235,7 @@ export function NutritionGroupLedger({
 
   return (
     <>
-      {renderDropSection(null, unassigned)}
+      {(unassigned.length > 0 || draggedId) && renderDropSection(null, unassigned)}
       {orderedGroups.map((group) => renderDropSection(group, logs.filter((log) => log.group_id === group.id)))}
 
       <Modal isOpen={!!movingEntry} onClose={() => setMovingEntry(null)} title="Move food">

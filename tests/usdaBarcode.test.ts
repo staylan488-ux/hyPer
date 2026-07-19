@@ -2,6 +2,27 @@ import { describe, expect, it, vi } from 'vitest';
 import { searchUsdaFoodByBarcode } from '@/components/nutrition/usdaSearch';
 
 describe('USDA barcode lookup', () => {
+  it('uses kcal energy when a kJ energy row appears first', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      foods: [{
+        fdcId: 10,
+        description: 'Energy unit test',
+        gtinUpc: '0012345678905',
+        servingSize: 100,
+        servingSizeUnit: 'g',
+        foodNutrients: [
+          { nutrientId: 1062, nutrientName: 'Energy', unitName: 'kJ', value: 1674 },
+          { nutrientId: 1008, nutrientName: 'Energy', unitName: 'kcal', value: 400 },
+          { nutrientId: 1003, nutrientName: 'Protein', unitName: 'g', value: 20 },
+        ],
+      }],
+    }), { status: 200 }));
+
+    const food = await searchUsdaFoodByBarcode('012345678905', 'test-key', fetcher as typeof fetch);
+    expect(food?.calories).toBe(400);
+    expect(food?.protein).toBe(20);
+  });
+
   it('returns only an exact equivalent GTIN match', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       foods: [
@@ -37,5 +58,18 @@ describe('USDA barcode lookup', () => {
     const fetcher = vi.fn();
     await expect(searchUsdaFoodByBarcode('012345678904', 'test-key', fetcher as typeof fetch)).resolves.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('queries USDA with expanded UPC-A and accepts an exact UPC-E equivalent', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      foods: [
+        { fdcId: 3, description: 'UPC-E product', gtinUpc: '042100005264', foodNutrients: [] },
+      ],
+    }), { status: 200 }));
+
+    const food = await searchUsdaFoodByBarcode('04252614', 'test-key', fetcher as typeof fetch);
+
+    expect(food?.name).toBe('UPC-E product');
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('query=042100005264'));
   });
 });

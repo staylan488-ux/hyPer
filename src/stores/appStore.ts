@@ -1720,19 +1720,42 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { session: sessionInput, segments: segmentInputs } = finishedRunToActivity(run, run.runId);
 
-    const session = await get().createActivitySession(sessionInput);
+    // A save can fail after the session insert but before segment linking.
+    // Reuse the stable GPS start/type identity on retry instead of inserting a
+    // second empty session. No schema or auth changes are required.
+    const { data: existingSession, error: existingSessionError } = await supabase
+      .from('activity_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('source', 'gps')
+      .eq('activity_type', sessionInput.activity_type)
+      .eq('started_at', sessionInput.started_at as string)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingSessionError) {
+      console.error('Error checking for an existing tracked run:', existingSessionError);
+      return null;
+    }
+
+    const session = existingSession as ActivitySession | null
+      ?? await get().createActivitySession(sessionInput);
     if (!session) return null;
 
     // segment external_ids are stable per run, so a retried save upserts
     // rather than duplicating splits
     const segments = await get().upsertActivitySegments(segmentInputs);
+    if (segmentInputs.length > 0 && segments.length !== segmentInputs.length) return null;
     if (segments.length > 0) {
       const { error } = await supabase
         .from('activity_segments')
         .update({ session_id: session.id, updated_at: new Date().toISOString() })
         .eq('user_id', user.id)
         .in('id', segments.map((segment) => segment.id));
-      if (error) console.error('Error linking run segments:', error);
+      if (error) {
+        console.error('Error linking run segments:', error);
+        return null;
+      }
     }
 
     // cross-source merge: if WHOOP already auto-imported this same run, absorb

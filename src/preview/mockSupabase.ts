@@ -18,6 +18,79 @@ const PREVIEW_USER = {
 type Row = Record<string, unknown>;
 type Predicate = (r: Row) => boolean;
 
+const PREVIEW_USDA_FOODS = [
+  {
+    fdcId: 171077,
+    description: 'Chicken Breast, grilled',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 165 },
+      { nutrientName: 'Protein', value: 31 },
+      { nutrientName: 'Carbohydrate, by difference', value: 0 },
+      { nutrientName: 'Total lipid (fat)', value: 3.6 },
+    ],
+  },
+  {
+    fdcId: 168878,
+    description: 'White Rice, cooked',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 130 },
+      { nutrientName: 'Protein', value: 2.7 },
+      { nutrientName: 'Carbohydrate, by difference', value: 28.2 },
+      { nutrientName: 'Total lipid (fat)', value: 0.3 },
+    ],
+  },
+  {
+    fdcId: 748608,
+    description: 'Olive Oil',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 884 },
+      { nutrientName: 'Protein', value: 0 },
+      { nutrientName: 'Carbohydrate, by difference', value: 0 },
+      { nutrientName: 'Total lipid (fat)', value: 100 },
+    ],
+  },
+] as const;
+
+function mockFoodLookup(body: Record<string, unknown> | undefined): unknown {
+  if (body?.action === 'detail') {
+    return PREVIEW_USDA_FOODS.find((food) => String(food.fdcId) === String(body.fdcId)) ?? null;
+  }
+
+  if (body?.action === 'barcode') return { foods: [] };
+  if (body?.action === 'open-food-facts-barcode') {
+    return {
+      code: String(body.barcode || '0041570054161'),
+      status: 1,
+      product: {
+        product_name: 'Preview protein bar',
+        brands: 'Hyper Test Kitchen',
+        serving_size: '1 bar (55 g)',
+        serving_quantity: 55,
+        nutriments: {
+          'energy-kcal_serving': 210,
+          proteins_serving: 20,
+          carbohydrates_serving: 23,
+          fat_serving: 6,
+        },
+      },
+    };
+  }
+
+  const query = String(body?.query ?? '').toLowerCase();
+  const terms = query.split(/\s+/).filter((term) => term.length > 2);
+  const foods = PREVIEW_USDA_FOODS.filter((food) => {
+    const name = food.description.toLowerCase();
+    return terms.some((term) => name.includes(term));
+  });
+  return { foods };
+}
+
 let mockIdCounter = 0;
 
 function stampRow(row: Row): Row {
@@ -162,6 +235,11 @@ export function createMockClient(): SupabaseClient {
     auth,
     from: (table: string) => new MockBuilder(table),
     rpc: async () => ({ data: null, error: null }),
+    functions: {
+      invoke: async (name: string, options?: { body?: Record<string, unknown> }) => name === 'food-lookup'
+        ? { data: mockFoodLookup(options?.body), error: null }
+        : { data: null, error: { message: `${name} is not available in preview` } },
+    },
     channel: () => ({ on() { return this; }, subscribe() { return this; }, unsubscribe() {} }),
     removeChannel: () => {},
   };

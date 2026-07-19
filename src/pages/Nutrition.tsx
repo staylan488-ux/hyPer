@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, EmptyState, Modal, RailStrip, Screen, Toast } from '@/components/shared';
@@ -9,7 +9,9 @@ import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedge
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 import {
+  insertNutritionGroupByTime,
   legacyMealTypeForGroup,
+  missingDefaultNamedMeals,
   moveNutritionGroup,
   normalizeNutritionGroupOrder,
   nutritionGroupLabel,
@@ -89,6 +91,7 @@ export function Nutrition() {
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
+  const defaultGroupsInFlight = useRef(new Set<string>());
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
     setLoading(true);
@@ -218,6 +221,77 @@ export function Nutrition() {
     [monthGroups, selectedDateKey],
   );
 
+  const persistGroupOrder = useCallback(async (groups: NutritionGroup[]): Promise<boolean> => {
+    const results = await Promise.all(groups.map((group) => (
+      supabase
+        .from('nutrition_groups')
+        .update({ sort_order: group.sort_order })
+        .eq('id', group.id)
+        .eq('user_id', group.user_id)
+    )));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      console.error('Error ordering nutrition groups:', failed.error);
+      return false;
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (loading || defaultGroupsInFlight.current.has(selectedDateKey)) return;
+    const missingLabels = missingDefaultNamedMeals(selectedDayGroups);
+    if (missingLabels.length === 0) return;
+
+    defaultGroupsInFlight.current.add(selectedDateKey);
+    let cancelled = false;
+
+    const ensureDefaultGroups = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase.from('nutrition_groups').insert(
+          missingLabels.map((label, index) => ({
+            user_id: user.id,
+            date: selectedDateKey,
+            kind: 'meal' as const,
+            label,
+            sort_order: selectedDayGroups.length + index,
+          })),
+        ).select('*');
+
+        if (error || !data) {
+          console.error('Error creating default nutrition groups:', error);
+          await fetchMonthLogs(selectedMonth);
+          return;
+        }
+
+        const inserted = data as NutritionGroup[];
+        const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, ...inserted]);
+        if (!await persistGroupOrder(normalized)) {
+          await fetchMonthLogs(selectedMonth);
+          return;
+        }
+        if (cancelled) return;
+
+        const normalizedById = new Map(normalized.map((group) => [group.id, group]));
+        setMonthGroups((current) => [
+          ...current.map((group) => normalizedById.get(group.id) || group),
+          ...inserted
+            .filter((group) => !current.some((candidate) => candidate.id === group.id))
+            .map((group) => normalizedById.get(group.id) || group),
+        ]);
+      } finally {
+        defaultGroupsInFlight.current.delete(selectedDateKey);
+      }
+    };
+
+    void ensureDefaultGroups();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchMonthLogs, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
+
   const dayTotals = useMemo(
     () =>
       selectedDayLogs.reduce(
@@ -243,19 +317,14 @@ export function Nutrition() {
     }, {});
   }, [monthLogs]);
 
-  const createGroup = async (kind: 'meal' | 'snack', label: NutritionGroup['label']) => {
-    if (label && selectedDayGroups.some((group) => group.label === label)) {
-      setShowGroupSheet(false);
-      return;
-    }
-
+  const createGroup = async (kind: 'meal' | 'snack') => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { data, error } = await supabase.from('nutrition_groups').insert({
       user_id: user.id,
       date: selectedDateKey,
       kind,
-      label,
+      label: null,
       sort_order: selectedDayGroups.length,
     }).select('*').single();
 
@@ -264,17 +333,8 @@ export function Nutrition() {
       return;
     }
 
-    const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, data as NutritionGroup]);
-    const results = await Promise.all(normalized.map((group) => (
-      supabase
-        .from('nutrition_groups')
-        .update({ sort_order: group.sort_order })
-        .eq('id', group.id)
-        .eq('user_id', group.user_id)
-    )));
-    const failed = results.find((result) => result.error);
-    if (failed?.error) {
-      console.error('Error ordering nutrition group:', failed.error);
+    const normalized = insertNutritionGroupByTime(selectedDayGroups, data as NutritionGroup);
+    if (!await persistGroupOrder(normalized)) {
       await fetchMonthLogs(selectedMonth);
       return;
     }
@@ -307,16 +367,7 @@ export function Nutrition() {
     const reordered = moveNutritionGroup(selectedDayGroups, groupId, direction);
     if (!reordered) return;
 
-    const results = await Promise.all(reordered.map((group) => (
-      supabase
-        .from('nutrition_groups')
-        .update({ sort_order: group.sort_order })
-        .eq('id', group.id)
-        .eq('user_id', group.user_id)
-    )));
-    const failed = results.find((result) => result.error);
-    if (failed?.error) {
-      console.error('Error reordering nutrition groups:', failed.error);
+    if (!await persistGroupOrder(reordered)) {
       await fetchMonthLogs(selectedMonth);
       return;
     }
@@ -326,6 +377,7 @@ export function Nutrition() {
   };
 
   const deleteGroup = async (group: NutritionGroup) => {
+    if (group.label) return;
     const name = nutritionGroupLabel(group, selectedDayGroups);
     if (!confirm(`Delete ${name}? Its foods will move to Unassigned.`)) return;
     const { error: moveError } = await supabase.from('nutrition_logs')
@@ -349,8 +401,6 @@ export function Nutrition() {
   const targetProtein = macroTarget?.protein || 150;
   const targetCarbs = macroTarget?.carbs || 200;
   const targetFat = macroTarget?.fat || 65;
-  const remainingKcal = Math.max(0, Math.round(targetKcal - dayTotals.calories));
-
   const macroFigures: { label: string; current: number; target: number }[] = [
     { label: 'Protein', current: dayTotals.protein, target: targetProtein },
     { label: 'Carbs', current: dayTotals.carbs, target: targetCarbs },
@@ -387,17 +437,17 @@ export function Nutrition() {
           <>
             <div className="flex items-end justify-between gap-4">
               <div className="min-w-0">
-                <span className="t-label block mb-3">Energy remaining</span>
+                <span className="t-label block mb-3">Energy consumed</span>
                 <div className="flex items-baseline gap-2.5">
-                  <span className="number-hero text-[var(--color-text)]">{remainingKcal.toLocaleString()}</span>
+                  <span className="number-hero text-[var(--color-text)]">{Math.round(dayTotals.calories).toLocaleString()}</span>
                   <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
                 </div>
               </div>
               <div className="text-right shrink-0 pb-1.5">
                 <span className="t-data-sm text-[var(--color-text-dim)]">
-                  {Math.round(dayTotals.calories).toLocaleString()}
+                  / {Math.round(targetKcal).toLocaleString()}
                 </span>
-                <span className="t-label-sm block mt-1">of {Math.round(targetKcal).toLocaleString()} eaten</span>
+                <span className="t-label-sm block mt-1">Daily target</span>
               </div>
             </div>
             <RailStrip
@@ -687,29 +737,22 @@ export function Nutrition() {
       <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
         <div className="space-y-px pb-2">
           {[
-            { kind: 'meal' as const, label: null, title: 'Numbered meal', description: 'Meal 1, Meal 2, Meal 3…' },
-            { kind: 'meal' as const, label: 'breakfast' as const, title: 'Breakfast', description: 'Named meal' },
-            { kind: 'meal' as const, label: 'lunch' as const, title: 'Lunch', description: 'Named meal' },
-            { kind: 'meal' as const, label: 'dinner' as const, title: 'Dinner', description: 'Named meal' },
-            { kind: 'snack' as const, label: null, title: 'Numbered snack', description: 'Snack 1, Snack 2, Snack 3…' },
-          ].map((option) => {
-            const alreadyExists = option.label !== null && selectedDayGroups.some((group) => group.label === option.label);
-            return (
-              <button
-                key={`${option.kind}-${option.label || 'numbered'}`}
-                type="button"
-                disabled={alreadyExists}
-                className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border)] text-left disabled:opacity-40"
-                onClick={() => void createGroup(option.kind, option.label)}
-              >
-                <span>
-                  <span className="t-heading block">{option.title}</span>
-                  <span className="t-caption block mt-0.5">{option.description}</span>
-                </span>
-                <span className="t-data-sm text-[var(--color-muted)]">{alreadyExists ? 'Added' : 'Add'}</span>
-              </button>
-            );
-          })}
+            { kind: 'meal' as const, title: 'Meal', description: 'Inserted by time and numbered by its place in the day' },
+            { kind: 'snack' as const, title: 'Snack', description: 'Inserted by time and numbered with other snacks' },
+          ].map((option) => (
+            <button
+              key={option.kind}
+              type="button"
+              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border)] text-left"
+              onClick={() => void createGroup(option.kind)}
+            >
+              <span>
+                <span className="t-heading block">{option.title}</span>
+                <span className="t-caption block mt-0.5">{option.description}</span>
+              </span>
+              <span className="t-data-sm text-[var(--color-muted)]">Add</span>
+            </button>
+          ))}
         </div>
       </Modal>
 

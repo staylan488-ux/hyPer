@@ -1,6 +1,13 @@
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 
 export type PhotoAnalysisProvider = 'openai' | 'anthropic';
+export type PhotoAnalysisAngle = 'top' | 'side';
+
+export interface PhotoAnalysisImage {
+  angle: PhotoAnalysisAngle;
+  imageBase64: string;
+  mimeType: string;
+}
 
 export interface PhotoAnalysisItem {
   name: string;
@@ -71,8 +78,7 @@ const PREVIEW_RESULT: PhotoAnalysisResult = {
 };
 
 export async function analyzeFoodPhoto(input: {
-  imageBase64: string;
-  mimeType: string;
+  images: PhotoAnalysisImage[];
   hint?: string;
   accessToken: string;
   settings?: PhotoWorkerSettings;
@@ -80,6 +86,9 @@ export async function analyzeFoodPhoto(input: {
   const settings = input.settings || getPhotoWorkerSettings();
   if (isPreviewActive() && !isAppSandboxActive()) return { ...PREVIEW_RESULT, provider: settings.provider };
   if (!settings.url) throw new Error('Set the photo worker URL in Settings before analyzing a photo.');
+  if (input.images.length < 1 || input.images.length > 2) {
+    throw new Error('Add a top photo and, optionally, one side photo.');
+  }
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 150_000);
@@ -92,8 +101,7 @@ export async function analyzeFoodPhoto(input: {
       },
       body: JSON.stringify({
         provider: settings.provider,
-        imageBase64: input.imageBase64,
-        mimeType: input.mimeType,
+        images: input.images,
         hint: input.hint?.trim() || null,
       }),
       signal: controller.signal,
@@ -119,18 +127,19 @@ export async function analyzeFoodPhoto(input: {
   }
 }
 
-export async function checkPhotoWorker(settings = getPhotoWorkerSettings()): Promise<{ ok: boolean; providers: string[]; authenticatedProviders: string[]; models: Record<string, string>; error?: string }> {
+export async function checkPhotoWorker(settings = getPhotoWorkerSettings()): Promise<{ ok: boolean; providers: string[]; authenticatedProviders: string[]; models: Record<string, string>; efforts: Record<string, string>; error?: string }> {
   try {
     const response = await fetch(`${settings.url.replace(/\/+$/, '')}/health`, { signal: AbortSignal.timeout(5_000) });
-    const payload = await response.json() as { providers?: string[]; authenticatedProviders?: string[]; models?: Record<string, string>; error?: string };
+    const payload = await response.json() as { providers?: string[]; authenticatedProviders?: string[]; models?: Record<string, string>; efforts?: Record<string, string>; error?: string };
     return {
       ok: response.ok,
       providers: payload.providers || [],
       authenticatedProviders: payload.authenticatedProviders || [],
       models: payload.models || {},
+      efforts: payload.efforts || {},
       error: payload.error,
     };
   } catch (error) {
-    return { ok: false, providers: [], authenticatedProviders: [], models: {}, error: error instanceof Error ? error.message : 'Worker unavailable' };
+    return { ok: false, providers: [], authenticatedProviders: [], models: {}, efforts: {}, error: error instanceof Error ? error.message : 'Worker unavailable' };
   }
 }

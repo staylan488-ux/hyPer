@@ -18,6 +18,9 @@ export interface GpsSample {
   lon: number;
   accuracyM: number;
   speedMps: number | null; // device-reported speed when available
+  // optional sustained-motion evidence from the phone accelerometer. This is
+  // deliberately only a gate; route and distance still come from GPS/speed.
+  motionDetected?: boolean;
 }
 
 export interface TrackerConfig {
@@ -26,9 +29,9 @@ export interface TrackerConfig {
   accuracyMaxM: number;
   maxSpeedMps: number;
   minStepM: number;
-  // below this device-reported speed the runner is treated as stationary and
-  // no distance is accrued. This app tracks runs, so sub-walking-speed values
-  // are much more likely to be handheld movement or GPS drift than a run.
+  // Below this device-reported speed GPS alone is treated as stationary. Slow
+  // movement may still count when sustained phone motion independently confirms
+  // it, avoiding the old false-negative for indoor walking.
   stationarySpeedMps: number;
   // when device speed is unavailable, a step must clear this multiple of the
   // combined uncertainty of the previous and current fixes.
@@ -52,7 +55,7 @@ export const TRACKER_DEFAULTS = {
   accuracyMaxM: 30,
   maxSpeedMps: 12.5,
   minStepM: 2,
-  stationarySpeedMps: 1.2, // ~2.7 mph; conservative start gate for a run tracker
+  stationarySpeedMps: 1.2,
   driftAccuracyFactor: 1.3,
   warmupSamples: 3,
   paceWindowS: 60,
@@ -258,11 +261,13 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   }
   next.speedRejectCount = 0;
 
-  // stationary gate: the device's Doppler speed reads ~0 when standing still
-  // even as the fix wanders. Re-anchor to the current point (so a later real
-  // step is measured from here) but bank NO distance — this is what stops the
-  // "distance climbs while standing" drift.
-  if (reportedSpeed != null && reportedSpeed < config.stationarySpeedMps) {
+  const slowReportedSpeed = reportedSpeed != null && reportedSpeed < config.stationarySpeedMps;
+  const motionAssisted = sample.motionDetected === true;
+
+  // GPS position can wander by several metres at rest, while genuinely slow
+  // indoor movement can report under 1.2 m/s. Only independent sustained phone
+  // motion is allowed to override this low-speed drift gate.
+  if (slowReportedSpeed && !motionAssisted) {
     next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
     next.lastAcceptedMs = sample.t;
     next.emaSpeedMps =
@@ -270,22 +275,32 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     return { state: next, events };
   }
 
-  // jitter floor. With device speed we trust a small real step; without it,
-  // require the step to clear the fix's own uncertainty so noise is dropped.
+  // During sensor-confirmed slow movement, prefer the platform's horizontal
+  // speed. It remains usable when indoor coordinates are quantized or briefly
+  // unchanged, and re-anchoring prevents that same movement being counted again
+  // when the next coordinate arrives. Cap the integration gap because one
+  // current speed reading cannot describe an arbitrarily long callback delay.
+  let acceptedStepM: number | null = null;
+  if (motionAssisted && slowReportedSpeed && reportedSpeed >= 0.25) {
+    acceptedStepM = reportedSpeed * Math.min(dtS, 5);
+  }
+
+  // Jitter floor. With device speed or independent motion we trust a small real
+  // step; without either, require displacement to clear the fix uncertainty.
   const combinedAccuracyM = Math.hypot(prev.accuracyM ?? sample.accuracyM, sample.accuracyM);
-  const jitterFloor = reportedSpeed != null
+  const jitterFloor = reportedSpeed != null || motionAssisted
     ? config.minStepM
     : Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
-  if (stepM < jitterFloor) {
+  if (acceptedStepM == null && stepM < jitterFloor) {
     next.lastAcceptedMs = sample.t;
     return { state: next, events };
   }
 
   next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
   next.lastAcceptedMs = sample.t;
-  next.totalDistanceM = state.totalDistanceM + stepM;
+  next.totalDistanceM = state.totalDistanceM + (acceptedStepM ?? stepM);
 
-  const observedSpeed = reportedSpeed ?? impliedSpeed;
+  const observedSpeed = reportedSpeed ?? (acceptedStepM ?? stepM) / dtS;
   next.emaSpeedMps =
     next.emaSpeedMps == null
       ? observedSpeed
@@ -497,6 +512,15 @@ export function rollingPaceSecPerMile(state: TrackerState, nowMs: number): numbe
   return dtS / (distM / PACE_MILE_M);
 }
 
+// Whole-session active average. Five metres is enough to avoid rendering pace
+// from the first noisy fix while still giving short walks immediate feedback.
+export function averagePaceSecPerMile(state: TrackerState, nowMs: number): number | null {
+  if (state.totalDistanceM < 5) return null;
+  const elapsedS = elapsedSeconds(state, nowMs);
+  if (elapsedS <= 0) return null;
+  return elapsedS / (state.totalDistanceM / PACE_MILE_M);
+}
+
 export function currentLapDistanceM(state: TrackerState): number {
   return state.totalDistanceM - state.lapStartDistM;
 }
@@ -628,6 +652,7 @@ export function finishedRunToActivity(
 
 export const RUN_TRACKER_STORAGE_KEY = 'hyper:run-tracker';
 export const RUN_TRACKER_RESUME_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+export const FINISHED_RUN_RECOVERY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface TrackerSnapshot {
   version: 1;
@@ -635,8 +660,19 @@ interface TrackerSnapshot {
   state: TrackerState;
 }
 
+interface FinishedRunSnapshot {
+  version: 2;
+  savedAtMs: number;
+  finishedRun: FinishedRun;
+}
+
 export function serializeTracker(state: TrackerState, nowMs: number): string {
   const snapshot: TrackerSnapshot = { version: 1, savedAtMs: nowMs, state };
+  return JSON.stringify(snapshot);
+}
+
+export function serializeFinishedRun(finishedRun: FinishedRun, nowMs: number): string {
+  const snapshot: FinishedRunSnapshot = { version: 2, savedAtMs: nowMs, finishedRun };
   return JSON.stringify(snapshot);
 }
 
@@ -662,6 +698,29 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     state.lapPausedMs ??= 0;
     state.lastPoint = null; // re-anchor after the gap
     return state;
+  } catch {
+    return null;
+  }
+}
+
+export function restoreFinishedRun(raw: string | null, nowMs: number): FinishedRun | null {
+  if (!raw) return null;
+  try {
+    const snapshot = JSON.parse(raw) as FinishedRunSnapshot;
+    const run = snapshot.finishedRun;
+    if (snapshot.version !== 2 || !run) return null;
+    if (nowMs - snapshot.savedAtMs > FINISHED_RUN_RECOVERY_MAX_AGE_MS) return null;
+    if (
+      typeof run.runId !== 'string'
+      || !['free', 'intervals', 'sprints'].includes(run.mode)
+      || typeof run.startedAtMs !== 'number'
+      || typeof run.endedAtMs !== 'number'
+      || typeof run.totalDistanceM !== 'number'
+      || typeof run.elapsedS !== 'number'
+      || !Array.isArray(run.laps)
+      || !Array.isArray(run.reps)
+    ) return null;
+    return run;
   } catch {
     return null;
   }

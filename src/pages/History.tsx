@@ -341,8 +341,9 @@ function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdi
             <button
               type="button"
               onClick={onToggleExpand}
-              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               title={expanded ? 'Hide splits' : 'Show splits'}
+              aria-label={expanded ? 'Hide splits' : 'Show splits'}
             >
               {expanded
                 ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -352,16 +353,18 @@ function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdi
           <button
             type="button"
             onClick={onEdit}
-            className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             title="Edit activity"
+            aria-label="Edit activity"
           >
             <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
             title="Delete activity"
+            aria-label="Delete activity"
           >
             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
           </button>
@@ -998,7 +1001,7 @@ export function History() {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: -2 }}
               aria-label="Previous month"
             >
@@ -1021,7 +1024,7 @@ export function History() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: 2 }}
               aria-label="Next month"
             >

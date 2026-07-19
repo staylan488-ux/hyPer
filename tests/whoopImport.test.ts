@@ -202,11 +202,11 @@ describe('groupSegments clustering', () => {
     expect(groupSegments([morning, later], []).creates).toHaveLength(2);
   });
 
-  it('classifies short fast reps as a sprint_session and short slow reps as interval_run', () => {
-    const sprints = makeLaps(6, { activeS: 58, gapS: 150, distanceM: 330 }); // 5.7 m/s
+  it('classifies both fast and slow rep clusters as interval runs', () => {
+    const fastReps = makeLaps(6, { activeS: 58, gapS: 150, distanceM: 330 }); // 5.7 m/s
     const slowReps = makeLaps(6, { activeS: 80, gapS: 150, distanceM: 300 }); // 3.75 m/s
 
-    expect(groupSegments(sprints, []).creates[0].session.activity_type).toBe('sprint_session');
+    expect(groupSegments(fastReps, []).creates[0].session.activity_type).toBe('interval_run');
     expect(groupSegments(slowReps, []).creates[0].session.activity_type).toBe('interval_run');
   });
 

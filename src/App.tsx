@@ -54,8 +54,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen">
-      <main className="max-w-lg mx-auto safe-area-inset-top">
+    <div className="fixed inset-0 overflow-hidden bg-[var(--color-base)]">
+      <main
+        data-app-scroll-viewport
+        className="h-full max-w-lg mx-auto overflow-y-auto overscroll-y-contain bg-[var(--color-base)] safe-area-inset-top"
+      >
         {children}
       </main>
       <BottomNav />

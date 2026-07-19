@@ -172,7 +172,7 @@ export type ActivitySessionInput = {
 };
 
 // raw imported/recorded child record of an activity session (one WHOOP workout
-// record or one GPS lap/sprint rep); (user_id, source, external_id) is unique
+// record or one GPS lap/legacy sprint rep); (user_id, source, external_id) is unique
 export interface ActivitySegment {
   id: string;
   user_id: string;
@@ -231,7 +231,7 @@ export interface Food {
   fat: number;
   serving_size: number;
   serving_unit: string;
-  source: 'custom' | 'usda' | 'saved_meal' | 'manual_entry' | 'cronometer' | 'photo';
+  source: 'custom' | 'usda' | 'fatsecret' | 'open_food_facts' | 'saved_meal' | 'manual_entry' | 'cronometer' | 'photo';
   fdc_id: string | null;
   external_source?: string | null;
   external_id?: string | null;
@@ -249,7 +249,7 @@ export interface NutritionLog {
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
   group_id?: string | null;
   sort_order?: number;
-  source?: 'manual' | 'photo_openai' | 'photo_anthropic' | 'cronometer_csv' | 'barcode';
+  source?: 'manual' | 'usda' | 'photo_openai' | 'photo_anthropic' | 'cronometer_csv' | 'barcode' | 'barcode_fatsecret' | 'barcode_open_food_facts';
   external_id?: string | null;
   import_batch_id?: string | null;
 }

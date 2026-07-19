@@ -1,6 +1,7 @@
 import './preview/flag' // DEV-ONLY: must precede the Supabase client import
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { MotionConfig } from 'motion/react'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
@@ -32,6 +33,8 @@ maybeSeedPreview() // DEV-ONLY: seeds the stores when on a /preview URL
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </StrictMode>,
 )

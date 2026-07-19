@@ -63,7 +63,7 @@ export const intervals8x400: GpsScenario = {
   },
 };
 
-// 6 × ~90m sprints (12s @ 7.5 m/s) with 90s jog recoveries (1.8 m/s)
+// legacy regression fixture for old sprint snapshots; no longer offered in UI
 export const sprints6x90m: GpsScenario = {
   id: 'sprints6',
   label: '6 × sprint',
@@ -100,4 +100,4 @@ export const stationaryDrift: GpsScenario = {
   },
 };
 
-export const gpsScenarios: GpsScenario[] = [steadyRun5k, intervals8x400, sprints6x90m, stationaryDrift];
+export const gpsScenarios: GpsScenario[] = [steadyRun5k, intervals8x400, stationaryDrift];

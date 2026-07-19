@@ -44,6 +44,21 @@ async function hmacSha256(secret: string, message: string): Promise<Uint8Array> 
   return new Uint8Array(signature);
 }
 
+async function verifyHmacSha256(secret: string, message: string, signature: string): Promise<boolean> {
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    return crypto.subtle.verify('HMAC', key, base64UrlDecode(signature), encoder.encode(message));
+  } catch {
+    return false;
+  }
+}
+
 export interface OAuthStatePayload {
   userId: string;
   expiresAtMs: number;
@@ -65,8 +80,7 @@ export async function verifyOAuthState(secret: string, state: string): Promise<O
   const [encoded, mac] = state.split('.');
   if (!encoded || !mac) return null;
 
-  const expected = base64UrlEncode(await hmacSha256(secret, encoded));
-  if (expected !== mac) return null;
+  if (!await verifyHmacSha256(secret, encoded, mac)) return null;
 
   try {
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(encoded))) as OAuthStatePayload;

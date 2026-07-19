@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   advanceTracker,
+  averagePaceSecPerMile,
   createTracker,
   currentLapDistanceM,
   defaultTrackerConfig,
@@ -15,8 +16,10 @@ import {
   manualSplit,
   pauseTracker,
   restoreTracker,
+  restoreFinishedRun,
   resumeTracker,
   rollingPaceSecPerMile,
+  serializeFinishedRun,
   serializeTracker,
   type GpsSample,
   type TrackerEvent,
@@ -107,6 +110,26 @@ describe('ingestion filters', () => {
     const expected = 1.5 * 117; // minus warm-up samples
     expect(state.totalDistanceM).toBeGreaterThan(expected * 0.95);
     expect(state.totalDistanceM).toBeLessThanOrEqual(expected * 1.05);
+  });
+
+  it('counts sensor-confirmed slow indoor walking without reintroducing stationary drift', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const raw = buildScenarioSamples([{ speedMps: 0.75, durationS: 60 }], 15);
+    const frozenFix = raw[8];
+    const samples = shift(
+      raw.map((sample, index) => ({
+        ...sample,
+        // Reproduce the apartment failure: the browser coordinate stops moving
+        // after roughly 6 m even though speed and phone motion continue.
+        ...(index > 8 ? { lat: frozenFix.lat, lon: frozenFix.lon } : {}),
+        motionDetected: sample.t >= 2000,
+      })),
+    );
+
+    const { state } = drive(tracker, samples);
+
+    expect(state.totalDistanceM).toBeGreaterThan(38);
+    expect(state.totalDistanceM).toBeLessThan(46);
   });
 
   it('banks ~no distance while standing still despite GPS drift', () => {
@@ -215,6 +238,23 @@ describe('pause / resume', () => {
 });
 
 describe('free run', () => {
+  it('shows whole-session average pace before the rolling window has 20 metres', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(
+      buildScenarioSamples([{ speedMps: 0.75, durationS: 12 }]).map((sample) => ({
+        ...sample,
+        motionDetected: true,
+      })),
+    );
+    const { state } = drive(tracker, samples);
+    const lastT = samples[samples.length - 1].t;
+
+    expect(state.totalDistanceM).toBeGreaterThan(5);
+    expect(state.totalDistanceM).toBeLessThan(20);
+    expect(rollingPaceSecPerMile(state, lastT)).toBeNull();
+    expect(averagePaceSecPerMile(state, lastT)).not.toBeNull();
+  });
+
   it('tracks the steady 5k within tolerance and reports a sane rolling pace', () => {
     const tracker = createTracker(defaultTrackerConfig('free'), T0);
     const samples = shift(steadyRun5k.build());
@@ -399,5 +439,15 @@ describe('persistence', () => {
     expect(restoreTracker(raw, T0 + 13 * 60 * 60 * 1000)).toBeNull();
     expect(restoreTracker('not json', T0)).toBeNull();
     expect(restoreTracker(null, T0)).toBeNull();
+  });
+
+  it('recovers an unsaved finished run after a page reload', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0, 'recover-me');
+    const run = finishTracker(tracker, T0 + 60_000);
+    const raw = serializeFinishedRun(run, T0 + 60_000);
+
+    expect(restoreTracker(raw, T0 + 61_000)).toBeNull();
+    expect(restoreFinishedRun(raw, T0 + 61_000)).toEqual(run);
+    expect(restoreFinishedRun(raw, T0 + 8 * 24 * 60 * 60 * 1000)).toBeNull();
   });
 });
