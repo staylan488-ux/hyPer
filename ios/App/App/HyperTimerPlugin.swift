@@ -15,7 +15,7 @@ final class HyperTimerPlugin: CAPPlugin, CAPBridgedPlugin {
     private let center = UNUserNotificationCenter.current()
     private let dateFormatter = ISO8601DateFormatter()
 
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc override func requestPermissions(_ call: CAPPluginCall) {
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 call.reject("Unable to request notification permission.", "PERMISSION_FAILED", error)

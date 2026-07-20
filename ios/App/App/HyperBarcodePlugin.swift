@@ -127,37 +127,40 @@ final class HyperBarcodePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var activeSession: AnyObject?
 
+    // DataScannerViewController availability checks are MainActor-isolated,
+    // so plugin calls hop to the main actor before touching VisionKit
     @objc func getAvailability(_ call: CAPPluginCall) {
-        guard #available(iOS 16.0, *) else {
-            call.resolve(["available": false])
-            return
+        Task { @MainActor in
+            guard #available(iOS 16.0, *) else {
+                call.resolve(["available": false])
+                return
+            }
+            call.resolve([
+                "available": DataScannerViewController.isSupported && DataScannerViewController.isAvailable,
+            ])
         }
-        call.resolve([
-            "available": DataScannerViewController.isSupported && DataScannerViewController.isAvailable,
-        ])
     }
 
     @objc func scanBarcode(_ call: CAPPluginCall) {
-        guard #available(iOS 16.0, *) else {
-            call.unavailable("Native barcode scanning requires iOS 16 or later.")
-            return
-        }
-        guard DataScannerViewController.isSupported, DataScannerViewController.isAvailable else {
-            call.unavailable("Native barcode scanning is unavailable on this device.")
-            return
-        }
-        guard activeSession == nil else {
-            call.reject("A barcode scan is already in progress.", "SCAN_IN_PROGRESS")
-            return
-        }
-        guard let presenter = bridge?.viewController else {
-            call.unavailable("Unable to present the barcode scanner.")
-            return
-        }
-
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else {
                 call.unavailable("Barcode scanning is unavailable.")
+                return
+            }
+            guard #available(iOS 16.0, *) else {
+                call.unavailable("Native barcode scanning requires iOS 16 or later.")
+                return
+            }
+            guard DataScannerViewController.isSupported, DataScannerViewController.isAvailable else {
+                call.unavailable("Native barcode scanning is unavailable on this device.")
+                return
+            }
+            guard self.activeSession == nil else {
+                call.reject("A barcode scan is already in progress.", "SCAN_IN_PROGRESS")
+                return
+            }
+            guard let presenter = self.bridge?.viewController else {
+                call.unavailable("Unable to present the barcode scanner.")
                 return
             }
             let session = NativeBarcodeSession(plugin: self, call: call)

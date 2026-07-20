@@ -67,8 +67,15 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
     private var motion = "unknown"
     private var pendingPermissionCall: CAPPluginCall?
 
+    // stored properties cannot be availability-gated; keep type-erased storage
+    // and expose an iOS 17-only typed accessor
+    private var backgroundActivitySessionStorage: Any?
+
     @available(iOS 17.0, *)
-    private var backgroundActivitySession: CLBackgroundActivitySession?
+    private var backgroundActivitySession: CLBackgroundActivitySession? {
+        get { backgroundActivitySessionStorage as? CLBackgroundActivitySession }
+        set { backgroundActivitySessionStorage = newValue }
+    }
 
     override func load() {
         locationManager.delegate = self
@@ -88,7 +95,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc override func requestPermissions(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self else {
                 call.reject("Run tracking is unavailable.", "UNAVAILABLE")
