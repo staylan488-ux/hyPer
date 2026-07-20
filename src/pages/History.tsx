@@ -470,6 +470,7 @@ export function History() {
     createActivitySession,
     updateActivitySession,
     deleteActivitySession,
+    hasLinkedWhoopSegments,
     fetchActivitySegmentsBySessionIds,
     syncWhoop,
     whoopConnection,
@@ -873,8 +874,14 @@ export function History() {
 
   const handleDeleteActivity = useCallback(async (activity: ActivitySession) => {
     try {
-      if (activity.source === 'whoop' && activity.auto_grouped) {
-        // soft-dismiss imports: the tombstone stops re-sync from resurrecting them
+      // soft-dismiss anything WHOOP knows about: hard-deleting a session whose
+      // segments came from (or were enriched by) WHOOP orphans those segments
+      // (ON DELETE SET NULL) and the next sync resurrects the workout. The
+      // dismissed_at tombstone keeps segments attached so re-sync relinks
+      // instead of recreating.
+      const needsTombstone = activity.source === 'whoop'
+        || await hasLinkedWhoopSegments(activity.id);
+      if (needsTombstone) {
         await updateActivitySession(activity.id, { dismissed_at: new Date().toISOString() });
       } else {
         await deleteActivitySession(activity.id);
@@ -886,7 +893,7 @@ export function History() {
     } catch (error) {
       console.error('Error deleting activity session:', error);
     }
-  }, [deleteActivitySession, showSavedToast, updateActivitySession]);
+  }, [deleteActivitySession, hasLinkedWhoopSegments, showSavedToast, updateActivitySession]);
 
   const handleUpdateSet = async (workoutSet: WorkoutSet, updates: { weight: number | null; reps: number | null; rpe: number | null }) => {
     const completed = updates.weight !== null && updates.reps !== null;

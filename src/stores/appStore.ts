@@ -172,6 +172,9 @@ interface AppState {
   createActivitySession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
   updateActivitySession: (activityId: string, updates: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
   deleteActivitySession: (activityId: string) => Promise<void>;
+  // true when WHOOP-imported segments still reference the session; deleting
+  // such a session must tombstone instead so re-sync cannot resurrect it
+  hasLinkedWhoopSegments: (sessionId: string) => Promise<boolean>;
   fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[]>;
   upsertActivitySegments: (inputs: ActivitySegmentInput[]) => Promise<ActivitySegment[]>;
   syncWhoop: () => Promise<WhoopSyncResult | null>;
@@ -1515,6 +1518,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error deleting activity session:', error);
       throw error;
     }
+  },
+
+  hasLinkedWhoopSegments: async (sessionId) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { count, error } = await supabase
+      .from('activity_segments')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('session_id', sessionId)
+      .eq('source', 'whoop');
+
+    if (error) {
+      console.error('Error checking for linked WHOOP segments:', error);
+      // fail toward dismissal: a stray tombstone is invisible, but a hard
+      // delete of a whoop-backed session resurrects on the next sync
+      return true;
+    }
+    return (count ?? 0) > 0;
   },
 
   fetchActivitySegmentsBySessionIds: async (sessionIds) => {

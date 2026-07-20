@@ -296,6 +296,35 @@ describe('groupSegments reconciliation', () => {
     expect(plan.skippedUserEdited).toBe(1);
   });
 
+  it('holds the tombstone for a dismissed GPS host that whoop had enriched', () => {
+    // deleting an enriched GPS run tombstones it (dismissed_at) with its whoop
+    // segments still linked; re-sync must relink at most, never recreate
+    const dismissedRun = makeSession({
+      id: 'gps-run',
+      source: 'gps',
+      auto_grouped: false,
+      dismissed_at: isoAt(9999),
+      started_at: isoAt(0),
+      ended_at: isoAt(30 * 60),
+      duration_seconds: 30 * 60,
+    });
+    const workout = makeSegment({
+      id: 'w1',
+      external_id: 'ew1',
+      session_id: 'gps-run',
+      started_at: isoAt(0),
+      ended_at: isoAt(30 * 60),
+      duration_seconds: 30 * 60,
+    });
+
+    const plan = groupSegments([workout], [dismissedRun]);
+
+    expect(plan.creates).toHaveLength(0);
+    expect(plan.updates).toHaveLength(0);
+    expect(plan.deletes).toHaveLength(0);
+    expect(plan.skippedUserEdited).toBe(1);
+  });
+
   it('finds the whoop session a freshly saved GPS run should absorb', () => {
     const whoopAuto = makeSession({ id: 'w-auto', started_at: isoAt(-120), ended_at: isoAt(28 * 60) });
     const whoopEdited = makeSession({ id: 'w-edited', user_edited: true, started_at: isoAt(0), ended_at: isoAt(30 * 60) });
