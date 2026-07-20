@@ -1,6 +1,43 @@
 # Handoff
 
-Updated: 2026-07-20 (rev 69: canonical iOS ID and TestFlight-to-unlisted release gates)
+Updated: 2026-07-20 (rev 70: Phase 1 done, first Xcode build green, Phase 2 features landed)
+
+## Rev 70 — Phase 1 executed: recovery push, reconciliation, first Apple build, Phase 2 features
+
+### Session results after the merge (same day)
+
+- `762b1a84` — fixed the first REAL Xcode compile errors (syntax parsing had missed all three): availability-gated stored property in HyperRunPlugin replaced with type-erased storage + iOS 17 computed accessor; `requestPermissions` overrides in HyperRunPlugin/HyperTimerPlugin; VisionKit DataScanner calls hopped to MainActor in HyperBarcodePlugin.
+- **First successful Apple-framework build**: `xcodebuild -scheme App -destination generic/platform=iOS Debug CODE_SIGNING_ALLOWED=NO` → BUILD SUCCEEDED (Xcode 26.6, iOS 26.5 SDK). The iOS 26.5 platform component was downloaded/installed via `xcodebuild -downloadPlatform iOS` (8.5 GB). Xcode license already accepted. Signing/physical device still require the Account Holder's team.
+- `5e172d8e` — saved-barcode-first pipeline: scans resolve owner catalog → USDA → Open Food Facts; total miss offers "Create a saved product for this barcode" (manual/label entry bound via foods.external_source='barcode', external_id=code, so the next scan resolves locally). New `src/lib/savedBarcodeCore.ts` + `savedBarcodeFoods.ts`, provenance labels, `barcode_saved` log source. No migration needed (foods.external_source/external_id already exist). Provider priority deliberately NOT reordered pending the 50-100 product benchmark.
+- `6069d2b2` — WHOOP durable deletion: History delete now tombstones (dismissed_at) any session WHOOP knows about — whoop-source sessions and GPS/manual sessions with linked whoop segments (hard delete orphaned segments via ON DELETE SET NULL and re-sync resurrected the workout). Fail-safe dismissal on check error. Absorb path keeps hard delete intentionally. Regression test added (dismissed-GPS-host).
+- `708ea277` — Body weight surface in You/Settings: latest-weight hero with persisted lb/kg toggle, measured time + source, latest-vs-previous trend, last-5 history, web + native states. `getBodyWeightHistory` + `src/lib/weightDisplayCore.ts`.
+- `a4556cd8` — live current-speed readout (mph) under the run pace hero via `currentSpeedMps` with 5 s freshness guard; verified with the simulated 5k source in the browser.
+- Validation after all changes: npm run test 41 files / 378 tests PASS, lint PASS, build PASS, tsc PASS, `npx cap doctor` PASS, unsigned device-target Xcode build PASS. Browser-verified: auth page, /preview Dashboard + Fuel (consumed-energy RollingNumber hero), Settings Body weight block, live run screen with current speed.
+- `.env.local` created locally (gitignored) with the Hyper-Dev URL + public anon key fetched via authenticated Supabase CLI; `node scripts/verify-ios-env.mjs` passes ("Hyper-Dev selected"). Supabase CLI in this repo remains linked to PRODUCTION ref nnwfaaxmyvqsdnfcdxom — never run db push from here without explicit re-verification.
+- Not done / blockers: bundle-ID flip (awaits Account Holder verification of `app.hyper.mobile`), Hyper-Dev migration apply (awaits approval), photo-worker Hetzner deploy (awaits explicit infra approval), physical-device matrix + GPS field corpus (needs signing team + iPhones), TestFlight (Account Holder).
+
+## Rev 70a — Phase 1 detail: recovery push and shell reconciliation
+
+### Verified state
+
+- Branch `codex/capacitor-ios-shell`, now tracking `origin/codex/capacitor-ios-shell`.
+- `a17969d5` — safety checkpoint of the entire native parity batch (52 files, 2758 insertions), pushed to GitHub. Excludes `supabase/.temp/cli-latest` and `.claude/launch.json`; pre-commit sensitive-literal scan clean; validated with npm run test (40 files, 364 tests) PASS, lint PASS, build PASS.
+- `e6cc3986` — merge of `origin/main` (through PR #58 merge `3bef3bb4`), pushed. Post-merge validation: npm run test (40 files, 366 tests) PASS, lint PASS, build PASS, no conflict markers.
+
+### Merge resolution decisions
+
+- ios/ shells: kept the local native shell wholesale (Hyper plugins, entitlements, deep-link AppDelegate, HyperBridgeViewController storyboard, permission strings, background location mode, portrait-only Info.plist). origin/main's ios/ was the bare generated Capacitor template; nothing of value was lost. `Package.resolved` is now tracked (from main) for reproducible SPM builds.
+- Bundle ID: everything still uses `com.alexanderroesler.hyper` consistently (Xcode target, capacitor.config.ts, Info.plist URL scheme, native plugins, WHOOP allowlist). The flip to `app.hyper.mobile` is deliberately deferred to one scoped commit after the Account Holder verifies the registered explicit App ID (Rev 69 gate). origin/main's `app.hyper.mobile` values in capacitor.config.ts/pbxproj were NOT taken.
+- `src/App.tsx`: main's design-elevation skeleton (BootSplash, AnimatedOutlet page turns, MotionConfig reducedMotion, PaperAtmosphere) + local RunTracker `/train/run` route, `/sandbox` dev route, native hooks (useNativeHealthSync/useWhoopForegroundSync/useNativeAuthCallback), and the fixed-viewport iOS clipped-scroll workaround. AnimatedOutlet scroll-to-top now targets `[data-app-scroll-viewport]` (falls back to window).
+- `src/pages/Nutrition.tsx`: local consumed-energy hero semantics (`dayTotals.calories`) rendered with main's `RollingNumber`; dropped main's unused `remainingKcal` presentation and unused icon imports.
+- `package.json`: `@capacitor/cli` kept in devDependencies; local ios:*/photo-worker scripts and `barcode-detector` retained. package-lock reconciled via npm install (no drift).
+- `CLAUDE.md`: accepted main's untracking, added to .gitignore by main; file restored locally from `a17969d5` so local guidance is preserved (untracked/ignored). `.tmp/` ignore retained.
+- Auto-merges verified to keep both sides: RestTimerPill (native notification sync + RollingNumber + pull-to-dismiss), appStore (connectWhoop returnTo), animations (pageTransition).
+
+### Next actions
+
+- Account Holder must verify explicit App ID `app.hyper.mobile` in Certificates, Identifiers & Profiles and its selection in the App Store Connect app record before the bundle-ID flip commit.
+- Continue Rev 69 Phase 2/3: Hyper-Dev client config (.env.local), `npm run ios:sync`, Xcode Apple-framework build (Xcode 26.6 installed, license accepted — xcodebuild runs), physical-device checks.
 
 ## Rev 69 — canonical iOS ID and TestFlight-to-unlisted release gates
 
