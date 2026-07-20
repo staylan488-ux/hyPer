@@ -13,6 +13,7 @@ import {
   currentLapDistanceM,
   currentLapSeconds,
   elapsedSeconds,
+  gpsAccuracyMeters,
   isGpsWeak,
   isWarmingUp,
   lapActiveSeconds,
@@ -69,6 +70,23 @@ function formatRunPace(secondsPerMile: number | null): string | null {
 function formatMeters(distanceM: number): string {
   if (distanceM < MILE_M) return `${Math.round(distanceM)} m`;
   return formatDistanceMi(distanceM) ?? '0.00 mi';
+}
+
+function exportGpsDiagnostics(run: NonNullable<ReturnType<typeof useRunTracker>['finishedRun']>): void {
+  const { trace = [], ...summary } = run;
+  const payload = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    summary,
+    trace,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `hyper-gps-${new Date(run.startedAtMs).toISOString().replace(/[:.]/g, '-')}.json`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 const HOLD_TO_FINISH_MS = 800;
@@ -136,6 +154,7 @@ export function RunTracker() {
 
   const [mode, setMode] = useState<RunMode>('free');
   const [autoLap, setAutoLap] = useState<AutoLapChoice>('400');
+  const [autoPause, setAutoPause] = useState(true);
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>(preview && !appSandbox ? 'steady5k' : 'gps');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -160,7 +179,7 @@ export function RunTracker() {
   const handleStart = () => {
     if (tracker.resumable) return;
     setSaveError(null);
-    tracker.start(mode, autoLap === 'off' ? null : Number(autoLap), buildSource());
+    tracker.start(mode, autoLap === 'off' ? null : Number(autoLap), autoPause, buildSource());
   };
 
   const handleFinish = useCallback(() => {
@@ -196,21 +215,23 @@ export function RunTracker() {
   const running = state?.status === 'running';
 
   /* ── live derived values ── */
-  const rollingPace = running && !tracker.paused ? rollingPaceSecPerMile(state, tracker.nowMs) : null;
+  const effectivelyPaused = tracker.paused || tracker.autoPaused;
+  const rollingPace = running && !effectivelyPaused ? rollingPaceSecPerMile(state, tracker.nowMs) : null;
   const averagePace = running ? averagePaceSecPerMile(state, tracker.nowMs) : null;
   const pace = rollingPace ?? (state?.config.mode === 'free' ? averagePace : null);
-  const paceLabel = tracker.paused ? '—' : formatRunPace(pace) ?? '—';
+  const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
   const warming = running ? isWarmingUp(state) : false;
   const weak = running ? isGpsWeak(state, tracker.nowMs) : false;
+  const accuracyM = running ? gpsAccuracyMeters(state) : null;
 
   const lastLap = running && state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
   const lastRep = running && state.reps.length > 0 ? state.reps[state.reps.length - 1] : null;
 
   // paused: freeze the pace readout, and don't let a screen tap split
   const paused = tracker.paused;
-  const screenTapSplit = running && state.config.mode === 'intervals' && !paused;
+  const screenTapSplit = running && state.config.mode === 'intervals' && !paused && !tracker.autoPaused;
 
   /* ── finished summary ── */
   if (tracker.finishedRun) {
@@ -270,6 +291,43 @@ export function RunTracker() {
           </div>
         )}
 
+        {finishedRun.quality && (
+          <div className="mt-8 border-t border-[var(--color-border)] pt-4">
+            <p className="t-label-sm">GPS trace quality</p>
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <div>
+                <p className="t-caption">Typical accuracy</p>
+                <p className="t-data mt-1">
+                  {finishedRun.quality.averageAccuracyM != null ? `±${finishedRun.quality.averageAccuracyM} m` : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="t-caption">Speed coverage</p>
+                <p className="t-data mt-1">{finishedRun.quality.speedCoveragePct}%</p>
+              </div>
+              <div>
+                <p className="t-caption">Longest gap</p>
+                <p className="t-data mt-1">{finishedRun.quality.longestGapS.toFixed(1)} s</p>
+              </div>
+            </div>
+            {finishedRun.quality.longestGapS > 8 && (
+              <p className="t-caption mt-4 text-[var(--color-accent)]">
+                Safari paused location updates for {finishedRun.quality.longestGapS.toFixed(1)} seconds. Distance across that gap may be low.
+              </p>
+            )}
+            {finishedRun.trace && finishedRun.trace.length > 0 && (
+              <button
+                type="button"
+                className="pressable t-label-sm mt-5 min-h-11 text-[var(--color-muted)]"
+                onClick={() => exportGpsDiagnostics(finishedRun)}
+              >
+                Export private GPS diagnostics
+              </button>
+            )}
+            <p className="t-caption mt-1">Coordinates stay on this device unless you export them.</p>
+          </div>
+        )}
+
         {saveError && <p className="t-caption mt-6 text-[var(--color-accent)]">{saveError}</p>}
 
         <div className="flex gap-3 mt-10">
@@ -295,8 +353,16 @@ export function RunTracker() {
           <span className="t-label-sm">
             {RUN_MODE_LABELS[state.config.mode]}
           </span>
-          <span className={`t-label-sm ${paused ? 'text-[var(--color-accent)]' : warming || weak ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
-            {paused ? 'paused' : warming ? 'acquiring gps' : weak ? 'gps weak' : 'gps ok'}
+          <span className={`t-label-sm ${paused || tracker.autoPaused ? 'text-[var(--color-accent)]' : warming || weak ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
+            {paused
+              ? 'paused'
+              : tracker.autoPaused
+                ? 'auto paused'
+              : warming
+                ? `acquiring gps${accuracyM != null ? ` · ±${accuracyM}m` : ''}`
+                : weak
+                  ? `gps weak${accuracyM != null ? ` · ±${accuracyM}m` : ''}`
+                  : `gps ok${accuracyM != null ? ` · ±${accuracyM}m` : ''}`}
           </span>
         </div>
 
@@ -420,6 +486,26 @@ export function RunTracker() {
         </div>
       )}
 
+      <div className="mt-6 flex items-center justify-between gap-5 border-t border-[var(--color-border)] pt-5">
+        <div>
+          <p className="t-heading">Auto-pause</p>
+          <p className="t-caption mt-1">Exclude stops from time and average pace.</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoPause}
+          onClick={() => setAutoPause((value) => !value)}
+          className={`pressable min-h-11 min-w-[5.5rem] border px-4 t-label-sm ${
+            autoPause
+              ? 'border-[var(--color-text)] bg-[var(--color-text)] text-[var(--color-base)]'
+              : 'border-[var(--color-border-strong)] text-[var(--color-muted)]'
+          }`}
+        >
+          {autoPause ? 'On' : 'Off'}
+        </button>
+      </div>
+
       {preview && !appSandbox && (
         <div className="mt-6">
           <label className="t-label-sm block mb-2">Position source</label>
@@ -444,7 +530,7 @@ export function RunTracker() {
 
       <button
         type="button"
-        className="pressable t-label-sm mt-6 w-full text-center text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+        className="pressable t-label-sm mt-6 min-h-11 w-full text-center text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
         onClick={() => navigate(-1)}
       >
         Back

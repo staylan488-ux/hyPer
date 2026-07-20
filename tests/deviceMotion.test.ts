@@ -4,7 +4,9 @@ import { createDeviceMotionDetector } from '@/lib/deviceMotion';
 
 describe('device motion detector', () => {
   it('starts stationary', () => {
-    expect(createDeviceMotionDetector().isMoving(0)).toBe(false);
+    const detector = createDeviceMotionDetector();
+    expect(detector.isMoving(0)).toBe(false);
+    expect(detector.hasSignal()).toBe(false);
   });
 
   it('recognizes sustained walking-like acceleration', () => {
@@ -15,6 +17,7 @@ describe('device motion detector', () => {
     }
 
     expect(detector.isMoving(4000)).toBe(true);
+    expect(detector.hasSignal()).toBe(true);
   });
 
   it('does not classify quiet sensor noise as movement', () => {

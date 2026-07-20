@@ -30,7 +30,9 @@ export function SegmentedControl<T extends string>({
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const item = size === 'sm' ? 'pb-2.5 text-[10px] tracking-[0.18em]' : 'pb-3 text-[11px] tracking-[0.2em]';
+  const item = size === 'sm'
+    ? 'min-h-11 pb-2.5 text-[10px] tracking-[0.18em]'
+    : 'min-h-11 pb-3 text-[11px] tracking-[0.2em]';
 
   return (
     <div

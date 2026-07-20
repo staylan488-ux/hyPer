@@ -23,9 +23,42 @@ export interface GpsSample {
   motionDetected?: boolean;
 }
 
+export type GpsSampleDecision =
+  | 'paused'
+  | 'auto_paused'
+  | 'poor_accuracy'
+  | 'warming'
+  | 'anchor'
+  | 'stale'
+  | 'teleport'
+  | 'stationary'
+  | 'jitter'
+  | 'accepted_position'
+  | 'accepted_speed'
+  | 'accepted_fused';
+
+// Full-fidelity diagnostics stay on the device. They are intentionally not
+// mapped into activity_sessions/activity_segments when the run is saved.
+export interface GpsTracePoint extends GpsSample {
+  decision: GpsSampleDecision;
+  acceptedDistanceM: number;
+  cumulativeDistanceM: number;
+}
+
+export interface GpsQualitySummary {
+  sampleCount: number;
+  acceptedSampleCount: number;
+  rejectedSampleCount: number;
+  speedCoveragePct: number;
+  averageAccuracyM: number | null;
+  p95AccuracyM: number | null;
+  longestGapS: number;
+}
+
 export interface TrackerConfig {
   mode: RunMode;
   autoLapM: number | null;
+  autoPause: boolean;
   accuracyMaxM: number;
   maxSpeedMps: number;
   minStepM: number;
@@ -41,6 +74,7 @@ export interface TrackerConfig {
   paceMinDistanceM: number;
   speedEmaAlpha: number;
   manualSplitDebounceMs: number;
+  autoPauseAfterS: number;
   sprintStartMps: number;
   sprintEndMps: number;
   sprintStartHoldS: number;
@@ -62,6 +96,7 @@ export const TRACKER_DEFAULTS = {
   paceMinDistanceM: 20,
   speedEmaAlpha: 0.4,
   manualSplitDebounceMs: 700,
+  autoPauseAfterS: 5,
   sprintStartMps: 5.0,
   sprintEndMps: 3.0,
   sprintStartHoldS: 2,
@@ -70,8 +105,12 @@ export const TRACKER_DEFAULTS = {
   sprintMinDurationS: 4,
 } as const;
 
-export function defaultTrackerConfig(mode: RunMode, autoLapM: number | null = null): TrackerConfig {
-  return { mode, autoLapM: mode === 'intervals' ? autoLapM : null, ...TRACKER_DEFAULTS };
+export function defaultTrackerConfig(
+  mode: RunMode,
+  autoLapM: number | null = null,
+  autoPause = false,
+): TrackerConfig {
+  return { mode, autoLapM: mode === 'intervals' ? autoLapM : null, autoPause, ...TRACKER_DEFAULTS };
 }
 
 export interface Lap {
@@ -112,8 +151,17 @@ export interface TrackerState {
   pausedAtMs: number | null;
   totalPausedMs: number;
   lapPausedMs: number;
+  autoPausedAtMs: number | null;
+  totalAutoPausedMs: number;
+  lapAutoPausedMs: number;
+  stationarySinceMs: number | null;
   // ingestion
-  lastPoint: { t: number; lat: number; lon: number; accuracyM?: number } | null;
+  lastPoint: { t: number; lat: number; lon: number; accuracyM?: number; speedMps?: number | null } | null;
+  // false until the initial consecutive-good-fix requirement is met. The run
+  // clock starts at that lock, not when the user first taps Start.
+  hasGpsLock: boolean;
+  lastSampleMs: number | null;
+  lastAccuracyM: number | null;
   lastAcceptedMs: number | null;
   warmupCount: number;
   speedRejectCount: number;
@@ -145,6 +193,7 @@ export type TrackerEvent =
 export interface AdvanceResult {
   state: TrackerState;
   events: TrackerEvent[];
+  observation?: GpsTracePoint;
 }
 
 /* ── Geometry ── */
@@ -176,7 +225,14 @@ export function createTracker(config: TrackerConfig, nowMs: number, runId?: stri
     pausedAtMs: null,
     totalPausedMs: 0,
     lapPausedMs: 0,
+    autoPausedAtMs: null,
+    totalAutoPausedMs: 0,
+    lapAutoPausedMs: 0,
+    stationarySinceMs: null,
     lastPoint: null,
+    hasGpsLock: false,
+    lastSampleMs: null,
+    lastAccuracyM: null,
     lastAcceptedMs: null,
     warmupCount: 0,
     speedRejectCount: 0,
@@ -213,94 +269,199 @@ function pruneWindow(window: WindowPoint[], nowMs: number, paceWindowS: number):
 
 export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceResult {
   if (state.status !== 'running') return { state, events: [] };
-  // paused: ignore GPS entirely so distance and clocks freeze
-  if (state.pausedAtMs != null) return { state, events: [] };
-
   const config = state.config;
   const events: TrackerEvent[] = [];
-  const next: TrackerState = { ...state };
+  const trace = (
+    nextState: TrackerState,
+    decision: GpsSampleDecision,
+    acceptedDistanceM = 0,
+  ): AdvanceResult => ({
+    state: nextState,
+    events,
+    observation: {
+      ...sample,
+      decision,
+      acceptedDistanceM,
+      cumulativeDistanceM: nextState.totalDistanceM,
+    },
+  });
+
+  // Paused fixes are retained for diagnostics but cannot affect distance.
+  if (state.pausedAtMs != null) return trace(state, 'paused');
+
+  const next: TrackerState = {
+    ...state,
+    lastSampleMs: sample.t,
+    lastAccuracyM: sample.accuracyM,
+  };
+  const anchor = {
+    t: sample.t,
+    lat: sample.lat,
+    lon: sample.lon,
+    accuracyM: sample.accuracyM,
+    speedMps: sample.speedMps,
+  };
 
   // accuracy gate; poor fixes also reset the warm-up requirement
   if (sample.accuracyM > config.accuracyMaxM) {
     next.warmupCount = 0;
-    return { state: next, events };
+    return trace(next, 'poor_accuracy');
   }
 
   // warm-up: require N consecutive good fixes before any distance counts
   if (next.warmupCount < config.warmupSamples) {
     next.warmupCount += 1;
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
+    next.lastPoint = anchor;
     next.lastAcceptedMs = sample.t;
-    return { state: next, events };
+    if (!next.hasGpsLock && next.warmupCount >= config.warmupSamples) {
+      // Do not charge GPS acquisition time to the run or its first lap.
+      next.hasGpsLock = true;
+      next.startedAtMs = sample.t;
+      next.lapStartMs = sample.t;
+      next.lastManualSplitMs = null;
+      next.window = [];
+    }
+    return trace(next, 'warming');
   }
 
   // no anchor yet (fresh, or just resumed from pause): this sample becomes the
   // anchor and banks no distance
   const prev = next.lastPoint;
   if (!prev) {
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
+    next.lastPoint = anchor;
     next.lastAcceptedMs = sample.t;
-    return { state: next, events };
+    return trace(next, 'anchor');
   }
-  if (sample.t <= prev.t) return { state: next, events };
+  if (sample.t <= prev.t) return trace(next, 'stale');
 
   const stepM = haversineMeters(prev, sample);
   const dtS = (sample.t - prev.t) / 1000;
   const impliedSpeed = stepM / dtS;
-  const reportedSpeed = sample.speedMps != null && sample.speedMps >= 0 ? sample.speedMps : null;
+  const reportedSpeed = sample.speedMps != null && sample.speedMps >= 0 && Number.isFinite(sample.speedMps)
+    ? sample.speedMps
+    : null;
+  const previousSpeed = prev.speedMps != null && prev.speedMps >= 0 && Number.isFinite(prev.speedMps)
+    ? prev.speedMps
+    : null;
+  const motionAssisted = sample.motionDetected === true;
+  const slowReportedSpeed = reportedSpeed != null && reportedSpeed < config.stationarySpeedMps;
 
-  // teleport filter: reject a lone impossible jump, but if the rejections
-  // persist the position really moved — re-anchor without counting distance
-  if (impliedSpeed > config.maxSpeedMps) {
+  // Core Location's speed estimate is often steadier than one-second point to
+  // point displacement. Safari omits speedAccuracy, so only use it across a
+  // short fresh gap and within a physically plausible running range.
+  const speedEligible = reportedSpeed != null
+    && reportedSpeed <= config.maxSpeedMps
+    && dtS <= 5
+    && (!slowReportedSpeed || motionAssisted);
+  const representativeSpeed = speedEligible
+    ? previousSpeed != null && previousSpeed <= config.maxSpeedMps
+      ? (previousSpeed + reportedSpeed) / 2
+      : reportedSpeed
+    : null;
+  const speedStepM = representativeSpeed != null ? representativeSpeed * dtS : null;
+  const coordinatePlausible = impliedSpeed <= config.maxSpeedMps;
+
+  if (config.autoPause) {
+    // Prefer explicit platform speed whenever it exists; coordinate drift must
+    // not wake an auto-paused run while iOS reports zero movement.
+    const movingNow = reportedSpeed != null
+      ? motionAssisted || reportedSpeed >= 1.0
+      : sample.motionDetected != null
+        ? motionAssisted
+        : coordinatePlausible && impliedSpeed >= 1.0;
+
+    if (next.autoPausedAtMs != null) {
+      if (!movingNow) {
+        next.lastPoint = anchor;
+        next.lastAcceptedMs = sample.t;
+        return trace(next, 'auto_paused');
+      }
+
+      const autoPausedMs = Math.max(0, sample.t - next.autoPausedAtMs);
+      next.totalAutoPausedMs += autoPausedMs;
+      next.lapAutoPausedMs += autoPausedMs;
+      next.autoPausedAtMs = null;
+      next.stationarySinceMs = null;
+      next.lastPoint = anchor;
+      next.lastAcceptedMs = sample.t;
+      next.window = [{ t: sample.t, distM: next.totalDistanceM }];
+      // Re-anchor on the first moving sample so drift during the stop and the
+      // resume-detection interval can never become distance.
+      return trace(next, 'anchor');
+    }
+
+    if (!movingNow) {
+      next.stationarySinceMs ??= sample.t;
+      if (sample.t - next.stationarySinceMs >= config.autoPauseAfterS * 1000) {
+        next.autoPausedAtMs = next.stationarySinceMs;
+        next.lastPoint = anchor;
+        next.lastAcceptedMs = sample.t;
+        return trace(next, 'auto_paused');
+      }
+    } else {
+      next.stationarySinceMs = null;
+    }
+  }
+
+  // A coordinate spike may coexist with a plausible platform speed. In that
+  // case, use speed for this short interval and re-anchor instead of losing the
+  // distance. With no trustworthy speed, retain the conservative teleport gate.
+  if (!coordinatePlausible && speedStepM == null) {
     next.speedRejectCount += 1;
     if (next.speedRejectCount >= 3) {
-      next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
+      next.lastPoint = anchor;
       next.speedRejectCount = 0;
     }
-    return { state: next, events };
+    return trace(next, 'teleport');
   }
   next.speedRejectCount = 0;
-
-  const slowReportedSpeed = reportedSpeed != null && reportedSpeed < config.stationarySpeedMps;
-  const motionAssisted = sample.motionDetected === true;
 
   // GPS position can wander by several metres at rest, while genuinely slow
   // indoor movement can report under 1.2 m/s. Only independent sustained phone
   // motion is allowed to override this low-speed drift gate.
   if (slowReportedSpeed && !motionAssisted) {
-    next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
+    next.lastPoint = anchor;
     next.lastAcceptedMs = sample.t;
     next.emaSpeedMps =
       next.emaSpeedMps == null ? reportedSpeed : next.emaSpeedMps + config.speedEmaAlpha * (reportedSpeed - next.emaSpeedMps);
-    return { state: next, events };
+    return trace(next, 'stationary');
   }
 
-  // During sensor-confirmed slow movement, prefer the platform's horizontal
-  // speed. It remains usable when indoor coordinates are quantized or briefly
-  // unchanged, and re-anchoring prevents that same movement being counted again
-  // when the next coordinate arrives. Cap the integration gap because one
-  // current speed reading cannot describe an arbitrarily long callback delay.
+  // Fuse two independent estimates when they agree. Prefer speed when the
+  // coordinate is frozen, noisy, or briefly spikes; prefer coordinates when
+  // speed is absent. This avoids both zig-zag inflation and the old stuck-point
+  // failure without inventing distance across long callback gaps.
   let acceptedStepM: number | null = null;
-  if (motionAssisted && slowReportedSpeed && reportedSpeed >= 0.25) {
-    acceptedStepM = reportedSpeed * Math.min(dtS, 5);
+  let acceptedDecision: GpsSampleDecision = 'accepted_position';
+  if (speedStepM != null) {
+    const closeAgreement = coordinatePlausible
+      && Math.abs(stepM - speedStepM) <= Math.max(0.5, speedStepM * 0.35)
+      && sample.accuracyM <= 15
+      && (prev.accuracyM ?? sample.accuracyM) <= 15;
+    if (closeAgreement) {
+      acceptedStepM = speedStepM * 0.7 + stepM * 0.3;
+      acceptedDecision = 'accepted_fused';
+    } else {
+      acceptedStepM = speedStepM;
+      acceptedDecision = 'accepted_speed';
+    }
   }
 
-  // Jitter floor. With device speed or independent motion we trust a small real
-  // step; without either, require displacement to clear the fix uncertainty.
+  // Without a plausible speed estimate, accumulate coordinates until movement
+  // clears the combined uncertainty rather than summing every GPS wobble.
   const combinedAccuracyM = Math.hypot(prev.accuracyM ?? sample.accuracyM, sample.accuracyM);
-  const jitterFloor = reportedSpeed != null || motionAssisted
-    ? config.minStepM
-    : Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
+  const jitterFloor = Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
   if (acceptedStepM == null && stepM < jitterFloor) {
     next.lastAcceptedMs = sample.t;
-    return { state: next, events };
+    return trace(next, 'jitter');
   }
+  acceptedStepM ??= stepM;
 
-  next.lastPoint = { t: sample.t, lat: sample.lat, lon: sample.lon, accuracyM: sample.accuracyM };
+  next.lastPoint = anchor;
   next.lastAcceptedMs = sample.t;
-  next.totalDistanceM = state.totalDistanceM + (acceptedStepM ?? stepM);
+  next.totalDistanceM = state.totalDistanceM + acceptedStepM;
 
-  const observedSpeed = reportedSpeed ?? (acceptedStepM ?? stepM) / dtS;
+  const observedSpeed = representativeSpeed ?? acceptedStepM / dtS;
   next.emaSpeedMps =
     next.emaSpeedMps == null
       ? observedSpeed
@@ -324,7 +485,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
         index: next.laps.length + 1,
         startedAtMs: next.lapStartMs,
         endedAtMs: Math.round(crossT),
-        pausedMs: next.lapPausedMs,
+        pausedMs: next.lapPausedMs + next.lapAutoPausedMs,
         distanceM: lapTarget - next.lapStartDistM,
         trigger: 'auto',
       };
@@ -332,6 +493,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
       next.lapStartMs = Math.round(crossT);
       next.lapStartDistM = lapTarget;
       next.lapPausedMs = 0;
+      next.lapAutoPausedMs = 0;
       events.push({ type: 'lap_completed', lap });
       lapTarget = next.lapStartDistM + config.autoLapM;
     }
@@ -341,7 +503,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     advanceSprintMachine(next, sample.t, events);
   }
 
-  return { state: next, events };
+  return trace(next, acceptedDecision, acceptedStepM);
 }
 
 // hysteresis: EMA speed must hold above start-threshold to begin a rep and
@@ -422,9 +584,23 @@ export function isPaused(state: TrackerState): boolean {
   return state.pausedAtMs != null;
 }
 
+export function isAutoPaused(state: TrackerState): boolean {
+  return state.autoPausedAtMs != null;
+}
+
 export function pauseTracker(state: TrackerState, nowMs: number): TrackerState {
   if (state.status !== 'running' || state.pausedAtMs != null) return state;
-  return { ...state, pausedAtMs: nowMs };
+  const activeAutoPauseMs = state.autoPausedAtMs != null
+    ? Math.max(0, nowMs - state.autoPausedAtMs)
+    : 0;
+  return {
+    ...state,
+    pausedAtMs: nowMs,
+    totalAutoPausedMs: state.totalAutoPausedMs + activeAutoPauseMs,
+    lapAutoPausedMs: state.lapAutoPausedMs + activeAutoPauseMs,
+    autoPausedAtMs: null,
+    stationarySinceMs: null,
+  };
 }
 
 export function resumeTracker(state: TrackerState, nowMs: number): TrackerState {
@@ -439,13 +615,21 @@ export function resumeTracker(state: TrackerState, nowMs: number): TrackerState 
     lastPoint: null,
     lastAcceptedMs: nowMs,
     speedRejectCount: 0,
+    stationarySinceMs: null,
+    // Live pace must not divide by the paused wall-clock gap.
+    window: [{ t: nowMs, distM: state.totalDistanceM }],
   };
 }
 
 /* ── Manual split (intervals) ── */
 
 export function manualSplit(state: TrackerState, tMs: number): AdvanceResult {
-  if (state.status !== 'running' || state.config.mode !== 'intervals' || state.pausedAtMs != null) {
+  if (
+    state.status !== 'running'
+    || state.config.mode !== 'intervals'
+    || state.pausedAtMs != null
+    || state.autoPausedAtMs != null
+  ) {
     return { state, events: [] };
   }
   if (
@@ -459,7 +643,7 @@ export function manualSplit(state: TrackerState, tMs: number): AdvanceResult {
     index: state.laps.length + 1,
     startedAtMs: state.lapStartMs,
     endedAtMs: tMs,
-    pausedMs: state.lapPausedMs,
+    pausedMs: state.lapPausedMs + state.lapAutoPausedMs,
     distanceM: state.totalDistanceM - state.lapStartDistM,
     trigger: 'manual',
   };
@@ -469,6 +653,7 @@ export function manualSplit(state: TrackerState, tMs: number): AdvanceResult {
     lapStartMs: tMs,
     lapStartDistM: state.totalDistanceM,
     lapPausedMs: 0,
+    lapAutoPausedMs: 0,
     lastManualSplitMs: tMs,
   };
   return { state: next, events: [{ type: 'lap_completed', lap }] };
@@ -482,7 +667,18 @@ function clockNow(state: TrackerState, nowMs: number): number {
 }
 
 export function elapsedSeconds(state: TrackerState, nowMs: number): number {
-  return Math.max(0, Math.round((clockNow(state, nowMs) - state.startedAtMs - state.totalPausedMs) / 1000));
+  if (!state.hasGpsLock) return 0;
+  const end = clockNow(state, nowMs);
+  const activeAutoPauseMs = state.autoPausedAtMs != null
+    ? Math.max(0, end - state.autoPausedAtMs)
+    : 0;
+  return Math.max(0, Math.round((
+    end
+    - state.startedAtMs
+    - state.totalPausedMs
+    - state.totalAutoPausedMs
+    - activeAutoPauseMs
+  ) / 1000));
 }
 
 export function isGpsWeak(state: TrackerState, nowMs: number): boolean {
@@ -491,7 +687,13 @@ export function isGpsWeak(state: TrackerState, nowMs: number): boolean {
 }
 
 export function isWarmingUp(state: TrackerState): boolean {
-  return state.warmupCount < state.config.warmupSamples;
+  return !state.hasGpsLock || state.warmupCount < state.config.warmupSamples;
+}
+
+export function gpsAccuracyMeters(state: TrackerState): number | null {
+  return state.lastAccuracyM != null && Number.isFinite(state.lastAccuracyM)
+    ? Math.round(state.lastAccuracyM)
+    : null;
 }
 
 const PACE_MILE_M = 1609.344;
@@ -526,7 +728,17 @@ export function currentLapDistanceM(state: TrackerState): number {
 }
 
 export function currentLapSeconds(state: TrackerState, nowMs: number): number {
-  return Math.max(0, Math.round((clockNow(state, nowMs) - state.lapStartMs - state.lapPausedMs) / 1000));
+  const end = clockNow(state, nowMs);
+  const activeAutoPauseMs = state.autoPausedAtMs != null
+    ? Math.max(0, end - Math.max(state.autoPausedAtMs, state.lapStartMs))
+    : 0;
+  return Math.max(0, Math.round((
+    end
+    - state.lapStartMs
+    - state.lapPausedMs
+    - state.lapAutoPausedMs
+    - activeAutoPauseMs
+  ) / 1000));
 }
 
 /* ── Finish + persistence ── */
@@ -540,11 +752,52 @@ export interface FinishedRun {
   elapsedS: number;
   laps: Lap[];
   reps: SprintRep[];
+  // Local-only route diagnostics. finishedRunToActivity deliberately ignores
+  // this field, so coordinates never reach Supabase through the GPS save path.
+  trace?: GpsTracePoint[];
+  quality?: GpsQualitySummary;
 }
 
-export function finishTracker(state: TrackerState, nowMs: number): FinishedRun {
+export function summarizeGpsTrace(trace: GpsTracePoint[]): GpsQualitySummary {
+  const accuracies = trace
+    .map((point) => point.accuracyM)
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((a, b) => a - b);
+  const accepted = trace.filter((point) => point.decision.startsWith('accepted_'));
+  const rejected = trace.filter((point) => (
+    point.decision === 'poor_accuracy'
+    || point.decision === 'teleport'
+    || point.decision === 'stale'
+  ));
+  const speedSamples = trace.filter((point) => point.speedMps != null && point.speedMps >= 0);
+  let longestGapS = 0;
+  for (let index = 1; index < trace.length; index += 1) {
+    longestGapS = Math.max(longestGapS, Math.max(0, (trace[index].t - trace[index - 1].t) / 1000));
+  }
+  const p95Index = accuracies.length > 0 ? Math.min(accuracies.length - 1, Math.ceil(accuracies.length * 0.95) - 1) : -1;
+  return {
+    sampleCount: trace.length,
+    acceptedSampleCount: accepted.length,
+    rejectedSampleCount: rejected.length,
+    speedCoveragePct: trace.length > 0 ? Math.round((speedSamples.length / trace.length) * 100) : 0,
+    averageAccuracyM: accuracies.length > 0
+      ? Math.round(accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length)
+      : null,
+    p95AccuracyM: p95Index >= 0 ? Math.round(accuracies[p95Index]) : null,
+    longestGapS: Math.round(longestGapS * 10) / 10,
+  };
+}
+
+export function finishTracker(
+  state: TrackerState,
+  nowMs: number,
+  trace: GpsTracePoint[] = [],
+): FinishedRun {
   // finishing while paused freezes the end at the pause instant
   const end = clockNow(state, nowMs);
+  const activeAutoPauseMs = state.autoPausedAtMs != null
+    ? Math.max(0, end - Math.max(state.autoPausedAtMs, state.lapStartMs))
+    : 0;
   let laps = state.laps;
   // close the open lap so its distance isn't lost (intervals mode only)
   if (state.config.mode === 'intervals') {
@@ -556,7 +809,7 @@ export function finishTracker(state: TrackerState, nowMs: number): FinishedRun {
           index: laps.length + 1,
           startedAtMs: state.lapStartMs,
           endedAtMs: end,
-          pausedMs: state.lapPausedMs,
+          pausedMs: state.lapPausedMs + state.lapAutoPausedMs + activeAutoPauseMs,
           distanceM: openDistance,
           trigger: 'finish',
         },
@@ -571,9 +824,11 @@ export function finishTracker(state: TrackerState, nowMs: number): FinishedRun {
     endedAtMs: end,
     totalDistanceM: state.totalDistanceM,
     // active (moving) time: wall clock minus everything spent paused
-    elapsedS: Math.max(1, Math.round((end - state.startedAtMs - state.totalPausedMs) / 1000)),
+    elapsedS: Math.max(1, elapsedSeconds(state, end)),
     laps,
     reps: state.reps,
+    trace,
+    quality: summarizeGpsTrace(trace),
   };
 }
 
@@ -651,6 +906,7 @@ export function finishedRunToActivity(
 /* ── Crash recovery ── */
 
 export const RUN_TRACKER_STORAGE_KEY = 'hyper:run-tracker';
+export const RUN_TRACKER_TRACE_STORAGE_KEY = 'hyper:run-tracker-trace';
 export const RUN_TRACKER_RESUME_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 export const FINISHED_RUN_RECOVERY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -658,6 +914,7 @@ interface TrackerSnapshot {
   version: 1;
   savedAtMs: number;
   state: TrackerState;
+  trace?: GpsTracePoint[];
 }
 
 interface FinishedRunSnapshot {
@@ -666,13 +923,55 @@ interface FinishedRunSnapshot {
   finishedRun: FinishedRun;
 }
 
-export function serializeTracker(state: TrackerState, nowMs: number): string {
-  const snapshot: TrackerSnapshot = { version: 1, savedAtMs: nowMs, state };
+interface TrackerTraceSnapshot {
+  version: 1;
+  runId: string;
+  savedAtMs: number;
+  trace: GpsTracePoint[];
+}
+
+const MAX_LOCAL_TRACE_POINTS = 18_000;
+
+function boundedTrace(trace: GpsTracePoint[]): GpsTracePoint[] {
+  return trace.length <= MAX_LOCAL_TRACE_POINTS
+    ? trace
+    : trace.slice(trace.length - MAX_LOCAL_TRACE_POINTS);
+}
+
+export function serializeTracker(
+  state: TrackerState,
+  nowMs: number,
+  trace: GpsTracePoint[] = [],
+): string {
+  const snapshot: TrackerSnapshot = {
+    version: 1,
+    savedAtMs: nowMs,
+    state,
+    trace: boundedTrace(trace),
+  };
   return JSON.stringify(snapshot);
 }
 
 export function serializeFinishedRun(finishedRun: FinishedRun, nowMs: number): string {
-  const snapshot: FinishedRunSnapshot = { version: 2, savedAtMs: nowMs, finishedRun };
+  // Preserve the unsaved run summary without risking a multi-megabyte
+  // synchronous localStorage write. The full trace remains available in
+  // memory for export until the page is reloaded.
+  const snapshotRun: FinishedRun = { ...finishedRun, trace: undefined };
+  const snapshot: FinishedRunSnapshot = { version: 2, savedAtMs: nowMs, finishedRun: snapshotRun };
+  return JSON.stringify(snapshot);
+}
+
+export function serializeTrackerTrace(
+  runId: string,
+  nowMs: number,
+  trace: GpsTracePoint[],
+): string {
+  const snapshot: TrackerTraceSnapshot = {
+    version: 1,
+    runId,
+    savedAtMs: nowMs,
+    trace: boundedTrace(trace),
+  };
   return JSON.stringify(snapshot);
 }
 
@@ -690,16 +989,50 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
       ...defaultTrackerConfig(state.config.mode, state.config.autoLapM),
       ...state.config,
     };
+    state.hasGpsLock ??= state.warmupCount >= state.config.warmupSamples;
+    state.lastSampleMs ??= state.lastAcceptedMs ?? null;
+    state.lastAccuracyM ??= state.lastPoint?.accuracyM ?? null;
     if (state.pausedAtMs != null) {
       state.totalPausedMs = (state.totalPausedMs ?? 0) + Math.max(0, snapshot.savedAtMs - state.pausedAtMs);
       state.pausedAtMs = null;
     }
+    if (state.autoPausedAtMs != null) {
+      const closedAutoPauseMs = Math.max(0, snapshot.savedAtMs - state.autoPausedAtMs);
+      state.totalAutoPausedMs = (state.totalAutoPausedMs ?? 0) + closedAutoPauseMs;
+      state.lapAutoPausedMs = (state.lapAutoPausedMs ?? 0) + closedAutoPauseMs;
+      state.autoPausedAtMs = null;
+    }
     state.totalPausedMs ??= 0;
     state.lapPausedMs ??= 0;
+    state.totalAutoPausedMs ??= 0;
+    state.lapAutoPausedMs ??= 0;
+    state.stationarySinceMs = null;
     state.lastPoint = null; // re-anchor after the gap
     return state;
   } catch {
     return null;
+  }
+}
+
+export function restoreTrackerTrace(raw: string | null, expectedRunId?: string): GpsTracePoint[] {
+  if (!raw) return [];
+  try {
+    const snapshot = JSON.parse(raw) as TrackerSnapshot & { runId?: string };
+    if (snapshot.version !== 1 || !Array.isArray(snapshot.trace)) return [];
+    const snapshotRunId = snapshot.runId ?? snapshot.state?.runId;
+    if (expectedRunId && snapshotRunId !== expectedRunId) return [];
+    return boundedTrace(snapshot.trace.filter((point) => (
+      point
+      && typeof point.t === 'number'
+      && typeof point.lat === 'number'
+      && typeof point.lon === 'number'
+      && typeof point.accuracyM === 'number'
+      && typeof point.decision === 'string'
+      && typeof point.acceptedDistanceM === 'number'
+      && typeof point.cumulativeDistanceM === 'number'
+    )));
+  } catch {
+    return [];
   }
 }
 

@@ -39,6 +39,7 @@ export interface DeviceMotionDetector {
     accelerationIncludingGravity: MotionVector | null,
   ) => void;
   isMoving: (nowMs: number) => boolean;
+  hasSignal: () => boolean;
   reset: () => void;
 }
 
@@ -107,6 +108,7 @@ export function createDeviceMotionDetector(): DeviceMotionDetector {
   return {
     add,
     isMoving: (nowMs) => movingUntilMs > 0 && nowMs <= movingUntilMs,
+    hasSignal: () => samples.length > 0,
     reset,
   };
 }

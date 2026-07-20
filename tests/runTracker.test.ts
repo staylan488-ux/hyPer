@@ -11,17 +11,22 @@ import {
   finishedRunToActivity,
   haversineMeters,
   isGpsWeak,
+  isAutoPaused,
   isPaused,
   isWarmingUp,
   manualSplit,
   pauseTracker,
   restoreTracker,
+  restoreTrackerTrace,
   restoreFinishedRun,
   resumeTracker,
   rollingPaceSecPerMile,
   serializeFinishedRun,
   serializeTracker,
+  serializeTrackerTrace,
+  summarizeGpsTrace,
   type GpsSample,
+  type GpsTracePoint,
   type TrackerEvent,
   type TrackerState,
 } from '@/lib/runTracker';
@@ -33,15 +38,17 @@ function shift(samples: GpsSample[], baseMs = T0): GpsSample[] {
   return samples.map((s) => ({ ...s, t: baseMs + s.t }));
 }
 
-function drive(state: TrackerState, samples: GpsSample[]): { state: TrackerState; events: TrackerEvent[] } {
+function drive(state: TrackerState, samples: GpsSample[]): { state: TrackerState; events: TrackerEvent[]; trace: GpsTracePoint[] } {
   const events: TrackerEvent[] = [];
+  const trace: GpsTracePoint[] = [];
   let current = state;
   for (const sample of samples) {
     const result = advanceTracker(current, sample);
     current = result.state;
     events.push(...result.events);
+    if (result.observation) trace.push(result.observation);
   }
-  return { state: current, events };
+  return { state: current, events, trace };
 }
 
 describe('haversineMeters', () => {
@@ -173,6 +180,35 @@ describe('ingestion filters', () => {
     expect(state.totalDistanceM).toBeGreaterThan(expected * 0.9);
     expect(state.totalDistanceM).toBeLessThan(expected * 1.1);
   });
+
+  it('uses platform speed to prevent zig-zag coordinate inflation', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const metersPerDegree = 111_320;
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.0, durationS: 100 }], 8).map((sample, index) => ({
+      ...sample,
+      // A ±6m lateral wobble would add roughly 12m per second if every raw
+      // coordinate were naively connected.
+      lon: sample.lon + (index % 2 === 0 ? 6 : -6) / metersPerDegree,
+    })));
+
+    const { state, trace } = drive(tracker, samples);
+
+    expect(state.totalDistanceM).toBeGreaterThan(285);
+    expect(state.totalDistanceM).toBeLessThan(305);
+    expect(trace.some((point) => point.decision === 'accepted_speed')).toBe(true);
+  });
+
+  it('bridges a coordinate spike with a plausible fresh speed sample', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.0, durationS: 12 }], 8));
+    samples[8] = { ...samples[8], lat: samples[8].lat + 0.003 };
+
+    const { state, trace } = drive(tracker, samples);
+
+    expect(state.totalDistanceM).toBeGreaterThan(24);
+    expect(state.totalDistanceM).toBeLessThan(34);
+    expect(trace[8].decision).toBe('accepted_speed');
+  });
 });
 
 describe('pause / resume', () => {
@@ -209,6 +245,7 @@ describe('pause / resume', () => {
     // ~60 (pre-pause) + ~60 (post-resume), NOT 165
     expect(finalElapsed).toBeGreaterThan(110);
     expect(finalElapsed).toBeLessThan(130);
+    expect(rollingPaceSecPerMile(state, resumeT + 60_000)).toBeLessThan(500);
   });
 
   it('does not count the gap when resuming after being carried', () => {
@@ -234,6 +271,39 @@ describe('pause / resume', () => {
     const result = manualSplit(state, T0 + 61_000);
     expect(result.events).toHaveLength(0);
     expect(result.state.laps).toHaveLength(0);
+  });
+
+  it('auto-pauses sustained stops and resumes without banking the GPS gap', () => {
+    const tracker = createTracker(defaultTrackerConfig('free', null, true), T0);
+    const samples = shift(buildScenarioSamples([
+      { speedMps: 3, durationS: 10 },
+      { speedMps: 0, durationS: 10 },
+      { speedMps: 3, durationS: 10 },
+    ]));
+
+    let state = drive(tracker, samples.slice(0, 21)).state;
+    expect(isAutoPaused(state)).toBe(true);
+
+    state = drive(state, samples.slice(21)).state;
+    expect(isAutoPaused(state)).toBe(false);
+    expect(state.totalDistanceM).toBeGreaterThan(48);
+    expect(state.totalDistanceM).toBeLessThan(55);
+    expect(elapsedSeconds(state, samples[samples.length - 1].t)).toBe(18);
+    expect(rollingPaceSecPerMile(state, samples[samples.length - 1].t)).toBeLessThan(600);
+  });
+
+  it('uses quiet motion evidence to auto-pause when platform speed is missing', () => {
+    const tracker = createTracker(defaultTrackerConfig('free', null, true), T0);
+    const samples = shift(stationaryDrift.build().slice(0, 15).map((sample) => ({
+      ...sample,
+      speedMps: null,
+      motionDetected: false,
+    })));
+
+    const { state } = drive(tracker, samples);
+
+    expect(isAutoPaused(state)).toBe(true);
+    expect(state.totalDistanceM).toBe(0);
   });
 });
 
@@ -272,7 +342,9 @@ describe('free run', () => {
     expect(pace!).toBeGreaterThan(450);
     expect(pace!).toBeLessThan(470);
 
-    expect(elapsedSeconds(state, lastT)).toBe(1440);
+    // The clock begins only after the three-fix GPS lock, so acquisition time
+    // is not charged to the athlete's pace.
+    expect(elapsedSeconds(state, lastT)).toBe(1438);
     expect(isGpsWeak(state, lastT)).toBe(false);
     expect(isGpsWeak(state, lastT + 10_000)).toBe(true);
   });
@@ -380,7 +452,7 @@ describe('finish + activity mapping', () => {
 
     expect(session.activity_type).toBe('run');
     expect(session.source).toBe('gps');
-    expect(session.duration_seconds).toBe(600);
+    expect(session.duration_seconds).toBe(598);
     expect(segments).toHaveLength(1);
     expect(segments[0].external_id).toBe('gps:run123:1');
   });
@@ -422,14 +494,18 @@ describe('persistence', () => {
   it('round-trips a running tracker', () => {
     const tracker = createTracker(defaultTrackerConfig('intervals', 400), T0);
     const samples = shift(buildScenarioSamples([{ speedMps: 4, durationS: 120 }]));
-    const { state } = drive(tracker, samples);
+    const { state, trace } = drive(tracker, samples);
 
-    const raw = serializeTracker(state, samples[samples.length - 1].t);
+    const raw = serializeTracker(state, samples[samples.length - 1].t, trace);
     const restored = restoreTracker(raw, samples[samples.length - 1].t + 60_000);
 
     expect(restored).not.toBeNull();
     expect(restored!.totalDistanceM).toBeCloseTo(state.totalDistanceM, 6);
     expect(restored!.config.autoLapM).toBe(400);
+    expect(restoreTrackerTrace(raw)).toEqual(trace);
+    const traceRaw = serializeTrackerTrace(state.runId, samples[samples.length - 1].t, trace);
+    expect(restoreTrackerTrace(traceRaw, state.runId)).toEqual(trace);
+    expect(restoreTrackerTrace(traceRaw, 'another-run')).toEqual([]);
   });
 
   it('refuses stale or invalid snapshots', () => {
@@ -447,7 +523,19 @@ describe('persistence', () => {
     const raw = serializeFinishedRun(run, T0 + 60_000);
 
     expect(restoreTracker(raw, T0 + 61_000)).toBeNull();
-    expect(restoreFinishedRun(raw, T0 + 61_000)).toEqual(run);
+    expect(restoreFinishedRun(raw, T0 + 61_000)).toEqual({ ...run, trace: undefined });
     expect(restoreFinishedRun(raw, T0 + 8 * 24 * 60 * 60 * 1000)).toBeNull();
+  });
+
+  it('summarizes trace quality without treating stationary samples as GPS failures', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const { trace } = drive(tracker, shift(stationaryDrift.build().slice(0, 12)));
+
+    const quality = summarizeGpsTrace(trace);
+
+    expect(quality.sampleCount).toBe(12);
+    expect(quality.rejectedSampleCount).toBe(0);
+    expect(quality.averageAccuracyM).toBe(12);
+    expect(quality.longestGapS).toBe(1);
   });
 });

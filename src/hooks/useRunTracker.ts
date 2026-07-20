@@ -6,20 +6,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   RUN_TRACKER_STORAGE_KEY,
+  RUN_TRACKER_TRACE_STORAGE_KEY,
   advanceTracker,
   createTracker,
   defaultTrackerConfig,
   finishTracker,
+  isAutoPaused,
   isPaused,
   manualSplit,
   pauseTracker,
   restoreTracker,
   restoreFinishedRun,
+  restoreTrackerTrace,
   resumeTracker,
   serializeFinishedRun,
   serializeTracker,
+  serializeTrackerTrace,
   type FinishedRun,
   type GpsSample,
+  type GpsTracePoint,
   type RunMode,
   type TrackerEvent,
   type TrackerState,
@@ -84,7 +89,9 @@ export function createGeolocationSource(): PositionSource {
             lon: position.coords.longitude,
             accuracyM: position.coords.accuracy,
             speedMps: position.coords.speed,
-            motionDetected: motionDetector.isMoving(Date.now()),
+            motionDetected: motionDetector.hasSignal()
+              ? motionDetector.isMoving(Date.now())
+              : undefined,
           });
         },
         (error) => {
@@ -152,6 +159,8 @@ export function createSimulatedSource(samples: GpsSample[], timeScale = 10): Pos
 }
 
 const SNAPSHOT_THROTTLE_MS = 5000;
+const TRACE_SNAPSHOT_THROTTLE_MS = 30_000;
+const MAX_IN_MEMORY_TRACE_POINTS = 18_000;
 
 export interface UseRunTracker {
   state: TrackerState | null;
@@ -160,7 +169,8 @@ export interface UseRunTracker {
   gpsError: string | null;
   resumable: boolean;
   paused: boolean;
-  start: (mode: RunMode, autoLapM: number | null, source?: PositionSource) => void;
+  autoPaused: boolean;
+  start: (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => void;
   resume: (source?: PositionSource) => void;
   split: () => void;
   togglePause: () => void;
@@ -186,10 +196,22 @@ export function useRunTracker(): UseRunTracker {
       return false;
     }
   });
+  const [initialTrace] = useState<GpsTracePoint[]>(() => {
+    try {
+      const restoredState = restoreTracker(localStorage.getItem(RUN_TRACKER_STORAGE_KEY), Date.now());
+      return restoredState
+        ? restoreTrackerTrace(localStorage.getItem(RUN_TRACKER_TRACE_STORAGE_KEY), restoredState.runId)
+        : [];
+    } catch {
+      return [];
+    }
+  });
 
   const stateRef = useRef<TrackerState | null>(null);
   const sourceRef = useRef<PositionSource | null>(null);
   const lastSnapshotRef = useRef(0);
+  const traceRef = useRef<GpsTracePoint[]>(initialTrace);
+  const lastTraceSnapshotRef = useRef(0);
 
   const applyEvents = useCallback((events: TrackerEvent[]) => {
     for (const event of events) {
@@ -209,7 +231,19 @@ export function useRunTracker(): UseRunTracker {
       try {
         localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeTracker(next, t));
       } catch {
-        // storage full/blocked — tracking continues without recovery
+        // storage full/blocked — tracking continues without state recovery
+      }
+      if (t - lastTraceSnapshotRef.current >= TRACE_SNAPSHOT_THROTTLE_MS) {
+        try {
+          localStorage.setItem(
+            RUN_TRACKER_TRACE_STORAGE_KEY,
+            serializeTrackerTrace(next.runId, t, traceRef.current),
+          );
+        } catch {
+          // Diagnostics are optional; never let quota pressure affect tracking.
+        } finally {
+          lastTraceSnapshotRef.current = t;
+        }
       }
     }
   }, []);
@@ -222,7 +256,13 @@ export function useRunTracker(): UseRunTracker {
         (sample) => {
           const current = stateRef.current;
           if (!current || current.status !== 'running') return;
-          const { state: next, events } = advanceTracker(current, sample);
+          const { state: next, events, observation } = advanceTracker(current, sample);
+          if (observation) {
+            traceRef.current.push(observation);
+            if (traceRef.current.length > MAX_IN_MEMORY_TRACE_POINTS) {
+              traceRef.current = traceRef.current.slice(-MAX_IN_MEMORY_TRACE_POINTS);
+            }
+          }
           commit(next, sample.t);
           applyEvents(events);
         },
@@ -233,17 +273,20 @@ export function useRunTracker(): UseRunTracker {
   );
 
   const start = useCallback(
-    (mode: RunMode, autoLapM: number | null, source?: PositionSource) => {
+    (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => {
       const activeSource = source ?? createGeolocationSource();
       const now = activeSource.getNowMs();
-      const tracker = createTracker(defaultTrackerConfig(mode, autoLapM), now);
+      const tracker = createTracker(defaultTrackerConfig(mode, autoLapM, autoPause), now);
       setFinishedRun(null);
+      traceRef.current = [];
       stateRef.current = tracker;
       setState(tracker);
       setResumable(false);
       lastSnapshotRef.current = now;
+      lastTraceSnapshotRef.current = now;
       try {
         localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeTracker(tracker, now));
+        localStorage.removeItem(RUN_TRACKER_TRACE_STORAGE_KEY);
       } catch {
         // storage full/blocked — tracking continues without recovery
       }
@@ -259,6 +302,10 @@ export function useRunTracker(): UseRunTracker {
         setResumable(false);
         return;
       }
+      traceRef.current = restoreTrackerTrace(
+        localStorage.getItem(RUN_TRACKER_TRACE_STORAGE_KEY),
+        restored.runId,
+      );
       stateRef.current = restored;
       setState(restored);
       setResumable(false);
@@ -294,7 +341,7 @@ export function useRunTracker(): UseRunTracker {
     const source = sourceRef.current;
     if (!current) return null;
 
-    const run = finishTracker(current, source?.getNowMs() ?? Date.now());
+    const run = finishTracker(current, source?.getNowMs() ?? Date.now(), [...traceRef.current]);
     stopSource();
     const finished: TrackerState = { ...current, status: 'finished' };
     stateRef.current = finished;
@@ -303,6 +350,7 @@ export function useRunTracker(): UseRunTracker {
     setResumable(false);
     try {
       localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeFinishedRun(run, Date.now()));
+      localStorage.removeItem(RUN_TRACKER_TRACE_STORAGE_KEY);
     } catch {
       // ignore
     }
@@ -312,12 +360,14 @@ export function useRunTracker(): UseRunTracker {
   const discard = useCallback(() => {
     stopSource();
     stateRef.current = null;
+    traceRef.current = [];
     setState(null);
     setFinishedRun(null);
     setGpsError(null);
     setResumable(false);
     try {
       localStorage.removeItem(RUN_TRACKER_STORAGE_KEY);
+      localStorage.removeItem(RUN_TRACKER_TRACE_STORAGE_KEY);
     } catch {
       // ignore
     }
@@ -369,5 +419,19 @@ export function useRunTracker(): UseRunTracker {
   // stop the GPS watch if the page unmounts mid-run (snapshot allows resume)
   useEffect(() => stopSource, [stopSource]);
 
-  return { state, finishedRun, nowMs, gpsError, resumable, paused: state != null && isPaused(state), start, resume, split, togglePause, finish, discard };
+  return {
+    state,
+    finishedRun,
+    nowMs,
+    gpsError,
+    resumable,
+    paused: state != null && isPaused(state),
+    autoPaused: state != null && isAutoPaused(state),
+    start,
+    resume,
+    split,
+    togglePause,
+    finish,
+    discard,
+  };
 }
