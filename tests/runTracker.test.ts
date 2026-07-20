@@ -5,6 +5,7 @@ import {
   averagePaceSecPerMile,
   createTracker,
   currentLapDistanceM,
+  currentSpeedMps,
   defaultTrackerConfig,
   elapsedSeconds,
   finishTracker,
@@ -537,5 +538,30 @@ describe('persistence', () => {
     expect(quality.rejectedSampleCount).toBe(0);
     expect(quality.averageAccuracyM).toBe(12);
     expect(quality.longestGapS).toBe(1);
+  });
+});
+
+describe('currentSpeedMps', () => {
+  function drivenState(): { state: TrackerState; lastT: number } {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.5, durationS: 30 }]));
+    const { state } = drive(tracker, samples);
+    return { state, lastT: samples[samples.length - 1].t };
+  }
+
+  it('reports the fresh device speed of the last accepted sample', () => {
+    const { state, lastT } = drivenState();
+    expect(currentSpeedMps(state, lastT + 1_000)).toBeCloseTo(3.5, 1);
+  });
+
+  it('goes null after a delivery gap instead of freezing a stale value', () => {
+    const { state, lastT } = drivenState();
+    expect(currentSpeedMps(state, lastT + 10_000)).toBeNull();
+  });
+
+  it('goes null while manually paused', () => {
+    const { state, lastT } = drivenState();
+    const paused = pauseTracker(state, lastT + 500);
+    expect(currentSpeedMps(paused, lastT + 1_000)).toBeNull();
   });
 });

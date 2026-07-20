@@ -698,6 +698,22 @@ export function gpsAccuracyMeters(state: TrackerState): number | null {
 
 const PACE_MILE_M = 1609.344;
 
+// a device speed older than this no longer describes "now" (callback gap,
+// backgrounding, or a stalled provider)
+const CURRENT_SPEED_MAX_AGE_MS = 5_000;
+
+// device-reported speed of the last accepted sample while it is still fresh;
+// null when paused, before the first good fix, or after a delivery gap
+export function currentSpeedMps(state: TrackerState, nowMs: number): number | null {
+  if (isPaused(state)) return null;
+  const point = state.lastPoint;
+  if (!point) return null;
+  const speed = point.speedMps;
+  if (speed == null || speed < 0 || !Number.isFinite(speed)) return null;
+  if (nowMs - point.t > CURRENT_SPEED_MAX_AGE_MS) return null;
+  return speed;
+}
+
 // live pace (seconds per mile) over the trailing window, clipped to the
 // current lap so an interval split restarts the readout
 export function rollingPaceSecPerMile(state: TrackerState, nowMs: number): number | null {

@@ -12,6 +12,7 @@ import {
   averagePaceSecPerMile,
   currentLapDistanceM,
   currentLapSeconds,
+  currentSpeedMps,
   elapsedSeconds,
   gpsAccuracyMeters,
   isGpsWeak,
@@ -222,6 +223,8 @@ export function RunTracker() {
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
+  const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
+  const liveSpeedLabel = liveSpeedMps != null ? `${(liveSpeedMps * 2.2369363).toFixed(1)} mph` : null;
   const warming = running ? isWarmingUp(state) : false;
   const weak = running ? isGpsWeak(state, tracker.nowMs) : false;
   const accuracyM = running ? gpsAccuracyMeters(state) : null;
@@ -376,6 +379,9 @@ export function RunTracker() {
             <p className="t-data-hero mt-1 [font-family:var(--font-display)] text-[3.4rem] leading-none">
               {paceLabel}
             </p>
+            {liveSpeedLabel && (
+              <p className="t-caption mt-2">{liveSpeedLabel} current speed</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
