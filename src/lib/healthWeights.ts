@@ -25,6 +25,17 @@ function cursorKey(userId: string): string {
   return `${HEALTH_WEIGHT_SYNC_CURSOR_PREFIX}${userId}`;
 }
 
+export async function getBodyWeightHistory(userId: string, limit = 14): Promise<BodyWeightMeasurement[]> {
+  const { data, error } = await supabase
+    .from('body_weight_measurements')
+    .select('*')
+    .eq('user_id', userId)
+    .order('measured_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data || []) as BodyWeightMeasurement[];
+}
+
 export async function getLatestBodyWeight(userId: string): Promise<BodyWeightMeasurement | null> {
   const { data, error } = await supabase
     .from('body_weight_measurements')

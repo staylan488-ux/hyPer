@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, LogOut, Pencil, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
@@ -15,12 +15,19 @@ import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import {
   enableNativeBodyWeightSync,
-  getLatestBodyWeight,
+  getBodyWeightHistory,
   isHealthWeightSyncEnabled,
   setHealthWeightSyncEnabled,
   syncNativeBodyWeights,
   type BodyWeightMeasurement,
 } from '@/lib/healthWeights';
+import {
+  formatWeight,
+  getPreferredWeightUnit,
+  setPreferredWeightUnit,
+  weightTrendDelta,
+  type WeightUnit,
+} from '@/lib/weightDisplayCore';
 import {
   NATIVE_AUTH_CALLBACK_SCHEME,
   NativeAuth,
@@ -121,6 +128,31 @@ export function Settings() {
   ));
   const [latestBodyWeight, setLatestBodyWeight] = useState<BodyWeightMeasurement | null>(null);
   const [healthWeightMessage, setHealthWeightMessage] = useState<string | null>(null);
+  const [bodyWeightHistory, setBodyWeightHistory] = useState<BodyWeightMeasurement[]>([]);
+  const [bodyWeightError, setBodyWeightError] = useState<string | null>(null);
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => getPreferredWeightUnit());
+
+  const weightTrend = useMemo(
+    () => weightTrendDelta(bodyWeightHistory.map((entry) => entry.kilograms), weightUnit),
+    [bodyWeightHistory, weightUnit],
+  );
+
+  const handleToggleWeightUnit = () => {
+    const next: WeightUnit = weightUnit === 'lb' ? 'kg' : 'lb';
+    setWeightUnit(next);
+    setPreferredWeightUnit(next);
+  };
+
+  const refreshBodyWeightHistory = useCallback(async (userId: string) => {
+    try {
+      const history = await getBodyWeightHistory(userId);
+      setBodyWeightHistory(history);
+      setLatestBodyWeight(history[0] ?? null);
+      setBodyWeightError(null);
+    } catch {
+      setBodyWeightError('Could not load weight history. Pull to retry after checking your connection.');
+    }
+  }, []);
 
   useEffect(() => {
     fetchMacroTarget();
@@ -131,11 +163,9 @@ export function Settings() {
   }, [fetchWhoopConnection]);
 
   useEffect(() => {
-    if (!user?.id || !isNativeIOS()) return;
-    void getLatestBodyWeight(user.id)
-      .then(setLatestBodyWeight)
-      .catch(() => undefined);
-  }, [user?.id]);
+    if (!user?.id) return;
+    void refreshBodyWeightHistory(user.id);
+  }, [refreshBodyWeightHistory, user?.id]);
 
   const handleHealthWeightSync = async () => {
     if (!user?.id || healthWeightBusy) return;
@@ -147,6 +177,7 @@ export function Settings() {
         : await enableNativeBodyWeightSync(user.id);
       setHealthWeightEnabled(true);
       setLatestBodyWeight(result.latest);
+      await refreshBodyWeightHistory(user.id);
       setHealthWeightMessage(result.imported > 0
         ? `Imported ${result.imported} Apple Health weight entr${result.imported === 1 ? 'y' : 'ies'}.`
         : 'Apple Health weight is up to date.');
@@ -760,44 +791,94 @@ export function Settings() {
           {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
         </div>
 
-        {isNativeIOS() && (
-          <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="t-heading">Apple Health weight</p>
-                <p className="t-caption mt-1">
-                  EufyLife → Apple Health → hyPer
-                </p>
-                {latestBodyWeight && (
-                  <p className="t-data-sm mt-2 text-[var(--color-text)]">
-                    {(latestBodyWeight.kilograms * 2.2046226218).toFixed(1)} lb · {latestBodyWeight.source_name}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={healthWeightBusy}
-                disabled={healthWeightBusy}
-                onClick={() => { void handleHealthWeightSync(); }}
-              >
-                {healthWeightEnabled ? 'Sync now' : 'Connect'}
-              </Button>
+        <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="t-heading">Body weight</p>
+              <p className="t-caption mt-1">
+                EufyLife → Apple Health → hyPer
+              </p>
             </div>
-            {healthWeightEnabled && (
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={handleDisableHealthWeightSync}
-                className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
+                className="pressable min-h-11 px-2 t-label-sm"
+                aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
+                onClick={handleToggleWeightUnit}
               >
-                Stop automatic sync
+                <span className={weightUnit === 'lb' ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}>lb</span>
+                <span className="text-[var(--color-muted)]"> / </span>
+                <span className={weightUnit === 'kg' ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}>kg</span>
               </button>
-            )}
-            {healthWeightMessage && (
-              <p className="t-caption mt-3" aria-live="polite">{healthWeightMessage}</p>
-            )}
+              {isNativeIOS() && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={healthWeightBusy}
+                  disabled={healthWeightBusy}
+                  onClick={() => { void handleHealthWeightSync(); }}
+                >
+                  {healthWeightEnabled ? 'Sync now' : 'Connect'}
+                </Button>
+              )}
+            </div>
           </div>
-        )}
+
+          {latestBodyWeight ? (
+            <div className="mt-4">
+              <div className="flex items-baseline gap-2">
+                <span className="number-medium text-[var(--color-text)]">
+                  {formatWeight(latestBodyWeight.kilograms, weightUnit)}
+                </span>
+                <span className="[font-family:var(--font-display)] italic text-sm text-[var(--color-text-dim)]">{weightUnit}</span>
+                {weightTrend !== null && (
+                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                    {weightTrend > 0 ? '+' : ''}{weightTrend.toFixed(1)} vs previous
+                  </span>
+                )}
+              </div>
+              <p className="t-caption mt-1.5">
+                {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} · {latestBodyWeight.source_name}
+              </p>
+              {bodyWeightHistory.length > 1 && (
+                <ul className="mt-4 border-t border-[var(--color-border)]">
+                  {bodyWeightHistory.slice(1, 6).map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-baseline justify-between gap-4 py-2 border-b border-[var(--color-border)]"
+                    >
+                      <span className="t-caption">{format(new Date(entry.measured_at), 'MMM d')}</span>
+                      <span className="t-data-sm text-[var(--color-text)]">
+                        {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="t-caption mt-3">
+              {bodyWeightError
+                ? bodyWeightError
+                : isNativeIOS()
+                  ? 'No weight yet. Connect Apple Health, then weigh in with your scale so EufyLife writes the entry.'
+                  : 'Weigh-ins appear here after the iPhone app syncs Apple Health.'}
+            </p>
+          )}
+
+          {isNativeIOS() && healthWeightEnabled && (
+            <button
+              type="button"
+              onClick={handleDisableHealthWeightSync}
+              className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
+            >
+              Stop automatic sync
+            </button>
+          )}
+          {healthWeightMessage && (
+            <p className="t-caption mt-3" aria-live="polite">{healthWeightMessage}</p>
+          )}
+        </div>
 
         <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
           <div>
