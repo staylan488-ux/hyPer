@@ -26,6 +26,7 @@ import {
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import {
   fetchUsdaFoodDetailSecure,
@@ -81,7 +82,7 @@ type SelectedFoodMeta = {
 } | {
   source: 'barcode';
   barcode: string;
-  provider: 'usda' | 'open_food_facts';
+  provider: 'usda' | 'open_food_facts' | 'saved';
 };
 
 interface EditableNutritionEntry {
@@ -142,6 +143,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     || '';
   const [groupId, setGroupId] = useState<string>(initialGroupId);
   const [selectedFoodMeta, setSelectedFoodMeta] = useState<SelectedFoodMeta | null>(null);
+  // set when every barcode source missed; manual entry then offers to save a
+  // personal product bound to this code
+  const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
+  const [pendingBarcodeBinding, setPendingBarcodeBinding] = useState<string | null>(null);
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
   const entryDateKey = format(entryDate, 'yyyy-MM-dd');
   const entryUsesSelectedDayGroups = entryDateKey === selectedDateKey;
@@ -233,18 +238,32 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
     let food: Food | null = null;
-    let provider: 'usda' | 'open_food_facts' = 'usda';
-    try {
-      food = await searchUsdaFoodByBarcodeSecure(barcode);
-    } catch {
-      // A second independent product source can still satisfy the scan.
+    let provider: 'usda' | 'open_food_facts' | 'saved' = 'saved';
+
+    // owner catalog first: a previously scanned or label-captured product
+    // resolves locally before any external provider is asked
+    food = await findSavedFoodByBarcode(barcode);
+
+    if (!food) {
+      provider = 'usda';
+      try {
+        food = await searchUsdaFoodByBarcodeSecure(barcode);
+      } catch {
+        // A second independent product source can still satisfy the scan.
+      }
     }
 
     if (!food) {
       food = await searchOpenFoodFactsByBarcodeSecure(barcode);
       provider = 'open_food_facts';
     }
-    if (!food) return false;
+    if (!food) {
+      // remember the code so manual entry can create a personal product
+      // bound to it — the next scan then resolves from the saved catalog
+      setMissedBarcode(barcode);
+      return false;
+    }
+    setMissedBarcode(null);
 
     if (food.fdc_id && !food.serving_label) {
       const detail = await fetchUsdaFoodDetailSecure(food.fdc_id);
@@ -1068,7 +1087,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       const foodId = await upsertFoodIfNeeded(food);
       if (!foodId) return;
       const source = selectedFoodMeta?.source === 'barcode'
-        ? selectedFoodMeta.provider === 'open_food_facts' ? 'barcode_open_food_facts' : 'barcode'
+        ? selectedFoodMeta.provider === 'open_food_facts'
+          ? 'barcode_open_food_facts'
+          : selectedFoodMeta.provider === 'saved' ? 'barcode_saved' : 'barcode'
         : food.source === 'usda' ? 'usda' : 'manual';
       await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
@@ -1258,10 +1279,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
+      if (pendingBarcodeBinding) {
+        // bind the new product to the scanned code so the next scan of it
+        // resolves from the owner's saved catalog without any provider
+        const bound = await bindFoodToBarcode(user.id, resolvedFoodId, pendingBarcodeBinding);
+        if (bound) {
+          setPendingBarcodeBinding(null);
+          setMissedBarcode(null);
+        }
+      }
+
       await saveNutritionEntry(
         resolvedFoodId,
         parseFloat(servings || '1'),
-        initialEntry?.source || 'manual',
+        pendingBarcodeBinding ? 'barcode_saved' : initialEntry?.source || 'manual',
       );
     } catch (error) {
       console.error('Error in manual submit:', error);
@@ -1479,7 +1510,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 >
                   Open Food Facts
                 </a>
-              ) : 'USDA branded record'}
+              ) : selectedFoodMeta.provider === 'saved' ? 'from your saved foods' : 'USDA branded record'}
             </p>
           )}
 
@@ -1622,6 +1653,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           setMode(next);
           if (next !== 'saved') setManagingSavedMeals(false);
           if (next !== 'photo') setPhotoError(null);
+          // barcode binding only survives the guided miss -> manual path
+          if (next !== 'manual') setPendingBarcodeBinding(null);
         }}
         options={[
           { value: 'saved', label: 'Saved' },
@@ -1843,6 +1876,27 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         <Suspense fallback={<div className="flex items-center gap-2 py-10 t-caption"><Loader2 className="w-4 h-4 animate-spin" />Loading scanner…</div>}>
           <div className="space-y-4">
             <BarcodeScanner onDetected={handleBarcodeDetected} />
+            {missedBarcode && (
+              <div className="border border-[var(--color-border)] p-4">
+                <p className="t-caption">
+                  No catalog match for barcode {missedBarcode}. Enter it from the
+                  package label once and it will be yours on every future scan.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => {
+                    setPendingBarcodeBinding(missedBarcode);
+                    setSaveAsReusableMeal(true);
+                    setSelectedSavedMealId(null);
+                    setMode('manual');
+                  }}
+                >
+                  Create a saved product for this barcode
+                </Button>
+              </div>
+            )}
             <p className="t-caption">
               Product fallback data from{' '}
               <a href="https://world.openfoodfacts.org/" target="_blank" rel="noreferrer" className="underline underline-offset-2">
