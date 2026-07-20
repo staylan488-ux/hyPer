@@ -8,6 +8,20 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Body weight imported from Apple Health
+CREATE TABLE IF NOT EXISTS body_weight_measurements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  source TEXT NOT NULL DEFAULT 'apple_health' CHECK (source = 'apple_health'),
+  external_id TEXT NOT NULL,
+  measured_at TIMESTAMPTZ NOT NULL,
+  kilograms NUMERIC(7,3) NOT NULL CHECK (kilograms > 0 AND kilograms < 500),
+  source_bundle TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, source, external_id)
+);
+
 -- Exercises library
 CREATE TABLE IF NOT EXISTS exercises (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -262,6 +276,7 @@ CREATE INDEX idx_workouts_user_id ON workouts(user_id);
 CREATE INDEX idx_workouts_date ON workouts(date);
 CREATE INDEX idx_sets_workout_id ON sets(workout_id);
 CREATE INDEX idx_sets_exercise_id ON sets(exercise_id);
+CREATE INDEX idx_body_weight_measurements_user_time ON body_weight_measurements(user_id, measured_at DESC);
 CREATE INDEX idx_activity_sessions_user_date ON activity_sessions(user_id, date);
 CREATE INDEX idx_activity_sessions_user_started_at ON activity_sessions(user_id, started_at);
 CREATE INDEX idx_activity_segments_user_started_at ON activity_segments(user_id, started_at);
@@ -297,6 +312,7 @@ ALTER TABLE split_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE body_weight_measurements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_segments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whoop_connections ENABLE ROW LEVEL SECURITY;
@@ -372,6 +388,12 @@ CREATE POLICY "Users can update own sets" ON sets FOR UPDATE USING (
 CREATE POLICY "Users can delete own sets" ON sets FOR DELETE USING (
   EXISTS (SELECT 1 FROM workouts WHERE workouts.id = sets.workout_id AND workouts.user_id = auth.uid())
 );
+
+-- Body weight policies
+CREATE POLICY "Users can view own body weight" ON body_weight_measurements FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own body weight" ON body_weight_measurements FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own body weight" ON body_weight_measurements FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own body weight" ON body_weight_measurements FOR DELETE USING (auth.uid() = user_id);
 
 -- Activity sessions policies
 CREATE POLICY "Users can view own activity sessions" ON activity_sessions FOR SELECT USING (auth.uid() = user_id);

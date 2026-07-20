@@ -5,6 +5,7 @@ import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { Button, Input } from '@/components/shared';
 import { normalizeBarcode, normalizeFoodBarcode } from '@/lib/barcodes';
 import { tapHaptic } from '@/lib/haptics';
+import { NativeBarcode, isNativeIOS } from '@/lib/nativeBridge';
 
 const SCAN_INTERVAL_MS = 180;
 const FOOD_BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
@@ -137,6 +138,16 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
     setMessage('Starting rear camera…');
 
     try {
+      if (isNativeIOS()) {
+        const availability = await NativeBarcode.getAvailability();
+        if (!availability.available) {
+          throw new Error('Native barcode scanning is unavailable on this iPhone.');
+        }
+        const result = await NativeBarcode.scanBarcode();
+        await resolveBarcode(result.rawValue, result.format);
+        return;
+      }
+
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('This browser does not support camera scanning.');
       }
@@ -174,10 +185,15 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       scanFrame();
     } catch (error) {
       stopCamera();
+      if (error instanceof Error && 'code' in error && error.code === 'CANCELLED') {
+        setState('idle');
+        setMessage('Point the rear camera at a UPC or EAN food barcode.');
+        return;
+      }
       setState('error');
       setMessage(cameraErrorMessage(error));
     }
-  }, [scanFrame, stopCamera]);
+  }, [resolveBarcode, scanFrame, stopCamera]);
 
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];

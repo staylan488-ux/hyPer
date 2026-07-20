@@ -13,6 +13,19 @@ import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/food
 import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
 import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
+import {
+  enableNativeBodyWeightSync,
+  getLatestBodyWeight,
+  isHealthWeightSyncEnabled,
+  setHealthWeightSyncEnabled,
+  syncNativeBodyWeights,
+  type BodyWeightMeasurement,
+} from '@/lib/healthWeights';
+import {
+  NATIVE_AUTH_CALLBACK_SCHEME,
+  NativeAuth,
+  isNativeIOS,
+} from '@/lib/nativeBridge';
 
 interface SavedMeal {
   id: string;
@@ -54,7 +67,7 @@ function SettingsGroup({
 
 export function Settings() {
   const navigate = useNavigate();
-  const { profile, signOut, updateDisplayName } = useAuthStore();
+  const { user, profile, signOut, updateDisplayName } = useAuthStore();
   const {
     macroTarget,
     fetchMacroTarget,
@@ -102,6 +115,12 @@ export function Settings() {
   const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
   const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
   const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
+  const [healthWeightBusy, setHealthWeightBusy] = useState(false);
+  const [healthWeightEnabled, setHealthWeightEnabled] = useState(() => (
+    isNativeIOS() && isHealthWeightSyncEnabled()
+  ));
+  const [latestBodyWeight, setLatestBodyWeight] = useState<BodyWeightMeasurement | null>(null);
+  const [healthWeightMessage, setHealthWeightMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMacroTarget();
@@ -110,6 +129,39 @@ export function Settings() {
   useEffect(() => {
     void fetchWhoopConnection();
   }, [fetchWhoopConnection]);
+
+  useEffect(() => {
+    if (!user?.id || !isNativeIOS()) return;
+    void getLatestBodyWeight(user.id)
+      .then(setLatestBodyWeight)
+      .catch(() => undefined);
+  }, [user?.id]);
+
+  const handleHealthWeightSync = async () => {
+    if (!user?.id || healthWeightBusy) return;
+    setHealthWeightBusy(true);
+    setHealthWeightMessage(null);
+    try {
+      const result = healthWeightEnabled
+        ? await syncNativeBodyWeights(user.id)
+        : await enableNativeBodyWeightSync(user.id);
+      setHealthWeightEnabled(true);
+      setLatestBodyWeight(result.latest);
+      setHealthWeightMessage(result.imported > 0
+        ? `Imported ${result.imported} Apple Health weight entr${result.imported === 1 ? 'y' : 'ies'}.`
+        : 'Apple Health weight is up to date.');
+    } catch (error) {
+      setHealthWeightMessage(error instanceof Error ? error.message : 'Apple Health sync failed.');
+    } finally {
+      setHealthWeightBusy(false);
+    }
+  };
+
+  const handleDisableHealthWeightSync = () => {
+    setHealthWeightSyncEnabled(false);
+    setHealthWeightEnabled(false);
+    setHealthWeightMessage('Automatic weight sync stopped. Existing measurements were kept.');
+  };
 
   const handlePhotoWorkerSave = async () => {
     savePhotoWorkerSettings(photoWorkerDraft);
@@ -148,8 +200,24 @@ export function Settings() {
     clearWhoopFeedback();
     setWhoopAction('connect');
     try {
-      const authorizeUrl = await connectWhoop();
+      const nativeReturnTo = isNativeIOS()
+        ? `${NATIVE_AUTH_CALLBACK_SCHEME}://settings`
+        : undefined;
+      const authorizeUrl = await connectWhoop(nativeReturnTo);
       if (authorizeUrl) {
+        if (isNativeIOS()) {
+          const { callbackUrl } = await NativeAuth.openOAuth({
+            url: authorizeUrl,
+            callbackScheme: NATIVE_AUTH_CALLBACK_SCHEME,
+            callbackHost: 'settings',
+            callbackPath: '',
+          });
+          const status = new URL(callbackUrl).searchParams.get('whoop');
+          if (status !== 'connected') throw new Error('WHOOP connection failed.');
+          await fetchWhoopConnection();
+          setWhoopMessage('WHOOP connected.');
+          return;
+        }
         // production: hand the browser to WHOOP's consent screen
         window.location.href = authorizeUrl;
         return;
@@ -691,6 +759,45 @@ export function Settings() {
           {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
           {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
         </div>
+
+        {isNativeIOS() && (
+          <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="t-heading">Apple Health weight</p>
+                <p className="t-caption mt-1">
+                  EufyLife → Apple Health → hyPer
+                </p>
+                {latestBodyWeight && (
+                  <p className="t-data-sm mt-2 text-[var(--color-text)]">
+                    {(latestBodyWeight.kilograms * 2.2046226218).toFixed(1)} lb · {latestBodyWeight.source_name}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={healthWeightBusy}
+                disabled={healthWeightBusy}
+                onClick={() => { void handleHealthWeightSync(); }}
+              >
+                {healthWeightEnabled ? 'Sync now' : 'Connect'}
+              </Button>
+            </div>
+            {healthWeightEnabled && (
+              <button
+                type="button"
+                onClick={handleDisableHealthWeightSync}
+                className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
+              >
+                Stop automatic sync
+              </button>
+            )}
+            {healthWeightMessage && (
+              <p className="t-caption mt-3" aria-live="polite">{healthWeightMessage}</p>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
           <div>

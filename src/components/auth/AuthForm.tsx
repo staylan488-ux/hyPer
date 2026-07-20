@@ -5,6 +5,7 @@ import { Button, Input } from '@/components/shared';
 import { LoginMonolithIntro } from '@/components/intro/LoginMonolithIntro';
 import { markLoginIntroPlayed, shouldPlayLoginIntro } from '@/components/intro/introState';
 import { springs } from '@/lib/animations';
+import { isNativeIOS } from '@/lib/nativeBridge';
 
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 
@@ -22,7 +23,8 @@ export function AuthForm() {
   const [resendingVerification, setResendingVerification] = useState(false);
   const [showIntro, setShowIntro] = useState(() => shouldPlayLoginIntro() && !reduceMotion);
 
-  const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, loading } = useAuthStore();
+  const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
+  const showAppleSignIn = isNativeIOS();
 
   const clearSignupSignals = useCallback(() => {
     setSignupSuccess(null);
@@ -72,6 +74,13 @@ export function AuthForm() {
     clearSignupSignals();
     setError(null);
     const { error } = await signInWithGoogle();
+    if (error) setError(error.message);
+  };
+
+  const handleAppleSignIn = async () => {
+    clearSignupSignals();
+    setError(null);
+    const { error } = await signInWithApple();
     if (error) setError(error.message);
   };
 
@@ -270,6 +279,24 @@ export function AuthForm() {
             </svg>
             Continue with Google
           </Button>
+
+          {showAppleSignIn && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="w-full mt-3"
+              onClick={handleAppleSignIn}
+            >
+              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  fill="currentColor"
+                  d="M16.7 13.1c0-2.8 2.3-4.1 2.4-4.2-1.3-1.9-3.4-2.2-4.1-2.2-1.7-.2-3.4 1-4.3 1-.9 0-2.3-1-3.7-1-1.9 0-3.6 1.1-4.6 2.8-2 3.4-.5 8.4 1.4 11.2.9 1.4 2.1 2.9 3.6 2.8 1.4-.1 2-.9 3.7-.9s2.2.9 3.7.9c1.5 0 2.5-1.4 3.5-2.8 1.1-1.6 1.5-3.1 1.5-3.2-.1 0-3.1-1.2-3.1-4.4ZM13.9 4.9c.8-1 1.4-2.4 1.2-3.8-1.2.1-2.7.8-3.6 1.8-.8.9-1.5 2.3-1.3 3.7 1.4.1 2.8-.7 3.7-1.7Z"
+                />
+              </svg>
+              Continue with Apple
+            </Button>
+          )}
 
           <p className="mt-9 text-center text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)]">
             {isLogin ? 'No account?' : 'Have an account?'}{' '}

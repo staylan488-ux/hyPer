@@ -1,5 +1,6 @@
 import { getPhotoWorkerSettings, type PhotoAnalysisProvider, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 
 export interface FoodDescriptionSource {
   title: string;
@@ -81,13 +82,15 @@ export async function describeFoodWithAi(input: {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 150_000);
   try {
+    const requestBody = JSON.stringify({ provider: settings.provider, description });
     const response = await fetch(`${settings.url.replace(/\/+$/, '')}/describe`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         'Content-Type': 'application/json',
+        'X-Idempotency-Key': await createRequestIdempotencyKey('describe', requestBody),
       },
-      body: JSON.stringify({ provider: settings.provider, description }),
+      body: requestBody,
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null) as (FoodDescriptionResult & { error?: string }) | null;

@@ -14,6 +14,19 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.alexanderroesler.hyper.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.alexanderroesler.hyper</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
@@ -26,10 +39,19 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>hyPer uses the camera to scan food barcodes and analyze food photos you choose to log.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>hyPer can save completed workouts and routes to Apple Health when you choose to enable that feature.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>hyPer uses your location during an active run, including when the screen is locked, to measure route, distance, pace, and splits.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>hyPer uses your location during a run to measure route, distance, pace, and splits.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>RunTracking</key>
+		<string>Precise location is needed during an active run to measure distance, pace, route, and split boundaries accurately.</string>
+	</dict>
 	<key>NSMotionUsageDescription</key>
 	<string>hyPer uses motion data during an active run to improve movement and pause detection.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -38,6 +60,10 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>

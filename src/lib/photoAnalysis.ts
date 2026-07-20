@@ -1,4 +1,5 @@
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 
 export type PhotoAnalysisProvider = 'openai' | 'anthropic';
 export type PhotoAnalysisAngle = 'top' | 'side';
@@ -93,17 +94,19 @@ export async function analyzeFoodPhoto(input: {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 150_000);
   try {
+    const requestBody = JSON.stringify({
+      provider: settings.provider,
+      images: input.images,
+      hint: input.hint?.trim() || null,
+    });
     const response = await fetch(`${settings.url.replace(/\/+$/, '')}/analyze`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         'Content-Type': 'application/json',
+        'X-Idempotency-Key': await createRequestIdempotencyKey('photo', requestBody),
       },
-      body: JSON.stringify({
-        provider: settings.provider,
-        images: input.images,
-        hint: input.hint?.trim() || null,
-      }),
+      body: requestBody,
       signal: controller.signal,
     });
 

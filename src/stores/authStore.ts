@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { User, Session } from '@supabase/supabase-js';
+import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { supabase } from '@/lib/supabase';
 
 const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
@@ -8,14 +9,6 @@ type SignUpResult = {
   error: Error | null;
   existingAccount: boolean;
 };
-
-function getAuthRedirectTo() {
-  if (typeof window === 'undefined' || !window.location?.origin) {
-    return undefined;
-  }
-
-  return `${window.location.origin}/`;
-}
 
 function isExistingAccountMessage(message: string) {
   const normalized = message.toLowerCase();
@@ -43,6 +36,7 @@ interface AuthState {
   signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
   resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signInWithApple: () => Promise<{ error: Error | null }>;
   updateDisplayName: (displayName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   fetchProfile: () => Promise<void>;
@@ -157,20 +151,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signInWithGoogle: async () => {
-    const redirectTo = getAuthRedirectTo();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        ...(redirectTo ? { redirectTo } : {}),
-        skipBrowserRedirect: true,
-      },
-    });
+    return signInWithOAuthProvider('google');
+  },
 
-    if (!error && data?.url) {
-      window.location.assign(data.url);
-    }
-
-    return { error };
+  signInWithApple: async () => {
+    return signInWithOAuthProvider('apple');
   },
 
   updateDisplayName: async (displayName: string) => {

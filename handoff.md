@@ -1,6 +1,216 @@
 # Handoff
 
-Updated: 2026-07-19 (rev 63: Capacitor iOS foundation scaffolded)
+Updated: 2026-07-20 (rev 69: canonical iOS ID and TestFlight-to-unlisted release gates)
+
+## Rev 69 — canonical iOS ID and TestFlight-to-unlisted release gates
+
+### User decision and verified constraints
+
+- The intended canonical iOS bundle identifier is `app.hyper.mobile`. Treat this as the chosen identifier only after the Apple Account Holder verifies that the exact explicit App ID exists in Certificates, Identifiers & Profiles and is selectable in the matching App Store Connect app record. The current local branch still uses `com.alexanderroesler.hyper` in `capacitor.config.ts`, the Xcode target, native auth plugin, native bridge, WHOOP return allowlist, `Info.plist`, and URL schemes. Do not rewrite those identifiers piecemeal or register a second production App ID.
+- The Apple membership belongs to the user's friend and is an Individual membership. Apple currently states that users invited by an Individual Account Holder receive App Store Connect access only and are not Apple Developer Program team members. The owner therefore remains responsible for the registered App ID, production signing/certificates, agreements, final archive/upload, App Review submission, and unlisted-distribution request. The user can be an internal TestFlight tester and can manage only what the granted App Store Connect role permits. Do not share Apple Account credentials or private signing keys casually.
+- Food-database optimization is deferred. The build only needs the existing free barcode/search path and provider-neutral seams to work correctly for acceptance. Do not delay the first TestFlight build for Nutritionix, FatSecret approval, catalog benchmarking, or a speculative provider reorder. FatSecret/Nutritionix can be added later after written terms and credentials exist.
+- Apple currently allows a TestFlight build to be tested for 90 days. Unlisted distribution is not a beta channel: Apple requires the app to be final, submitted to App Review, and identified in Review Notes as intended for unlisted distribution before the separate request is made. An unlisted link can be used by anyone who obtains it, so Hyper's server-side two-user allowlist remains required.
+- Release is a separate guarded phase. Fable must finish a Hyper-Dev/TestFlight candidate and stop for the owner's explicit acceptance. It must not merge to production, change production Supabase/OAuth, deploy production services, submit App Review, request unlisted distribution, or release the app until the owner says exactly that the acceptance build passed and authorizes release.
+
+### Fable 5 execution prompt
+
+```text
+Continue the hyPer iPhone app work in /Users/alex/Desktop/hyPer-current-ui. Do the implementation and verification, not merely a plan. Read AGENTS.md, TOOL_SWITCHING_CHECKLIST.md, and handoff.md Rev 69, Rev 68, and Rev 67 before acting. Keep handoff.md current after every material action.
+
+MISSION
+Produce one fully integrated, signed, physical-iPhone TestFlight acceptance build for the two intended users using Hyper-Dev. After the owner completes the acceptance matrix and explicitly says “GO FOR UNLISTED RELEASE,” prepare and submit the final production build for unlisted App Store distribution. Do not cross that release gate early.
+
+NON-NEGOTIABLE SAFETY
+- Preserve the dirty worktree. Do not reset, rebase, regenerate ios/ wholesale, or overwrite either Capacitor implementation.
+- Do not touch /Users/alex/Desktop/hyPer, production main, production Supabase ref nnwfaaxmyvqsdnfcdxom, production OAuth, production hosting, production user data, the Hetzner VM, DNS, or external accounts without explicit approval for that exact action.
+- Preserve and exclude supabase/.temp/cli-latest and .claude/launch.json from commits. Never stage .env files, credentials, cookies, provider sessions, signing keys, diagnostic routes, or raw private data.
+- Use the existing package manager. Run targeted tests and then npm run test, npm run lint, npm run build, native checks, an actual Xcode Apple-framework build, and physical-device checks. Do not claim device behavior from syntax parsing or a simulator.
+- The Apple membership is an Individual account owned by the user's friend. Do not ask for or share the friend's Apple password. Clearly label every step only the Account Holder can perform and provide exact commands/click paths for that person. The user may receive App Store Connect and internal TestFlight access but is not thereby an Apple Developer Program team member.
+
+PHASE 1: RECOVERABLE REPOSITORY INTEGRATION
+1. Verify branch, status, log, remotes, origin/main, the complete dirty diff, and current GitHub PR state.
+2. Review the local native parity batch for correctness and secrets. Create and push a scoped safety checkpoint on codex/capacitor-ios-shell, excluding unrelated files and secrets.
+3. Merge origin/main into the feature branch with a normal merge commit. Reconcile the two Capacitor SPM shells intentionally. Preserve main's current FOLIO/design-elevation UI and web behavior plus the local native bridges and Hyper-Dev production guard. Do not replace one ios/ directory wholesale with the other.
+4. Verify with the Account Holder that `app.hyper.mobile` is the exact registered explicit App ID and the Bundle ID selected by the App Store Connect record. Once verified, make it canonical everywhere relevant: Capacitor app ID, Xcode target, provisioning/signing target, entitlements/application identifiers, native callback validation, URL types/schemes, TypeScript native bridge, Supabase native redirect allowlists, WHOOP native return allowlist, tests, and documentation. Use one native callback contract consistently. Preserve production web Google OAuth behavior.
+5. Commit and push the reconciled integration branch. Report commit IDs and any unresolved conflicts.
+
+PHASE 2: COMPLETE THE TESTABLE IPHONE PRODUCT
+Finish or fix the following against Hyper-Dev only. Reuse the existing architecture and tests; do not redesign stable FOLIO typography, color, or navigation.
+
+Authentication and session:
+- Email/password, Google native OAuth, Sign in with Apple, callback/deep-link handling, Keychain-backed session restore, sign-out, expired-session behavior, and two-account server allowlisting.
+- Keep browser auth working. Configure only the exact Hyper-Dev native callbacks first. Never point the native acceptance build at production to bypass an auth error.
+
+Running and workouts:
+- Long Run and Splits are the only startable running modes; legacy sprint records remain readable.
+- Native Core Location/Core Motion recording must survive backgrounding and phone lock, restore interrupted sessions, reject bad samples, auto-pause/resume correctly, and save idempotently.
+- Show live speed, rolling/current pace, average pace/speed, distance, elapsed/active time, GPS quality, and automatic/manual split results clearly. Preserve diagnostic raw-trace export locally and never upload coordinates by default.
+- Finish optional user-authorized HealthKit workout/route export only if it can be done cleanly without blocking the core recorder. Do not claim Strava parity until the field corpus passes.
+- Workout start/log/complete, set editing, past-workout editing, program view/edit/delete, volume status, and background rest-timer notifications must all work.
+
+Nutrition:
+- Manual foods, saved foods/meals create/edit/delete, immutable logged snapshots, meal buckets/order, daily targets/totals, editable macros, source badges, researched-description review, color photo capture/review, duplicate-safe retry, and barcode scan must work end to end.
+- For this first build, retain a simple provider-neutral free lookup path with saved/personal exact barcode first and the currently functional Open Food Facts/USDA fallbacks. A catalog miss must have an editable manual/label-capture escape hatch and be saveable for the owner. Do not wait for FatSecret or Nutritionix and do not expose provider secrets in the app.
+- Preserve explicit provenance and user review. Never merge nutrient fields from different providers or present AI estimates as verified database values.
+
+Photo worker:
+- Review the existing hardened worker and per-user routing. After explicit infrastructure approval, deploy the reviewed commit to the Hetzner CPX21 as an unprivileged supervised service behind private TLS ingress.
+- Authenticate Supabase JWTs, enforce the exact two-user allowlist, isolate each user's permitted OpenAI/Codex and Claude subscription session, cap concurrency for CPX21, delete temporary images, redact logs, and verify restart/reboot, timeouts, expired auth, allowed/denied users, and duplicate-safe requests.
+- Consumer-subscription automation is a private best-effort bridge, not an App Store entitlement or guaranteed provider API. Never bundle provider credentials in iOS. If reliable unattended use cannot be verified, surface a truthful unavailable/re-auth state and record the blocker.
+
+WHOOP and weight:
+- WHOOP connect, reconnect, foreground/app-open auto-sync, manual sync progress/result, idempotent imports, notes, durable owner-scoped deletion suppression/tombstones, and errors must work with both real accounts where applicable.
+- Preserve EufyLife -> Apple Health -> Hyper. Request HealthKit body-mass access only when the user opts in, reconcile on foreground, dedupe by HealthKit UUID, and show latest weight plus simple history/trend, units, timestamp, source, empty/denied/error states. Validate with a real main-user Eufy weigh-in and a non-Eufy Health sample.
+
+Native/UI quality:
+- Fix iPhone safe-area opacity at the home indicator and sheet action areas, horizontal overflow, clipped tabs, 44-point targets, keyboard/focus behavior, loading/error/empty states, VoiceOver labels, Dynamic Type at practical accessibility sizes, dark/light appearance, and Reduce Motion.
+- Preserve offline/retry safety and never show a “saved” state before durable persistence succeeds.
+
+PHASE 3: HYPER-DEV AND DEVICE VERIFICATION
+1. Apply only reviewed local migrations/functions needed by the app to Hyper-Dev after explicit approval. Record exact migration/function versions and rollback steps. Do not copy production secrets into the repository.
+2. Compile and run the native app on a physical iPhone. Exercise denied/limited/granted permissions and cold/warm relaunches. Capture reproducible defects and add regression tests before fixes where practical.
+3. Build the GPS field corpus: 10 minutes stationary outdoors; measured 400 m; known 1 km; 3-5 km with turns/trees; manual pause/resume; auto-pause; manual and automatic intervals; screen locked/backgrounded; interrupted/relaunched session; and matched Strava trials on the same routes. Compare distance error, split error, pace stability, callback gaps, and battery use. Tune only from evidence and retain rollbackable constants.
+4. Run the complete two-account acceptance matrix for auth/session, Today, Train, Fuel, You, all must-work product flows, real WHOOP, real Eufy/HealthKit, both photo providers, barcode hits/misses, saved/manual foods, offline/retry, and accessibility.
+5. Run npm run test, npm run lint, npm run build, git diff --check, Capacitor sync/doctor, Xcode build/archive validation, and a sensitive-file scan. All required checks must pass or be reported as a named blocker.
+
+PHASE 4: TESTFLIGHT ACCEPTANCE BUILD
+1. Have the Account Holder create/verify the App Store Connect app record for `app.hyper.mobile`, accept current agreements, configure signing/capabilities, archive the release candidate, and upload it. Use a normal TestFlight-capable build, not “TestFlight Internal Only,” because the accepted binary may later become the release candidate.
+2. Create an internal TestFlight group for the two users, add the build, provide concise What to Test notes, install on both real iPhones, and verify crash/feedback collection. Remember each TestFlight build expires after 90 days.
+3. Deliver a numbered acceptance checklist with expected results and a defect template. Keep this build on Hyper-Dev and keep production untouched.
+4. HARD STOP. Wait for the owner to state that all release-blocking tests passed and explicitly say “GO FOR UNLISTED RELEASE.” A request to fix a test defect is not release approval.
+
+PHASE 5: ONLY AFTER EXPLICIT RELEASE APPROVAL
+1. Review every accepted diff again. Create a scoped release PR into production main, obtain the requested independent review, resolve findings, and rerun all checks. Promote database migrations, Edge Functions, OAuth/native callbacks, hosting config, WHOOP config, and VM routing to production one subsystem at a time with backups, rollback steps, and smoke tests. Never replace working production web Google OAuth; extend it for native callbacks.
+2. Build a production-signed archive from the reviewed commit with a unique monotonically increasing version/build number. Verify it points only to production public client configuration and that secrets remain server-side.
+3. Complete App Store metadata and review readiness: final name/subtitle/description/category/age rating, real iPhone screenshots, app icon, support URL, accessible in-app and metadata privacy-policy URL, App Privacy answers, export-compliance answers, permission-purpose strings, in-app account deletion, Sign in with Apple equivalence for Google login, reviewer contact, an active allowlisted review account or fully functional review mode, and detailed notes for GPS/background location, HealthKit, camera/photos, WHOOP, and the private AI worker. The backend and review account must remain available throughout review.
+4. Select manual release control. Add a Review Notes statement that the app is intended for unlisted distribution, submit the final app version to App Review, and then submit Apple's separate Unlisted App Distribution request. Do not make the app publicly searchable and do not click final release before Apple approves the unlisted request/classification.
+5. If Apple rejects either the app or unlisted request, do not work around the review. Record the exact reason, make the smallest compliant fix, retest, and resubmit.
+6. After approval, have the Account Holder release the approved unlisted version, verify the direct App Store link on both intended devices, confirm the app does not appear in search, and run production smoke tests for auth, sync, GPS, photo, barcode, WHOOP, and HealthKit. Keep the server-side two-user allowlist because anyone with the unlisted link can download the app.
+7. Tag the exact release commit, record build/version, migrations/functions, deployment artifacts, App Store link, rollback/incident steps, and final verification in handoff.md without secrets.
+
+DONE MEANS
+- Before the hard stop: a reproducible TestFlight build installed on both iPhones, connected only to Hyper-Dev, with the full acceptance checklist ready and no unreported P0/P1 issue.
+- After explicit release approval: an App-Review-approved, Apple-approved unlisted App Store release from the exact reviewed commit, with production smoke tests passed and the two-user access boundary enforced.
+```
+
+## Rev 68 — remaining GPS, food, VM, WHOOP, and Eufy work
+
+### Current quality assessment
+
+- The local architecture is a strong pre-Xcode foundation, not a finished or Strava-validated iOS app. Automated validation remains green from Rev 66, but the Swift plugins have only passed syntax parsing, not an Xcode Apple-framework build, signing, background runtime, or physical-device acceptance. Resolve Rev 67's branch/Capacitor/bundle-ID conflict before feature expansion.
+- The native run plugin already requests best-for-navigation accuracy, declares fitness activity, disables automatic Core Location pauses, uses no distance filter, creates an iOS 17 background activity session, records Core Motion state, persists every raw `CLLocation` to a protected JSONL trace, restores interrupted recording, and feeds the existing tested pace/split/auto-pause reducer. This is the correct foundation, but code review cannot establish Strava parity or superiority.
+- Remaining run work is: Xcode compile/runtime fixes; cold-launch/background/locked-screen/termination recovery tests; optional HealthKit `HKWorkout` plus `HKWorkoutRouteBuilder` export (currently absent despite the permission copy); native background audio/haptic split cues if desired; a post-run replay/reprocessing path that preserves the raw trace and compares candidate filters without silently rewriting history; current-speed plus rolling/average pace presentation; battery/cadence diagnostics; and a measured outdoor calibration corpus. Tune only after known-distance and matched-Strava evidence exists.
+- The photo worker is materially hardened and deletes each temporary image directory in `finally`. It is not deployed. Remaining work is operational: reviewed-code transfer, Linux Node/CLI compatibility, an unprivileged service user, provider authentication, private ingress/TLS, Supabase JWT plus explicit user allowlist, systemd/reboot verification, auth-expiry monitoring, and failure/queue/restart tests. One process has one Codex and Claude identity; two consumer-subscription users require isolated OS users/worker instances plus authenticated user-to-instance routing. Do not pool one subscription login.
+- WHOOP foreground/app-open reconciliation exists, but there is no webhook receiver and no durable user-deletion suppression. A WHOOP walk deleted from Hyper can therefore reappear on a later import. Add an owner-scoped provider tombstone/suppression mechanism before presenting delete as permanent, then consider signed/idempotent webhooks plus periodic reconciliation.
+
+### Barcode and database decision
+
+- Zero-cost optical decoding is already strong: native iOS uses VisionKit/DataScanner and the web fallback uses ZXing. Catalog coverage is a separate problem. Current live free lookup is USDA Branded first, then Open Food Facts; FatSecret has only a response mapper and is not activated. No free, approval-free database was found that can honestly be claimed to match Cronometer's combined curated/provider coverage.
+- Best available no-approval stack is: the user's own saved barcode catalog first, Open Food Facts exact-barcode data, then USDA Branded, followed by a nutrition-label/front-package capture flow that creates an editable saved personal product bound to that barcode. This makes an initial miss reusable on every future scan. Open Food Facts is free/open but community-contributed and explicitly provides no accuracy/completeness guarantee; retain provenance, attribution/license compliance, and user review.
+- Current code does not query a user's saved foods by barcode before external providers and does not offer label OCR/capture after a miss. It also uses deprecated Open Food Facts API v2 even though v3 is recommended for new integrations. These are the highest-value free barcode code improvements. Benchmark optical decode and catalog match separately on 50–100 products before changing provider priority or making quality claims.
+- FatSecret Premier Free remains the strongest pending free provider candidate for this student project. Its current official page says students/student research groups qualify, includes US barcode scanning/autocomplete/caching with required attribution, and publishes vendor claims of 90%+ global UPC/EAN coverage, verified items, and zero duplicates. Treat those as vendor claims until Hyper's personal benchmark confirms them. Keep its client secret and token request on a static-egress server; do not ship credentials to iOS.
+- Nutritionix Business Trial can still be attempted honestly as a qualified student research evaluation with two MAUs. Its current request page says it does not offer open public access for personal/non-commercial/student use but does offer limited free trials for qualified commercial, research, and enterprise evaluations. Apply using a real university `.edu` address if available, describe the independent student research and two-user evaluation, and do not invent a company or affiliation. Approval, duration, quota, production rights, and the no-general-caching restriction remain external gates; it is not a permanent free plan.
+
+### EufyLife through Apple Health
+
+- Eufy's current support documentation confirms EufyLife on iOS can connect to Apple Health and notes that only the main EufyLife user's data syncs; separate users should use separate EufyLife accounts. Hyper's native bridge already requests Apple Health body-mass read access, observes/background-delivers changes, reads sample UUID/time/kg/source, upserts idempotently with RLS, and reconciles on app open/foreground.
+- The imported weight is currently visible only inside the Settings connection row. To satisfy “alongside everything else,” add a latest-weight surface and a simple weight-history/trend view in the existing FOLIO style, with lb/kg preference, measured time, source, empty/error/permission states, and no medical interpretation. Test EufyLife → Apple Health → Hyper with a real main-user weigh-in, duplicate/retry, offline foregrounding, permission denial, and a non-Eufy Apple Health weight. Do not claim Hyper can force EufyLife to upload; it can import only after EufyLife writes Apple Health.
+
+### Next Fable 5 work package
+
+```text
+Continue in /Users/alex/Desktop/hyPer-current-ui on codex/capacitor-ios-shell.
+
+Read AGENTS.md, TOOL_SWITCHING_CHECKLIST.md, and handoff.md Rev 68 then Rev 67. Preserve the dirty worktree and production boundary. Do not touch /Users/alex/Desktop/hyPer, production Supabase, production OAuth, production deployment, or main. Preserve supabase/.temp/cli-latest and .claude/launch.json.
+
+Phase 1 is mandatory before new features: review the complete local native batch, rerun all required checks, create and push a safety checkpoint excluding unrelated files/secrets, merge origin/main into the feature branch, and intentionally reconcile the two Capacitor SPM projects. Preserve main's design-elevation UI and the local native plugins/Hyper-Dev build guard. Ask which Apple bundle ID is registered before resolving app.hyper.mobile versus com.alexanderroesler.hyper if it cannot be verified.
+
+Phase 2: compile in Xcode against Hyper-Dev and fix all real Apple-framework errors. Add tests where practical. Run on a physical iPhone and validate native auth, Keychain restore, background GPS, barcode, notifications, and HealthKit. Do not claim success from Swift parse or simulator-only checks.
+
+Phase 3 GPS: keep only Long Run and Splits startable while preserving legacy sprint records read-only. Finish robust background/locked-screen/interruption recovery, expose current speed plus rolling and average pace clearly, add optional user-authorized HKWorkout/HKWorkoutRoute export, and add privacy-preserving raw-trace replay/calibration tooling. Do not guess new filters or claim Strava parity until the 400 m, 1 km, 3–5 km, stationary, auto-pause, interval, and matched-Strava field corpus is collected. Separate measured code defects from calibration work.
+
+Phase 4 food/barcodes: create a provider-neutral exact-barcode pipeline. Query an owner-scoped saved personal barcode first; then Open Food Facts; then USDA Branded while Nutritionix/FatSecret remain disabled adapters until credentials/approval exist. Upgrade Open Food Facts to its current supported API, retain required User-Agent/provenance, validate serving/macros, and handle provider timeout versus true not-found distinctly. On a total miss, offer front-package plus nutrition-label capture, editable OCR/AI review, and save the product to that user's barcode catalog so the next scan resolves locally. Never merge nutrient fields from different providers. Add regression tests and a 50–100 product benchmark harness/report.
+
+Phase 5 Eufy/Health: keep the path EufyLife → Apple Health → Hyper. Surface latest weight and a simple trend/history in Today or You using the FOLIO design, with lb/kg, timestamp, source, empty/error/permission states, and no medical claims. Preserve UUID dedupe and app-open/foreground reconciliation. Validate with real Eufy main-user samples after the migration is applied to Hyper-Dev only.
+
+Phase 6 WHOOP: add durable owner-scoped suppression/tombstones so a deleted imported walk or other WHOOP activity does not reappear on the next sync. Preserve user-authored notes and idempotency. Design signed/idempotent webhook ingestion plus periodic reconciliation, but do not deploy cloud changes without explicit approval.
+
+Phase 7 VM: finish any missing per-user routing/configuration needed for isolated provider identities, then produce an exact Hetzner CPX21 deployment and rollback checklist. Do not SSH, install packages, change firewall/DNS/Tailscale, start services, or copy credentials without explicit approval. Once authorized, deploy only the reviewed checkpoint and verify health, allowed/denied users, both providers, queue saturation, restart/reboot, auth expiry, timeouts, and temporary-image deletion.
+
+Run targeted tests throughout, then npm run test, npm run lint, npm run build, native structural checks, and Xcode/device checks. Update handoff.md after every material action with exact results and blockers. Stop before any production merge or deployment and provide the owner a concrete iPhone acceptance checklist.
+```
+
+## Rev 67 — GitHub Capacitor audit and Fable 5 transfer plan
+
+### Verified remote state
+
+- Repository is `staylan488-ux/hyPer`; default branch is `main`. A read-only GitHub/fetch audit on 2026-07-20 confirmed PR [#58](https://github.com/staylan488-ux/hyPer/pull/58), `feat(ios): add Capacitor iOS platform`, was merged into `main` at `3bef3bb400bc2909b37ae1d00efc527ade421dc1`. Its source commits are `d590a50e5d1cbcc50f0d1a167f548aef6b99ec20` and `a4ba0a069898da114263ffa512b24b0e0180b79a`; remote branch `feat/ios-capacitor` remains present.
+- PR #58 contains a generated Capacitor 8 Swift Package Manager iOS shell, Xcode project/assets, `capacitor.config.ts`, and Capacitor package changes. Its configured bundle ID is `app.hyper.mobile`. The code and merge are verified on GitHub; the friend's report that it launches successfully as a standalone app was not independently reproduced in this checkout or on a device during this audit.
+- Remote `main` also contains merged design-elevation PR #57. Relative to merge base `0da91009553dbd40e79ef3cfc1a4629de981d05f`, `origin/main` is 12 commits ahead and local `codex/capacitor-ios-shell` HEAD is 14 commits ahead. The local branch has no matching remote branch, and the current uncommitted native parity batch is not on GitHub.
+
+### Verified local state
+
+- Worktree remains `/Users/alex/Desktop/hyPer-current-ui` on `codex/capacitor-ios-shell`, committed HEAD `d356c516 feat(ios): scaffold Capacitor app shell`. It contains a separate Capacitor SPM project configured as `com.alexanderroesler.hyper`, plus an uncommitted native parity batch: native OAuth/Keychain/deep links, Core Location/Core Motion background run capture and recovery, HealthKit weight sync, VisionKit barcode scanning, local-notification rest timers, WHOOP lifecycle/native-return handling, worker hardening/deployment files, one local database migration, adapters, and regression tests.
+- Latest completed validation for this exact native batch remains PASS: Swift syntax parse through Command Line Tools, Node syntax, plist/project/storyboard validation, `npm run lint`, `npm run test` (40 files, 364 tests), `npm run build`, `git diff --check`, `npx cap doctor`, and sensitive-literal scan. Full Xcode Apple-framework compile/sign/device validation remains outstanding.
+- Preserve unrelated user-owned working-tree files `supabase/.temp/cli-latest` and `.claude/launch.json`; do not stage, discard, or overwrite them. No local native parity commit or push has been made. Production checkout `/Users/alex/Desktop/hyPer`, production Supabase ref `nnwfaaxmyvqsdnfcdxom`, Hyper-Dev cloud state, VM, provider credentials, and external accounts were not changed by this audit.
+
+### Required reconciliation decision and safe order
+
+- Do not checkout `main`, pull, reset, rebase, or regenerate `ios/` while this worktree is dirty. First review the local diff and create a safety commit on `codex/capacitor-ios-shell`, explicitly excluding the two unrelated files above and all secrets/generated junk. Push that branch before integration so the native batch has an off-Mac recovery point.
+- Then merge current `origin/main` into the feature branch in a normal merge commit. Preserve main's design-elevation work and current web behavior while retaining the local native plugins and safety guard that locks native builds to Hyper-Dev. Resolve the two generated Capacitor projects intentionally; never copy one `ios/` tree over the other wholesale.
+- Bundle IDs conflict: GitHub shell uses `app.hyper.mobile`; local native callbacks/entitlements use `com.alexanderroesler.hyper`. Before resolving Xcode project, URL scheme, entitlements, OAuth callbacks, and App Store Connect records, verify which App ID the Apple Account Holder actually registered. Use one canonical identifier everywhere. Do not guess or register a second production App ID.
+- Remote PR #58 removed tracked `CLAUDE.md` as local-only. Preserve project instructions through `AGENTS.md`, this `handoff.md`, and `TOOL_SWITCHING_CHECKLIST.md`; do not let that deletion remove required local guidance during the merge.
+
+### Remaining work for Fable 5
+
+1. Inspect and safety-commit/push the current native batch without the unrelated user files or secrets.
+2. Merge `origin/main`, reconcile the competing Capacitor shells and bundle-ID decision, preserve the design-elevation UI, then rerun tests/lint/build and native structural validation.
+3. After Xcode license/components are complete, add ignored Hyper-Dev public client configuration, run `npm run ios:sync` and `npm run ios:open`, compile the Swift plugins, configure only the required capabilities, and run on a physical iPhone. Never substitute production Supabase credentials to bypass the environment guard.
+4. In Hyper-Dev only, configure the exact final native OAuth callback, enable/verify Google and Apple providers, apply `20260719230000_add_body_weight_measurements.sql`, and deploy the changed WHOOP Edge Function only after explicit approval. Verify Google web auth remains unchanged in the production web app.
+5. Execute device acceptance for cold/warm auth restore; Google/Apple callbacks; background/locked-screen long run and splits; interruption recovery; live/average/split pace; auto-pause; HealthKit/Eufy weight dedupe; barcode decode plus provider fallbacks; rest notifications; WHOOP connect/foreground reconciliation; safe-area UI; and all six must-work web product flows.
+6. Build the measured GPS calibration corpus against known 400 m, 1 km, and 3–5 km routes plus matched Strava trials. Tune only from exported diagnostics; do not claim Strava parity before the documented accuracy/background gates pass.
+7. Deploy the hardened photo worker to Hetzner only after explicit infrastructure approval, private TLS ingress, Supabase authentication plus user allowlist, separate permitted provider identities per tester, service supervision, retention/logging review, and a restart/auth-expiry test. Consumer-subscription inference remains a private best-effort bridge, not a guaranteed production entitlement.
+8. FatSecret Premier Free is awaiting provider review. The truthful application position is a non-commercial student personal-research project with no funding or revenue. Do not add credentials or activate FatSecret until approval, terms, attribution/storage requirements, and the personal barcode benchmark are documented.
+9. Do not merge or push this integration to production `main`, deploy production, change production OAuth, or apply production migrations until the full Hyper-Dev iPhone test matrix and independent review pass.
+
+### Fable 5 startup instruction
+
+```text
+Continue the hyPer Capacitor/iOS integration in /Users/alex/Desktop/hyPer-current-ui.
+
+First read AGENTS.md, TOOL_SWITCHING_CHECKLIST.md, and the top of handoff.md through Rev 67. Then verify branch, status, log, origin/main, and the complete local diff. Do not discard or overwrite the dirty working tree.
+
+Your first deliverable is a reviewed safety commit and pushed recovery branch for the intended native parity batch. Exclude supabase/.temp/cli-latest, .claude/launch.json, every .env file, credentials, generated junk, and unrelated changes. Run the required test/lint/build and native structural checks before committing.
+
+Next merge origin/main into codex/capacitor-ios-shell and reconcile the two Capacitor SPM shells. Preserve origin/main's design-elevation UI and web behavior, preserve the local native plugins and Hyper-Dev safety guard, and do not regenerate ios/ over either implementation. Stop and ask which bundle ID the Apple Account Holder actually registered before resolving app.hyper.mobile versus com.alexanderroesler.hyper if that cannot be verified locally.
+
+After the merge, compile in Xcode against Hyper-Dev on a physical iPhone and finish the Rev 67 device/deployment checklist. Do not touch production Supabase, production OAuth, production deployment, or production main without explicit approval and completed Hyper-Dev acceptance. Update handoff.md after every material action and report exact commands/results, remaining blockers, and the next safe action.
+```
+
+## Rev 66 — pre-Xcode native parity foundation implemented
+
+- Branch remains `codex/capacitor-ios-shell`. Production web code at `/Users/alex/Desktop/hyPer`, production Supabase ref `nnwfaaxmyvqsdnfcdxom`, cloud configuration, VM, and external accounts were not changed. Browser Google OAuth retains its existing web redirect behavior; all new native behavior is gated by Capacitor iOS detection and is intended for isolated Hyper-Dev ref `nwvgkxqjqihqnjuworqz` first.
+- Added native iOS bridges and Swift implementations for PKCE OAuth through `ASWebAuthenticationSession`, native-only Sign in with Apple, Keychain Supabase session storage, strict custom-scheme callbacks, background Core Location/Core Motion run capture with protected JSONL trace recovery, VisionKit barcode scanning, local-notification rest timers, and HealthKit body-weight reads/background reconciliation. The existing TypeScript run reducer continues to own filtering, active time, pace, auto-pause, and split interpolation while native recording supplies durable background samples.
+- Added authenticated HealthKit weight upsert logic plus `supabase/migrations/20260719230000_add_body_weight_measurements.sql`; native Settings controls are opt-in. Added foreground WHOOP reconciliation and a signed/allowlisted native WHOOP OAuth return route. These schema and Edge Function changes are local only and have not been applied or deployed to Hyper-Dev or production.
+- Hardened the private photo-food worker with Supabase authentication timeouts, explicit user allowlisting, bounded concurrency/queueing, stable idempotency keys and response caching, provider-status caching, command timeouts, graceful shutdown, redacted client errors, and systemd/example deployment files under `deploy/photo-worker/`. The worker was not deployed or started on Hetzner. Each tester still requires a separate permitted provider identity/worker instance if consumer subscription authentication is used; one shared CLI login must not be pooled.
+- Added native/web adapters and regression coverage for OAuth parsing, secure timer behavior, weight normalization, WHOOP sync throttling, request idempotency, and worker queue/allowlist behavior. Final validation PASS: Swift source parse via Command Line Tools, Node syntax checks, `plutil -lint`, storyboard XML validation, `npm run lint`, `npm run test` (40 files, 364 tests), `npm run build`, `git diff --check`, and `npx cap doctor` (`iOS looking great`). Existing large JavaScript chunk and stale Browserslist warnings remain non-blocking.
+- Full Apple-framework compilation, signing, capabilities, background execution, HealthKit, VisionKit, OAuth, notification delivery, and GPS quality are not yet verified. Xcode was installed/selected during the session but its license has not been accepted, and that is a user/system action. `npm run ios:sync` also intentionally refuses to run until ignored `.env.local` contains the Hyper-Dev URL and public anon/client key; do not bypass this guard or use production credentials.
+- Preserve unrelated user files `supabase/.temp/cli-latest` and `.claude/launch.json`. No commit was requested or created. Exact next action: accept/open Xcode and install its components, add the ignored Hyper-Dev public client configuration, run `npm run ios:sync` then `npm run ios:open`, choose the friend's signing team and a physical iPhone, compile, fix any Apple API/compiler findings, add the exact native callback URL to Hyper-Dev only, then perform the documented device acceptance tests before any production merge or configuration change.
+
+## Rev 65 — native/server parity gap and production-auth boundary
+
+- Production remains `/Users/alex/Desktop/hyPer` with a working Google web sign-in flow and production Supabase ref `nnwfaaxmyvqsdnfcdxom`. Treat that implementation as the regression reference and do not copy, replace, or reconfigure its OAuth/provider settings while developing the native client. The Capacitor branch remains isolated against Hyper-Dev ref `nwvgkxqjqihqnjuworqz`; eventual delivery is an intentional reviewed code merge plus separately verified native redirect configuration, not a staging-to-production configuration overwrite.
+- The checked-in Capacitor shell does not yet provide the target native capabilities. Remaining priority code is: native OAuth callbacks/deep links plus Sign in with Apple and secure session storage; a Swift Core Location/Core Motion Capacitor plugin with background/locked-screen recording, durable trace recovery, live/average pace, auto-pause, exact manual/automatic split interpolation, diagnostics, and field calibration; native camera/barcode scanning; local-notification rest timers; HealthKit import/export; app lifecycle/offline synchronization; and production privacy/account-deletion surfaces.
+- The existing photo worker is a development bridge, not a 24/7 service. Before VM deployment it needs Linux CLI/runtime validation, explicit two-user allowlisting in addition to Supabase authentication, isolated provider identities, bounded queue/concurrency, idempotent jobs, retries/timeouts/cancellation, restart supervision, auth-expiry monitoring, private TLS ingress, short-lived encrypted image handling, structured output validation, and an official API fallback. A Hetzner CPX21 is sufficient to orchestrate remote frontier inference but cannot self-host a frontier vision model. OpenAI documents API-key auth as the default for programmatic automation and warns against exposing Codex execution to untrusted/public environments; saved subscription authentication remains a private, revocable beta bridge rather than a guaranteed production entitlement.
+- Current Eufy documentation confirms that EufyLife on iOS can sync a paired main user's scale data to Apple Health. Native Hyper can implement an initial HealthKit body-mass import plus anchored/observer updates, UUID/source dedupe, unit normalization, and foreground reconciliation. This is automatic after EufyLife writes the HealthKit sample, but Hyper cannot force the scale/EufyLife sync or rely on an undocumented Eufy cloud API.
+- WHOOP server OAuth/import behavior, existing nutrition/manual/saved-meal logic, and the TypeScript run engine can be reused. Native lifecycle sync, webhook reconciliation, barcode-provider approvals/benchmarks, secure offline persistence, and real-device acceptance still remain. A Strava-comparable recorder is a measurable calibration target, not a universal accuracy guarantee because phone GNSS and environmental limits remain shared constraints.
+- Exact next action: install/open Xcode 26+ on the signing owner's Mac, build the current Hyper-Dev Capacitor shell on a physical iPhone, verify layout/session persistence without touching production, then implement native auth parity first and the background run plugin second. No source, schema, dependency, VM, cloud configuration, credential, deployment, production system, or external account changed during this assessment; only this handoff research/plan note changed.
+
+## Rev 64 — friend-owned individual Apple account workflow
+
+- The Apple Developer Program membership belongs to the user's friend and is an individual membership. Apple currently allows an individual Account Holder to invite up to 50 additional App Store Connect users, but those users are not members of the Developer Program team and cannot access Certificates, Identifiers & Profiles. Therefore GitHub, Supabase, or LLM collaborator access does not grant iOS signing authority, and the friend's Apple Account/password/2FA must not be shared.
+- Clean workflow: friend installs Xcode 26+, signs in with the enrolled Apple Account, clones/checks out `codex/capacitor-ios-shell`, receives Hyper-Dev client configuration through an ignored local environment file or direct Supabase collaboration, runs the checked-in Capacitor sync, selects the friend's signing team, registers the final bundle ID, builds on a physical iPhone, and uploads signed builds. Friend then invites the user to App Store Connect with Developer or App Manager access and distributes through an internal TestFlight group; Apple permits up to 100 internal testers and each build lasts 90 days.
+- Ownership consequence: an individual membership publishes under the friend's legal name, the friend remains the sole Account Holder responsible for agreements/renewal/certificates, and transfer of an individual Account Holder role is limited and requires Apple assistance. Confirm this is acceptable before registering the final App ID or creating the production App Store record. For initial Hyper-Dev device/TestFlight testing it is workable. Production, App Store Connect, signing resources, cloud configuration, and credentials were not changed during this research.
 
 ## Rev 63 — Capacitor-first iOS foundation
 

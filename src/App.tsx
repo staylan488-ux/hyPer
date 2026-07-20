@@ -15,6 +15,9 @@ import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
+import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
+import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
+import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, initialized } = useAuthStore();
@@ -67,8 +70,12 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { initialize } = useAuthStore();
+  const { initialize, user } = useAuthStore();
   const initializeTheme = useThemeStore((state) => state.initializeTheme);
+
+  useNativeHealthSync(user?.id);
+  useWhoopForegroundSync(user?.id);
+  useNativeAuthCallback();
 
   useEffect(() => {
     initialize();

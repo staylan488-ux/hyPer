@@ -31,12 +31,14 @@ import {
 } from '@/lib/runTracker';
 import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrackerCues';
 import { createDeviceMotionDetector } from '@/lib/deviceMotion';
+import { isNativeIOS } from '@/lib/nativeBridge';
+import { createNativeRunSource } from '@/lib/nativeRunSource';
 
 export interface PositionSource {
   // simulated sources compress delivery but report a consistent clock
   getNowMs: () => number;
   start: (onSample: (sample: GpsSample) => void, onError: (message: string) => void) => void;
-  stop: () => void;
+  stop: (discard?: boolean) => void;
 }
 
 export function createGeolocationSource(): PositionSource {
@@ -117,6 +119,12 @@ export function createGeolocationSource(): PositionSource {
       motionDetector.reset();
     },
   };
+}
+
+function createDefaultPositionSource(runId: string, resume: boolean): PositionSource {
+  return isNativeIOS()
+    ? createNativeRunSource(runId, resume)
+    : createGeolocationSource();
 }
 
 // replays relative-time samples at `timeScale`× while getNowMs advances at the
@@ -274,9 +282,9 @@ export function useRunTracker(): UseRunTracker {
 
   const start = useCallback(
     (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => {
-      const activeSource = source ?? createGeolocationSource();
-      const now = activeSource.getNowMs();
+      const now = source?.getNowMs() ?? Date.now();
       const tracker = createTracker(defaultTrackerConfig(mode, autoLapM, autoPause), now);
+      const activeSource = source ?? createDefaultPositionSource(tracker.runId, false);
       setFinishedRun(null);
       traceRef.current = [];
       stateRef.current = tracker;
@@ -309,7 +317,7 @@ export function useRunTracker(): UseRunTracker {
       stateRef.current = restored;
       setState(restored);
       setResumable(false);
-      attachSource(source ?? createGeolocationSource());
+      attachSource(source ?? createDefaultPositionSource(restored.runId, true));
     },
     [attachSource],
   );
@@ -331,8 +339,8 @@ export function useRunTracker(): UseRunTracker {
     commit(isPaused(current) ? resumeTracker(current, t) : pauseTracker(current, t));
   }, [commit]);
 
-  const stopSource = useCallback(() => {
-    sourceRef.current?.stop();
+  const stopSource = useCallback((discard = false) => {
+    sourceRef.current?.stop(discard);
     sourceRef.current = null;
   }, []);
 
@@ -342,7 +350,7 @@ export function useRunTracker(): UseRunTracker {
     if (!current) return null;
 
     const run = finishTracker(current, source?.getNowMs() ?? Date.now(), [...traceRef.current]);
-    stopSource();
+    stopSource(false);
     const finished: TrackerState = { ...current, status: 'finished' };
     stateRef.current = finished;
     setState(finished);
@@ -358,7 +366,7 @@ export function useRunTracker(): UseRunTracker {
   }, [stopSource]);
 
   const discard = useCallback(() => {
-    stopSource();
+    stopSource(true);
     stateRef.current = null;
     traceRef.current = [];
     setState(null);

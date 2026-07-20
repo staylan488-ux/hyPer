@@ -15,9 +15,9 @@ function extractError(data: unknown): string | null {
 }
 
 // returns the WHOOP consent URL to redirect the browser to
-export async function startWhoopConnect(): Promise<string> {
+export async function startWhoopConnect(returnTo?: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('whoop-oauth', {
-    body: { action: 'start' },
+    body: { action: 'start', ...(returnTo ? { returnTo } : {}) },
   });
   if (error) throw new Error(`whoop-oauth start failed: ${error.message}`);
 

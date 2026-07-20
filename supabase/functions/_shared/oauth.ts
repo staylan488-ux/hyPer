@@ -63,13 +63,20 @@ export interface OAuthStatePayload {
   userId: string;
   expiresAtMs: number;
   nonce: string;
+  returnTo?: string;
 }
 
-export async function signOAuthState(secret: string, userId: string, ttlMs = 10 * 60 * 1000): Promise<string> {
+export async function signOAuthState(
+  secret: string,
+  userId: string,
+  ttlMs = 10 * 60 * 1000,
+  returnTo?: string,
+): Promise<string> {
   const payload: OAuthStatePayload = {
     userId,
     expiresAtMs: Date.now() + ttlMs,
     nonce: crypto.randomUUID(),
+    ...(returnTo ? { returnTo } : {}),
   };
   const encoded = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
   const mac = base64UrlEncode(await hmacSha256(secret, encoded));
@@ -85,6 +92,7 @@ export async function verifyOAuthState(secret: string, state: string): Promise<O
   try {
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(encoded))) as OAuthStatePayload;
     if (!payload.userId || typeof payload.expiresAtMs !== 'number') return null;
+    if (payload.returnTo !== undefined && typeof payload.returnTo !== 'string') return null;
     if (payload.expiresAtMs < Date.now()) return null;
     return payload;
   } catch {

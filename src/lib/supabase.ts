@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { isNativeIOS } from '@/lib/nativeBridge'
+import { nativeAuthStorage } from '@/lib/nativeSecureStorage'
 import { isPreviewActive } from '@/preview/flag'
 import { createMockClient } from '@/preview/mockSupabase'
 
@@ -8,6 +10,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // DEV-ONLY: on /preview, swap in an in-memory mock so the signed-in app is
 // browsable without a backend. Production always uses the real client.
 const preview = isPreviewActive()
+const nativeIOS = isNativeIOS()
 
 if (!preview && (!supabaseUrl || !supabaseAnonKey)) {
   throw new Error('Missing Supabase environment variables')
@@ -19,7 +22,8 @@ export const supabase = preview
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: !nativeIOS,
+        ...(nativeIOS ? { flowType: 'pkce' as const, storage: nativeAuthStorage } : {}),
       }
     })
 
@@ -303,6 +307,41 @@ export interface Database {
           dismissed_at?: string | null
           created_at?: string
           updated_at?: string
+        }
+      }
+      body_weight_measurements: {
+        Row: {
+          id: string
+          user_id: string
+          source: 'apple_health'
+          external_id: string
+          measured_at: string
+          kilograms: number
+          source_bundle: string
+          source_name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source?: 'apple_health'
+          external_id: string
+          measured_at: string
+          kilograms: number
+          source_bundle: string
+          source_name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: 'apple_health'
+          external_id?: string
+          measured_at?: string
+          kilograms?: number
+          source_bundle?: string
+          source_name?: string
+          created_at?: string
         }
       }
       whoop_connections: {

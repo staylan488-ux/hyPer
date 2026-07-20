@@ -177,7 +177,7 @@ interface AppState {
   whoopConnection: WhoopConnection | null;
   fetchWhoopConnection: () => Promise<WhoopConnection | null>;
   // returns a consent URL to redirect to (production) or null (preview: mock-connects in place)
-  connectWhoop: () => Promise<string | null>;
+  connectWhoop: (returnTo?: string) => Promise<string | null>;
   disconnectWhoop: () => Promise<void>;
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
 
@@ -1598,7 +1598,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return connection;
   },
 
-  connectWhoop: async () => {
+  connectWhoop: async (returnTo) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
@@ -1619,7 +1619,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null;
     }
 
-    return startWhoopConnect();
+    return startWhoopConnect(returnTo);
   },
 
   disconnectWhoop: async () => {

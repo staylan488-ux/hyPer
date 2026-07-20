@@ -5,6 +5,14 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { loadEnvFile } from 'node:process';
 import path from 'node:path';
+import {
+  WorkerBusyError,
+  createJobGate,
+  createTTLCache,
+  normalizeIdempotencyKey,
+  parseCSVSet,
+  userIsAllowed,
+} from './photo-food-worker-core.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 for (const name of ['.env.local', '.env']) {
@@ -15,8 +23,21 @@ const SCHEMA_PATH = path.join(ROOT, 'scripts', 'food-photo-schema.json');
 const DESCRIPTION_SCHEMA_PATH = path.join(ROOT, 'scripts', 'food-description-schema.json');
 const JOB_ROOT = path.join(ROOT, '.tmp', 'food-photo-worker');
 const PORT = Number(process.env.PHOTO_WORKER_PORT || 8788);
+const HOST = process.env.PHOTO_WORKER_HOST?.trim() || '127.0.0.1';
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
-const COMMAND_TIMEOUT_MS = 150_000;
+const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT_MS || 150_000);
+const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeout)
+  ? Math.max(30_000, configuredCommandTimeout)
+  : 150_000;
+const AUTH_TIMEOUT_MS = 10_000;
+const REQUIRE_ALLOWLIST = process.env.PHOTO_WORKER_REQUIRE_ALLOWLIST === '1'
+  || process.env.NODE_ENV === 'production';
+const ALLOWED_USER_IDS = parseCSVSet(process.env.PHOTO_WORKER_ALLOWED_USER_IDS);
+const jobGate = createJobGate({
+  maxConcurrent: Number(process.env.PHOTO_WORKER_MAX_CONCURRENT || 1),
+  maxQueued: Number(process.env.PHOTO_WORKER_MAX_QUEUED || 4),
+});
+const idempotencyCache = createTTLCache({ ttlMs: 15 * 60_000, maxEntries: 100 });
 const BUNDLED_CODEX_PATH = '/Applications/ChatGPT.app/Contents/Resources/codex';
 const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
   || (process.platform === 'darwin' && existsSync(BUNDLED_CODEX_PATH) ? BUNDLED_CODEX_PATH : 'codex');
@@ -24,6 +45,13 @@ const OPENAI_MODEL = process.env.PHOTO_WORKER_OPENAI_MODEL?.trim() || 'gpt-5.6-s
 const OPENAI_EFFORT = process.env.PHOTO_WORKER_OPENAI_EFFORT?.trim() || 'high';
 const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL?.trim() || 'claude-opus-4-8';
 const ANTHROPIC_EFFORT = process.env.PHOTO_WORKER_ANTHROPIC_EFFORT?.trim() || 'high';
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
+  throw new Error('PHOTO_WORKER_PORT must be an integer between 1 and 65535.');
+}
+if (REQUIRE_ALLOWLIST && ALLOWED_USER_IDS.size === 0) {
+  throw new Error('PHOTO_WORKER_ALLOWED_USER_IDS is required when the worker allowlist is enforced.');
+}
 
 const schemaText = await readFile(SCHEMA_PATH, 'utf8');
 const schema = JSON.parse(schemaText);
@@ -46,7 +74,11 @@ const installedProviders = [
   hasCommand('claude') ? 'anthropic' : null,
 ].filter(Boolean);
 
-function authenticatedProviders() {
+let providerAuthCache = { expiresAt: 0, providers: [] };
+
+function authenticatedProviders(refresh = false) {
+  const now = Date.now();
+  if (!refresh && providerAuthCache.expiresAt > now) return providerAuthCache.providers;
   const providers = [];
   if (installedProviders.includes('openai')) {
     const status = spawnSync(CODEX_COMMAND, ['login', 'status'], { encoding: 'utf8' });
@@ -58,6 +90,7 @@ function authenticatedProviders() {
       if (status.status === 0 && JSON.parse(status.stdout || '{}').loggedIn === true) providers.push('anthropic');
     } catch { /* not authenticated or older CLI output */ }
   }
+  providerAuthCache = { expiresAt: now + 30_000, providers };
   return providers;
 }
 
@@ -75,7 +108,7 @@ function isOriginAllowed(origin) {
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin && isOriginAllowed(origin) ? origin : 'null',
-    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-idempotency-key',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Vary': 'Origin',
   };
@@ -99,16 +132,25 @@ async function readJsonBody(request) {
 
 async function authenticate(request) {
   const authorization = request.headers.authorization || '';
-  if (authorization === 'Bearer preview' && process.env.PHOTO_WORKER_ALLOW_PREVIEW === '1') return true;
-  if (!authorization.startsWith('Bearer ')) return false;
+  if (authorization === 'Bearer preview' && process.env.PHOTO_WORKER_ALLOW_PREVIEW === '1') {
+    return { status: 'ok', userId: 'preview' };
+  }
+  if (!authorization.startsWith('Bearer ')) return { status: 'unauthorized' };
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !anonKey) throw new Error('Supabase URL/anon key are missing from the worker environment.');
   const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
     headers: { Authorization: authorization, apikey: anonKey },
+    signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
   });
-  return response.ok;
+  if (!response.ok) return { status: 'unauthorized' };
+  const user = await response.json();
+  const userId = typeof user?.id === 'string' ? user.id : '';
+  if (!userIsAllowed(userId, ALLOWED_USER_IDS, REQUIRE_ALLOWLIST)) {
+    return { status: 'forbidden' };
+  }
+  return { status: 'ok', userId };
 }
 
 function runCommand(command, args, options = {}) {
@@ -123,6 +165,8 @@ function runCommand(command, args, options = {}) {
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
+      const killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+      killTimer.unref();
       reject(new Error(`${command} timed out after ${COMMAND_TIMEOUT_MS / 1000} seconds.`));
     }, COMMAND_TIMEOUT_MS);
 
@@ -272,6 +316,7 @@ function normalizeDescriptionResult(provider, model, result) {
 }
 
 const server = createServer(async (request, response) => {
+  const requestId = randomUUID();
   const origin = request.headers.origin || '';
   if (!isOriginAllowed(origin)) return sendJson(response, 403, { error: 'Origin not allowed.' }, origin);
   if (request.method === 'OPTIONS') {
@@ -285,6 +330,8 @@ const server = createServer(async (request, response) => {
       authenticatedProviders: authenticatedProviders(),
       models: { openai: OPENAI_MODEL, anthropic: ANTHROPIC_MODEL },
       efforts: { openai: OPENAI_EFFORT, anthropic: ANTHROPIC_EFFORT },
+      queue: jobGate.stats(),
+      allowlistConfigured: ALLOWED_USER_IDS.size > 0,
     }, origin);
   }
   if (request.method !== 'POST' || !['/analyze', '/describe'].includes(request.url || '')) {
@@ -292,15 +339,38 @@ const server = createServer(async (request, response) => {
   }
 
   let jobDir;
+  let releaseJobSlot;
   try {
-    if (!await authenticate(request)) return sendJson(response, 401, { error: 'Unauthorized.' }, origin);
+    const authentication = await authenticate(request);
+    if (authentication.status === 'unauthorized') {
+      return sendJson(response, 401, { error: 'Unauthorized.' }, origin);
+    }
+    if (authentication.status === 'forbidden') {
+      return sendJson(response, 403, { error: 'This account is not allowed to use the worker.' }, origin);
+    }
+
+    const rawIdempotencyKey = request.headers['x-idempotency-key'];
+    const idempotencyKey = normalizeIdempotencyKey(
+      Array.isArray(rawIdempotencyKey) ? rawIdempotencyKey[0] : rawIdempotencyKey,
+    );
+    if (rawIdempotencyKey && !idempotencyKey) {
+      return sendJson(response, 400, { error: 'Invalid idempotency key.' }, origin);
+    }
+    const cacheKey = idempotencyKey
+      ? `${authentication.userId}:${request.url}:${idempotencyKey}`
+      : null;
+    const cachedResult = cacheKey ? idempotencyCache.get(cacheKey) : undefined;
+    if (cachedResult) return sendJson(response, 200, cachedResult, origin);
+
     const body = await readJsonBody(request);
     const provider = body.provider === 'anthropic' ? 'anthropic' : 'openai';
     if (!installedProviders.includes(provider)) return sendJson(response, 503, { error: `${provider} CLI is not installed or available.` }, origin);
-    if (!authenticatedProviders().includes(provider)) {
+    if (!authenticatedProviders(true).includes(provider)) {
       const loginCommand = provider === 'anthropic' ? 'claude /login' : 'codex login';
       return sendJson(response, 503, { error: `${provider} is installed but not authenticated. Run ${loginCommand} on this Mac.` }, origin);
     }
+
+    releaseJobSlot = await jobGate.acquire();
 
     if (request.url === '/describe') {
       const description = typeof body.description === 'string' ? body.description.trim() : '';
@@ -315,7 +385,9 @@ const server = createServer(async (request, response) => {
         ? await describeWithClaude(jobDir, prompt)
         : await describeWithCodex(jobDir, prompt);
       const model = provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-      return sendJson(response, 200, normalizeDescriptionResult(provider, model, result), origin);
+      const responseBody = normalizeDescriptionResult(provider, model, result);
+      if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
+      return sendJson(response, 200, responseBody, origin);
     }
 
     const requestedImages = Array.isArray(body.images) ? body.images : [];
@@ -358,15 +430,40 @@ const server = createServer(async (request, response) => {
       ? await analyzeWithClaude(jobDir, prompt)
       : await analyzeWithCodex(jobDir, images.map((image) => image.path), prompt);
     const model = provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    return sendJson(response, 200, normalizeResult(provider, model, result), origin);
+    const responseBody = normalizeResult(provider, model, result);
+    if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
+    return sendJson(response, 200, responseBody, origin);
   } catch (error) {
-    return sendJson(response, 500, { error: error instanceof Error ? error.message : 'Photo analysis failed.' }, origin);
+    if (error instanceof WorkerBusyError) {
+      return sendJson(response, 429, { error: error.message, requestId }, origin);
+    }
+    if (error instanceof SyntaxError) {
+      return sendJson(response, 400, { error: 'Request body must be valid JSON.', requestId }, origin);
+    }
+    const diagnostic = error instanceof Error ? error.stack || error.message : String(error);
+    process.stderr.write(`[photo-worker ${requestId}] ${diagnostic}\n`);
+    return sendJson(response, 500, {
+      error: `Food analysis failed. Reference ${requestId} in the worker logs.`,
+      requestId,
+    }, origin);
   } finally {
+    releaseJobSlot?.();
     if (jobDir) await rm(jobDir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
 await mkdir(JOB_ROOT, { recursive: true, mode: 0o700 });
-server.listen(PORT, '127.0.0.1', () => {
-  process.stdout.write(`hyPer photo worker listening on http://127.0.0.1:${PORT} (${installedProviders.join(', ') || 'no providers'})\n`);
+server.listen(PORT, HOST, () => {
+  process.stdout.write(`hyPer photo worker listening on http://${HOST}:${PORT} (${installedProviders.join(', ') || 'no providers'})\n`);
 });
+
+function shutdown(signal) {
+  process.stdout.write(`hyPer photo worker received ${signal}; draining active requests.\n`);
+  jobGate.close();
+  server.close(() => process.exit(0));
+  const timer = setTimeout(() => process.exit(1), 15_000);
+  timer.unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

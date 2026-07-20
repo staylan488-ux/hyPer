@@ -5,6 +5,10 @@ import { Modal, RailStrip } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import {
+  cancelNativeRestTimerNotification,
+  syncNativeRestTimerNotification,
+} from '@/lib/nativeRestTimer';
+import {
   clearRestTimerSession,
   createRestTimerSession,
   getRestTimerRemainingSeconds,
@@ -66,6 +70,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const completionHandledRef = useRef(false);
 
   const isRunning = session?.status === 'running';
+  const nativeTimerWorkoutId = session?.workoutId ?? null;
+  const nativeTimerEndsAt = session?.endsAt ?? null;
+  const nativeTimerStatus = session?.status ?? null;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -83,6 +90,15 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       window.clearInterval(intervalId);
     };
   }, [isRunning]);
+
+  useEffect(() => {
+    const notificationSession = nativeTimerWorkoutId && nativeTimerEndsAt && nativeTimerStatus
+      ? { workoutId: nativeTimerWorkoutId, endsAt: nativeTimerEndsAt, status: nativeTimerStatus }
+      : null;
+    void syncNativeRestTimerNotification(notificationSession).catch(() => {
+      // The visible timer remains authoritative if notifications are denied.
+    });
+  }, [nativeTimerEndsAt, nativeTimerStatus, nativeTimerWorkoutId]);
 
   useEffect(() => {
     if (session?.status !== 'completed' || completionHandledRef.current) return;
@@ -184,6 +200,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   const handleDismiss = () => {
     tapHaptic();
+    void cancelNativeRestTimerNotification(workoutId).catch(() => undefined);
     clearRestTimerSession();
     setExpanded(false);
     onDismiss();

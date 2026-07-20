@@ -20,6 +20,7 @@ import {
 
 interface OAuthActionRequest {
   action?: 'start' | 'disconnect';
+  returnTo?: string;
 }
 
 function getEnv() {
@@ -40,6 +41,28 @@ function getEnv() {
 
 function callbackUrl(supabaseUrl: string): string {
   return `${supabaseUrl}/functions/v1/whoop-oauth/callback`;
+}
+
+function allowedReturnTo(value: string | undefined, appBaseUrl: string): string {
+  const webDefault = `${appBaseUrl}/settings`;
+  if (!value) return webDefault;
+  if (value === 'com.alexanderroesler.hyper://settings') return value;
+  try {
+    const requested = new URL(value);
+    const configured = new URL(appBaseUrl);
+    if (requested.origin === configured.origin && requested.pathname === '/settings') {
+      return requested.toString().replace(/[?&]whoop=[^&]*/g, '');
+    }
+  } catch {
+    // Invalid return destinations fall back to the configured web app.
+  }
+  return webDefault;
+}
+
+function withWhoopStatus(returnTo: string, status: 'connected' | 'error'): string {
+  const url = new URL(returnTo);
+  url.searchParams.set('whoop', status);
+  return url.toString();
 }
 
 async function requireUser(req: Request, supabaseUrl: string, anonKey: string): Promise<string | null> {
@@ -81,19 +104,22 @@ serve(async (req) => {
 
   /* ── GET /callback — browser redirect from WHOOP consent ── */
   if (req.method === 'GET' && url.pathname.endsWith('/callback')) {
-    const redirectTo = (status: 'connected' | 'error') =>
+    const redirectTo = (status: 'connected' | 'error', returnTo = `${env.appBaseUrl}/settings`) =>
       new Response(null, {
         status: 302,
-        headers: { ...corsHeaders, Location: `${env.appBaseUrl}/settings?whoop=${status}` },
+        headers: { ...corsHeaders, Location: withWhoopStatus(returnTo, status) },
       });
 
+    let callbackReturnTo = `${env.appBaseUrl}/settings`;
     try {
       const code = url.searchParams.get('code');
       const state = url.searchParams.get('state');
-      if (!code || !state) return redirectTo('error');
+      if (!state) return redirectTo('error');
 
       const payload = await verifyOAuthState(env.stateSecret, state);
       if (!payload) return redirectTo('error');
+      callbackReturnTo = allowedReturnTo(payload.returnTo, env.appBaseUrl);
+      if (!code) return redirectTo('error', callbackReturnTo);
 
       const tokens = await exchangeAuthorizationCode({
         code,
@@ -125,10 +151,10 @@ serve(async (req) => {
       });
       if (connectionError) throw connectionError;
 
-      return redirectTo('connected');
+      return redirectTo('connected', callbackReturnTo);
     } catch (error) {
       console.error('whoop-oauth callback failed:', error);
-      return redirectTo('error');
+      return redirectTo('error', callbackReturnTo);
     }
   }
 
@@ -143,7 +169,8 @@ serve(async (req) => {
 
   /* ── POST {action:'start'} ── */
   if (body.action === 'start') {
-    const state = await signOAuthState(env.stateSecret, userId);
+    const returnTo = allowedReturnTo(body.returnTo, env.appBaseUrl);
+    const state = await signOAuthState(env.stateSecret, userId, 10 * 60 * 1000, returnTo);
     const authorize = new URL(WHOOP_AUTH_URL);
     authorize.searchParams.set('response_type', 'code');
     authorize.searchParams.set('client_id', env.clientId);
