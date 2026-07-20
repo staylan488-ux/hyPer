@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Button, EmptyState, Modal, RailStrip, Screen, Toast } from '@/components/shared';
+import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
@@ -439,7 +439,7 @@ export function Nutrition() {
               <div className="min-w-0">
                 <span className="t-label block mb-3">Energy consumed</span>
                 <div className="flex items-baseline gap-2.5">
-                  <span className="number-hero text-[var(--color-text)]">{Math.round(dayTotals.calories).toLocaleString()}</span>
+                  <RollingNumber value={Math.round(dayTotals.calories).toLocaleString()} className="number-hero text-[var(--color-text)]" />
                   <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
                 </div>
               </div>

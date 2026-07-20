@@ -1056,7 +1056,7 @@ export function Workout() {
 
   if (initializing) {
     return (
-      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="px-5 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between">
             <span className="t-label-sm">Train</span>
@@ -1077,7 +1077,7 @@ export function Workout() {
 
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="px-5 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between">
             <span className="t-label-sm">Train</span>
@@ -1147,7 +1147,7 @@ export function Workout() {
       );
 
       return (
-        <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <motion.div className="px-5 pt-6 pb-nav">
           <header className="mb-8">
             <div className="flex items-baseline justify-between">
               <span className="t-label-sm">Train</span>
@@ -1225,7 +1225,7 @@ export function Workout() {
     }
 
     return (
-      <motion.div className="px-5 pt-6 pb-nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="px-5 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between gap-3">
             <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
@@ -1483,7 +1483,7 @@ export function Workout() {
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
 
   return (
-    <motion.div className="px-5 pb-44" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+    <motion.div className="px-5 pb-44">
       {/* Sticky session header */}
       <div
         className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-5 border-b border-[var(--color-text)]"

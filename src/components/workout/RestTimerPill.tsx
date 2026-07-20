@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Modal, RailStrip } from '@/components/shared';
+import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import {
@@ -255,12 +255,20 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                       aria-hidden
                     />
                   )}
-                  <span
-                    className={`shrink-0 ${isComplete ? 't-caps text-[15px] font-normal tracking-[0.24em]' : 't-data-lg tabular-nums'}`}
-                    style={{ color: tone }}
-                  >
-                    {isComplete ? 'Go' : formatTime(timeLeft)}
-                  </span>
+                  {isComplete ? (
+                    <span
+                      className="shrink-0 t-caps text-[15px] font-normal tracking-[0.24em]"
+                      style={{ color: tone }}
+                    >
+                      Go
+                    </span>
+                  ) : (
+                    <RollingNumber
+                      value={formatTime(timeLeft)}
+                      className="shrink-0 t-data-lg tabular-nums"
+                      style={{ color: tone }}
+                    />
+                  )}
                   <span className="t-label-sm shrink-0 ml-auto flex items-center gap-1.5">
                     <Timer className="w-3 h-3" strokeWidth={1.75} />
                     {isComplete ? 'rest done' : 'rest'}
@@ -295,7 +303,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               animate={{ color: tone }}
               transition={{ duration: 0.3 }}
             >
-              {formatTime(timeLeft)}
+              <RollingNumber value={formatTime(timeLeft)} />
             </motion.p>
             <p className="t-label-sm mt-1">{isRunning ? 'Remaining' : isComplete ? 'Complete' : 'Paused'}</p>
           </div>

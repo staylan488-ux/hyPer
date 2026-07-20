@@ -27,6 +27,9 @@ dist-ssr
 credentials.json
 secrets.json
 
+# Local AI assistant instructions
+CLAUDE.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

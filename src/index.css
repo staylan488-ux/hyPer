@@ -99,6 +99,8 @@
   --color-border-strong: rgba(26, 22, 18, 0.32);
   --color-border-soft: rgba(26, 22, 18, 0.08);
   --noise-opacity: 0.022;
+  /* Slow warm light drifting across the paper — felt, not seen */
+  --paperlight: radial-gradient(95% 60% at 25% 0%, rgba(206, 178, 132, 0.20), rgba(206, 178, 132, 0) 70%);
   --overlay-backdrop: rgba(26, 22, 18, 0.38);
   --surface-atmosphere: none;
   --well-shadow: inset 0 0 0 1px var(--color-border-soft);
@@ -138,6 +140,8 @@
   --color-border-strong: rgba(237, 231, 219, 0.30);
   --color-border-soft: rgba(237, 231, 219, 0.07);
   --noise-opacity: 0.025;
+  /* Faint ember warmth rising from the desk in the dark room */
+  --paperlight: radial-gradient(95% 65% at 78% 100%, rgba(188, 104, 58, 0.08), rgba(188, 104, 58, 0) 70%);
   --overlay-backdrop: rgba(8, 6, 4, 0.74);
   --surface-atmosphere: none;
   --well-shadow: inset 0 0 0 1px var(--color-border-soft);
@@ -175,17 +179,36 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Faint paper tooth — print texture, not a gradient or glow */
-body::after {
-  content: '';
+/* Atmosphere layers — light on a desk, grain in the stock. Rendered by
+   <PaperAtmosphere /> above all UI (nav z-40, modals z-50), never interactive.
+   The old static SVG noise (body::after) was replaced by the living canvas. */
+.paperlight {
+  position: fixed;
+  inset: -15%;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--paperlight);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .paperlight {
+    animation: paperlight-drift 90s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes paperlight-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to { transform: translate3d(2%, 1.5%, 0) scale(1.04); }
+}
+
+.papergrain {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  width: 100%;
+  height: 100%;
+  z-index: 61;
   pointer-events: none;
   opacity: var(--noise-opacity);
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 128px 128px;
 }
 
 /* ═════════════════════════════════════════════════════════════

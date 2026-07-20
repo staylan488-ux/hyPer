@@ -63,7 +63,12 @@ export function BottomNav() {
                   transition={springs.smooth}
                 />
               )}
-              <motion.span whileTap={{ scale: 0.9 }} transition={springs.snappy} className="flex flex-col items-center gap-1.5">
+              <motion.span
+                whileTap={{ scale: 0.9 }}
+                animate={{ y: isActive ? -1 : 0, scale: isActive ? 1.04 : 1 }}
+                transition={springs.snappy}
+                className="flex flex-col items-center gap-1.5"
+              >
                 <Icon
                   className={`w-[19px] h-[19px] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
