@@ -1,6 +1,16 @@
 # Handoff
 
-Updated: 2026-07-19 (rev 62: isolated native foundation started and paused)
+Updated: 2026-07-19 (rev 63: Capacitor iOS foundation scaffolded)
+
+## Rev 63 — Capacitor-first iOS foundation
+
+- User chose an incremental Capacitor migration before a full Swift rewrite and confirmed an individual Apple Developer account. Existing GPS work was validated (`npm run test`: 347/347, `npm run lint`: PASS, `npm run build`: PASS) and checkpointed as `5d899809 feat(run): harden web GPS tracking`; Capacitor work is isolated on `codex/capacitor-ios-shell`.
+- Added official Capacitor `8.4.2` core/CLI/iOS packages and generated the Swift Package Manager iOS project in `ios/`. Local product identity is `hyPer`, bundle ID `com.alexanderroesler.hyper`, iOS 15+, iPhone-only, portrait-only. Capacitor uses bundled `dist` assets; the existing hosted PWA remains a separate web build and the service worker is not registered inside the native runtime.
+- Added explicit camera, photo-library, foreground/background-run location, and motion permission descriptions. Capacitor is configured edge-to-edge with CSS safe-area handling, a paper-color WebView background, mobile content mode, no link previews, and debug-only native logging.
+- Added `build:ios`, `ios:sync`, `ios:open`, and `ios:run` scripts. `scripts/verify-ios-env.mjs` refuses native builds unless the configured Supabase hostname is isolated Hyper-Dev ref `nwvgkxqjqihqnjuworqz` and a public client key is present. Missing environment rejection PASS; a non-secret dummy Hyper-Dev-shaped build plus `cap sync ios` PASS; `plutil -lint` PASS; `npx cap doctor` reports Capacitor iOS healthy.
+- Full Xcode remains absent: `xcode-select` still points to Command Line Tools and `xcodebuild` cannot run. Capacitor 8 officially requires Xcode 26+ and iOS 15+. Install/open Xcode 26+, accept its setup, then add an ignored `.env.local` containing the Hyper-Dev URL and public/anon key, run `npm run ios:sync`, `npm run ios:open`, select the individual signing team and a physical iPhone, and build. Do not register or configure production yet.
+- First-device shell acceptance precedes native bridges. Then implement native OAuth/deep-link handling plus Sign in with Apple, followed by a custom Swift Core Location/Core Motion Capacitor plugin for locked-screen/background Long Run and Splits. The official Capacitor geolocation plugin explicitly does not support background geolocation directly, so it is not sufficient for the target recorder. Continue with native camera/barcode, local notifications/rest timers, HealthKit, and other capabilities one adapter at a time; only begin the full SwiftUI refactor after measured Capacitor parity. The separate `/Users/alex/Desktop/hyPer-ios` prototype is retained, paused, and not deleted.
+- Production repository, production Supabase, Hyper-Dev cloud configuration/data, VM, credentials, and external accounts were not changed. Preserve unrelated user files `supabase/.temp/cli-latest` and `.claude/launch.json`.
 
 ## Rev 62 — isolated native foundation started and paused
 
