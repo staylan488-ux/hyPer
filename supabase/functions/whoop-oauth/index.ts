@@ -201,8 +201,14 @@ serve(async (req) => {
       console.error('whoop revoke failed (continuing with local delete):', error);
     }
 
-    await service.from('whoop_tokens').delete().eq('user_id', userId);
-    await service.from('whoop_connections').delete().eq('user_id', userId);
+    const { error: tokenDeleteError } = await service.from('whoop_tokens').delete().eq('user_id', userId);
+    const { error: connectionDeleteError } = await service.from('whoop_connections').delete().eq('user_id', userId);
+    if (tokenDeleteError || connectionDeleteError) {
+      // Do not report success: the client would show "disconnected" while valid
+      // tokens may still be stored, and the next sync would silently resume.
+      console.error('whoop disconnect delete failed:', tokenDeleteError ?? connectionDeleteError);
+      return jsonResponse({ error: 'Could not fully disconnect WHOOP. Please try again.' }, 500);
+    }
     return jsonResponse({ ok: true });
   }
 
