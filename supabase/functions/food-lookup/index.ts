@@ -1,6 +1,7 @@
 // Authenticated USDA FoodData Central proxy. The USDA key remains in Edge
 // Function secrets and is never shipped in the browser bundle.
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
 
 type FoodLookupRequest =
@@ -114,6 +115,20 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
+  // Require a real signed-in user, not merely the public anon key (which is a
+  // valid project JWT). Without this, anyone who extracts the shipped anon key
+  // could drain the server-side USDA/FatSecret quotas. Matches the sibling
+  // functions' auth gate.
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) return jsonResponse({ error: 'Unauthorized' }, 401);
+  const authed = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: authData, error: authError } = await authed.auth.getUser();
+  if (authError || !authData.user) return jsonResponse({ error: 'Unauthorized' }, 401);
+
   const body = await req.json().catch(() => ({})) as FoodLookupRequest;
 
   if (body.action === 'open-food-facts-barcode') {
@@ -132,6 +147,10 @@ serve(async (req) => {
       });
       const payload = await response.json().catch(() => ({ error: 'Invalid Open Food Facts response' }));
       if (!response.ok) {
+        // OFF v2 returns 404 with {status:0} for an unknown product — a clean
+        // "not found", not an error. Pass it through so the client maps it to
+        // null and reaches the create-a-product miss path.
+        if (response.status === 404) return jsonResponse({ status: 0 });
         console.error('Open Food Facts lookup failed:', response.status);
         return jsonResponse({ error: 'Open Food Facts lookup failed', status: response.status }, 502);
       }

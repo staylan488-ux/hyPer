@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Food } from '@/types';
+import { barcodeLookupCandidates } from '@/lib/barcodes';
 import {
   PERSONAL_BARCODE_SOURCE,
   RESOLVABLE_EXTERNAL_SOURCES,
@@ -19,11 +20,17 @@ export async function findSavedFoodByBarcode(barcode: string): Promise<Food | nu
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Match any equivalent GTIN representation (a US product scans as 12-digit
+  // UPC-A on the web detector but 13-digit EAN-13 via the native scanner), so a
+  // food saved from one scanner still resolves when rescanned by the other.
+  const candidates = barcodeLookupCandidates(barcode);
+  const lookupValues = candidates.length > 0 ? candidates : [barcode];
+
   const { data, error } = await supabase
     .from('foods')
     .select('id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, external_source, external_id')
     .eq('user_id', user.id)
-    .eq('external_id', barcode)
+    .in('external_id', lookupValues)
     .in('external_source', RESOLVABLE_EXTERNAL_SOURCES)
     .order('created_at', { ascending: false })
     .limit(5);

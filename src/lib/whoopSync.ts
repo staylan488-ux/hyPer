@@ -31,6 +31,9 @@ export interface WhoopSyncPorts {
     // any legacy imported activity
     fetchWhoopSegmentsInWindow: (fromIso: string, toIso: string) => Promise<ActivitySegment[]>;
     fetchSessionsInWindow: (fromIso: string, toIso: string) => Promise<ActivitySession[]>;
+    // fetch specific sessions by id — pulls host sessions that started before
+    // the window but own segments inside it (a workout straddling fetchStart)
+    fetchSessionsByIds: (ids: string[]) => Promise<ActivitySession[]>;
     createSession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
     updateSession: (sessionId: string, patch: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
     deleteSession: (sessionId: string) => Promise<void>;
@@ -85,10 +88,26 @@ export async function runWhoopSync(
   }
 
   // 3) read back the reconciliation window and build the grouping plan
-  const [segments, sessions] = await Promise.all([
+  const [segments, windowSessions] = await Promise.all([
     ports.data.fetchWhoopSegmentsInWindow(fetchStart, fetchEnd),
     ports.data.fetchSessionsInWindow(fetchStart, fetchEnd),
   ]);
+
+  // A host session that started BEFORE the window can still own segments inside
+  // it (a workout straddling fetchStart). Pull those hosts by id so grouping
+  // sees them — otherwise their in-window segments look orphaned and get
+  // relinked to a duplicate new session, stealing them from the real owner.
+  const windowSessionIds = new Set(windowSessions.map((session) => session.id));
+  const straddlingIds = [...new Set(
+    segments
+      .map((segment) => segment.session_id)
+      .filter((id): id is string => id != null && !windowSessionIds.has(id)),
+  )];
+  const straddlingSessions = straddlingIds.length > 0
+    ? await ports.data.fetchSessionsByIds(straddlingIds)
+    : [];
+  const sessions = [...windowSessions, ...straddlingSessions];
+
   const plan = groupSegments(segments, sessions);
 
   // 4) apply: creates, updates, relinks, deletes

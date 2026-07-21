@@ -80,14 +80,16 @@ final class HyperAuthPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("The OAuth callback destination is not allowed.", "INVALID_CALLBACK")
             return
         }
-        guard webAuthenticationSession == nil else {
-            call.reject("Another sign-in is already in progress.", "AUTH_IN_PROGRESS")
-            return
-        }
-
         DispatchQueue.main.async { [weak self] in
             guard let self else {
                 call.reject("Unable to start sign-in.", "UNAVAILABLE")
+                return
+            }
+            // Single-flight check must live on the main queue alongside the
+            // assignment below — otherwise two rapid taps both pass a check made
+            // on the plugin queue before either assigns, spawning two sessions.
+            guard self.webAuthenticationSession == nil else {
+                call.reject("Another sign-in is already in progress.", "AUTH_IN_PROGRESS")
                 return
             }
             let session = ASWebAuthenticationSession(

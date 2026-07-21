@@ -87,12 +87,12 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         let defaults = UserDefaults.standard
         currentRunID = defaults.string(forKey: DefaultsKey.runID)
         sequence = defaults.integer(forKey: DefaultsKey.sequence)
-        if defaults.bool(forKey: DefaultsKey.recording),
-           currentRunID != nil,
-           isLocationAuthorized
-        {
-            beginPlatformRecording()
-        }
+        // Do NOT auto-resume recording on launch. A run abandoned before the
+        // process was killed would otherwise restart GPS on every launch and
+        // never stop (the JS resume snapshot expires after 12h, so no UI ever
+        // offers to stop it). Recording resumes only when the run screen calls
+        // startRecording(resume:true); the durable file + runID are restored
+        // above so that resume can drain what was recorded.
     }
 
     @objc override func requestPermissions(_ call: CAPPluginCall) {
@@ -117,82 +117,115 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    // startRecording/stopRecording/getStatus/drainSamples run on the main queue
+    // so all access to `sequence`, `recording`, and `currentRunID` is serialized
+    // against the CLLocationManager delegate (which is also delivered on main).
+    // Otherwise the delegate's `sequence += 1` races the plugin queue.
     @objc func startRecording(_ call: CAPPluginCall) {
-        guard let runID = call.getString("runId"), Self.isValidRunID(runID) else {
-            call.reject("A valid run identifier is required.", "INVALID_RUN_ID")
-            return
-        }
-        guard isLocationAuthorized else {
-            call.reject("Location permission is required before starting a run.", "LOCATION_DENIED")
-            return
-        }
-
-        let resume = call.getBool("resume", false)
-        do {
-            if !resume || currentRunID != runID {
-                try resetPersistence(for: runID)
-            } else {
-                currentRunID = runID
-                sequence = UserDefaults.standard.integer(forKey: DefaultsKey.sequence)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.reject("Run tracking is unavailable.", "UNAVAILABLE")
+                return
             }
-            beginPlatformRecording()
-            call.resolve(["recording": recording, "lastSequence": sequence])
-        } catch {
-            call.reject("Unable to prepare durable run storage.", "PERSISTENCE_FAILED", error)
+            guard let runID = call.getString("runId"), Self.isValidRunID(runID) else {
+                call.reject("A valid run identifier is required.", "INVALID_RUN_ID")
+                return
+            }
+            guard self.isLocationAuthorized else {
+                call.reject("Location permission is required before starting a run.", "LOCATION_DENIED")
+                return
+            }
+
+            let resume = call.getBool("resume", false)
+            do {
+                if !resume || self.currentRunID != runID {
+                    try self.resetPersistence(for: runID)
+                } else {
+                    self.currentRunID = runID
+                    self.sequence = UserDefaults.standard.integer(forKey: DefaultsKey.sequence)
+                }
+                self.beginPlatformRecording()
+                call.resolve(["recording": self.recording, "lastSequence": self.sequence])
+            } catch {
+                call.reject("Unable to prepare durable run storage.", "PERSISTENCE_FAILED", error)
+            }
         }
     }
 
     @objc func stopRecording(_ call: CAPPluginCall) {
-        stopPlatformRecording()
-        UserDefaults.standard.set(false, forKey: DefaultsKey.recording)
-        if call.getBool("discard", false) {
-            do {
-                try discardPersistence()
-            } catch {
-                call.reject("Unable to discard the native run trace.", "PERSISTENCE_FAILED", error)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.reject("Run tracking is unavailable.", "UNAVAILABLE")
                 return
             }
+            self.stopPlatformRecording()
+            UserDefaults.standard.set(false, forKey: DefaultsKey.recording)
+            if call.getBool("discard", false) {
+                do {
+                    try self.discardPersistence()
+                } catch {
+                    call.reject("Unable to discard the native run trace.", "PERSISTENCE_FAILED", error)
+                    return
+                }
+            }
+            call.resolve()
         }
-        call.resolve()
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
-        call.resolve([
-            "recording": recording,
-            "runId": currentRunID ?? NSNull(),
-            "lastSequence": sequence,
-            "location": authorizationLabel,
-            "precise": locationManager.accuracyAuthorization == .fullAccuracy,
-        ])
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.reject("Run tracking is unavailable.", "UNAVAILABLE")
+                return
+            }
+            call.resolve([
+                "recording": self.recording,
+                "runId": self.currentRunID ?? NSNull(),
+                "lastSequence": self.sequence,
+                "location": self.authorizationLabel,
+                "precise": self.locationManager.accuracyAuthorization == .fullAccuracy,
+            ])
+        }
     }
 
     @objc func drainSamples(_ call: CAPPluginCall) {
-        let afterSequence = max(0, call.getInt("afterSequence") ?? 0)
-        guard let fileURL = traceFileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
-            call.resolve(["samples": [], "lastSequence": afterSequence, "hasMore": false])
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
-            var samples: [PersistedRunSample] = []
-            samples.reserveCapacity(min(1_000, lines.count))
-            for line in lines {
-                let sample = try decoder.decode(PersistedRunSample.self, from: Data(line))
-                if sample.sequence > afterSequence {
-                    samples.append(sample)
-                    if samples.count == 1_000 { break }
-                }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.reject("Run tracking is unavailable.", "UNAVAILABLE")
+                return
             }
-            let lastReturnedSequence = samples.last?.sequence ?? afterSequence
-            call.resolve([
-                "samples": samples.map(\.bridgeValue),
-                "lastSequence": lastReturnedSequence,
-                "hasMore": lastReturnedSequence < sequence,
-            ])
-        } catch {
-            call.reject("Unable to recover native run samples.", "PERSISTENCE_FAILED", error)
+            let afterSequence = max(0, call.getInt("afterSequence") ?? 0)
+            guard let fileURL = self.traceFileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
+                call.resolve(["samples": [], "lastSequence": afterSequence, "hasMore": false])
+                return
+            }
+
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
+                var samples: [PersistedRunSample] = []
+                samples.reserveCapacity(min(1_000, lines.count))
+                for line in lines {
+                    // Skip a truncated/corrupt line (app killed mid-append)
+                    // instead of failing the whole recovery — a single bad line
+                    // must not brick resume for the entire run.
+                    guard let sample = try? self.decoder.decode(PersistedRunSample.self, from: Data(line)) else {
+                        continue
+                    }
+                    if sample.sequence > afterSequence {
+                        samples.append(sample)
+                        if samples.count == 1_000 { break }
+                    }
+                }
+                let lastReturnedSequence = samples.last?.sequence ?? afterSequence
+                call.resolve([
+                    "samples": samples.map(\.bridgeValue),
+                    "lastSequence": lastReturnedSequence,
+                    "hasMore": lastReturnedSequence < self.sequence,
+                ])
+            } catch {
+                call.reject("Unable to recover native run samples.", "PERSISTENCE_FAILED", error)
+            }
         }
     }
 

@@ -266,8 +266,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     }
 
     if (!food) {
-      food = await searchOpenFoodFactsByBarcodeSecure(barcode);
       provider = 'open_food_facts';
+      try {
+        food = await searchOpenFoodFactsByBarcodeSecure(barcode);
+      } catch {
+        // A transient error must still reach the miss path below (create a
+        // personal product), like the FatSecret and USDA legs above.
+      }
     }
     if (!food) {
       // remember the code so manual entry can create a personal product
@@ -914,6 +919,51 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       foodId = newFood.id;
     }
 
+    if (food.source === 'fatsecret' && food.external_id) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No user found while saving barcode food');
+        return null;
+      }
+
+      const { data: existingFood, error: lookupError } = await supabase
+        .from('foods')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('external_source', 'fatsecret')
+        .eq('external_id', food.external_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (lookupError) console.error('Error looking up FatSecret food:', lookupError);
+      if (existingFood) return existingFood.id;
+
+      const { data: newFood, error: insertError } = await supabase
+        .from('foods')
+        .insert({
+          user_id: user.id,
+          name: food.name,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          serving_size: food.serving_size || 1,
+          serving_unit: food.serving_unit || 'serving',
+          source: 'fatsecret',
+          fdc_id: null,
+          external_source: 'fatsecret',
+          external_id: food.external_id,
+        })
+        .select('id')
+        .single();
+
+      if (insertError || !newFood) {
+        console.error('Error creating FatSecret food:', insertError);
+        return null;
+      }
+      foodId = newFood.id;
+    }
+
     if (food.source === 'custom') {
       const hasTemporaryId = !food.id || food.id.startsWith('photo-');
 
@@ -997,7 +1047,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     const fullPayload = {
       food_id: foodId,
       servings: servingsCount,
-      meal_type: legacyMealTypeForGroup(selectedGroup) || initialEntry?.meal_type || null,
+      // Mirror the chosen group's legacy meal name (null for custom/Unassigned
+      // groups). Do NOT fall back to the entry's old meal_type — that made the
+      // tag impossible to clear and caused it to snap back to the old group.
+      meal_type: legacyMealTypeForGroup(selectedGroup),
       group_id: groupId || null,
       source,
       date: day,
@@ -1273,6 +1326,19 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
         setSelectedSavedMealId(resolvedFoodId);
         await fetchSavedMeals();
+      }
+
+      // Editing an entry without changing the food itself (e.g. only servings
+      // or time) must reuse the original food row. Otherwise every edit inserts
+      // an orphan manual_entry food and rebases the entry onto a 1-serving
+      // basis, losing the original fdc_id / gram basis and saved-meal linkage.
+      if (!resolvedFoodId && initialEntry?.food_id && initialEntry.food
+        && normalizeFoodName(initialEntry.food.name) === normalizeFoodName(normalizedName)
+        && numbersNearlyEqual(initialEntry.food.calories, calories)
+        && numbersNearlyEqual(initialEntry.food.protein, protein)
+        && numbersNearlyEqual(initialEntry.food.carbs, carbs)
+        && numbersNearlyEqual(initialEntry.food.fat, fat)) {
+        resolvedFoodId = initialEntry.food_id;
       }
 
       if (!resolvedFoodId) {

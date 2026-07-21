@@ -1712,6 +1712,19 @@ export const useAppStore = create<AppState>((set, get) => ({
               }
               return (data || []) as ActivitySession[];
             },
+            fetchSessionsByIds: async (ids) => {
+              if (ids.length === 0) return [];
+              const { data, error } = await supabase
+                .from('activity_sessions')
+                .select('*')
+                .eq('user_id', user.id)
+                .in('id', ids);
+              if (error) {
+                console.error('Error fetching sessions by ids:', error);
+                return [];
+              }
+              return (data || []) as ActivitySession[];
+            },
             createSession: (input) => get().createActivitySession(input),
             updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
             deleteSession: (sessionId) => get().deleteActivitySession(sessionId),

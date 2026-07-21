@@ -31,6 +31,10 @@ export function useWhoopForegroundSync(userId: string | undefined): void {
           lastAttemptByUser.set(userId, nowMs);
           await syncWhoop();
         }
+      } catch (error) {
+        // Offline / expired session must not surface as an unhandled rejection
+        // on mount and every foreground; auto-sync is best-effort.
+        console.error('WHOOP foreground sync failed:', error);
       } finally {
         syncing = false;
       }

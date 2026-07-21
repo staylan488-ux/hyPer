@@ -1,8 +1,11 @@
 // Audio + haptic cues for the run tracker, in the playRestTimerSound style.
 // Distinct pitch contours so laps and sprint boundaries are tellable apart
 // with the phone stowed: lap = double blip, sprint start = rising, sprint
-// end = falling. navigator.vibrate is a bonus on Android; iOS ignores it, so
-// audio through the speaker/earbuds is the primary channel.
+// end = falling. Haptics route through the shared module so the Capacitor
+// engine fires on native iOS (navigator.vibrate is a no-op there); audio
+// through the speaker/earbuds is the primary channel.
+
+import { completionHaptic } from '@/lib/haptics';
 
 type ToneStep = { frequency: number; atS: number; durationS: number };
 
@@ -42,20 +45,12 @@ function playTones(steps: ToneStep[]): void {
   }
 }
 
-function vibrate(pattern: number | number[]): void {
-  try {
-    navigator.vibrate?.(pattern);
-  } catch {
-    // unsupported (iOS) — audio carries the cue
-  }
-}
-
 export function playLapCue(): void {
   playTones([
     { frequency: 880, atS: 0, durationS: 0.18 },
     { frequency: 880, atS: 0.24, durationS: 0.18 },
   ]);
-  vibrate([80, 60, 80]);
+  completionHaptic();
 }
 
 export function playSprintStartCue(): void {
@@ -63,7 +58,7 @@ export function playSprintStartCue(): void {
     { frequency: 660, atS: 0, durationS: 0.14 },
     { frequency: 990, atS: 0.16, durationS: 0.22 },
   ]);
-  vibrate(120);
+  completionHaptic();
 }
 
 export function playSprintEndCue(): void {
@@ -71,5 +66,5 @@ export function playSprintEndCue(): void {
     { frequency: 990, atS: 0, durationS: 0.14 },
     { frequency: 660, atS: 0.16, durationS: 0.22 },
   ]);
-  vibrate([60, 40, 60]);
+  completionHaptic();
 }

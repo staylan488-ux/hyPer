@@ -14,7 +14,19 @@ final class HyperHealthPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private let healthStore = HKHealthStore()
     private let isoFormatter = ISO8601DateFormatter()
+    // JS sends `new Date().toISOString()`, which always includes milliseconds
+    // ("…T12:00:00.000Z"). A default ISO8601DateFormatter cannot parse fractional
+    // seconds, so parse with a fractional-aware formatter first and fall back.
+    private let isoFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
     private var weightObserver: HKObserverQuery?
+
+    private func parseISODate(_ raw: String) -> Date? {
+        isoFractionalFormatter.date(from: raw) ?? isoFormatter.date(from: raw)
+    }
 
     private var bodyMassType: HKQuantityType? {
         HKObjectType.quantityType(forIdentifier: .bodyMass)
@@ -44,7 +56,7 @@ final class HyperHealthPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let limit = min(500, max(1, call.getInt("limit") ?? 250))
         var predicate: NSPredicate?
-        if let rawSince = call.getString("since"), let since = isoFormatter.date(from: rawSince) {
+        if let rawSince = call.getString("since"), let since = parseISODate(rawSince) {
             predicate = HKQuery.predicateForSamples(
                 withStart: since,
                 end: nil,

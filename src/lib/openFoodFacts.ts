@@ -61,7 +61,15 @@ export function mapOpenFoodFactsProduct(
     carbs: finiteNumber(nutriments.carbohydrates_100g),
     fat: finiteNumber(nutriments.fat_100g),
   };
-  const hasServingNutrition = Object.values(servingValues).some((value) => value !== null);
+  // Pick the more complete basis. Never mix per-serving with per-100g fields —
+  // they are different units, so a partial serving block (e.g. only
+  // energy-kcal_serving) must not borrow protein/carbs/fat from the 100g block;
+  // that would log correct calories with wrong macros. Missing fields within
+  // the chosen basis fall back to 0. Tie goes to serving (needs no rescaling).
+  const countKnown = (v: Record<string, number | null>) =>
+    Object.values(v).filter((value) => value !== null).length;
+  const hasServingNutrition = countKnown(servingValues) >= countKnown(per100Values)
+    && countKnown(servingValues) > 0;
   const values = hasServingNutrition ? servingValues : per100Values;
   if (Object.values(values).every((value) => value === null)) return null;
 
