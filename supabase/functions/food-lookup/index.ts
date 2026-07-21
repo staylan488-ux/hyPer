@@ -10,6 +10,9 @@ type FoodLookupRequest =
   | { action: 'fatsecret-barcode'; barcode?: string }
   | { action: 'detail'; fdcId?: string };
 
+// A slow provider must degrade to the next one rather than stalling the scan.
+const PROVIDER_TIMEOUT_MS = 5_000;
+
 // FatSecret OAuth2 client-credentials token, cached per function instance. The
 // client id/secret stay in Edge Function secrets and are never shipped to the
 // app. NOTE: if the FatSecret OAuth2 app enforces IP allowlisting, Edge
@@ -33,6 +36,7 @@ async function fatSecretAccessToken(): Promise<string | null> {
       Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
     },
     body: new URLSearchParams({ grant_type: 'client_credentials', scope }),
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
   });
   if (!response.ok) {
     console.error('FatSecret token request failed:', response.status);
@@ -58,6 +62,7 @@ async function fatSecretCall(token: string, params: Record<string, string>): Pro
   const response = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`FatSecret ${params.method} failed: ${response.status}`);
   return response.json();
@@ -117,25 +122,30 @@ serve(async (req) => {
 
     const url = new URL(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
     url.searchParams.set('fields', 'code,status,product_name,generic_name,brands,serving_size,serving_quantity,serving_quantity_unit,nutrition_data_per,nutriments');
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'hyPer/0.1 (https://github.com/staylan488-ux/hyPer)',
-      },
-    });
-    const payload = await response.json().catch(() => ({ error: 'Invalid Open Food Facts response' }));
-    if (!response.ok) {
-      console.error('Open Food Facts lookup failed:', response.status);
-      return jsonResponse({ error: 'Open Food Facts lookup failed', status: response.status }, 502);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'hyPer/0.1 (https://github.com/staylan488-ux/hyPer)',
+        },
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+      });
+      const payload = await response.json().catch(() => ({ error: 'Invalid Open Food Facts response' }));
+      if (!response.ok) {
+        console.error('Open Food Facts lookup failed:', response.status);
+        return jsonResponse({ error: 'Open Food Facts lookup failed', status: response.status }, 502);
+      }
+      return jsonResponse(payload);
+    } catch (error) {
+      console.error('Open Food Facts lookup failed:', error instanceof Error ? error.message : error);
+      return jsonResponse({ error: 'Open Food Facts lookup failed' }, 502);
     }
-    return jsonResponse(payload);
   }
 
   if (body.action === 'fatsecret-barcode') {
-    // FatSecret enforces IP allowlisting and Supabase Edge Functions have
-    // dynamic egress IPs, so calls from here are rejected. Keep FatSecret off
-    // (client falls through to USDA/Open Food Facts) until it can be reached
-    // from a static-egress host; flip FATSECRET_ENABLED=1 once that exists.
+    // FatSecret enforces IP allowlisting; this project's key allows all IPs so
+    // Supabase's dynamic egress works. FATSECRET_ENABLED gates the provider so
+    // it can be switched off without a redeploy if the key or quota lapses.
     if (Deno.env.get('FATSECRET_ENABLED') !== '1') return jsonResponse({ configured: false });
     const gtin = toGtin13(body.barcode ?? '');
     if (!gtin) return jsonResponse({ error: 'Invalid barcode' }, 400);
@@ -191,7 +201,10 @@ serve(async (req) => {
   }
 
   url.searchParams.set('api_key', apiKey);
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+  });
   const payload = await response.json().catch(() => ({ error: 'Invalid USDA response' }));
   if (!response.ok) {
     console.error('USDA lookup failed:', response.status);
