@@ -1,25 +1,55 @@
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import { Browser } from '@capacitor/browser';
+import type { Provider } from '@supabase/supabase-js';
+
+import {
+  NATIVE_AUTH_CALLBACK_SCHEME,
+  NATIVE_AUTH_REDIRECT_URL,
+  NativeAuth,
+  isNativeIOS,
+} from '@/lib/nativeBridge';
+import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
 import { supabase } from '@/lib/supabase';
 
-/** Deep-link address the native app hands to Supabase as the OAuth redirect.
- *  Must be listed under Authentication → URL Configuration → Redirect URLs
- *  in the Supabase dashboard, and matches the CFBundleURLSchemes entry in
- *  ios/App/App/Info.plist. */
-export const NATIVE_AUTH_CALLBACK = 'hyper://auth-callback';
+export type HyperOAuthProvider = Extract<Provider, 'google' | 'apple'>;
 
-/** On native, OAuth finishes by iOS opening the hyper:// deep link. Catch it,
- *  close the in-app browser sheet, and trade the code for a session. */
-export function initNativeAuth() {
-  if (!Capacitor.isNativePlatform()) return;
+export function getAuthRedirectTo(): string | undefined {
+  if (isNativeIOS()) return NATIVE_AUTH_REDIRECT_URL;
+  if (typeof window === 'undefined' || !window.location?.origin) return undefined;
+  return `${window.location.origin}/`;
+}
 
-  void App.addListener('appUrlOpen', ({ url }) => {
-    if (!url.startsWith(NATIVE_AUTH_CALLBACK)) return;
-    void Browser.close().catch(() => {});
-    const code = new URL(url).searchParams.get('code');
-    if (code) {
-      void supabase.auth.exchangeCodeForSession(code);
-    }
+export async function signInWithOAuthProvider(
+  provider: HyperOAuthProvider,
+): Promise<{ error: Error | null }> {
+  const redirectTo = getAuthRedirectTo();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      ...(redirectTo ? { redirectTo } : {}),
+      skipBrowserRedirect: true,
+    },
   });
+
+  if (error) return { error: new Error(error.message) };
+  if (!data?.url) return { error: new Error('The sign-in provider did not return a login URL.') };
+
+  if (!isNativeIOS()) {
+    window.location.assign(data.url);
+    return { error: null };
+  }
+
+  try {
+    const { callbackUrl } = await NativeAuth.openOAuth({
+      url: data.url,
+      callbackScheme: NATIVE_AUTH_CALLBACK_SCHEME,
+      callbackHost: 'auth',
+      callbackPath: '/callback',
+    });
+    const { code } = parseNativeOAuthCallback(callbackUrl);
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    return { error: exchangeError ? new Error(exchangeError.message) : null };
+  } catch (nativeError) {
+    return {
+      error: nativeError instanceof Error ? nativeError : new Error('Unable to complete sign-in.'),
+    };
+  }
 }

@@ -11,10 +11,14 @@ import { Splits } from '@/pages/Splits';
 import { Settings } from '@/pages/Settings';
 import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
+import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { pageTransition, springs } from '@/lib/animations';
 import { PaperAtmosphere } from '@/components/shared/PaperAtmosphere';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
+import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
+import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
+import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
 
 function BootSplash() {
   return (
@@ -50,8 +54,10 @@ function AnimatedOutlet() {
   const location = useLocation();
   const outlet = useOutlet();
 
-  // New leaf, fresh top.
+  // New leaf, fresh top. Scrolling lives inside the fixed app viewport (iOS
+  // Safari clipped-scroll workaround), so reset it there, not on the window.
   useEffect(() => {
+    document.querySelector('[data-app-scroll-viewport]')?.scrollTo(0, 0);
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
@@ -82,8 +88,11 @@ function PrivateLayout() {
   }
 
   return (
-    <div className="min-h-screen">
-      <main className="max-w-lg mx-auto safe-area-inset-top">
+    <div className="fixed inset-0 overflow-hidden bg-[var(--color-base)]">
+      <main
+        data-app-scroll-viewport
+        className="h-full max-w-lg mx-auto overflow-y-auto overscroll-y-contain bg-[var(--color-base)] safe-area-inset-top"
+      >
         <AnimatedOutlet />
       </main>
       <BottomNav />
@@ -92,8 +101,12 @@ function PrivateLayout() {
 }
 
 function App() {
-  const { initialize } = useAuthStore();
+  const { initialize, user } = useAuthStore();
   const initializeTheme = useThemeStore((state) => state.initializeTheme);
+
+  useNativeHealthSync(user?.id);
+  useWhoopForegroundSync(user?.id);
+  useNativeAuthCallback();
 
   useEffect(() => {
     initialize();
@@ -109,11 +122,13 @@ function App() {
         <PaperAtmosphere />
         <Routes>
           {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
+          {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
           <Route element={<PrivateLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/train" element={<Workout />} />
             <Route path="/nutrition" element={<Nutrition />} />
             <Route path="/train/program" element={<Splits />} />
+            <Route path="/train/run" element={<RunTracker />} />
             <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
             <Route path="/workout" element={<Navigate to="/train" replace />} />
             <Route path="/splits" element={<Navigate to="/train/program" replace />} />

@@ -93,6 +93,13 @@ public class RestActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 /// registers the in-app plugins above. Referenced from Main.storyboard.
 class HyperViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
+        // App-local plugins are not in Capacitor's generated package list, so
+        // register concrete instances once the bridge exists. Rest-timer
+        // notifications are owned by RestActivityPlugin (Live Activities).
         bridge?.registerPluginInstance(RestActivityPlugin())
+        bridge?.registerPluginInstance(HyperAuthPlugin())
+        bridge?.registerPluginInstance(HyperRunPlugin())
+        bridge?.registerPluginInstance(HyperHealthPlugin())
+        bridge?.registerPluginInstance(HyperBarcodePlugin())
     }
 }

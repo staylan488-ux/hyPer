@@ -109,6 +109,122 @@ export interface WorkoutSet {
   completed_at: string | null;
 }
 
+export const ACTIVITY_TYPES = [
+  'bike_ride',
+  'climbing',
+  'swimming',
+  'run',
+  'interval_run',
+  'sprint_session',
+  'tennis',
+  'pickleball',
+  'squash',
+  'golf',
+  'other',
+] as const;
+
+export type ActivityType = typeof ACTIVITY_TYPES[number];
+
+export type ActivitySource = 'manual' | 'whoop' | 'strava' | 'gps';
+
+export interface ActivitySession {
+  id: string;
+  user_id: string;
+  activity_type: ActivityType;
+  // user-supplied name when activity_type is 'other', e.g. "Yoga"; the enum
+  // stays closed so known types keep their behaviour and icons
+  custom_type: string | null;
+  title: string | null;
+  date: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  source: ActivitySource;
+  notes: string | null;
+  // aggregates rolled up from segments; null for plain manual entries
+  strain: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  energy_kcal: number | null;
+  distance_m: number | null;
+  // import bookkeeping: created by grouping engine / edited by user / soft-deleted
+  auto_grouped: boolean;
+  user_edited: boolean;
+  dismissed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ActivitySessionInput = {
+  activity_type: ActivityType;
+  custom_type?: string | null;
+  title?: string | null;
+  date: string;
+  started_at?: string | null;
+  ended_at?: string | null;
+  duration_seconds?: number | null;
+  source?: ActivitySource;
+  notes?: string | null;
+  strain?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  energy_kcal?: number | null;
+  distance_m?: number | null;
+  auto_grouped?: boolean;
+  user_edited?: boolean;
+  dismissed_at?: string | null;
+};
+
+// raw imported/recorded child record of an activity session (one WHOOP workout
+// record or one GPS lap/legacy sprint rep); (user_id, source, external_id) is unique
+export interface ActivitySegment {
+  id: string;
+  user_id: string;
+  session_id: string | null;
+  source: ActivitySource;
+  external_id: string;
+  sport: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number | null;
+  strain: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  energy_kcal: number | null;
+  distance_m: number | null;
+  raw: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// safe WHOOP connection metadata (whoop_connections row) — tokens live in a
+// separate service-role-only table and are never typed client-side
+export interface WhoopConnection {
+  user_id: string;
+  whoop_user_id: string | null;
+  scopes: string | null;
+  connected_at: string;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  updated_at: string;
+}
+
+export type ActivitySegmentInput = {
+  session_id?: string | null;
+  source: ActivitySource;
+  external_id: string;
+  sport?: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds?: number | null;
+  strain?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  energy_kcal?: number | null;
+  distance_m?: number | null;
+  raw?: Record<string, unknown> | null;
+};
+
 export interface Food {
   id: string;
   user_id: string | null;
@@ -119,8 +235,10 @@ export interface Food {
   fat: number;
   serving_size: number;
   serving_unit: string;
-  source: 'custom' | 'usda';
+  source: 'custom' | 'usda' | 'fatsecret' | 'open_food_facts' | 'saved_meal' | 'manual_entry' | 'cronometer' | 'photo';
   fdc_id: string | null;
+  external_source?: string | null;
+  external_id?: string | null;
   serving_label?: string; // display-only, e.g. "1 large"; never written to the DB
 }
 
@@ -133,6 +251,34 @@ export interface NutritionLog {
   food?: Food;
   servings: number;
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  group_id?: string | null;
+  sort_order?: number;
+  source?: 'manual' | 'usda' | 'photo_openai' | 'photo_anthropic' | 'cronometer_csv' | 'barcode' | 'barcode_fatsecret' | 'barcode_open_food_facts';
+  external_id?: string | null;
+  import_batch_id?: string | null;
+}
+
+export interface NutritionGroup {
+  id: string;
+  user_id: string;
+  date: string;
+  kind: 'meal' | 'snack';
+  label: 'breakfast' | 'lunch' | 'dinner' | null;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface NutritionImportBatch {
+  id: string;
+  user_id: string;
+  source: 'cronometer';
+  file_name: string;
+  file_hash: string;
+  row_count: number;
+  imported_count: number;
+  skipped_count: number;
+  created_at: string;
 }
 
 export interface MacroTarget {
@@ -206,3 +352,17 @@ export const MEAL_TYPE_LABELS = {
   dinner: 'Dinner',
   snack: 'Snack',
 } as const;
+
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  bike_ride: 'Bike ride',
+  climbing: 'Climbing',
+  swimming: 'Swimming',
+  run: 'Run',
+  interval_run: 'Interval run',
+  sprint_session: 'Sprint session',
+  tennis: 'Tennis',
+  pickleball: 'Pickleball',
+  squash: 'Squash',
+  golf: 'Golf',
+  other: 'Other',
+};

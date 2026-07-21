@@ -8,6 +8,20 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Body weight imported from Apple Health
+CREATE TABLE IF NOT EXISTS body_weight_measurements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  source TEXT NOT NULL DEFAULT 'apple_health' CHECK (source = 'apple_health'),
+  external_id TEXT NOT NULL,
+  measured_at TIMESTAMPTZ NOT NULL,
+  kilograms NUMERIC(7,3) NOT NULL CHECK (kilograms > 0 AND kilograms < 500),
+  source_bundle TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, source, external_id)
+);
+
 -- Exercises library
 CREATE TABLE IF NOT EXISTS exercises (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -78,6 +92,98 @@ CREATE TABLE IF NOT EXISTS sets (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Activity Sessions (non-lifting calendar events)
+CREATE TABLE IF NOT EXISTS activity_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  activity_type TEXT NOT NULL CHECK (
+    activity_type IN (
+      'bike_ride',
+      'climbing',
+      'swimming',
+      'run',
+      'interval_run',
+      'sprint_session',
+      'tennis',
+      'pickleball',
+      'squash',
+      'golf',
+      'other'
+    )
+  ),
+  -- user's own name when activity_type = 'other' (e.g. "Yoga")
+  custom_type TEXT CHECK (
+    custom_type IS NULL
+    OR (activity_type = 'other' AND char_length(btrim(custom_type)) BETWEEN 1 AND 40)
+  ),
+  title TEXT,
+  date DATE NOT NULL,
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'whoop', 'strava', 'gps')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- session-level aggregates rolled up from segments; null for manual entries
+  strain NUMERIC,
+  avg_hr SMALLINT,
+  max_hr SMALLINT,
+  energy_kcal NUMERIC,
+  distance_m NUMERIC,
+  -- import bookkeeping: created by grouping engine / edited by user / soft-deleted
+  auto_grouped BOOLEAN NOT NULL DEFAULT FALSE,
+  user_edited BOOLEAN NOT NULL DEFAULT FALSE,
+  dismissed_at TIMESTAMPTZ,
+  CHECK (ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at)
+);
+
+-- Raw imported/recorded child records of activity_sessions (one row per WHOOP
+-- workout record or GPS lap/sprint rep). UNIQUE (user_id, source, external_id)
+-- makes re-imports idempotent.
+CREATE TABLE IF NOT EXISTS activity_segments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES activity_sessions(id) ON DELETE SET NULL,
+  source TEXT NOT NULL CHECK (source IN ('manual', 'whoop', 'strava', 'gps')),
+  external_id TEXT NOT NULL,
+  sport TEXT,
+  started_at TIMESTAMPTZ NOT NULL,
+  ended_at TIMESTAMPTZ NOT NULL,
+  duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  strain NUMERIC,
+  avg_hr SMALLINT,
+  max_hr SMALLINT,
+  energy_kcal NUMERIC,
+  distance_m NUMERIC,
+  raw JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (ended_at >= started_at),
+  UNIQUE (user_id, source, external_id)
+);
+
+-- WHOOP integration (see migration 20260710091000 for policy rationale):
+-- whoop_connections = safe metadata (owner read-only), whoop_tokens = OAuth
+-- tokens locked to the service role (zero policies + REVOKE)
+CREATE TABLE IF NOT EXISTS whoop_connections (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  whoop_user_id TEXT,
+  scopes TEXT,
+  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_synced_at TIMESTAMPTZ,
+  last_sync_status TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS whoop_tokens (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Foods database (custom + USDA)
 CREATE TABLE IF NOT EXISTS foods (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -91,7 +197,35 @@ CREATE TABLE IF NOT EXISTS foods (
   serving_unit TEXT NOT NULL DEFAULT 'serving',
   source TEXT DEFAULT 'custom',
   fdc_id TEXT,
+  external_source TEXT,
+  external_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Day-scoped containers for unlimited meals and snacks
+CREATE TABLE IF NOT EXISTS nutrition_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('meal', 'snack')),
+  label TEXT CHECK (label IS NULL OR label IN ('breakfast', 'lunch', 'dinner')),
+  sort_order INTEGER NOT NULL DEFAULT 0 CHECK (sort_order >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS nutrition_import_batches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  source TEXT NOT NULL CHECK (source IN ('cronometer')),
+  file_name TEXT NOT NULL,
+  file_hash TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+  imported_count INTEGER NOT NULL DEFAULT 0 CHECK (imported_count >= 0),
+  skipped_count INTEGER NOT NULL DEFAULT 0 CHECK (skipped_count >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, source, file_hash)
 );
 
 -- Nutrition Logs
@@ -103,7 +237,14 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
   food_id UUID NOT NULL REFERENCES foods(id),
   servings DECIMAL(10,2) NOT NULL DEFAULT 1,
   meal_type TEXT DEFAULT 'snack',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  group_id UUID,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'manual',
+  external_id TEXT,
+  import_batch_id UUID REFERENCES nutrition_import_batches(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT nutrition_logs_group_owner_fk
+    FOREIGN KEY (group_id, user_id) REFERENCES nutrition_groups(id, user_id)
 );
 
 -- Macro Targets
@@ -140,8 +281,18 @@ CREATE INDEX idx_workouts_user_id ON workouts(user_id);
 CREATE INDEX idx_workouts_date ON workouts(date);
 CREATE INDEX idx_sets_workout_id ON sets(workout_id);
 CREATE INDEX idx_sets_exercise_id ON sets(exercise_id);
+CREATE INDEX idx_body_weight_measurements_user_time ON body_weight_measurements(user_id, measured_at DESC);
+CREATE INDEX idx_activity_sessions_user_date ON activity_sessions(user_id, date);
+CREATE INDEX idx_activity_sessions_user_started_at ON activity_sessions(user_id, started_at);
+CREATE INDEX idx_activity_segments_user_started_at ON activity_segments(user_id, started_at);
+CREATE INDEX idx_activity_segments_session ON activity_segments(session_id);
 CREATE INDEX idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
 CREATE INDEX idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
+CREATE INDEX idx_nutrition_groups_user_date ON nutrition_groups(user_id, date, sort_order);
+CREATE UNIQUE INDEX idx_nutrition_groups_named_label ON nutrition_groups(user_id, date, label) WHERE label IS NOT NULL;
+CREATE INDEX idx_nutrition_logs_group ON nutrition_logs(group_id, sort_order);
+CREATE UNIQUE INDEX idx_nutrition_logs_external_identity ON nutrition_logs(user_id, source, external_id) WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_foods_external_identity ON foods(user_id, external_source, external_id) WHERE user_id IS NOT NULL AND external_source IS NOT NULL AND external_id IS NOT NULL;
 CREATE INDEX idx_foods_user_id ON foods(user_id);
 
 -- Plan Schedules (training start-date & weekday mapping, synced across devices)
@@ -166,8 +317,16 @@ ALTER TABLE split_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE body_weight_measurements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_segments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whoop_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whoop_tokens ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON whoop_tokens FROM anon, authenticated;
 ALTER TABLE foods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nutrition_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nutrition_import_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volume_landmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
@@ -235,6 +394,27 @@ CREATE POLICY "Users can delete own sets" ON sets FOR DELETE USING (
   EXISTS (SELECT 1 FROM workouts WHERE workouts.id = sets.workout_id AND workouts.user_id = auth.uid())
 );
 
+-- Body weight policies
+CREATE POLICY "Users can view own body weight" ON body_weight_measurements FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own body weight" ON body_weight_measurements FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own body weight" ON body_weight_measurements FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own body weight" ON body_weight_measurements FOR DELETE USING (auth.uid() = user_id);
+
+-- Activity sessions policies
+CREATE POLICY "Users can view own activity sessions" ON activity_sessions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own activity sessions" ON activity_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own activity sessions" ON activity_sessions FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own activity sessions" ON activity_sessions FOR DELETE USING (auth.uid() = user_id);
+
+-- Activity segments policies
+CREATE POLICY "Users can view own activity segments" ON activity_segments FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own activity segments" ON activity_segments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own activity segments" ON activity_segments FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR DELETE USING (auth.uid() = user_id);
+
+-- WHOOP connection policies: owner may read status; only service role writes.
+-- whoop_tokens intentionally has NO policies.
+CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
 -- Foods policies
 CREATE POLICY "Users can view own foods" ON foods FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
 CREATE POLICY "Users can insert own foods" ON foods FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
@@ -246,6 +426,14 @@ CREATE POLICY "Users can view own nutrition logs" ON nutrition_logs FOR SELECT U
 CREATE POLICY "Users can insert own nutrition logs" ON nutrition_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own nutrition logs" ON nutrition_logs FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own nutrition logs" ON nutrition_logs FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own nutrition groups" ON nutrition_groups FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own nutrition groups" ON nutrition_groups FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own nutrition groups" ON nutrition_groups FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own nutrition groups" ON nutrition_groups FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own nutrition imports" ON nutrition_import_batches FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own nutrition imports" ON nutrition_import_batches FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own nutrition imports" ON nutrition_import_batches FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own nutrition imports" ON nutrition_import_batches FOR DELETE USING (auth.uid() = user_id);
 
 -- Macro targets policies
 CREATE POLICY "Users can view own macro targets" ON macro_targets FOR SELECT USING (auth.uid() = user_id);

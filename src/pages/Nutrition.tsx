@@ -1,12 +1,23 @@
-import { useMemo, useEffect, useState, useCallback } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus, UtensilsCrossed, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
-import { getLogDate, getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
+import {
+  insertNutritionGroupByTime,
+  legacyMealTypeForGroup,
+  missingDefaultNamedMeals,
+  moveNutritionGroup,
+  normalizeNutritionGroupOrder,
+  nutritionGroupLabel,
+  sortNutritionGroups,
+} from '@/lib/nutritionGroups';
+import type { NutritionGroup } from '@/types';
 import {
   addDays,
   addMonths,
@@ -30,6 +41,11 @@ interface NutritionLogEntry {
   food_id: string;
   servings: number;
   meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  group_id?: string | null;
+  sort_order?: number;
+  source?: string;
+  external_id?: string | null;
+  import_batch_id?: string | null;
   food: {
     id: string;
     name: string;
@@ -65,6 +81,7 @@ export function Nutrition() {
   const { macroTarget, fetchMacroTarget } = useAppStore();
   const [showLogger, setShowLogger] = useState(false);
   const [monthLogs, setMonthLogs] = useState<NutritionLogEntry[]>([]);
+  const [monthGroups, setMonthGroups] = useState<NutritionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [deletedId, setDeletedId] = useState<string | null>(null);
@@ -73,6 +90,8 @@ export function Nutrition() {
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
+  const [showGroupSheet, setShowGroupSheet] = useState(false);
+  const defaultGroupsInFlight = useRef(new Set<string>());
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
     setLoading(true);
@@ -83,12 +102,26 @@ export function Nutrition() {
       const from = format(startOfMonth(month), 'yyyy-MM-dd');
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
 
-      const { data: logs, error: logsError } = await supabase
-        .from('nutrition_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('date', from)
-        .lte('date', to);
+      const [logsResult, groupsResult] = await Promise.all([
+        supabase
+          .from('nutrition_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', from)
+          .lte('date', to),
+        supabase
+          .from('nutrition_groups')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', from)
+          .lte('date', to)
+          .order('sort_order', { ascending: true }),
+      ]);
+      const { data: logs, error: logsError } = logsResult;
+      const { data: groups, error: groupsError } = groupsResult;
+
+      if (groupsError) console.error('Error fetching nutrition groups:', groupsError);
+      setMonthGroups((groups || []) as NutritionGroup[]);
 
       if (logsError) {
         console.error('Error fetching logs:', logsError);
@@ -183,6 +216,82 @@ export function Nutrition() {
       .sort((a, b) => getLogTimestamp(a) - getLogTimestamp(b));
   }, [monthLogs, selectedDateKey]);
 
+  const selectedDayGroups = useMemo(
+    () => sortNutritionGroups(monthGroups.filter((group) => group.date === selectedDateKey)),
+    [monthGroups, selectedDateKey],
+  );
+
+  const persistGroupOrder = useCallback(async (groups: NutritionGroup[]): Promise<boolean> => {
+    const results = await Promise.all(groups.map((group) => (
+      supabase
+        .from('nutrition_groups')
+        .update({ sort_order: group.sort_order })
+        .eq('id', group.id)
+        .eq('user_id', group.user_id)
+    )));
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      console.error('Error ordering nutrition groups:', failed.error);
+      return false;
+    }
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (loading || defaultGroupsInFlight.current.has(selectedDateKey)) return;
+    const missingLabels = missingDefaultNamedMeals(selectedDayGroups);
+    if (missingLabels.length === 0) return;
+
+    defaultGroupsInFlight.current.add(selectedDateKey);
+    let cancelled = false;
+
+    const ensureDefaultGroups = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase.from('nutrition_groups').insert(
+          missingLabels.map((label, index) => ({
+            user_id: user.id,
+            date: selectedDateKey,
+            kind: 'meal' as const,
+            label,
+            sort_order: selectedDayGroups.length + index,
+          })),
+        ).select('*');
+
+        if (error || !data) {
+          console.error('Error creating default nutrition groups:', error);
+          await fetchMonthLogs(selectedMonth);
+          return;
+        }
+
+        const inserted = data as NutritionGroup[];
+        const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, ...inserted]);
+        if (!await persistGroupOrder(normalized)) {
+          await fetchMonthLogs(selectedMonth);
+          return;
+        }
+        if (cancelled) return;
+
+        const normalizedById = new Map(normalized.map((group) => [group.id, group]));
+        setMonthGroups((current) => [
+          ...current.map((group) => normalizedById.get(group.id) || group),
+          ...inserted
+            .filter((group) => !current.some((candidate) => candidate.id === group.id))
+            .map((group) => normalizedById.get(group.id) || group),
+        ]);
+      } finally {
+        defaultGroupsInFlight.current.delete(selectedDateKey);
+      }
+    };
+
+    void ensureDefaultGroups();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchMonthLogs, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
+
   const dayTotals = useMemo(
     () =>
       selectedDayLogs.reduce(
@@ -208,17 +317,90 @@ export function Nutrition() {
     }, {});
   }, [monthLogs]);
 
-  const mealTagLabel = (meal?: string | null) => {
-    if (!meal) return null;
-    return meal.charAt(0).toUpperCase() + meal.slice(1);
+  const createGroup = async (kind: 'meal' | 'snack') => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase.from('nutrition_groups').insert({
+      user_id: user.id,
+      date: selectedDateKey,
+      kind,
+      label: null,
+      sort_order: selectedDayGroups.length,
+    }).select('*').single();
+
+    if (error || !data) {
+      console.error('Error creating nutrition group:', error);
+      return;
+    }
+
+    const normalized = insertNutritionGroupByTime(selectedDayGroups, data as NutritionGroup);
+    if (!await persistGroupOrder(normalized)) {
+      await fetchMonthLogs(selectedMonth);
+      return;
+    }
+
+    const normalizedById = new Map(normalized.map((group) => [group.id, group]));
+    setMonthGroups((current) => [
+      ...current.map((group) => normalizedById.get(group.id) || group),
+      ...(current.some((group) => group.id === data.id) ? [] : [normalizedById.get(data.id) || data as NutritionGroup]),
+    ]);
+    setShowGroupSheet(false);
+  };
+
+  const moveEntry = async (logId: string, groupId: string | null) => {
+    const group = groupId ? selectedDayGroups.find((candidate) => candidate.id === groupId) || null : null;
+    const nextSortOrder = selectedDayLogs.filter((log) => (log.group_id || null) === groupId).length;
+    const patch = {
+      group_id: groupId,
+      sort_order: nextSortOrder,
+      meal_type: legacyMealTypeForGroup(group),
+    };
+    const { error } = await supabase.from('nutrition_logs').update(patch).eq('id', logId);
+    if (error) {
+      console.error('Error moving nutrition entry:', error);
+      return;
+    }
+    setMonthLogs((current) => current.map((log) => log.id === logId ? { ...log, ...patch } : log));
+  };
+
+  const reorderGroup = async (groupId: string, direction: -1 | 1) => {
+    const reordered = moveNutritionGroup(selectedDayGroups, groupId, direction);
+    if (!reordered) return;
+
+    if (!await persistGroupOrder(reordered)) {
+      await fetchMonthLogs(selectedMonth);
+      return;
+    }
+
+    const reorderedById = new Map(reordered.map((group) => [group.id, group]));
+    setMonthGroups((current) => current.map((group) => reorderedById.get(group.id) || group));
+  };
+
+  const deleteGroup = async (group: NutritionGroup) => {
+    if (group.label) return;
+    const name = nutritionGroupLabel(group, selectedDayGroups);
+    if (!confirm(`Delete ${name}? Its foods will move to Unassigned.`)) return;
+    const { error: moveError } = await supabase.from('nutrition_logs')
+      .update({ group_id: null, meal_type: null })
+      .eq('user_id', group.user_id)
+      .eq('group_id', group.id);
+    if (moveError) {
+      console.error('Error unassigning group entries:', moveError);
+      return;
+    }
+    const { error } = await supabase.from('nutrition_groups').delete().eq('id', group.id).eq('user_id', group.user_id);
+    if (error) {
+      console.error('Error deleting nutrition group:', error);
+      return;
+    }
+    setMonthGroups((current) => current.filter((candidate) => candidate.id !== group.id));
+    setMonthLogs((current) => current.map((log) => log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log));
   };
 
   const targetKcal = macroTarget?.calories || 2000;
   const targetProtein = macroTarget?.protein || 150;
   const targetCarbs = macroTarget?.carbs || 200;
   const targetFat = macroTarget?.fat || 65;
-  const remainingKcal = Math.max(0, Math.round(targetKcal - dayTotals.calories));
-
   const macroFigures: { label: string; current: number; target: number }[] = [
     { label: 'Protein', current: dayTotals.protein, target: targetProtein },
     { label: 'Carbs', current: dayTotals.carbs, target: targetCarbs },
@@ -255,17 +437,17 @@ export function Nutrition() {
           <>
             <div className="flex items-end justify-between gap-4">
               <div className="min-w-0">
-                <span className="t-label block mb-3">Energy remaining</span>
+                <span className="t-label block mb-3">Energy consumed</span>
                 <div className="flex items-baseline gap-2.5">
-                  <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
+                  <RollingNumber value={Math.round(dayTotals.calories).toLocaleString()} className="number-hero text-[var(--color-text)]" />
                   <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
                 </div>
               </div>
               <div className="text-right shrink-0 pb-1.5">
                 <span className="t-data-sm text-[var(--color-text-dim)]">
-                  {Math.round(dayTotals.calories).toLocaleString()}
+                  / {Math.round(targetKcal).toLocaleString()}
                 </span>
-                <span className="t-label-sm block mt-1">of {Math.round(targetKcal).toLocaleString()} eaten</span>
+                <span className="t-label-sm block mt-1">Daily target</span>
               </div>
             </div>
             <RailStrip
@@ -341,6 +523,12 @@ export function Nutrition() {
           <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
           Log food
         </Button>
+        <div className="mt-3">
+          <Button variant="secondary" className="w-full" onClick={() => setShowGroupSheet(true)}>
+            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
+            Add meal
+          </Button>
+        </div>
       </motion.div>
 
       {/* ── Week strip + month jump ── */}
@@ -415,7 +603,7 @@ export function Nutrition() {
         </div>
       </motion.section>
 
-      {/* ── Timeline ── */}
+      {/* ── Unified food inbox + meal groups ── */}
       <motion.section
         className="mt-10 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0, y: 12 }}
@@ -423,7 +611,7 @@ export function Nutrition() {
         transition={{ ...springs.smooth, delay: 0.2 }}
       >
         <div className="flex items-baseline justify-between mb-4">
-          <span className="t-label">Timeline</span>
+          <span className="t-label">Meals</span>
           {!loading && selectedDayLogs.length > 0 && (
             <span className="t-data-sm text-[var(--color-muted)]">
               {selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}
@@ -444,7 +632,7 @@ export function Nutrition() {
               </div>
             ))}
           </div>
-        ) : selectedDayLogs.length === 0 ? (
+        ) : selectedDayLogs.length === 0 && selectedDayGroups.length === 0 ? (
           <EmptyState
             icon={UtensilsCrossed}
             title="Nothing logged yet"
@@ -463,79 +651,21 @@ export function Nutrition() {
             }
           />
         ) : (
-          <ul>
-            <AnimatePresence>
-              {selectedDayLogs.map((log, index) => {
-                const tagLabel = mealTagLabel(log.meal_type);
-
-                return (
-                  <motion.li
-                    key={log.id}
-                    className="flex items-baseline gap-4 py-4 border-t border-[var(--color-border)]"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{
-                      opacity: deletedId === log.id ? 0 : 1,
-                      x: deletedId === log.id ? 60 : 0,
-                      y: 0,
-                      height: deletedId === log.id ? 0 : 'auto',
-                    }}
-                    exit={{ opacity: 0, x: 60, height: 0 }}
-                    transition={{
-                      ...springs.smooth,
-                      delay: deletedId === log.id ? 0 : Math.min(index * 0.03, 0.25),
-                    }}
-                  >
-                    {/* time */}
-                    <span className="t-data-sm text-[var(--color-muted)] w-14 shrink-0 pt-0.5">
-                      {format(getLogDate(log), 'h:mm a')}
-                    </span>
-
-                    {/* food */}
-                    <div className="flex-1 min-w-0">
-                      <p className="t-body font-medium text-[var(--color-text)] truncate">{log.food?.name || 'Unknown Food'}</p>
-                      <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
-                        {log.servings} serving{log.servings !== 1 ? 's' : ''}
-                        {tagLabel && <span className="text-[var(--color-text-dim)]"> · {tagLabel}</span>}
-                        {' · '}
-                        {Math.round((log.food?.protein || 0) * log.servings)}g P
-                      </p>
-                    </div>
-
-                    {/* calories — serif figure */}
-                    <span className="flex items-baseline gap-1 shrink-0">
-                      <span className="number-medium text-[var(--color-text)]">
-                        {Math.round((log.food?.calories || 0) * log.servings)}
-                      </span>
-                      <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
-                    </span>
-
-                    {/* actions */}
-                    <div className="flex shrink-0 -mr-2 self-center">
-                      <motion.button
-                        className="p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                        onClick={() => {
-                          setEditingEntry(log);
-                          setShowLogger(true);
-                        }}
-                        aria-label="Edit entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      </motion.button>
-                      <motion.button
-                        className="p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-                        onClick={() => handleDeleteEntry(log.id)}
-                        aria-label="Remove entry"
-                        whileTap={{ scale: 0.9 }}
-                      >
-                        <X className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      </motion.button>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
-          </ul>
+          <NutritionGroupLedger
+            logs={selectedDayLogs}
+            groups={selectedDayGroups}
+            deletedId={deletedId}
+            onEdit={(entry) => {
+              const fullEntry = selectedDayLogs.find((candidate) => candidate.id === entry.id);
+              if (!fullEntry) return;
+              setEditingEntry(fullEntry);
+              setShowLogger(true);
+            }}
+            onDelete={(id) => void handleDeleteEntry(id)}
+            onMove={(id, groupId) => void moveEntry(id, groupId)}
+            onReorderGroup={(groupId, direction) => void reorderGroup(groupId, direction)}
+            onDeleteGroup={(group) => void deleteGroup(group)}
+          />
         )}
       </motion.section>
 
@@ -604,6 +734,28 @@ export function Nutrition() {
         </div>
       </Modal>
 
+      <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
+        <div className="space-y-px pb-2">
+          {[
+            { kind: 'meal' as const, title: 'Meal', description: 'Inserted by time and numbered by its place in the day' },
+            { kind: 'snack' as const, title: 'Snack', description: 'Inserted by time and numbered with other snacks' },
+          ].map((option) => (
+            <button
+              key={option.kind}
+              type="button"
+              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border)] text-left"
+              onClick={() => void createGroup(option.kind)}
+            >
+              <span>
+                <span className="t-heading block">{option.title}</span>
+                <span className="t-caption block mt-0.5">{option.description}</span>
+              </span>
+              <span className="t-data-sm text-[var(--color-muted)]">Add</span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+
       {/* Logger sheet */}
       <Modal
         isOpen={showLogger}
@@ -616,6 +768,7 @@ export function Nutrition() {
         <FoodLogger
           selectedDate={selectedDate}
           initialEntry={editingEntry}
+          groups={selectedDayGroups}
           onComplete={handleLogComplete}
         />
       </Modal>

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Workout, WorkoutSet } from '@/types';
+import type { ActivitySegment, ActivitySession, Workout, WorkoutSet } from '@/types';
+import type { FinishedRun } from '@/lib/runTracker';
 
 const supabaseMock = vi.hoisted(() => ({
   from: vi.fn(),
@@ -14,6 +15,11 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { useAppStore } from '@/stores/appStore';
+
+const defaultActivityActions = {
+  createActivitySession: useAppStore.getState().createActivitySession,
+  upsertActivitySegments: useAppStore.getState().upsertActivitySegments,
+};
 
 type Chain = {
   error: null;
@@ -98,6 +104,7 @@ beforeEach(() => {
     volumeLandmarks: [],
     weeklyVolume: [],
     loading: false,
+    ...defaultActivityActions,
   });
 });
 
@@ -1458,5 +1465,84 @@ describe('must-work store contracts', () => {
     const updatedPlan = useAppStore.getState().currentWorkoutDayPlan;
     const groupIds = new Set((updatedPlan?.items || []).map((item) => item.superset_group_id).filter(Boolean));
     expect(groupIds.size).toBe(1);
+  });
+
+  it('reuses an existing GPS session when a tracked-run save is retried', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+
+    const run: FinishedRun = {
+      runId: 'stable-run-id',
+      mode: 'free',
+      startedAtMs: Date.parse('2026-07-12T14:00:00.000Z'),
+      endedAtMs: Date.parse('2026-07-12T14:30:00.000Z'),
+      totalDistanceM: 5000,
+      elapsedS: 1800,
+      laps: [],
+      reps: [],
+    };
+    const existingSession: ActivitySession = {
+      id: 'existing-gps-session',
+      user_id: 'user-1',
+      activity_type: 'run',
+      title: null,
+      date: '2026-07-12',
+      started_at: '2026-07-12T14:00:00.000Z',
+      ended_at: null,
+      duration_seconds: 1800,
+      source: 'gps',
+      notes: null,
+      strain: null,
+      avg_hr: null,
+      max_hr: null,
+      energy_kcal: null,
+      distance_m: 5000,
+      auto_grouped: false,
+      user_edited: false,
+      dismissed_at: null,
+      created_at: '2026-07-12T14:30:00.000Z',
+      updated_at: '2026-07-12T14:30:00.000Z',
+    };
+    const segment: ActivitySegment = {
+      id: 'gps-segment',
+      user_id: 'user-1',
+      session_id: null,
+      source: 'gps',
+      external_id: 'gps:stable-run-id:1',
+      sport: 'running',
+      started_at: '2026-07-12T14:00:00.000Z',
+      ended_at: '2026-07-12T14:30:00.000Z',
+      duration_seconds: 1800,
+      strain: null,
+      avg_hr: null,
+      max_hr: null,
+      energy_kcal: null,
+      distance_m: 5000,
+      raw: null,
+      created_at: '2026-07-12T14:30:00.000Z',
+      updated_at: '2026-07-12T14:30:00.000Z',
+    };
+
+    const sessionChain = createChain({
+      maybeSingle: vi.fn().mockResolvedValue({ data: existingSession, error: null }),
+    });
+    const segmentChain = createChain();
+    const createSession = vi.fn();
+    const upsertSegments = vi.fn().mockResolvedValue([segment]);
+    useAppStore.setState({
+      createActivitySession: createSession,
+      upsertActivitySegments: upsertSegments,
+    });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'activity_sessions') return sessionChain;
+      if (table === 'activity_segments') return segmentChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const saved = await useAppStore.getState().saveTrackedRun(run);
+
+    expect(saved).toEqual(existingSession);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(upsertSegments).toHaveBeenCalledOnce();
+    expect(segmentChain.update).toHaveBeenCalledWith(expect.objectContaining({ session_id: existingSession.id }));
   });
 });

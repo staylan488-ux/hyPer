@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ios": "npm run build",
+    "ios:sync": "npm run build:ios && cap sync ios",
+    "ios:open": "cap open ios",
+    "ios:run": "npm run ios:sync && cap run ios",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "evidence:import": "node scripts/import-evidence.mjs",
+    "photo-worker": "node scripts/photo-food-worker.mjs",
+    "photo-worker:sandbox": "PHOTO_WORKER_ALLOW_PREVIEW=1 node scripts/photo-food-worker.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,6 +30,7 @@
     "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.95.3",
     "@tailwindcss/vite": "^4.1.18",
+    "barcode-detector": "3.2.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
     "motion": "^12.34.0",

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "serving_description",
+    "calories",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "confidence",
+    "notes",
+    "sources"
+  ],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "serving_description": { "type": "string", "minLength": 1 },
+    "calories": { "type": "number", "minimum": 0 },
+    "protein_g": { "type": "number", "minimum": 0 },
+    "carbs_g": { "type": "number", "minimum": 0 },
+    "fat_g": { "type": "number", "minimum": 0 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "notes": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -24,6 +24,7 @@ hyPer is built to unify both for people training for muscle growth.
 ## Tech stack
 
 - **Frontend:** React 19 + TypeScript
+- **iOS shell:** Capacitor 8, with native Swift plugins added where web APIs are insufficient
 - **State:** Zustand
 - **Styling/UI:** TailwindCSS 4 + Motion
 - **Backend/Auth/DB:** Supabase
@@ -49,6 +50,8 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_USDA_API_KEY=your_usda_api_key
 ```
 
+Native iOS builds are intentionally locked to the isolated Hyper-Dev Supabase project. Put its URL and public client key in an ignored `.env.local`; never use a service-role key in the app.
+
 ### 3) Run the app
 
 ```bash
@@ -62,6 +65,10 @@ App runs on Vite's local dev server (typically `http://localhost:5173`).
 ```bash
 npm run dev            # Start development server
 npm run build          # Typecheck + production build
+npm run build:ios      # Verify Hyper-Dev, then build bundled iOS web assets
+npm run ios:sync       # Build and sync assets/plugins into the Xcode project
+npm run ios:open       # Open the generated iOS project in Xcode
+npm run ios:run        # Sync, select a target, and run through Capacitor
 npm run preview        # Preview production build locally
 npm run lint           # Lint codebase
 npm run test           # Run test suite once

@@ -1,0 +1,30 @@
+[Unit]
+Description=hyPer private food analysis worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hyper-photo
+Group=hyper-photo
+WorkingDirectory=/opt/hyper
+EnvironmentFile=/etc/hyper/photo-worker.env
+ExecStart=/usr/bin/node /opt/hyper/scripts/photo-food-worker.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/hyper/.tmp
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
+

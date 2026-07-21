@@ -1199,7 +1199,16 @@ export function Workout() {
           <header className="mb-8">
             <div className="flex items-baseline justify-between">
               <span className="t-label-sm">Train</span>
-              <span className="t-label-sm">Flexible</span>
+              <div className="flex items-baseline gap-4">
+                <button
+                  type="button"
+                  onClick={() => navigate('/train/run')}
+                  className="t-label-sm hover:text-[var(--color-text)] transition-colors"
+                >
+                  Run
+                </button>
+                <span className="t-label-sm">Flexible</span>
+              </div>
             </div>
             <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</h1>
           </header>
@@ -1268,16 +1277,25 @@ export function Workout() {
         <header className="mb-8">
           <div className="flex items-baseline justify-between gap-3">
             <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
-            {planSchedule && (
+            <div className="flex items-baseline gap-4 shrink-0">
               <button
                 type="button"
-                onClick={openScheduleEditor}
-                className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
+                onClick={() => navigate('/train/run')}
+                className="t-label-sm hover:text-[var(--color-text)] transition-colors"
               >
-                <Settings2 className="w-3 h-3" strokeWidth={1.75} />
-                Schedule
+                Run
               </button>
-            )}
+              {planSchedule && (
+                <button
+                  type="button"
+                  onClick={openScheduleEditor}
+                  className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
+                >
+                  <Settings2 className="w-3 h-3" strokeWidth={1.75} />
+                  Schedule
+                </button>
+              )}
+            </div>
           </div>
           <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Today</h1>
         </header>

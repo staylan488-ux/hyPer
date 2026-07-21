@@ -1,6 +1,8 @@
-// DEV-ONLY in-memory Supabase stand-in. Returns the canned previewTables rows
+// DEV-ONLY in-memory Supabase stand-in. Serves the canned previewTables rows
 // through a chainable query builder that honours the common filters (eq/in/
-// gte/lte/order/limit/single/count) well enough for a visual preview.
+// gte/lte/order/limit/single/count). Mutations PERSIST into previewTables for
+// the lifetime of the tab so preview flows (add -> navigate -> re-fetch) behave
+// like the real database; a full page reload re-seeds from scratch.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { previewTables, PREVIEW_USER_ID } from './previewData';
 
@@ -16,35 +18,124 @@ const PREVIEW_USER = {
 type Row = Record<string, unknown>;
 type Predicate = (r: Row) => boolean;
 
+const PREVIEW_USDA_FOODS = [
+  {
+    fdcId: 171077,
+    description: 'Chicken Breast, grilled',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 165 },
+      { nutrientName: 'Protein', value: 31 },
+      { nutrientName: 'Carbohydrate, by difference', value: 0 },
+      { nutrientName: 'Total lipid (fat)', value: 3.6 },
+    ],
+  },
+  {
+    fdcId: 168878,
+    description: 'White Rice, cooked',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 130 },
+      { nutrientName: 'Protein', value: 2.7 },
+      { nutrientName: 'Carbohydrate, by difference', value: 28.2 },
+      { nutrientName: 'Total lipid (fat)', value: 0.3 },
+    ],
+  },
+  {
+    fdcId: 748608,
+    description: 'Olive Oil',
+    servingSize: 100,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientName: 'Energy', value: 884 },
+      { nutrientName: 'Protein', value: 0 },
+      { nutrientName: 'Carbohydrate, by difference', value: 0 },
+      { nutrientName: 'Total lipid (fat)', value: 100 },
+    ],
+  },
+] as const;
+
+function mockFoodLookup(body: Record<string, unknown> | undefined): unknown {
+  if (body?.action === 'detail') {
+    return PREVIEW_USDA_FOODS.find((food) => String(food.fdcId) === String(body.fdcId)) ?? null;
+  }
+
+  if (body?.action === 'barcode') return { foods: [] };
+  if (body?.action === 'open-food-facts-barcode') {
+    return {
+      code: String(body.barcode || '0041570054161'),
+      status: 1,
+      product: {
+        product_name: 'Preview protein bar',
+        brands: 'Hyper Test Kitchen',
+        serving_size: '1 bar (55 g)',
+        serving_quantity: 55,
+        nutriments: {
+          'energy-kcal_serving': 210,
+          proteins_serving: 20,
+          carbohydrates_serving: 23,
+          fat_serving: 6,
+        },
+      },
+    };
+  }
+
+  const query = String(body?.query ?? '').toLowerCase();
+  const terms = query.split(/\s+/).filter((term) => term.length > 2);
+  const foods = PREVIEW_USDA_FOODS.filter((food) => {
+    const name = food.description.toLowerCase();
+    return terms.some((term) => name.includes(term));
+  });
+  return { foods };
+}
+
+let mockIdCounter = 0;
+
+function stampRow(row: Row): Row {
+  const now = new Date().toISOString();
+  return { id: `mock-${Date.now()}-${++mockIdCounter}`, created_at: now, updated_at: now, ...row };
+}
+
 class MockBuilder implements PromiseLike<{ data: unknown; error: null; count: number }> {
-  private rows: Row[];
+  // live reference into previewTables so mutations persist across builders
+  private live: Row[];
   private filters: Predicate[] = [];
   private orderSpec: { col: string; asc: boolean } | null = null;
   private limitN: number | null = null;
   private rangeSpec: [number, number] | null = null;
   private wantSingle = false;
   private headOnly = false;
-  private mutate: Row[] | null = null;
+  private insertVals: Row[] | null = null;
+  private upsertVals: Row[] | null = null;
+  private onConflictCols: string[] = ['id'];
   private updateVals: Row | null = null;
   private del = false;
 
   constructor(table: string) {
-    this.rows = (previewTables[table] ?? []).map((r) => ({ ...r }));
+    if (!previewTables[table]) previewTables[table] = [];
+    this.live = previewTables[table];
   }
 
   select(_cols?: string, opts?: { head?: boolean; count?: string }) {
     if (opts?.head) this.headOnly = true;
     return this;
   }
-  insert(values: Row | Row[]) { this.mutate = Array.isArray(values) ? values : [values]; return this; }
-  upsert(values: Row | Row[]) { this.mutate = Array.isArray(values) ? values : [values]; return this; }
+  insert(values: Row | Row[]) { this.insertVals = Array.isArray(values) ? values : [values]; return this; }
+  upsert(values: Row | Row[], opts?: { onConflict?: string }) {
+    this.upsertVals = Array.isArray(values) ? values : [values];
+    if (opts?.onConflict) this.onConflictCols = opts.onConflict.split(',').map((c) => c.trim());
+    return this;
+  }
   update(values: Row) { this.updateVals = values; return this; }
   delete() { this.del = true; return this; }
 
   eq(col: string, val: unknown) { this.filters.push((r) => r[col] === val); return this; }
   neq(col: string, val: unknown) { this.filters.push((r) => r[col] !== val); return this; }
   in(col: string, arr: unknown[]) { this.filters.push((r) => arr.includes(r[col])); return this; }
-  is(col: string, val: unknown) { this.filters.push((r) => r[col] === val); return this; }
+  // normalise undefined to null so `.is('col', null)` matches seeded rows that omit the key
+  is(col: string, val: unknown) { this.filters.push((r) => (r[col] ?? null) === val); return this; }
   gte(col: string, val: unknown) { this.filters.push((r) => (r[col] as number | string) >= (val as number | string)); return this; }
   lte(col: string, val: unknown) { this.filters.push((r) => (r[col] as number | string) <= (val as number | string)); return this; }
   gt(col: string, val: unknown) { this.filters.push((r) => (r[col] as number | string) > (val as number | string)); return this; }
@@ -61,19 +152,48 @@ class MockBuilder implements PromiseLike<{ data: unknown; error: null; count: nu
   single() { this.wantSingle = true; return this; }
   maybeSingle() { this.wantSingle = true; return this; }
 
+  private matching(): Row[] {
+    return this.live.filter((r) => this.filters.every((f) => f(r)));
+  }
+
   private resolve() {
-    if (this.mutate) {
-      const data = this.mutate.map((r, i) => ({ id: `mock-${Date.now()}-${i}`, ...r }));
-      return { data: this.wantSingle ? data[0] ?? null : data, error: null, count: data.length };
+    if (this.insertVals) {
+      const data = this.insertVals.map((r) => stampRow(r));
+      this.live.push(...data);
+      const copies = data.map((r) => ({ ...r }));
+      return { data: this.wantSingle ? copies[0] ?? null : copies, error: null, count: copies.length };
+    }
+    if (this.upsertVals) {
+      const results: Row[] = [];
+      for (const value of this.upsertVals) {
+        const existing = this.live.find((r) => this.onConflictCols.every((c) => r[c] === value[c]));
+        if (existing) {
+          Object.assign(existing, value, { updated_at: new Date().toISOString() });
+          results.push(existing);
+        } else {
+          const stamped = stampRow(value);
+          this.live.push(stamped);
+          results.push(stamped);
+        }
+      }
+      const copies = results.map((r) => ({ ...r }));
+      return { data: this.wantSingle ? copies[0] ?? null : copies, error: null, count: copies.length };
     }
     if (this.updateVals) {
-      const data = this.rows.filter((r) => this.filters.every((f) => f(r))).map((r) => ({ ...r, ...this.updateVals }));
-      return { data: this.wantSingle ? data[0] ?? null : data, error: null, count: data.length };
+      const targets = this.matching();
+      targets.forEach((r) => Object.assign(r, this.updateVals));
+      const copies = targets.map((r) => ({ ...r }));
+      return { data: this.wantSingle ? copies[0] ?? null : copies, error: null, count: copies.length };
     }
     if (this.del) {
-      return { data: null, error: null, count: this.rows.filter((r) => this.filters.every((f) => f(r))).length };
+      const targets = new Set(this.matching());
+      const count = targets.size;
+      for (let i = this.live.length - 1; i >= 0; i--) {
+        if (targets.has(this.live[i])) this.live.splice(i, 1);
+      }
+      return { data: null, error: null, count };
     }
-    let data = this.rows.filter((r) => this.filters.every((f) => f(r)));
+    let data = this.matching().map((r) => ({ ...r }));
     if (this.orderSpec) {
       const { col, asc } = this.orderSpec;
       data = [...data].sort((a, b) => {
@@ -115,6 +235,11 @@ export function createMockClient(): SupabaseClient {
     auth,
     from: (table: string) => new MockBuilder(table),
     rpc: async () => ({ data: null, error: null }),
+    functions: {
+      invoke: async (name: string, options?: { body?: Record<string, unknown> }) => name === 'food-lookup'
+        ? { data: mockFoodLookup(options?.body), error: null }
+        : { data: null, error: { message: `${name} is not available in preview` } },
+    },
     channel: () => ({ on() { return this; }, subscribe() { return this; }, unsubscribe() {} }),
     removeChannel: () => {},
   };

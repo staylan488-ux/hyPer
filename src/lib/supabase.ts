@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { Capacitor } from '@capacitor/core'
+import { isNativeIOS } from '@/lib/nativeBridge'
+import { nativeAuthStorage } from '@/lib/nativeSecureStorage'
 import { isPreviewActive } from '@/preview/flag'
 import { createMockClient } from '@/preview/mockSupabase'
 
@@ -9,6 +10,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // DEV-ONLY: on /preview, swap in an in-memory mock so the signed-in app is
 // browsable without a backend. Production always uses the real client.
 const preview = isPreviewActive()
+const nativeIOS = isNativeIOS()
 
 if (!preview && (!supabaseUrl || !supabaseAnonKey)) {
   throw new Error('Missing Supabase environment variables')
@@ -20,10 +22,8 @@ export const supabase = preview
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
-        // Native OAuth returns via the hyper:// deep link, which needs the
-        // code-exchange (PKCE) flow. Web keeps the existing implicit flow.
-        ...(Capacitor.isNativePlatform() ? { flowType: 'pkce' as const } : {})
+        detectSessionInUrl: !nativeIOS,
+        ...(nativeIOS ? { flowType: 'pkce' as const, storage: nativeAuthStorage } : {}),
       }
     })
 
@@ -241,6 +241,197 @@ export interface Database {
           created_at?: string
         }
       }
+      activity_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          activity_type: string
+          title: string | null
+          date: string
+          started_at: string | null
+          ended_at: string | null
+          duration_seconds: number | null
+          source: string
+          notes: string | null
+          strain: number | null
+          avg_hr: number | null
+          max_hr: number | null
+          energy_kcal: number | null
+          distance_m: number | null
+          auto_grouped: boolean
+          user_edited: boolean
+          dismissed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          activity_type: string
+          title?: string | null
+          date: string
+          started_at?: string | null
+          ended_at?: string | null
+          duration_seconds?: number | null
+          source?: string
+          notes?: string | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          auto_grouped?: boolean
+          user_edited?: boolean
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          activity_type?: string
+          title?: string | null
+          date?: string
+          started_at?: string | null
+          ended_at?: string | null
+          duration_seconds?: number | null
+          source?: string
+          notes?: string | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          auto_grouped?: boolean
+          user_edited?: boolean
+          dismissed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      body_weight_measurements: {
+        Row: {
+          id: string
+          user_id: string
+          source: 'apple_health'
+          external_id: string
+          measured_at: string
+          kilograms: number
+          source_bundle: string
+          source_name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source?: 'apple_health'
+          external_id: string
+          measured_at: string
+          kilograms: number
+          source_bundle: string
+          source_name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: 'apple_health'
+          external_id?: string
+          measured_at?: string
+          kilograms?: number
+          source_bundle?: string
+          source_name?: string
+          created_at?: string
+        }
+      }
+      whoop_connections: {
+        Row: {
+          user_id: string
+          whoop_user_id: string | null
+          scopes: string | null
+          connected_at: string
+          last_synced_at: string | null
+          last_sync_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          whoop_user_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          whoop_user_id?: string | null
+          scopes?: string | null
+          connected_at?: string
+          last_synced_at?: string | null
+          last_sync_status?: string | null
+          updated_at?: string
+        }
+      }
+      activity_segments: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string | null
+          source: string
+          external_id: string
+          sport: string | null
+          started_at: string
+          ended_at: string
+          duration_seconds: number | null
+          strain: number | null
+          avg_hr: number | null
+          max_hr: number | null
+          energy_kcal: number | null
+          distance_m: number | null
+          raw: Record<string, unknown> | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id?: string | null
+          source: string
+          external_id: string
+          sport?: string | null
+          started_at: string
+          ended_at: string
+          duration_seconds?: number | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          raw?: Record<string, unknown> | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_id?: string | null
+          source?: string
+          external_id?: string
+          sport?: string | null
+          started_at?: string
+          ended_at?: string
+          duration_seconds?: number | null
+          strain?: number | null
+          avg_hr?: number | null
+          max_hr?: number | null
+          energy_kcal?: number | null
+          distance_m?: number | null
+          raw?: Record<string, unknown> | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       foods: {
         Row: {
           id: string
@@ -254,6 +445,8 @@ export interface Database {
           serving_unit: string
           source: string
           fdc_id: string | null
+          external_source: string | null
+          external_id: string | null
           created_at: string
         }
         Insert: {
@@ -268,6 +461,8 @@ export interface Database {
           serving_unit: string
           source?: string
           fdc_id?: string | null
+          external_source?: string | null
+          external_id?: string | null
           created_at?: string
         }
         Update: {
@@ -282,6 +477,75 @@ export interface Database {
           serving_unit?: string
           source?: string
           fdc_id?: string | null
+          external_source?: string | null
+          external_id?: string | null
+          created_at?: string
+        }
+      }
+      nutrition_groups: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          kind: 'meal' | 'snack'
+          label: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date: string
+          kind: 'meal' | 'snack'
+          label?: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          kind?: 'meal' | 'snack'
+          label?: 'breakfast' | 'lunch' | 'dinner' | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      nutrition_import_batches: {
+        Row: {
+          id: string
+          user_id: string
+          source: 'cronometer'
+          file_name: string
+          file_hash: string
+          row_count: number
+          imported_count: number
+          skipped_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source: 'cronometer'
+          file_name: string
+          file_hash: string
+          row_count?: number
+          imported_count?: number
+          skipped_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: 'cronometer'
+          file_name?: string
+          file_hash?: string
+          row_count?: number
+          imported_count?: number
+          skipped_count?: number
           created_at?: string
         }
       }
@@ -293,6 +557,12 @@ export interface Database {
           food_id: string
           servings: number
           meal_type: string
+          logged_at: string | null
+          group_id: string | null
+          sort_order: number
+          source: string
+          external_id: string | null
+          import_batch_id: string | null
           created_at: string
         }
         Insert: {
@@ -302,6 +572,12 @@ export interface Database {
           food_id: string
           servings: number
           meal_type?: string
+          logged_at?: string | null
+          group_id?: string | null
+          sort_order?: number
+          source?: string
+          external_id?: string | null
+          import_batch_id?: string | null
           created_at?: string
         }
         Update: {
@@ -311,6 +587,12 @@ export interface Database {
           food_id?: string
           servings?: number
           meal_type?: string
+          logged_at?: string | null
+          group_id?: string | null
+          sort_order?: number
+          source?: string
+          external_id?: string | null
+          import_batch_id?: string | null
           created_at?: string
         }
       }

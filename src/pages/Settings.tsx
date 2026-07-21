@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowRight, LogOut, Pencil } from 'lucide-react';
+import { ArrowRight, LogOut, Pencil, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Button, Input, Modal, Screen, ThemeToggle } from '@/components/shared';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { format, formatDistanceToNowStrict } from 'date-fns';
+import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -10,6 +12,27 @@ import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
 import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
 import { tapHaptic } from '@/lib/haptics';
+import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
+import {
+  enableNativeBodyWeightSync,
+  getBodyWeightHistory,
+  isHealthWeightSyncEnabled,
+  setHealthWeightSyncEnabled,
+  syncNativeBodyWeights,
+  type BodyWeightMeasurement,
+} from '@/lib/healthWeights';
+import {
+  formatWeight,
+  getPreferredWeightUnit,
+  setPreferredWeightUnit,
+  weightTrendDelta,
+  type WeightUnit,
+} from '@/lib/weightDisplayCore';
+import {
+  NATIVE_AUTH_CALLBACK_SCHEME,
+  NativeAuth,
+  isNativeIOS,
+} from '@/lib/nativeBridge';
 
 interface SavedMeal {
   id: string;
@@ -50,9 +73,20 @@ function SettingsGroup({
 }
 
 export function Settings() {
-  const { profile, signOut, updateDisplayName } = useAuthStore();
-  const { macroTarget, fetchMacroTarget, updateMacroTarget } = useAppStore();
+  const navigate = useNavigate();
+  const { user, profile, signOut, updateDisplayName } = useAuthStore();
+  const {
+    macroTarget,
+    fetchMacroTarget,
+    updateMacroTarget,
+    whoopConnection,
+    fetchWhoopConnection,
+    connectWhoop,
+    disconnectWhoop,
+    syncWhoop,
+  } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
   const [macroDraft, setMacroDraft] = useState<{
@@ -82,10 +116,194 @@ export function Settings() {
   const [mealManagerMessage, setMealManagerMessage] = useState<string | null>(null);
   const [mealManagerError, setMealManagerError] = useState<string | null>(null);
   const [showNutritionWizard, setShowNutritionWizard] = useState(false);
+  const [whoopAction, setWhoopAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
+  const [whoopMessage, setWhoopMessage] = useState<string | null>(null);
+  const [whoopError, setWhoopError] = useState<string | null>(null);
+  const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
+  const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
+  const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
+  const [healthWeightBusy, setHealthWeightBusy] = useState(false);
+  const [healthWeightEnabled, setHealthWeightEnabled] = useState(() => (
+    isNativeIOS() && isHealthWeightSyncEnabled()
+  ));
+  const [latestBodyWeight, setLatestBodyWeight] = useState<BodyWeightMeasurement | null>(null);
+  const [healthWeightMessage, setHealthWeightMessage] = useState<string | null>(null);
+  const [bodyWeightHistory, setBodyWeightHistory] = useState<BodyWeightMeasurement[]>([]);
+  const [bodyWeightError, setBodyWeightError] = useState<string | null>(null);
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => getPreferredWeightUnit());
+
+  const weightTrend = useMemo(
+    () => weightTrendDelta(bodyWeightHistory.map((entry) => entry.kilograms), weightUnit),
+    [bodyWeightHistory, weightUnit],
+  );
+
+  const handleToggleWeightUnit = () => {
+    const next: WeightUnit = weightUnit === 'lb' ? 'kg' : 'lb';
+    setWeightUnit(next);
+    setPreferredWeightUnit(next);
+  };
+
+  const refreshBodyWeightHistory = useCallback(async (userId: string) => {
+    try {
+      const history = await getBodyWeightHistory(userId);
+      setBodyWeightHistory(history);
+      setLatestBodyWeight(history[0] ?? null);
+      setBodyWeightError(null);
+    } catch {
+      setBodyWeightError('Could not load weight history. Pull to retry after checking your connection.');
+    }
+  }, []);
 
   useEffect(() => {
     fetchMacroTarget();
   }, [fetchMacroTarget]);
+
+  useEffect(() => {
+    void fetchWhoopConnection();
+  }, [fetchWhoopConnection]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void refreshBodyWeightHistory(user.id);
+  }, [refreshBodyWeightHistory, user?.id]);
+
+  const handleHealthWeightSync = async () => {
+    if (!user?.id || healthWeightBusy) return;
+    setHealthWeightBusy(true);
+    setHealthWeightMessage(null);
+    try {
+      const result = healthWeightEnabled
+        ? await syncNativeBodyWeights(user.id)
+        : await enableNativeBodyWeightSync(user.id);
+      setHealthWeightEnabled(true);
+      setLatestBodyWeight(result.latest);
+      await refreshBodyWeightHistory(user.id);
+      setHealthWeightMessage(result.imported > 0
+        ? `Imported ${result.imported} Apple Health weight entr${result.imported === 1 ? 'y' : 'ies'}.`
+        : 'Apple Health weight is up to date.');
+    } catch (error) {
+      setHealthWeightMessage(error instanceof Error ? error.message : 'Apple Health sync failed.');
+    } finally {
+      setHealthWeightBusy(false);
+    }
+  };
+
+  const handleDisableHealthWeightSync = () => {
+    setHealthWeightSyncEnabled(false);
+    setHealthWeightEnabled(false);
+    setHealthWeightMessage('Automatic weight sync stopped. Existing measurements were kept.');
+  };
+
+  const handlePhotoWorkerSave = async () => {
+    savePhotoWorkerSettings(photoWorkerDraft);
+    setPhotoWorkerBusy(true);
+    setPhotoWorkerMessage(null);
+    const status = await checkPhotoWorker(photoWorkerDraft);
+    setPhotoWorkerMessage(status.ok
+      ? `Worker connected. Signed in: ${status.authenticatedProviders.join(', ') || 'none'}. Models: OpenAI ${status.models.openai || 'default'} (${status.efforts.openai || 'default'} effort), Claude ${status.models.anthropic || 'default'} (${status.efforts.anthropic || 'default'} effort).`
+      : `Saved, but the worker is offline: ${status.error || 'connection failed'}`);
+    setPhotoWorkerBusy(false);
+  };
+
+  // landing back from WHOOP's consent screen: /settings?whoop=…
+  useEffect(() => {
+    const whoopParam = searchParams.get('whoop');
+    if (!whoopParam) return;
+
+    if (whoopParam === 'connected') {
+      setWhoopMessage('WHOOP connected.');
+      void fetchWhoopConnection();
+    } else if (whoopParam) {
+      setWhoopError('WHOOP connection failed. Try again.');
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('whoop');
+    setSearchParams(next, { replace: true });
+  }, [fetchWhoopConnection, searchParams, setSearchParams]);
+
+  const clearWhoopFeedback = () => {
+    setWhoopMessage(null);
+    setWhoopError(null);
+  };
+
+  const handleWhoopConnect = async () => {
+    clearWhoopFeedback();
+    setWhoopAction('connect');
+    try {
+      const nativeReturnTo = isNativeIOS()
+        ? `${NATIVE_AUTH_CALLBACK_SCHEME}://settings`
+        : undefined;
+      const authorizeUrl = await connectWhoop(nativeReturnTo);
+      if (authorizeUrl) {
+        if (isNativeIOS()) {
+          const { callbackUrl } = await NativeAuth.openOAuth({
+            url: authorizeUrl,
+            callbackScheme: NATIVE_AUTH_CALLBACK_SCHEME,
+            callbackHost: 'settings',
+            callbackPath: '',
+          });
+          const status = new URL(callbackUrl).searchParams.get('whoop');
+          if (status !== 'connected') throw new Error('WHOOP connection failed.');
+          await fetchWhoopConnection();
+          setWhoopMessage('WHOOP connected.');
+          return;
+        }
+        // production: hand the browser to WHOOP's consent screen
+        window.location.href = authorizeUrl;
+        return;
+      }
+      setWhoopMessage('WHOOP connected.');
+    } catch (error) {
+      console.error('Error connecting WHOOP:', error);
+      setWhoopError('Could not start the WHOOP connection.');
+    } finally {
+      setWhoopAction(null);
+    }
+  };
+
+  const handleWhoopDisconnect = async () => {
+    clearWhoopFeedback();
+    setWhoopAction('disconnect');
+    try {
+      await disconnectWhoop();
+      setWhoopMessage('WHOOP disconnected.');
+    } catch (error) {
+      console.error('Error disconnecting WHOOP:', error);
+      setWhoopError('Could not disconnect WHOOP.');
+    } finally {
+      setWhoopAction(null);
+    }
+  };
+
+  const handleWhoopSyncNow = async () => {
+    clearWhoopFeedback();
+    setWhoopAction('sync');
+    try {
+      const result = await syncWhoop();
+      if (!result) {
+        setWhoopError('Sync unavailable.');
+        return;
+      }
+      const changes = result.created + result.updated;
+      setWhoopMessage(changes > 0 ? `Synced — ${result.created} new, ${result.updated} updated.` : 'Up to date.');
+    } catch (error) {
+      console.error('Error syncing WHOOP:', error);
+      setWhoopError('Sync failed. Try again later.');
+    } finally {
+      setWhoopAction(null);
+    }
+  };
+
+  const whoopStatusLabel = whoopAction === 'sync'
+    ? 'Syncing recent WHOOP data…'
+    : whoopAction === 'connect'
+      ? 'Opening WHOOP authorization…'
+      : whoopAction === 'disconnect'
+        ? 'Disconnecting WHOOP…'
+        : whoopConnection
+          ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+          : 'Not connected';
 
   const clearMealManagerFeedback = () => {
     setMealManagerMessage(null);
@@ -259,7 +477,7 @@ export function Settings() {
   };
 
   const removeSavedMeal = async (meal: SavedMeal) => {
-    if (!confirm(`Remove ${meal.name} from saved meals?`)) return;
+    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`)) return;
 
     clearMealManagerFeedback();
     const { data: { user } } = await supabase.auth.getUser();
@@ -276,7 +494,7 @@ export function Settings() {
       .in('source', ['saved_meal', 'custom']);
 
     if (error) {
-      setMealManagerError('Could not remove saved meal.');
+      setMealManagerError('Could not delete saved meal.');
       return;
     }
 
@@ -284,7 +502,7 @@ export function Settings() {
       setEditingMealId(null);
     }
 
-    setMealManagerMessage('Saved meal removed.');
+    setMealManagerMessage('Saved meal deleted. Past logs were not changed.');
     await fetchSavedMeals();
   };
 
@@ -517,8 +735,164 @@ export function Settings() {
         </div>
       </SettingsGroup>
 
+      {/* ── Local food analysis ── */}
+      <SettingsGroup label="Food analysis" index="05" delay={0.14}>
+        <p className="t-heading">Private Mac worker</p>
+        <p className="t-caption mt-1 mb-5">
+          Uses your local Codex or Claude login. Credentials never enter hyPer. On a phone, enter the worker’s Tailscale HTTPS URL.
+        </p>
+        <div className="space-y-4">
+          <Input
+            label="Worker URL"
+            value={photoWorkerDraft.url}
+            onChange={(event) => setPhotoWorkerDraft((current) => ({ ...current, url: event.target.value }))}
+            placeholder="http://127.0.0.1:8788"
+          />
+          <SelectSheet
+            title="Food model"
+            value={photoWorkerDraft.provider}
+            onChange={(provider) => setPhotoWorkerDraft((current) => ({ ...current, provider }))}
+            options={[
+              { value: 'openai', label: 'OpenAI Codex', description: 'Uses your local ChatGPT/Codex subscription login.' },
+              { value: 'anthropic', label: 'Anthropic Claude', description: 'Local experimental connector; never use consumer credentials for other users.' },
+            ]}
+          />
+          <Button variant="secondary" className="w-full" loading={photoWorkerBusy} onClick={() => void handlePhotoWorkerSave()}>
+            Save and test worker
+          </Button>
+          {photoWorkerMessage && <p className="t-caption">{photoWorkerMessage}</p>}
+        </div>
+      </SettingsGroup>
+
+      {/* ── Connected services ── */}
+      <SettingsGroup label="Connected services" index="06" delay={0.17}>
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="t-heading">WHOOP</p>
+            <p className="t-caption mt-1" aria-live="polite">{whoopStatusLabel}</p>
+          </div>
+          {whoopConnection ? (
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <Button className="w-full" variant="secondary" size="sm" loading={whoopAction === 'sync'} disabled={whoopAction !== null} onClick={() => { void handleWhoopSyncNow(); }}>
+                Sync now
+              </Button>
+              <Button className="w-full" variant="ghost" size="sm" loading={whoopAction === 'disconnect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopDisconnect(); }}>
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <Button className="w-full" variant="secondary" size="sm" loading={whoopAction === 'connect'} disabled={whoopAction !== null} onClick={() => { void handleWhoopConnect(); }}>
+              Connect
+            </Button>
+          )}
+        </div>
+        <div aria-live="polite">
+          {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
+          {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
+        </div>
+
+        <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="t-heading">Body weight</p>
+              <p className="t-caption mt-1">
+                EufyLife → Apple Health → hyPer
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                className="pressable min-h-11 px-2 t-label-sm"
+                aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
+                onClick={handleToggleWeightUnit}
+              >
+                <span className={weightUnit === 'lb' ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}>lb</span>
+                <span className="text-[var(--color-muted)]"> / </span>
+                <span className={weightUnit === 'kg' ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}>kg</span>
+              </button>
+              {isNativeIOS() && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={healthWeightBusy}
+                  disabled={healthWeightBusy}
+                  onClick={() => { void handleHealthWeightSync(); }}
+                >
+                  {healthWeightEnabled ? 'Sync now' : 'Connect'}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {latestBodyWeight ? (
+            <div className="mt-4">
+              <div className="flex items-baseline gap-2">
+                <span className="number-medium text-[var(--color-text)]">
+                  {formatWeight(latestBodyWeight.kilograms, weightUnit)}
+                </span>
+                <span className="[font-family:var(--font-display)] italic text-sm text-[var(--color-text-dim)]">{weightUnit}</span>
+                {weightTrend !== null && (
+                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                    {weightTrend > 0 ? '+' : ''}{weightTrend.toFixed(1)} vs previous
+                  </span>
+                )}
+              </div>
+              <p className="t-caption mt-1.5">
+                {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} · {latestBodyWeight.source_name}
+              </p>
+              {bodyWeightHistory.length > 1 && (
+                <ul className="mt-4 border-t border-[var(--color-border)]">
+                  {bodyWeightHistory.slice(1, 6).map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-baseline justify-between gap-4 py-2 border-b border-[var(--color-border)]"
+                    >
+                      <span className="t-caption">{format(new Date(entry.measured_at), 'MMM d')}</span>
+                      <span className="t-data-sm text-[var(--color-text)]">
+                        {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="t-caption mt-3">
+              {bodyWeightError
+                ? bodyWeightError
+                : isNativeIOS()
+                  ? 'No weight yet. Connect Apple Health, then weigh in with your scale so EufyLife writes the entry.'
+                  : 'Weigh-ins appear here after the iPhone app syncs Apple Health.'}
+            </p>
+          )}
+
+          {isNativeIOS() && healthWeightEnabled && (
+            <button
+              type="button"
+              onClick={handleDisableHealthWeightSync}
+              className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
+            >
+              Stop automatic sync
+            </button>
+          )}
+          {healthWeightMessage && (
+            <p className="t-caption mt-3" aria-live="polite">{healthWeightMessage}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
+          <div>
+            <p className="t-heading">iPhone GPS</p>
+            <p className="t-caption mt-1">Built in • no paid account</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/train/run')}>
+            Start a run
+          </Button>
+        </div>
+      </SettingsGroup>
+
       {/* ── Account ── */}
-      <SettingsGroup label="Session" index="05" delay={0.16}>
+      <SettingsGroup label="Session" index="07" delay={0.2}>
         <Button variant="danger" size="lg" className="w-full" onClick={handleSignOut}>
           <LogOut className="w-4 h-4" strokeWidth={1.75} />
           Sign out
@@ -653,29 +1027,29 @@ export function Settings() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-stretch justify-between overflow-hidden">
                       <div className="min-w-0">
-                        <p className="t-heading truncate normal-case tracking-normal text-[var(--color-text)]">{meal.name}</p>
-                        <p className="t-data-sm text-[var(--color-muted)] mt-1.5">
+                        <p className="t-heading break-words pr-2 normal-case tracking-normal text-[var(--color-text)]">{meal.name}</p>
+                        <p className="t-data-sm mt-1.5 break-words pr-2 leading-5 text-[var(--color-muted)]">
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
-                      <div className="flex items-center shrink-0">
+                      <div className="flex shrink-0 items-stretch">
                         <button
                           type="button"
                           onClick={() => beginEditingMeal(meal)}
-                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                          aria-label={`Edit ${meal.name}`}
+                          className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
+                          aria-label={`Edit saved meal ${meal.name}`}
                         >
                           <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                         <button
                           type="button"
                           onClick={() => removeSavedMeal(meal)}
-                          className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-                          aria-label={`Remove ${meal.name}`}
+                          className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
+                          aria-label={`Delete saved meal ${meal.name}`}
                         >
-                          <Archive className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                         </button>
                       </div>
                     </div>

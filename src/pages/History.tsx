@@ -1,10 +1,11 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, TickStrip, Toast } from '@/components/shared';
+import { Modal, Button, Input, TickStrip, Toast, SelectSheet, DateField, TimeField } from '@/components/shared';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
+import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import {
   formatWorkoutDuration,
@@ -13,8 +14,35 @@ import {
   resolveEditedSetCompletedAt,
   resolveWorkoutTitle,
 } from '@/lib/workoutSessions';
+import {
+  formatActivityDuration,
+  formatActivityStartTime,
+  getActivitySessionDateKey,
+  resolveActivityTitle,
+  sortActivitySessionsByStart,
+} from '@/lib/activitySessions';
+import {
+  activityTypeLabel,
+  customActivityTypeSuggestions,
+  formatClockDuration,
+  formatDistanceMi,
+  formatPace,
+  paceSecondsPerMile,
+} from '@/lib/activityMetrics';
 import { springs } from '@/lib/animations';
-import type { Exercise, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
+import {
+  ACTIVITY_TYPE_LABELS,
+  ACTIVITY_TYPES,
+  type ActivitySegment,
+  type ActivitySession,
+  type ActivitySessionInput,
+  type ActivityType,
+  type Exercise,
+  type FlexiblePlanItem,
+  type Workout,
+  type WorkoutDayPlan,
+  type WorkoutSet,
+} from '@/types';
 import {
   addDays,
   addMonths,
@@ -24,6 +52,7 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
+  parseISO,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -101,6 +130,306 @@ function SetEditor({ workoutSet, onSave, onCancel }: SetEditorProps) {
   );
 }
 
+interface ActivityEditorProps {
+  activity: ActivitySession | null;
+  defaultDate: Date;
+  // previously used custom names, offered back so they can be reused verbatim
+  customTypeSuggestions: string[];
+  saving: boolean;
+  onSave: (input: ActivitySessionInput) => void;
+  onCancel: () => void;
+}
+
+interface ActivityLedgerRowProps {
+  activity: ActivitySession;
+  segments: ActivitySegment[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function formatSegmentDistance(distanceM: number | null): string | null {
+  if (distanceM == null || distanceM <= 0) return null;
+  if (distanceM < 1000) return `${Math.round(distanceM)} m`;
+  return formatDistanceMi(distanceM);
+}
+
+const ACTIVITY_OPTIONS = ACTIVITY_TYPES.map((type) => ({
+  value: type,
+  label: ACTIVITY_TYPE_LABELS[type],
+}));
+
+function parseDateKey(dateKey: string): Date {
+  const parsed = parseISO(dateKey);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function getTimeInputValue(value?: string | null): string {
+  if (!value) return '';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+
+  return format(parsed, 'HH:mm');
+}
+
+function localDateTimeToIso(date: Date, timeValue: string): string | null {
+  if (!timeValue) return null;
+
+  const [hourRaw, minuteRaw] = timeValue.split(':').map((value) => Number.parseInt(value, 10));
+  if (![hourRaw, minuteRaw].every(Number.isFinite)) return null;
+  if (hourRaw < 0 || hourRaw > 23 || minuteRaw < 0 || minuteRaw > 59) return null;
+
+  const localDate = new Date(date);
+  localDate.setHours(hourRaw, minuteRaw, 0, 0);
+  return localDate.toISOString();
+}
+
+function parseDurationSeconds(durationMinutes: string): number | null {
+  if (!durationMinutes.trim()) return null;
+
+  const parsed = Number.parseInt(durationMinutes, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+
+  return Math.min(parsed, 24 * 60) * 60;
+}
+
+function isDateKeyInMonth(dateKey: string, month: Date): boolean {
+  const parsed = parseISO(dateKey);
+  return !Number.isNaN(parsed.getTime()) && isSameMonth(parsed, month);
+}
+
+function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel }: ActivityEditorProps) {
+  const [activityType, setActivityType] = useState<ActivityType>(activity?.activity_type || 'bike_ride');
+  const [customType, setCustomType] = useState(activity?.custom_type || '');
+  const [title, setTitle] = useState(activity?.title || '');
+  const [date, setDate] = useState(activity?.date ? parseDateKey(activity.date) : defaultDate);
+  const [startTime, setStartTime] = useState(getTimeInputValue(activity?.started_at));
+  const [durationMinutes, setDurationMinutes] = useState(
+    activity?.duration_seconds ? String(Math.round(activity.duration_seconds / 60)) : ''
+  );
+  const [notes, setNotes] = useState(activity?.notes || '');
+
+  const handleSubmit = () => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const durationSeconds = parseDurationSeconds(durationMinutes);
+    const startedAt = localDateTimeToIso(date, startTime);
+    const endedAt = startedAt && durationSeconds
+      ? new Date(new Date(startedAt).getTime() + durationSeconds * 1000).toISOString()
+      : null;
+
+    onSave({
+      activity_type: activityType,
+      custom_type: activityType === 'other' ? customType.trim().slice(0, 40) || null : null,
+      title: title.trim() || null,
+      date: dateKey,
+      started_at: startedAt,
+      ended_at: endedAt,
+      duration_seconds: durationSeconds,
+      source: activity?.source || 'manual',
+      notes: notes.trim() || null,
+    });
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <label className="t-label-sm block mb-2">Type</label>
+        <SelectSheet
+          value={activityType}
+          onChange={setActivityType}
+          options={ACTIVITY_OPTIONS}
+          title="Activity type"
+        />
+      </div>
+
+      {activityType === 'other' && (
+        <Input
+          label="Activity name"
+          value={customType}
+          maxLength={40}
+          onChange={(event) => setCustomType(event.target.value)}
+          placeholder="Yoga, surfing, rowing…"
+          list="hyper-custom-activity-types"
+        />
+      )}
+      {activityType === 'other' && customTypeSuggestions.length > 0 && (
+        <datalist id="hyper-custom-activity-types">
+          {customTypeSuggestions.map((name) => <option key={name} value={name} />)}
+        </datalist>
+      )}
+
+      <Input
+        label="Title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        placeholder={activityType === 'other' && customType.trim()
+          ? customType.trim()
+          : ACTIVITY_TYPE_LABELS[activityType]}
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="t-label-sm block mb-2">Date</label>
+          <DateField value={date} onChange={setDate} />
+        </div>
+        <div>
+          <label className="t-label-sm block mb-2">Start</label>
+          <TimeField value={startTime} onChange={setStartTime} />
+        </div>
+      </div>
+
+      <Input
+        label="Duration (min)"
+        type="number"
+        min={1}
+        max={1440}
+        inputMode="numeric"
+        value={durationMinutes}
+        onChange={(event) => setDurationMinutes(event.target.value)}
+        placeholder="Optional"
+      />
+
+      <div>
+        <label htmlFor="activity-notes" className="t-label-sm block mb-2">
+          Notes
+        </label>
+        <textarea
+          id="activity-notes"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={3}
+          maxLength={280}
+          placeholder="Optional"
+          className="w-full bg-transparent border-b border-[var(--color-border-strong)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-text)] transition-colors resize-none"
+        />
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <Button variant="ghost" className="flex-1" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button className="flex-1" loading={saving} onClick={handleSubmit}>
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdit, onDelete }: ActivityLedgerRowProps) {
+  // cross-source sessions carry enrichment segments (e.g. a WHOOP record
+  // absorbed into a GPS run); the splits table shows only the primary
+  // recording's laps — foreign-source segments contribute metrics, not rows
+  const primarySegments = segments.filter((segment) => segment.source === activity.source);
+  const title = resolveActivityTitle(activity);
+  const typeLabel = activityTypeLabel(activity);
+  const startTime = formatActivityStartTime(activity.started_at);
+  const duration = formatActivityDuration(activity.duration_seconds);
+  const subtitleParts = [
+    activity.title?.trim() ? typeLabel : null,
+    startTime,
+    duration !== '-' ? duration : null,
+    activity.source !== 'manual' ? activity.source.toUpperCase() : null,
+  ].filter(Boolean);
+  const metricsParts = [
+    formatDistanceMi(activity.distance_m),
+    activity.avg_hr != null ? `${activity.avg_hr} bpm` : null,
+    activity.strain != null ? `strain ${activity.strain.toFixed(1)}` : null,
+  ].filter(Boolean);
+  // one segment = the whole workout; a splits table only means something for 2+
+  const hasSplits = primarySegments.length >= 2;
+
+  return (
+    <div className="border-t border-[var(--color-border)] py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="t-label-sm text-[9px]">Activity</p>
+          <p className="mt-1 text-[13px] text-[var(--color-text)] truncate">{title}</p>
+          <p className="t-data-sm text-[10px] text-[var(--color-muted)] mt-1">
+            {subtitleParts.length > 0 ? subtitleParts.join(' • ') : typeLabel}
+          </p>
+          {metricsParts.length > 0 && (
+            <p className="t-data-sm text-[10px] text-[var(--color-text-dim)] mt-1">
+              {metricsParts.join(' • ')}
+            </p>
+          )}
+          {activity.notes && (
+            <p className="t-caption mt-2 line-clamp-2">{activity.notes}</p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          {hasSplits && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              title={expanded ? 'Hide splits' : 'Show splits'}
+              aria-label={expanded ? 'Hide splits' : 'Show splits'}
+            >
+              {expanded
+                ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
+                : <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onEdit}
+            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            title="Edit activity"
+            aria-label="Edit activity"
+          >
+            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+            title="Delete activity"
+            aria-label="Delete activity"
+          >
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {hasSplits && expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={springs.smooth}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+              <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm text-[9px] pb-1">
+                <span>#</span>
+                <span>Time</span>
+                <span>Dist</span>
+                <span>Pace</span>
+              </div>
+              {primarySegments.map((segment, index) => (
+                <div
+                  key={segment.id}
+                  className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-data-sm text-[11px] text-[var(--color-text-dim)] py-0.5"
+                >
+                  <span>{index + 1}</span>
+                  <span>{formatClockDuration(segment.duration_seconds) ?? '—'}</span>
+                  <span>{formatSegmentDistance(segment.distance_m) ?? '—'}</span>
+                  <span>{formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)) ?? '—'}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function getDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
@@ -161,17 +490,34 @@ export function History() {
     clearWorkoutSuperset,
     updateWorkoutExerciseTargetSets,
     reorderWorkoutExercises,
+    fetchActivitySessionsByMonth,
+    createActivitySession,
+    updateActivitySession,
+    deleteActivitySession,
+    hasLinkedWhoopSegments,
+    fetchActivitySegmentsBySessionIds,
+    syncWhoop,
+    whoopConnection,
+    fetchWhoopConnection,
   } = useAppStore();
 
   const [monthWorkouts, setMonthWorkouts] = useState<WorkoutWithSplit[]>([]);
+  const [monthActivities, setMonthActivities] = useState<ActivitySession[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
   const [editingSet, setEditingSet] = useState<WorkoutSet | null>(null);
+  const [activityEditor, setActivityEditor] = useState<{ activity: ActivitySession | null; defaultDate: Date } | null>(null);
+  const [savingActivity, setSavingActivity] = useState(false);
+  const [showActivityDeleteConfirm, setShowActivityDeleteConfirm] = useState<ActivitySession | null>(null);
+  const [segmentsBySession, setSegmentsBySession] = useState<Record<string, ActivitySegment[]>>({});
+  const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Saved');
+  const [syncingWhoop, setSyncingWhoop] = useState(false);
   const [monthDirection, setMonthDirection] = useState(0);
   const [pickerState, setPickerState] = useState<PickerState | null>(null);
   const [workoutPlans, setWorkoutPlans] = useState<Record<string, WorkoutDayPlan | null>>({});
@@ -200,21 +546,31 @@ export function History() {
     };
   }, []);
 
-  const showSavedToast = useCallback(() => {
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
     setShowSuccess(true);
     window.setTimeout(() => setShowSuccess(false), 1500);
   }, []);
+
+  const showSavedToast = useCallback(() => {
+    showToast('Saved');
+  }, [showToast]);
 
   const fetchMonthWorkouts = useCallback(async (month: Date) => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        setMonthWorkouts([]);
+        setMonthActivities([]);
         setLoading(false);
         return;
       }
 
-      const workouts = await fetchWorkoutsByMonth(month);
+      const [workouts, activities] = await Promise.all([
+        fetchWorkoutsByMonth(month),
+        fetchActivitySessionsByMonth(month),
+      ]);
       const splitDayIds = workouts.filter((workout) => workout.split_day_id).map((workout) => workout.split_day_id as string);
       const uniqueSplitDayIds = [...new Set(splitDayIds)];
 
@@ -249,6 +605,7 @@ export function History() {
       }));
 
       setMonthWorkouts(workoutsWithSplit);
+      setMonthActivities(activities);
 
       const notesByWorkout: Record<string, Record<string, string>> = {};
       const legacyByWorkout: Record<string, string | null> = {};
@@ -265,7 +622,7 @@ export function History() {
     }
 
     setLoading(false);
-  }, [fetchWorkoutsByMonth]);
+  }, [fetchActivitySessionsByMonth, fetchWorkoutsByMonth]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -275,14 +632,50 @@ export function History() {
     return () => clearTimeout(timer);
   }, [fetchMonthWorkouts, selectedMonth]);
 
+  useEffect(() => {
+    void fetchWhoopConnection();
+  }, [fetchWhoopConnection]);
+
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
+  // sandbox always offers sync (fixture transport); production needs a connection
+  const syncAvailable = isPreviewActive() || !!whoopConnection;
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
       .filter((workout) => (getWorkoutStartDateKey(workout) || workout.date) === selectedDateKey)
       .sort((a, b) => new Date(a.created_at || `${a.date}T00:00:00`).getTime() - new Date(b.created_at || `${b.date}T00:00:00`).getTime());
   }, [monthWorkouts, selectedDateKey]);
+
+  const selectedDayActivities = useMemo(() => {
+    return sortActivitySessionsByStart(
+      monthActivities.filter((activity) => getActivitySessionDateKey(activity) === selectedDateKey)
+    );
+  }, [monthActivities, selectedDateKey]);
+
+  // lazily load split segments for the selected day's activities, once per session
+  const requestedSegmentIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missing = selectedDayActivities
+      .map((activity) => activity.id)
+      .filter((id) => !requestedSegmentIdsRef.current.has(id));
+    if (missing.length === 0) return;
+
+    missing.forEach((id) => requestedSegmentIdsRef.current.add(id));
+    void fetchActivitySegmentsBySessionIds(missing).then((segments) => {
+      setSegmentsBySession((prev) => {
+        const next = { ...prev };
+        missing.forEach((id) => {
+          if (!next[id]) next[id] = [];
+        });
+        segments.forEach((segment) => {
+          if (!segment.session_id) return;
+          next[segment.session_id] = [...(next[segment.session_id] || []), segment];
+        });
+        return next;
+      });
+    });
+  }, [selectedDayActivities, fetchActivitySegmentsBySessionIds]);
 
   const workoutsByDay = useMemo(() => {
     return monthWorkouts.reduce<Record<string, WorkoutWithSplit[]>>((acc, workout) => {
@@ -292,6 +685,27 @@ export function History() {
       return acc;
     }, {});
   }, [monthWorkouts]);
+
+  const activitiesByDay = useMemo(() => {
+    return monthActivities.reduce<Record<string, ActivitySession[]>>((acc, activity) => {
+      const dateKey = getActivitySessionDateKey(activity);
+      if (!dateKey) return acc;
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(activity);
+      return acc;
+    }, {});
+  }, [monthActivities]);
+
+  const selectedDaySummary = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedDayWorkouts.length > 0) {
+      parts.push(`${selectedDayWorkouts.length} lift${selectedDayWorkouts.length !== 1 ? 's' : ''}`);
+    }
+    if (selectedDayActivities.length > 0) {
+      parts.push(`${selectedDayActivities.length} activit${selectedDayActivities.length !== 1 ? 'ies' : 'y'}`);
+    }
+    return parts.length > 0 ? parts.join(' • ') : '0 sessions';
+  }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
   const refreshWorkout = useCallback(async (workoutId: string) => {
     await syncWorkoutCompletion(workoutId);
@@ -416,6 +830,102 @@ export function History() {
     }
   };
 
+  const handleSyncWhoop = useCallback(async () => {
+    if (syncingWhoop) return;
+    const runWhoop = isPreviewActive() || !!whoopConnection;
+
+    setSyncingWhoop(true);
+    try {
+      if (!runWhoop) {
+        showToast('Sync unavailable');
+        return;
+      }
+
+      const whoop = await syncWhoop();
+      if (!whoop) {
+        showToast('Sync unavailable');
+        return;
+      }
+
+      // imported segments may belong to already-rendered sessions: reload both
+      requestedSegmentIdsRef.current.clear();
+      setSegmentsBySession({});
+      await fetchMonthWorkouts(selectedMonth);
+
+      const changes = whoop.created + whoop.updated;
+      showToast(changes > 0 ? `Synced • ${whoop.created} new • ${whoop.updated} updated` : 'Up to date');
+    } catch (error) {
+      console.error('Error syncing activities:', error);
+      showToast('Sync failed');
+    } finally {
+      setSyncingWhoop(false);
+    }
+  }, [fetchMonthWorkouts, selectedMonth, showToast, syncWhoop, syncingWhoop, whoopConnection]);
+
+  const handleSaveActivity = useCallback(async (input: ActivitySessionInput) => {
+    if (!activityEditor) return;
+
+    const editing = activityEditor.activity;
+    // manual edits to an auto-grouped import must survive future re-syncs
+    const guardedInput: ActivitySessionInput =
+      editing && editing.source === 'whoop' && editing.auto_grouped
+        ? { ...input, user_edited: true }
+        : input;
+
+    setSavingActivity(true);
+    try {
+      const saved = editing
+        ? await updateActivitySession(editing.id, guardedInput)
+        : await createActivitySession(guardedInput);
+
+      if (!saved) return;
+
+      setMonthActivities((prev) => {
+        const withoutSaved = prev.filter((activity) => activity.id !== saved.id);
+        return isDateKeyInMonth(saved.date, selectedMonth)
+          ? [...withoutSaved, saved]
+          : withoutSaved;
+      });
+      setSelectedDate(parseDateKey(saved.date));
+      setActivityEditor(null);
+      showSavedToast();
+    } catch (error) {
+      console.error('Error saving activity session:', error);
+    } finally {
+      setSavingActivity(false);
+    }
+  }, [activityEditor, createActivitySession, selectedMonth, showSavedToast, updateActivitySession]);
+
+  const handleDeleteActivity = useCallback(async (activity: ActivitySession) => {
+    try {
+      // soft-dismiss anything WHOOP knows about: hard-deleting a session whose
+      // segments came from (or were enriched by) WHOOP orphans those segments
+      // (ON DELETE SET NULL) and the next sync resurrects the workout. The
+      // dismissed_at tombstone keeps segments attached so re-sync relinks
+      // instead of recreating.
+      const needsTombstone = activity.source === 'whoop'
+        || await hasLinkedWhoopSegments(activity.id);
+      if (needsTombstone) {
+        // updateActivitySession returns null on failure (it does not throw), so
+        // check it — otherwise a failed tombstone still removes the row from the
+        // UI and shows "saved", and the activity reappears on the next sync.
+        const tombstoned = await updateActivitySession(activity.id, { dismissed_at: new Date().toISOString() });
+        if (!tombstoned) {
+          console.error('Failed to dismiss activity session:', activity.id);
+          return;
+        }
+      } else {
+        await deleteActivitySession(activity.id);
+      }
+      setMonthActivities((prev) => prev.filter((entry) => entry.id !== activity.id));
+      setShowActivityDeleteConfirm(null);
+      setActivityEditor(null);
+      showSavedToast();
+    } catch (error) {
+      console.error('Error deleting activity session:', error);
+    }
+  }, [deleteActivitySession, hasLinkedWhoopSegments, showSavedToast, updateActivitySession]);
+
   const handleUpdateSet = async (workoutSet: WorkoutSet, updates: { weight: number | null; reps: number | null; rpe: number | null }) => {
     const completed = updates.weight !== null && updates.reps !== null;
     const workout = monthWorkouts.find((entry) => entry.id === workoutSet.workout_id);
@@ -511,7 +1021,7 @@ export function History() {
 
   return (
     <motion.div className="px-5 pt-6 pb-nav">
-      <Toast show={showSuccess} message="Saved" />
+      <Toast show={showSuccess} message={toastMessage} />
 
       <motion.header className="mb-7" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
         <div className="flex items-baseline justify-between">
@@ -529,7 +1039,7 @@ export function History() {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: -2 }}
               aria-label="Previous month"
             >
@@ -552,7 +1062,7 @@ export function History() {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               whileTap={{ scale: 0.9, x: 2 }}
               aria-label="Next month"
             >
@@ -572,10 +1082,12 @@ export function History() {
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
+              const dayActivities = sortActivitySessionsByStart(activitiesByDay[key] || []);
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
               const firstWorkout = dayWorkouts[0] || null;
+              const firstActivity = dayActivities[0] || null;
               const firstWorkoutTitle = firstWorkout
                 ? resolveWorkoutTitle({
                     splitDayName: firstWorkout.split_day?.day_name,
@@ -586,6 +1098,12 @@ export function History() {
               const workoutSummaryLabel = dayWorkouts.length > 1
                 ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
                 : firstWorkoutTitle;
+              const firstActivityTitle = firstActivity ? resolveActivityTitle(firstActivity) : '';
+              const activitySummaryLabel = dayActivities.length > 1
+                ? `${firstActivityTitle} +${dayActivities.length - 1}`
+                : firstActivityTitle;
+              const daySummaryLabel = workoutSummaryLabel;
+              const titleLabel = [workoutSummaryLabel, activitySummaryLabel].filter(Boolean).join(' / ');
 
               return (
                 <button
@@ -596,7 +1114,7 @@ export function History() {
                       setSelectedMonth(startOfMonth(day));
                     }
                   }}
-                  title={workoutSummaryLabel || undefined}
+                  title={titleLabel || undefined}
                   className={`min-h-16 border-r border-b border-[var(--color-border)] transition-colors relative px-1.5 py-1.5 ${
                     isSelected
                       ? 'text-[var(--color-base)]'
@@ -617,25 +1135,38 @@ export function History() {
                   )}
                   <div className="relative z-10 flex h-full flex-col items-start">
                     <span className={`t-data-sm text-[11px] ${isSelected ? 'font-semibold' : ''}`}>{format(day, 'd')}</span>
-                    {workoutSummaryLabel && (
+                    {daySummaryLabel && (
                       <span
                         className={`mt-1 line-clamp-2 text-left text-[8px] leading-tight font-sans ${
                           isSelected ? 'text-[color-mix(in_srgb,var(--color-base)_85%,transparent)]' : 'text-[var(--color-text-dim)]'
                         }`}
                       >
-                        {workoutSummaryLabel}
+                        {daySummaryLabel}
                       </span>
                     )}
                   </div>
-                  {dayWorkouts.length > 0 && (
-                    <motion.span
-                      className={`absolute bottom-1.5 right-1.5 w-1.5 h-1.5 z-10 ${
-                        isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
-                      }`}
+                  {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
+                    <motion.div
+                      className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={springs.bouncy}
-                    />
+                    >
+                      {dayWorkouts.length > 0 && (
+                        <span
+                          className={`w-1.5 h-1.5 ${
+                            isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
+                          }`}
+                        />
+                      )}
+                      {dayActivities.length > 0 && (
+                        <span
+                          className={`w-1.5 h-1.5 border ${
+                            isSelected ? 'border-[var(--color-base)]' : 'border-[var(--color-text)]'
+                          }`}
+                        />
+                      )}
+                    </motion.div>
                   )}
                 </button>
               );
@@ -658,19 +1189,39 @@ export function History() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <div className="flex items-baseline justify-between mb-4 pt-8 border-t border-[var(--color-border)]">
-            <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-            <span className="t-label-sm">
-              {selectedDayWorkouts.length} session{selectedDayWorkouts.length !== 1 ? 's' : ''}
-            </span>
+          <div className="flex items-center justify-between gap-4 mb-4 pt-8 border-t border-[var(--color-border)]">
+            <div>
+              <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
+              <p className="t-label-sm mt-1">{selectedDaySummary}</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {syncAvailable && (
+                <button
+                  type="button"
+                  className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40"
+                  disabled={syncingWhoop}
+                  onClick={() => { void handleSyncWhoop(); }}
+                >
+                  {syncingWhoop ? 'Syncing…' : 'Sync'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
+                onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
+              >
+                + Activity
+              </button>
+            </div>
           </div>
 
-          {selectedDayWorkouts.length === 0 ? (
+          {selectedDayWorkouts.length === 0 && selectedDayActivities.length === 0 ? (
             <div className="py-12">
               <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">No sessions recorded.</p>
             </div>
           ) : (
-            selectedDayWorkouts.map((workout, workoutIndex) => {
+            <>
+              {selectedDayWorkouts.map((workout, workoutIndex) => {
               const isExpanded = expandedWorkout === workout.id;
               const groupedSets = groupSetsByExercise(workout.sets);
               const plan = workoutPlans[workout.id] || null;
@@ -1045,7 +1596,33 @@ export function History() {
                   </div>
                 </motion.div>
               );
-            })
+            })}
+              {selectedDayActivities.length > 0 && (
+                <div className={selectedDayWorkouts.length > 0 ? 'mt-6 pt-6 border-t border-[var(--color-border)]' : ''}>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="t-label-sm">Activities</span>
+                    <span className="t-label-sm">{selectedDayActivities.length}</span>
+                  </div>
+                  {selectedDayActivities.map((activity, activityIndex) => (
+                    <motion.div
+                      key={activity.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.smooth }}
+                    >
+                      <ActivityLedgerRow
+                        activity={activity}
+                        segments={segmentsBySession[activity.id] || []}
+                        expanded={expandedActivity === activity.id}
+                        onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
+                        onEdit={() => setActivityEditor({ activity, defaultDate: parseDateKey(getActivitySessionDateKey(activity) || selectedDateKey) })}
+                        onDelete={() => setShowActivityDeleteConfirm(activity)}
+                      />
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </motion.div>
       )}
@@ -1056,6 +1633,24 @@ export function History() {
             workoutSet={editingSet}
             onSave={(updates) => { void handleUpdateSet(editingSet, updates); }}
             onCancel={() => setEditingSet(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={!!activityEditor}
+        onClose={() => setActivityEditor(null)}
+        title={activityEditor?.activity ? 'Edit Activity' : 'Add Activity'}
+      >
+        {activityEditor && (
+          <ActivityEditor
+            key={activityEditor.activity?.id || format(activityEditor.defaultDate, 'yyyy-MM-dd')}
+            activity={activityEditor.activity}
+            defaultDate={activityEditor.defaultDate}
+            customTypeSuggestions={customActivityTypeSuggestions(monthActivities)}
+            saving={savingActivity}
+            onSave={(input) => { void handleSaveActivity(input); }}
+            onCancel={() => setActivityEditor(null)}
           />
         )}
       </Modal>
@@ -1073,6 +1668,26 @@ export function History() {
               variant="danger"
               className="flex-1"
               onClick={() => showDeleteConfirm && void handleDeleteWorkout(showDeleteConfirm)}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete Activity">
+        <div className="space-y-5">
+          <p className="t-body text-[var(--color-text-dim)]">
+            Delete this activity from your calendar?
+          </p>
+          <div className="flex gap-3">
+            <Button variant="ghost" className="flex-1" onClick={() => setShowActivityDeleteConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              className="flex-1"
+              onClick={() => showActivityDeleteConfirm && void handleDeleteActivity(showActivityDeleteConfirm)}
             >
               Delete
             </Button>
