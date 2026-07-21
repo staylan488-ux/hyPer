@@ -48,6 +48,7 @@ struct RestLockScreenView: View {
             countdown(state)
                 .font(.system(size: 44, weight: .light, design: .serif))
                 .monospacedDigit()
+                .multilineTextAlignment(.trailing)
                 .foregroundColor(lacquer)
                 .frame(maxWidth: 130, alignment: .trailing)
         }
@@ -75,6 +76,7 @@ struct HyperWidgetsLiveActivity: Widget {
                     countdown(context.state)
                         .font(.system(size: 28, weight: .light, design: .serif))
                         .monospacedDigit()
+                .multilineTextAlignment(.trailing)
                         .foregroundColor(.white)
                         .frame(maxWidth: 90, alignment: .trailing)
                         .padding(.trailing, 6)
@@ -94,6 +96,7 @@ struct HyperWidgetsLiveActivity: Widget {
                 countdown(context.state)
                     .font(.system(size: 14, weight: .medium))
                     .monospacedDigit()
+                .multilineTextAlignment(.trailing)
                     .foregroundColor(.white)
                     .frame(maxWidth: 46, alignment: .trailing)
             } minimal: {
