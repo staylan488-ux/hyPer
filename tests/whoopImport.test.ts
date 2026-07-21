@@ -4,6 +4,7 @@ import {
   LAP_MERGE_GAP_S,
   findAbsorbableWhoopSession,
   groupSegments,
+  whoopCustomTypeName,
   mapWhoopSport,
   normalizeWhoopWorkout,
   overlapRatioOfShorter,
@@ -49,6 +50,7 @@ function makeSession(overrides: Partial<ActivitySession> = {}): ActivitySession 
     id: overrides.id ?? 'session-1',
     user_id: 'user-1',
     activity_type: 'interval_run',
+    custom_type: null,
     title: null,
     date: '2026-07-07',
     started_at: isoAt(0),
@@ -498,5 +500,65 @@ describe('groupSegments reconciliation', () => {
     expect(plan.updates[0].sessionId).toBe('s1');
     expect(plan.creates).toHaveLength(1);
     expect(plan.deletes).toHaveLength(0);
+  });
+});
+
+describe('whoopCustomTypeName', () => {
+  it('keeps the WHOOP name for a sport we do not map', () => {
+    expect(whoopCustomTypeName('walking')).toBe('Walking');
+    expect(whoopCustomTypeName('functional_fitness')).toBe('Functional fitness');
+    expect(whoopCustomTypeName('Hiking/Rucking')).toBe('Hiking/rucking');
+  });
+
+  it('returns null for sports that map to a real type', () => {
+    // the type label already says "Run" / "Bike ride"
+    expect(whoopCustomTypeName('running')).toBeNull();
+    expect(whoopCustomTypeName('cycling')).toBeNull();
+  });
+
+  it('returns null for missing or blank sport names', () => {
+    expect(whoopCustomTypeName(null)).toBeNull();
+    expect(whoopCustomTypeName('   ')).toBeNull();
+  });
+
+  it('caps the name at the column limit', () => {
+    expect(whoopCustomTypeName('a'.repeat(60))?.length).toBe(40);
+  });
+});
+
+describe('whoop import of unmapped sports', () => {
+  it('imports a WHOOP walk as a named "other" activity, not a bare Other', () => {
+    const walk = makeSegment({
+      id: 'walk-1',
+      external_id: 'ew-walk-1',
+      sport: 'walking',
+      session_id: null,
+      started_at: isoAt(0),
+      ended_at: isoAt(35 * 60),
+      duration_seconds: 35 * 60,
+    });
+
+    const plan = groupSegments([walk], []);
+
+    expect(plan.creates).toHaveLength(1);
+    expect(plan.creates[0].session.activity_type).toBe('other');
+    expect(plan.creates[0].session.custom_type).toBe('Walking');
+  });
+
+  it('leaves custom_type null for a mapped sport', () => {
+    const ride = makeSegment({
+      id: 'ride-1',
+      external_id: 'ew-ride-1',
+      sport: 'cycling',
+      session_id: null,
+      started_at: isoAt(0),
+      ended_at: isoAt(45 * 60),
+      duration_seconds: 45 * 60,
+    });
+
+    const plan = groupSegments([ride], []);
+
+    expect(plan.creates[0].session.activity_type).toBe('bike_ride');
+    expect(plan.creates[0].session.custom_type).toBeNull();
   });
 });

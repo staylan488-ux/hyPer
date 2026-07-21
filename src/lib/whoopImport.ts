@@ -70,6 +70,22 @@ export function mapWhoopSport(sportName?: string | null): ActivityType {
   return WHOOP_SPORT_TO_ACTIVITY[key] ?? 'other';
 }
 
+/**
+ * WHOOP tracks far more sports than our fixed type list. For anything we do not
+ * map, keep WHOOP's own name so the workout imports as "Walking" rather than a
+ * nameless "Other". Returns null for mapped sports (their type label already
+ * says it) and is capped at the column's 40-character limit.
+ */
+export function whoopCustomTypeName(sportName?: string | null): string | null {
+  const trimmed = sportName?.trim();
+  if (!trimmed) return null;
+  if (mapWhoopSport(trimmed) !== 'other') return null;
+
+  const words = trimmed.toLowerCase().replace(/[_\s-]+/g, ' ').trim();
+  if (!words) return null;
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`.slice(0, 40);
+}
+
 /* ── Normalization ── */
 
 function parseOffsetMinutes(offset?: string | null): number {
@@ -176,9 +192,13 @@ function buildSessionDraft(cluster: ActivitySegment[]): ActivitySessionInput {
   const aggregates = aggregateSegments(cluster);
   const first = cluster[0];
   const last = cluster[cluster.length - 1];
+  const activityType = classifyCluster(cluster);
 
   return {
-    activity_type: classifyCluster(cluster),
+    activity_type: activityType,
+    // an unmapped WHOOP sport keeps its own name ("Walking") instead of
+    // importing as a nameless "Other"
+    custom_type: activityType === 'other' ? whoopCustomTypeName(first.sport) : null,
     title: null,
     date: whoopLocalDateKey(first.started_at, getSegmentTimezoneOffset(first)),
     started_at: first.started_at,
@@ -202,6 +222,7 @@ function timestampsEqual(a?: string | null, b?: string | null): boolean {
 function sessionMatchesDraft(session: ActivitySession, draft: ActivitySessionInput): boolean {
   return (
     session.activity_type === draft.activity_type &&
+    (session.custom_type ?? null) === (draft.custom_type ?? null) &&
     session.date === draft.date &&
     timestampsEqual(session.started_at, draft.started_at) &&
     timestampsEqual(session.ended_at, draft.ended_at) &&
@@ -384,6 +405,7 @@ export function groupSegments(
       sessionId: target,
       patch: {
         activity_type: draft.activity_type,
+        custom_type: draft.custom_type ?? null,
         date: draft.date,
         started_at: draft.started_at,
         ended_at: draft.ended_at,
