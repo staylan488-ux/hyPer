@@ -4,35 +4,42 @@ Steps only the Apple Account Holder (the friend who owns the Individual
 Apple Developer membership) can perform. Nothing here requires sharing
 the Apple password or private keys with anyone.
 
-## 1. Verify the canonical App ID (blocks the bundle-ID flip)
+## 1. App ID — DONE (2026-07-21)
 
-The intended canonical bundle identifier is `app.hyper.mobile`. The local
-branch still builds as `com.alexanderroesler.hyper` until this check is done.
+The Account Holder created the App Store Connect app record and set up the
+`app.hyper.mobile` bundle identifier. The codebase has been reconciled to
+`app.hyper.mobile` everywhere (commit — see handoff Rev 71) and the unsigned
+Xcode build passes with it. Still worth a one-time confirmation before archiving:
 
-1. Sign in at <https://developer.apple.com/account> → Certificates,
-   Identifiers & Profiles → Identifiers.
-2. Confirm whether an **explicit** App ID with identifier exactly
-   `app.hyper.mobile` exists. Note its enabled capabilities.
-3. If it exists, open <https://appstoreconnect.apple.com> → Apps. Confirm
-   whether an app record exists and, under App Information → Bundle ID,
-   that it selects `app.hyper.mobile`.
-4. Report back exactly: (a) App ID exists yes/no, (b) explicit or wildcard,
-   (c) App Store Connect record exists yes/no and which bundle ID it selects.
-   Do NOT register a second production App ID.
-5. Required capabilities on that App ID before archiving: HealthKit;
-   Sign in with Apple; (Push Notifications is NOT currently required —
-   rest timers use local notifications). Background Modes (location) is an
-   Xcode-project setting, not an App ID capability.
+- On the `app.hyper.mobile` App ID (developer.apple.com → Identifiers), these
+  capabilities must be enabled or the matching features fail at runtime and in
+  App Review: **HealthKit** and **Sign in with Apple**. (Push Notifications is
+  NOT required — rest timers use local notifications; Background Modes →
+  Location is an Xcode-project setting, not an App ID capability.)
+- Hyper-Dev Supabase redirect allowlist must include the native callback (see
+  section 2a) or native Google/Apple sign-in will not return to the app.
 
 ## 2. After verification — capabilities and signing
 
 1. On the Mac with the repo: open `ios/App/App.xcodeproj`, target App →
    Signing & Capabilities, choose the Account Holder's team, and let Xcode
-   manage signing. The bundle ID will already be flipped to
-   `app.hyper.mobile` by the pending reconciliation commit (do not flip it
-   by hand in Xcode).
+   manage signing. The bundle ID is already `app.hyper.mobile` in the project
+   (do not change it by hand).
 2. Confirm the target shows: HealthKit entitlement, Background Modes →
    Location updates, Sign in with Apple.
+
+## 2a. Hyper-Dev Supabase native redirect allowlist (required for native sign-in)
+
+Native Google/Apple sign-in uses ASWebAuthenticationSession and returns to the
+custom scheme `app.hyper.mobile://auth/callback`. Supabase must allow it:
+
+1. Supabase dashboard → **Hyper-Dev** project → Authentication → URL
+   Configuration → **Redirect URLs**. Add: `app.hyper.mobile://auth/callback`
+   (and `app.hyper.mobile://settings` if you want the WHOOP web fallback to
+   accept it — the WHOOP Edge Function already allowlists it server-side).
+2. This is Hyper-Dev only; production web Google OAuth (origin-based redirect)
+   is untouched. Do not add these schemes to the production project unless/until
+   release.
 
 ## 3. App Store Connect prerequisites
 

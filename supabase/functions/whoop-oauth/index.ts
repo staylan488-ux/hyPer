@@ -46,7 +46,7 @@ function callbackUrl(supabaseUrl: string): string {
 function allowedReturnTo(value: string | undefined, appBaseUrl: string): string {
   const webDefault = `${appBaseUrl}/settings`;
   if (!value) return webDefault;
-  if (value === 'com.alexanderroesler.hyper://settings') return value;
+  if (value === 'app.hyper.mobile://settings') return value;
   try {
     const requested = new URL(value);
     const configured = new URL(appBaseUrl);

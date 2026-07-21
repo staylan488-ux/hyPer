@@ -18,7 +18,7 @@ final class HyperAuthDeepLinkRouter {
 
     @discardableResult
     func handle(_ url: URL) -> Bool {
-        guard url.scheme == "com.alexanderroesler.hyper",
+        guard url.scheme == "app.hyper.mobile",
               url.host == "auth",
               url.path == "/callback"
         else { return false }
@@ -53,7 +53,7 @@ final class HyperAuthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPendingAuthCallback", returnType: CAPPluginReturnPromise),
     ]
 
-    private static let callbackScheme = "com.alexanderroesler.hyper"
+    private static let callbackScheme = "app.hyper.mobile"
     private var webAuthenticationSession: ASWebAuthenticationSession?
 
     override func load() {

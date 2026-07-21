@@ -4,7 +4,7 @@ import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
 
 describe('native OAuth callback validation', () => {
   it('accepts only the expected hyPer callback and returns its PKCE code', () => {
-    expect(parseNativeOAuthCallback('com.alexanderroesler.hyper://auth/callback?code=pkce-code')).toEqual({
+    expect(parseNativeOAuthCallback('app.hyper.mobile://auth/callback?code=pkce-code')).toEqual({
       code: 'pkce-code',
     });
   });
@@ -13,16 +13,16 @@ describe('native OAuth callback validation', () => {
     expect(() => parseNativeOAuthCallback('other://auth/callback?code=stolen')).toThrow(
       'did not belong to hyPer',
     );
-    expect(() => parseNativeOAuthCallback('com.alexanderroesler.hyper://auth/wrong?code=stolen')).toThrow(
+    expect(() => parseNativeOAuthCallback('app.hyper.mobile://auth/wrong?code=stolen')).toThrow(
       'did not belong to hyPer',
     );
   });
 
   it('surfaces provider errors and missing authorization codes', () => {
     expect(() => parseNativeOAuthCallback(
-      'com.alexanderroesler.hyper://auth/callback?error_description=Access%20denied',
+      'app.hyper.mobile://auth/callback?error_description=Access%20denied',
     )).toThrow('Access denied');
-    expect(() => parseNativeOAuthCallback('com.alexanderroesler.hyper://auth/callback')).toThrow(
+    expect(() => parseNativeOAuthCallback('app.hyper.mobile://auth/callback')).toThrow(
       'did not return an authorization code',
     );
   });

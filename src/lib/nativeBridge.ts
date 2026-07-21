@@ -4,7 +4,7 @@ import {
   type PluginListenerHandle,
 } from '@capacitor/core';
 
-export const NATIVE_AUTH_CALLBACK_SCHEME = 'com.alexanderroesler.hyper';
+export const NATIVE_AUTH_CALLBACK_SCHEME = 'app.hyper.mobile';
 export const NATIVE_AUTH_REDIRECT_URL = `${NATIVE_AUTH_CALLBACK_SCHEME}://auth/callback`;
 
 export function isNativeIOS(): boolean {
