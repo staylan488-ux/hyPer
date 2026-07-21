@@ -7,6 +7,7 @@ import {
   type UsdaFoodDetail,
 } from '@/components/nutrition/usdaSearch';
 import { mapOpenFoodFactsProduct } from '@/lib/openFoodFacts';
+import { mapFatSecretBarcodeFood, type FatSecretBarcodeResponse } from '@/lib/fatSecret';
 
 async function invokeFoodLookup(body: Record<string, string>): Promise<Response> {
   const { data, error } = await supabase.functions.invoke('food-lookup', { body });
@@ -32,4 +33,15 @@ export function fetchUsdaFoodDetailSecure(fdcId: string): Promise<UsdaFoodDetail
 export async function searchOpenFoodFactsByBarcodeSecure(barcode: string): Promise<Food | null> {
   const response = await invokeFoodLookup({ action: 'open-food-facts-barcode', barcode });
   return mapOpenFoodFactsProduct(await response.json(), barcode);
+}
+
+// Returns null when FatSecret is not configured, the barcode is unknown, or the
+// payload lacks complete macros — so the caller falls through to the next
+// provider. Never merges FatSecret fields with another source.
+export async function searchFatSecretByBarcodeSecure(barcode: string): Promise<Food | null> {
+  const response = await invokeFoodLookup({ action: 'fatsecret-barcode', barcode });
+  const payload = await response.json().catch(() => null) as
+    (FatSecretBarcodeResponse & { configured?: boolean }) | null;
+  if (!payload || payload.configured === false || !payload.food) return null;
+  return mapFatSecretBarcodeFood(payload);
 }

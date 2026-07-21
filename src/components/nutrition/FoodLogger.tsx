@@ -30,6 +30,7 @@ import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoo
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import {
   fetchUsdaFoodDetailSecure,
+  searchFatSecretByBarcodeSecure,
   searchOpenFoodFactsByBarcodeSecure,
   searchUsdaFoodByBarcodeSecure,
   searchUsdaFoodsSecure,
@@ -82,7 +83,7 @@ type SelectedFoodMeta = {
 } | {
   source: 'barcode';
   barcode: string;
-  provider: 'usda' | 'open_food_facts' | 'saved';
+  provider: 'usda' | 'open_food_facts' | 'saved' | 'fatsecret';
 };
 
 interface EditableNutritionEntry {
@@ -238,11 +239,22 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
     let food: Food | null = null;
-    let provider: 'usda' | 'open_food_facts' | 'saved' = 'saved';
+    let provider: 'usda' | 'open_food_facts' | 'saved' | 'fatsecret' = 'saved';
 
     // owner catalog first: a previously scanned or label-captured product
     // resolves locally before any external provider is asked
     food = await findSavedFoodByBarcode(barcode);
+
+    // FatSecret next when configured — curated coverage ahead of the free
+    // sources; returns null (skip) when unconfigured or unknown
+    if (!food) {
+      provider = 'fatsecret';
+      try {
+        food = await searchFatSecretByBarcodeSecure(barcode);
+      } catch {
+        // fall through to the free providers on any FatSecret error
+      }
+    }
 
     if (!food) {
       provider = 'usda';
@@ -1089,7 +1101,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       const source = selectedFoodMeta?.source === 'barcode'
         ? selectedFoodMeta.provider === 'open_food_facts'
           ? 'barcode_open_food_facts'
-          : selectedFoodMeta.provider === 'saved' ? 'barcode_saved' : 'barcode'
+          : selectedFoodMeta.provider === 'saved' ? 'barcode_saved'
+          : selectedFoodMeta.provider === 'fatsecret' ? 'barcode_fatsecret' : 'barcode'
         : food.source === 'usda' ? 'usda' : 'manual';
       await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
@@ -1510,7 +1523,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 >
                   Open Food Facts
                 </a>
-              ) : selectedFoodMeta.provider === 'saved' ? 'from your saved foods' : 'USDA branded record'}
+              ) : selectedFoodMeta.provider === 'saved' ? 'from your saved foods'
+                : selectedFoodMeta.provider === 'fatsecret' ? 'FatSecret' : 'USDA branded record'}
             </p>
           )}
 
