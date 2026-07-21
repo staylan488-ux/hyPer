@@ -36,7 +36,9 @@ export interface PhotoWorkerSettings {
 
 const URL_KEY = 'hyper.photo-worker.url';
 const PROVIDER_KEY = 'hyper.photo-worker.provider';
-const DEFAULT_URL = 'http://127.0.0.1:8788';
+// Baked in at build time so phones/simulators reach the private worker without
+// anyone typing a URL. Falls back to a local worker for Mac-hosted development.
+const DEFAULT_URL = import.meta.env.VITE_PHOTO_WORKER_URL?.trim() || 'http://127.0.0.1:8788';
 
 export function getPhotoWorkerSettings(): PhotoWorkerSettings {
   const storage = globalThis.localStorage;
