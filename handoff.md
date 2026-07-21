@@ -1,6 +1,18 @@
 # Handoff
 
-Updated: 2026-07-21 (rev 71: bundle ID reconciled to app.hyper.mobile)
+Updated: 2026-07-21 (rev 72: merged friend's brand assets + reconciled to one native auth)
+
+## Rev 72 — reconciled the friend's parallel main work
+
+- Discovered the wrong TestFlight build was from `main`, which had gained the Account Holder's own iOS work independent of our branch: **#59** (FOLIO app icon, launch/splash images, `DEVELOPMENT_TEAM = R5L37449L3`, `ITSAppUsesNonExemptEncryption=false`) and **#60** (a second, Google-only native OAuth via `@capacitor/browser` + `hyper://auth-callback` deep link). That is why the installed build had Google login but no Body weight / Apple button / our features.
+- Merged `origin/main` into `codex/capacitor-ios-shell` (`b56045c8`) and reconciled to one app + one auth contract:
+  - Kept OUR native auth (ASWebAuthenticationSession, Google+Apple, Keychain, `app.hyper.mobile://` scheme) — release-viable (Apple requires Sign in with Apple) and already matched by the Hyper-Dev Supabase redirect URL. Dropped #60's `nativeAuth.ts` rewrite, its `initNativeAuth()` in main.tsx, the duplicate `hyper://` CFBundleURLTypes block, and the unused `@capacitor/browser`/`@capacitor/app` deps.
+  - Took the friend's brand assets + `DEVELOPMENT_TEAM` + encryption-compliance flag; kept `@capacitor/assets` devDep. Preserved our full feature set, Hyper plugin refs, entitlements, and the `app.hyper.mobile` bundle ID.
+- Validation: cap sync clean (Package.swift no longer lists app/browser), npm test 378/378 PASS, lint PASS, build PASS, plutil -lint OK, unsigned Xcode BUILD SUCCEEDED.
+- Build stamp now embeds the commit; a correct TestFlight build shows `… UTC · b56045c8` (or later) in Settings footer. The wrong build showed only Google sign-in and no Body weight section.
+- **Next:** Account Holder rebuilds/uploads from `codex/capacitor-ios-shell` @ `b56045c8` (signing team already baked in). Then install and run the acceptance checklist.
+
+## Rev 71 — bundle ID reconciled to app.hyper.mobile
 
 ## Rev 71 — canonical bundle ID flip to app.hyper.mobile
 
