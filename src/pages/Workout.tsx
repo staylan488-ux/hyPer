@@ -31,6 +31,7 @@ import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
+import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
@@ -1002,6 +1003,38 @@ export function Workout() {
   const sessionDurationLabel = currentWorkoutCreatedAt
     ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
     : '—';
+
+  // Mirror the live session onto the lock screen / Dynamic Island (native
+  // only): exercise + set on top, sets-and-tonnage ledger line underneath.
+  // The rest pill layers its countdown onto the same card independently.
+  useEffect(() => {
+    if (!currentWorkout) {
+      endWorkoutActivity();
+      return;
+    }
+
+    const activeName = activeExerciseId ? workoutExerciseMap.get(activeExerciseId)?.name : undefined;
+    const nextSetNumber = activeExerciseId
+      ? currentWorkout.sets.filter((set) => set.exercise_id === activeExerciseId).length + 1
+      : null;
+    const tonnage = currentWorkout.sets
+      .filter((set) => set.completed)
+      .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
+
+    const detailLine = [
+      activeName && nextSetNumber ? `set ${nextSetNumber}` : null,
+      `${completedSets} of ${totalSets} sets`,
+      tonnage > 0 ? `${Math.round(tonnage).toLocaleString('en-US')} lb` : null,
+    ].filter(Boolean).join(' · ');
+
+    syncWorkoutActivity({
+      exerciseName: activeName ?? currentSessionTitle,
+      detailLine,
+      sessionStartedAtEpochMs: currentWorkoutCreatedAt
+        ? new Date(currentWorkoutCreatedAt).getTime()
+        : Date.now(),
+    });
+  }, [currentWorkout, activeExerciseId, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
   // ── End exercise ordering ──
 
   const captureCompletionSummary = () => {

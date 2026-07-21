@@ -5,7 +5,7 @@ import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
-import { endRestLiveActivity, startRestLiveActivity } from '@/lib/liveActivity';
+import { syncWorkoutActivityRest } from '@/lib/liveActivity';
 import {
   clearRestTimerSession,
   createRestTimerSession,
@@ -110,17 +110,18 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   useEffect(() => {
     if (sessionStatus === 'running' && sessionStartedAt && sessionEndsAt) {
       void scheduleRestEndNotification(sessionEndsAt, nextUpLabel);
-      void startRestLiveActivity(sessionStartedAt, sessionEndsAt, nextUpLabel);
+      syncWorkoutActivityRest({ startedAtIso: sessionStartedAt, endsAtIso: sessionEndsAt });
     } else {
       void cancelRestEndNotification();
-      void endRestLiveActivity();
+      syncWorkoutActivityRest(null);
     }
   }, [sessionStatus, sessionStartedAt, sessionEndsAt, nextUpLabel]);
 
-  // Dismissed or unmounted (workout finished, navigation) — nothing to announce.
+  // Dismissed or unmounted (workout finished, navigation) — the session card
+  // stays up; only the rest state clears. Workout.tsx owns the card lifecycle.
   useEffect(() => () => {
     void cancelRestEndNotification();
-    void endRestLiveActivity();
+    syncWorkoutActivityRest(null);
   }, []);
 
   // Keep the screen awake while a rest timer is running, so the phone can sit
