@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'app.hyper.mobile.dev',
-  appName: 'hyPer Dev',
+  appId: 'app.hyper.mobile',
+  appName: 'hyPer',
   webDir: 'dist',
   backgroundColor: '#F4F0E7',
   loggingBehavior: 'debug',
@@ -15,6 +15,13 @@ const config: CapacitorConfig = {
     hostname: 'localhost',
     iosScheme: 'capacitor',
   },
+  plugins: {
+    LocalNotifications: {
+      // Foreground completion is announced by the in-app chime + haptic;
+      // the scheduled banner is only for the backgrounded/locked case.
+      presentationOptions: []
+    }
+  }
 }
 
 export default config

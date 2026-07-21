@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -41,6 +43,12 @@ function applyThemeClass(theme: ThemeMode) {
 
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   themeMeta?.setAttribute('content', THEME_COLOR_BY_MODE[theme]);
+
+  // Native: clock/battery glyphs follow the surface — ink text on Paper,
+  // paper text on Ink. (Capacitor's Style.Dark = light glyphs.)
+  if (Capacitor.isNativePlatform()) {
+    void StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
+  }
 }
 
 function applyTransitionFlourish() {

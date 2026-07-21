@@ -30,6 +30,8 @@ import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
+import { useKeepAwakeWhile } from '@/lib/keepAwake';
+import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
@@ -127,6 +129,10 @@ export function Workout() {
   } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
   const navigate = useNavigate();
+
+  // Gym hands are chalky and phones auto-lock mid-set: hold the screen awake
+  // for the whole live session (native app only).
+  useKeepAwakeWhile(Boolean(currentWorkout));
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
@@ -135,6 +141,7 @@ export function Workout() {
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [restTimerSeed, setRestTimerSeed] = useState(0);
+  const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
   const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
@@ -902,8 +909,10 @@ export function Workout() {
     await reorderFlexibleExercises(next.map((item) => item.exercise_id));
   };
 
-  const startRestForExercise = (exerciseId: string) => {
+  const startRestForExercise = (exerciseId: string, nextUp?: { exerciseId: string; setNumber: number }) => {
     const prefs = userId ? loadRestPreferences(userId) : {};
+    const nextUpName = nextUp ? workoutExerciseMap.get(nextUp.exerciseId)?.name : undefined;
+    setRestTimerNextUpLabel(nextUpName ? `${nextUpName} · set ${nextUp!.setNumber}` : null);
     setRestTimerExerciseId(exerciseId || null);
     setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
     setRestTimerSeed((current) => current + 1);
@@ -924,12 +933,19 @@ export function Workout() {
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
 
     if (!supersetFlow) {
-      startRestForExercise(loggedSet.exercise_id);
+      startRestForExercise(loggedSet.exercise_id, {
+        exerciseId: loggedSet.exercise_id,
+        setNumber: loggedSet.set_number + 1,
+      });
       return;
     }
 
     if (supersetFlow.role === 'B') {
-      startRestForExercise(loggedSet.exercise_id);
+      // Rest follows the B side of the pair; next up is A of the next round.
+      startRestForExercise(loggedSet.exercise_id, {
+        exerciseId: supersetFlow.partnerExerciseId,
+        setNumber: loggedSet.set_number + 1,
+      });
     }
   };
 
@@ -987,6 +1003,38 @@ export function Workout() {
   const sessionDurationLabel = currentWorkoutCreatedAt
     ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
     : '—';
+
+  // Mirror the live session onto the lock screen / Dynamic Island (native
+  // only): exercise + set on top, sets-and-tonnage ledger line underneath.
+  // The rest pill layers its countdown onto the same card independently.
+  useEffect(() => {
+    if (!currentWorkout) {
+      endWorkoutActivity();
+      return;
+    }
+
+    const activeName = activeExerciseId ? workoutExerciseMap.get(activeExerciseId)?.name : undefined;
+    const nextSetNumber = activeExerciseId
+      ? currentWorkout.sets.filter((set) => set.exercise_id === activeExerciseId).length + 1
+      : null;
+    const tonnage = currentWorkout.sets
+      .filter((set) => set.completed)
+      .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
+
+    const detailLine = [
+      activeName && nextSetNumber ? `set ${nextSetNumber}` : null,
+      `${completedSets} of ${totalSets} sets`,
+      tonnage > 0 ? `${Math.round(tonnage).toLocaleString('en-US')} lb` : null,
+    ].filter(Boolean).join(' · ');
+
+    syncWorkoutActivity({
+      exerciseName: activeName ?? currentSessionTitle,
+      detailLine,
+      sessionStartedAtEpochMs: currentWorkoutCreatedAt
+        ? new Date(currentWorkoutCreatedAt).getTime()
+        : Date.now(),
+    });
+  }, [currentWorkout, activeExerciseId, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
   // ── End exercise ordering ──
 
   const captureCompletionSummary = () => {
@@ -1859,6 +1907,7 @@ export function Workout() {
           workoutId={currentWorkout.id}
           sessionSeed={restTimerSeed}
           defaultSeconds={restTimerSeconds}
+          nextUpLabel={restTimerNextUpLabel}
           onDurationChange={(seconds) => {
             if (userId && restTimerExerciseId) {
               saveRestPreference(userId, restTimerExerciseId, seconds);

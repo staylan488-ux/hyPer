@@ -3,11 +3,9 @@ import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
-import { tapHaptic } from '@/lib/haptics';
-import {
-  cancelNativeRestTimerNotification,
-  syncNativeRestTimerNotification,
-} from '@/lib/nativeRestTimer';
+import { completionHaptic, tapHaptic } from '@/lib/haptics';
+import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
+import { syncWorkoutActivityRest } from '@/lib/liveActivity';
 import {
   clearRestTimerSession,
   createRestTimerSession,
@@ -28,6 +26,9 @@ interface RestTimerPillProps {
   /** Bump to start a fresh timer (new set logged) */
   sessionSeed?: number;
   defaultSeconds?: number;
+  /** "Bench Press · set 3" — names the upcoming set in the end-of-rest
+   *  notification. Omitted for manual timers (no known next set). */
+  nextUpLabel?: string | null;
   onDismiss: () => void;
   /** Fired when the user explicitly picks a new duration (preset). */
   onDurationChange?: (seconds: number) => void;
@@ -61,7 +62,7 @@ function formatTime(totalSeconds: number) {
  * and a single lacquer live tick. Tap to expand for presets — never a blocking
  * modal between sets.
  */
-export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss, onDurationChange }: RestTimerPillProps) {
+export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel = null, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
   const [expanded, setExpanded] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -70,9 +71,6 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const completionHandledRef = useRef(false);
 
   const isRunning = session?.status === 'running';
-  const nativeTimerWorkoutId = session?.workoutId ?? null;
-  const nativeTimerEndsAt = session?.endsAt ?? null;
-  const nativeTimerStatus = session?.status ?? null;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -92,25 +90,39 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   }, [isRunning]);
 
   useEffect(() => {
-    const notificationSession = nativeTimerWorkoutId && nativeTimerEndsAt && nativeTimerStatus
-      ? { workoutId: nativeTimerWorkoutId, endsAt: nativeTimerEndsAt, status: nativeTimerStatus }
-      : null;
-    void syncNativeRestTimerNotification(notificationSession).catch(() => {
-      // The visible timer remains authoritative if notifications are denied.
-    });
-  }, [nativeTimerEndsAt, nativeTimerStatus, nativeTimerWorkoutId]);
-
-  useEffect(() => {
     if (session?.status !== 'completed' || completionHandledRef.current) return;
 
     completionHandledRef.current = true;
 
-    if ('vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200]);
-    }
-
+    completionHaptic();
     void playRestTimerSound();
   }, [session]);
+
+  // Mirror the running timer into a scheduled iOS notification so "rest over"
+  // still reaches the user if the app is backgrounded or the phone is locked.
+  // Running → (re)schedule at the absolute end time; paused/completed/replaced
+  // → cancel. Keyed on endsAt, not the session object, so the once-a-second
+  // sync tick doesn't reschedule.
+  const sessionStatus = session?.status;
+  const sessionStartedAt = session?.startedAt;
+  const sessionEndsAt = session?.endsAt;
+
+  useEffect(() => {
+    if (sessionStatus === 'running' && sessionStartedAt && sessionEndsAt) {
+      void scheduleRestEndNotification(sessionEndsAt, nextUpLabel);
+      syncWorkoutActivityRest({ startedAtIso: sessionStartedAt, endsAtIso: sessionEndsAt });
+    } else {
+      void cancelRestEndNotification();
+      syncWorkoutActivityRest(null);
+    }
+  }, [sessionStatus, sessionStartedAt, sessionEndsAt, nextUpLabel]);
+
+  // Dismissed or unmounted (workout finished, navigation) — the session card
+  // stays up; only the rest state clears. Workout.tsx owns the card lifecycle.
+  useEffect(() => () => {
+    void cancelRestEndNotification();
+    syncWorkoutActivityRest(null);
+  }, []);
 
   // Keep the screen awake while a rest timer is running, so the phone can sit
   // on the bench with the countdown visible. iOS releases the lock whenever the
@@ -200,7 +212,6 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   const handleDismiss = () => {
     tapHaptic();
-    void cancelNativeRestTimerNotification(workoutId).catch(() => undefined);
     clearRestTimerSession();
     setExpanded(false);
     onDismiss();

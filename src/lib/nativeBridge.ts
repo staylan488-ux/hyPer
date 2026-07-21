@@ -98,17 +98,6 @@ interface NativeHealthPlugin {
   ): Promise<PluginListenerHandle>;
 }
 
-interface NativeTimerPlugin {
-  requestPermissions(): Promise<{ granted: boolean }>;
-  schedule(options: {
-    id: string;
-    title: string;
-    body: string;
-    fireAt: string;
-  }): Promise<void>;
-  cancel(options: { id: string }): Promise<void>;
-}
-
 interface NativeBarcodePlugin {
   getAvailability(): Promise<{ available: boolean }>;
   scanBarcode(): Promise<{ rawValue: string; format: string }>;
@@ -117,5 +106,4 @@ interface NativeBarcodePlugin {
 export const NativeAuth = registerPlugin<NativeAuthPlugin>('HyperAuth');
 export const NativeRun = registerPlugin<NativeRunPlugin>('HyperRun');
 export const NativeHealth = registerPlugin<NativeHealthPlugin>('HyperHealth');
-export const NativeTimer = registerPlugin<NativeTimerPlugin>('HyperTimer');
 export const NativeBarcode = registerPlugin<NativeBarcodePlugin>('HyperBarcode');
