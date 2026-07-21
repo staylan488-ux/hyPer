@@ -1,0 +1,19 @@
+[Unit]
+# Re-applies the tailnet-only HTTPS ingress for the photo worker on every boot.
+# `tailscale serve --bg` normally persists in tailscaled state, but it has been
+# observed to disappear (tailscaled reset/upgrade), which silently breaks photo
+# analysis in the app. This makes the mapping declarative instead of a one-off.
+Description=hyPer photo worker tailnet ingress (https :8443 -> 127.0.0.1:8788)
+After=tailscaled.service hyper-photo-worker.service
+Wants=tailscaled.service hyper-photo-worker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# tailscaled may not have finished authenticating when this first runs, so retry
+# for a couple of minutes rather than failing the boot.
+ExecStart=/bin/bash -c 'for attempt in $(seq 1 30); do /usr/bin/tailscale serve --bg --https=8443 http://127.0.0.1:8788 && exit 0; sleep 5; done; exit 1'
+ExecStop=/usr/bin/tailscale serve --https=8443 off
+
+[Install]
+WantedBy=multi-user.target
