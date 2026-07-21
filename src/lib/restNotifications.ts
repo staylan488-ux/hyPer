@@ -22,7 +22,7 @@ async function ensurePermission(): Promise<boolean> {
 /** Schedule the "rest over" banner for the timer's absolute end time. Fires
  *  only if the app is backgrounded/locked when the timer lapses — in the
  *  foreground the in-app chime and haptic already cover it. */
-export async function scheduleRestEndNotification(endsAtIso: string): Promise<void> {
+export async function scheduleRestEndNotification(endsAtIso: string, nextUpLabel?: string | null): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
   const endsAt = new Date(endsAtIso);
@@ -36,7 +36,8 @@ export async function scheduleRestEndNotification(endsAtIso: string): Promise<vo
         {
           id: REST_NOTIFICATION_ID,
           title: 'Rest over',
-          body: 'Back to the bar — your next set is up.',
+          // Data over decoration: name the set that's up, nothing else.
+          body: nextUpLabel || 'Next set',
           schedule: { at: endsAt },
         },
       ],
