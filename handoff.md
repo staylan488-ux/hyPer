@@ -12,6 +12,12 @@ Updated: 2026-07-21 (rev 71: bundle ID reconciled to app.hyper.mobile)
 - **Blocking next step before native sign-in works on device:** add `app.hyper.mobile://auth/callback` to Hyper-Dev Supabase → Authentication → URL Configuration → Redirect URLs (dashboard; can't be done via CLI safely). Documented in docs/account-holder-runbook.md §2a.
 - Also confirm HealthKit + Sign in with Apple capabilities are enabled on the `app.hyper.mobile` App ID before archiving (runbook §1).
 
+### Rev 71 status update (2026-07-21, user-reported)
+
+- User confirms the Hyper-Dev Supabase redirect URL (`app.hyper.mobile://auth/callback`) is added and the Account Holder confirmed capabilities + added both users as internal TestFlight testers. Native sign-in prerequisite satisfied.
+- This Mac has NO code-signing identity / no ASC API key, so it cannot sign or upload. Only the Account Holder can. Chosen path: the friend archives + uploads from their own Mac off branch `codex/capacitor-ios-shell` @ `365a9387` (needs `.env.local` with the Hyper-Dev URL + public anon key, then `npm run ios:sync` → Archive → Distribute → Upload). Upload in progress.
+- Pre-upload checks passed: AppIcon is a single 1024×1024 (modern format, no marketing-icon rejection risk); MARKETING_VERSION 1.0 / CURRENT_PROJECT_VERSION 1 (fine for first upload). `ITSAppUsesNonExemptEncryption` is not set → Xcode prompts once during upload; answer No (app uses only exempt HTTPS/OAuth crypto). Optional future hardening: set that key to false in Info.plist to stop the recurring compliance prompt.
+
 ## Rev 70 — Phase 1 done, first Xcode build green, Phase 2 features landed
 
 ## Rev 70 — Phase 1 executed: recovery push, reconciliation, first Apple build, Phase 2 features
