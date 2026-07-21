@@ -5,6 +5,7 @@ import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
+import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
@@ -172,6 +173,7 @@ interface AppState {
   createActivitySession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
   updateActivitySession: (activityId: string, updates: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
   deleteActivitySession: (activityId: string) => Promise<void>;
+  mergeActivitySessions: (sessions: ActivitySession[]) => Promise<ActivitySession | null>;
   // true when WHOOP-imported segments still reference the session; deleting
   // such a session must tombstone instead so re-sync cannot resurrect it
   hasLinkedWhoopSegments: (sessionId: string) => Promise<boolean>;
@@ -1503,6 +1505,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return data as ActivitySession;
+  },
+
+  // Combines same-day sessions WHOOP split apart. Segments are re-pointed to the
+  // survivor FIRST so no child is orphaned if a later step fails, and the
+  // absorbed rows are hard-deleted (not tombstoned) because their data now lives
+  // on the survivor — a tombstone would leave the merged time double-counted.
+  mergeActivitySessions: async (sessions) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const plan = planActivityMerge(sessions);
+    if (!plan) return null;
+
+    const { error: relinkError } = await supabase
+      .from('activity_segments')
+      .update({ session_id: plan.keepId, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .in('session_id', plan.absorbIds);
+    if (relinkError) {
+      console.error('Error re-pointing segments during merge:', relinkError);
+      throw relinkError;
+    }
+
+    const merged = await get().updateActivitySession(plan.keepId, plan.patch);
+    if (!merged) throw new Error('Could not update the merged activity.');
+
+    const { error: deleteError } = await supabase
+      .from('activity_sessions')
+      .delete()
+      .eq('user_id', user.id)
+      .in('id', plan.absorbIds);
+    if (deleteError) {
+      console.error('Error removing absorbed activities:', deleteError);
+      throw deleteError;
+    }
+
+    return merged;
   },
 
   deleteActivitySession: async (activityId) => {

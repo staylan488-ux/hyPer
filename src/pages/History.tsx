@@ -147,6 +147,9 @@ interface ActivityLedgerRowProps {
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
 }
 
 function formatSegmentDistance(distanceM: number | null): string | null {
@@ -318,7 +321,10 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
   );
 }
 
-function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdit, onDelete }: ActivityLedgerRowProps) {
+function ActivityLedgerRow({
+  activity, segments, expanded, onToggleExpand, onEdit, onDelete,
+  selectable = false, selected = false, onToggleSelected,
+}: ActivityLedgerRowProps) {
   // cross-source sessions carry enrichment segments (e.g. a WHOOP record
   // absorbed into a GPS run); the splits table shows only the primary
   // recording's laps — foreign-source segments contribute metrics, not rows
@@ -344,6 +350,18 @@ function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdi
   return (
     <div className="border-t border-[var(--color-border)] py-3">
       <div className="flex items-start justify-between gap-3">
+        {selectable && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={`Select ${title} to merge`}
+            onClick={onToggleSelected}
+            className="pressable mt-1 h-5 w-5 shrink-0 border border-[var(--color-border-strong)] flex items-center justify-center"
+          >
+            {selected && <span className="h-2.5 w-2.5 bg-[var(--color-text)]" />}
+          </button>
+        )}
         <div className="min-w-0">
           <p className="t-label-sm text-[9px]">Activity</p>
           <p className="mt-1 text-[13px] text-[var(--color-text)] truncate">{title}</p>
@@ -494,6 +512,7 @@ export function History() {
     createActivitySession,
     updateActivitySession,
     deleteActivitySession,
+    mergeActivitySessions,
     hasLinkedWhoopSegments,
     fetchActivitySegmentsBySessionIds,
     syncWhoop,
@@ -652,6 +671,35 @@ export function History() {
       monthActivities.filter((activity) => getActivitySessionDateKey(activity) === selectedDateKey)
     );
   }, [monthActivities, selectedDateKey]);
+
+  // merge mode: pick same-day activities WHOOP recorded as separate records
+  const [mergeSelection, setMergeSelection] = useState<string[] | null>(null);
+  const [merging, setMerging] = useState(false);
+
+  // leaving the day cancels a half-made selection
+  useEffect(() => { setMergeSelection(null); }, [selectedDateKey]);
+
+  const handleMergeActivities = useCallback(async () => {
+    if (!mergeSelection || mergeSelection.length < 2 || merging) return;
+    const chosen = selectedDayActivities.filter((activity) => mergeSelection.includes(activity.id));
+    if (chosen.length < 2) return;
+
+    setMerging(true);
+    try {
+      const merged = await mergeActivitySessions(chosen);
+      if (!merged) return;
+      const absorbed = new Set(chosen.map((activity) => activity.id).filter((id) => id !== merged.id));
+      setMonthActivities((prev) => prev
+        .filter((activity) => !absorbed.has(activity.id))
+        .map((activity) => (activity.id === merged.id ? merged : activity)));
+      setMergeSelection(null);
+      showSavedToast();
+    } catch (error) {
+      console.error('Error merging activities:', error);
+    } finally {
+      setMerging(false);
+    }
+  }, [mergeSelection, merging, selectedDayActivities, mergeActivitySessions, showSavedToast]);
 
   // lazily load split segments for the selected day's activities, once per session
   const requestedSegmentIdsRef = useRef<Set<string>>(new Set());
@@ -1603,6 +1651,44 @@ export function History() {
                     <span className="t-label-sm">Activities</span>
                     <span className="t-label-sm">{selectedDayActivities.length}</span>
                   </div>
+                  {selectedDayActivities.length > 1 && (
+                    <div className="flex items-center justify-between gap-3 pb-2">
+                      {mergeSelection ? (
+                        <>
+                          <span className="t-label-sm">
+                            {mergeSelection.length < 2
+                              ? 'Pick the activities that were really one'
+                              : `${mergeSelection.length} selected`}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)]"
+                              onClick={() => setMergeSelection(null)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={mergeSelection.length < 2 || merging}
+                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)] disabled:opacity-40"
+                              onClick={() => { void handleMergeActivities(); }}
+                            >
+                              {merging ? 'Merging…' : 'Merge'}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="pressable min-h-11 t-label-sm text-[var(--color-muted)] ml-auto"
+                          onClick={() => setMergeSelection([])}
+                        >
+                          Merge activities
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {selectedDayActivities.map((activity, activityIndex) => (
                     <motion.div
                       key={activity.id}
@@ -1612,6 +1698,14 @@ export function History() {
                     >
                       <ActivityLedgerRow
                         activity={activity}
+                        selectable={mergeSelection != null}
+                        selected={mergeSelection?.includes(activity.id) ?? false}
+                        onToggleSelected={() => setMergeSelection((prev) => {
+                          if (!prev) return prev;
+                          return prev.includes(activity.id)
+                            ? prev.filter((id) => id !== activity.id)
+                            : [...prev, activity.id];
+                        })}
                         segments={segmentsBySession[activity.id] || []}
                         expanded={expandedActivity === activity.id}
                         onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
