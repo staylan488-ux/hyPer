@@ -103,13 +103,16 @@ final class HyperHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             healthStore.execute(query)
         }
 
+        // Background delivery is a bonus, not a requirement: the observer query
+        // above plus foreground reconciliation already keep weights current, and
+        // it is unavailable on the Simulator. Report it rather than failing the
+        // whole opt-in, so weight sync still works when it is refused.
         healthStore.enableBackgroundDelivery(for: bodyMassType, frequency: .immediate) {
             enabled, error in
             if let error {
-                call.reject("Unable to enable Apple Health updates.", "HEALTH_BACKGROUND_FAILED", error)
-            } else {
-                call.resolve(["enabled": enabled])
+                NSLog("hyPer: Apple Health background delivery unavailable: %@", error.localizedDescription)
             }
+            call.resolve(["enabled": true, "backgroundDelivery": error == nil && enabled])
         }
     }
 }
