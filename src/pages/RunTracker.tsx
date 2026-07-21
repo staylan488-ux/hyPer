@@ -14,7 +14,6 @@ import {
   currentLapSeconds,
   currentSpeedMps,
   elapsedSeconds,
-  gpsAccuracyMeters,
   isGpsWeak,
   isWarmingUp,
   lapActiveSeconds,
@@ -223,11 +222,13 @@ export function RunTracker() {
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
+  // live pace in min/mi — the metric runners read, not mph
   const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
-  const liveSpeedLabel = liveSpeedMps != null ? `${(liveSpeedMps * 2.2369363).toFixed(1)} mph` : null;
+  const liveSpeedLabel = liveSpeedMps != null && liveSpeedMps > 0.3
+    ? `${formatRunPace(MILE_M / liveSpeedMps) ?? '—'} now`
+    : null;
   const warming = running ? isWarmingUp(state) : false;
   const weak = running ? isGpsWeak(state, tracker.nowMs) : false;
-  const accuracyM = running ? gpsAccuracyMeters(state) : null;
 
   const lastLap = running && state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
   const lastRep = running && state.reps.length > 0 ? state.reps[state.reps.length - 1] : null;
@@ -249,6 +250,7 @@ export function RunTracker() {
           key: lap.index,
           durationS: lapActiveSeconds(lap),
           distanceM: lap.distanceM,
+          isRest: lap.kind === 'rest',
         }));
 
     return (
@@ -285,48 +287,28 @@ export function RunTracker() {
             </div>
             {splits.map((split) => (
               <div key={split.key} className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-data-sm text-[11px] text-[var(--color-text-dim)] py-0.5">
-                <span>{split.key}</span>
+                <span>{'isRest' in split && split.isRest ? '·' : split.key}</span>
                 <span>{formatClockDuration(split.durationS) ?? '—'}</span>
-                <span>{formatMeters(split.distanceM)}</span>
-                <span>{formatRunPace(paceSecondsPerMile(split.distanceM, split.durationS)) ?? '—'}</span>
+                <span>{'isRest' in split && split.isRest ? 'rest' : formatMeters(split.distanceM)}</span>
+                <span>
+                  {'isRest' in split && split.isRest
+                    ? '—'
+                    : formatRunPace(paceSecondsPerMile(split.distanceM, split.durationS)) ?? '—'}
+                </span>
               </div>
             ))}
           </div>
         )}
 
-        {finishedRun.quality && (
+        {finishedRun.trace && finishedRun.trace.length > 0 && (
           <div className="mt-8 border-t border-[var(--color-border)] pt-4">
-            <p className="t-label-sm">GPS trace quality</p>
-            <div className="grid grid-cols-3 gap-3 mt-3">
-              <div>
-                <p className="t-caption">Typical accuracy</p>
-                <p className="t-data mt-1">
-                  {finishedRun.quality.averageAccuracyM != null ? `±${finishedRun.quality.averageAccuracyM} m` : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="t-caption">Speed coverage</p>
-                <p className="t-data mt-1">{finishedRun.quality.speedCoveragePct}%</p>
-              </div>
-              <div>
-                <p className="t-caption">Longest gap</p>
-                <p className="t-data mt-1">{finishedRun.quality.longestGapS.toFixed(1)} s</p>
-              </div>
-            </div>
-            {finishedRun.quality.longestGapS > 8 && (
-              <p className="t-caption mt-4 text-[var(--color-accent)]">
-                Safari paused location updates for {finishedRun.quality.longestGapS.toFixed(1)} seconds. Distance across that gap may be low.
-              </p>
-            )}
-            {finishedRun.trace && finishedRun.trace.length > 0 && (
-              <button
-                type="button"
-                className="pressable t-label-sm mt-5 min-h-11 text-[var(--color-muted)]"
-                onClick={() => exportGpsDiagnostics(finishedRun)}
-              >
-                Export private GPS diagnostics
-              </button>
-            )}
+            <button
+              type="button"
+              className="pressable t-label-sm min-h-11 text-[var(--color-muted)]"
+              onClick={() => exportGpsDiagnostics(finishedRun)}
+            >
+              Export private GPS diagnostics
+            </button>
             <p className="t-caption mt-1">Coordinates stay on this device unless you export them.</p>
           </div>
         )}
@@ -362,10 +344,10 @@ export function RunTracker() {
               : tracker.autoPaused
                 ? 'auto paused'
               : warming
-                ? `acquiring gps${accuracyM != null ? ` · ±${accuracyM}m` : ''}`
+                ? 'acquiring gps'
                 : weak
-                  ? `gps weak${accuracyM != null ? ` · ±${accuracyM}m` : ''}`
-                  : `gps ok${accuracyM != null ? ` · ±${accuracyM}m` : ''}`}
+                  ? 'gps weak'
+                  : 'gps ok'}
           </span>
         </div>
 
@@ -402,7 +384,7 @@ export function RunTracker() {
           {state.config.mode === 'intervals' && (
             <div className="grid grid-cols-2 gap-6 border-t border-[var(--color-border)] pt-5">
               <div>
-                <p className="t-label-sm">Lap {state.laps.length + 1}</p>
+                <p className="t-label-sm">{tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}</p>
                 <p className="t-data mt-1">
                   {formatClockDuration(currentLapSeconds(state, tracker.nowMs))} • {formatMeters(currentLapDistanceM(state))}
                 </p>
@@ -451,6 +433,15 @@ export function RunTracker() {
           >
             {paused ? 'Resume' : 'Pause'}
           </button>
+          {state.config.mode === 'intervals' && !paused && (
+            <button
+              type="button"
+              className="min-h-14 px-6 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
+              onClick={(event) => { event.stopPropagation(); tapHaptic(); tracker.toggleRest(); }}
+            >
+              {tracker.resting ? 'Go' : 'Rest'}
+            </button>
+          )}
           <div className="flex-1">
             <HoldToFinish onFinish={handleFinish} />
           </div>

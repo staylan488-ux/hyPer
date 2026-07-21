@@ -121,6 +121,9 @@ export interface Lap {
   pausedMs: number;
   distanceM: number;
   trigger: 'manual' | 'auto' | 'finish';
+  // 'rest' marks a deliberate recovery between efforts (standing or walking).
+  // Rest laps still count toward elapsed time but are not paced as efforts.
+  kind: 'work' | 'rest';
 }
 
 export function lapActiveSeconds(lap: Lap): number {
@@ -171,6 +174,8 @@ export interface TrackerState {
   // laps (intervals mode)
   lapStartMs: number;
   lapStartDistM: number;
+  // kind of the lap currently open
+  lapKind: 'work' | 'rest';
   lastManualSplitMs: number | null;
   laps: Lap[];
   // sprint machine
@@ -241,6 +246,7 @@ export function createTracker(config: TrackerConfig, nowMs: number, runId?: stri
     window: [],
     lapStartMs: nowMs,
     lapStartDistM: 0,
+    lapKind: 'work',
     lastManualSplitMs: null,
     laps: [],
     sprintPhase: 'idle',
@@ -487,6 +493,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
         endedAtMs: Math.round(crossT),
         pausedMs: next.lapPausedMs + next.lapAutoPausedMs,
         distanceM: lapTarget - next.lapStartDistM,
+        kind: next.lapKind,
         trigger: 'auto',
       };
       next.laps = [...next.laps, lap];
@@ -646,12 +653,58 @@ export function manualSplit(state: TrackerState, tMs: number): AdvanceResult {
     pausedMs: state.lapPausedMs + state.lapAutoPausedMs,
     distanceM: state.totalDistanceM - state.lapStartDistM,
     trigger: 'manual',
+    kind: state.lapKind,
   };
   const next: TrackerState = {
     ...state,
     laps: [...state.laps, lap],
     lapStartMs: tMs,
     lapStartDistM: state.totalDistanceM,
+    lapKind: 'work',
+    lapPausedMs: 0,
+    lapAutoPausedMs: 0,
+    lastManualSplitMs: tMs,
+  };
+  return { state: next, events: [{ type: 'lap_completed', lap }] };
+}
+
+/**
+ * Ends the current effort and opens a rest lap (or, when already resting, ends
+ * the rest and opens the next effort). Rest is for intervals taken standing or
+ * walking: the clock keeps running so total time stays honest, but the lap is
+ * labelled so its pace is not read as an effort.
+ */
+export function toggleRest(state: TrackerState, tMs: number): AdvanceResult {
+  if (
+    state.status !== 'running'
+    || state.config.mode !== 'intervals'
+    || state.pausedAtMs != null
+    || state.autoPausedAtMs != null
+  ) {
+    return { state, events: [] };
+  }
+  if (
+    state.lastManualSplitMs != null &&
+    tMs - state.lastManualSplitMs < state.config.manualSplitDebounceMs
+  ) {
+    return { state, events: [] };
+  }
+
+  const lap: Lap = {
+    index: state.laps.length + 1,
+    startedAtMs: state.lapStartMs,
+    endedAtMs: tMs,
+    pausedMs: state.lapPausedMs + state.lapAutoPausedMs,
+    distanceM: state.totalDistanceM - state.lapStartDistM,
+    trigger: 'manual',
+    kind: state.lapKind,
+  };
+  const next: TrackerState = {
+    ...state,
+    laps: [...state.laps, lap],
+    lapStartMs: tMs,
+    lapStartDistM: state.totalDistanceM,
+    lapKind: state.lapKind === 'rest' ? 'work' : 'rest',
     lapPausedMs: 0,
     lapAutoPausedMs: 0,
     lastManualSplitMs: tMs,
@@ -828,6 +881,7 @@ export function finishTracker(
           pausedMs: state.lapPausedMs + state.lapAutoPausedMs + activeAutoPauseMs,
           distanceM: openDistance,
           trigger: 'finish',
+          kind: state.lapKind,
         },
       ];
     }
@@ -1008,6 +1062,9 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     state.hasGpsLock ??= state.warmupCount >= state.config.warmupSamples;
     state.lastSampleMs ??= state.lastAcceptedMs ?? null;
     state.lastAccuracyM ??= state.lastPoint?.accuracyM ?? null;
+    // a run started before rest laps existed restores as an effort
+    state.lapKind ??= 'work';
+    state.laps = (state.laps ?? []).map((lap) => ({ ...lap, kind: lap.kind ?? 'work' }));
     if (state.pausedAtMs != null) {
       state.totalPausedMs = (state.totalPausedMs ?? 0) + Math.max(0, snapshot.savedAtMs - state.pausedAtMs);
       state.pausedAtMs = null;

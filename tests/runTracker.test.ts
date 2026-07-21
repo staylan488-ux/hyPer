@@ -16,6 +16,7 @@ import {
   isPaused,
   isWarmingUp,
   manualSplit,
+  toggleRest,
   pauseTracker,
   restoreTracker,
   restoreTrackerTrace,
@@ -563,5 +564,52 @@ describe('currentSpeedMps', () => {
     const { state, lastT } = drivenState();
     const paused = pauseTracker(state, lastT + 500);
     expect(currentSpeedMps(paused, lastT + 1_000)).toBeNull();
+  });
+});
+
+describe('rest laps', () => {
+  function intervalState() {
+    const tracker = createTracker(defaultTrackerConfig('intervals', null, false), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 4, durationS: 60 }]));
+    const { state } = drive(tracker, samples);
+    return { state, lastT: samples[samples.length - 1].t };
+  }
+
+  it('closes the effort and opens a rest, then returns to work', () => {
+    const { state, lastT } = intervalState();
+
+    const rested = toggleRest(state, lastT + 1_000);
+    expect(rested.state.laps).toHaveLength(1);
+    expect(rested.state.laps[0].kind).toBe('work');
+    expect(rested.state.lapKind).toBe('rest');
+
+    const back = toggleRest(rested.state, lastT + 60_000);
+    expect(back.state.laps).toHaveLength(2);
+    expect(back.state.laps[1].kind).toBe('rest');
+    expect(back.state.lapKind).toBe('work');
+  });
+
+  it('a manual split during rest ends the rest and starts an effort', () => {
+    const { state, lastT } = intervalState();
+    const rested = toggleRest(state, lastT + 1_000);
+
+    const split = manualSplit(rested.state, lastT + 40_000);
+
+    expect(split.state.laps[1].kind).toBe('rest');
+    expect(split.state.lapKind).toBe('work');
+  });
+
+  it('keeps rest time in the total so elapsed stays honest', () => {
+    const { state, lastT } = intervalState();
+    const rested = toggleRest(state, lastT + 1_000);
+    const before = elapsedSeconds(rested.state, lastT + 1_000);
+    const after = elapsedSeconds(rested.state, lastT + 31_000);
+    expect(after - before).toBeGreaterThanOrEqual(29);
+  });
+
+  it('ignores rest outside intervals mode', () => {
+    const tracker = createTracker(defaultTrackerConfig('free', null, false), T0);
+    const { state } = drive(tracker, shift(buildScenarioSamples([{ speedMps: 3, durationS: 20 }])));
+    expect(toggleRest(state, T0 + 30_000).state).toBe(state);
   });
 });

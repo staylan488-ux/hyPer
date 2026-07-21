@@ -14,6 +14,7 @@ import {
   isAutoPaused,
   isPaused,
   manualSplit,
+  toggleRest,
   pauseTracker,
   restoreTracker,
   restoreFinishedRun,
@@ -188,6 +189,8 @@ export interface UseRunTracker {
   start: (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => void;
   resume: (source?: PositionSource) => void;
   split: () => void;
+  toggleRest: () => void;
+  resting: boolean;
   togglePause: () => void;
   finish: () => FinishedRun | null;
   discard: () => void;
@@ -338,6 +341,15 @@ export function useRunTracker(): UseRunTracker {
     applyEvents(events);
   }, [applyEvents, commit]);
 
+  const restToggle = useCallback(() => {
+    const current = stateRef.current;
+    const source = sourceRef.current;
+    if (!current || !source) return;
+    const { state: next, events } = toggleRest(current, source.getNowMs());
+    commit(next);
+    applyEvents(events);
+  }, [applyEvents, commit]);
+
   const togglePause = useCallback(() => {
     const current = stateRef.current;
     const source = sourceRef.current;
@@ -473,6 +485,8 @@ export function useRunTracker(): UseRunTracker {
     start,
     resume,
     split,
+    toggleRest: restToggle,
+    resting: state?.lapKind === 'rest',
     togglePause,
     finish,
     discard,
