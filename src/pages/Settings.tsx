@@ -256,7 +256,9 @@ export function Settings() {
       setWhoopMessage('WHOOP connected.');
     } catch (error) {
       console.error('Error connecting WHOOP:', error);
-      setWhoopError('Could not start the WHOOP connection.');
+      // Surface the real reason — a generic message is undebuggable on a phone.
+      const reason = error instanceof Error ? error.message : String(error);
+      setWhoopError(`Could not start the WHOOP connection. ${reason}`.trim());
     } finally {
       setWhoopAction(null);
     }

@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 
-import { ACTIVITY_TYPE_LABELS, type ActivitySession } from '@/types';
+import { type ActivitySession } from '@/types';
+import { activityTypeLabel } from '@/lib/activityMetrics';
 
 function parseDate(value?: string | null): Date | null {
   if (!value) return null;
@@ -15,10 +16,13 @@ export function getActivitySessionDateKey(session: Pick<ActivitySession, 'date' 
   return startedAt ? format(startedAt, 'yyyy-MM-dd') : '';
 }
 
-export function resolveActivityTitle(session: Pick<ActivitySession, 'activity_type' | 'title'>): string {
+export function resolveActivityTitle(
+  session: Pick<ActivitySession, 'activity_type' | 'custom_type' | 'title'>,
+): string {
   const trimmedTitle = session.title?.trim();
   if (trimmedTitle) return trimmedTitle;
-  return ACTIVITY_TYPE_LABELS[session.activity_type] || 'Activity';
+  // a user-named or WHOOP-named "other" activity must not fall back to "Other"
+  return activityTypeLabel(session) || 'Activity';
 }
 
 export function formatActivityDuration(durationSeconds?: number | null): string {
