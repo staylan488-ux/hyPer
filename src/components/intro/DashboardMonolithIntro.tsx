@@ -49,7 +49,7 @@ export function DashboardMonolithIntro() {
       >
         <div className="max-w-lg mx-auto h-28 flex items-center justify-center relative overflow-visible">
           <motion.span
-            className="inline-block [font-family:var(--font-display)] font-light text-[92px] leading-[0.86] tracking-[-0.05em] text-[var(--color-text)] select-none"
+            className="inline-block [font-family:var(--font-display)] font-light text-[92px] leading-none p-[0.12em] -m-[0.12em] text-[var(--color-text)] select-none"
             initial={{ opacity: 0, scale: 0.9, y: -10 }}
             animate={{
               opacity: showCompose ? 0 : 1,
@@ -80,7 +80,7 @@ export function DashboardMonolithIntro() {
                     hy
                   </motion.span>
                   <motion.span
-                    className="inline-block [font-family:var(--font-display)] italic font-light text-[44px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
+                    className="inline-block [font-family:var(--font-display)] italic font-light text-[44px] leading-[0.86] tracking-[-0.05em] p-[0.12em] -m-[0.12em] text-[var(--color-accent)] select-none"
                     initial={{ opacity: 0, scale: 0.84 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={reduceMotion ? { duration: 0.12 } : { ...springs.snappy, delay: 0.04 }}

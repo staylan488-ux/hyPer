@@ -56,7 +56,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
             transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy }}
           >
             <motion.span
-              className="inline-block [font-family:var(--font-display)] italic font-light text-[120px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
+              className="inline-block [font-family:var(--font-display)] italic font-light text-[120px] leading-none p-[0.12em] -m-[0.12em] text-[var(--color-accent)] select-none"
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: [0.92, 1.01, 1], opacity: 1 }}
               transition={reduceMotion ? { duration: 0.18 } : { duration: 0.64, ease: [0.16, 1, 0.3, 1] }}
@@ -83,7 +83,7 @@ export function LoginMonolithIntro({ active, onComplete }: LoginMonolithIntroPro
                   hy
                 </motion.span>
                 <motion.span
-                  className="inline-block [font-family:var(--font-display)] italic font-light text-[52px] leading-[0.86] tracking-[-0.05em] text-[var(--color-accent)] select-none"
+                  className="inline-block [font-family:var(--font-display)] italic font-light text-[52px] leading-[0.86] tracking-[-0.05em] p-[0.12em] -m-[0.12em] text-[var(--color-accent)] select-none"
                   initial={{ opacity: 0, scale: 0.8, y: -8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={reduceMotion ? { duration: 0.12 } : { ...springs.heavy, delay: 0.06 }}
