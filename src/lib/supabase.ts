@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { Capacitor } from '@capacitor/core'
 import { isPreviewActive } from '@/preview/flag'
 import { createMockClient } from '@/preview/mockSupabase'
 
@@ -19,7 +20,10 @@ export const supabase = preview
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        // Native OAuth returns via the hyper:// deep link, which needs the
+        // code-exchange (PKCE) flow. Web keeps the existing implicit flow.
+        ...(Capacitor.isNativePlatform() ? { flowType: 'pkce' as const } : {})
       }
     })
 

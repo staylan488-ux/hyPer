@@ -49,5 +49,16 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.hyper.mobile</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hyper</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

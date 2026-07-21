@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { initNativeAuth } from './lib/nativeAuth'
 import { maybeSeedPreview } from './preview/previewSeed' // DEV-ONLY
 
 // Auto-update: when a new version is deployed, the fresh service worker takes
@@ -27,6 +28,8 @@ registerSW({
     }, 60 * 60 * 1000)
   },
 })
+
+initNativeAuth() // no-op on the web; catches OAuth deep links in the iOS app
 
 maybeSeedPreview() // DEV-ONLY: seeds the stores when on a /preview URL
 
