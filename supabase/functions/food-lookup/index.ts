@@ -132,6 +132,11 @@ serve(async (req) => {
   }
 
   if (body.action === 'fatsecret-barcode') {
+    // FatSecret enforces IP allowlisting and Supabase Edge Functions have
+    // dynamic egress IPs, so calls from here are rejected. Keep FatSecret off
+    // (client falls through to USDA/Open Food Facts) until it can be reached
+    // from a static-egress host; flip FATSECRET_ENABLED=1 once that exists.
+    if (Deno.env.get('FATSECRET_ENABLED') !== '1') return jsonResponse({ configured: false });
     const gtin = toGtin13(body.barcode ?? '');
     if (!gtin) return jsonResponse({ error: 'Invalid barcode' }, 400);
     const token = await fatSecretAccessToken();
@@ -140,7 +145,13 @@ serve(async (req) => {
     if (!token) return jsonResponse({ configured: false });
     try {
       const idResult = await fatSecretCall(token, { method: 'food.find_id_for_barcode', barcode: gtin }) as
-        { food_id?: { value?: string | number } };
+        { food_id?: { value?: string | number }; error?: { code?: number; message?: string } };
+      // Surface FatSecret API-level errors (returned with HTTP 200) instead of
+      // masking them as "not found".
+      if (idResult?.error) {
+        console.error('FatSecret find_id_for_barcode error:', idResult.error);
+        return jsonResponse({ error: 'FatSecret error', detail: idResult.error }, 502);
+      }
       const foodId = String(idResult?.food_id?.value ?? '').trim();
       if (!foodId || foodId === '0') return jsonResponse({ food: null });
       // food.get.v2 returns the full food object (name, brand, servings) that
