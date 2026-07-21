@@ -140,6 +140,7 @@ export function Workout() {
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [restTimerSeed, setRestTimerSeed] = useState(0);
+  const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
   const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
@@ -907,8 +908,10 @@ export function Workout() {
     await reorderFlexibleExercises(next.map((item) => item.exercise_id));
   };
 
-  const startRestForExercise = (exerciseId: string) => {
+  const startRestForExercise = (exerciseId: string, nextUp?: { exerciseId: string; setNumber: number }) => {
     const prefs = userId ? loadRestPreferences(userId) : {};
+    const nextUpName = nextUp ? workoutExerciseMap.get(nextUp.exerciseId)?.name : undefined;
+    setRestTimerNextUpLabel(nextUpName ? `${nextUpName} · set ${nextUp!.setNumber}` : null);
     setRestTimerExerciseId(exerciseId || null);
     setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
     setRestTimerSeed((current) => current + 1);
@@ -929,12 +932,19 @@ export function Workout() {
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
 
     if (!supersetFlow) {
-      startRestForExercise(loggedSet.exercise_id);
+      startRestForExercise(loggedSet.exercise_id, {
+        exerciseId: loggedSet.exercise_id,
+        setNumber: loggedSet.set_number + 1,
+      });
       return;
     }
 
     if (supersetFlow.role === 'B') {
-      startRestForExercise(loggedSet.exercise_id);
+      // Rest follows the B side of the pair; next up is A of the next round.
+      startRestForExercise(loggedSet.exercise_id, {
+        exerciseId: supersetFlow.partnerExerciseId,
+        setNumber: loggedSet.set_number + 1,
+      });
     }
   };
 
@@ -1846,6 +1856,7 @@ export function Workout() {
           workoutId={currentWorkout.id}
           sessionSeed={restTimerSeed}
           defaultSeconds={restTimerSeconds}
+          nextUpLabel={restTimerNextUpLabel}
           onDurationChange={(seconds) => {
             if (userId && restTimerExerciseId) {
               saveRestPreference(userId, restTimerExerciseId, seconds);

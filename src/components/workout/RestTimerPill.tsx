@@ -25,6 +25,9 @@ interface RestTimerPillProps {
   /** Bump to start a fresh timer (new set logged) */
   sessionSeed?: number;
   defaultSeconds?: number;
+  /** "Bench Press · set 3" — names the upcoming set in the end-of-rest
+   *  notification. Omitted for manual timers (no known next set). */
+  nextUpLabel?: string | null;
   onDismiss: () => void;
   /** Fired when the user explicitly picks a new duration (preset). */
   onDurationChange?: (seconds: number) => void;
@@ -58,7 +61,7 @@ function formatTime(totalSeconds: number) {
  * and a single lacquer live tick. Tap to expand for presets — never a blocking
  * modal between sets.
  */
-export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, onDismiss, onDurationChange }: RestTimerPillProps) {
+export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel = null, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
   const [expanded, setExpanded] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -104,11 +107,11 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   useEffect(() => {
     if (sessionStatus === 'running' && sessionEndsAt) {
-      void scheduleRestEndNotification(sessionEndsAt);
+      void scheduleRestEndNotification(sessionEndsAt, nextUpLabel);
     } else {
       void cancelRestEndNotification();
     }
-  }, [sessionStatus, sessionEndsAt]);
+  }, [sessionStatus, sessionEndsAt, nextUpLabel]);
 
   // Dismissed or unmounted (workout finished, navigation) — nothing to announce.
   useEffect(() => () => {
