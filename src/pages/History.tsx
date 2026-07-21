@@ -22,6 +22,8 @@ import {
   sortActivitySessionsByStart,
 } from '@/lib/activitySessions';
 import {
+  activityTypeLabel,
+  customActivityTypeSuggestions,
   formatClockDuration,
   formatDistanceMi,
   formatPace,
@@ -131,6 +133,8 @@ function SetEditor({ workoutSet, onSave, onCancel }: SetEditorProps) {
 interface ActivityEditorProps {
   activity: ActivitySession | null;
   defaultDate: Date;
+  // previously used custom names, offered back so they can be reused verbatim
+  customTypeSuggestions: string[];
   saving: boolean;
   onSave: (input: ActivitySessionInput) => void;
   onCancel: () => void;
@@ -196,8 +200,9 @@ function isDateKeyInMonth(dateKey: string, month: Date): boolean {
   return !Number.isNaN(parsed.getTime()) && isSameMonth(parsed, month);
 }
 
-function ActivityEditor({ activity, defaultDate, saving, onSave, onCancel }: ActivityEditorProps) {
+function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel }: ActivityEditorProps) {
   const [activityType, setActivityType] = useState<ActivityType>(activity?.activity_type || 'bike_ride');
+  const [customType, setCustomType] = useState(activity?.custom_type || '');
   const [title, setTitle] = useState(activity?.title || '');
   const [date, setDate] = useState(activity?.date ? parseDateKey(activity.date) : defaultDate);
   const [startTime, setStartTime] = useState(getTimeInputValue(activity?.started_at));
@@ -216,6 +221,7 @@ function ActivityEditor({ activity, defaultDate, saving, onSave, onCancel }: Act
 
     onSave({
       activity_type: activityType,
+      custom_type: activityType === 'other' ? customType.trim().slice(0, 40) || null : null,
       title: title.trim() || null,
       date: dateKey,
       started_at: startedAt,
@@ -238,11 +244,29 @@ function ActivityEditor({ activity, defaultDate, saving, onSave, onCancel }: Act
         />
       </div>
 
+      {activityType === 'other' && (
+        <Input
+          label="Activity name"
+          value={customType}
+          maxLength={40}
+          onChange={(event) => setCustomType(event.target.value)}
+          placeholder="Yoga, surfing, rowing…"
+          list="hyper-custom-activity-types"
+        />
+      )}
+      {activityType === 'other' && customTypeSuggestions.length > 0 && (
+        <datalist id="hyper-custom-activity-types">
+          {customTypeSuggestions.map((name) => <option key={name} value={name} />)}
+        </datalist>
+      )}
+
       <Input
         label="Title"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder={ACTIVITY_TYPE_LABELS[activityType]}
+        placeholder={activityType === 'other' && customType.trim()
+          ? customType.trim()
+          : ACTIVITY_TYPE_LABELS[activityType]}
       />
 
       <div className="grid grid-cols-2 gap-4">
@@ -300,7 +324,7 @@ function ActivityLedgerRow({ activity, segments, expanded, onToggleExpand, onEdi
   // recording's laps — foreign-source segments contribute metrics, not rows
   const primarySegments = segments.filter((segment) => segment.source === activity.source);
   const title = resolveActivityTitle(activity);
-  const typeLabel = ACTIVITY_TYPE_LABELS[activity.activity_type];
+  const typeLabel = activityTypeLabel(activity);
   const startTime = formatActivityStartTime(activity.started_at);
   const duration = formatActivityDuration(activity.duration_seconds);
   const subtitleParts = [
@@ -1616,6 +1640,7 @@ export function History() {
             key={activityEditor.activity?.id || format(activityEditor.defaultDate, 'yyyy-MM-dd')}
             activity={activityEditor.activity}
             defaultDate={activityEditor.defaultDate}
+            customTypeSuggestions={customActivityTypeSuggestions(monthActivities)}
             saving={savingActivity}
             onSave={(input) => { void handleSaveActivity(input); }}
             onCancel={() => setActivityEditor(null)}

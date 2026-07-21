@@ -1,7 +1,7 @@
 // Pure aggregation + formatting helpers for activity segments and session
 // metrics. Shared by the WHOOP import grouping engine, the GPS run tracker,
 // and the History splits ledger.
-import type { ActivitySegment } from '@/types';
+import { ACTIVITY_TYPE_LABELS, type ActivitySegment, type ActivityType } from '@/types';
 
 export interface SegmentAggregates {
   duration_seconds: number | null;
@@ -130,4 +130,28 @@ export function formatClockDuration(totalSeconds?: number | null): string | null
 
 export function sortSegmentsByStart<T extends Pick<ActivitySegment, 'started_at'>>(segments: T[]): T[] {
   return segments.slice().sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at));
+}
+
+/**
+ * Display name for an activity: a user-named "other" activity shows its own
+ * name, everything else uses the fixed type label.
+ */
+export function activityTypeLabel(
+  activity: { activity_type: ActivityType; custom_type?: string | null },
+): string {
+  const custom = activity.custom_type?.trim();
+  if (activity.activity_type === 'other' && custom) return custom;
+  return ACTIVITY_TYPE_LABELS[activity.activity_type];
+}
+
+/** Distinct user-named activity types, most recent first, for reuse as suggestions. */
+export function customActivityTypeSuggestions(
+  activities: Array<{ activity_type: ActivityType; custom_type?: string | null }>,
+): string[] {
+  const seen = new Set<string>();
+  for (const activity of activities) {
+    const custom = activity.custom_type?.trim();
+    if (activity.activity_type === 'other' && custom) seen.add(custom);
+  }
+  return [...seen];
 }

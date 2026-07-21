@@ -1454,6 +1454,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .insert({
         user_id: user.id,
         activity_type: input.activity_type,
+        custom_type: input.custom_type ?? null,
         title: input.title ?? null,
         date: input.date,
         started_at: input.started_at ?? null,

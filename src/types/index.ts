@@ -131,6 +131,9 @@ export interface ActivitySession {
   id: string;
   user_id: string;
   activity_type: ActivityType;
+  // user-supplied name when activity_type is 'other', e.g. "Yoga"; the enum
+  // stays closed so known types keep their behaviour and icons
+  custom_type: string | null;
   title: string | null;
   date: string;
   started_at: string | null;
@@ -154,6 +157,7 @@ export interface ActivitySession {
 
 export type ActivitySessionInput = {
   activity_type: ActivityType;
+  custom_type?: string | null;
   title?: string | null;
   date: string;
   started_at?: string | null;

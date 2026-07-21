@@ -111,6 +111,11 @@ CREATE TABLE IF NOT EXISTS activity_sessions (
       'other'
     )
   ),
+  -- user's own name when activity_type = 'other' (e.g. "Yoga")
+  custom_type TEXT CHECK (
+    custom_type IS NULL
+    OR (activity_type = 'other' AND char_length(btrim(custom_type)) BETWEEN 1 AND 40)
+  ),
   title TEXT,
   date DATE NOT NULL,
   started_at TIMESTAMPTZ,
