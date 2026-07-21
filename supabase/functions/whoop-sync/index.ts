@@ -79,6 +79,22 @@ serve(async (req) => {
       return true;
     } catch (error) {
       console.error('whoop token refresh failed:', error);
+      // Concurrency: WHOOP invalidates a refresh token on first use, so if a
+      // parallel sync (e.g. foreground auto-sync racing a manual sync) already
+      // rotated it, our refresh fails on a now-dead token. Re-read the row —
+      // if a fresh, unexpired token is now stored, adopt it instead of forcing
+      // the user to reconnect. (A tiny window remains if the winner hasn't
+      // persisted yet; the next sync then succeeds.)
+      const { data: latest } = await service
+        .from('whoop_tokens')
+        .select('access_token, refresh_token, expires_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (latest && Date.parse(latest.expires_at as string) > Date.now() + REFRESH_MARGIN_MS) {
+        accessToken = latest.access_token as string;
+        tokenRow.refresh_token = latest.refresh_token as string;
+        return true;
+      }
       return false;
     }
   };

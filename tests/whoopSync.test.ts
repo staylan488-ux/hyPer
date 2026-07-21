@@ -94,6 +94,8 @@ class FakeData {
         this.sessions.filter(
           (s) => (s.started_at ?? '') >= fromIso && (s.started_at ?? '') <= toIso,
         ),
+      fetchSessionsByIds: async (ids: string[]) =>
+        this.sessions.filter((s) => ids.includes(s.id)),
       createSession: async (input: ActivitySessionInput) => {
         const created: ActivitySession = {
           id: `sess-${++this.seq}`,
@@ -323,5 +325,63 @@ describe('runWhoopSync', () => {
     expect(call).toBe(2);
     expect(result.fetched).toBe(2);
     expect(data.segments).toHaveLength(2);
+  });
+
+  it('keeps segments on a host session that started just before the window (straddle)', async () => {
+    const data = new FakeData();
+    // Host GPS session started BEFORE the reconciliation window...
+    data.sessions.push({
+      id: 'host-gps',
+      user_id: 'user-1',
+      activity_type: 'run',
+      title: 'Morning run',
+      date: '2026-07-07',
+      started_at: '2026-07-07T12:30:00.000Z',
+      ended_at: '2026-07-07T14:10:00.000Z',
+      duration_seconds: 6000,
+      source: 'gps',
+      notes: null,
+      strain: null,
+      avg_hr: null,
+      max_hr: null,
+      energy_kcal: null,
+      distance_m: null,
+      auto_grouped: false,
+      user_edited: false,
+      dismissed_at: null,
+      created_at: NOW.toISOString(),
+      updated_at: NOW.toISOString(),
+    });
+    // ...owning a WHOOP segment whose start (T0 = 14:00) is INSIDE the window.
+    data.segments.push({
+      id: 'seg-host',
+      user_id: 'user-1',
+      session_id: 'host-gps',
+      source: 'whoop',
+      external_id: 'wf-lap-1',
+      sport: 'running',
+      started_at: isoAt(0),
+      ended_at: isoAt(130),
+      duration_seconds: 130,
+      strain: 6,
+      avg_hr: 170,
+      max_hr: 185,
+      energy_kcal: null,
+      distance_m: 500,
+      raw: null,
+      created_at: isoAt(0),
+      updated_at: isoAt(0),
+    });
+
+    // sinceIso chosen so fetchStart (sinceMs - 7d) = 2026-07-07T13:00Z: the host
+    // (12:30) sits before it, the segment (14:00) inside it.
+    const ports = makePorts(data, [[]]);
+    const result = await runWhoopSync(ports, { sinceIso: '2026-07-14T13:00:00.000Z' });
+
+    // No duplicate session, and the segment stays on its real owner.
+    expect(result.created).toBe(0);
+    expect(data.sessions).toHaveLength(1);
+    expect(data.sessions[0].id).toBe('host-gps');
+    expect(data.segments.find((s) => s.external_id === 'wf-lap-1')?.session_id).toBe('host-gps');
   });
 });
