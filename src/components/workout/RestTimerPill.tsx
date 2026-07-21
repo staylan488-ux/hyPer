@@ -5,6 +5,7 @@ import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
+import { endRestLiveActivity, startRestLiveActivity } from '@/lib/liveActivity';
 import {
   clearRestTimerSession,
   createRestTimerSession,
@@ -103,19 +104,23 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   // → cancel. Keyed on endsAt, not the session object, so the once-a-second
   // sync tick doesn't reschedule.
   const sessionStatus = session?.status;
+  const sessionStartedAt = session?.startedAt;
   const sessionEndsAt = session?.endsAt;
 
   useEffect(() => {
-    if (sessionStatus === 'running' && sessionEndsAt) {
+    if (sessionStatus === 'running' && sessionStartedAt && sessionEndsAt) {
       void scheduleRestEndNotification(sessionEndsAt, nextUpLabel);
+      void startRestLiveActivity(sessionStartedAt, sessionEndsAt, nextUpLabel);
     } else {
       void cancelRestEndNotification();
+      void endRestLiveActivity();
     }
-  }, [sessionStatus, sessionEndsAt, nextUpLabel]);
+  }, [sessionStatus, sessionStartedAt, sessionEndsAt, nextUpLabel]);
 
   // Dismissed or unmounted (workout finished, navigation) — nothing to announce.
   useEffect(() => () => {
     void cancelRestEndNotification();
+    void endRestLiveActivity();
   }, []);
 
   // Keep the screen awake while a rest timer is running, so the phone can sit
