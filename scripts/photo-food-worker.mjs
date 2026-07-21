@@ -85,10 +85,19 @@ function authenticatedProviders(refresh = false) {
     if (status.status === 0 && /logged in/i.test(status.stdout || status.stderr || '')) providers.push('openai');
   }
   if (installedProviders.includes('anthropic')) {
-    const status = spawnSync('claude', ['auth', 'status'], { encoding: 'utf8' });
-    try {
-      if (status.status === 0 && JSON.parse(status.stdout || '{}').loggedIn === true) providers.push('anthropic');
-    } catch { /* not authenticated or older CLI output */ }
+    // A headless service authenticates Claude Code via CLAUDE_CODE_OAUTH_TOKEN
+    // (from `claude setup-token`) or an API key. Non-bare `claude --print` uses
+    // these per Claude Code's auth precedence, but `claude auth status` does not
+    // reliably report `loggedIn` for an env-only credential, so accept the token
+    // directly and fall back to the stored-credential check for an interactive login.
+    if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
+      providers.push('anthropic');
+    } else {
+      const status = spawnSync('claude', ['auth', 'status'], { encoding: 'utf8' });
+      try {
+        if (status.status === 0 && JSON.parse(status.stdout || '{}').loggedIn === true) providers.push('anthropic');
+      } catch { /* not authenticated or older CLI output */ }
+    }
   }
   providerAuthCache = { expiresAt: now + 30_000, providers };
   return providers;
