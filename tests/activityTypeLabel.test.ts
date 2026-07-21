@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { activityTypeLabel, customActivityTypeSuggestions } from '@/lib/activityMetrics';
+import { resolveActivityTitle } from '@/lib/activitySessions';
 
 describe('activityTypeLabel', () => {
   it('uses the fixed label for a known type', () => {
@@ -36,5 +37,26 @@ describe('customActivityTypeSuggestions', () => {
 
   it('returns nothing when there are no custom activities', () => {
     expect(customActivityTypeSuggestions([{ activity_type: 'run' }])).toEqual([]);
+  });
+});
+
+describe('resolveActivityTitle', () => {
+  it('shows the custom name rather than "Other" for a named activity', () => {
+    // regression: the row title fell back to the raw type label, so a WHOOP
+    // ski import read "Other" even though its type label said "Skiing"
+    expect(resolveActivityTitle({
+      activity_type: 'other', custom_type: 'Skiing', title: null,
+    })).toBe('Skiing');
+  });
+
+  it('still prefers an explicit user title', () => {
+    expect(resolveActivityTitle({
+      activity_type: 'other', custom_type: 'Skiing', title: 'Backcountry day',
+    })).toBe('Backcountry day');
+  });
+
+  it('falls back to the type label for mapped types and unnamed others', () => {
+    expect(resolveActivityTitle({ activity_type: 'run', custom_type: null, title: null })).toBe('Run');
+    expect(resolveActivityTitle({ activity_type: 'other', custom_type: null, title: null })).toBe('Other');
   });
 });
