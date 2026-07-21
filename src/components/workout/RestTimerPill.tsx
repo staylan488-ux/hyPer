@@ -3,7 +3,8 @@ import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
-import { tapHaptic } from '@/lib/haptics';
+import { completionHaptic, tapHaptic } from '@/lib/haptics';
+import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
 import {
   clearRestTimerSession,
   createRestTimerSession,
@@ -89,12 +90,30 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
     completionHandledRef.current = true;
 
-    if ('vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200]);
-    }
-
+    completionHaptic();
     void playRestTimerSound();
   }, [session]);
+
+  // Mirror the running timer into a scheduled iOS notification so "rest over"
+  // still reaches the user if the app is backgrounded or the phone is locked.
+  // Running → (re)schedule at the absolute end time; paused/completed/replaced
+  // → cancel. Keyed on endsAt, not the session object, so the once-a-second
+  // sync tick doesn't reschedule.
+  const sessionStatus = session?.status;
+  const sessionEndsAt = session?.endsAt;
+
+  useEffect(() => {
+    if (sessionStatus === 'running' && sessionEndsAt) {
+      void scheduleRestEndNotification(sessionEndsAt);
+    } else {
+      void cancelRestEndNotification();
+    }
+  }, [sessionStatus, sessionEndsAt]);
+
+  // Dismissed or unmounted (workout finished, navigation) — nothing to announce.
+  useEffect(() => () => {
+    void cancelRestEndNotification();
+  }, []);
 
   // Keep the screen awake while a rest timer is running, so the phone can sit
   // on the bench with the countdown visible. iOS releases the lock whenever the

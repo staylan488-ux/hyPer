@@ -30,6 +30,7 @@ import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
+import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
@@ -127,6 +128,10 @@ export function Workout() {
   } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
   const navigate = useNavigate();
+
+  // Gym hands are chalky and phones auto-lock mid-set: hold the screen awake
+  // for the whole live session (native app only).
+  useKeepAwakeWhile(Boolean(currentWorkout));
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
