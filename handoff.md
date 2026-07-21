@@ -1,6 +1,17 @@
 # Handoff
 
-Updated: 2026-07-21 (rev 72: merged friend's brand assets + reconciled to one native auth)
+Updated: 2026-07-21 (rev 73: two-app staging track — this branch builds the DEV app)
+
+## Rev 73 — two-app staging track
+
+- Decision: run a staging track. A separate "hyPer Dev" app (`app.hyper.mobile.dev`) points at Hyper-Dev; the production "hyPer" app (`app.hyper.mobile`) points at production. Both install side-by-side (distinct icons) so a dev build can never clobber the prod build.
+- Owner registered the `app.hyper.mobile.dev` explicit App ID and created the "hyPer Dev" App Store Connect record (steps 1-2).
+- Step 3 done here (`bb1c9f0f`): this branch now builds the DEV app — bundle id `app.hyper.mobile.dev` (Debug+Release), display name "hyPer Dev", Capacitor appId `app.hyper.mobile.dev`, pointed at Hyper-Dev (env guard still enforces it). OAuth callback scheme kept as `app.hyper.mobile` (already allowlisted on Hyper-Dev; ASWebAuthenticationSession intercepts in-process, so sharing the scheme with the future prod app doesn't conflict for the primary flow). Validation: cap sync OK, plutil OK, tests PASS, lint PASS, unsigned Xcode BUILD SUCCEEDED.
+- Step 4 (pending): whoever has signing for `app.hyper.mobile.dev` archives this branch and uploads to the hyPer Dev TestFlight, adds both users as testers. This Mac currently has 0 code-signing identities — add the owner's Apple ID to Xcode → Settings → Accounts first.
+- At release, the production promotion flips bundle id + display name + env back to `app.hyper.mobile` / hyPer / production (Phase 5). A cleaner long-term alternative is Xcode Debug/Release build configs so both apps build from one branch without hand-editing — offered, not yet done.
+- Parallel/independent work still open: finish the photo worker (VM staged + patched, needs `claude setup-token` + the owner's Hyper-Dev user UUID + service restart); FatSecret activation (dormant adapter; needs a server-side Edge Function holding the secret — offered, not started); enable Google/Apple providers on Hyper-Dev (Google = reuse prod client + add dev callback URL; Apple = Services ID/key, before release).
+
+## Rev 72 — reconciled the friend's parallel main work
 
 ## Rev 72 — reconciled the friend's parallel main work
 
