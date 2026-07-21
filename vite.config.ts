@@ -2,7 +2,20 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
 import path from 'path'
+
+// short commit the bundle was built from, so the Settings build stamp is an
+// unambiguous fingerprint of which code a TestFlight build actually contains
+function gitShortSha(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+  } catch {
+    return 'nogit'
+  }
+}
+
+const buildStamp = `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${gitShortSha()}`
 
 export default defineConfig({
   server: {
@@ -11,7 +24,7 @@ export default defineConfig({
     allowedHosts: ['.taileaf222.ts.net'],
   },
   define: {
-    __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'),
+    __BUILD_ID__: JSON.stringify(buildStamp),
   },
   plugins: [
     react(),
