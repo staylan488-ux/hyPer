@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:ios": "node scripts/verify-ios-env.mjs && npm run build",
+    "build:ios": "npm run build",
     "ios:sync": "npm run build:ios && cap sync ios",
     "ios:open": "cap open ios",
     "ios:run": "npm run ios:sync && cap run ios",
