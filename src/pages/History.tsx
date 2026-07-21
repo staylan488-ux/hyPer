@@ -906,7 +906,14 @@ export function History() {
       const needsTombstone = activity.source === 'whoop'
         || await hasLinkedWhoopSegments(activity.id);
       if (needsTombstone) {
-        await updateActivitySession(activity.id, { dismissed_at: new Date().toISOString() });
+        // updateActivitySession returns null on failure (it does not throw), so
+        // check it — otherwise a failed tombstone still removes the row from the
+        // UI and shows "saved", and the activity reappears on the next sync.
+        const tombstoned = await updateActivitySession(activity.id, { dismissed_at: new Date().toISOString() });
+        if (!tombstoned) {
+          console.error('Failed to dismiss activity session:', activity.id);
+          return;
+        }
       } else {
         await deleteActivitySession(activity.id);
       }

@@ -33,12 +33,19 @@ import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrack
 import { createDeviceMotionDetector } from '@/lib/deviceMotion';
 import { isNativeIOS } from '@/lib/nativeBridge';
 import { createNativeRunSource } from '@/lib/nativeRunSource';
+import { useKeepAwakeWhile } from '@/lib/keepAwake';
 
 export interface PositionSource {
   // simulated sources compress delivery but report a consistent clock
   getNowMs: () => number;
   start: (onSample: (sample: GpsSample) => void, onError: (message: string) => void) => void;
   stop: (discard?: boolean) => void;
+  // Native only: re-deliver samples the recorder persisted while the WebView
+  // was suspended (locked screen); dedup makes it idempotent.
+  resync?: () => void;
+  // Native only: release JS listeners but keep native recording alive (tab
+  // switch mid-run), so background samples are preserved for a later resume.
+  detach?: () => void;
 }
 
 export function createGeolocationSource(): PositionSource {
@@ -393,6 +400,10 @@ export function useRunTracker(): UseRunTracker {
     return () => window.clearInterval(interval);
   }, [isRunning]);
 
+  // Native iOS: the Capacitor KeepAwake engine (navigator.wakeLock is
+  // unreliable in the WKWebView, so the web effect below does not cover runs).
+  useKeepAwakeWhile(isRunning);
+
   // keep the screen awake while tracking (RestTimerPill pattern: re-acquire on
   // visibility return; fails quietly under Low Power Mode)
   useEffect(() => {
@@ -424,8 +435,32 @@ export function useRunTracker(): UseRunTracker {
     };
   }, [isRunning]);
 
-  // stop the GPS watch if the page unmounts mid-run (snapshot allows resume)
-  useEffect(() => stopSource, [stopSource]);
+  // Native: re-drain samples the recorder persisted while the WebView was
+  // suspended (locked screen mid-run), which live listeners never received.
+  useEffect(() => {
+    if (!isRunning) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sourceRef.current?.resync?.();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [isRunning]);
+
+  // On unmount: if a run is still active (e.g. navigating to another tab), keep
+  // native recording alive in the background and only detach JS listeners — a
+  // resume re-drains the durable file. Finish/discard stop recording explicitly.
+  useEffect(() => {
+    return () => {
+      const current = stateRef.current;
+      const source = sourceRef.current;
+      if (source?.detach && current && current.status !== 'finished') {
+        source.detach();
+        sourceRef.current = null;
+      } else {
+        stopSource();
+      }
+    };
+  }, [stopSource]);
 
   return {
     state,
