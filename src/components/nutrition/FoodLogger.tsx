@@ -749,7 +749,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleAnalyzePhoto = async () => {
-    if (!photoFiles.top || saving) return;
+    if ((!photoFiles.top && !photoFiles.side) || saving) return;
 
     setPhotoError(null);
     setPhotoAnalyzing(true);
@@ -2236,10 +2236,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             className="hidden"
           />
 
+          <p className="t-caption">
+            Add at least one photo of your meal. A top-down shot estimates portions best, but any angle works — add both for the most accuracy.
+          </p>
+
           {!photoPreviews.top ? (
             <div className="space-y-3">
               <div>
-                <span className="t-label-sm">01 · Required</span>
+                <span className="t-label-sm">01 · Recommended</span>
                 <p className="t-heading mt-1">Top view</p>
                 <p className="t-caption mt-1">Shows every component and how much of the plate it covers.</p>
               </div>
@@ -2359,10 +2363,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             size="lg"
             onClick={handleAnalyzePhoto}
             loading={photoAnalyzing}
-            disabled={!photoFiles.top || photoAnalyzing || saving}
+            disabled={(!photoFiles.top && !photoFiles.side) || photoAnalyzing || saving}
           >
             {!photoAnalyzing && <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
-            {photoAnalyzing ? 'Analyzing…' : `Analyze ${photoFiles.side ? '2 photos' : 'top photo'}`}
+            {photoAnalyzing ? 'Analyzing…' : `Analyze ${photoFiles.top && photoFiles.side ? '2 photos' : 'photo'}`}
           </Button>
         </div>
       )}
