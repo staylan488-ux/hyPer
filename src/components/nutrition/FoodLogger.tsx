@@ -2225,7 +2225,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             ref={topPhotoInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={(event) => handlePhotoSelect('top', event)}
             className="hidden"
           />
@@ -2233,7 +2232,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             ref={sidePhotoInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={(event) => handlePhotoSelect('side', event)}
             className="hidden"
           />
@@ -2253,8 +2251,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
                   <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
                 </span>
-                <span className="t-heading">Take top photo</span>
-                <span className="t-caption">Camera or photo library</span>
+                <span className="t-heading">Add top photo</span>
+                <span className="t-caption">Take one now or choose from your library</span>
               </button>
               {isPreviewActive() && !isAppSandboxActive() && (
                 <Button variant="secondary" className="w-full" onClick={handleUsePreviewPhoto}>
