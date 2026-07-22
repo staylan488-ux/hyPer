@@ -1,0 +1,44 @@
+default_platform(:ios)
+
+# Secrets (ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH) come from the environment,
+# loaded by scripts/ship.sh from ~/.hyper-ship/config.env — NEVER hardcoded here
+# (this repo is public).
+platform :ios do
+  desc "Build hyPer and upload to TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: File.expand_path(ENV["ASC_KEY_PATH"]),
+    )
+
+    # Bump the build number to (highest on TestFlight) + 1, across ALL targets
+    # (app + widget CURRENT_PROJECT_VERSION must match or the archive fails), so
+    # uploads never collide regardless of who last shipped.
+    next_build = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "app.hyper.mobile",
+    ).to_i + 1
+    pbxproj = File.expand_path("../App.xcodeproj/project.pbxproj", __dir__)
+    sh("sed -i '' 's/CURRENT_PROJECT_VERSION = [0-9][0-9]*;/CURRENT_PROJECT_VERSION = #{next_build};/g' '#{pbxproj}'")
+    UI.important("Shipping hyPer build #{next_build}")
+
+    build_app(
+      project: "App.xcodeproj",
+      scheme: "App",
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "hyPer.ipa",
+      clean: true,
+      xcargs: "-allowProvisioningUpdates " \
+              "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
+              "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']} " \
+              "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}",
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end

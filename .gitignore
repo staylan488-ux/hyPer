@@ -40,3 +40,8 @@ CLAUDE.md
 *.njsproj
 *.sln
 *.sw?
+
+# fastlane build artifacts
+ios/App/build/
+ios/App/fastlane/report.xml
+ios/App/fastlane/README.md
