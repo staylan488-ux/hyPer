@@ -931,3 +931,45 @@ Modified files:
 ## Next action
 
 Run the real iPhone/Hyper-Dev test matrix. First retest all seven barcodes and record the exact decoded/not-found state; test Describe with AI once under OpenAI and once under Claude, edit before log, verify Saved reuse/edit/history stability, then continue one/two-photo review, WHOOP enrichment, and Free/Intervals/Sprints GPS field behavior. Send failed barcode digits for provider-by-provider coverage checks. Record results before any production proposal. Open Food Facts must remain staging-only until ODbL compliance is resolved; FatSecret credentials/data remain gated on Premier Free approval and terms review; Eufy remains deferred to a native HealthKit app.
+
+### Rev 70b — TestFlight blocked on an Apple permission flag (2026-07-21)
+
+Steps 1-4 of the release flow are done on main: production `.env.local`, `npm
+install`, `npm run build`, `npx cap sync ios`, build 11 on all four configs,
+production project id verified baked into the bundle and the dev id verified
+absent.
+
+Step 5 (archive) fails and CANNOT be fixed from this machine:
+`error: No Account for Team "R5L37449L3"` on both the App and
+HyperWidgetsExtension targets.
+
+Diagnosis (verified in the UI, not inferred):
+- Team ID R5L37449L3 is CORRECT — it is the "Sinan Taylan" Developer Team, and
+  matches DEVELOPMENT_TEAM in the project. Nothing to change in the pbxproj.
+- The Apple ID almancat10@icloud.com IS signed into Xcode and IS Admin on that
+  team. The earlier "no account signed in" theory was wrong.
+- Xcode's team detail pane shows a red ⊗ next to "Certificates, Identifiers, &
+  Profiles" — the account has no signing rights, which is why Xcode refuses the
+  team.
+- App Store Connect > Users and Access > Alex Roesler > Permissions is READ ONLY
+  (Save greyed out). Apple does not allow editing one's own permissions.
+- Users and Access > Integrations: "Permission is required to access the App
+  Store Connect API. Only the Account Holder can request access." Request Access
+  is greyed out, so the API-key workaround is closed too.
+
+UNBLOCK (Account Holder only): App Store Connect > Users and Access > Alex
+Roesler > Edit > enable "Access to Certificates, Identifiers & Profiles" > Save.
+Then Xcode > Settings > Apple Accounts > Download Manual Profiles and re-run the
+archive; no code change required.
+
+Interim: a devlocal build (bundle app.hyper.mobile.devlocal, personal team
+2ZTFX8TSX2) with all Rev 69/70 features is installed on the physical iPhone and
+points at PRODUCTION Supabase. Its profile EXPIRES 2026-07-28. Building it
+requires patching the pbxproj (app.hyper.mobile -> app.hyper.mobile.devlocal,
+which also renames the widget to ...devlocal.HyperWidgets so the extension does
+not collide with the parent bundle id) and reverting afterwards; a plain
+xcodebuild PRODUCT_BUNDLE_IDENTIFIER override applies to every target and fails
+install with MIInstallerErrorDomain 57 DuplicateIdentifier.
+
+`.env.local` currently holds PRODUCTION credentials; dev copy is at scratchpad
+env.local.dev.bak.
