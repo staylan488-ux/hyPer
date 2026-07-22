@@ -967,3 +967,23 @@ this, so nothing warns you.
 Validation: node --check, photoWorkerCore 5/5, full suite 43 files / 402 pass,
 lint clean, production project id confirmed baked into the iOS bundle and the
 dev id confirmed absent.
+
+### Rev 70a — worker code deployed to the real path (2026-07-21)
+
+Correction to Rev 70: the worker was staged to `/home/aross/hyper-deploy/scripts/`
+but systemd runs `/opt/hyper/scripts/photo-food-worker.mjs` (User=hyper-photo,
+WorkingDirectory=/opt/hyper). The env patch landed first, so for a few minutes
+the env listed two comma-separated projects while the old single-project code
+was still running — it treated the whole string as one URL and rejected every
+token, breaking dev as well as production. Deploy path must be verified against
+`systemctl show -p ExecStart` before claiming a worker is staged.
+
+Fixed via `/home/aross/worker-code-deploy.sh` (guards on the fix being present
+and `node --check` passing, backs up the previous file, installs root:root 644,
+restarts). Post-deploy: service active, `supabaseProjects` present, health 200,
+bogus token 401 and missing header 401 — a 401 rather than 500 confirms both
+projects are parsed and queried without throwing.
+
+NOT yet verified: a real production-issued JWT succeeding end to end. That needs
+a photo submitted from the production app; the SSH user is not in
+systemd-journal so worker logs need sudo to read.
