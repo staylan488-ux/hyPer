@@ -931,3 +931,39 @@ Modified files:
 ## Next action
 
 Run the real iPhone/Hyper-Dev test matrix. First retest all seven barcodes and record the exact decoded/not-found state; test Describe with AI once under OpenAI and once under Claude, edit before log, verify Saved reuse/edit/history stability, then continue one/two-photo review, WHOOP enrichment, and Free/Intervals/Sprints GPS field behavior. Send failed barcode digits for provider-by-provider coverage checks. Record results before any production proposal. Open Food Facts must remain staging-only until ODbL compliance is resolved; FatSecret credentials/data remain gated on Premier Free approval and terms review; Eufy remains deferred to a native HealthKit app.
+
+## Rev 70 — production photo worker + build 11 (2026-07-21)
+
+**Fixed: "unauthorized" on production photo logging.** The worker validated
+every bearer token against `SUPABASE_URL`, which pointed at Hyper-Dev. A token
+issued by the production project was rejected before the allowlist was
+consulted, so allowlisting the production user id alone would NOT have fixed
+it. `SUPABASE_URL`/`SUPABASE_ANON_KEY` are now comma-separated and paired by
+position; a token is accepted if any listed project validates it. An
+unreachable project is skipped rather than masking a valid token.
+Commit b0f9d039, PR #70, merged to main as 80be0ccc.
+
+**Production user ids** (production project `nnwfaaxmyvqsdnfcdxom` has 12 real
+users — it is a live multi-user app, not a sandbox):
+- alex.roeslerr@gmail.com -> 710e1d87-658b-4752-a8af-17b0f5163367
+- dev project id for the same person -> 02d40a2f-d868-4b15-a4fc-0664e0999ebd
+
+**Build numbers** bumped 10 -> 11 on all four configs (App + HyperWidgets,
+Debug + Release). They must match or App Store validation rejects the upload.
+
+**Pending, requires the owner's sudo password on the VM:**
+`sudo bash /home/aross/worker-env-patch.sh` (already uploaded) writes both
+project URLs/keys and both user ids into /etc/hyper/photo-worker.env, backs the
+file up first, and restarts hyper-photo-worker. Until it runs, production photo
+analysis stays unauthorized.
+
+**WARNING — `.env.local` currently holds PRODUCTION credentials** so the
+TestFlight archive is not a production-bundle app pointed at Hyper-Dev. The dev
+copy is backed up at scratchpad `env.local.dev.bak`. Restore it after archiving
+or local dev will read/write the live database. PR #67 changed `build:ios` to
+plain `npm run build`, removing the verify-ios-env.mjs guard that used to catch
+this, so nothing warns you.
+
+Validation: node --check, photoWorkerCore 5/5, full suite 43 files / 402 pass,
+lint clean, production project id confirmed baked into the iOS bundle and the
+dev id confirmed absent.
