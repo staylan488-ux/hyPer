@@ -139,6 +139,22 @@ async function readJsonBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+// The worker serves both the staging and production apps, whose tokens are
+// issued by different Supabase projects. SUPABASE_URL / SUPABASE_ANON_KEY may
+// therefore be comma-separated, paired by position; a token is accepted if any
+// listed project validates it.
+function supabaseProjects() {
+  const urls = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
+    .split(',').map((value) => value.trim().replace(/\/+$/, '')).filter(Boolean);
+  const keys = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  if (urls.length === 0 || keys.length === 0) {
+    throw new Error('Supabase URL/anon key are missing from the worker environment.');
+  }
+  // one shared key is allowed only when there is a single project
+  return urls.map((url, index) => ({ url, anonKey: keys[index] ?? keys[0] }));
+}
+
 async function authenticate(request) {
   const authorization = request.headers.authorization || '';
   if (authorization === 'Bearer preview' && process.env.PHOTO_WORKER_ALLOW_PREVIEW === '1') {
@@ -146,20 +162,27 @@ async function authenticate(request) {
   }
   if (!authorization.startsWith('Bearer ')) return { status: 'unauthorized' };
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) throw new Error('Supabase URL/anon key are missing from the worker environment.');
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
-    headers: { Authorization: authorization, apikey: anonKey },
-    signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
-  });
-  if (!response.ok) return { status: 'unauthorized' };
-  const user = await response.json();
-  const userId = typeof user?.id === 'string' ? user.id : '';
-  if (!userIsAllowed(userId, ALLOWED_USER_IDS, REQUIRE_ALLOWLIST)) {
-    return { status: 'forbidden' };
+  for (const project of supabaseProjects()) {
+    let response;
+    try {
+      response = await fetch(`${project.url}/auth/v1/user`, {
+        headers: { Authorization: authorization, apikey: project.anonKey },
+        signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+      });
+    } catch {
+      continue; // a project being unreachable must not mask a valid token elsewhere
+    }
+    if (!response.ok) continue;
+
+    const user = await response.json().catch(() => null);
+    const userId = typeof user?.id === 'string' ? user.id : '';
+    if (!userId) continue;
+    if (!userIsAllowed(userId, ALLOWED_USER_IDS, REQUIRE_ALLOWLIST)) {
+      return { status: 'forbidden' };
+    }
+    return { status: 'ok', userId };
   }
-  return { status: 'ok', userId };
+  return { status: 'unauthorized' };
 }
 
 function runCommand(command, args, options = {}) {
