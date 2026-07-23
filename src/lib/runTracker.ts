@@ -3,9 +3,9 @@
 // same code runs against real geolocation, the preview simulator, and tests.
 //
 // Three modes:
-//   free      — live rolling pace over the last PACE_WINDOW seconds
+//   free      — accuracy-aware smoothed live pace with a rolling fallback
 //   intervals — manual tap-splits and/or auto-splits every `autoLapM` meters;
-//               each split resets the live-pace window to the new lap
+//               current-lap average pace resets at each split
 //   sprints   — hands-free: a speed-threshold state machine with hysteresis
 //               detects each burst as one rep; no interaction required
 import type { ActivitySegmentInput, ActivitySessionInput, ActivityType } from '@/types';
@@ -18,6 +18,9 @@ export interface GpsSample {
   lon: number;
   accuracyM: number;
   speedMps: number | null; // device-reported speed when available
+  // Core Location's estimated uncertainty for speed, in metres per second.
+  // Browser geolocation does not expose this, so web samples omit it.
+  speedAccuracyMps?: number | null;
   // optional sustained-motion evidence from the phone accelerometer. This is
   // deliberately only a gate; route and distance still come from GPS/speed.
   motionDetected?: boolean;
@@ -73,6 +76,8 @@ export interface TrackerConfig {
   paceWindowS: number;
   paceMinDistanceM: number;
   speedEmaAlpha: number;
+  displaySpeedMedianWindowS: number;
+  displaySpeedTimeConstantS: number;
   manualSplitDebounceMs: number;
   sprintStartMps: number;
   sprintEndMps: number;
@@ -94,6 +99,8 @@ export const TRACKER_DEFAULTS = {
   paceWindowS: 60,
   paceMinDistanceM: 20,
   speedEmaAlpha: 0.4,
+  displaySpeedMedianWindowS: 4,
+  displaySpeedTimeConstantS: 6,
   manualSplitDebounceMs: 700,
   sprintStartMps: 5.0,
   sprintEndMps: 3.0,
@@ -141,6 +148,12 @@ interface WindowPoint {
   distM: number;
 }
 
+interface SpeedObservation {
+  t: number;
+  speedMps: number;
+  speedAccuracyMps: number | null;
+}
+
 export interface TrackerState {
   status: 'running' | 'finished';
   // stable per-run id: keeps segment external_ids identical across save retries
@@ -165,7 +178,13 @@ export interface TrackerState {
   lastAcceptedMs: number | null;
   warmupCount: number;
   speedRejectCount: number;
+  // Keep the original EMA for the legacy sprint state machine. Display pace
+  // uses a separate, accuracy-aware smoother so UI tuning cannot change
+  // accepted distance, split timing, or restored sprint behavior.
   emaSpeedMps: number | null;
+  displaySpeedMps: number | null;
+  displaySpeedUpdatedAtMs: number | null;
+  displaySpeedWindow: SpeedObservation[];
   totalDistanceM: number;
   window: WindowPoint[];
   // laps (intervals mode)
@@ -239,6 +258,9 @@ export function createTracker(config: TrackerConfig, nowMs: number, runId?: stri
     warmupCount: 0,
     speedRejectCount: 0,
     emaSpeedMps: null,
+    displaySpeedMps: null,
+    displaySpeedUpdatedAtMs: null,
+    displaySpeedWindow: [],
     totalDistanceM: 0,
     window: [],
     lapStartMs: nowMs,
@@ -266,6 +288,73 @@ function pruneWindow(window: WindowPoint[], nowMs: number, paceWindowS: number):
   const from = Math.max(0, firstInside - 1);
   const pruned = from > 0 ? window.slice(from) : window;
   return pruned.length > 600 ? pruned.slice(pruned.length - 600) : pruned;
+}
+
+const MAX_DISPLAY_SPEED_OBSERVATIONS = 12;
+
+function resetDisplaySpeed(state: TrackerState): void {
+  state.displaySpeedMps = null;
+  state.displaySpeedUpdatedAtMs = null;
+  state.displaySpeedWindow = [];
+}
+
+function speedAccuracyWeight(speedAccuracyMps: number | null): number {
+  if (speedAccuracyMps == null || !Number.isFinite(speedAccuracyMps) || speedAccuracyMps < 0) {
+    // Web Geolocation has no speed-accuracy field. Keep it useful but give
+    // native Core Location measurements with known quality more influence.
+    return 0.7;
+  }
+  if (speedAccuracyMps <= 0.5) return 1;
+  return Math.max(0.15, Math.min(1, 1 - (speedAccuracyMps - 0.5) / 3));
+}
+
+function updateDisplaySpeed(
+  state: TrackerState,
+  tMs: number,
+  speedMps: number,
+  speedAccuracyMps: number | null | undefined,
+): void {
+  if (!Number.isFinite(speedMps) || speedMps < 0) return;
+
+  const accuracy = speedAccuracyMps != null
+    && Number.isFinite(speedAccuracyMps)
+    && speedAccuracyMps >= 0
+    ? speedAccuracyMps
+    : null;
+  const cutoff = tMs - state.config.displaySpeedMedianWindowS * 1000;
+  const window = [
+    ...(state.displaySpeedWindow ?? []),
+    { t: tMs, speedMps, speedAccuracyMps: accuracy },
+  ]
+    .filter((observation) => observation.t >= cutoff && observation.t <= tMs)
+    .slice(-MAX_DISPLAY_SPEED_OBSERVATIONS);
+  const sortedSpeeds = window
+    .map((observation) => observation.speedMps)
+    .sort((a, b) => a - b);
+  const middle = Math.floor(sortedSpeeds.length / 2);
+  const medianSpeed = sortedSpeeds.length % 2 === 0
+    ? (sortedSpeeds[middle - 1] + sortedSpeeds[middle]) / 2
+    : sortedSpeeds[middle];
+
+  if (
+    state.displaySpeedMps == null
+    || state.displaySpeedUpdatedAtMs == null
+    || tMs <= state.displaySpeedUpdatedAtMs
+    || tMs - state.displaySpeedUpdatedAtMs > 5_000
+  ) {
+    state.displaySpeedMps = medianSpeed;
+  } else {
+    // A time-based coefficient behaves consistently even when Core Location
+    // changes callback frequency. Lower-confidence speed estimates move the
+    // display less without changing the distance reducer.
+    const dtS = (tMs - state.displaySpeedUpdatedAtMs) / 1000;
+    const timeAlpha = 1 - Math.exp(-dtS / state.config.displaySpeedTimeConstantS);
+    const alpha = timeAlpha * speedAccuracyWeight(accuracy);
+    state.displaySpeedMps += alpha * (medianSpeed - state.displaySpeedMps);
+  }
+
+  state.displaySpeedWindow = window;
+  state.displaySpeedUpdatedAtMs = tMs;
 }
 
 /* ── Ingestion ── */
@@ -385,6 +474,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     next.lastAcceptedMs = sample.t;
     next.emaSpeedMps =
       next.emaSpeedMps == null ? reportedSpeed : next.emaSpeedMps + config.speedEmaAlpha * (reportedSpeed - next.emaSpeedMps);
+    updateDisplaySpeed(next, sample.t, reportedSpeed, sample.speedAccuracyMps);
     return trace(next, 'stationary');
   }
 
@@ -427,6 +517,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     next.emaSpeedMps == null
       ? observedSpeed
       : next.emaSpeedMps + config.speedEmaAlpha * (observedSpeed - next.emaSpeedMps);
+  updateDisplaySpeed(next, sample.t, observedSpeed, sample.speedAccuracyMps);
 
   next.window = pruneWindow(
     [...state.window, { t: sample.t, distM: next.totalDistanceM }],
@@ -444,6 +535,7 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   ) {
     const prevDist = state.totalDistanceM;
     let lapTarget = next.lapStartDistM + config.autoLapM;
+    let crossedAutoLap = false;
     while (lapTarget <= next.totalDistanceM) {
       const ratio = (lapTarget - prevDist) / (next.totalDistanceM - prevDist);
       const crossT = ratio >= 0 && ratio <= 1 ? prev.t + ratio * (sample.t - prev.t) : sample.t;
@@ -462,8 +554,10 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
       next.lapPausedMs = 0;
       next.lapAutoPausedMs = 0;
       events.push({ type: 'lap_completed', lap });
+      crossedAutoLap = true;
       lapTarget = next.lapStartDistM + config.autoLapM;
     }
+    if (crossedAutoLap) resetDisplaySpeed(next);
   }
 
   if (config.mode === 'sprints') {
@@ -553,12 +647,14 @@ export function isPaused(state: TrackerState): boolean {
 
 export function pauseTracker(state: TrackerState, nowMs: number): TrackerState {
   if (state.status !== 'running' || state.pausedAtMs != null) return state;
-  return {
+  const next = {
     ...state,
     pausedAtMs: nowMs,
     autoPausedAtMs: null,
     stationarySinceMs: null,
   };
+  resetDisplaySpeed(next);
+  return next;
 }
 
 export function resumeTracker(state: TrackerState, nowMs: number): TrackerState {
@@ -574,6 +670,9 @@ export function resumeTracker(state: TrackerState, nowMs: number): TrackerState 
     lastAcceptedMs: nowMs,
     speedRejectCount: 0,
     emaSpeedMps: null,
+    displaySpeedMps: null,
+    displaySpeedUpdatedAtMs: null,
+    displaySpeedWindow: [],
     stationarySinceMs: null,
     // Live pace must not divide by the paused wall-clock gap.
     window: [{ t: nowMs, distM: state.totalDistanceM }],
@@ -617,6 +716,7 @@ export function manualSplit(state: TrackerState, tMs: number): AdvanceResult {
     lapAutoPausedMs: 0,
     lastManualSplitMs: tMs,
   };
+  resetDisplaySpeed(next);
   return { state: next, events: [{ type: 'lap_completed', lap }] };
 }
 
@@ -661,6 +761,7 @@ export function toggleRest(state: TrackerState, tMs: number): AdvanceResult {
     lapAutoPausedMs: 0,
     lastManualSplitMs: tMs,
   };
+  resetDisplaySpeed(next);
   return { state: next, events: [{ type: 'lap_completed', lap }] };
 }
 
@@ -707,15 +808,16 @@ const PACE_MILE_M = 1609.344;
 // backgrounding, or a stalled provider)
 const CURRENT_SPEED_MAX_AGE_MS = 5_000;
 
-// device-reported speed of the last accepted sample while it is still fresh;
-// null when paused, before the first good fix, or after a delivery gap
+// Robust display speed while it is still fresh; null when paused, before the
+// first good fix, or after a delivery gap. It is deliberately separate from
+// the distance reducer and legacy sprint-detection EMA.
 export function currentSpeedMps(state: TrackerState, nowMs: number): number | null {
   if (isPaused(state)) return null;
-  const point = state.lastPoint;
-  if (!point) return null;
-  const speed = state.emaSpeedMps;
+  const updatedAtMs = state.displaySpeedUpdatedAtMs;
+  if (updatedAtMs == null) return null;
+  const speed = state.displaySpeedMps;
   if (speed == null || speed < 0 || !Number.isFinite(speed)) return null;
-  if (nowMs - point.t > CURRENT_SPEED_MAX_AGE_MS) return null;
+  if (nowMs - updatedAtMs > CURRENT_SPEED_MAX_AGE_MS) return null;
   return speed;
 }
 
@@ -735,11 +837,20 @@ export function rollingPaceSecPerMile(state: TrackerState, nowMs: number): numbe
   return dtS / (distM / PACE_MILE_M);
 }
 
-// Whole-session active average. Five metres is enough to avoid rendering pace
-// from the first noisy fix while still giving short walks immediate feedback.
+function paceReferenceNow(state: TrackerState, nowMs: number): number {
+  const frozenNow = clockNow(state, nowMs);
+  if (state.pausedAtMs != null) return frozenNow;
+  const sampleNow = state.lastSampleMs ?? state.lastAcceptedMs;
+  return sampleNow == null ? frozenNow : Math.min(frozenNow, sampleNow);
+}
+
+// Whole-session active average. Time and distance are sampled together, so the
+// display does not slow every UI tick and jump faster on the next GPS callback.
+// Five metres is enough to avoid rendering pace from the first noisy fix while
+// still giving short walks immediate feedback.
 export function averagePaceSecPerMile(state: TrackerState, nowMs: number): number | null {
   if (state.totalDistanceM < 5) return null;
-  const elapsedS = elapsedSeconds(state, nowMs);
+  const elapsedS = elapsedSeconds(state, paceReferenceNow(state, nowMs));
   if (elapsedS <= 0) return null;
   return elapsedS / (state.totalDistanceM / PACE_MILE_M);
 }
@@ -760,6 +871,20 @@ export function currentLapSeconds(state: TrackerState, nowMs: number): number {
     - state.lapAutoPausedMs
     - activeAutoPauseMs
   ) / 1000));
+}
+
+// Strava presents split-average pace while recording runs. This is both more
+// actionable and less noisy than an instantaneous estimate for short efforts.
+export function currentLapAveragePaceSecPerMile(
+  state: TrackerState,
+  nowMs: number,
+): number | null {
+  if (state.config.mode !== 'intervals' || state.lapKind !== 'work') return null;
+  const distanceM = currentLapDistanceM(state);
+  if (distanceM < state.config.paceMinDistanceM) return null;
+  const elapsedS = currentLapSeconds(state, paceReferenceNow(state, nowMs));
+  if (elapsedS < 4) return null;
+  return elapsedS / (distanceM / PACE_MILE_M);
 }
 
 /* ── Finish + persistence ── */
@@ -1032,6 +1157,9 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     state.totalAutoPausedMs ??= 0;
     state.lapAutoPausedMs ??= 0;
     state.stationarySinceMs = null;
+    state.displaySpeedMps = null;
+    state.displaySpeedUpdatedAtMs = null;
+    state.displaySpeedWindow = [];
     state.lastPoint = null; // re-anchor after the gap
     return state;
   } catch {

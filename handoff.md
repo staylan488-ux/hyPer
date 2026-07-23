@@ -1,6 +1,6 @@
 # Handoff
 
-Updated: 2026-07-21 (rev 73: two-app staging track — this branch builds the DEV app)
+Updated: 2026-07-22 (rev 79: stable live, split, and average pace)
 
 ## Rev 73 — two-app staging track
 
@@ -1018,3 +1018,45 @@ env.local.dev.bak.
   lock the phone, verify the Live Activity metrics update, exercise every
   control (including two-tap Finish), unlock and verify exact reconciliation,
   then export a completed run through the iOS share sheet.
+
+### Rev 79 — Stable live, split, and average pace (2026-07-22)
+
+- Branch: `codex/pace-stability`, based on merged Rev 78 `main` at
+  `cc4a2b11`.
+- Long Run live pace now uses a separate display-only smoother: a 4-second
+  rolling median followed by a 6-second time-based exponential filter. Native
+  Core Location `speedAccuracy` weights each update; browser samples use a
+  conservative default weight because the Web Geolocation API does not expose
+  speed accuracy. The time-based coefficient behaves consistently across
+  variable callback rates.
+- Accepted distance, split crossings, and the legacy sprint detector are
+  unchanged. Display smoothing cannot silently rewrite route distance or split
+  timing.
+- Splits now show current-lap average pace after 20 m / 4 s instead of
+  instantaneous speed. It resets on manual split, auto-split, Rest, and Resume.
+  This matches Strava's documented split-average recording metric and is more
+  useful for 100–1600 m efforts. Short sprint timing remains authoritative in
+  the completed split.
+- Overall average pace uses the latest GPS sample's paired time/distance
+  snapshot. It no longer slows on every one-second UI tick and jumps faster on
+  the next GPS callback. Long Run, Splits, the Lock Screen, and Dynamic Island
+  all receive the same stabilized values.
+- Interrupted sessions from older builds restore safely with the new
+  display-smoother state reset; distance and session state remain intact.
+- Files: `src/lib/runTracker.ts`, `src/lib/nativeRunSource.ts`,
+  `src/pages/RunTracker.tsx`, `tests/runTracker.test.ts`.
+- Verification:
+  - targeted run tracker: PASS, 41 tests.
+  - `npm run test`: PASS, 43 files / 405 tests.
+  - `npm run lint`: PASS.
+  - `npm run build`: PASS; existing large-chunk and stale Browserslist warnings.
+  - `npx cap sync ios`: PASS; generated ignored assets refreshed.
+  - unsigned iOS Simulator build: PASS (`xcodebuild ... CODE_SIGNING_ALLOWED=NO`).
+  - `git diff --check`: PASS.
+- No database/schema or native Swift changes. No migrations are needed or
+  applied.
+- Device-only next check: on the same outdoor route, compare Long Run live and
+  average pace against Strava during steady running and a sustained pace
+  change; then run 100 m, 400 m, and manual Splits and verify current-lap pace,
+  completed split time, and Lock Screen values. Field evidence can tune the
+  display-only 4 s / 6 s constants without changing distance.

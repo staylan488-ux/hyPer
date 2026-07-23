@@ -4,6 +4,7 @@ import {
   advanceTracker,
   averagePaceSecPerMile,
   createTracker,
+  currentLapAveragePaceSecPerMile,
   currentLapDistanceM,
   currentSpeedMps,
   defaultTrackerConfig,
@@ -317,6 +318,19 @@ describe('free run', () => {
     expect(isGpsWeak(state, lastT)).toBe(false);
     expect(isGpsWeak(state, lastT + 10_000)).toBe(true);
   });
+
+  it('holds average pace steady between GPS callbacks', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.5, durationS: 60 }]));
+    const { state } = drive(tracker, samples);
+    const lastT = samples[samples.length - 1].t;
+
+    const onSample = averagePaceSecPerMile(state, lastT);
+    const betweenSamples = averagePaceSecPerMile(state, lastT + 900);
+
+    expect(onSample).not.toBeNull();
+    expect(betweenSamples).toBe(onSample);
+  });
 });
 
 describe('interval laps', () => {
@@ -369,6 +383,29 @@ describe('interval laps', () => {
 
     state = drive(state, samples.slice(61)).state;
     expect(rollingPaceSecPerMile(state, samples[samples.length - 1].t)).not.toBeNull();
+  });
+
+  it('uses stable current-lap average pace and reacquires after a split', () => {
+    const tracker = createTracker(defaultTrackerConfig('intervals', null), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 4, durationS: 80 }]));
+    let { state } = drive(tracker, samples.slice(0, 61));
+    const splitT = samples[60].t;
+
+    const firstLapPace = currentLapAveragePaceSecPerMile(state, splitT);
+    expect(firstLapPace).toBeGreaterThan(395);
+    expect(firstLapPace).toBeLessThan(410);
+
+    state = manualSplit(state, splitT).state;
+    expect(currentSpeedMps(state, splitT)).toBeNull();
+    expect(currentLapAveragePaceSecPerMile(state, splitT)).toBeNull();
+
+    state = drive(state, samples.slice(61, 65)).state;
+    expect(currentLapAveragePaceSecPerMile(state, samples[64].t)).toBeNull();
+
+    state = drive(state, samples.slice(65, 68)).state;
+    const nextLapPace = currentLapAveragePaceSecPerMile(state, samples[67].t);
+    expect(nextLapPace).toBeGreaterThan(395);
+    expect(nextLapPace).toBeLessThan(410);
   });
 });
 
@@ -477,6 +514,26 @@ describe('persistence', () => {
     expect(restoreTrackerTrace(traceRaw, 'another-run')).toEqual([]);
   });
 
+  it('restores a pre-smoother snapshot with display pace safely reset', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.5, durationS: 30 }]));
+    const { state } = drive(tracker, samples);
+    const lastT = samples[samples.length - 1].t;
+    const snapshot = JSON.parse(serializeTracker(state, lastT)) as {
+      state: Partial<TrackerState>;
+    };
+    delete snapshot.state.displaySpeedMps;
+    delete snapshot.state.displaySpeedUpdatedAtMs;
+    delete snapshot.state.displaySpeedWindow;
+
+    const restored = restoreTracker(JSON.stringify(snapshot), lastT + 1_000);
+
+    expect(restored).not.toBeNull();
+    expect(restored!.displaySpeedMps).toBeNull();
+    expect(restored!.displaySpeedWindow).toEqual([]);
+    expect(currentSpeedMps(restored!, lastT + 1_000)).toBeNull();
+  });
+
   it('refuses stale or invalid snapshots', () => {
     const tracker = createTracker(defaultTrackerConfig('free'), T0);
     const raw = serializeTracker(tracker, T0);
@@ -531,6 +588,44 @@ describe('currentSpeedMps', () => {
     const { state, lastT } = drivenState();
     const paused = pauseTracker(state, lastT + 500);
     expect(currentSpeedMps(paused, lastT + 1_000)).toBeNull();
+  });
+
+  it('damps alternating speed noise without changing accepted distance', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([
+      { speedMps: 3.5, durationS: 20 },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        speedMps: index % 2 === 0 ? 2.4 : 4.6,
+        durationS: 1,
+      })),
+    ]).map((sample) => ({ ...sample, speedAccuracyMps: 0.3 })));
+
+    let state = tracker;
+    const displaySpeeds: number[] = [];
+    for (const sample of samples) {
+      state = advanceTracker(state, sample).state;
+      if (sample.t >= T0 + 20_000) {
+        const speed = currentSpeedMps(state, sample.t);
+        if (speed != null) displaySpeeds.push(speed);
+      }
+    }
+
+    expect(displaySpeeds).toHaveLength(13);
+    expect(Math.max(...displaySpeeds) - Math.min(...displaySpeeds)).toBeLessThan(0.35);
+    expect(state.totalDistanceM).toBeGreaterThan(100);
+  });
+
+  it('still responds to a sustained pace change', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([
+      { speedMps: 3, durationS: 20 },
+      { speedMps: 5, durationS: 15 },
+    ]).map((sample) => ({ ...sample, speedAccuracyMps: 0.3 })));
+    const { state } = drive(tracker, samples);
+    const lastT = samples[samples.length - 1].t;
+
+    expect(currentSpeedMps(state, lastT)).toBeGreaterThan(4.5);
+    expect(currentSpeedMps(state, lastT)).toBeLessThanOrEqual(5);
   });
 });
 
