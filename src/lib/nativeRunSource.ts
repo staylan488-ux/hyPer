@@ -20,6 +20,7 @@ function toGpsSample(sample: NativeRunSample): GpsSample {
     lon: sample.longitude,
     accuracyM: sample.horizontalAccuracyM,
     speedMps: sample.speedMps,
+    speedAccuracyMps: sample.speedAccuracyMps,
     motionDetected: sample.motion === 'unknown' ? undefined : sample.motion === 'moving',
   };
 }

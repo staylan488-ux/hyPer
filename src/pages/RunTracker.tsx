@@ -10,6 +10,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useRunTracker, createSimulatedSource, type PositionSource } from '@/hooks/useRunTracker';
 import {
   averagePaceSecPerMile,
+  currentLapAveragePaceSecPerMile,
   currentLapDistanceM,
   currentLapSeconds,
   currentSpeedMps,
@@ -236,12 +237,16 @@ export function RunTracker() {
   const effectivelyPaused = tracker.resting;
   const rollingPace = running && !effectivelyPaused ? rollingPaceSecPerMile(state, tracker.nowMs) : null;
   const averagePace = running ? averagePaceSecPerMile(state, tracker.nowMs) : null;
-  // Core Location speed is filtered by the reducer's EMA and expires after a
-  // callback gap. It is the most responsive trustworthy "now" pace; the
-  // distance-window pace remains the fallback.
+  const lapAveragePace = running && !effectivelyPaused
+    ? currentLapAveragePaceSecPerMile(state, tracker.nowMs)
+    : null;
+  // Long Run uses a robust, accuracy-aware current-speed estimate. Splits uses
+  // current-lap average pace, matching the stable workout metric runners expect.
   const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
   const currentPace = liveSpeedMps != null && liveSpeedMps > 0.3 ? MILE_M / liveSpeedMps : null;
-  const pace = currentPace ?? rollingPace ?? (state?.config.mode === 'free' ? averagePace : null);
+  const pace = state?.config.mode === 'intervals'
+    ? lapAveragePace
+    : currentPace ?? rollingPace ?? averagePace;
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
