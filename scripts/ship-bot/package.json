@@ -1,0 +1,14 @@
+{
+  "name": "hyper-ship-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord /ship bot — triggers the hyPer TestFlight pipeline (scripts/ship.sh)",
+  "main": "bot.mjs",
+  "scripts": {
+    "start": "node bot.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
