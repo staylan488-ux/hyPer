@@ -2,6 +2,7 @@ import Capacitor
 import CoreLocation
 import CoreMotion
 import Foundation
+import UIKit
 
 private struct PersistedRunSample: Codable {
     let sequence: Int
@@ -39,6 +40,16 @@ private struct PersistedRunSample: Codable {
     }
 }
 
+private struct PersistedRunControl: Codable {
+    let sequence: Int
+    let timestampMs: Double
+    let action: String
+
+    var bridgeValue: [String: Any] {
+        ["sequence": sequence, "timestampMs": timestampMs, "action": action]
+    }
+}
+
 @objc(HyperRunPlugin)
 final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
     let identifier = "HyperRunPlugin"
@@ -49,12 +60,17 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stopRecording", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drainSamples", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "drainControls", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncLiveActivity", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareDiagnostics", returnType: CAPPluginReturnPromise),
     ]
 
     private enum DefaultsKey {
         static let runID = "hyper.nativeRun.runID"
         static let recording = "hyper.nativeRun.recording"
         static let sequence = "hyper.nativeRun.sequence"
+        static let controlSequence = "hyper.nativeRun.controlSequence"
+        static let controls = "hyper.nativeRun.controls"
     }
 
     private let locationManager = CLLocationManager()
@@ -87,6 +103,12 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         let defaults = UserDefaults.standard
         currentRunID = defaults.string(forKey: DefaultsKey.runID)
         sequence = defaults.integer(forKey: DefaultsKey.sequence)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRunControl(_:)),
+            name: .hyperRunControl,
+            object: nil
+        )
         // Do NOT auto-resume recording on launch. A run abandoned before the
         // process was killed would otherwise restart GPS on every launch and
         // never stop (the JS resume snapshot expires after 12h, so no UI ever
@@ -159,6 +181,9 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             self.stopPlatformRecording()
+            if #available(iOS 16.2, *) {
+                Task { await RunLiveActivityCoordinator.shared.end() }
+            }
             UserDefaults.standard.set(false, forKey: DefaultsKey.recording)
             if call.getBool("discard", false) {
                 do {
@@ -226,6 +251,93 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 call.reject("Unable to recover native run samples.", "PERSISTENCE_FAILED", error)
             }
+        }
+    }
+
+    @objc func drainControls(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let afterSequence = max(0, call.getInt("afterSequence") ?? 0)
+            let controls = self.persistedControls.filter { $0.sequence > afterSequence }
+            let batch = Array(controls.prefix(100))
+            call.resolve([
+                "controls": batch.map(\.bridgeValue),
+                "lastSequence": batch.last?.sequence ?? afterSequence,
+                "hasMore": batch.count < controls.count,
+            ])
+        }
+    }
+
+    @objc func syncLiveActivity(_ call: CAPPluginCall) {
+        guard #available(iOS 16.2, *) else { call.resolve(); return }
+        guard
+            let runID = call.getString("runId"),
+            Self.isValidRunID(runID),
+            let mode = call.getString("mode")
+        else {
+            call.reject("Run activity data is invalid.", "INVALID_LIVE_ACTIVITY")
+            return
+        }
+        let distanceM = max(0, call.getDouble("distanceM") ?? 0)
+        let elapsedS = max(0, call.getInt("elapsedS") ?? 0)
+        let livePace = call.getString("livePace") ?? "—"
+        let averagePace = call.getString("averagePace") ?? "—"
+        let isResting = call.getBool("isResting", false)
+
+        Task {
+            await RunLiveActivityCoordinator.shared.sync(
+                runID: runID,
+                mode: mode,
+                distanceM: distanceM,
+                elapsedS: elapsedS,
+                livePace: livePace,
+                averagePace: averagePace,
+                isResting: isResting
+            )
+            call.resolve()
+        }
+    }
+
+    @objc func shareDiagnostics(_ call: CAPPluginCall) {
+        guard let content = call.getString("content"), !content.isEmpty else {
+            call.reject("Diagnostics are empty.", "INVALID_DIAGNOSTICS")
+            return
+        }
+        let requestedName = call.getString("filename") ?? "hyper-gps-diagnostics.json"
+        let filename = requestedName.replacingOccurrences(
+            of: "[^A-Za-z0-9._-]",
+            with: "-",
+            options: .regularExpression
+        )
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+        do {
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            call.reject("Unable to prepare GPS diagnostics.", "EXPORT_FAILED", error)
+            return
+        }
+
+        DispatchQueue.main.async {
+            guard let presenter = self.bridge?.viewController else {
+                try? FileManager.default.removeItem(at: fileURL)
+                call.reject("Unable to open the iOS share sheet.", "EXPORT_UNAVAILABLE")
+                return
+            }
+            let activity = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            activity.completionWithItemsHandler = { _, _, _, _ in
+                try? FileManager.default.removeItem(at: fileURL)
+                call.resolve()
+            }
+            if let popover = activity.popoverPresentationController {
+                popover.sourceView = presenter.view
+                popover.sourceRect = CGRect(
+                    x: presenter.view.bounds.midX,
+                    y: presenter.view.bounds.midY,
+                    width: 1,
+                    height: 1
+                )
+            }
+            presenter.present(activity, animated: true)
         }
     }
 
@@ -338,6 +450,8 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         let defaults = UserDefaults.standard
         defaults.set(runID, forKey: DefaultsKey.runID)
         defaults.set(sequence, forKey: DefaultsKey.sequence)
+        defaults.set(0, forKey: DefaultsKey.controlSequence)
+        defaults.removeObject(forKey: DefaultsKey.controls)
         guard let fileURL = traceFileURL else { throw CocoaError(.fileNoSuchFile) }
         FileManager.default.createFile(
             atPath: fileURL.path,
@@ -355,6 +469,8 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: DefaultsKey.runID)
         defaults.removeObject(forKey: DefaultsKey.sequence)
+        defaults.removeObject(forKey: DefaultsKey.controlSequence)
+        defaults.removeObject(forKey: DefaultsKey.controls)
         defaults.set(false, forKey: DefaultsKey.recording)
     }
 
@@ -378,6 +494,44 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
             && value.unicodeScalars.allSatisfy {
                 CharacterSet.alphanumerics.contains($0) || $0 == "-"
             }
+    }
+
+    private var persistedControls: [PersistedRunControl] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: DefaultsKey.controls) else { return [] }
+            return (try? decoder.decode([PersistedRunControl].self, from: data)) ?? []
+        }
+        set {
+            let bounded = Array(newValue.suffix(500))
+            if let data = try? encoder.encode(bounded) {
+                UserDefaults.standard.set(data, forKey: DefaultsKey.controls)
+            }
+        }
+    }
+
+    @objc private func handleRunControl(_ notification: Notification) {
+        guard
+            recording,
+            let action = notification.userInfo?["action"] as? String,
+            RunControlAction(rawValue: action) != nil
+        else { return }
+        let timestampMs = notification.userInfo?["timestampMs"] as? Double
+            ?? Date().timeIntervalSince1970 * 1_000
+        let defaults = UserDefaults.standard
+        let controlSequence = defaults.integer(forKey: DefaultsKey.controlSequence) + 1
+        defaults.set(controlSequence, forKey: DefaultsKey.controlSequence)
+        let control = PersistedRunControl(
+            sequence: controlSequence,
+            timestampMs: timestampMs,
+            action: action
+        )
+        persistedControls.append(control)
+        notifyListeners("runControl", data: control.bridgeValue)
+
+        if action == RunControlAction.finish.rawValue {
+            stopPlatformRecording()
+            defaults.set(false, forKey: DefaultsKey.recording)
+        }
     }
 }
 
@@ -450,4 +604,3 @@ extension HyperRunPlugin: CLLocationManagerDelegate {
         notifyListeners("locationError", data: ["code": code, "message": message])
     }
 }
-

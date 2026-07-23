@@ -74,7 +74,6 @@ export interface TrackerConfig {
   paceMinDistanceM: number;
   speedEmaAlpha: number;
   manualSplitDebounceMs: number;
-  autoPauseAfterS: number;
   sprintStartMps: number;
   sprintEndMps: number;
   sprintStartHoldS: number;
@@ -96,7 +95,6 @@ export const TRACKER_DEFAULTS = {
   paceMinDistanceM: 20,
   speedEmaAlpha: 0.4,
   manualSplitDebounceMs: 700,
-  autoPauseAfterS: 5,
   sprintStartMps: 5.0,
   sprintEndMps: 3.0,
   sprintStartHoldS: 2,
@@ -108,9 +106,8 @@ export const TRACKER_DEFAULTS = {
 export function defaultTrackerConfig(
   mode: RunMode,
   autoLapM: number | null = null,
-  autoPause = false,
 ): TrackerConfig {
-  return { mode, autoLapM: mode === 'intervals' ? autoLapM : null, autoPause, ...TRACKER_DEFAULTS };
+  return { mode, autoLapM: mode === 'intervals' ? autoLapM : null, autoPause: false, ...TRACKER_DEFAULTS };
 }
 
 export interface Lap {
@@ -367,48 +364,6 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   const speedStepM = representativeSpeed != null ? representativeSpeed * dtS : null;
   const coordinatePlausible = impliedSpeed <= config.maxSpeedMps;
 
-  if (config.autoPause) {
-    // Prefer explicit platform speed whenever it exists; coordinate drift must
-    // not wake an auto-paused run while iOS reports zero movement.
-    const movingNow = reportedSpeed != null
-      ? motionAssisted || reportedSpeed >= 1.0
-      : sample.motionDetected != null
-        ? motionAssisted
-        : coordinatePlausible && impliedSpeed >= 1.0;
-
-    if (next.autoPausedAtMs != null) {
-      if (!movingNow) {
-        next.lastPoint = anchor;
-        next.lastAcceptedMs = sample.t;
-        return trace(next, 'auto_paused');
-      }
-
-      const autoPausedMs = Math.max(0, sample.t - next.autoPausedAtMs);
-      next.totalAutoPausedMs += autoPausedMs;
-      next.lapAutoPausedMs += autoPausedMs;
-      next.autoPausedAtMs = null;
-      next.stationarySinceMs = null;
-      next.lastPoint = anchor;
-      next.lastAcceptedMs = sample.t;
-      next.window = [{ t: sample.t, distM: next.totalDistanceM }];
-      // Re-anchor on the first moving sample so drift during the stop and the
-      // resume-detection interval can never become distance.
-      return trace(next, 'anchor');
-    }
-
-    if (!movingNow) {
-      next.stationarySinceMs ??= sample.t;
-      if (sample.t - next.stationarySinceMs >= config.autoPauseAfterS * 1000) {
-        next.autoPausedAtMs = next.stationarySinceMs;
-        next.lastPoint = anchor;
-        next.lastAcceptedMs = sample.t;
-        return trace(next, 'auto_paused');
-      }
-    } else {
-      next.stationarySinceMs = null;
-    }
-  }
-
   // A coordinate spike may coexist with a plausible platform speed. In that
   // case, use speed for this short interval and re-anchor instead of losing the
   // distance. With no trustworthy speed, retain the conservative teleport gate.
@@ -481,7 +436,12 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
 
   // auto-splits: interpolate the crossing time between the previous cumulative
   // point and this one so a split at 400m is timed at 400m, not at the sample
-  if (config.mode === 'intervals' && config.autoLapM != null && config.autoLapM > 0) {
+  if (
+    config.mode === 'intervals'
+    && next.lapKind === 'work'
+    && config.autoLapM != null
+    && config.autoLapM > 0
+  ) {
     const prevDist = state.totalDistanceM;
     let lapTarget = next.lapStartDistM + config.autoLapM;
     while (lapTarget <= next.totalDistanceM) {
@@ -591,20 +551,11 @@ export function isPaused(state: TrackerState): boolean {
   return state.pausedAtMs != null;
 }
 
-export function isAutoPaused(state: TrackerState): boolean {
-  return state.autoPausedAtMs != null;
-}
-
 export function pauseTracker(state: TrackerState, nowMs: number): TrackerState {
   if (state.status !== 'running' || state.pausedAtMs != null) return state;
-  const activeAutoPauseMs = state.autoPausedAtMs != null
-    ? Math.max(0, nowMs - state.autoPausedAtMs)
-    : 0;
   return {
     ...state,
     pausedAtMs: nowMs,
-    totalAutoPausedMs: state.totalAutoPausedMs + activeAutoPauseMs,
-    lapAutoPausedMs: state.lapAutoPausedMs + activeAutoPauseMs,
     autoPausedAtMs: null,
     stationarySinceMs: null,
   };
@@ -622,6 +573,7 @@ export function resumeTracker(state: TrackerState, nowMs: number): TrackerState 
     lastPoint: null,
     lastAcceptedMs: nowMs,
     speedRejectCount: 0,
+    emaSpeedMps: null,
     stationarySinceMs: null,
     // Live pace must not divide by the paused wall-clock gap.
     window: [{ t: nowMs, distM: state.totalDistanceM }],
@@ -761,7 +713,7 @@ export function currentSpeedMps(state: TrackerState, nowMs: number): number | nu
   if (isPaused(state)) return null;
   const point = state.lastPoint;
   if (!point) return null;
-  const speed = point.speedMps;
+  const speed = state.emaSpeedMps;
   if (speed == null || speed < 0 || !Number.isFinite(speed)) return null;
   if (nowMs - point.t > CURRENT_SPEED_MAX_AGE_MS) return null;
   return speed;

@@ -973,3 +973,48 @@ install with MIInstallerErrorDomain 57 DuplicateIdentifier.
 
 `.env.local` currently holds PRODUCTION credentials; dev copy is at scratchpad
 env.local.dev.bak.
+
+### Rev 78 — Native run Live Activity and simplified controls (2026-07-22)
+
+- Branch: `codex/run-live-activity-controls`, based on `origin/main` at
+  `9a018b23`.
+- Run setup/live screens are fixed to the iPhone viewport with no vertical
+  scrolling. Verified at 390×844: document and app viewport were both exactly
+  844 px tall before and during a simulated split run; console was clean.
+- Removed the auto-pause behavior and UI. Long Run now uses Rest/Resume plus
+  Hold to finish. Splits uses Split, Rest/Resume, and Hold to finish.
+- Split presets are 100 m, 200 m, 400 m, 1600 m, Manual only, and validated
+  custom metres (10–100,000). Auto-splits do not fire during a rest lap, so
+  distance presets can be used for hands-free sprint timing.
+- The large current pace now uses the reducer's fresh EMA-filtered Core
+  Location speed, with rolling/average pace fallbacks. Removed the duplicate
+  small "current speed" caption.
+- Added a native ActivityKit Live Activity for runs. Lock Screen and Dynamic
+  Island show distance, elapsed time, live pace, and average pace. Long Run
+  exposes Rest/Resume and Finish; Splits adds Split. Apple Live Activities do
+  not support a custom hold gesture, so Finish is a two-tap confirmation with
+  an 8-second confirmation window. Buttons require device authentication when
+  the phone is locked, per iOS.
+- Native lock-screen control events are persisted and replayed in timestamp
+  order after WebView suspension. A lock-screen Finish stops native location
+  recording immediately; the JS tracker reconciles and finalizes on wake.
+- GPS diagnostics export now opens the native iOS share sheet. Browser export
+  uses an attached temporary download link. Native raw traces are discarded
+  after the completed run is saved/discarded.
+- Files: `src/pages/RunTracker.tsx`, `src/hooks/useRunTracker.ts`,
+  `src/lib/{runTracker,nativeRunSource,nativeBridge}.ts`,
+  `ios/App/App/{HyperRunPlugin,RunLiveActivity}.swift`,
+  `ios/App/HyperWidgets/{HyperWidgetsBundle,RunLiveActivityWidget}.swift`,
+  `ios/App/App.xcodeproj/project.pbxproj`, `tests/runTracker.test.ts`.
+- Verification:
+  - `npm run test`: PASS, 43 files / 400 tests.
+  - `npm run lint`: PASS.
+  - `npm run build`: PASS; existing chunk-size and stale Browserslist warnings.
+  - unsigned iOS Simulator build: PASS (`xcodebuild ... CODE_SIGNING_ALLOWED=NO`).
+  - 390×844 preview: PASS for setup, Splits live controls, rest state, and
+    zero vertical overflow.
+- No database/schema changes. No Supabase migrations are needed or applied.
+- Device-only checks still required after building: start Long Run and Splits,
+  lock the phone, verify the Live Activity metrics update, exercise every
+  control (including two-tap Finish), unlock and verify exact reconciliation,
+  then export a completed run through the iOS share sheet.

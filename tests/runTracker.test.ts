@@ -12,7 +12,6 @@ import {
   finishedRunToActivity,
   haversineMeters,
   isGpsWeak,
-  isAutoPaused,
   isPaused,
   isWarmingUp,
   manualSplit,
@@ -275,38 +274,6 @@ describe('pause / resume', () => {
     expect(result.state.laps).toHaveLength(0);
   });
 
-  it('auto-pauses sustained stops and resumes without banking the GPS gap', () => {
-    const tracker = createTracker(defaultTrackerConfig('free', null, true), T0);
-    const samples = shift(buildScenarioSamples([
-      { speedMps: 3, durationS: 10 },
-      { speedMps: 0, durationS: 10 },
-      { speedMps: 3, durationS: 10 },
-    ]));
-
-    let state = drive(tracker, samples.slice(0, 21)).state;
-    expect(isAutoPaused(state)).toBe(true);
-
-    state = drive(state, samples.slice(21)).state;
-    expect(isAutoPaused(state)).toBe(false);
-    expect(state.totalDistanceM).toBeGreaterThan(48);
-    expect(state.totalDistanceM).toBeLessThan(55);
-    expect(elapsedSeconds(state, samples[samples.length - 1].t)).toBe(18);
-    expect(rollingPaceSecPerMile(state, samples[samples.length - 1].t)).toBeLessThan(600);
-  });
-
-  it('uses quiet motion evidence to auto-pause when platform speed is missing', () => {
-    const tracker = createTracker(defaultTrackerConfig('free', null, true), T0);
-    const samples = shift(stationaryDrift.build().slice(0, 15).map((sample) => ({
-      ...sample,
-      speedMps: null,
-      motionDetected: false,
-    })));
-
-    const { state } = drive(tracker, samples);
-
-    expect(isAutoPaused(state)).toBe(true);
-    expect(state.totalDistanceM).toBe(0);
-  });
 });
 
 describe('free run', () => {
@@ -569,7 +536,7 @@ describe('currentSpeedMps', () => {
 
 describe('rest laps', () => {
   function intervalState() {
-    const tracker = createTracker(defaultTrackerConfig('intervals', null, false), T0);
+    const tracker = createTracker(defaultTrackerConfig('intervals', null), T0);
     const samples = shift(buildScenarioSamples([{ speedMps: 4, durationS: 60 }]));
     const { state } = drive(tracker, samples);
     return { state, lastT: samples[samples.length - 1].t };
@@ -608,7 +575,7 @@ describe('rest laps', () => {
   });
 
   it('ignores rest outside intervals mode', () => {
-    const tracker = createTracker(defaultTrackerConfig('free', null, false), T0);
+    const tracker = createTracker(defaultTrackerConfig('free', null), T0);
     const { state } = drive(tracker, shift(buildScenarioSamples([{ speedMps: 3, durationS: 20 }])));
     expect(toggleRest(state, T0 + 30_000).state).toBe(state);
   });

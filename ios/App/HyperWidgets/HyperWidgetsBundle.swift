@@ -5,5 +5,6 @@ import SwiftUI
 struct HyperWidgetsBundle: WidgetBundle {
     var body: some Widget {
         HyperWidgetsLiveActivity()
+        RunLiveActivityWidget()
     }
 }

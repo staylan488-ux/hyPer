@@ -11,7 +11,6 @@ import {
   createTracker,
   defaultTrackerConfig,
   finishTracker,
-  isAutoPaused,
   isPaused,
   manualSplit,
   toggleRest,
@@ -32,14 +31,18 @@ import {
 } from '@/lib/runTracker';
 import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrackerCues';
 import { createDeviceMotionDetector } from '@/lib/deviceMotion';
-import { isNativeIOS } from '@/lib/nativeBridge';
+import { isNativeIOS, NativeRun, type NativeRunControl } from '@/lib/nativeBridge';
 import { createNativeRunSource } from '@/lib/nativeRunSource';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 
 export interface PositionSource {
   // simulated sources compress delivery but report a consistent clock
   getNowMs: () => number;
-  start: (onSample: (sample: GpsSample) => void, onError: (message: string) => void) => void;
+  start: (
+    onSample: (sample: GpsSample) => void,
+    onError: (message: string) => void,
+    onControl?: (control: NativeRunControl) => void,
+  ) => void;
   stop: (discard?: boolean) => void;
   // Native only: re-deliver samples the recorder persisted while the WebView
   // was suspended (locked screen); dedup makes it idempotent.
@@ -185,13 +188,11 @@ export interface UseRunTracker {
   gpsError: string | null;
   resumable: boolean;
   paused: boolean;
-  autoPaused: boolean;
-  start: (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => void;
+  start: (mode: RunMode, autoLapM: number | null, source?: PositionSource) => void;
   resume: (source?: PositionSource) => void;
   split: () => void;
   toggleRest: () => void;
   resting: boolean;
-  togglePause: () => void;
   finish: () => FinishedRun | null;
   discard: () => void;
 }
@@ -266,6 +267,31 @@ export function useRunTracker(): UseRunTracker {
     }
   }, []);
 
+  const stopSource = useCallback((discard = false) => {
+    sourceRef.current?.stop(discard);
+    sourceRef.current = null;
+  }, []);
+
+  const finishAt = useCallback((now: number): FinishedRun | null => {
+    const current = stateRef.current;
+    if (!current) return null;
+
+    const run = finishTracker(current, now, [...traceRef.current]);
+    stopSource(false);
+    const finished: TrackerState = { ...current, status: 'finished' };
+    stateRef.current = finished;
+    setState(finished);
+    setFinishedRun(run);
+    setResumable(false);
+    try {
+      localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeFinishedRun(run, Date.now()));
+      localStorage.removeItem(RUN_TRACKER_TRACE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    return run;
+  }, [stopSource]);
+
   const attachSource = useCallback(
     (source: PositionSource) => {
       sourceRef.current = source;
@@ -285,15 +311,36 @@ export function useRunTracker(): UseRunTracker {
           applyEvents(events);
         },
         (message) => setGpsError(message),
+        (control) => {
+          const current = stateRef.current;
+          if (!current || current.status !== 'running') return;
+          if (control.action === 'finish') {
+            finishAt(control.timestampMs);
+            return;
+          }
+
+          const result = control.action === 'split'
+            ? manualSplit(current, control.timestampMs)
+            : current.config.mode === 'free'
+              ? {
+                  state: isPaused(current)
+                    ? resumeTracker(current, control.timestampMs)
+                    : pauseTracker(current, control.timestampMs),
+                  events: [],
+                }
+              : toggleRest(current, control.timestampMs);
+          commit(result.state, control.timestampMs);
+          applyEvents(result.events);
+        },
       );
     },
-    [applyEvents, commit],
+    [applyEvents, commit, finishAt],
   );
 
   const start = useCallback(
-    (mode: RunMode, autoLapM: number | null, autoPause: boolean, source?: PositionSource) => {
+    (mode: RunMode, autoLapM: number | null, source?: PositionSource) => {
       const now = source?.getNowMs() ?? Date.now();
-      const tracker = createTracker(defaultTrackerConfig(mode, autoLapM, autoPause), now);
+      const tracker = createTracker(defaultTrackerConfig(mode, autoLapM), now);
       const activeSource = source ?? createDefaultPositionSource(tracker.runId, false);
       setFinishedRun(null);
       traceRef.current = [];
@@ -345,47 +392,28 @@ export function useRunTracker(): UseRunTracker {
     const current = stateRef.current;
     const source = sourceRef.current;
     if (!current || !source) return;
-    const { state: next, events } = toggleRest(current, source.getNowMs());
+    const now = source.getNowMs();
+    const { state: next, events } = current.config.mode === 'free'
+      ? {
+          state: isPaused(current) ? resumeTracker(current, now) : pauseTracker(current, now),
+          events: [],
+        }
+      : toggleRest(current, now);
     commit(next);
     applyEvents(events);
   }, [applyEvents, commit]);
 
-  const togglePause = useCallback(() => {
-    const current = stateRef.current;
-    const source = sourceRef.current;
-    if (!current || current.status !== 'running') return;
-    const t = source?.getNowMs() ?? Date.now();
-    commit(isPaused(current) ? resumeTracker(current, t) : pauseTracker(current, t));
-  }, [commit]);
-
-  const stopSource = useCallback((discard = false) => {
-    sourceRef.current?.stop(discard);
-    sourceRef.current = null;
-  }, []);
-
   const finish = useCallback((): FinishedRun | null => {
-    const current = stateRef.current;
     const source = sourceRef.current;
-    if (!current) return null;
-
-    const run = finishTracker(current, source?.getNowMs() ?? Date.now(), [...traceRef.current]);
-    stopSource(false);
-    const finished: TrackerState = { ...current, status: 'finished' };
-    stateRef.current = finished;
-    setState(finished);
-    setFinishedRun(run);
-    setResumable(false);
-    try {
-      localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeFinishedRun(run, Date.now()));
-      localStorage.removeItem(RUN_TRACKER_TRACE_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-    return run;
-  }, [stopSource]);
+    return finishAt(source?.getNowMs() ?? Date.now());
+  }, [finishAt]);
 
   const discard = useCallback(() => {
+    const hadSource = sourceRef.current != null;
     stopSource(true);
+    if (!hadSource && isNativeIOS()) {
+      void NativeRun.stopRecording({ discard: true }).catch(() => undefined);
+    }
     stateRef.current = null;
     traceRef.current = [];
     setState(null);
@@ -481,13 +509,11 @@ export function useRunTracker(): UseRunTracker {
     gpsError,
     resumable,
     paused: state != null && isPaused(state),
-    autoPaused: state != null && isAutoPaused(state),
     start,
     resume,
     split,
     toggleRest: restToggle,
-    resting: state?.lapKind === 'rest',
-    togglePause,
+    resting: state != null && (state.config.mode === 'free' ? isPaused(state) : state.lapKind === 'rest'),
     finish,
     discard,
   };

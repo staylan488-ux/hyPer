@@ -23,6 +23,7 @@
 		A10000030000000000000003 /* HyperRunPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* HyperRunPlugin.swift */; };
 		A10000040000000000000004 /* HyperHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* HyperHealthPlugin.swift */; };
 		A10000070000000000000007 /* HyperBarcodePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000070000000000000007 /* HyperBarcodePlugin.swift */; };
+		A10000080000000000000008 /* RunLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000080000000000000008 /* RunLiveActivity.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,6 +69,7 @@
 		A20000030000000000000003 /* HyperRunPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HyperRunPlugin.swift; sourceTree = "<group>"; };
 		A20000040000000000000004 /* HyperHealthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HyperHealthPlugin.swift; sourceTree = "<group>"; };
 		A20000070000000000000007 /* HyperBarcodePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HyperBarcodePlugin.swift; sourceTree = "<group>"; };
+		A20000080000000000000008 /* RunLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLiveActivity.swift; sourceTree = "<group>"; };
 		A20000060000000000000006 /* Hyper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Hyper.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -142,6 +144,7 @@
 				A20000030000000000000003 /* HyperRunPlugin.swift */,
 				A20000040000000000000004 /* HyperHealthPlugin.swift */,
 				A20000070000000000000007 /* HyperBarcodePlugin.swift */,
+				A20000080000000000000008 /* RunLiveActivity.swift */,
 				A20000060000000000000006 /* Hyper.entitlements */,
 			);
 			path = App;
@@ -279,6 +282,7 @@
 				A10000030000000000000003 /* HyperRunPlugin.swift in Sources */,
 				A10000040000000000000004 /* HyperHealthPlugin.swift in Sources */,
 				A10000070000000000000007 /* HyperBarcodePlugin.swift in Sources */,
+				A10000080000000000000008 /* RunLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
