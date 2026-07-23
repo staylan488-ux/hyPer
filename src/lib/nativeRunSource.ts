@@ -1,9 +1,13 @@
-import { NativeRun, type NativeRunSample } from '@/lib/nativeBridge';
+import { NativeRun, type NativeRunControl, type NativeRunSample } from '@/lib/nativeBridge';
 import type { GpsSample } from '@/lib/runTracker';
 
 interface NativePositionSource {
   getNowMs: () => number;
-  start: (onSample: (sample: GpsSample) => void, onError: (message: string) => void) => void;
+  start: (
+    onSample: (sample: GpsSample) => void,
+    onError: (message: string) => void,
+    onControl?: (control: NativeRunControl) => void,
+  ) => void;
   stop: (discard?: boolean) => void;
   resync: () => void;
   detach: () => void;
@@ -23,8 +27,11 @@ function toGpsSample(sample: NativeRunSample): GpsSample {
 export function createNativeRunSource(runId: string, resume: boolean): NativePositionSource {
   let stopped = false;
   let recoveryCursor = 0;
+  let controlCursor = 0;
   let sampleHandler: ((sample: GpsSample) => void) | null = null;
+  let controlHandler: ((control: NativeRunControl) => void) | null = null;
   const deliveredSequences = new Set<number>();
+  const deliveredControls = new Set<number>();
   const listenerHandles: Array<{ remove: () => Promise<void> }> = [];
 
   const cleanupListeners = async () => {
@@ -35,23 +42,41 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
   // Pull every persisted sample past the cursor. Called on start, after each
   // listener attach, and on visibility-resume; dedup keeps it idempotent.
   const drain = async () => {
+    const pendingEvents: Array<
+      | { kind: 'sample'; timestampMs: number; sample: NativeRunSample }
+      | { kind: 'control'; timestampMs: number; control: NativeRunControl }
+    > = [];
     while (true) {
-      const batch = await NativeRun.drainSamples({ afterSequence: recoveryCursor });
-      for (const sample of batch.samples) {
-        if (!deliveredSequences.has(sample.sequence)) {
-          deliveredSequences.add(sample.sequence);
-          sampleHandler?.(toGpsSample(sample));
-        }
+      const [sampleBatch, controlBatch] = await Promise.all([
+        NativeRun.drainSamples({ afterSequence: recoveryCursor }),
+        NativeRun.drainControls({ afterSequence: controlCursor }),
+      ]);
+      pendingEvents.push(
+        ...sampleBatch.samples.map((sample) => ({ kind: 'sample' as const, timestampMs: sample.timestampMs, sample })),
+        ...controlBatch.controls.map((control) => ({ kind: 'control' as const, timestampMs: control.timestampMs, control })),
+      );
+      recoveryCursor = Math.max(recoveryCursor, sampleBatch.lastSequence);
+      controlCursor = Math.max(controlCursor, controlBatch.lastSequence);
+      if (!sampleBatch.hasMore && !controlBatch.hasMore) break;
+    }
+
+    pendingEvents.sort((a, b) => a.timestampMs - b.timestampMs);
+    for (const event of pendingEvents) {
+      if (event.kind === 'sample' && !deliveredSequences.has(event.sample.sequence)) {
+        deliveredSequences.add(event.sample.sequence);
+        sampleHandler?.(toGpsSample(event.sample));
+      } else if (event.kind === 'control' && !deliveredControls.has(event.control.sequence)) {
+        deliveredControls.add(event.control.sequence);
+        controlHandler?.(event.control);
       }
-      recoveryCursor = Math.max(recoveryCursor, batch.lastSequence);
-      if (!batch.hasMore) break;
     }
   };
 
   return {
     getNowMs: () => Date.now(),
-    start: (onSample, onError) => {
+    start: (onSample, onError, onControl) => {
       sampleHandler = onSample;
+      controlHandler = onControl ?? null;
       void (async () => {
         try {
           const permission = await NativeRun.requestPermissions();
@@ -73,6 +98,11 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
           }));
           listenerHandles.push(await NativeRun.addListener('locationError', (event) => {
             if (!stopped) onError(event.message);
+          }));
+          listenerHandles.push(await NativeRun.addListener('runControl', (control) => {
+            if (stopped || deliveredControls.has(control.sequence)) return;
+            deliveredControls.add(control.sequence);
+            controlHandler?.(control);
           }));
           await drain();
         } catch (error) {

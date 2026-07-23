@@ -31,6 +31,7 @@ import { gpsScenarios } from '@/lib/gpsScenarios';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
+import { isNativeIOS, NativeRun } from '@/lib/nativeBridge';
 
 const RUN_MODE_LABELS: Record<RunMode, string> = {
   free: 'Long run',
@@ -43,14 +44,15 @@ const MODE_OPTIONS: { value: RunMode; label: string }[] = [
   { value: 'intervals', label: RUN_MODE_LABELS.intervals },
 ];
 
-type AutoLapChoice = 'off' | '200' | '400' | '800' | '1000';
+type AutoLapChoice = '100' | '200' | '400' | '1600' | 'off' | 'custom';
 
 const AUTO_LAP_OPTIONS: { value: AutoLapChoice; label: string }[] = [
-  { value: 'off', label: 'Manual splits only' },
+  { value: '100', label: 'Every 100 m' },
   { value: '200', label: 'Every 200 m' },
   { value: '400', label: 'Every 400 m' },
-  { value: '800', label: 'Every 800 m' },
-  { value: '1000', label: 'Every 1 km' },
+  { value: '1600', label: 'Every 1600 m' },
+  { value: 'off', label: 'Manual only' },
+  { value: 'custom', label: 'Custom distance' },
 ];
 
 type SourceChoice = 'gps' | 'steady5k' | 'intervals8x400' | 'stationary';
@@ -72,7 +74,9 @@ function formatMeters(distanceM: number): string {
   return formatDistanceMi(distanceM) ?? '0.00 mi';
 }
 
-function exportGpsDiagnostics(run: NonNullable<ReturnType<typeof useRunTracker>['finishedRun']>): void {
+async function exportGpsDiagnostics(
+  run: NonNullable<ReturnType<typeof useRunTracker>['finishedRun']>,
+): Promise<void> {
   const { trace = [], ...summary } = run;
   const payload = {
     schemaVersion: 1,
@@ -80,13 +84,21 @@ function exportGpsDiagnostics(run: NonNullable<ReturnType<typeof useRunTracker>[
     summary,
     trace,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const content = JSON.stringify(payload, null, 2);
+  const filename = `hyper-gps-${new Date(run.startedAtMs).toISOString().replace(/[:.]/g, '-')}.json`;
+  if (isNativeIOS()) {
+    await NativeRun.shareDiagnostics({ filename, content });
+    return;
+  }
+  const blob = new Blob([content], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `hyper-gps-${new Date(run.startedAtMs).toISOString().replace(/[:.]/g, '-')}.json`;
+  link.download = filename;
+  document.body.appendChild(link);
   link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const HOLD_TO_FINISH_MS = 800;
@@ -154,10 +166,11 @@ export function RunTracker() {
 
   const [mode, setMode] = useState<RunMode>('free');
   const [autoLap, setAutoLap] = useState<AutoLapChoice>('400');
-  const [autoPause, setAutoPause] = useState(true);
+  const [customAutoLapM, setCustomAutoLapM] = useState('300');
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>(preview && !appSandbox ? 'steady5k' : 'gps');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const sourceOptions = useMemo(() => {
     const options: { value: SourceChoice; label: string }[] = [{ value: 'gps', label: 'Real GPS' }];
@@ -179,7 +192,12 @@ export function RunTracker() {
   const handleStart = () => {
     if (tracker.resumable) return;
     setSaveError(null);
-    tracker.start(mode, autoLap === 'off' ? null : Number(autoLap), autoPause, buildSource());
+    const splitDistanceM = autoLap === 'off'
+      ? null
+      : autoLap === 'custom'
+        ? Number(customAutoLapM)
+        : Number(autoLap);
+    tracker.start(mode, splitDistanceM, buildSource());
   };
 
   const handleFinish = useCallback(() => {
@@ -215,18 +233,18 @@ export function RunTracker() {
   const running = state?.status === 'running';
 
   /* ── live derived values ── */
-  const effectivelyPaused = tracker.paused || tracker.autoPaused;
+  const effectivelyPaused = tracker.resting;
   const rollingPace = running && !effectivelyPaused ? rollingPaceSecPerMile(state, tracker.nowMs) : null;
   const averagePace = running ? averagePaceSecPerMile(state, tracker.nowMs) : null;
-  const pace = rollingPace ?? (state?.config.mode === 'free' ? averagePace : null);
+  // Core Location speed is filtered by the reducer's EMA and expires after a
+  // callback gap. It is the most responsive trustworthy "now" pace; the
+  // distance-window pace remains the fallback.
+  const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
+  const currentPace = liveSpeedMps != null && liveSpeedMps > 0.3 ? MILE_M / liveSpeedMps : null;
+  const pace = currentPace ?? rollingPace ?? (state?.config.mode === 'free' ? averagePace : null);
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
-  // live pace in min/mi — the metric runners read, not mph
-  const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
-  const liveSpeedLabel = liveSpeedMps != null && liveSpeedMps > 0.3
-    ? `${formatRunPace(MILE_M / liveSpeedMps) ?? '—'} now`
-    : null;
   const warming = running ? isWarmingUp(state) : false;
   const weak = running ? isGpsWeak(state, tracker.nowMs) : false;
 
@@ -234,8 +252,28 @@ export function RunTracker() {
   const lastRep = running && state.reps.length > 0 ? state.reps[state.reps.length - 1] : null;
 
   // paused: freeze the pace readout, and don't let a screen tap split
-  const paused = tracker.paused;
-  const screenTapSplit = running && state.config.mode === 'intervals' && !paused && !tracker.autoPaused;
+  const customAutoLapValid = autoLap !== 'custom'
+    || (Number.isFinite(Number(customAutoLapM)) && Number(customAutoLapM) >= 10 && Number(customAutoLapM) <= 100_000);
+
+  useEffect(() => {
+    if (!state || state.status !== 'running' || !isNativeIOS()) return;
+    void NativeRun.syncLiveActivity({
+      runId: state.runId,
+      mode: state.config.mode === 'intervals' ? 'intervals' : 'free',
+      distanceM: state.totalDistanceM,
+      elapsedS: elapsedSeconds(state, tracker.nowMs),
+      livePace: paceLabel,
+      averagePace: formatRunPace(averagePace) ?? '—',
+      isResting: tracker.resting,
+    }).catch(() => undefined);
+  }, [
+    averagePace,
+    paceLabel,
+    running,
+    state,
+    tracker.nowMs,
+    tracker.resting,
+  ]);
 
   /* ── finished summary ── */
   if (tracker.finishedRun) {
@@ -305,11 +343,17 @@ export function RunTracker() {
             <button
               type="button"
               className="pressable t-label-sm min-h-11 text-[var(--color-muted)]"
-              onClick={() => exportGpsDiagnostics(finishedRun)}
+              onClick={() => {
+                setExportError(null);
+                void exportGpsDiagnostics(finishedRun).catch(() => {
+                  setExportError('Could not open the export sheet. Try again.');
+                });
+              }}
             >
               Export private GPS diagnostics
             </button>
             <p className="t-caption mt-1">Coordinates stay on this device unless you export them.</p>
+            {exportError && <p className="t-caption mt-1 text-[var(--color-accent)]">{exportError}</p>}
           </div>
         )}
 
@@ -331,18 +375,15 @@ export function RunTracker() {
   if (running) {
     return (
       <div
-        className="min-h-dvh flex flex-col px-6 pt-10 pb-8 max-w-lg mx-auto select-none"
-        onClick={screenTapSplit ? () => { tapHaptic(); tracker.split(); } : undefined}
+        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto select-none overscroll-none"
       >
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">
             {RUN_MODE_LABELS[state.config.mode]}
           </span>
-          <span className={`t-label-sm ${paused || tracker.autoPaused ? 'text-[var(--color-accent)]' : warming || weak ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
-            {paused
-              ? 'paused'
-              : tracker.autoPaused
-                ? 'auto paused'
+          <span className={`t-label-sm ${tracker.resting || warming || weak ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
+            {tracker.resting
+              ? 'resting'
               : warming
                 ? 'acquiring gps'
                 : weak
@@ -361,9 +402,6 @@ export function RunTracker() {
             <p className="t-data-hero mt-1 [font-family:var(--font-display)] text-[3.4rem] leading-none">
               {paceLabel}
             </p>
-            {liveSpeedLabel && (
-              <p className="t-caption mt-2">{liveSpeedLabel} current speed</p>
-            )}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -420,28 +458,25 @@ export function RunTracker() {
             </div>
           )}
 
-          {screenTapSplit && (
-            <p className="t-caption text-center text-[var(--color-muted)]">Tap anywhere to split</p>
-          )}
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="min-h-14 px-6 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
-            onClick={(event) => { event.stopPropagation(); tapHaptic(); tracker.togglePause(); }}
-          >
-            {paused ? 'Resume' : 'Pause'}
-          </button>
-          {state.config.mode === 'intervals' && !paused && (
+          {state.config.mode === 'intervals' && !tracker.resting && (
             <button
               type="button"
-              className="min-h-14 px-6 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
-              onClick={(event) => { event.stopPropagation(); tapHaptic(); tracker.toggleRest(); }}
+              className="min-h-14 px-4 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
+              onClick={() => { tapHaptic(); tracker.split(); }}
             >
-              {tracker.resting ? 'Go' : 'Rest'}
+              Split
             </button>
           )}
+          <button
+            type="button"
+            className="min-h-14 px-4 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
+            onClick={() => { tapHaptic(); tracker.toggleRest(); }}
+          >
+            {tracker.resting ? 'Resume' : 'Rest'}
+          </button>
           <div className="flex-1">
             <HoldToFinish onFinish={handleFinish} />
           </div>
@@ -452,7 +487,7 @@ export function RunTracker() {
 
   /* ── pre-start config ── */
   return (
-    <motion.div className="min-h-dvh px-6 pt-10 pb-10 max-w-lg mx-auto" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto flex flex-col overscroll-none" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
       <p className="t-label-sm">Field tracker</p>
       <h1 className="t-display text-[2rem] mt-2">Run</h1>
 
@@ -479,29 +514,29 @@ export function RunTracker() {
         <div className="mt-6">
           <label className="t-label-sm block mb-2">Auto-split</label>
           <SelectSheet value={autoLap} onChange={setAutoLap} options={AUTO_LAP_OPTIONS} title="Auto-split distance" />
-          <p className="t-caption mt-2">Splits also happen whenever you tap the screen mid-run.</p>
+          <p className="t-caption mt-2">Use the Split button anytime, or let distance trigger it.</p>
+          {autoLap === 'custom' && (
+            <label className="block mt-3">
+              <span className="t-label-sm block mb-2">Custom metres</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={10}
+                max={100000}
+                step={1}
+                value={customAutoLapM}
+                onChange={(event) => setCustomAutoLapM(event.target.value)}
+                className="w-full min-h-12 border border-[var(--color-border-strong)] bg-transparent px-4 t-data"
+                aria-invalid={!customAutoLapValid}
+              />
+              {!customAutoLapValid && (
+                <span className="t-caption mt-1 block text-[var(--color-accent)]">Enter 10–100,000 m.</span>
+              )}
+            </label>
+          )}
+          <p className="t-caption mt-2">Automatic distances also work for hands-free sprint timing.</p>
         </div>
       )}
-
-      <div className="mt-6 flex items-center justify-between gap-5 border-t border-[var(--color-border)] pt-5">
-        <div>
-          <p className="t-heading">Auto-pause</p>
-          <p className="t-caption mt-1">Exclude stops from time and average pace.</p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autoPause}
-          onClick={() => setAutoPause((value) => !value)}
-          className={`pressable min-h-11 min-w-[5.5rem] border px-4 t-label-sm ${
-            autoPause
-              ? 'border-[var(--color-text)] bg-[var(--color-text)] text-[var(--color-base)]'
-              : 'border-[var(--color-border-strong)] text-[var(--color-muted)]'
-          }`}
-        >
-          {autoPause ? 'On' : 'Off'}
-        </button>
-      </div>
 
       {preview && !appSandbox && (
         <div className="mt-6">
@@ -517,7 +552,7 @@ export function RunTracker() {
 
       {tracker.gpsError && <p className="t-caption mt-4 text-[var(--color-accent)]">{tracker.gpsError}</p>}
 
-      <Button size="lg" className="w-full mt-10" onClick={handleStart} disabled={tracker.resumable}>
+      <Button size="lg" className="w-full mt-auto" onClick={handleStart} disabled={tracker.resumable || !customAutoLapValid}>
         Start
       </Button>
 

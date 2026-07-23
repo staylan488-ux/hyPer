@@ -45,6 +45,12 @@ export interface NativeRunSample {
   simulated: boolean;
 }
 
+export interface NativeRunControl {
+  sequence: number;
+  timestampMs: number;
+  action: 'split' | 'rest' | 'finish';
+}
+
 interface NativeRunPlugin {
   requestPermissions(): Promise<{
     location: 'prompt' | 'denied' | 'restricted' | 'whenInUse' | 'always';
@@ -68,6 +74,21 @@ interface NativeRunPlugin {
     lastSequence: number;
     hasMore: boolean;
   }>;
+  drainControls(options: { afterSequence: number }): Promise<{
+    controls: NativeRunControl[];
+    lastSequence: number;
+    hasMore: boolean;
+  }>;
+  syncLiveActivity(options: {
+    runId: string;
+    mode: 'free' | 'intervals';
+    distanceM: number;
+    elapsedS: number;
+    livePace: string;
+    averagePace: string;
+    isResting: boolean;
+  }): Promise<void>;
+  shareDiagnostics(options: { filename: string; content: string }): Promise<void>;
   addListener(
     eventName: 'locationSample',
     listener: (sample: NativeRunSample) => void,
@@ -75,6 +96,10 @@ interface NativeRunPlugin {
   addListener(
     eventName: 'locationError',
     listener: (event: { code: string; message: string }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'runControl',
+    listener: (event: NativeRunControl) => void,
   ): Promise<PluginListenerHandle>;
 }
 
