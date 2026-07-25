@@ -1,5 +1,6 @@
 import { NativeHealth, isNativeIOS } from '@/lib/nativeBridge';
 import {
+  buildManualWeightMeasurement,
   normalizeNativeWeightSample,
   setHealthWeightSyncEnabled,
   type BodyWeightMeasurement,
@@ -8,10 +9,13 @@ import { supabase } from '@/lib/supabase';
 
 export {
   HEALTH_WEIGHT_SYNC_ENABLED_KEY,
+  buildManualWeightMeasurement,
   isHealthWeightSyncEnabled,
+  isPlausibleBodyWeightKg,
   normalizeNativeWeightSample,
   setHealthWeightSyncEnabled,
   type BodyWeightMeasurement,
+  type BodyWeightSource,
 } from '@/lib/healthWeightCore';
 
 const HEALTH_WEIGHT_SYNC_CURSOR_PREFIX = 'hyper:health-weight-sync-cursor:';
@@ -46,6 +50,24 @@ export async function getLatestBodyWeight(userId: string): Promise<BodyWeightMea
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as BodyWeightMeasurement | null;
+}
+
+/** Record a weigh-in the user typed. Works on web as well as native. */
+export async function recordManualBodyWeight(
+  userId: string,
+  kilograms: number,
+  measuredAt: Date = new Date(),
+): Promise<BodyWeightMeasurement> {
+  const row = buildManualWeightMeasurement(userId, kilograms, measuredAt);
+  if (!row) throw new Error('That weight does not look right. Enter a value between 0 and 500 kg.');
+
+  const { data, error } = await supabase
+    .from('body_weight_measurements')
+    .upsert(row, { onConflict: 'user_id,source,external_id' })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as BodyWeightMeasurement;
 }
 
 export async function syncNativeBodyWeights(userId: string): Promise<HealthWeightSyncResult> {

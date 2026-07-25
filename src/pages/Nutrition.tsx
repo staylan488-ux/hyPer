@@ -17,7 +17,7 @@ import {
   nutritionGroupLabel,
   sortNutritionGroups,
 } from '@/lib/nutritionGroups';
-import type { NutritionGroup } from '@/types';
+import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
   addDays,
   addMonths,
@@ -397,10 +397,10 @@ export function Nutrition() {
     setMonthLogs((current) => current.map((log) => log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log));
   };
 
-  const targetKcal = macroTarget?.calories || 2000;
-  const targetProtein = macroTarget?.protein || 150;
-  const targetCarbs = macroTarget?.carbs || 200;
-  const targetFat = macroTarget?.fat || 65;
+  const targetKcal = macroTarget?.calories || DEFAULT_MACRO_TARGET.calories;
+  const targetProtein = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
+  const targetCarbs = macroTarget?.carbs || DEFAULT_MACRO_TARGET.carbs;
+  const targetFat = macroTarget?.fat || DEFAULT_MACRO_TARGET.fat;
   const macroFigures: { label: string; current: number; target: number }[] = [
     { label: 'Protein', current: dayTotals.protein, target: targetProtein },
     { label: 'Carbs', current: dayTotals.carbs, target: targetCarbs },

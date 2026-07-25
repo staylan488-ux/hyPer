@@ -10,13 +10,15 @@ import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
-import { NutritionWizard } from '@/components/nutrition/NutritionWizard';
+import { NutritionWizard, type NutritionWizardOutcome } from '@/components/nutrition/NutritionWizard';
+import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
 import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import {
   enableNativeBodyWeightSync,
   getBodyWeightHistory,
   isHealthWeightSyncEnabled,
+  recordManualBodyWeight,
   setHealthWeightSyncEnabled,
   syncNativeBodyWeights,
   type BodyWeightMeasurement,
@@ -79,6 +81,9 @@ export function Settings() {
     macroTarget,
     fetchMacroTarget,
     updateMacroTarget,
+    nutritionProfile,
+    fetchNutritionProfile,
+    updateNutritionProfile,
     whoopConnection,
     fetchWhoopConnection,
     connectWhoop,
@@ -94,6 +99,7 @@ export function Settings() {
     protein: number;
     carbs: number;
     fat: number;
+    source: MacroTargetSource;
   } | null>(null);
   const [savingName, setSavingName] = useState(false);
   const [savingMacros, setSavingMacros] = useState(false);
@@ -156,7 +162,8 @@ export function Settings() {
 
   useEffect(() => {
     fetchMacroTarget();
-  }, [fetchMacroTarget]);
+    void fetchNutritionProfile();
+  }, [fetchMacroTarget, fetchNutritionProfile]);
 
   useEffect(() => {
     void fetchWhoopConnection();
@@ -509,10 +516,11 @@ export function Settings() {
   };
 
   const baseMacros = {
-    calories: macroTarget?.calories || 2000,
-    protein: macroTarget?.protein || 150,
-    carbs: macroTarget?.carbs || 200,
-    fat: macroTarget?.fat || 65,
+    calories: macroTarget?.calories || DEFAULT_MACRO_TARGET.calories,
+    protein: macroTarget?.protein || DEFAULT_MACRO_TARGET.protein,
+    carbs: macroTarget?.carbs || DEFAULT_MACRO_TARGET.carbs,
+    fat: macroTarget?.fat || DEFAULT_MACRO_TARGET.fat,
+    source: macroTarget?.source ?? ('manual' as MacroTargetSource),
   };
 
   const displayName = displayNameDraft ?? (profile?.display_name || '');
@@ -526,7 +534,8 @@ export function Settings() {
     macros.calories !== baseMacros.calories
     || macros.protein !== baseMacros.protein
     || macros.carbs !== baseMacros.carbs
-    || macros.fat !== baseMacros.fat;
+    || macros.fat !== baseMacros.fat
+    || macros.source !== baseMacros.source;
 
   const clearNameFeedback = () => {
     setNameMessage(null);
@@ -536,6 +545,12 @@ export function Settings() {
   const clearMacroFeedback = () => {
     setMacroMessage(null);
     setMacroError(null);
+  };
+
+  // A hand edit makes the target manual, which keeps the adaptive loop off it.
+  const editMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat', raw: string) => {
+    clearMacroFeedback();
+    setMacroDraft({ ...macros, [field]: parseInt(raw, 10) || 0, source: 'manual' });
   };
 
   const handleSaveDisplayName = async () => {
@@ -552,6 +567,40 @@ export function Settings() {
     }
 
     setSavingName(false);
+  };
+
+  /**
+   * The wizard's inputs used to be discarded when the modal closed. Now the
+   * profile and the weigh-in persist immediately — so reopening resumes where
+   * the user left off — while the targets themselves still wait for Save.
+   */
+  const handleApplyCalculatedTargets = async (outcome: NutritionWizardOutcome) => {
+    clearMacroFeedback();
+    setMacroDraft({ ...outcome.targets, source: 'calculated' });
+    setShowNutritionWizard(false);
+
+    try {
+      await updateNutritionProfile(outcome.profile);
+    } catch {
+      setMacroError('Targets calculated, but your profile could not be saved.');
+      return;
+    }
+
+    // Only record a weigh-in when the number actually moved, so recalculating
+    // does not litter the weight series with duplicates.
+    const latestKg = latestBodyWeight ? Number(latestBodyWeight.kilograms) : null;
+    const weightChanged = latestKg == null || Math.abs(latestKg - outcome.weightKg) > 0.05;
+
+    if (user?.id && weightChanged) {
+      try {
+        await recordManualBodyWeight(user.id, outcome.weightKg);
+        await refreshBodyWeightHistory(user.id);
+      } catch {
+        // A failed weigh-in should not block the targets the user just built.
+      }
+    }
+
+    setMacroMessage('Profile saved. Review the targets below and save them.');
   };
 
   const handleSaveMacros = async () => {
@@ -674,40 +723,28 @@ export function Settings() {
             type="number"
             inputMode="numeric"
             value={macros.calories}
-            onChange={(e) => {
-              clearMacroFeedback();
-              setMacroDraft({ ...macros, calories: parseInt(e.target.value, 10) || 0 });
-            }}
+            onChange={(e) => editMacro('calories', e.target.value)}
           />
           <Input
             label="Protein (g)"
             type="number"
             inputMode="numeric"
             value={macros.protein}
-            onChange={(e) => {
-              clearMacroFeedback();
-              setMacroDraft({ ...macros, protein: parseInt(e.target.value, 10) || 0 });
-            }}
+            onChange={(e) => editMacro('protein', e.target.value)}
           />
           <Input
             label="Carbs (g)"
             type="number"
             inputMode="numeric"
             value={macros.carbs}
-            onChange={(e) => {
-              clearMacroFeedback();
-              setMacroDraft({ ...macros, carbs: parseInt(e.target.value, 10) || 0 });
-            }}
+            onChange={(e) => editMacro('carbs', e.target.value)}
           />
           <Input
             label="Fat (g)"
             type="number"
             inputMode="numeric"
             value={macros.fat}
-            onChange={(e) => {
-              clearMacroFeedback();
-              setMacroDraft({ ...macros, fat: parseInt(e.target.value, 10) || 0 });
-            }}
+            onChange={(e) => editMacro('fat', e.target.value)}
           />
         </div>
 
@@ -932,17 +969,9 @@ export function Settings() {
       >
         <div className="pt-1 pb-2">
           <NutritionWizard
-            onApply={(targets) => {
-              clearMacroFeedback();
-              setMacroDraft({
-                calories: targets.calories,
-                protein: targets.protein,
-                carbs: targets.carbs,
-                fat: targets.fat,
-              });
-              setShowNutritionWizard(false);
-              setMacroMessage('Targets calculated — review and save.');
-            }}
+            initialProfile={nutritionProfile}
+            initialWeightKg={latestBodyWeight ? Number(latestBodyWeight.kilograms) : null}
+            onApply={handleApplyCalculatedTargets}
             onCancel={() => setShowNutritionWizard(false)}
           />
         </div>

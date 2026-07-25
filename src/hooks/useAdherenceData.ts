@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { subDays, format } from 'date-fns';
+import { DEFAULT_MACRO_TARGET } from '@/types';
 
 export interface DailyNutrition {
   date: string;
@@ -90,8 +91,8 @@ export function useAdherenceData() {
       // Calculate streaks (consecutive days hitting within 15% of target, looking back from today)
       let proteinStreak = 0;
       let caloriesStreak = 0;
-      const pTarget = macroTarget?.protein || 150;
-      const cTarget = macroTarget?.calories || 2000;
+      const pTarget = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
+      const cTarget = macroTarget?.calories || DEFAULT_MACRO_TARGET.calories;
 
       for (let i = 0; i < 7; i++) {
         const d = format(subDays(today, i), 'yyyy-MM-dd');

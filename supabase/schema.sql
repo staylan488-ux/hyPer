@@ -8,16 +8,17 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Body weight imported from Apple Health
+-- Body weight, imported from Apple Health or entered by hand
 CREATE TABLE IF NOT EXISTS body_weight_measurements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  source TEXT NOT NULL DEFAULT 'apple_health' CHECK (source = 'apple_health'),
+  source TEXT NOT NULL DEFAULT 'apple_health'
+    CONSTRAINT body_weight_measurements_source_allowed CHECK (source IN ('apple_health', 'manual')),
   external_id TEXT NOT NULL,
   measured_at TIMESTAMPTZ NOT NULL,
   kilograms NUMERIC(7,3) NOT NULL CHECK (kilograms > 0 AND kilograms < 500),
-  source_bundle TEXT NOT NULL,
-  source_name TEXT NOT NULL,
+  source_bundle TEXT NOT NULL DEFAULT 'manual',
+  source_name TEXT NOT NULL DEFAULT 'Manual entry',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, source, external_id)
 );
@@ -255,8 +256,40 @@ CREATE TABLE IF NOT EXISTS macro_targets (
   protein INTEGER NOT NULL DEFAULT 150,
   carbs INTEGER NOT NULL DEFAULT 200,
   fat INTEGER NOT NULL DEFAULT 65,
+  -- 'manual' means the user typed it; the adaptive loop never overwrites those
+  source TEXT NOT NULL DEFAULT 'manual'
+    CONSTRAINT macro_targets_source_check CHECK (source IN ('manual', 'calculated', 'adaptive')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id)
+);
+
+-- Nutrition profile: the persisted inputs behind the macro targets, plus the
+-- expenditure the adaptive layer learns from logged intake vs weight trend.
+-- Current bodyweight is NOT here — body_weight_measurements is the source of
+-- truth for that.
+CREATE TABLE IF NOT EXISTS nutrition_profiles (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  sex TEXT NOT NULL CHECK (sex IN ('male', 'female')),
+  birth_year SMALLINT NOT NULL CHECK (birth_year BETWEEN 1900 AND 2100),
+  height_cm NUMERIC(5,1) NOT NULL CHECK (height_cm > 50 AND height_cm < 260),
+  body_fat_pct NUMERIC(4,1)
+    CHECK (body_fat_pct IS NULL OR (body_fat_pct >= 3 AND body_fat_pct <= 60)),
+  activity TEXT NOT NULL CHECK (
+    activity IN ('sedentary', 'lightly_active', 'moderately_active', 'very_active', 'extra_active')
+  ),
+  goal TEXT NOT NULL CHECK (goal IN ('cut', 'maintain', 'lean_bulk', 'bulk')),
+  rate_pct_per_week NUMERIC(4,2) NOT NULL DEFAULT 0
+    CHECK (rate_pct_per_week >= -2 AND rate_pct_per_week <= 2),
+  unit_system TEXT NOT NULL DEFAULT 'imperial' CHECK (unit_system IN ('metric', 'imperial')),
+  adaptive_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  phase_started_on DATE NOT NULL DEFAULT CURRENT_DATE,
+  expenditure_kcal NUMERIC(7,1) CHECK (expenditure_kcal IS NULL OR expenditure_kcal > 0),
+  expenditure_confidence TEXT
+    CHECK (expenditure_confidence IS NULL OR expenditure_confidence IN ('predicted', 'learning', 'measured')),
+  expenditure_updated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Volume Landmarks (Beardsley-based)
@@ -328,6 +361,7 @@ ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_import_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nutrition_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volume_landmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
 
@@ -439,6 +473,12 @@ CREATE POLICY "Users can delete own nutrition imports" ON nutrition_import_batch
 CREATE POLICY "Users can view own macro targets" ON macro_targets FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own macro targets" ON macro_targets FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own macro targets" ON macro_targets FOR UPDATE USING (auth.uid() = user_id);
+
+-- Nutrition profile policies
+CREATE POLICY "Users can view own nutrition profile" ON nutrition_profiles FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own nutrition profile" ON nutrition_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own nutrition profile" ON nutrition_profiles FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own nutrition profile" ON nutrition_profiles FOR DELETE USING (auth.uid() = user_id);
 
 -- Volume landmarks policies
 CREATE POLICY "Users can view own volume landmarks" ON volume_landmarks FOR SELECT USING (auth.uid() = user_id);

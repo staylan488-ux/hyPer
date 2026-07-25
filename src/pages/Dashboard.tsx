@@ -18,7 +18,7 @@ import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntr
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 import { loadPlanSchedule, plannedDayForDate, type PlanSchedule } from '@/lib/planSchedule';
-import { MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
+import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
 
 interface NutritionTotals {
   calories: number;
@@ -214,7 +214,7 @@ export function Dashboard() {
   const greetingSlot = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const greeting = profile?.display_name ? `${greetingSlot}, ${profile.display_name}` : greetingSlot;
 
-  const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || 2000) - nutritionTotals.calories));
+  const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
 
@@ -275,8 +275,8 @@ export function Dashboard() {
                 <span className="t-label-sm">Energy remaining today</span>
               </div>
               <div className="space-y-5">
-                <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || 2000} unit=" kcal" />
-                <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || 150} unit=" g" />
+                <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" />
+                <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" />
               </div>
             </>
           ) : (

@@ -281,6 +281,9 @@ export interface NutritionImportBatch {
   created_at: string;
 }
 
+/** Where a saved target came from. 'manual' is never overwritten automatically. */
+export type MacroTargetSource = 'manual' | 'calculated' | 'adaptive';
+
 export interface MacroTarget {
   id: string;
   user_id: string;
@@ -288,7 +291,17 @@ export interface MacroTarget {
   protein: number;
   carbs: number;
   fat: number;
+  source?: MacroTargetSource;
+  updated_at?: string;
 }
+
+/** The single fallback used everywhere a user has not set targets yet. */
+export const DEFAULT_MACRO_TARGET = {
+  calories: 2000,
+  protein: 150,
+  carbs: 200,
+  fat: 65,
+} as const;
 
 export interface VolumeLandmark {
   id: string;
