@@ -13,16 +13,8 @@ export function formatWeight(kilograms: number, unit: WeightUnit): string {
   return kgToUnit(kilograms, unit).toFixed(1);
 }
 
-// signed change of the latest entry versus the one before it, in the display
-// unit; null when there is no previous entry to compare against
-export function weightTrendDelta(
-  kilogramsSeries: number[],
-  unit: WeightUnit,
-): number | null {
-  if (kilogramsSeries.length < 2) return null;
-  const deltaKg = kilogramsSeries[0] - kilogramsSeries[1];
-  return Math.round(kgToUnit(deltaKg, unit) * 10) / 10;
-}
+// A signed last-minus-previous delta used to live here. It reported daily water
+// weight as "trend", so it was replaced by the smoothed rate in lib/weightTrend.
 
 export function getPreferredWeightUnit(storage: Pick<Storage, 'getItem'> = localStorage): WeightUnit {
   return storage.getItem(WEIGHT_UNIT_KEY) === 'kg' ? 'kg' : 'lb';

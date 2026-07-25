@@ -40,6 +40,27 @@ export async function getBodyWeightHistory(userId: string, limit = 14): Promise<
   return (data || []) as BodyWeightMeasurement[];
 }
 
+/**
+ * Weigh-ins from the last `days` calendar days. getBodyWeightHistory limits by
+ * ROWS, so several weigh-ins in one day eat its window — the trend estimator
+ * needs a date range instead.
+ */
+export async function getBodyWeightHistorySince(
+  userId: string,
+  days: number,
+  now: Date = new Date(),
+): Promise<BodyWeightMeasurement[]> {
+  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1_000).toISOString();
+  const { data, error } = await supabase
+    .from('body_weight_measurements')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('measured_at', since)
+    .order('measured_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []) as BodyWeightMeasurement[];
+}
+
 export async function getLatestBodyWeight(userId: string): Promise<BodyWeightMeasurement | null> {
   const { data, error } = await supabase
     .from('body_weight_measurements')
