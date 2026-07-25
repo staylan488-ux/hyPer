@@ -12,11 +12,25 @@ import { canResumeWorkout } from '@/lib/workoutSessions';
 import {
   getNutritionProfile,
   isNewPhase,
+  macroInputFromProfile,
   saveNutritionProfile,
   todayIsoDate,
+  toNutritionProfileInput,
   type NutritionProfile,
   type NutritionProfileInput,
 } from '@/lib/nutritionProfile';
+import {
+  WINDOW_DAYS,
+  estimateExpenditure,
+  shouldRefreshExpenditure,
+} from '@/lib/adaptiveExpenditure';
+import { getDailyIntake } from '@/lib/nutritionIntake';
+import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeights';
+import { calculateMacroTargets } from '@/lib/nutritionCalculator';
+import { localIsoDate } from '@/lib/weightTrend';
+
+/** Pull a little more than the estimator's window so its filter has slack. */
+const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
 import type {
   Split,
   SplitDay,
@@ -220,6 +234,8 @@ interface AppState {
   // Nutrition profile (the inputs behind the targets)
   fetchNutritionProfile: () => Promise<void>;
   updateNutritionProfile: (input: NutritionProfileInput) => Promise<void>;
+  /** Re-learn expenditure from logged intake vs weight trend, then re-target. */
+  refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<void>;
 
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
@@ -2525,6 +2541,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .upsert({
         user_id: user.id,
         ...target,
+        updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id',
       })
@@ -2563,6 +2580,75 @@ export const useAppStore = create<AppState>((set, get) => ({
       : input;
 
     set({ nutritionProfile: await saveNutritionProfile(user.id, payload) });
+  },
+
+  refreshAdaptiveTargets: async (options) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const profile = get().nutritionProfile;
+    if (!profile || !profile.adaptive_enabled) return;
+    if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return;
+
+    try {
+      const latest = await getLatestBodyWeight(user.id);
+      if (!latest) return;
+      const weightKg = Number(latest.kilograms);
+      if (!Number.isFinite(weightKg) || weightKg <= 0) return;
+
+      const now = new Date();
+      const since = localIsoDate(
+        new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
+      );
+      const [weightSamples, dailyIntake] = await Promise.all([
+        getBodyWeightHistorySince(user.id, ADAPTIVE_LOOKBACK_DAYS, now),
+        getDailyIntake(user.id, since),
+      ]);
+
+      // Seed the estimator with the PREDICTED figure, so a learned value can
+      // never bootstrap itself off its own previous output.
+      const predicted = calculateMacroTargets(macroInputFromProfile(profile, weightKg, null, now));
+
+      const estimate = estimateExpenditure({
+        predictedTdee: predicted.tdee,
+        bmr: predicted.bmr,
+        weightSamples,
+        dailyIntake,
+        phaseStartedOn: profile.phase_started_on,
+        previousExpenditureKcal: profile.expenditure_kcal,
+        previousConfidence: profile.expenditure_confidence,
+        through: now,
+      });
+
+      const saved = await saveNutritionProfile(user.id, {
+        ...toNutritionProfileInput(profile),
+        expenditure_kcal: estimate.expenditureKcal,
+        expenditure_confidence: estimate.confidence,
+        expenditure_updated_at: now.toISOString(),
+      });
+      set({ nutritionProfile: saved });
+
+      // A target the user typed by hand is theirs. Never overwrite it.
+      const current = get().macroTarget;
+      if (current?.source === 'manual') return;
+      // Nothing learned yet means the existing calculated target already
+      // reflects the prediction — rewriting it would just add churn.
+      if (estimate.confidence === 'predicted') return;
+
+      const next = calculateMacroTargets(
+        macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
+      );
+      await get().updateMacroTarget({
+        calories: next.calories,
+        protein: next.protein,
+        carbs: next.carbs,
+        fat: next.fat,
+        source: 'adaptive',
+      });
+    } catch {
+      // Adaptive targets are an enhancement. A failure here must never take
+      // down the screen that triggered it.
+    }
   },
 
   fetchVolumeLandmarks: async () => {

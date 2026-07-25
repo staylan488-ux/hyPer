@@ -89,6 +89,7 @@ export function Settings() {
     nutritionProfile,
     fetchNutritionProfile,
     updateNutritionProfile,
+    refreshAdaptiveTargets,
     whoopConnection,
     fetchWhoopConnection,
     connectWhoop,
@@ -144,6 +145,7 @@ export function Settings() {
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => getPreferredWeightUnit());
   const [weighInDraft, setWeighInDraft] = useState('');
   const [weighInBusy, setWeighInBusy] = useState(false);
+  const [resumingAdaptive, setResumingAdaptive] = useState(false);
 
   // A smoothed rate of change, not a diff against yesterday's water weight.
   const weightTrend = useMemo(() => buildWeightTrend(bodyWeightHistory), [bodyWeightHistory]);
@@ -558,6 +560,27 @@ export function Settings() {
   const currentDisplayName = profile?.display_name || '';
   const displayNameChanged = normalizedDisplayName !== currentDisplayName;
 
+  // Plain English for what the app currently believes about the user's burn.
+  const expenditureDisplay = (() => {
+    const learned = nutritionProfile?.expenditure_kcal ?? null;
+    const confidence = nutritionProfile?.expenditure_confidence ?? 'predicted';
+
+    if (learned == null || confidence === 'predicted') {
+      return {
+        value: '—',
+        explanation:
+          'Still estimated from your profile. Log food and weigh in a few times a week and the app will work out your real burn, usually within three weeks.',
+      };
+    }
+
+    return {
+      value: Math.round(learned).toLocaleString(),
+      explanation: confidence === 'measured'
+        ? 'Measured from what you logged against your weight trend, not a formula. Updates weekly.'
+        : 'Being learned from your logs and weight trend — it will keep sharpening as more days come in.',
+    };
+  })();
+
   const macrosChanged =
     macros.calories !== baseMacros.calories
     || macros.protein !== baseMacros.protein
@@ -579,6 +602,24 @@ export function Settings() {
   const editMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat', raw: string) => {
     clearMacroFeedback();
     setMacroDraft({ ...macros, [field]: parseInt(raw, 10) || 0, source: 'manual' });
+  };
+
+  const handleResumeAdaptiveTargets = async () => {
+    if (resumingAdaptive) return;
+    clearMacroFeedback();
+    setResumingAdaptive(true);
+    try {
+      // Hand the target back to the loop, then let it recompute immediately
+      // rather than waiting for the next weekly window.
+      await updateMacroTarget({ ...baseMacros, source: 'calculated' });
+      setMacroDraft(null);
+      await refreshAdaptiveTargets({ force: true });
+      setMacroMessage('Adaptive targets resumed.');
+    } catch {
+      setMacroError('Could not resume adaptive targets. Please try again.');
+    } finally {
+      setResumingAdaptive(false);
+    }
   };
 
   const handleSaveDisplayName = async () => {
@@ -722,6 +763,40 @@ export function Settings() {
             </div>
           ))}
         </dl>
+
+        {/* Where the targets came from, and what the app has learned. */}
+        {nutritionProfile && (
+          <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="t-label-sm">Daily burn</span>
+              <span className="flex items-baseline gap-1.5">
+                <span className="number-medium text-[var(--color-text)]">
+                  {expenditureDisplay.value}
+                </span>
+                <span className="t-data-sm text-[var(--color-muted)]">kcal</span>
+              </span>
+            </div>
+            <p className="t-caption mt-2 max-w-[44ch]">{expenditureDisplay.explanation}</p>
+
+            {macros.source === 'manual' && (
+              <div className="mt-4">
+                <p className="t-caption max-w-[44ch]">
+                  You set these by hand, so they stay exactly as you left them.
+                </p>
+                <Button
+                  className="mt-3"
+                  variant="secondary"
+                  size="sm"
+                  loading={resumingAdaptive}
+                  disabled={resumingAdaptive}
+                  onClick={() => { void handleResumeAdaptiveTargets(); }}
+                >
+                  Resume adaptive targets
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           type="button"
