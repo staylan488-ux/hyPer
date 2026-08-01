@@ -27,10 +27,13 @@ const HOST = process.env.PHOTO_WORKER_HOST?.trim() || '127.0.0.1';
 // two full-resolution images plus JSON overhead; the client caps each data URL
 // at 4.4M chars, so this has to clear ~9MB or a two-angle meal is rejected here
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
-const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT_MS || 150_000);
+// 150s was tuned for smaller images and a lighter model; two 2576px photos
+// through Opus 5 at high effort can legitimately run longer, and a timeout here
+// throws away the whole analysis. The client allows 300s, so this stays under it.
+const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT_MS || 240_000);
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeout)
   ? Math.max(30_000, configuredCommandTimeout)
-  : 150_000;
+  : 240_000;
 const AUTH_TIMEOUT_MS = 10_000;
 const REQUIRE_ALLOWLIST = process.env.PHOTO_WORKER_REQUIRE_ALLOWLIST === '1'
   || process.env.NODE_ENV === 'production';
