@@ -1,6 +1,109 @@
 # Handoff
 
 Updated: 2026-07-22 (rev 79: stable live, split, and average pace)
+## Rev 80 — CPX21 SSH reachability diagnosis (2026-07-29)
+
+- Read-only checks confirmed the Mac is connected to Tailscale, the CPX21 peer
+  is active, and a Tailscale ping reaches it directly in about 34 ms. The
+  existing SSH private key is present with mode 0600.
+- TCP port 22 times out through both the VM's Tailscale address and its public
+  address. Direct SSH therefore fails before authentication; this is not a bad
+  key or password error. Alternate ports 2200 and 2222 also time out.
+- The private worker HTTPS endpoint on port 8443 also times out. The existing
+  handoff says the worker/bootstrap was staged but not started, so that result
+  does not independently diagnose SSH.
+- Hetzner's out-of-band console confirms Ubuntu is alive but the kernel invoked
+  the memory cgroup OOM killer against two large `python3` processes. Port 22
+  still times out after that memory was reclaimed. Memory exhaustion is a real
+  VM stability issue, but it does not by itself explain the continuing TCP drop;
+  inspect the SSH listener and firewall from the console before restarting the
+  Python workload.
+- Console evidence then confirmed `ssh.service` is active and `sshd` is
+  listening on both `0.0.0.0:22` and `[::]:22`. A fresh check still reaches the
+  VM with Tailscale ping but times out on TCP 22 through both Tailscale and the
+  public address. The remaining boundary is therefore packet filtering:
+  VM-local UFW/nftables/iptables, Tailscale access policy, and separately the
+  Hetzner public firewall for the public path.
+- UFW is active but already permits TCP 22 from `100.64.0.0/10` and all
+  inbound traffic on `tailscale0`, so UFW is not the Tailscale-path blocker.
+  A later peer check still showed the VM active with a direct WireGuard
+  endpoint, but both TSMP and ICMP Tailscale pings timed out (`tx` increased
+  while `rx` stayed at zero). The next check is the VM's Tailscale
+  `ShieldsUp` preference; if enabled, disable it with
+  `sudo tailscale set --shields-up=false`. If it is already disabled, inspect
+  the tailnet access policy before lower-level nftables/iptables rules.
+- The user confirmed `ShieldsUp` is false. Immediate retests still received no
+  TSMP or ICMP response from the otherwise-active peer. Next recover the
+  Tailscale daemon from the out-of-band console, then retest; if it remains
+  unreachable, inspect the tailnet access policy and VM nftables rules.
+- Restarting `tailscaled` from the Hetzner console restored the peer data path.
+  TSMP (27 ms), ICMP (32 ms), and key-based OpenSSH to
+  `aross@100.86.141.87` all passed immediately afterward. Both `tailscaled`
+  and `ssh` are active. The VM has 3.7 GiB RAM, about 2.9 GiB available after
+  cache reclaim, and 2.0 GiB swap with only 71 MiB used. The immediate SSH
+  outage is resolved; the earlier Python OOM remains a separate workload
+  stability issue to address before restarting the photo workers.
+- No VM, firewall, Tailscale policy, service, file, credential, or repository
+  source was changed during this diagnosis.
+
+## Rev 81 — Local Codex CLI update and authentication repair (2026-07-29)
+
+- Updated the active npm-managed Codex CLI from `0.142.0` to the current stable
+  npm release `0.146.0` using `codex update`.
+- Refreshed ChatGPT device authentication. `codex login status` is healthy and
+  a real `codex exec` request completed successfully without the previous
+  `codex_apps` HTTP 401/token-expired failure.
+- The old project-local `notify` warning no longer appears. Codex `0.146.0`
+  loads `/Users/alex/.codex/config.toml` correctly as the user configuration.
+- Removed a second, broken NVM-scoped Codex `0.116.0` installation whose native
+  binary was missing. The PATH now resolves to the healthy npm-global
+  `0.146.0` CLI, with the ChatGPT-bundled CLI as the only fallback.
+- `codex doctor` verifies installation, config, auth, MCP configuration,
+  provider reachability, WebSocket connectivity, search runtime, Git, and local
+  databases. Its `TERM=dumb` failure is specific to the noninteractive
+  diagnostic harness, not the user's real terminal. One stale historical
+  thread-row warning remains non-blocking.
+- Current bundled plugin manifests emit harmless icon/default-prompt metadata
+  warnings during `codex exec`; they do not block startup, authentication,
+  tools, or model requests and are not caused by user configuration.
+- No project source, VM, cloud service, provider secret, or production system
+  was changed.
+
+Updated: 2026-07-22 (rev 77: latest-main review and GPS diagnostic export boundary)
+
+## Rev 77 — latest-main review and GPS diagnostic export boundary
+
+- Read-only fetch on 2026-07-22 found local `main` at `b4eb3ac1` and `origin/main` six commits ahead at `9a018b23`. The new commits add the Fastlane/TestFlight ship pipeline (`e3c87f7d`) and food-photo library/either-angle changes (`387f6b7a`, `69ce0078`). They do not change GPS. The local dirty files remain `handoff.md`, user-owned `ios/App/App.xcodeproj/project.pbxproj`, and untracked `.claude/launch.json`; no pull/reset/source edit was performed.
+- Latest `origin/main` validation from an extracted clean tree using the existing locked dependency installation: `npm run test` PASS (43 files, 402 tests), `npm run lint` PASS, `npm run build` PASS, `bash -n scripts/ship.sh` PASS, and `ruby -c ios/App/fastlane/Fastfile` PASS. Build retains the known large-chunk and stale-Browserslist warnings. The archive-only validation printed a harmless `git rev-parse` failure and embedded `nogit` because an extracted archive has no `.git`; the actual ship clone does.
+- Review findings: `scripts/ship.sh` builds the production bundle ID from an arbitrary seeded `.env` without asserting production Supabase/worker identities, so a stale staging seed can upload a production-named app pointed at the wrong backend. The ship path also uploads after build without running test/lint, uses `npm install` instead of deterministic `npm ci`, and permits `BUILD_REPO` to redirect its destructive `git reset --hard` to any Git checkout without a dedicated-clone sentinel. Fix these before relying on one-command release.
+- GPS diagnostics on current `origin/main` are available only immediately after `Hold to finish`, on the `Run complete` screen, through `Export private GPS diagnostics`. The button creates `hyper-gps-<timestamp>.json` with the run summary, quality summary, and full local trace. Coordinates are not uploaded to Supabase.
+- The full trace is memory-only after finish. `serializeFinishedRun` deliberately strips `trace`, and successful Save calls `discard`; therefore Save, Discard, page/app reload, or leaving/remounting the route removes the UI export path. The current browser `Blob` + hidden-anchor download has no native Capacitor Files/Share fallback and is not yet verified on WKWebView. If export does not open Files/Share, keep the completion screen open and report it.
+- Native `HyperRunPlugin` retains the current JSONL file under Application Support until explicit native discard or the next new run reset, but the shipped UI cannot recover/export that retained file after Save. If the run was already saved, do not start another run or reinstall/delete the app; a small recovery/export build may still retrieve it from the preserved container.
+- Exact user action: while still on `Run complete`, tap `Export private GPS diagnostics`, save the JSON to Files, then attach that JSON in Codex along with the known/expected distance, route type, whether the screen was locked/backgrounded, pauses, and any observed incorrect totals. Export before Save.
+
+## Rev 76 — photo worker now authorizes production Supabase users
+
+- User clarified that the current app users authenticate against production Supabase ref `nnwfaaxmyvqsdnfcdxom`, not Hyper-Dev. For the shared photo worker, obtain both UUIDs from that production project's Authentication -> Users page and place those exact production UUIDs in `PHOTO_WORKER_ALLOWED_USER_IDS`. A same-email Hyper-Dev UUID is not interchangeable.
+- Worker commit `b0f9d039` can validate tokens from multiple Supabase projects through paired comma-separated `SUPABASE_URL` and `SUPABASE_ANON_KEY` values. If staging is no longer needed, configure only the production URL/public anon key to reduce scope; otherwise keep the existing paired production+staging configuration and allowlist only the intended production UUIDs. Never print or commit the public configuration, and never use a service-role key for token validation.
+- The one shared provider identity decision from Rev 75 remains unchanged. No production database row, worker environment, VM process, credential, or external account was changed by this clarification.
+
+## Rev 75 — one shared photo-worker identity for private testing
+
+- User explicitly declined per-user provider routing. For the private two-person test, keep one `hyper-photo` service instance and allow both users' Hyper-Dev Supabase UUIDs. Both users' photo requests will use the single provider identity authenticated on that VM. They should still use separate hyPer accounts so nutrition, WHOOP, workout, and weight data remain owner-isolated.
+- Exact app-access change is `PHOTO_WORKER_ALLOWED_USER_IDS=<owner Hyper-Dev UUID>,<friend Hyper-Dev UUID>` in `/etc/hyper/photo-worker.env`, mode `0600`, followed by a reviewed `hyper-photo-worker` restart. Both phones also need access to the private Tailscale worker URL. Do not put email addresses, ChatGPT/Claude passwords, browser cookies, tokens, or keys in the app or repository.
+- The current worker can use the owner's Codex login under the `hyper-photo` Unix user for a private development test. Authenticate on the VM with `codex login --device-auth`, verify with `codex login status`, and never copy/share `~/.codex/auth.json`. OpenAI's durable recommendation for programmatic app use remains a server-side API key before release.
+- Do not use the owner's Claude Pro/Max OAuth subscription to process the friend's app requests. Anthropic's current policy explicitly prohibits third-party developers from routing app requests through Free/Pro/Max credentials on behalf of users. Leave Claude disabled for the shared test or configure an app-owned, server-side Anthropic Console API key in the protected VM environment. This is a provider-policy constraint, not a per-user-routing requirement.
+- No VM, Supabase, tailnet, credential, process, source, or external account was changed. These steps require the owner's explicit infrastructure approval and interactive authentication.
+
+## Rev 74 — second-user photo-worker authentication boundary
+
+- Current checkout is `main` at `b4eb3ac1`. Preserve the existing user-owned `ios/App/App.xcodeproj/project.pbxproj` modification and untracked `.claude/launch.json`. No source, VM, Supabase, credential, service, or external-account change was made during this investigation.
+- Photo logging has two independent auth layers. The iPhone sends the signed-in user's Supabase access token; the worker validates it against the configured staging/production Supabase projects and then checks `PHOTO_WORKER_ALLOWED_USER_IDS`. The VM separately authenticates its OpenAI/Anthropic provider process. Adding a Supabase UUID does not grant or select an LLM subscription.
+- To grant the friend app-level access, first have the friend sign in to **hyPer Dev** with their own Hyper-Dev account. Copy that user's UUID from Hyper-Dev Supabase Authentication -> Users and add it, comma-separated with the owner's UUID, to `/etc/hyper/photo-worker.env` as `PHOTO_WORKER_ALLOWED_USER_IDS`. Never use email addresses or paste provider credentials into the app/repo. Both phones must also reach the private Tailscale worker URL. Editing `/etc`, tailnet membership, and restarting `hyper-photo-worker` remain explicit-approval infrastructure actions.
+- The current server has one `hyper-photo` service instance, one Codex identity, one Claude identity, and one worker URL. Both allowlisted users would therefore consume the same provider identity. Per-user provider routing is not implemented. If provider billing/auth must be separate, run distinct Unix users/service instances/ports with one Supabase UUID per instance and route each user's app to its own private URL, or implement an authenticated router. Never share or copy `~/.codex/auth.json`, Claude credential files, access tokens, account passwords, or API keys between users.
+- Current official OpenAI guidance supports ChatGPT sign-in for local Codex use but recommends API-key auth for programmatic automation and says cached `auth.json` is password-equivalent. For this app, the durable recommendation is an app-owned, budget-capped server-side OpenAI API credential rather than routing a friend's photos through another person's ChatGPT subscription.
+- Current Anthropic policy is stricter: third-party developers may not offer Claude.ai login or route app requests through Free/Pro/Max credentials on behalf of users. Do not use the friend's Claude subscription or `claude setup-token` for Hyper photo logging. Use a server-side Anthropic Console API key or supported cloud-provider credential for an app integration. The existing `CLAUDE_CODE_OAUTH_TOKEN` path may be used only for permitted ordinary Claude Code/automation use, not as the released app's user-auth mechanism.
+- Exact safe next action: add the friend's Hyper-Dev UUID and Tailscale access first, then test the worker with an app-owned API-billed provider identity. Before an unlisted release, replace any consumer-subscription bridge with official server-side API adapters, budgets/rate limits, redacted logs, and a truthful unavailable state. The current CLI worker does not yet implement direct OpenAI/Anthropic API adapters.
 
 ## Rev 73 — two-app staging track
 
@@ -1060,3 +1163,42 @@ env.local.dev.bak.
   change; then run 100 m, 400 m, and manual Splits and verify current-lap pace,
   completed split time, and Lock Screen values. Field evidence can tune the
   display-only 4 s / 6 s constants without changing distance.
+## Rev 82 — photo analysis: Opus 5 + full-resolution images (2026-08-01)
+
+Two accuracy changes to the food-photo path, both measured-unknown until an
+eval set exists (see the caveat below).
+
+1. `ANTHROPIC_MODEL` default `claude-opus-4-8` -> `claude-opus-5`. Same price
+   ($5/$25 per MTok), stronger vision. The worker shells out to the Claude Code
+   CLI, so this is a default-only change; `PHOTO_WORKER_ANTHROPIC_MODEL` in
+   /etc/hyper/photo-worker.env still overrides it if set.
+2. Client no longer downsamples to 2048px. `MAX_IMAGE_DIMENSION` 2048 -> 2576
+   (the long edge the current vision models accept at full resolution).
+   `MAX_ANALYSIS_DATA_URL_CHARS` 2.8M -> 4.4M so the JPEG quality loop is not
+   forced to give the resolution back as compression artifacts (the byte budget
+   scales with pixel count, 2576²/2048² ~= 1.58), and the quality floor moves
+   0.45 -> 0.6. Worker `MAX_BODY_BYTES` 8MB -> 16MB accordingly: two images at
+   4.4M chars each is ~9MB, which the old 8MB cap would have rejected.
+
+CAVEAT, recorded so it is not lost: there is no ground-truth eval set for photo
+analysis, so neither change is verified to improve accuracy. Both are
+directionally supported (model capability, input fidelity) but unmeasured. The
+prerequisite for any further tuning is 20-30 scale-weighed meals logged against
+what the app returned.
+
+Rejected on purpose: instructing the model to underestimate portions. That adds
+systematic bias rather than reducing error, and it biases in the direction that
+under-reports intake. If a safety margin is wanted it belongs in the UI (show a
+range or the upper bound), not in the point estimate.
+
+Not done, highest-expected-value remaining lever: the photo path runs
+`claude --tools Read`, so the model gets one look and cannot crop or zoom to
+resolve an ambiguous item. Anthropic's Opus 5 guidance says iterative
+crop/analyze/verify tooling beats raising effort on cost-effectiveness. Needs
+sandbox review before it ships.
+
+Validation: node --check, 43 test files / 402 tests pass, tsc --noEmit clean,
+eslint clean. Not yet deployed to the VM (needs sudo on the host).
+
+This commit also lands handoff Rev 74-81, which were written by earlier Codex
+sessions and left uncommitted in the working tree.
