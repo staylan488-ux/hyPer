@@ -37,8 +37,15 @@ import {
 } from '@/lib/usdaClient';
 
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_ANALYSIS_DATA_URL_CHARS = 2_800_000;
-const MAX_IMAGE_DIMENSION = 2048;
+// 2576px is the long edge the vision models accept at full resolution; sending
+// less throws away detail before the model ever sees the plate. The byte budget
+// scales with the pixel count (2576² / 2048² ≈ 1.58) so the quality loop below
+// isn't forced to claw the resolution gain back as compression artifacts.
+const MAX_ANALYSIS_DATA_URL_CHARS = 4_400_000;
+const MAX_IMAGE_DIMENSION = 2576;
+// portion accuracy degrades badly below this; with the budget above it is
+// reached only by pathological images, which are better rejected than guessed at
+const MIN_ANALYSIS_JPEG_QUALITY = 0.6;
 
 const BarcodeScanner = lazy(() => import('./BarcodeScanner').then((module) => ({
   default: module.BarcodeScanner,
@@ -661,7 +668,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           let quality = 0.82;
           let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-          while (dataUrl.length > MAX_ANALYSIS_DATA_URL_CHARS && quality > 0.45) {
+          while (dataUrl.length > MAX_ANALYSIS_DATA_URL_CHARS && quality > MIN_ANALYSIS_JPEG_QUALITY) {
             quality -= 0.08;
             dataUrl = canvas.toDataURL('image/jpeg', quality);
           }

@@ -24,7 +24,9 @@ const DESCRIPTION_SCHEMA_PATH = path.join(ROOT, 'scripts', 'food-description-sch
 const JOB_ROOT = path.join(ROOT, '.tmp', 'food-photo-worker');
 const PORT = Number(process.env.PHOTO_WORKER_PORT || 8788);
 const HOST = process.env.PHOTO_WORKER_HOST?.trim() || '127.0.0.1';
-const MAX_BODY_BYTES = 8 * 1024 * 1024;
+// two full-resolution images plus JSON overhead; the client caps each data URL
+// at 4.4M chars, so this has to clear ~9MB or a two-angle meal is rejected here
+const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT_MS || 150_000);
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeout)
   ? Math.max(30_000, configuredCommandTimeout)
@@ -43,7 +45,7 @@ const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
   || (process.platform === 'darwin' && existsSync(BUNDLED_CODEX_PATH) ? BUNDLED_CODEX_PATH : 'codex');
 const OPENAI_MODEL = process.env.PHOTO_WORKER_OPENAI_MODEL?.trim() || 'gpt-5.6-sol';
 const OPENAI_EFFORT = process.env.PHOTO_WORKER_OPENAI_EFFORT?.trim() || 'high';
-const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL?.trim() || 'claude-opus-4-8';
+const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL?.trim() || 'claude-opus-5';
 const ANTHROPIC_EFFORT = process.env.PHOTO_WORKER_ANTHROPIC_EFFORT?.trim() || 'high';
 
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
