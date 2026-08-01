@@ -97,7 +97,10 @@ export async function analyzeFoodPhoto(input: {
   }
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 150_000);
+  // Must exceed the worker's own model-command timeout (240s) plus time to
+  // upload two full-resolution images, or the client aborts mid-analysis and
+  // the user sees a generic network failure instead of the worker's real error.
+  const timeout = window.setTimeout(() => controller.abort(), 300_000);
   try {
     const requestBody = JSON.stringify({
       provider: settings.provider,

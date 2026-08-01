@@ -1202,3 +1202,17 @@ eslint clean. Not yet deployed to the VM (needs sudo on the host).
 
 This commit also lands handoff Rev 74-81, which were written by earlier Codex
 sessions and left uncommitted in the working tree.
+
+## Rev 83 — photo analysis timeout headroom (2026-08-01)
+
+Rev 82 raised image size and switched to Opus 5 but left both timeouts at 150s,
+which was a latent race: the browser aborted at exactly the same instant the
+worker's model command did, so a slow analysis surfaced as a generic network
+failure with no worker-side error to read, and the upload time for two 2576px
+images counted against the client's budget but not the worker's.
+
+Worker `PHOTO_WORKER_COMMAND_TIMEOUT_MS` default 150s -> 240s; client abort
+150s -> 300s. The client budget must stay strictly greater than the worker's so
+the worker can return a real error instead of the client giving up blind.
+
+Validation: node --check, 43 files / 405 tests, tsc --noEmit clean, eslint clean.
