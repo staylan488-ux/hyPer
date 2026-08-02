@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
 import { useAdherenceData } from '@/hooks/useAdherenceData';
 import { useAppStore } from '@/stores/appStore';
-import { MUSCLE_GROUP_LABELS } from '@/types';
+import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS } from '@/types';
 import type { MuscleGroup } from '@/types';
 import { springs, staggerContainer, fadeUp } from '@/lib/animations';
 import { Flame, Zap, Target, Activity } from 'lucide-react';
@@ -297,8 +297,8 @@ export function AdherenceDashboard() {
   const { weeklyNutrition, streaks, liftReadiness, loading } = useAdherenceData();
   const { macroTarget } = useAppStore();
 
-  const calorieTarget = macroTarget?.calories || 2000;
-  const proteinTarget = macroTarget?.protein || 150;
+  const calorieTarget = macroTarget?.calories || DEFAULT_MACRO_TARGET.calories;
+  const proteinTarget = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
 
   return (
     <motion.div

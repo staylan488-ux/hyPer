@@ -9,6 +9,14 @@ import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
+import {
+  getNutritionProfile,
+  isNewPhase,
+  saveNutritionProfile,
+  todayIsoDate,
+  type NutritionProfile,
+  type NutritionProfileInput,
+} from '@/lib/nutritionProfile';
 import type {
   Split,
   SplitDay,
@@ -131,6 +139,7 @@ interface AppState {
   currentWorkoutDayPlan: WorkoutDayPlan | null;
   flexTemplates: FlexDayTemplate[];
   macroTarget: MacroTarget | null;
+  nutritionProfile: NutritionProfile | null;
   volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
   loading: boolean;
@@ -208,6 +217,10 @@ interface AppState {
   fetchMacroTarget: () => Promise<void>;
   updateMacroTarget: (target: Partial<MacroTarget>) => Promise<void>;
 
+  // Nutrition profile (the inputs behind the targets)
+  fetchNutritionProfile: () => Promise<void>;
+  updateNutritionProfile: (input: NutritionProfileInput) => Promise<void>;
+
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
   updateVolumeLandmark: (muscleGroup: MuscleGroup, updates: Partial<VolumeLandmark>) => Promise<void>;
@@ -222,6 +235,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentWorkoutDayPlan: null,
   flexTemplates: [],
   macroTarget: null,
+  nutritionProfile: null,
   volumeLandmarks: [],
   weeklyVolume: [],
   loading: false,
@@ -2489,11 +2503,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // maybeSingle, not single — a user with no targets yet is the normal case,
+    // not an error.
     const { data } = await supabase
       .from('macro_targets')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (data) {
       set({ macroTarget: data });
@@ -2522,6 +2538,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data) {
       set({ macroTarget: data });
     }
+  },
+
+  fetchNutritionProfile: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      set({ nutritionProfile: await getNutritionProfile(user.id) });
+    } catch {
+      // A missing table on an un-migrated client should not break the app.
+    }
+  },
+
+  updateNutritionProfile: async (input) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Changing goal or rate starts a new phase; the expenditure estimator uses
+    // that date to skip the glycogen/water transient that follows.
+    const previous = get().nutritionProfile;
+    const payload: NutritionProfileInput = isNewPhase(previous, input)
+      ? { ...input, phase_started_on: todayIsoDate() }
+      : input;
+
+    set({ nutritionProfile: await saveNutritionProfile(user.id, payload) });
   },
 
   fetchVolumeLandmarks: async () => {

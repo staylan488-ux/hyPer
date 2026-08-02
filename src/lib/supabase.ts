@@ -604,7 +604,9 @@ export interface Database {
           protein: number
           carbs: number
           fat: number
+          source: string
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -613,7 +615,9 @@ export interface Database {
           protein: number
           carbs: number
           fat: number
+          source?: string
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -622,7 +626,65 @@ export interface Database {
           protein?: number
           carbs?: number
           fat?: number
+          source?: string
           created_at?: string
+          updated_at?: string
+        }
+      }
+      nutrition_profiles: {
+        Row: {
+          user_id: string
+          sex: string
+          birth_year: number
+          height_cm: number
+          body_fat_pct: number | null
+          activity: string
+          goal: string
+          rate_pct_per_week: number
+          unit_system: string
+          adaptive_enabled: boolean
+          phase_started_on: string
+          expenditure_kcal: number | null
+          expenditure_confidence: string | null
+          expenditure_updated_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          sex: string
+          birth_year: number
+          height_cm: number
+          body_fat_pct?: number | null
+          activity: string
+          goal: string
+          rate_pct_per_week?: number
+          unit_system?: string
+          adaptive_enabled?: boolean
+          phase_started_on?: string
+          expenditure_kcal?: number | null
+          expenditure_confidence?: string | null
+          expenditure_updated_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          sex?: string
+          birth_year?: number
+          height_cm?: number
+          body_fat_pct?: number | null
+          activity?: string
+          goal?: string
+          rate_pct_per_week?: number
+          unit_system?: string
+          adaptive_enabled?: boolean
+          phase_started_on?: string
+          expenditure_kcal?: number | null
+          expenditure_confidence?: string | null
+          expenditure_updated_at?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
       volume_landmarks: {
