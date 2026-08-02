@@ -1250,3 +1250,35 @@ reversed. Doing it properly needs a snapshot column (e.g. merged_from JSONB) plu
 a prod migration; permanence is delivered here, reversibility is not.
 
 Validation: 43 files / 416 tests, tsc --noEmit clean, eslint clean.
+
+## Rev 85 — combined-meal logging + move an entry to the previous day (2026-08-02)
+
+**Log a photo breakdown as one meal.** The analyser returns one item per visible
+food because that is what makes the estimate accurate; twelve rows for one
+dinner is not how anyone reads their day. A toggle (ON by default, remembered
+per device in localStorage) collapses the reviewed breakdown into a single
+entry. Nothing is re-estimated: components are summed exactly as reviewed, and
+the model's own summary is stored as the food's description so the detail is
+folded up rather than discarded. Untoggling logs the components separately as
+before. The toggle only appears when there is more than one component.
+
+Requires `scripts/prod-cutover-food-description.sql` on prod before this ships:
+`foods` had nowhere to keep the description. The column is nullable and
+additive, so existing rows are untouched.
+
+NOTE for the requester: the describe-with-AI path was already single-item — its
+schema (`scripts/food-description-schema.json`) returns one name plus macros, not
+a breakdown. The toggle therefore applies to the photo path only, which is the
+only one that produces multiple items.
+
+**Move an entry to the previous day.** Food logged at 01:00 on a night that has
+not ended belongs to the day before. The control rewrites `date` and shifts
+`logged_at` by the same offset, so a 01:00 entry reads 01:00 on the previous day
+and stays last in that day's list rather than jumping to noon. Offered only on
+entries logged before 05:00 local while it is still before 05:00, so it cannot
+be mis-tapped on an ordinary lunch.
+
+New pure modules: `src/lib/combineMeal.ts`, `src/lib/entryDay.ts`, both fully
+unit tested (22 new tests) including month, year and leap-day boundaries.
+
+Validation: 48 files / 523 tests, tsc --noEmit clean, eslint clean, build OK.

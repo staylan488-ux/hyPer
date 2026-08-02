@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowDown, ArrowUp, GripVertical, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, MoveLeft, Pencil, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/shared';
 import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
 import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
@@ -33,6 +33,8 @@ interface NutritionGroupLedgerProps {
   onEdit: (entry: NutritionLedgerEntry) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, groupId: string | null) => void;
+  /** Present only on entries eligible for it; absent hides the control. */
+  onMoveToPreviousDay?: (id: string) => void;
   onReorderGroup: (groupId: string, direction: -1 | 1) => void;
   onDeleteGroup: (group: NutritionGroup) => void;
 }
@@ -66,6 +68,7 @@ export function NutritionGroupLedger({
   onEdit,
   onDelete,
   onMove,
+  onMoveToPreviousDay,
   onReorderGroup,
   onDeleteGroup,
 }: NutritionGroupLedgerProps) {
@@ -126,6 +129,17 @@ export function NutritionGroupLedger({
               {format(getLogDate(log), 'h:mm a')}
             </span>
             <div className="flex shrink-0">
+              {onMoveToPreviousDay && (
+                <button
+                  type="button"
+                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]"
+                  onClick={() => onMoveToPreviousDay(log.id)}
+                  aria-label="Move to yesterday"
+                  title="Move to yesterday"
+                >
+                  <MoveLeft className="w-3.5 h-3.5" strokeWidth={1.5} />
+                </button>
+              )}
               <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)]" onClick={() => onEdit(log)} aria-label="Edit entry">
                 <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
               </button>

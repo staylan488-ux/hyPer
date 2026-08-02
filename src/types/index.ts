@@ -237,6 +237,8 @@ export interface Food {
   serving_unit: string;
   source: 'custom' | 'usda' | 'fatsecret' | 'open_food_facts' | 'saved_meal' | 'manual_entry' | 'cronometer' | 'photo';
   fdc_id: string | null;
+  /** Model-written description of a meal logged as one item. */
+  description?: string | null;
   external_source?: string | null;
   external_id?: string | null;
   serving_label?: string; // display-only, e.g. "1 large"; never written to the DB

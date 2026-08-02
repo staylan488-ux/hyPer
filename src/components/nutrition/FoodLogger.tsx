@@ -25,6 +25,7 @@ import {
   type PhotoAnalysisProvider,
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
+import { combineIntoOneMeal } from '@/lib/combineMeal';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
@@ -36,6 +37,7 @@ import {
   searchUsdaFoodsSecure,
 } from '@/lib/usdaClient';
 
+const COMBINE_MEAL_KEY = 'hyper.nutrition.combine-meal';
 const MAX_UPLOAD_FILE_BYTES = 10 * 1024 * 1024;
 // 2576px is the long edge the vision models accept at full resolution; sending
 // less throws away detail before the model ever sees the plate. The byte budget
@@ -197,6 +199,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
   const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
+  // On by default: the breakdown is how the estimate is made accurate, but one
+  // row per plate is how the day stays readable. Remembered per device.
+  const [combineAsOneMeal, setCombineAsOneMeal] = useState<boolean>(() => {
+    const stored = globalThis.localStorage?.getItem(COMBINE_MEAL_KEY);
+    return stored == null ? true : stored === '1';
+  });
   const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>('openai');
   const [photoModel, setPhotoModel] = useState('');
   const [photoSummary, setPhotoSummary] = useState('');
@@ -1004,6 +1012,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         carbs: food.carbs,
         fat: food.fat,
         source: 'custom' as const,
+        // only set for a combined meal; every other custom food leaves it null
+        ...(food.description ? { description: food.description } : {}),
       };
 
       let { data: newCustomFood, error: customInsertError } = await supabase
@@ -1195,6 +1205,50 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     let savedCount = 0;
     try {
       const logSource = photoProvider === 'anthropic' ? 'photo_anthropic' : 'photo_openai';
+
+      // One entry for the whole plate. The components are summed exactly as
+      // reviewed, so nothing is re-estimated; only the presentation changes.
+      if (combineAsOneMeal && photoItems.length > 1) {
+        const meal = combineIntoOneMeal(
+          photoItems.map((item) => {
+            const totals = photoItemTotals(item);
+            return {
+              name: item.name.trim(),
+              amountGrams: item.amountGrams,
+              calories: totals.calories,
+              protein: totals.protein,
+              carbs: totals.carbs,
+              fat: totals.fat,
+            };
+          }),
+          photoSummary,
+        );
+        if (!meal) throw new Error('Could not combine the meal.');
+
+        const foodId = await upsertFoodIfNeeded({
+          id: `photo-meal-${Date.now()}`,
+          user_id: null,
+          name: meal.name,
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fat: meal.fat,
+          serving_size: meal.totalGrams,
+          serving_unit: 'g',
+          source: 'custom',
+          fdc_id: null,
+          description: meal.description,
+        });
+        if (!foodId) throw new Error('Could not save the meal.');
+        const saved = await saveNutritionEntry(foodId, 1, logSource, false);
+        if (!saved) throw new Error('Could not log the meal.');
+
+        setPhotoItems([]);
+        resetPhotoState();
+        onComplete();
+        return;
+      }
+
       for (const item of photoItems) {
         const totals = photoItemTotals(item);
         const food: Food = item.groundedFood || {
@@ -1541,6 +1595,27 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {photoError}
             </p>
           )}
+          {photoItems.length > 1 && (
+            <label className="flex items-start gap-3 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={combineAsOneMeal}
+                onChange={(event) => {
+                  setCombineAsOneMeal(event.target.checked);
+                  globalThis.localStorage?.setItem(COMBINE_MEAL_KEY, event.target.checked ? '1' : '0');
+                }}
+                className="mt-0.5 w-4 h-4 shrink-0 accent-[var(--color-accent)]"
+              />
+              <span className="min-w-0">
+                <span className="t-label-sm block">Log as one meal</span>
+                <span className="t-caption block mt-0.5">
+                  {combineAsOneMeal
+                    ? `Combines all ${photoItems.length} components into a single entry, with the description above attached.`
+                    : `Logs all ${photoItems.length} components as separate entries.`}
+                </span>
+              </span>
+            </label>
+          )}
           <div className="flex items-end gap-2">
             <div className="min-w-[4.5rem] flex-1 border-l-2 border-[var(--color-accent)] pl-3">
               <span className="t-label-sm block mb-1">Plate total</span>
@@ -1551,7 +1626,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
             <Button variant="ghost" className="shrink-0 !px-3" disabled={saving} onClick={resetPhotoState}>Retake</Button>
             <Button className="min-w-0 shrink-0 !px-4" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
-              Log {photoItems.length} item{photoItems.length === 1 ? '' : 's'}
+              {combineAsOneMeal && photoItems.length > 1
+                ? 'Log 1 meal'
+                : `Log ${photoItems.length} item${photoItems.length === 1 ? '' : 's'}`}
             </Button>
           </div>
         </div>
