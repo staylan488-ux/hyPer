@@ -17,6 +17,7 @@ import {
   nutritionGroupLabel,
   sortNutritionGroups,
 } from '@/lib/nutritionGroups';
+import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
   addDays,
@@ -347,6 +348,23 @@ export function Nutrition() {
     setShowGroupSheet(false);
   };
 
+  // Food eaten after midnight on a night that has not ended yet belongs to the
+  // day before. Offered only on late-night entries, so it cannot be mis-tapped
+  // on an ordinary lunch.
+  const moveEntryToPreviousDay = async (logId: string) => {
+    const log = selectedDayLogs.find((candidate) => candidate.id === logId);
+    if (!log) return;
+    const patch = planEntryDayMove({ date: log.date, logged_at: log.logged_at }, -1);
+    if (!patch) return;
+
+    const { error } = await supabase.from('nutrition_logs').update(patch).eq('id', logId);
+    if (error) {
+      console.error('Error moving nutrition entry to the previous day:', error);
+      return;
+    }
+    await fetchMonthLogs(selectedMonth);
+  };
+
   const moveEntry = async (logId: string, groupId: string | null) => {
     const group = groupId ? selectedDayGroups.find((candidate) => candidate.id === groupId) || null : null;
     const nextSortOrder = selectedDayLogs.filter((log) => (log.group_id || null) === groupId).length;
@@ -663,6 +681,11 @@ export function Nutrition() {
             }}
             onDelete={(id) => void handleDeleteEntry(id)}
             onMove={(id, groupId) => void moveEntry(id, groupId)}
+            onMoveToPreviousDay={
+              selectedDayLogs.some((log) => isLateNightEntry({ date: log.date, logged_at: log.logged_at }, new Date()))
+                ? (id) => void moveEntryToPreviousDay(id)
+                : undefined
+            }
             onReorderGroup={(groupId, direction) => void reorderGroup(groupId, direction)}
             onDeleteGroup={(group) => void deleteGroup(group)}
           />
