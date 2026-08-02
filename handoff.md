@@ -1282,3 +1282,42 @@ New pure modules: `src/lib/combineMeal.ts`, `src/lib/entryDay.ts`, both fully
 unit tested (22 new tests) including month, year and leap-day boundaries.
 
 Validation: 48 files / 523 tests, tsc --noEmit clean, eslint clean, build OK.
+
+## Rev 86 — GPS accuracy validated against a Strava track (2026-08-02)
+
+Compared `Evening_Run.gpx` (Strava, 2026-07-01) against a hyPer export
+(2026-07-24) over the same Berkeley loop. NOT the same run: 23 days apart.
+
+Findings, in order of what each rules out:
+
+1. **Same route.** Bounding boxes agree within 4 m; hyPer's points sit a median
+   2.8 m (p90 4.9 m) from the Strava track.
+2. **hyPer does not smooth.** Its reported 11276 m equals a plain haversine sum
+   over its own accepted points (11288 m) to within 12 m. Pause exclusion is
+   working: summing ALL points including paused ones gives 11657 m.
+3. **hyPer is internally consistent.** Integrating the Doppler speed gives
+   11307 m against 11288 m from position summation — two independent sensors
+   agreeing within 19 m (0.2%).
+4. **The paths are the same length.** Decimating both tracks to 10 s segments
+   gives 10365 m (Strava) vs 10370 m (hyPer): a 4 m difference on 10.4 km.
+5. **The excess is uniform, not localised.** Across 40 spatially matched
+   segments the hyPer/Strava ratio is a tight band (p25 1.013, median 1.035,
+   p75 1.069). A real route difference would show as one or two outliers.
+
+Conclusion: the ~327 m (0.20 mi, 3%) gap is a SMOOTHING CONVENTION difference,
+not a hyPer defect. Strava smooths before exporting; hyPer sums raw 1 Hz fixes.
+Raw signal quality is genuinely good: p50 accuracy 3.6 m, p95 5 m, 4 rejected
+samples out of 4275, 100% Doppler coverage, longest gap 1.9 s.
+
+Root mechanism worth recording: the median per-sample step is 2.87 m while
+median position accuracy is 3.66 m. At 1 Hz and running pace each segment is
+mostly noise, and noise only ever ADDS length. Any 1 Hz raw summation therefore
+over-reports; the open question is by how much.
+
+NO CODE CHANGE MADE, deliberately. Neither file is ground truth, so tuning
+hyPer's distance to match Strava would be adopting another vendor's convention,
+not becoming more accurate. Strava's smoothing can equally under-report by
+cutting corners. Resolving it needs a measured course: 4 laps of a 400 m track
+in lane 1 is exactly 1600 m. That single run yields the bias directly, after
+which a correction (longer accumulation baseline, or noise-aware gating) can be
+implemented and verified rather than guessed.
