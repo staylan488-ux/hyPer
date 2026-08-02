@@ -16,7 +16,7 @@ import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import {
   enableNativeBodyWeightSync,
-  getBodyWeightHistory,
+  getBodyWeightHistorySince,
   isHealthWeightSyncEnabled,
   recordManualBodyWeight,
   setHealthWeightSyncEnabled,
@@ -26,15 +26,20 @@ import {
 import {
   formatWeight,
   getPreferredWeightUnit,
+  kgToUnit,
   setPreferredWeightUnit,
-  weightTrendDelta,
   type WeightUnit,
 } from '@/lib/weightDisplayCore';
+import { buildWeightTrend } from '@/lib/weightTrend';
+import { lbsToKg } from '@/lib/nutritionCalculator';
 import {
   NATIVE_AUTH_CALLBACK_SCHEME,
   NativeAuth,
   isNativeIOS,
 } from '@/lib/nativeBridge';
+
+/** Enough history for a stable trend without pulling a year of rows. */
+const WEIGHT_TREND_WINDOW_DAYS = 60;
 
 interface SavedMeal {
   id: string;
@@ -137,11 +142,11 @@ export function Settings() {
   const [bodyWeightHistory, setBodyWeightHistory] = useState<BodyWeightMeasurement[]>([]);
   const [bodyWeightError, setBodyWeightError] = useState<string | null>(null);
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(() => getPreferredWeightUnit());
+  const [weighInDraft, setWeighInDraft] = useState('');
+  const [weighInBusy, setWeighInBusy] = useState(false);
 
-  const weightTrend = useMemo(
-    () => weightTrendDelta(bodyWeightHistory.map((entry) => entry.kilograms), weightUnit),
-    [bodyWeightHistory, weightUnit],
-  );
+  // A smoothed rate of change, not a diff against yesterday's water weight.
+  const weightTrend = useMemo(() => buildWeightTrend(bodyWeightHistory), [bodyWeightHistory]);
 
   const handleToggleWeightUnit = () => {
     const next: WeightUnit = weightUnit === 'lb' ? 'kg' : 'lb';
@@ -151,7 +156,7 @@ export function Settings() {
 
   const refreshBodyWeightHistory = useCallback(async (userId: string) => {
     try {
-      const history = await getBodyWeightHistory(userId);
+      const history = await getBodyWeightHistorySince(userId, WEIGHT_TREND_WINDOW_DAYS);
       setBodyWeightHistory(history);
       setLatestBodyWeight(history[0] ?? null);
       setBodyWeightError(null);
@@ -159,6 +164,29 @@ export function Settings() {
       setBodyWeightError('Could not load weight history. Pull to retry after checking your connection.');
     }
   }, []);
+
+  const handleRecordWeighIn = async () => {
+    if (!user?.id || weighInBusy) return;
+
+    const entered = parseFloat(weighInDraft);
+    if (!Number.isFinite(entered) || entered <= 0) {
+      setHealthWeightMessage('Enter a weight first.');
+      return;
+    }
+
+    setWeighInBusy(true);
+    setHealthWeightMessage(null);
+    try {
+      await recordManualBodyWeight(user.id, weightUnit === 'lb' ? lbsToKg(entered) : entered);
+      await refreshBodyWeightHistory(user.id);
+      setWeighInDraft('');
+      setHealthWeightMessage('Weigh-in recorded.');
+    } catch (error) {
+      setHealthWeightMessage(error instanceof Error ? error.message : 'Could not save that weigh-in.');
+    } finally {
+      setWeighInBusy(false);
+    }
+  };
 
   useEffect(() => {
     fetchMacroTarget();
@@ -835,7 +863,7 @@ export function Settings() {
             <div className="min-w-0">
               <p className="t-heading">Body weight</p>
               <p className="t-caption mt-1">
-                EufyLife → Apple Health → hyPer
+                Weigh in below, or let Apple Health sync your scale
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -870,15 +898,22 @@ export function Settings() {
                   {formatWeight(latestBodyWeight.kilograms, weightUnit)}
                 </span>
                 <span className="[font-family:var(--font-display)] italic text-sm text-[var(--color-text-dim)]">{weightUnit}</span>
-                {weightTrend !== null && (
+                {weightTrend.kgPerWeek !== null && (
                   <span className="t-data-sm text-[var(--color-text-dim)]">
-                    {weightTrend > 0 ? '+' : ''}{weightTrend.toFixed(1)} vs previous
+                    {weightTrend.kgPerWeek > 0 ? '+' : '−'}
+                    {Math.abs(kgToUnit(weightTrend.kgPerWeek, weightUnit)).toFixed(2)} {weightUnit}/wk
                   </span>
                 )}
               </div>
               <p className="t-caption mt-1.5">
                 {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} · {latestBodyWeight.source_name}
               </p>
+              {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
+                <p className="t-caption mt-1">
+                  Trend {formatWeight(weightTrend.latestEwmaKg, weightUnit)} {weightUnit} · smoothed over{' '}
+                  {weightTrend.observedDayCount} weigh-in{weightTrend.observedDayCount === 1 ? '' : 's'}
+                </p>
+              )}
               {bodyWeightHistory.length > 1 && (
                 <ul className="mt-4 border-t border-[var(--color-border)]">
                   {bodyWeightHistory.slice(1, 6).map((entry) => (
@@ -899,11 +934,42 @@ export function Settings() {
             <p className="t-caption mt-3">
               {bodyWeightError
                 ? bodyWeightError
-                : isNativeIOS()
-                  ? 'No weight yet. Connect Apple Health, then weigh in with your scale so EufyLife writes the entry.'
-                  : 'Weigh-ins appear here after the iPhone app syncs Apple Health.'}
+                : 'No weigh-ins yet. Record one below — a few a week is what makes your targets adapt.'}
             </p>
           )}
+
+          {/* Manual weigh-in — the adaptive targets need a weight series, and
+              not everyone has a scale that writes to Apple Health. */}
+          <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
+            <label className="t-label-sm block mb-2" htmlFor="weigh-in">Record a weigh-in</label>
+            <div className="flex items-end gap-4">
+              <div className="flex-1 min-w-0 flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+                <input
+                  id="weigh-in"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  value={weighInDraft}
+                  placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
+                  onChange={(e) => {
+                    setHealthWeightMessage(null);
+                    setWeighInDraft(e.target.value);
+                  }}
+                  className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+                />
+                <span className="t-label-sm shrink-0">{weightUnit}</span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={weighInBusy}
+                disabled={weighInBusy || weighInDraft.trim() === ''}
+                onClick={() => { void handleRecordWeighIn(); }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
 
           {isNativeIOS() && healthWeightEnabled && (
             <button
