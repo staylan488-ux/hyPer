@@ -103,3 +103,63 @@ describe('planActivityMerge', () => {
     expect(planActivityMerge([session({ id: 'a' }), session({ id: 'b', date: '2026-07-09' })])).toBeNull();
   });
 });
+
+describe('merging a WHOOP record into your own recording', () => {
+  // A run recorded in hyPer AND picked up by WHOOP is ONE event seen twice.
+  // Summing would report double the time and double the distance.
+  const gpsRun = () => session({
+    id: 'gps', source: 'manual', activity_type: 'running',
+    started_at: '2026-07-08T14:00:00.000Z', ended_at: '2026-07-08T14:40:00.000Z',
+    duration_seconds: 2400, distance_m: 8000,
+    strain: null, avg_hr: null, max_hr: null, energy_kcal: null,
+  });
+  const whoopRun = () => session({
+    id: 'whoop', source: 'whoop', activity_type: 'running',
+    started_at: '2026-07-08T14:01:00.000Z', ended_at: '2026-07-08T14:39:00.000Z',
+    duration_seconds: 2280, distance_m: 7600,
+    strain: 12.4, avg_hr: 158, max_hr: 179, energy_kcal: 640,
+  });
+
+  it('keeps your own recording as the surviving activity', () => {
+    const plan = planActivityMerge([whoopRun(), gpsRun()])!;
+    expect(plan.keepId).toBe('gps');
+    expect(plan.absorbIds).toEqual(['whoop']);
+  });
+
+  it('does not double the duration or the distance', () => {
+    const plan = planActivityMerge([gpsRun(), whoopRun()])!;
+    expect(plan.patch.duration_seconds).toBe(2400);
+    expect(plan.patch.distance_m).toBe(8000); // GPS wins over WHOOP's estimate
+  });
+
+  it('takes the physiology WHOOP actually measured', () => {
+    const plan = planActivityMerge([gpsRun(), whoopRun()])!;
+    expect(plan.patch.strain).toBe(12.4);
+    expect(plan.patch.avg_hr).toBe(158);
+    expect(plan.patch.max_hr).toBe(179);
+    expect(plan.patch.energy_kcal).toBe(640);
+  });
+
+  it('marks it user_edited so a later sync cannot undo it', () => {
+    expect(planActivityMerge([gpsRun(), whoopRun()])!.patch.user_edited).toBe(true);
+  });
+
+  it('still SUMS two separate activities that only touch at the edges', () => {
+    const morning = session({ id: 'a', duration_seconds: 1800, distance_m: 3000 });
+    const evening = session({
+      id: 'b', started_at: '2026-07-08T18:00:00.000Z', ended_at: '2026-07-08T18:30:00.000Z',
+      duration_seconds: 1800, distance_m: 3000,
+    });
+    const plan = planActivityMerge([morning, evening])!;
+    expect(plan.patch.duration_seconds).toBe(3600);
+    expect(plan.patch.distance_m).toBe(6000);
+  });
+
+  it('overlays two WHOOP records of one event without preferring either', () => {
+    const a = session({ id: 'a', source: 'whoop', duration_seconds: 1800, strain: 8 });
+    const b = session({ id: 'b', source: 'whoop', duration_seconds: 1700, strain: 11 });
+    const plan = planActivityMerge([a, b])!;
+    expect(plan.patch.duration_seconds).toBe(1800);
+    expect(plan.patch.strain).toBe(11);
+  });
+});

@@ -359,14 +359,26 @@ export function groupSegments(
   };
 
   for (const cluster of clusterSegments(whoopSegments)) {
-    // majority vote over the cluster's existing session links
+    // majority vote over the cluster's existing session links.
+    //
+    // A user merge deliberately points SEVERAL clusters at ONE session, so a
+    // session already claimed by an earlier cluster must still be votable.
+    // Excluding it left the second cluster with no target; it could not enrich a
+    // whoop host either, so it created a fresh duplicate of the activity that
+    // had just been merged away — and merging that duplicate back in re-added
+    // its metrics, inflating the survivor a little more on every sync.
+    // Mutating one session from two clusters is still forbidden: a claimed
+    // target is accepted below only on the relink-only path.
     const votes = new Map<string, number>();
     for (const segment of cluster) {
-      if (segment.session_id && sessionsById.has(segment.session_id) && !claimedSessionIds.has(segment.session_id)) {
+      if (segment.session_id && sessionsById.has(segment.session_id)) {
         votes.set(segment.session_id, (votes.get(segment.session_id) ?? 0) + 1);
       }
     }
-    const target = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const voted = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const votedSession = voted ? sessionsById.get(voted) ?? null : null;
+    const votedIsFrozen = !!votedSession && (!!votedSession.user_edited || !!votedSession.dismissed_at);
+    const target = voted && (!claimedSessionIds.has(voted) || votedIsFrozen) ? voted : null;
     const draft = buildSessionDraft(cluster);
 
     if (!target) {

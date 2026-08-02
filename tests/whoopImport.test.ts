@@ -562,3 +562,66 @@ describe('whoop import of unmapped sports', () => {
     expect(plan.creates[0].session.custom_type).toBeNull();
   });
 });
+
+describe('a user merge survives re-sync', () => {
+  // The reported bug: merge two WHOOP workouts, sync, and the second one comes
+  // back as a fresh duplicate while the survivor keeps the metrics it absorbed.
+  // Merging again re-adds them, so the survivor grows on every cycle.
+  function mergedState() {
+    const morning = makeSegment({
+      id: 'seg-m', external_id: 'ext-m',
+      started_at: isoAt(0), ended_at: isoAt(1800), duration_seconds: 1800,
+      session_id: 'merged',
+    });
+    const evening = makeSegment({
+      id: 'seg-e', external_id: 'ext-e',
+      // far enough apart that clustering keeps them separate
+      started_at: isoAt(30000), ended_at: isoAt(31800), duration_seconds: 1800,
+      session_id: 'merged',
+    });
+    const merged = makeSession({
+      id: 'merged', user_edited: true, auto_grouped: true,
+      started_at: isoAt(0), ended_at: isoAt(31800), duration_seconds: 3600,
+    });
+    return { segments: [morning, evening], sessions: [merged] };
+  }
+
+  it('does not recreate the absorbed activity', () => {
+    const { segments, sessions } = mergedState();
+    const plan = groupSegments(segments, sessions);
+    expect(plan.creates).toHaveLength(0);
+  });
+
+  it('does not delete or rewrite the survivor', () => {
+    const { segments, sessions } = mergedState();
+    const plan = groupSegments(segments, sessions);
+    expect(plan.deletes).toEqual([]);
+    expect(plan.updates).toEqual([]);
+    expect(plan.skippedUserEdited).toBe(2);
+  });
+
+  it('is stable across repeated syncs', () => {
+    const { segments, sessions } = mergedState();
+    for (let i = 0; i < 3; i += 1) {
+      const plan = groupSegments(segments, sessions);
+      expect(plan.creates).toHaveLength(0);
+      expect(plan.deletes).toEqual([]);
+    }
+  });
+
+  it('still separates two unmerged workouts', () => {
+    // the guard must not collapse genuinely distinct activities
+    const { segments } = mergedState();
+    const loose = segments.map((segment) => ({ ...segment, session_id: null }));
+    expect(groupSegments(loose, []).creates).toHaveLength(2);
+  });
+
+  it('does not let two clusters both write to one unedited session', () => {
+    const { segments } = mergedState();
+    const shared = segments.map((segment) => ({ ...segment, session_id: 'plain' }));
+    const plain = makeSession({ id: 'plain', user_edited: false, auto_grouped: true });
+    const plan = groupSegments(shared, [plain]);
+    const writes = plan.updates.filter((update) => update.sessionId === 'plain');
+    expect(writes.length).toBeLessThanOrEqual(1);
+  });
+});

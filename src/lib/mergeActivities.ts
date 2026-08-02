@@ -40,6 +40,33 @@ function maxDefined(values: Array<number | null>): number | null {
  * NOT summed: WHOOP's strain is a logarithmic daily-load score, so adding two
  * values would invent a number WHOOP never produced — the largest is kept.
  */
+/** Fraction of the shorter session that must overlap to call it one event. */
+const SAME_EVENT_OVERLAP_RATIO = 0.5;
+
+/**
+ * Two sessions are the SAME event seen twice (a hyPer recording and the WHOOP
+ * record of it) rather than two pieces of one activity, if their time windows
+ * substantially overlap. The distinction decides whether metrics are summed or
+ * overlaid, and getting it wrong double-counts a workout.
+ */
+function describesSameEvent(sessions: ActivitySession[]): boolean {
+  for (let i = 0; i < sessions.length; i += 1) {
+    for (let j = i + 1; j < sessions.length; j += 1) {
+      const aStart = earliestStart(sessions[i]);
+      const aEnd = latestEnd(sessions[i]);
+      const bStart = earliestStart(sessions[j]);
+      const bEnd = latestEnd(sessions[j]);
+      if (![aStart, aEnd, bStart, bEnd].every(Number.isFinite)) return false;
+
+      const overlap = Math.min(aEnd, bEnd) - Math.max(aStart, bStart);
+      if (overlap <= 0) return false;
+      const shorter = Math.min(aEnd - aStart, bEnd - bStart);
+      if (shorter <= 0 || overlap / shorter < SAME_EVENT_OVERLAP_RATIO) return false;
+    }
+  }
+  return true;
+}
+
 export function planActivityMerge(sessions: ActivitySession[]): MergePlan | null {
   if (sessions.length < 2) return null;
 
@@ -47,8 +74,19 @@ export function planActivityMerge(sessions: ActivitySession[]): MergePlan | null
   if (days.size !== 1) return null;
 
   const ordered = [...sessions].sort((a, b) => earliestStart(a) - earliestStart(b));
-  const keep = ordered[0];
-  const absorbed = ordered.slice(1);
+  const sameEvent = describesSameEvent(ordered);
+
+  // For one event recorded twice, the user's own recording is the primary
+  // record: it owns the type, the title and the GPS distance, and WHOOP only
+  // contributes the physiology it measured. Otherwise the earliest survives so
+  // the start time stays truthful.
+  const ownRecording = sameEvent
+    ? ordered.find((session) => session.source !== 'whoop') ?? null
+    : null;
+  const keep = ownRecording ?? ordered[0];
+  const absorbed = ordered.filter((session) => session.id !== keep.id);
+
+  if (sameEvent) return planOverlay(keep, ordered, absorbed);
 
   const starts = ordered.map(earliestStart).filter(Number.isFinite);
   const ends = ordered.map(latestEnd).filter((value) => Number.isFinite(value));
@@ -88,4 +126,65 @@ export function planActivityMerge(sessions: ActivitySession[]): MergePlan | null
   if (customType && keep.activity_type === 'other') patch.custom_type = customType;
 
   return { keepId: keep.id, absorbIds: absorbed.map((session) => session.id), patch };
+}
+
+/**
+ * One event, recorded by two sources. Nothing additive applies: summing the
+ * durations of a 40-minute run recorded twice reports 80 minutes, and summing
+ * the distances doubles it. Each field instead takes the one reading that
+ * actually measured it.
+ */
+function planOverlay(
+  keep: ActivitySession,
+  ordered: ActivitySession[],
+  absorbed: ActivitySession[],
+): MergePlan {
+  const starts = ordered.map(earliestStart).filter(Number.isFinite);
+  const ends = ordered.map(latestEnd).filter((value) => Number.isFinite(value));
+
+  // longest single observation of the event, not the sum
+  const durationSeconds = maxDefined(ordered.map((session) => session.duration_seconds));
+  const spanSeconds = starts.length > 0 && ends.length > 0
+    ? Math.round((Math.max(...ends) - Math.min(...starts)) / 1000)
+    : null;
+
+  const patch: Partial<ActivitySessionInput> = {
+    started_at: starts.length > 0 ? new Date(Math.min(...starts)).toISOString() : keep.started_at,
+    ended_at: ends.length > 0 ? new Date(Math.max(...ends)).toISOString() : keep.ended_at,
+    // the union of the observed windows bounds it; neither source can report
+    // more elapsed time than the event actually took
+    duration_seconds: durationSeconds != null && spanSeconds != null
+      ? Math.min(durationSeconds, spanSeconds)
+      : durationSeconds ?? spanSeconds,
+    // GPS beats WHOOP's estimate; fall back to whatever exists
+    distance_m: preferBySource(ordered, 'distance_m', (session) => session.source !== 'whoop')
+      ?? maxDefined(ordered.map((session) => session.distance_m)),
+    // physiology is WHOOP's to report
+    strain: maxDefined(ordered.map((session) => session.strain)),
+    max_hr: maxDefined(ordered.map((session) => session.max_hr)),
+    avg_hr: preferBySource(ordered, 'avg_hr', (session) => session.source === 'whoop')
+      ?? maxDefined(ordered.map((session) => session.avg_hr)),
+    energy_kcal: preferBySource(ordered, 'energy_kcal', (session) => session.source === 'whoop')
+      ?? maxDefined(ordered.map((session) => session.energy_kcal)),
+    user_edited: true,
+  };
+
+  const title = ordered.map((session) => session.title?.trim()).find(Boolean);
+  if (title) patch.title = title;
+  const customType = ordered.map((session) => session.custom_type?.trim()).find(Boolean);
+  if (customType && keep.activity_type === 'other') patch.custom_type = customType;
+
+  return { keepId: keep.id, absorbIds: absorbed.map((session) => session.id), patch };
+}
+
+/** First non-null value of `key` from a session matching `prefer`, else null. */
+function preferBySource(
+  sessions: ActivitySession[],
+  key: 'distance_m' | 'avg_hr' | 'energy_kcal',
+  prefer: (session: ActivitySession) => boolean,
+): number | null {
+  for (const session of sessions) {
+    if (prefer(session) && session[key] != null) return session[key] as number;
+  }
+  return null;
 }
