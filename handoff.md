@@ -1216,3 +1216,37 @@ Worker `PHOTO_WORKER_COMMAND_TIMEOUT_MS` default 150s -> 240s; client abort
 the worker can return a real error instead of the client giving up blind.
 
 Validation: node --check, 43 files / 405 tests, tsc --noEmit clean, eslint clean.
+
+## Rev 84 — merges survive WHOOP re-sync; WHOOP-into-own-recording merge (2026-08-01)
+
+**Bug: a merge was undone on every sync, and the survivor grew each time.**
+`groupSegments` excluded already-claimed sessions from the segment vote. A user
+merge deliberately points SEVERAL clusters at ONE session, so the second cluster
+found no target; it could not enrich a whoop host either (findEnrichmentHost
+skips source==='whoop'), so it created a fresh duplicate of the activity that had
+just been merged away. Merging that duplicate back in re-added its metrics, so
+duration/distance/energy inflated on every merge-sync cycle — matching the
+report that the merged activity "keeps getting longer".
+
+Fix: a claimed session is votable again, but a claimed target is only accepted on
+the relink-only path (user_edited or dismissed_at), so two clusters still cannot
+both write to one unedited session. Regression tests verified to FAIL on the old
+code (creates length 1, skippedUserEdited 1 instead of 2) and pass after.
+
+**Feature: merging a WHOOP activity into a workout recorded in hyPer.**
+planActivityMerge now distinguishes two cases by time overlap (>= 50% of the
+shorter session):
+- disjoint sessions are PIECES of one activity -> metrics sum, as before;
+- overlapping sessions are ONE event recorded twice -> metrics overlay. Duration
+  takes the longest single observation bounded by the union span rather than the
+  sum, distance prefers the non-WHOOP (GPS) reading, and strain/HR/energy take
+  WHOOP's measurements. The user's own recording survives as the primary record.
+
+Summing the overlap case would have reported a 40-minute run as 80 minutes and
+doubled its distance.
+
+Not done: UNDO. Absorbed sessions are still hard-deleted, so a merge cannot be
+reversed. Doing it properly needs a snapshot column (e.g. merged_from JSONB) plus
+a prod migration; permanence is delivered here, reversibility is not.
+
+Validation: 43 files / 416 tests, tsc --noEmit clean, eslint clean.
