@@ -410,3 +410,39 @@ describe('refresh cadence', () => {
     expect(shouldRefreshExpenditure(eightDaysAgo, TODAY)).toBe(true);
   });
 });
+
+describe('when the estimate is called measured', () => {
+  // 18 of 21 days on both series is a cadence a real person sustains. The
+  // previous 0.9 blend threshold demanded roughly 20 of 21, so the estimate
+  // reported "learning" indefinitely even while tracking well.
+  const at = (days: number) => estimateExpenditure(inputWith({
+    dailyIntake: intake(2400, days),
+    weightSamples: weighIns(82, -0.05, days),
+  }));
+
+  it('reaches measured at 18 logged days and 18 weigh-ins', () => {
+    expect(at(18).confidence).toBe('measured');
+  });
+
+  it('is still learning at 17', () => {
+    expect(at(17).confidence).toBe('learning');
+  });
+
+  it('still requires both series, not just one', () => {
+    const loggedOnly = estimateExpenditure(inputWith({
+      dailyIntake: intake(2400, 21),
+      weightSamples: weighIns(82, -0.05, 12),
+    }));
+    expect(loggedOnly.confidence).toBe('learning');
+  });
+
+  it('leaves the gate itself where it was', () => {
+    // leniency is about naming the confidence, not about qualifying earlier
+    const belowGate = estimateExpenditure(inputWith({
+      dailyIntake: intake(2400, 13),
+      weightSamples: weighIns(82, -0.05, 21),
+    }));
+    expect(belowGate.confidence).toBe('predicted');
+    expect(belowGate.measuredKcal).toBeNull();
+  });
+});

@@ -84,8 +84,24 @@ const CLAMP_HIGH = 1.4;
 
 /** Weight given to the measurement the moment it first qualifies. */
 const BLEND_AT_GATE = 0.35;
+
+/**
+ * Days of BOTH logging and weigh-ins, inside the window, at which the estimate
+ * is called measured rather than learning.
+ *
+ * Expressed in days rather than as a raw blend weight because that is the thing
+ * with a real-world meaning, and because it stays correct if the gates or the
+ * window move. A blend threshold of 0.9 previously demanded roughly 20 of 21
+ * days on both series, which almost nobody sustains, so the estimate read
+ * "learning" indefinitely even when it was in fact tracking well.
+ */
+const MEASURED_DAY_TARGET = 18;
+
 /** Above this blend weight the estimate is called measured rather than learning. */
-const MEASURED_BLEND_THRESHOLD = 0.9;
+const MEASURED_BLEND_THRESHOLD = BLEND_AT_GATE + (1 - BLEND_AT_GATE) * Math.min(
+  (MEASURED_DAY_TARGET - MIN_LOGGED_DAYS) / (WINDOW_DAYS - MIN_LOGGED_DAYS),
+  (MEASURED_DAY_TARGET - MIN_WEIGH_IN_DAYS) / (WINDOW_DAYS - MIN_WEIGH_IN_DAYS),
+);
 
 /** Cap on how far the stored figure may move in one update. */
 const MAX_STEP_FRACTION = 0.05;
