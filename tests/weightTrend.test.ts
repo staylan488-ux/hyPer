@@ -224,6 +224,32 @@ describe('weight trend', () => {
     expect(trend.observedDayCount).toBe(1);
   });
 
+  it('does not lose or duplicate a day across a daylight-saving boundary', () => {
+    // US spring-forward is 8 Mar 2026. Walking the series by adding 86,400,000
+    // ms drifts an hour here, which used to make one calendar day repeat and
+    // another vanish — silently dropping a weigh-in twice a year.
+    const daily = Array.from({ length: 21 }, (_, i) => 90 - i * 0.05);
+    const trend = buildWeightTrend(samplesFrom('2026-03-01', daily));
+
+    expect(trend.spanDays).toBe(21);
+    expect(trend.points).toHaveLength(21);
+    expect(trend.observedDayCount).toBe(21);
+    expect(trend.fittedDayCount).toBe(21);
+    expect(new Set(trend.points.map((p) => p.date)).size).toBe(21);
+    expect(trend.points.map((p) => p.dayIndex)).toEqual(daily.map((_, i) => i));
+    expect(trend.kgPerWeek as number).toBeCloseTo(-0.35, 8);
+  });
+
+  it('handles the autumn fall-back boundary too', () => {
+    // US fall-back is 1 Nov 2026.
+    const daily = Array.from({ length: 14 }, (_, i) => 80 + i * 0.05);
+    const trend = buildWeightTrend(samplesFrom('2026-10-26', daily));
+
+    expect(trend.points).toHaveLength(14);
+    expect(new Set(trend.points.map((p) => p.date)).size).toBe(14);
+    expect(trend.kgPerWeek as number).toBeCloseTo(0.35, 8);
+  });
+
   it('accepts numeric strings, as PostgREST returns for NUMERIC columns', () => {
     const trend = buildWeightTrend([
       { measured_at: new Date(2026, 6, 1, 8, 0, 0).toISOString(), kilograms: '82.400' },

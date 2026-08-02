@@ -1192,6 +1192,9 @@ describe('must-work store contracts', () => {
         protein: 180,
         carbs: 240,
         fat: 70,
+        // Stamped on every write so the adaptive loop can tell how fresh a
+        // target is; the exact instant is not part of the contract.
+        updated_at: expect.any(String),
       },
       { onConflict: 'user_id' }
     );

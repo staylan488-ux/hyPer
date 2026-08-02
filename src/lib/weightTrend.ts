@@ -91,6 +91,16 @@ function parseLocalIsoDate(iso: string): Date {
   return new Date(year, month - 1, day);
 }
 
+/**
+ * Calendar-day arithmetic, not milliseconds. Adding 86,400,000 ms repeatedly
+ * drifts by an hour across a daylight-saving boundary, which eventually makes
+ * localIsoDate repeat or skip a day — silently losing a weigh-in twice a year.
+ */
+function addLocalDays(iso: string, days: number): Date {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(year, month - 1, day + days);
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -168,17 +178,19 @@ export function buildWeightTrend(
   if (medians.size === 0) return empty;
 
   const days = [...medians.keys()].sort();
-  const firstMs = parseLocalIsoDate(days[0]).getTime();
-  const lastMs = parseLocalIsoDate(days[days.length - 1]).getTime();
+  const firstDay = days[0];
+  const lastDay = days[days.length - 1];
+  const spanDays = Math.round(
+    (parseLocalIsoDate(lastDay).getTime() - parseLocalIsoDate(firstDay).getTime()) / MS_PER_DAY
+  ) + 1;
 
   // The series stops at the last real weigh-in. Carrying a flat line forward to
   // today would invent data for someone who simply stopped weighing in.
   const points: WeightTrendPoint[] = [];
   let ewma: number | null = null;
-  let dayIndex = 0;
 
-  for (let ms = firstMs; ms <= lastMs; ms += MS_PER_DAY, dayIndex += 1) {
-    const date = localIsoDate(new Date(ms));
+  for (let dayIndex = 0; dayIndex < spanDays; dayIndex += 1) {
+    const date = localIsoDate(addLocalDays(firstDay, dayIndex));
     const observed = medians.get(date) ?? null;
 
     // Judge the reading against the smoothed value as it stood BEFORE this day.
@@ -218,6 +230,6 @@ export function buildWeightTrend(
     kgPerWeek: slopeKgPerDay == null ? null : slopeKgPerDay * 7,
     observedDayCount: medians.size,
     fittedDayCount: fitted.length,
-    spanDays: Math.round((lastMs - firstMs) / MS_PER_DAY) + 1,
+    spanDays,
   };
 }

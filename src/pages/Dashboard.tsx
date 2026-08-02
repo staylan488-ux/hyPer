@@ -46,6 +46,8 @@ export function Dashboard() {
     weeklyVolume,
     workoutMode,
     fetchMacroTarget,
+    fetchNutritionProfile,
+    refreshAdaptiveTargets,
     fetchVolumeLandmarks,
     calculateWeeklyVolume,
     fetchSplits,
@@ -152,12 +154,16 @@ export function Dashboard() {
         fetchWorkoutMode(),
         fetchNutritionTotals(),
         fetchTodayStatus(),
+        fetchNutritionProfile(),
       ]);
       setLoading(false);
+
+      // Re-learn expenditure at most weekly, after the screen is already up.
+      void refreshAdaptiveTargets();
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode]);
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode, refreshAdaptiveTargets]);
 
   // Flex-rotation schedules advance by completed sessions since the plan start
   useEffect(() => {
