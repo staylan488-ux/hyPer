@@ -13,12 +13,10 @@ import {
   currentLapAveragePaceSecPerMile,
   currentLapDistanceM,
   currentLapSeconds,
-  currentSpeedMps,
   elapsedSeconds,
   isGpsWeak,
   isWarmingUp,
   lapActiveSeconds,
-  rollingPaceSecPerMile,
   type RunMode,
 } from '@/lib/runTracker';
 import {
@@ -131,7 +129,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   return (
     <button
       type="button"
-      className="relative w-full min-h-14 border border-[var(--color-border-strong)] overflow-hidden select-none touch-none"
+      className="relative w-full min-h-20 border-2 border-[var(--color-border-strong)] overflow-hidden select-none touch-none transition-transform duration-75 active:scale-[0.94]"
       onPointerDown={(event) => {
         event.stopPropagation();
         begin();
@@ -148,7 +146,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
         transition={holding ? { duration: HOLD_TO_FINISH_MS / 1000, ease: 'linear' } : { duration: 0.15 }}
       />
       <span
-        className={`relative z-10 t-label transition-colors ${
+        className={`relative z-10 t-label text-lg transition-colors ${
           holding ? 'text-[var(--color-base)]' : 'text-[var(--color-text)]'
         }`}
       >
@@ -235,18 +233,16 @@ export function RunTracker() {
 
   /* ── live derived values ── */
   const effectivelyPaused = tracker.resting;
-  const rollingPace = running && !effectivelyPaused ? rollingPaceSecPerMile(state, tracker.nowMs) : null;
   const averagePace = running ? averagePaceSecPerMile(state, tracker.nowMs) : null;
   const lapAveragePace = running && !effectivelyPaused
     ? currentLapAveragePaceSecPerMile(state, tracker.nowMs)
     : null;
-  // Long Run uses a robust, accuracy-aware current-speed estimate. Splits uses
-  // current-lap average pace, matching the stable workout metric runners expect.
-  const liveSpeedMps = running && !effectivelyPaused ? currentSpeedMps(state, tracker.nowMs) : null;
-  const currentPace = liveSpeedMps != null && liveSpeedMps > 0.3 ? MILE_M / liveSpeedMps : null;
-  const pace = state?.config.mode === 'intervals'
-    ? lapAveragePace
-    : currentPace ?? rollingPace ?? averagePace;
+  // Both modes show the average pace for the CURRENT SPLIT. Instantaneous pace
+  // jitters by a minute per mile between samples, which is unreadable at a
+  // glance and, per the track calibration, is the reading most distorted by the
+  // speed-dependent GPS bias. Until the first split has enough distance to mean
+  // anything, fall back to the whole-run average rather than showing nothing.
+  const pace = lapAveragePace ?? averagePace;
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
@@ -465,11 +461,14 @@ export function RunTracker() {
 
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Hit targets sized for a moving, sweating hand, and a press that is
+            unmistakable at a glance: the button inverts and scales down rather
+            than shifting a border colour nobody can see mid-stride. */}
+        <div className="flex items-stretch gap-3">
           {state.config.mode === 'intervals' && !tracker.resting && (
             <button
               type="button"
-              className="min-h-14 px-4 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
+              className="min-h-20 min-w-[6rem] flex-1 px-5 border-2 border-[var(--color-border-strong)] t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)] active:border-[var(--color-text)]"
               onClick={() => { tapHaptic(); tracker.split(); }}
             >
               Split
@@ -477,12 +476,12 @@ export function RunTracker() {
           )}
           <button
             type="button"
-            className="min-h-14 px-4 border border-[var(--color-border-strong)] t-label text-[var(--color-text)] shrink-0"
+            className="min-h-20 min-w-[6rem] flex-1 px-5 border-2 border-[var(--color-border-strong)] t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)] active:border-[var(--color-text)]"
             onClick={() => { tapHaptic(); tracker.toggleRest(); }}
           >
             {tracker.resting ? 'Resume' : 'Rest'}
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-[6rem]">
             <HoldToFinish onFinish={handleFinish} />
           </div>
         </div>
