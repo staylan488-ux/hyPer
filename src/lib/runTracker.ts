@@ -9,6 +9,7 @@
 //   sprints   — hands-free: a speed-threshold state machine with hysteresis
 //               detects each burst as one rep; no interaction required
 import type { ActivitySegmentInput, ActivitySessionInput, ActivityType } from '@/types';
+import { calibrateStepM } from './gpsCalibration';
 
 export type RunMode = 'free' | 'intervals' | 'sprints';
 
@@ -507,6 +508,12 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     return trace(next, 'jitter');
   }
   acceptedStepM ??= stepM;
+
+  // Correct the speed-dependent bias measured on a 400 m track: the raw
+  // pipeline over-reads when slow and under-reads when fast. Uses the step's
+  // own speed, so an interval session is corrected in both directions rather
+  // than the two errors cancelling into a plausible-looking total.
+  acceptedStepM = calibrateStepM(acceptedStepM, acceptedStepM / dtS);
 
   next.lastPoint = anchor;
   next.lastAcceptedMs = sample.t;

@@ -1321,3 +1321,57 @@ cutting corners. Resolving it needs a measured course: 4 laps of a 400 m track
 in lane 1 is exactly 1600 m. That single run yields the bias directly, after
 which a correction (longer accumulation baseline, or noise-aware gating) can be
 implemented and verified rather than guessed.
+
+## Rev 87 — GPS calibrated against a 400 m track; run UI changes (2026-08-02)
+
+**GPS calibration, from ground truth.** An interval session on a 400 m track
+(hyper-gps-2026-08-08T23-08-55) gave 12 laps of a known 400 m. The raw pipeline
+was NOT wrong by a constant factor; it was wrong as a function of speed, in
+opposite directions:
+
+    walking 1.4 m/s  +6.9%   jogging 3.0 m/s  +1.2%   running 4.9 m/s  -5.6%
+
+The two cancel over a mixed run, which is why this was invisible: the 12 laps
+summed to 4798 m against a true 4800 m (-0.04%) while every individual split was
+wrong by 4-9%. Totals looked perfect; splits and pace did not.
+
+Fit on 11 laps (lap 1 excluded as a GPS warm-up outlier: -5.3% where every other
+slow lap is +6 to +9%), r^2 = 0.88. Correction applied per accepted step in
+`src/lib/gpsCalibration.ts`, clamped to the calibrated 1.34-4.88 m/s range and
+hard-capped at 12%.
+
+Validation:
+- Leave-one-out CV: mean absolute lap error 23.9 m -> 9.6 m, a 60% reduction
+  OUT of sample.
+- Independent: applied to the July Berkeley road run (different route, three
+  weeks earlier, never used in the fit), the gap to a Strava recording of the
+  same route fell from 327 m to 39 m (0.35%).
+
+This supersedes Rev 86's conclusion. Rev 86 said the discrepancy was a smoothing
+convention and declined to correct it, which was right given the evidence then;
+the track run supplied the ground truth that was missing.
+
+**Shake-to-undo suppressed during a run** (`HyperRunPlugin.swift`): running
+shakes the phone enough to trigger iOS Shake to Undo, throwing a modal "Undo
+Typing" alert over the run screen. Now disabled in `beginPlatformRecording` and
+restored in `stopPlatformRecording`, so undo behaves normally elsewhere. The
+idle timer is disabled for the same window so the screen does not lock
+mid-interval.
+
+**Pace display**: both modes now show the CURRENT SPLIT average, with the
+whole-run average as the secondary figure. Instantaneous pace is gone entirely,
+along with the now-unused `currentSpeedMps` / `rollingPaceSecPerMile` call
+sites. Instantaneous pace jitters by a minute per mile between samples and, per
+the calibration above, is the reading most distorted by the speed-dependent bias.
+
+**Run controls**: Split / Rest / hold-to-finish go from min-h-14 to min-h-20 with
+2px borders, and press feedback is now an inversion plus a scale-down rather than
+a border-colour change nobody can see mid-stride. The "Run" entry on the Train
+header was a t-label-sm text link; it is now a bordered button with an icon.
+
+NOTE: the calibration is from one phone, one track, one session. It should be
+re-checked if the device changes. `tests/runTracker.test.ts` "accumulates slow
+progress" now asserts against `relativeDistanceError` rather than a hard-coded
+number, because a noiseless synthetic feed is over-corrected by design.
+
+Validation: 49 files / 534 tests, tsc --noEmit clean, eslint clean, build OK.

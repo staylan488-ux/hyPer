@@ -383,6 +383,13 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func beginPlatformRecording() {
         guard !recording else { return }
+        // Running shakes the phone hard enough to trigger iOS "Shake to Undo",
+        // which throws a modal Undo Typing alert over the run screen mid-stride.
+        // Suppressed for the duration of the run and restored when it ends, so
+        // undo still works normally everywhere else in the app.
+        UIApplication.shared.applicationSupportsShakeToEdit = false
+        // A run screen the user glances at should not dim and lock mid-interval.
+        UIApplication.shared.isIdleTimerDisabled = true
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = true
         if #available(iOS 17.0, *) {
@@ -396,6 +403,8 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func stopPlatformRecording() {
         guard recording else { return }
+        UIApplication.shared.applicationSupportsShakeToEdit = true
+        UIApplication.shared.isIdleTimerDisabled = false
         locationManager.stopUpdatingLocation()
         motionManager.stopActivityUpdates()
         motion = "unknown"

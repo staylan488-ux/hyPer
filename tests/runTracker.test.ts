@@ -33,6 +33,7 @@ import {
   type TrackerState,
 } from '@/lib/runTracker';
 import { buildScenarioSamples, intervals8x400, sprints6x90m, stationaryDrift, steadyRun5k } from '@/lib/gpsScenarios';
+import { relativeDistanceError } from '@/lib/gpsCalibration';
 
 const T0 = Date.parse('2026-07-11T14:00:00.000Z');
 
@@ -116,7 +117,13 @@ describe('ingestion filters', () => {
 
     const { state } = drive(tracker, samples);
 
-    const expected = 1.5 * 117; // minus warm-up samples
+    // The scenario feeds perfect 1.5 m steps, but the pipeline now applies the
+    // speed-dependent correction measured on a 400 m track, where real GPS
+    // over-reads by ~8% at this pace. The assertion tracks that correction
+    // rather than hard-coding a number, so it stays honest if the calibration
+    // is ever refit.
+    const rawExpected = 1.5 * 117; // minus warm-up samples
+    const expected = rawExpected / (1 + relativeDistanceError(1.5));
     expect(state.totalDistanceM).toBeGreaterThan(expected * 0.95);
     expect(state.totalDistanceM).toBeLessThanOrEqual(expected * 1.05);
   });

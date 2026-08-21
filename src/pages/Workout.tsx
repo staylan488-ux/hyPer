@@ -16,6 +16,7 @@ import {
   Trash2,
   Unlink2,
   X,
+  Footprints,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -1203,8 +1204,9 @@ export function Workout() {
                 <button
                   type="button"
                   onClick={() => navigate('/train/run')}
-                  className="t-label-sm hover:text-[var(--color-text)] transition-colors"
+                  className="min-h-11 px-4 border-2 border-[var(--color-text)] t-label text-[var(--color-text)] flex items-center gap-1.5 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)]"
                 >
+                  <Footprints className="w-4 h-4" strokeWidth={1.75} />
                   Run
                 </button>
                 <span className="t-label-sm">Flexible</span>
@@ -1281,8 +1283,9 @@ export function Workout() {
               <button
                 type="button"
                 onClick={() => navigate('/train/run')}
-                className="t-label-sm hover:text-[var(--color-text)] transition-colors"
+                className="min-h-11 px-4 border-2 border-[var(--color-text)] t-label text-[var(--color-text)] flex items-center gap-1.5 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)]"
               >
+                <Footprints className="w-4 h-4" strokeWidth={1.75} />
                 Run
               </button>
               {planSchedule && (
