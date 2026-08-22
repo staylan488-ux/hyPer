@@ -4,6 +4,11 @@
 //
 // Config comes from ~/.hyper-ship/config.env (loaded by run-bot.sh) — the bot
 // token and IDs are NEVER committed (this repo is public).
+//
+// Runs under launchd (scripts/ship-bot/install-launchd.sh) with KeepAlive, so
+// the policy here is: on any unrecoverable state, log it and EXIT — launchd
+// restarts us within seconds and keeps retrying until Discord is reachable
+// again (reboot, power or internet outage).
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { spawn } from 'node:child_process';
 
@@ -110,4 +115,24 @@ function errorTail(out) {
   return (lines.slice(-6).join('\n') || out.slice(-1200)).slice(0, 1200);
 }
 
-client.login(TOKEN);
+const stamp = () => new Date().toISOString();
+
+// Connection lifecycle — discord.js reconnects on its own; we just make it
+// visible in the log so an outage is diagnosable afterwards.
+client.on('shardDisconnect', (event, id) => console.warn(`[${stamp()}] shard ${id} disconnected (${event?.code})`));
+client.on('shardReconnecting', (id) => console.log(`[${stamp()}] shard ${id} reconnecting…`));
+client.on('shardResume', (id) => console.log(`[${stamp()}] shard ${id} resumed`));
+client.on('shardError', (err, id) => console.error(`[${stamp()}] shard ${id} error:`, err?.message || err));
+client.on('invalidated', () => { console.error(`[${stamp()}] session invalidated — exiting for launchd restart`); process.exit(1); });
+
+process.on('unhandledRejection', (err) => console.error(`[${stamp()}] unhandled rejection:`, err));
+process.on('uncaughtException', (err) => { console.error(`[${stamp()}] uncaught exception — exiting for launchd restart:`, err); process.exit(1); });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log(`[${stamp()}] ${sig} — shutting down`); client.destroy(); process.exit(0); });
+
+// If Discord can't be reached (e.g. the network isn't up yet after a reboot),
+// exit non-zero; launchd's KeepAlive + ThrottleInterval turns that into a
+// retry loop instead of a silently dead bot.
+client.login(TOKEN).catch((err) => {
+  console.error(`[${stamp()}] login failed — exiting for launchd restart:`, err?.message || err);
+  process.exit(1);
+});
