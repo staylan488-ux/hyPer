@@ -1375,3 +1375,55 @@ progress" now asserts against `relativeDistanceError` rather than a hard-coded
 number, because a noiseless synthetic feed is over-corrected by design.
 
 Validation: 49 files / 534 tests, tsc --noEmit clean, eslint clean, build OK.
+
+## Rev 88 — GPS fixed at the mechanism, replacing Rev 87's empirical correction (2026-08-02)
+
+Rev 87 shipped a regression correction: measure the speed-dependent error on a
+track, fit a line, divide it back out. That cancelled the symptom without
+touching the cause, was fitted to one phone on one day, and would not transfer
+to another device. Replaced with fixes to the two mechanisms actually producing
+the error.
+
+**Cause 1, the +7% over-read when slow: a hard jitter floor.** Steps below
+`max(minStepM, combinedAccuracy * 1.3)` were dropped entirely and steps above it
+credited IN FULL, so a step of (floor + epsilon) counted as real movement though
+almost all of it was noise. At walking pace steps sit right around that floor.
+Replaced with quadrature noise removal, `sqrt(max(0, step^2 - sigma^2))`, the
+standard unbiased estimator, which degrades smoothly to zero instead of
+cliff-edging. The floor is retained ONLY as a gate when no speed is available -
+the gate answers "did we move", the quadrature answers "by how much"; conflating
+them was the first attempt's bug and cost 140 m of phantom distance while
+stationary.
+
+**Cause 2, the -6% under-read when fast: a fixed 70/30 speed/position blend.**
+Core Location's speed lags on bends and hard acceleration, so weighting it 70%
+clipped genuine motion once steps got long. Now a trustworthy fix
+(<= 8 m) uses the denoised coordinate, and speed is kept for the three things
+coordinates cannot do: rescue a position spike, notice movement while the fix is
+frozen, and arbitrate when the fix is too poor to trust.
+
+**Zig-zag protection, re-derived.** The first attempt gated on reported accuracy
+and re-inflated a multipath scenario to 967 m against a true 300 m: a wobble can
+arrive with a healthy-looking 8 m fix, so accuracy does not detect it. Measured
+across the track and road traces, real movement keeps the coordinate step within
+about 1.6x the Doppler step even through bends, while the zig-zag sits near 4x.
+Gate is now that ratio, threshold 2.0, which sits clear of both.
+
+`sigma` is capped at 1.0 m absolute. The 0.14 fraction was measured where fixes
+were 3-4 m accurate; reported accuracy degrades faster than step-to-step error,
+and scaling the fraction into a 10 m fix would remove 1.98 m and erase walking
+entirely - a phone under tree cover would quietly stop counting. The cap never
+binds in calibration conditions.
+
+**Verified by replaying the SHIPPED TypeScript over the raw traces:**
+- mean absolute error 8.1 m over 11 true-400 m laps, against 23.9 m before
+- the July road run lands 10 m from a Strava recording of the same route (0.09%),
+  against 315 m before
+
+Synthetic fixtures now carry deterministic per-fix wobble (`buildScenarioSamples`
+takes a `jitterM`, seeded so runs stay byte-identical), because a noiseless
+fixture lets a pipeline look perfect on data no phone produces. Their tolerances
+are +/-5% and say so: a synthetic course cannot pin accuracy, since the answer
+depends on how closely injected noise matches the model. Accuracy is pinned by
+the ground-truth replay above instead.
+

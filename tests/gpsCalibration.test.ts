@@ -1,70 +1,66 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  CALIBRATED_MAX_MPS,
-  CALIBRATED_MIN_MPS,
-  calibrateStepM,
-  relativeDistanceError,
+  DIFFERENTIAL_NOISE_FRACTION,
+  MAX_STEP_NOISE_M,
+  denoiseStepM,
 } from '@/lib/gpsCalibration';
 
-describe('relativeDistanceError', () => {
-  // the three points measured on the 400 m track
-  it('reports the over-read at walking pace', () => {
-    expect(relativeDistanceError(1.4)).toBeCloseTo(0.0850, 3);
+describe('denoiseStepM', () => {
+  it('leaves a long step essentially untouched', () => {
+    // at running pace the step dwarfs the noise, so almost nothing is removed
+    const out = denoiseStepM(5, 3.5, 3.5);
+    expect(out).toBeGreaterThan(4.9);
+    expect(out).toBeLessThan(5);
   });
 
-  it('crosses zero at the speed the raw pipeline happens to be right', () => {
-    expect(relativeDistanceError(3.55)).toBeCloseTo(0, 2);
+  it('takes a meaningful bite out of a walking-pace step', () => {
+    // this is the +7% over-read the 400 m track exposed
+    const out = denoiseStepM(1.4, 3.5, 3.5);
+    expect(out).toBeLessThan(1.4);
+    expect(out).toBeGreaterThan(1.1);
   });
 
-  it('reports the under-read at running pace', () => {
-    expect(relativeDistanceError(4.88)).toBeCloseTo(-0.0526, 3);
+  it('collapses to zero when movement is indistinguishable from noise', () => {
+    expect(denoiseStepM(0.4, 3.5, 3.5)).toBe(0);
   });
 
-  it('holds the correction flat outside the calibrated range', () => {
-    // extrapolating to a standstill would claim a +14% error where the true
-    // answer is that a stationary phone should accumulate nothing
-    expect(relativeDistanceError(0)).toBe(relativeDistanceError(CALIBRATED_MIN_MPS));
-    expect(relativeDistanceError(50)).toBe(relativeDistanceError(CALIBRATED_MAX_MPS));
-  });
-
-  it('is finite for nonsense input', () => {
-    expect(relativeDistanceError(Number.NaN)).toBe(0);
-  });
-});
-
-describe('calibrateStepM', () => {
-  it('shortens a slow step, which the raw pipeline over-reads', () => {
-    expect(calibrateStepM(1.4, 1.4)).toBeLessThan(1.4);
-  });
-
-  it('lengthens a fast step, which the raw pipeline under-reads', () => {
-    expect(calibrateStepM(4.88, 4.88)).toBeGreaterThan(4.88);
-  });
-
-  it('turns a true 400 m lap run fast into about 400 m', () => {
-    // a 4.88 m/s lap measured 385.1 m on the track
-    expect(calibrateStepM(385.1, 4.88)).toBeGreaterThan(395);
-    expect(calibrateStepM(385.1, 4.88)).toBeLessThan(412);
-  });
-
-  it('turns a true 400 m lap walked into about 400 m', () => {
-    // a 1.34 m/s lap measured 424.2 m
-    expect(calibrateStepM(424.2, 1.34)).toBeGreaterThan(385);
-    expect(calibrateStepM(424.2, 1.34)).toBeLessThan(405);
-  });
-
-  it('never moves a step by more than the hard cap', () => {
-    for (const v of [-5, 0, 0.1, 3, 20, 1000]) {
-      const out = calibrateStepM(10, v);
-      expect(out).toBeGreaterThan(10 / 1.13);
-      expect(out).toBeLessThan(10 * 1.14);
+  it('degrades smoothly rather than cliff-edging', () => {
+    // the old hard floor credited a step just above it IN FULL; this must not
+    let previous = 0;
+    for (const step of [0.6, 0.8, 1.0, 1.5, 2.0, 3.0]) {
+      const out = denoiseStepM(step, 3.5, 3.5);
+      expect(out).toBeGreaterThanOrEqual(previous);
+      expect(out).toBeLessThanOrEqual(step);
+      previous = out;
     }
   });
 
+  it('never removes more than the absolute cap, however bad the fix claims to be', () => {
+    // a 30 m fix would otherwise erase walking entirely under tree cover
+    const out = denoiseStepM(3, 30, 30);
+    expect(out).toBeGreaterThan(Math.sqrt(9 - MAX_STEP_NOISE_M ** 2) - 0.001);
+  });
+
+  it('scales the noise with the reported accuracy, below the cap', () => {
+    const clean = denoiseStepM(3, 2, 2);
+    const murky = denoiseStepM(3, 5, 5);
+    expect(clean).toBeGreaterThan(murky);
+  });
+
   it('never invents distance from a zero or invalid step', () => {
-    expect(calibrateStepM(0, 3)).toBe(0);
-    expect(calibrateStepM(-5, 3)).toBe(0);
-    expect(calibrateStepM(Number.NaN, 3)).toBe(0);
+    expect(denoiseStepM(0, 3, 3)).toBe(0);
+    expect(denoiseStepM(-4, 3, 3)).toBe(0);
+    expect(denoiseStepM(Number.NaN, 3, 3)).toBe(0);
+  });
+
+  it('tolerates a missing previous accuracy', () => {
+    expect(Number.isFinite(denoiseStepM(3, Number.NaN, 4))).toBe(true);
+  });
+
+  it('keeps the calibrated fraction where the track measured it', () => {
+    // 0.14 zeroes the bias at BOTH ends of the speed range; changing it
+    // reintroduces the speed-dependent error this exists to remove
+    expect(DIFFERENTIAL_NOISE_FRACTION).toBeCloseTo(0.14, 5);
   });
 });
