@@ -216,8 +216,13 @@ export function RunTracker() {
       tracker.discard();
       navigate('/history');
     } catch (error) {
+      // Surface WHY. A bare "could not save" on a phone leaves the run stuck
+      // with nothing to act on and no console to read.
       console.error('Error saving tracked run:', error);
-      setSaveError('Could not save the run. It stays here until you discard it.');
+      const reason = error instanceof Error && error.message ? error.message : null;
+      setSaveError(reason
+        ? `${reason} The run stays here until you discard it.`
+        : 'Could not save the run. It stays here until you discard it.');
     } finally {
       setSaving(false);
     }

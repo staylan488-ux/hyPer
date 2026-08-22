@@ -1427,3 +1427,30 @@ are +/-5% and say so: a synthetic course cannot pin accuracy, since the answer
 depends on how closely injected noise matches the model. Accuracy is pinned by
 the ground-truth replay above instead.
 
+## Rev 89 — describe-with-AI never researched; run-save error was swallowed (2026-08-02)
+
+**Describe with AI was answering from memory, not research.** The worker invoked
+`claude --tools WebSearch,WebFetch --permission-mode dontAsk`. Those two tools
+require permission and `dontAsk` does not prompt, so it DENIED them; the model
+then estimated from general knowledge. To its credit it said so loudly in the
+notes ("IMPORTANT - NOT RESEARCHED"), which is how this was caught. Changed to
+`bypassPermissions`. `--safe-mode` was NOT the constraint - it disables
+customizations (CLAUDE.md, plugins, MCP), not built-in tools - and is retained.
+The `--tools` allowlist is what bounds the blast radius: only WebSearch and
+WebFetch exist in that session, so this grants web reads and nothing else.
+
+**A failed run save said nothing useful.** Every failure path in
+`saveTrackedRun` returned null, and the screen showed "Could not save the run"
+with the real reason going to a console no phone user can read. The run stays on
+the device, so nothing was lost, but there was no way to act on it. Each failure
+path now throws with its reason (auth, session rejected, partial splits, segment
+linking) and the run screen displays it.
+
+IMPORTANT: this does NOT fix the save failure - the cause is still unknown. Ruled
+out so far: every column the insert writes exists in prod, `activity_type: 'run'`
+and `source: 'gps'` both satisfy their CHECK constraints, and the retry path
+handles a duplicate session. The next failed save will name the reason; act on
+that rather than guessing further.
+
+Validation: 49 files / 534 tests, tsc clean, eslint clean, build OK. Worker
+staged to the VM but NOT deployed (needs sudo).
