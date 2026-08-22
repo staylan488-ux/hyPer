@@ -9,7 +9,7 @@
 //   sprints   — hands-free: a speed-threshold state machine with hysteresis
 //               detects each burst as one rep; no interaction required
 import type { ActivitySegmentInput, ActivitySessionInput, ActivityType } from '@/types';
-import { calibrateStepM } from './gpsCalibration';
+import { denoiseStepM } from './gpsCalibration';
 
 export type RunMode = 'free' | 'intervals' | 'sprints';
 
@@ -73,6 +73,12 @@ export interface TrackerConfig {
   // when device speed is unavailable, a step must clear this multiple of the
   // combined uncertainty of the previous and current fixes.
   driftAccuracyFactor: number;
+  // at or below this reported accuracy the coordinate is trusted over the
+  // platform speed, which lags on bends and hard acceleration
+  trustedFixAccuracyM: number;
+  // a coordinate step beyond this multiple of the Doppler step is multipath
+  // zig-zag rather than running; real movement stays under about 1.6x
+  maxPositionOverSpeedRatio: number;
   warmupSamples: number;
   paceWindowS: number;
   paceMinDistanceM: number;
@@ -96,6 +102,12 @@ export const TRACKER_DEFAULTS = {
   minStepM: 2,
   stationarySpeedMps: 1.2,
   driftAccuracyFactor: 1.3,
+  // at or below this reported accuracy the coordinate is trusted over the
+  // platform speed estimate, which lags on curves and hard acceleration
+  trustedFixAccuracyM: 8,
+  // a coordinate step beyond this multiple of the Doppler step is multipath
+  // zig-zag, not running: real movement stays under ~1.6x even through bends
+  maxPositionOverSpeedRatio: 2.0,
   warmupSamples: 3,
   paceWindowS: 60,
   paceMinDistanceM: 20,
@@ -479,41 +491,72 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     return trace(next, 'stationary');
   }
 
-  // Fuse two independent estimates when they agree. Prefer speed when the
-  // coordinate is frozen, noisy, or briefly spikes; prefer coordinates when
-  // speed is absent. This avoids both zig-zag inflation and the old stuck-point
-  // failure without inventing distance across long callback gaps.
+  // Distance comes from the coordinates with the expected GPS noise removed in
+  // quadrature, rather than from a hard jitter floor plus a fixed 70/30 blend
+  // with Core Location's speed. Measured on a 400 m track, the old pair
+  // over-read 7% at walking pace (a step just above the floor was credited in
+  // full though most of it was noise) and under-read 6% at running pace (the
+  // speed term clips genuine motion once steps get long). Those cancel over a
+  // mixed run, so totals looked right while every split was wrong.
+  //
+  // Speed is kept for the three things coordinates genuinely cannot do: rescue
+  // a position spike, notice movement while the fix is frozen, and arbitrate
+  // when the fix itself is too poor to trust.
+  const prevAccuracyM = prev.accuracyM ?? sample.accuracyM;
+  const denoisedStepM = denoiseStepM(stepM, prevAccuracyM, sample.accuracyM);
+  const fixTrustworthy = sample.accuracyM <= config.trustedFixAccuracyM
+    && prevAccuracyM <= config.trustedFixAccuracyM;
+
   let acceptedStepM: number | null = null;
   let acceptedDecision: GpsSampleDecision = 'accepted_position';
+
   if (speedStepM != null) {
-    const closeAgreement = coordinatePlausible
-      && Math.abs(stepM - speedStepM) <= Math.max(0.5, speedStepM * 0.35)
-      && sample.accuracyM <= 15
-      && (prev.accuracyM ?? sample.accuracyM) <= 15;
-    if (closeAgreement) {
-      acceptedStepM = speedStepM * 0.7 + stepM * 0.3;
-      acceptedDecision = 'accepted_fused';
-    } else {
+    // Measured across both a track session and a road run, real movement keeps
+    // the coordinate step within about 1.5x the Doppler step even through
+    // bends. A coordinate zig-zagging on multipath runs several times higher,
+    // and reported accuracy does NOT flag it - the wobble can arrive with a
+    // healthy-looking 8 m fix. So the ratio, not the accuracy, is what
+    // distinguishes them.
+    const positionRunaway = speedStepM > 0
+      && stepM > speedStepM * config.maxPositionOverSpeedRatio;
+
+    if (!coordinatePlausible || positionRunaway) {
       acceptedStepM = speedStepM;
       acceptedDecision = 'accepted_speed';
+    } else if (denoisedStepM <= 0 && speedStepM >= config.minStepM) {
+      // the coordinate is frozen while the platform still reports movement
+      acceptedStepM = speedStepM;
+      acceptedDecision = 'accepted_fused';
+    } else if (fixTrustworthy) {
+      // Mild disagreement here is the platform speed lagging on a bend or a
+      // hard acceleration, not a bad coordinate. Preferring speed in this case
+      // is what clipped 6% off every fast lap.
+      acceptedStepM = denoisedStepM;
+      acceptedDecision = 'accepted_fused';
+    } else {
+      const closeAgreement = Math.abs(stepM - speedStepM) <= Math.max(0.5, speedStepM * 0.35);
+      acceptedStepM = closeAgreement ? denoisedStepM : speedStepM;
+      acceptedDecision = closeAgreement ? 'accepted_fused' : 'accepted_speed';
     }
   }
 
-  // Without a plausible speed estimate, accumulate coordinates until movement
-  // clears the combined uncertainty rather than summing every GPS wobble.
-  const combinedAccuracyM = Math.hypot(prev.accuracyM ?? sample.accuracyM, sample.accuracyM);
-  const jitterFloor = Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
-  if (acceptedStepM == null && stepM < jitterFloor) {
+  // With no usable speed there is nothing to corroborate movement, so the
+  // conservative drift gate still decides whether this is motion at all. The
+  // gate answers "did we move"; the quadrature above answers "by how much".
+  if (acceptedStepM == null) {
+    const combinedAccuracyM = Math.hypot(prevAccuracyM, sample.accuracyM);
+    const jitterFloor = Math.max(config.minStepM, combinedAccuracyM * config.driftAccuracyFactor);
+    if (stepM < jitterFloor) {
+      next.lastAcceptedMs = sample.t;
+      return trace(next, 'jitter');
+    }
+    acceptedStepM = denoisedStepM;
+  }
+
+  if (acceptedStepM <= 0) {
     next.lastAcceptedMs = sample.t;
     return trace(next, 'jitter');
   }
-  acceptedStepM ??= stepM;
-
-  // Correct the speed-dependent bias measured on a 400 m track: the raw
-  // pipeline over-reads when slow and under-reads when fast. Uses the step's
-  // own speed, so an interval session is corrected in both directions rather
-  // than the two errors cancelling into a plausible-looking total.
-  acceptedStepM = calibrateStepM(acceptedStepM, acceptedStepM / dtS);
 
   next.lastPoint = anchor;
   next.lastAcceptedMs = sample.t;

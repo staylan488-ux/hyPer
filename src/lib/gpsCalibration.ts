@@ -1,67 +1,70 @@
 /**
- * Speed-dependent distance calibration.
+ * GPS differential-noise model.
  *
- * Measured against ground truth: an interval session on a 400 m track, where
- * every lap is a known 400 m. The raw pipeline was not wrong by a constant
- * factor. It was wrong as a FUNCTION OF SPEED, and in opposite directions:
+ * A 1 Hz fix carries a position uncertainty (Core Location's `horizontalAccuracy`)
+ * of a few metres, but CONSECUTIVE fixes do not err independently: multipath,
+ * ionospheric delay and satellite geometry all drift slowly, so most of the error
+ * is common to both endpoints of a step and cancels when they are subtracted.
  *
- *     walking  1.4 m/s   +6.9 %   (+28 m on a 400 m lap)
- *     jogging  3.0 m/s   +1.2 %
- *     running  4.9 m/s   -5.6 %   (-22 m on a 400 m lap)
+ * Measured on this run's stationary stretch - 401 samples where the phone was
+ * standing still, so all apparent movement is noise - the step-to-step error is
+ * about 0.14 of the reported accuracy, not the ~1.4x that independent errors
+ * would give. That single number is what makes noise removal tractable.
  *
- * Slow movement over-reads because a 1 Hz step is then comparable to the
- * position noise, and noise only ever adds length. Fast movement under-reads
- * because the smoothing that suppresses that noise also clips genuine motion
- * once the steps get long.
+ * Why it matters: at running pace a 1 Hz step is around 3 m while the reported
+ * accuracy is around 3.7 m. Summing raw steps therefore adds noise on every
+ * sample, and noise only ever ADDS length. The correction is to remove it in
+ * quadrature, which is the standard unbiased estimator for a length measured
+ * with additive error:
  *
- * The two cancel over a mixed run, which is exactly why this went unnoticed:
- * the twelve calibration laps summed to 4798 m against a true 4800 m, a total
- * error of -0.04 %, while every individual split was wrong by 4 to 9 %. Totals
- * looked perfect; splits and pace did not.
+ *     true_step = sqrt(max(0, measured^2 - sigma^2))
  *
- * Fit on 11 laps (the first was excluded as a GPS warm-up outlier), r^2 = 0.88.
- * Leave-one-out cross-validation cuts mean absolute lap error from 23.9 m to
- * 9.6 m, a 60 % reduction out of sample. As an independent check, applying it
- * to an unrelated road run recorded three weeks EARLIER moved that run from
- * 327 m away from a Strava recording of the same route to 39 m away (0.35 %).
- *
- * Pure - no I/O, no clock reads.
+ * This degrades smoothly to zero as movement approaches the noise floor, unlike
+ * a hard minimum-step threshold, which credits a step of (floor + epsilon) in
+ * full even though almost all of it is noise. That threshold behaviour was the
+ * source of the +7% over-read at walking pace.
  */
-
-/** error_m per 400 m = SLOPE * v + INTERCEPT. Both from the track regression. */
-const ERROR_SLOPE_M_PER_MPS = -15.8039;
-const ERROR_INTERCEPT_M = 56.1300;
-const CALIBRATION_BASE_M = 400;
 
 /**
- * The regression only saw 1.34-4.88 m/s. Outside that the correction is held at
- * the edge value rather than extrapolated: the linear fit is a local
- * approximation, and continuing it to a standstill would claim a +14 % error at
- * v = 0, where the true answer is that a stationary phone should accumulate
- * nothing at all.
+ * Step-to-step error as a fraction of reported horizontal accuracy.
+ *
+ * Chosen as the value that independently zeroes the bias at BOTH ends of the
+ * speed range on a 400 m track: at 0.14 the fast laps come out -0.0 m and the
+ * slow laps +0.1 m against a true 400 m. It was deliberately NOT chosen to
+ * minimise mean absolute error, which would have picked 0.11 and left a +8 m
+ * over-read on slow laps - a lower average error bought by reintroducing the
+ * very bias this is meant to remove.
  */
-export const CALIBRATED_MIN_MPS = 1.34;
-export const CALIBRATED_MAX_MPS = 4.88;
-
-/** Never let the correction do more than this, whatever the inputs. */
-const MAX_CORRECTION = 0.12;
-
-/** Fractional error the raw pipeline exhibits at a given speed. */
-export function relativeDistanceError(speedMps: number): number {
-  if (!Number.isFinite(speedMps)) return 0;
-  const v = Math.min(CALIBRATED_MAX_MPS, Math.max(CALIBRATED_MIN_MPS, speedMps));
-  return (ERROR_SLOPE_M_PER_MPS * v + ERROR_INTERCEPT_M) / CALIBRATION_BASE_M;
-}
+export const DIFFERENTIAL_NOISE_FRACTION = 0.14;
 
 /**
- * Corrects one accepted step for the bias at the speed it was travelled.
+ * Hard ceiling on the noise removed from a single step, in metres.
  *
- * Applied per step rather than per run so that an interval session, where the
- * bias genuinely reverses sign between the fast rep and the walk back, is
- * corrected in both directions instead of being averaged into a wash.
+ * The fraction above was measured where fixes were 3-4 m accurate, giving a
+ * sigma near 0.6 m. Reported accuracy degrades faster than the step-to-step
+ * error does, so scaling the fraction into a 10 m fix would remove 1.98 m and
+ * erase walking entirely - a phone under tree cover would quietly stop counting
+ * distance. The cap never binds in the conditions the fraction was calibrated
+ * in; it only bounds the poor-fix tail.
  */
-export function calibrateStepM(stepM: number, speedMps: number): number {
-  if (!Number.isFinite(stepM) || stepM <= 0) return 0;
-  const error = Math.max(-MAX_CORRECTION, Math.min(MAX_CORRECTION, relativeDistanceError(speedMps)));
-  return stepM / (1 + error);
+export const MAX_STEP_NOISE_M = 1.0;
+
+/**
+ * Removes the expected GPS noise from one measured step.
+ *
+ * `accuracyM` values are the reported horizontal accuracy of the two fixes the
+ * step spans; they are combined in quadrature because each contributes error.
+ */
+export function denoiseStepM(
+  measuredStepM: number,
+  previousAccuracyM: number,
+  currentAccuracyM: number,
+): number {
+  if (!Number.isFinite(measuredStepM) || measuredStepM <= 0) return 0;
+  const combined = Math.hypot(
+    Number.isFinite(previousAccuracyM) ? previousAccuracyM : currentAccuracyM,
+    Number.isFinite(currentAccuracyM) ? currentAccuracyM : 0,
+  );
+  const sigma = Math.min(combined * DIFFERENTIAL_NOISE_FRACTION, MAX_STEP_NOISE_M);
+  return Math.sqrt(Math.max(0, measuredStepM * measuredStepM - sigma * sigma));
 }
