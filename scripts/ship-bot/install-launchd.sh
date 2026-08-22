@@ -35,6 +35,7 @@ PLIST
 
 UID_NUM="$(id -u)"
 launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+sleep 2  # bootout is async; give launchd a beat before re-bootstrapping
 launchctl bootstrap "gui/$UID_NUM" "$PLIST"
 launchctl kickstart -k "gui/$UID_NUM/$LABEL"
 echo "Installed $LABEL. Status:"
