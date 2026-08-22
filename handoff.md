@@ -1454,3 +1454,38 @@ that rather than guessing further.
 
 Validation: 49 files / 534 tests, tsc clean, eslint clean, build OK. Worker
 staged to the VM but NOT deployed (needs sudo).
+
+## Rev 90 — WHOOP stats on lifting workouts (2026-08-02)
+
+Completes the request Rev 83 only half-delivered. Rev 83 added overlay merge for
+`activity_sessions`, which covers a GPS run and its WHOOP record. It did NOT
+cover a LIFTING workout, which was what "flexible or structured" meant: those
+live in the `workouts` table, have no strain/HR/energy columns, and never appear
+in the activity merge picker.
+
+**Timing was the real problem.** `workouts` stores only a DATE, which would
+overlap every WHOOP record that day. `workoutTimeWindow` reconstructs the real
+window from `sets.completed_at`, widened by `created_at`/`completed_at`. A
+workout with a single timestamp gets a nominal one-hour window rather than being
+refused; one with no timing at all returns null and is simply not offered.
+
+**Attaching is reversible, and reuses the tombstone the sync already respects.**
+Attach copies strain/avg_hr/max_hr/energy_kcal onto the workout, records
+`whoop_session_id`, and sets `dismissed_at` on the WHOOP session. `dismissed_at`
+is exactly what `groupSegments` treats as "leave this alone" (whoopImport.ts:398),
+so re-sync will not recreate it as a duplicate - the same failure mode as the
+Rev 83 bug. Detach clears the columns and clears `dismissed_at`, restoring the
+activity intact. `whoop_session_id` is ON DELETE SET NULL, not CASCADE: deleting
+a WHOOP activity must never delete the user's workout.
+
+**UI lives in History, not the completion modal.** WHOOP publishes a workout
+minutes to hours after it ends, so at the moment you finish lifting there is
+usually nothing to attach. The panel appears on an expanded workout only when
+there is an unclaimed match or stats are already attached.
+
+REQUIRES `scripts/prod-cutover-workout-whoop.sql` on prod before this ships.
+All five columns are nullable and additive.
+
+Validation: 50 files / 546 tests (14 new covering window derivation, best-match
+selection, already-claimed and user-edited exclusion, and short-record
+rejection), tsc clean, eslint clean, build OK.

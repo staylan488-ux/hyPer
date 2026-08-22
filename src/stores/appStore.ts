@@ -52,6 +52,13 @@ import type {
   WhoopConnection,
 } from '@/types';
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
+import {
+  CLEARED_WHOOP_STATS,
+  findWhoopMatchForWorkout,
+  whoopStatsFor,
+  workoutTimeWindow,
+  type WhoopMatch,
+} from '@/lib/workoutWhoop';
 
 const WORKOUT_MODE_STORAGE_KEY = 'program:workout-mode';
 
@@ -209,6 +216,13 @@ interface AppState {
   connectWhoop: (returnTo?: string) => Promise<string | null>;
   disconnectWhoop: () => Promise<void>;
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
+
+  /** The WHOOP record that covers a lifting workout, if one is unclaimed. */
+  findWhoopForWorkout: (workout: Workout) => Promise<WhoopMatch | null>;
+  /** Copy a WHOOP record's physiology onto a workout and tombstone the record. */
+  attachWhoopToWorkout: (workout: Workout, session: ActivitySession) => Promise<Workout | null>;
+  /** Undo that: clear the stats and return the WHOOP record to the activity list. */
+  detachWhoopFromWorkout: (workout: Workout) => Promise<Workout | null>;
 
   // Flexible programming
   fetchWorkoutMode: () => Promise<void>;
@@ -1817,6 +1831,98 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error running whoop sync:', error);
       return null;
     }
+  },
+
+  findWhoopForWorkout: async (workout) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const window = workoutTimeWindow(workout);
+    if (!window) return null;
+
+    // a generous fetch window; findWhoopMatchForWorkout does the real filtering
+    const { data, error } = await supabase
+      .from('activity_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('source', 'whoop')
+      .gte('started_at', new Date(window.startMs - 12 * 60 * 60 * 1000).toISOString())
+      .lte('started_at', new Date(window.endMs + 12 * 60 * 60 * 1000).toISOString());
+
+    if (error) {
+      console.error('Error looking for a WHOOP record for this workout:', error);
+      return null;
+    }
+    return findWhoopMatchForWorkout(workout, (data || []) as ActivitySession[]);
+  },
+
+  attachWhoopToWorkout: async (workout, session) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('You are signed out. Sign in and try again.');
+
+    const stats = whoopStatsFor(session);
+    const { data, error } = await supabase
+      .from('workouts')
+      .update(stats)
+      .eq('id', workout.id)
+      .eq('user_id', user.id)
+      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .single();
+
+    if (error || !data) {
+      console.error('Error attaching WHOOP stats to workout:', error);
+      throw new Error(`Could not attach the WHOOP stats: ${error?.message ?? 'unknown error'}`);
+    }
+
+    // Tombstone the WHOOP session rather than deleting it. dismissed_at is the
+    // marker re-sync already respects, so the record will not be recreated as a
+    // duplicate, and clearing it later restores the activity intact.
+    const { error: dismissError } = await supabase
+      .from('activity_sessions')
+      .update({ dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', session.id)
+      .eq('user_id', user.id);
+    if (dismissError) console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
+
+    const updated = data as Workout;
+    set((state) => ({
+      currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
+    }));
+    return updated;
+  },
+
+  detachWhoopFromWorkout: async (workout) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('You are signed out. Sign in and try again.');
+
+    const sessionId = workout.whoop_session_id ?? null;
+    const { data, error } = await supabase
+      .from('workouts')
+      .update(CLEARED_WHOOP_STATS)
+      .eq('id', workout.id)
+      .eq('user_id', user.id)
+      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .single();
+
+    if (error || !data) {
+      console.error('Error detaching WHOOP stats from workout:', error);
+      throw new Error(`Could not remove the WHOOP stats: ${error?.message ?? 'unknown error'}`);
+    }
+
+    if (sessionId) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
+      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
+    }
+
+    const updated = data as Workout;
+    set((state) => ({
+      currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
+    }));
+    return updated;
   },
 
   saveTrackedRun: async (run) => {
