@@ -1821,7 +1821,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveTrackedRun: async (run) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) throw new Error('You are signed out. Sign in and try again.');
 
     const { session: sessionInput, segments: segmentInputs } = finishedRunToActivity(run, run.runId);
 
@@ -1840,17 +1840,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (existingSessionError) {
       console.error('Error checking for an existing tracked run:', existingSessionError);
-      return null;
+      throw new Error(`Could not check for an existing run: ${existingSessionError.message}`);
     }
 
     const session = existingSession as ActivitySession | null
       ?? await get().createActivitySession(sessionInput);
-    if (!session) return null;
+    if (!session) throw new Error('The run could not be created. Its activity record was rejected.');
 
     // segment external_ids are stable per run, so a retried save upserts
     // rather than duplicating splits
     const segments = await get().upsertActivitySegments(segmentInputs);
-    if (segmentInputs.length > 0 && segments.length !== segmentInputs.length) return null;
+    if (segmentInputs.length > 0 && segments.length !== segmentInputs.length) {
+      throw new Error(
+        `Only ${segments.length} of ${segmentInputs.length} splits saved. The run was not recorded.`,
+      );
+    }
     if (segments.length > 0) {
       const { error } = await supabase
         .from('activity_segments')
@@ -1859,7 +1863,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         .in('id', segments.map((segment) => segment.id));
       if (error) {
         console.error('Error linking run segments:', error);
-        return null;
+        throw new Error(`Could not attach the run's splits: ${error.message}`);
       }
     }
 

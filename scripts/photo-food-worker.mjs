@@ -299,7 +299,14 @@ async function describeWithCodex(jobDir, prompt) {
 async function describeWithClaude(jobDir, prompt) {
   const args = [
     '--print', '--output-format', 'json', '--json-schema', claudeDescriptionSchema,
-    '--tools', 'WebSearch,WebFetch', '--permission-mode', 'dontAsk', '--no-session-persistence', '--safe-mode',
+    // WebSearch and WebFetch require permission, and 'dontAsk' does not prompt,
+    // so it DENIES them - the model then answers from general knowledge while
+    // reporting that it never researched anything. The tool allowlist right
+    // above is what bounds this: only those two tools exist in the session, so
+    // bypassing the prompt grants web reads and nothing else. No Bash, no
+    // writes. ('--safe-mode' disables customizations, not tools; it was never
+    // the constraint here.)
+    '--tools', 'WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--no-session-persistence', '--safe-mode',
     '--model', ANTHROPIC_MODEL, '--effort', ANTHROPIC_EFFORT, prompt,
   ];
   const { stdout } = await runCommand('claude', args, { cwd: jobDir });
