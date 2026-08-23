@@ -54,10 +54,10 @@ import type {
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   CLEARED_WHOOP_STATS,
-  findWhoopMatchForWorkout,
+  searchWhoopForWorkout,
   whoopStatsFor,
   workoutTimeWindow,
-  type WhoopMatch,
+  type WhoopSearchResult,
 } from '@/lib/workoutWhoop';
 
 const WORKOUT_MODE_STORAGE_KEY = 'program:workout-mode';
@@ -218,7 +218,7 @@ interface AppState {
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
 
   /** The WHOOP record that covers a lifting workout, if one is unclaimed. */
-  findWhoopForWorkout: (workout: Workout) => Promise<WhoopMatch | null>;
+  findWhoopForWorkout: (workout: Workout) => Promise<WhoopSearchResult>;
   /** Copy a WHOOP record's physiology onto a workout and tombstone the record. */
   attachWhoopToWorkout: (workout: Workout, session: ActivitySession) => Promise<Workout | null>;
   /** Undo that: clear the stats and return the WHOOP record to the activity list. */
@@ -1834,11 +1834,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   findWhoopForWorkout: async (workout) => {
+    const empty = { match: null, reason: 'no_whoop_activities' as const, whoopCount: 0, bestRatio: 0 };
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) return empty;
 
     const window = workoutTimeWindow(workout);
-    if (!window) return null;
+    if (!window) return { match: null, reason: 'no_window' as const, whoopCount: 0, bestRatio: 0 };
 
     // a generous fetch window; findWhoopMatchForWorkout does the real filtering
     const { data, error } = await supabase
@@ -1851,9 +1852,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error looking for a WHOOP record for this workout:', error);
-      return null;
+      return empty;
     }
-    return findWhoopMatchForWorkout(workout, (data || []) as ActivitySession[]);
+    return searchWhoopForWorkout(workout, (data || []) as ActivitySession[]);
   },
 
   attachWhoopToWorkout: async (workout, session) => {
