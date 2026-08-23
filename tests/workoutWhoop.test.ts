@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findWhoopMatchForWorkout,
+  searchWhoopForWorkout,
   whoopStatsFor,
   workoutHasWhoopStats,
   workoutTimeWindow,
@@ -83,8 +84,12 @@ describe('findWhoopMatchForWorkout', () => {
     expect(findWhoopMatchForWorkout(workout(), [whoop({ dismissed_at: at(19, 0) })])).toBeNull();
   });
 
-  it('leaves a user-edited record alone', () => {
-    expect(findWhoopMatchForWorkout(workout(), [whoop({ user_edited: true })])).toBeNull();
+  it('DOES match a record you have merged or renamed', () => {
+    // user_edited is set by merging or renaming an activity. Excluding it made
+    // every merged WHOOP record permanently unattachable, which is most of them.
+    // Attaching is an explicit button press, so there is nothing quiet about it.
+    const match = findWhoopMatchForWorkout(workout(), [whoop({ user_edited: true })]);
+    expect(match?.session.id).toBe('a1');
   });
 
   it('ignores a non-WHOOP activity, which is the merge picker’s job', () => {
@@ -116,5 +121,38 @@ describe('workoutHasWhoopStats', () => {
   it('is false for a plain workout and true once attached', () => {
     expect(workoutHasWhoopStats(workout())).toBe(false);
     expect(workoutHasWhoopStats(workout({ strain: 11.4 }))).toBe(true);
+  });
+});
+
+describe('searchWhoopForWorkout explains an empty result', () => {
+  it('says when no WHOOP activity exists at all', () => {
+    const r = searchWhoopForWorkout(workout(), []);
+    expect(r.reason).toBe('no_whoop_activities');
+    expect(r.match).toBeNull();
+  });
+
+  it('says when every candidate is already attached elsewhere', () => {
+    const r = searchWhoopForWorkout(workout(), [whoop({ dismissed_at: at(19, 0) })]);
+    expect(r.reason).toBe('all_already_attached');
+    expect(r.whoopCount).toBe(1);
+  });
+
+  it('reports the best overlap when nothing clears the bar', () => {
+    const r = searchWhoopForWorkout(workout(), [
+      whoop({ started_at: at(19, 0), ended_at: at(20, 0) }),
+    ]);
+    expect(r.reason).toBe('no_overlap');
+    expect(r.bestRatio).toBeLessThan(0.35);
+  });
+
+  it('says when the workout has no timestamps to match against', () => {
+    const bare = workout({ sets: [] as never, created_at: undefined, completed_at: null });
+    expect(searchWhoopForWorkout(bare, [whoop()]).reason).toBe('no_window');
+  });
+
+  it('reports a match with its overlap', () => {
+    const r = searchWhoopForWorkout(workout(), [whoop()]);
+    expect(r.reason).toBe('match');
+    expect(r.bestRatio).toBeGreaterThan(0.9);
   });
 });

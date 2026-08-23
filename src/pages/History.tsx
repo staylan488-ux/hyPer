@@ -57,7 +57,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns';
-import { workoutHasWhoopStats, workoutTimeWindow, type WhoopMatch } from '@/lib/workoutWhoop';
+import { workoutHasWhoopStats, type WhoopSearchResult } from '@/lib/workoutWhoop';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -331,23 +331,23 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
  */
 function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
   const { findWhoopForWorkout, attachWhoopToWorkout, detachWhoopFromWorkout } = useAppStore();
-  const [match, setMatch] = useState<WhoopMatch | null>(null);
+  const [result, setResult] = useState<WhoopSearchResult | null>(null);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [local, setLocal] = useState<Workout>(workout);
 
   const attached = workoutHasWhoopStats(local);
-  const window = workoutTimeWindow(local);
+  const match = result?.match ?? null;
 
   useEffect(() => { setLocal(workout); }, [workout]);
   useEffect(() => {
-    if (attached) { setMatch(null); setSearched(true); return; }
+    if (attached) { setResult(null); setSearched(true); return; }
     let cancelled = false;
     setSearched(false);
     void findWhoopForWorkout(local).then((found) => {
       if (cancelled) return;
-      setMatch(found);
+      setResult(found);
       setSearched(true);
     });
     return () => { cancelled = true; };
@@ -409,11 +409,6 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
         </div>
       ) : !searched ? (
         <p className="t-caption mt-2 text-[var(--color-muted)]">Looking for a WHOOP record…</p>
-      ) : !window ? (
-        <p className="t-caption mt-2">
-          This workout has no set timestamps, so there is no time window to match a
-          WHOOP record against. Tick sets off as you go and it will find one.
-        </p>
       ) : match ? (
         <p className="t-caption mt-2">
           WHOOP recorded {activityTypeLabel(match.session).toLowerCase()} over this session
@@ -423,8 +418,13 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
         </p>
       ) : (
         <p className="t-caption mt-2">
-          No unclaimed WHOOP activity overlaps this session. It has to be a WHOOP
-          record, at least five minutes long, covering part of the same window.
+          {result?.reason === 'no_window'
+            ? 'This workout has no set timestamps, so there is no window to match against. Tick sets off as you go and it will find one.'
+            : result?.reason === 'no_whoop_activities'
+              ? 'No WHOOP activity was recorded around this session.'
+              : result?.reason === 'all_already_attached'
+                ? `All ${result.whoopCount} WHOOP ${result.whoopCount === 1 ? 'activity' : 'activities'} that day are already attached to another workout.`
+                : `${result?.whoopCount ?? 0} WHOOP ${result?.whoopCount === 1 ? 'activity' : 'activities'} that day, but the closest only overlaps ${Math.round((result?.bestRatio ?? 0) * 100)}% of this session.`}
         </p>
       )}
 

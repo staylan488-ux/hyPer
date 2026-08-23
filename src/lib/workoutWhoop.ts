@@ -77,21 +77,60 @@ export interface WhoopMatch {
 /**
  * The WHOOP record that best covers this workout.
  *
- * Only unclaimed WHOOP sessions are eligible: one already dismissed has been
- * attached somewhere (dismissed_at is the tombstone re-sync respects), and a
- * user-edited one is a deliberate record that should not be quietly absorbed.
+ * Excludes only sessions already attached elsewhere. `dismissed_at` is the
+ * tombstone re-sync respects, so a dismissed record has been claimed by another
+ * workout and must not be double-counted.
+ *
+ * `user_edited` is deliberately NOT excluded. It is set by merging or renaming
+ * an activity, and excluding it made every merged WHOOP record permanently
+ * invisible here - which is most of them, since merging duplicate WHOOP records
+ * is a normal thing to do. Attaching is an explicit button press, so there is no
+ * risk of quietly absorbing a record the user curated.
  */
 export function findWhoopMatchForWorkout(
   workout: Workout,
   sessions: ActivitySession[],
 ): WhoopMatch | null {
+  return searchWhoopForWorkout(workout, sessions).match;
+}
+
+/** Why a search came up empty, so the UI can say something useful. */
+export type WhoopSearchReason =
+  | 'match'
+  | 'no_window'
+  | 'no_whoop_activities'
+  | 'all_already_attached'
+  | 'no_overlap';
+
+export interface WhoopSearchResult {
+  match: WhoopMatch | null;
+  reason: WhoopSearchReason;
+  /** WHOOP records on the day, before any filtering. */
+  whoopCount: number;
+  /** The best overlap seen, even if it fell short. */
+  bestRatio: number;
+}
+
+export function searchWhoopForWorkout(
+  workout: Workout,
+  sessions: ActivitySession[],
+): WhoopSearchResult {
   const window = workoutTimeWindow(workout);
-  if (!window) return null;
+  const whoop = sessions.filter((session) => session.source === 'whoop');
+  if (!window) {
+    return { match: null, reason: 'no_window', whoopCount: whoop.length, bestRatio: 0 };
+  }
+  if (whoop.length === 0) {
+    return { match: null, reason: 'no_whoop_activities', whoopCount: 0, bestRatio: 0 };
+  }
 
   let best: WhoopMatch | null = null;
-  for (const session of sessions) {
-    if (session.source !== 'whoop') continue;
-    if (session.dismissed_at || session.user_edited) continue;
+  let bestRatio = 0;
+  let unclaimed = 0;
+
+  for (const session of whoop) {
+    if (session.dismissed_at) continue;
+    unclaimed += 1;
 
     const start = parse(session.started_at);
     const end = parse(session.ended_at);
@@ -99,13 +138,20 @@ export function findWhoopMatchForWorkout(
     if (end - start < MIN_CANDIDATE_MS) continue;
 
     const ratio = overlapRatioOfShorter(window, { startMs: start, endMs: end });
+    if (ratio > bestRatio) bestRatio = ratio;
     if (ratio >= WORKOUT_MATCH_OVERLAP && (!best || ratio > best.overlapRatio)) {
       best = { session, overlapRatio: ratio };
     }
   }
-  return best;
+
+  if (best) return { match: best, reason: 'match', whoopCount: whoop.length, bestRatio };
+  if (unclaimed === 0) {
+    return { match: null, reason: 'all_already_attached', whoopCount: whoop.length, bestRatio };
+  }
+  return { match: null, reason: 'no_overlap', whoopCount: whoop.length, bestRatio };
 }
 
+/** The physiology copied onto the workout. Nothing is summed or derived. */
 export interface WorkoutWhoopStats {
   strain: number | null;
   avg_hr: number | null;
@@ -114,7 +160,6 @@ export interface WorkoutWhoopStats {
   whoop_session_id: string | null;
 }
 
-/** The physiology to copy onto the workout. Nothing is summed or derived. */
 export function whoopStatsFor(session: ActivitySession): WorkoutWhoopStats {
   return {
     strain: session.strain ?? null,

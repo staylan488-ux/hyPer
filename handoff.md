@@ -1508,3 +1508,30 @@ General point worth keeping: a feature that renders nothing when it has nothing
 to show is indistinguishable from a feature that is not installed.
 
 Validation: 50 files / 546 tests, tsc clean, eslint clean, build OK.
+
+## Rev 92 — merged WHOOP activities were unattachable (2026-08-02)
+
+Rev 90 excluded `user_edited` sessions from workout matching, reasoning they
+were "a deliberate record that should not be quietly absorbed". That was wrong
+twice over:
+
+- `user_edited` is set by MERGING or renaming an activity. Merging duplicate
+  WHOOP records is a normal, encouraged action (Rev 83 exists to support it), so
+  in practice most WHOOP activities carry the flag and were permanently
+  invisible to this feature.
+- Nothing about attaching is quiet: it is an explicit button press on a named
+  record. The "quiet absorption" risk the exclusion guarded against does not
+  exist here.
+
+Only `dismissed_at` is excluded now, which genuinely means already attached
+elsewhere.
+
+`searchWhoopForWorkout` also replaces the bare match with a result carrying a
+reason (`no_window`, `no_whoop_activities`, `all_already_attached`,
+`no_overlap`) plus the WHOOP count and the best overlap seen. The panel prints
+it, so an empty state now says e.g. "2 WHOOP activities that day, but the closest
+only overlaps 18% of this session" rather than showing nothing. Combined with
+Rev 91 (never hide the panel) this makes the feature self-diagnosing from the
+phone.
+
+Validation: 50 files / 551 tests, tsc clean, eslint clean, build OK.
