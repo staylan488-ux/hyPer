@@ -57,6 +57,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns';
+import { workoutHasWhoopStats, type WhoopMatch } from '@/lib/workoutWhoop';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -317,6 +318,95 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           Save
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * WHOOP physiology on a lifting workout.
+ *
+ * Offered here rather than on the completion screen because WHOOP usually
+ * publishes a workout minutes to hours after it ends: at the moment you finish
+ * lifting there is generally nothing to attach yet.
+ */
+function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
+  const { findWhoopForWorkout, attachWhoopToWorkout, detachWhoopFromWorkout } = useAppStore();
+  const [match, setMatch] = useState<WhoopMatch | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [local, setLocal] = useState<Workout>(workout);
+
+  const attached = workoutHasWhoopStats(local);
+
+  useEffect(() => { setLocal(workout); }, [workout]);
+  useEffect(() => {
+    if (attached) { setMatch(null); return; }
+    let cancelled = false;
+    void findWhoopForWorkout(local).then((found) => { if (!cancelled) setMatch(found); });
+    return () => { cancelled = true; };
+  }, [attached, local, findWhoopForWorkout]);
+
+  const run = async (fn: () => Promise<Workout | null>) => {
+    setBusy(true); setError(null);
+    try {
+      const next = await fn();
+      if (next) setLocal(next);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'That did not work.');
+    } finally { setBusy(false); }
+  };
+
+  if (!attached && !match) return null;
+
+  return (
+    <div className="border-t border-[var(--color-border)] pt-4 mb-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="t-label">WHOOP</p>
+        {attached ? (
+          <button
+            type="button"
+            className="t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            disabled={busy}
+            onClick={() => void run(() => detachWhoopFromWorkout(local))}
+          >
+            Remove
+          </button>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={busy}
+            onClick={() => match && void run(() => attachWhoopToWorkout(local, match.session))}
+          >
+            Add WHOOP stats
+          </Button>
+        )}
+      </div>
+
+      {attached ? (
+        <div className="grid grid-cols-4 gap-2 mt-3">
+          {([
+            ['strain', local.strain != null ? local.strain.toFixed(1) : '—'],
+            ['avg hr', local.avg_hr != null ? String(local.avg_hr) : '—'],
+            ['max hr', local.max_hr != null ? String(local.max_hr) : '—'],
+            ['kcal', local.energy_kcal != null ? String(Math.round(local.energy_kcal)) : '—'],
+          ] as const).map(([label, value]) => (
+            <div key={label}>
+              <p className="number-small text-[var(--color-text)]">{value}</p>
+              <p className="t-label-sm mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+      ) : match ? (
+        <p className="t-caption mt-2">
+          WHOOP recorded {activityTypeLabel(match.session).toLowerCase()} over this session
+          {match.session.strain != null ? `, strain ${match.session.strain.toFixed(1)}` : ''}.
+          Adding it moves those numbers onto this workout and takes the duplicate
+          out of your activity list.
+        </p>
+      ) : null}
+
+      {error && <p className="t-caption mt-2 text-[var(--color-accent)]">{error}</p>}
     </div>
   );
 }
@@ -1366,6 +1456,7 @@ export function History() {
                           exit={{ height: 0, opacity: 0 }}
                           transition={springs.smooth}
                         >
+                          <WorkoutWhoopPanel workout={workout} />
                           <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
                             <p className="t-label">Exercises</p>
                             <Button

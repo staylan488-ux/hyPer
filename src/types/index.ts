@@ -68,6 +68,14 @@ export interface Workout {
   completed_at?: string | null;
   created_at?: string;
   sets: WorkoutSet[];
+  // Physiology copied from the WHOOP record of this same session. A lifting
+  // workout measures none of this itself; `whoop_session_id` remembers where it
+  // came from so it can be detached again.
+  strain?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  energy_kcal?: number | null;
+  whoop_session_id?: string | null;
 }
 
 export interface FlexiblePlanItem {
