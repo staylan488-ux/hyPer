@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  activityHasStats,
   findWhoopMatchForWorkout,
   searchWhoopForWorkout,
   whoopStatsFor,
@@ -154,5 +155,29 @@ describe('searchWhoopForWorkout explains an empty result', () => {
     const r = searchWhoopForWorkout(workout(), [whoop()]);
     expect(r.reason).toBe('match');
     expect(r.bestRatio).toBeGreaterThan(0.9);
+  });
+});
+
+describe('activityHasStats', () => {
+  it('accepts a record carrying any physiology', () => {
+    expect(activityHasStats(whoop())).toBe(true);
+    expect(activityHasStats(whoop({ strain: null, avg_hr: null, max_hr: null }))).toBe(true);
+  });
+
+  it('accepts a MERGED activity, which keeps what it absorbed', () => {
+    // the case that matters: a merged activity is user_edited and is exactly
+    // what the user wants to attach
+    expect(activityHasStats(whoop({ user_edited: true, strain: 14.2 }))).toBe(true);
+  });
+
+  it('rejects one with nothing to contribute', () => {
+    expect(activityHasStats(whoop({
+      strain: null, avg_hr: null, max_hr: null, energy_kcal: null,
+    }))).toBe(false);
+  });
+
+  it('accepts a non-WHOOP activity that still carries stats', () => {
+    // selection is manual, so the source no longer gates attachment
+    expect(activityHasStats(whoop({ source: 'gps', strain: null, avg_hr: 140 }))).toBe(true);
   });
 });

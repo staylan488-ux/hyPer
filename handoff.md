@@ -1535,3 +1535,31 @@ Rev 91 (never hide the panel) this makes the feature self-diagnosing from the
 phone.
 
 Validation: 50 files / 551 tests, tsc clean, eslint clean, build OK.
+
+## Rev 93 — attach an activity to a lift by picking it, not by inferring (2026-08-02)
+
+Field report: the panel said "3 WHOOP activities that day, but the closest only
+overlaps 0% of this session" on a Pull day that plainly had a matching
+weightlifting record. Attaching also appeared to work for a moment and then
+reverted, while the activity stayed in the list. Three separate defects:
+
+1. **Automatic time matching does not work on real data.** A lift's window comes
+   from set timestamps, WHOOP brackets its own records differently, and an
+   activity the user merged spans whatever it absorbed. Result: 0% overlap
+   against three good candidates. Replaced with a manual picker - the user knows
+   which activity was the lift, and asking is more reliable than inferring. The
+   overlap search survives only as a "closest match" hint, never as a gate.
+2. **Attach did not update the activity list.** It set `dismissed_at`
+   server-side but never removed the row from `monthActivities`, so the activity
+   remained visible. The delete flow had always done this; attach did not.
+3. **The panel kept its own copy of the workout** and re-synced it from the prop
+   on re-render, so the attached stats were overwritten moments later. State now
+   lives in the parent, which updates both `monthWorkouts` and `monthActivities`
+   in one place.
+
+Attachment is also no longer restricted to raw WHOOP records: any of the day's
+activities carrying strain, heart rate or energy can be attached, which is what
+makes a MERGED activity (several WHOOP records combined) attachable - the case
+that prompted this.
+
+Validation: 50 files / 551 tests, tsc clean, eslint clean, build OK.
