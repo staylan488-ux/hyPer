@@ -1489,3 +1489,22 @@ All five columns are nullable and additive.
 Validation: 50 files / 546 tests (14 new covering window derivation, best-match
 selection, already-claimed and user-edited exclusion, and short-record
 rejection), tsc clean, eslint clean, build OK.
+
+## Rev 91 — the WHOOP panel now always explains itself (2026-08-02)
+
+Rev 90 hid the panel entirely when no match was found (`if (!attached && !match)
+return null`). That made three completely different situations look identical
+from the phone: no WHOOP record overlaps this lift, the workout has no set
+timestamps to match against, and the running build predates the feature. The
+user could not find the feature at all and had no way to tell which case they
+were in.
+
+The panel is now always rendered on a workout row and says which case it is:
+searching, no set timestamps (with what to do about it), no overlapping record
+(with the actual criteria), a match ready to attach, or attached stats. The Add
+button is disabled rather than absent when there is nothing to attach.
+
+General point worth keeping: a feature that renders nothing when it has nothing
+to show is indistinguishable from a feature that is not installed.
+
+Validation: 50 files / 546 tests, tsc clean, eslint clean, build OK.

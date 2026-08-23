@@ -57,7 +57,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns';
-import { workoutHasWhoopStats, type WhoopMatch } from '@/lib/workoutWhoop';
+import { workoutHasWhoopStats, workoutTimeWindow, type WhoopMatch } from '@/lib/workoutWhoop';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -332,17 +332,24 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
 function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
   const { findWhoopForWorkout, attachWhoopToWorkout, detachWhoopFromWorkout } = useAppStore();
   const [match, setMatch] = useState<WhoopMatch | null>(null);
+  const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [local, setLocal] = useState<Workout>(workout);
 
   const attached = workoutHasWhoopStats(local);
+  const window = workoutTimeWindow(local);
 
   useEffect(() => { setLocal(workout); }, [workout]);
   useEffect(() => {
-    if (attached) { setMatch(null); return; }
+    if (attached) { setMatch(null); setSearched(true); return; }
     let cancelled = false;
-    void findWhoopForWorkout(local).then((found) => { if (!cancelled) setMatch(found); });
+    setSearched(false);
+    void findWhoopForWorkout(local).then((found) => {
+      if (cancelled) return;
+      setMatch(found);
+      setSearched(true);
+    });
     return () => { cancelled = true; };
   }, [attached, local, findWhoopForWorkout]);
 
@@ -356,7 +363,9 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
     } finally { setBusy(false); }
   };
 
-  if (!attached && !match) return null;
+  // Deliberately always rendered on a completed workout. Hiding when there is
+  // no match makes "nothing to attach" and "this build predates the feature"
+  // look identical, which is exactly how this went unfindable the first time.
 
   return (
     <div className="border-t border-[var(--color-border)] pt-4 mb-4">
@@ -376,6 +385,7 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
             size="sm"
             variant="secondary"
             loading={busy}
+            disabled={!match}
             onClick={() => match && void run(() => attachWhoopToWorkout(local, match.session))}
           >
             Add WHOOP stats
@@ -397,6 +407,13 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
             </div>
           ))}
         </div>
+      ) : !searched ? (
+        <p className="t-caption mt-2 text-[var(--color-muted)]">Looking for a WHOOP record…</p>
+      ) : !window ? (
+        <p className="t-caption mt-2">
+          This workout has no set timestamps, so there is no time window to match a
+          WHOOP record against. Tick sets off as you go and it will find one.
+        </p>
       ) : match ? (
         <p className="t-caption mt-2">
           WHOOP recorded {activityTypeLabel(match.session).toLowerCase()} over this session
@@ -404,7 +421,12 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
           Adding it moves those numbers onto this workout and takes the duplicate
           out of your activity list.
         </p>
-      ) : null}
+      ) : (
+        <p className="t-caption mt-2">
+          No unclaimed WHOOP activity overlaps this session. It has to be a WHOOP
+          record, at least five minutes long, covering part of the same window.
+        </p>
+      )}
 
       {error && <p className="t-caption mt-2 text-[var(--color-accent)]">{error}</p>}
     </div>
