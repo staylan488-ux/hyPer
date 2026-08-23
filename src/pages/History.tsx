@@ -57,7 +57,7 @@ import {
   startOfWeek,
   subMonths,
 } from 'date-fns';
-import { workoutHasWhoopStats, type WhoopSearchResult } from '@/lib/workoutWhoop';
+import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -329,54 +329,65 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
  * publishes a workout minutes to hours after it ends: at the moment you finish
  * lifting there is generally nothing to attach yet.
  */
-function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
-  const { findWhoopForWorkout, attachWhoopToWorkout, detachWhoopFromWorkout } = useAppStore();
-  const [result, setResult] = useState<WhoopSearchResult | null>(null);
-  const [searched, setSearched] = useState(false);
-  const [busy, setBusy] = useState(false);
+/**
+ * Attaching an activity's physiology to a lifting workout.
+ *
+ * Selection is manual rather than automatic. Time-window matching was tried and
+ * is too fragile: a lift's window comes from set timestamps, WHOOP brackets its
+ * own records differently, and an activity the user merged spans whatever it
+ * absorbed - which produced a 0% overlap against three perfectly good WHOOP
+ * records on the same day. The user knows which activity was the lift; asking
+ * is more reliable than inferring, and it also allows attaching a merged
+ * activity made of several WHOOP records.
+ *
+ * Any suggestion from the overlap search is shown first as a convenience, but
+ * never required.
+ */
+function WorkoutActivityPanel({
+  workout,
+  dayActivities,
+  suggestedId,
+  onAttach,
+  onDetach,
+}: {
+  workout: WorkoutWithSplit;
+  dayActivities: ActivitySession[];
+  suggestedId: string | null;
+  onAttach: (workout: Workout, session: ActivitySession) => Promise<void>;
+  onDetach: (workout: Workout) => Promise<void>;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [local, setLocal] = useState<Workout>(workout);
 
-  const attached = workoutHasWhoopStats(local);
-  const match = result?.match ?? null;
+  const attached = workoutHasWhoopStats(workout);
+  // an activity already attached to this workout is not offered again
+  const options = dayActivities.filter((activity) => activityHasStats(activity));
+  const suggested = options.find((activity) => activity.id === suggestedId) ?? null;
+  const ordered = suggested
+    ? [suggested, ...options.filter((activity) => activity.id !== suggested.id)]
+    : options;
 
-  useEffect(() => { setLocal(workout); }, [workout]);
-  useEffect(() => {
-    if (attached) { setResult(null); setSearched(true); return; }
-    let cancelled = false;
-    setSearched(false);
-    void findWhoopForWorkout(local).then((found) => {
-      if (cancelled) return;
-      setResult(found);
-      setSearched(true);
-    });
-    return () => { cancelled = true; };
-  }, [attached, local, findWhoopForWorkout]);
-
-  const run = async (fn: () => Promise<Workout | null>) => {
-    setBusy(true); setError(null);
+  const run = async (id: string, fn: () => Promise<void>) => {
+    setBusyId(id); setError(null);
     try {
-      const next = await fn();
-      if (next) setLocal(next);
+      await fn();
+      setPicking(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'That did not work.');
-    } finally { setBusy(false); }
+    } finally { setBusyId(null); }
   };
-
-  // Deliberately always rendered on a completed workout. Hiding when there is
-  // no match makes "nothing to attach" and "this build predates the feature"
-  // look identical, which is exactly how this went unfindable the first time.
 
   return (
     <div className="border-t border-[var(--color-border)] pt-4 mb-4">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="t-label">WHOOP</p>
+        <p className="t-label">Activity stats</p>
         {attached ? (
           <button
             type="button"
             className="t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
-            disabled={busy}
-            onClick={() => void run(() => detachWhoopFromWorkout(local))}
+            disabled={busyId != null}
+            onClick={() => void run(workout.id, () => onDetach(workout))}
           >
             Remove
           </button>
@@ -384,11 +395,10 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
           <Button
             size="sm"
             variant="secondary"
-            loading={busy}
-            disabled={!match}
-            onClick={() => match && void run(() => attachWhoopToWorkout(local, match.session))}
+            disabled={options.length === 0}
+            onClick={() => setPicking((open) => !open)}
           >
-            Add WHOOP stats
+            {picking ? 'Cancel' : 'Attach activity'}
           </Button>
         )}
       </div>
@@ -396,10 +406,10 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
       {attached ? (
         <div className="grid grid-cols-4 gap-2 mt-3">
           {([
-            ['strain', local.strain != null ? local.strain.toFixed(1) : '—'],
-            ['avg hr', local.avg_hr != null ? String(local.avg_hr) : '—'],
-            ['max hr', local.max_hr != null ? String(local.max_hr) : '—'],
-            ['kcal', local.energy_kcal != null ? String(Math.round(local.energy_kcal)) : '—'],
+            ['strain', workout.strain != null ? workout.strain.toFixed(1) : '—'],
+            ['avg hr', workout.avg_hr != null ? String(workout.avg_hr) : '—'],
+            ['max hr', workout.max_hr != null ? String(workout.max_hr) : '—'],
+            ['kcal', workout.energy_kcal != null ? String(Math.round(workout.energy_kcal)) : '—'],
           ] as const).map(([label, value]) => (
             <div key={label}>
               <p className="number-small text-[var(--color-text)]">{value}</p>
@@ -407,24 +417,38 @@ function WorkoutWhoopPanel({ workout }: { workout: WorkoutWithSplit }) {
             </div>
           ))}
         </div>
-      ) : !searched ? (
-        <p className="t-caption mt-2 text-[var(--color-muted)]">Looking for a WHOOP record…</p>
-      ) : match ? (
+      ) : options.length === 0 ? (
         <p className="t-caption mt-2">
-          WHOOP recorded {activityTypeLabel(match.session).toLowerCase()} over this session
-          {match.session.strain != null ? `, strain ${match.session.strain.toFixed(1)}` : ''}.
-          Adding it moves those numbers onto this workout and takes the duplicate
-          out of your activity list.
+          No activity on this day carries strain or heart rate to attach.
         </p>
+      ) : picking ? (
+        <div className="mt-3 space-y-2">
+          {ordered.map((activity) => (
+            <button
+              key={activity.id}
+              type="button"
+              disabled={busyId != null}
+              className="w-full text-left border border-[var(--color-border-strong)] px-3 py-2.5 disabled:opacity-50 active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+              onClick={() => void run(activity.id, () => onAttach(workout, activity))}
+            >
+              <span className="t-body block">
+                {resolveActivityTitle(activity)}
+                {activity.id === suggestedId && (
+                  <span className="t-label-sm text-[var(--color-muted)]"> · closest match</span>
+                )}
+              </span>
+              <span className="t-caption block mt-0.5">
+                {activity.strain != null ? `strain ${activity.strain.toFixed(1)}` : 'no strain'}
+                {activity.avg_hr != null ? ` · ${activity.avg_hr} bpm avg` : ''}
+                {activity.energy_kcal != null ? ` · ${Math.round(activity.energy_kcal)} kcal` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
       ) : (
         <p className="t-caption mt-2">
-          {result?.reason === 'no_window'
-            ? 'This workout has no set timestamps, so there is no window to match against. Tick sets off as you go and it will find one.'
-            : result?.reason === 'no_whoop_activities'
-              ? 'No WHOOP activity was recorded around this session.'
-              : result?.reason === 'all_already_attached'
-                ? `All ${result.whoopCount} WHOOP ${result.whoopCount === 1 ? 'activity' : 'activities'} that day are already attached to another workout.`
-                : `${result?.whoopCount ?? 0} WHOOP ${result?.whoopCount === 1 ? 'activity' : 'activities'} that day, but the closest only overlaps ${Math.round((result?.bestRatio ?? 0) * 100)}% of this session.`}
+          Attach the activity that covers this session. Its strain and heart rate
+          move onto the workout and it leaves the activity list.
         </p>
       )}
 
@@ -630,6 +654,8 @@ export function History() {
     syncWhoop,
     whoopConnection,
     fetchWhoopConnection,
+    attachWhoopToWorkout,
+    detachWhoopFromWorkout,
   } = useAppStore();
 
   const [monthWorkouts, setMonthWorkouts] = useState<WorkoutWithSplit[]>([]);
@@ -778,11 +804,51 @@ export function History() {
       .sort((a, b) => new Date(a.created_at || `${a.date}T00:00:00`).getTime() - new Date(b.created_at || `${b.date}T00:00:00`).getTime());
   }, [monthWorkouts, selectedDateKey]);
 
+  // Attaching is a two-list operation: the workout gains the stats and the
+  // activity leaves the day. Doing it in the parent is what makes it stick -
+  // the panel previously kept its own copy of the workout, which a re-render
+  // overwrote, so the stats appeared for a moment and then vanished.
   const selectedDayActivities = useMemo(() => {
     return sortActivitySessionsByStart(
       monthActivities.filter((activity) => getActivitySessionDateKey(activity) === selectedDateKey)
     );
   }, [monthActivities, selectedDateKey]);
+
+  // Best-effort "closest match" hint. Never required - selection is manual -
+  // so a poor overlap simply means no hint rather than no feature.
+  const [whoopSuggestions, setWhoopSuggestions] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const next: Record<string, string> = {};
+    for (const workout of selectedDayWorkouts) {
+      const found = searchWhoopForWorkout(workout, selectedDayActivities);
+      if (found.match) next[workout.id] = found.match.session.id;
+    }
+    if (!cancelled) setWhoopSuggestions(next);
+    return () => { cancelled = true; };
+  }, [selectedDayWorkouts, selectedDayActivities]);
+
+  const handleAttachActivity = useCallback(async (workout: Workout, session: ActivitySession) => {
+    const updated = await attachWhoopToWorkout(workout, session);
+    if (!updated) throw new Error('Could not attach that activity.');
+    setMonthWorkouts((prev) => prev.map((entry) => (
+      entry.id === updated.id ? { ...entry, ...updated } as WorkoutWithSplit : entry
+    )));
+    // it is tombstoned server-side; drop it from the day so it stops showing
+    setMonthActivities((prev) => prev.filter((entry) => entry.id !== session.id));
+  }, [attachWhoopToWorkout]);
+
+  const handleDetachActivity = useCallback(async (workout: Workout) => {
+    const sessionId = workout.whoop_session_id ?? null;
+    const updated = await detachWhoopFromWorkout(workout);
+    if (!updated) throw new Error('Could not remove those stats.');
+    setMonthWorkouts((prev) => prev.map((entry) => (
+      entry.id === updated.id ? { ...entry, ...updated } as WorkoutWithSplit : entry
+    )));
+    // the session is un-tombstoned server-side; bring it back into the day
+    if (sessionId) await fetchMonthWorkouts(selectedMonth);
+  }, [detachWhoopFromWorkout, fetchMonthWorkouts, selectedMonth]);
+
 
   // merge mode: pick same-day activities WHOOP recorded as separate records
   const [mergeSelection, setMergeSelection] = useState<string[] | null>(null);
@@ -1478,7 +1544,13 @@ export function History() {
                           exit={{ height: 0, opacity: 0 }}
                           transition={springs.smooth}
                         >
-                          <WorkoutWhoopPanel workout={workout} />
+                          <WorkoutActivityPanel
+                            workout={workout}
+                            dayActivities={selectedDayActivities}
+                            suggestedId={whoopSuggestions[workout.id] ?? null}
+                            onAttach={handleAttachActivity}
+                            onDetach={handleDetachActivity}
+                          />
                           <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
                             <p className="t-label">Exercises</p>
                             <Button

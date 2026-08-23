@@ -151,6 +151,18 @@ export function searchWhoopForWorkout(
   return { match: null, reason: 'no_overlap', whoopCount: whoop.length, bestRatio };
 }
 
+/**
+ * Whether an activity carries anything worth attaching. A merged activity keeps
+ * the physiology of everything it absorbed, so it qualifies just as a raw WHOOP
+ * record does.
+ */
+export function activityHasStats(session: ActivitySession): boolean {
+  return session.strain != null
+    || session.avg_hr != null
+    || session.max_hr != null
+    || session.energy_kcal != null;
+}
+
 /** The physiology copied onto the workout. Nothing is summed or derived. */
 export interface WorkoutWhoopStats {
   strain: number | null;
