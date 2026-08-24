@@ -100,6 +100,41 @@ function markProviderDead(provider, requestId) {
   );
 }
 
+function authenticatedProviders(refresh = false) {
+  const now = Date.now();
+  if (!refresh && providerAuthCache.expiresAt > now) return providerAuthCache.providers;
+  const providers = [];
+  if (installedProviders.includes('openai')) {
+    // This only asks whether a credential EXISTS. `codex login status` cannot
+    // tell a live token from an expired one - both print "Logged in using
+    // ChatGPT", verified against a dead credential and a fresh one - and the
+    // 401 only appears on a real call. Whether it still WORKS is learned from
+    // actual failures, via providerHealth below.
+    const status = spawnSync(CODEX_COMMAND, ['login', 'status'], { encoding: 'utf8' });
+    const output = `${status.stdout || ''}${status.stderr || ''}`;
+    if (status.status === 0 && /logged in/i.test(output)) providers.push('openai');
+  }
+  if (installedProviders.includes('anthropic')) {
+    // A headless service authenticates Claude Code via CLAUDE_CODE_OAUTH_TOKEN
+    // (from `claude setup-token`) or an API key. Non-bare `claude --print` uses
+    // these per Claude Code's auth precedence, but `claude auth status` does not
+    // reliably report `loggedIn` for an env-only credential, so accept the token
+    // directly and fall back to the stored-credential check for an interactive login.
+    if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
+      providers.push('anthropic');
+    } else {
+      const status = spawnSync('claude', ['auth', 'status'], { encoding: 'utf8' });
+      try {
+        if (status.status === 0 && JSON.parse(status.stdout || '{}').loggedIn === true) providers.push('anthropic');
+      } catch { /* not authenticated or older CLI output */ }
+    }
+  }
+  // a provider whose credential just failed for real is not offered again yet
+  const usable = providers.filter((provider) => !isProviderDead(provider));
+  providerAuthCache = { expiresAt: now + 30_000, providers: usable };
+  return usable;
+}
+
 function isOriginAllowed(origin) {
   if (!origin) return true;
   const configured = (process.env.PHOTO_WORKER_ALLOWED_ORIGINS || '')

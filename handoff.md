@@ -1637,3 +1637,31 @@ the original expiry.
 
 Validation: node --check both worker files, 50 files / 566 tests, tsc clean,
 eslint clean.
+
+## Rev 96 — I deleted authenticatedProviders and took the worker down (2026-08-02)
+
+Photo analysis and describe both failed with "Food analysis failed", /health
+returned an empty body, and the tailnet URL returned 502 - while
+`systemctl is-active` said active and the port was open.
+
+Cause: the Rev 95 edit replaced a block spanning from the provider-health
+comment to `isOriginAllowed`, and `authenticatedProviders` sat between those two
+markers. It was deleted. Every call site then threw ReferenceError inside the
+request handler, so the server accepted connections and answered nothing.
+
+Nothing caught it. `node --check` passes - a missing function is a RUNTIME
+error, not a syntax error. All 565 unit tests passed, because none of them ever
+started the worker. The deploy script's checks passed. systemd reported healthy.
+
+Fixed by restoring the function, and by adding tests/photoWorkerBoot.test.ts,
+which spawns the real worker on a spare port and requires /health to return a
+parseable body with the expected arrays. Verified that it FAILS with
+"ReferenceError: authenticatedProviders is not defined" when the function is
+removed again, and passes when restored.
+
+Lesson worth keeping: a service can hold its port, satisfy systemd and pass
+every unit test while answering nothing. Only actually starting it and asking a
+question proves it works. Any edit that replaces a RANGE between two markers
+must have the deleted span reviewed, not just the result compiled.
+
+Validation: 51 files / 566 tests, node --check, tsc clean, eslint clean.
