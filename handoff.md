@@ -1563,3 +1563,44 @@ makes a MERGED activity (several WHOOP records combined) attachable - the case
 that prompted this.
 
 Validation: 50 files / 551 tests, tsc clean, eslint clean, build OK.
+
+## Rev 94 — a dead Codex token silently broke photo and describe (2026-08-02)
+
+Both "Analyze photo" and "Research & fill fields" returned "Food analysis
+failed" whenever the OpenAI provider was selected. The worker log for the
+reference ID in the app's error gave the cause:
+
+    Failed to refresh token: Your access token could not be refreshed
+    401 Unauthorized  wss://chatgpt.com/backend-api/codex/responses
+
+The worker's Codex OAuth token had expired past refresh. NOT a quota problem -
+that was an early wrong guess; the same invocation ran fine as user `aross`,
+whose Codex login is separate from the `hyper-photo` service user's.
+
+Two defects, both now fixed:
+
+1. **The liveness check trusted `codex login status`.** That reports "logged in"
+   from a stored token without checking it can still be exchanged, so a dead
+   token passed and the app advertised OpenAI as available. `authenticatedProviders`
+   now also rejects output matching the refresh-failure text the CLI prints.
+2. **A provider failure killed the request** even with a healthy provider
+   available. `withProviderFallback` retries on the other provider when the
+   first fails and the alternative is authenticated. The response reports the
+   provider that ACTUALLY ran (`attempt.provider`), not the one requested, so a
+   fallback is not mislabelled. The switch is logged so the broken provider still
+   gets noticed rather than being papered over.
+
+STILL REQUIRED to restore Codex itself: re-authenticate as the service user.
+`codex login` is interactive; the headless path is
+`printenv OPENAI_API_KEY | codex login --with-api-key` run as `hyper-photo`
+(HOME=/var/lib/hyper-photo). Until then Claude serves everything, which the
+fallback now makes invisible to the user.
+
+Also recorded, from auditing the Desktop: `~/Desktop/hyPer` is the MAIN repo and
+hyPer-current-ui / -pace-stability / -run-live-activity / -staging are GIT
+WORKTREES of it (`.git` is a file, not a directory). Deleting `~/Desktop/hyPer`
+would destroy the git database for the worktree we work in daily. hyPer-staging
+additionally holds 10 commits not on main. Only -pace-stability and
+-run-live-activity are safely removable, and via `git worktree remove`.
+
+Validation: node --check, 50 files / 555 tests, tsc clean, eslint clean.

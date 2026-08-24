@@ -86,8 +86,16 @@ function authenticatedProviders(refresh = false) {
   if (!refresh && providerAuthCache.expiresAt > now) return providerAuthCache.providers;
   const providers = [];
   if (installedProviders.includes('openai')) {
+    // `codex login status` reports "logged in" from a stored token WITHOUT
+    // checking that it can still be exchanged. A token whose refresh has
+    // expired therefore passes this check and then fails mid-analysis with a
+    // 401 against the responses endpoint - the app offers OpenAI, the user
+    // waits, and the analysis dies. So the status output is also scanned for
+    // the refresh failure the CLI prints in that state.
     const status = spawnSync(CODEX_COMMAND, ['login', 'status'], { encoding: 'utf8' });
-    if (status.status === 0 && /logged in/i.test(status.stdout || status.stderr || '')) providers.push('openai');
+    const output = `${status.stdout || ''}${status.stderr || ''}`;
+    const tokenDead = /could not be refreshed|log ?out and sign in again|401 unauthorized/i.test(output);
+    if (status.status === 0 && /logged in/i.test(output) && !tokenDead) providers.push('openai');
   }
   if (installedProviders.includes('anthropic')) {
     // A headless service authenticates Claude Code via CLAUDE_CODE_OAUTH_TOKEN
@@ -255,6 +263,31 @@ function descriptionPrompt(description) {
     'Do not provide health or medical advice.',
     `Food description: ${description}`,
   ].join('\n');
+}
+
+/**
+ * Runs an analysis on the requested provider, and on the OTHER one if the first
+ * fails for a reason retrying will not fix.
+ *
+ * A provider can pass the liveness check and still die at the moment of use -
+ * an expired OAuth token is the case that prompted this. Surfacing "analysis
+ * failed" when a second, working provider is sitting right there wastes the
+ * user's photo and their time. The fallback is silent in the result but the
+ * switch is logged, so the dead provider still gets noticed and fixed.
+ */
+async function withProviderFallback(requested, run, requestId) {
+  const alternative = requested === 'anthropic' ? 'openai' : 'anthropic';
+  try {
+    return { result: await run(requested), provider: requested };
+  } catch (error) {
+    if (!authenticatedProviders(true).includes(alternative)) throw error;
+    console.error(
+      `[photo-worker ${requestId}] ${requested} failed, retrying on ${alternative}:`,
+      error instanceof Error ? error.message : error,
+    );
+    const result = await run(alternative);
+    return { result, provider: alternative, fellBackFrom: requested };
+  }
 }
 
 async function analyzeWithCodex(jobDir, imagePaths, prompt) {
@@ -426,11 +459,16 @@ const server = createServer(async (request, response) => {
       jobDir = path.join(JOB_ROOT, randomUUID());
       await mkdir(jobDir, { recursive: true, mode: 0o700 });
       const prompt = descriptionPrompt(description);
-      const result = provider === 'anthropic'
-        ? await describeWithClaude(jobDir, prompt)
-        : await describeWithCodex(jobDir, prompt);
-      const model = provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-      const responseBody = normalizeDescriptionResult(provider, model, result);
+      const attempt = await withProviderFallback(
+        provider,
+        (chosen) => (chosen === 'anthropic'
+          ? describeWithClaude(jobDir, prompt)
+          : describeWithCodex(jobDir, prompt)),
+        requestId,
+      );
+      const result = attempt.result;
+      const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+      const responseBody = normalizeDescriptionResult(attempt.provider, model, result);
       if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
       return sendJson(response, 200, responseBody, origin);
     }
@@ -471,11 +509,16 @@ const server = createServer(async (request, response) => {
     }
 
     const prompt = analysisPrompt(images, typeof body.hint === 'string' ? body.hint.slice(0, 1500) : '');
-    const result = provider === 'anthropic'
-      ? await analyzeWithClaude(jobDir, prompt)
-      : await analyzeWithCodex(jobDir, images.map((image) => image.path), prompt);
-    const model = provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    const responseBody = normalizeResult(provider, model, result);
+    const attempt = await withProviderFallback(
+      provider,
+      (chosen) => (chosen === 'anthropic'
+        ? analyzeWithClaude(jobDir, prompt)
+        : analyzeWithCodex(jobDir, images.map((image) => image.path), prompt)),
+      requestId,
+    );
+    const result = attempt.result;
+    const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+    const responseBody = normalizeResult(attempt.provider, model, result);
     if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
     return sendJson(response, 200, responseBody, origin);
   } catch (error) {
