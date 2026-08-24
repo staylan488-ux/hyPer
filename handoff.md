@@ -1604,3 +1604,36 @@ additionally holds 10 commits not on main. Only -pace-stability and
 -run-live-activity are safely removable, and via `git worktree remove`.
 
 Validation: node --check, 50 files / 555 tests, tsc clean, eslint clean.
+
+## Rev 95 — provider health is learned from failures, not predicted (2026-08-02)
+
+Rev 94's liveness check did not work, and was verified not to work: it scanned
+`codex login status` output for the refresh-failure text, but that text never
+appears there. An EXPIRED credential and a fresh one both print exactly
+"Logged in using ChatGPT" - confirmed by running it against the dead token
+before the re-login and the live one after. The 401 only surfaces when a call
+is actually made.
+
+Replaced with negative caching learned from real failures. `isCredentialFailure`
+distinguishes a broken credential (refresh failure, 401, unauthorized, invalid
+key) from bad luck (timeout, schema error, parse failure) - marking a provider
+dead for the latter would take a healthy provider dark. `createProviderHealth`
+holds a provider aside for 15 minutes after a credential failure, and
+`authenticatedProviders` filters against it, which also makes /health honest.
+
+Both live in photo-food-worker-core.mjs so they are unit tested (11 new tests,
+including that "used 24016 tokens" must not match on 401 and that a timeout is
+not a credential failure).
+
+The load-bearing protection remains the FALLBACK from Rev 94: the first request
+after an expiry still succeeds by switching providers. The dead-provider memory
+only stops every SUBSEQUENT request paying for the same doomed attempt first.
+
+Codex itself was re-authenticated: the user's Mac login had also expired
+(identical error), so a fresh `codex login` there was copied to the service
+user. Note the shared-credential risk - if both machines refresh the same
+rotating token they can invalidate each other, which is the likeliest cause of
+the original expiry.
+
+Validation: node --check both worker files, 50 files / 566 tests, tsc clean,
+eslint clean.

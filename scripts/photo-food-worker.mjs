@@ -8,7 +8,9 @@ import path from 'node:path';
 import {
   WorkerBusyError,
   createJobGate,
+  createProviderHealth,
   createTTLCache,
+  isCredentialFailure,
   normalizeIdempotencyKey,
   parseCSVSet,
   userIsAllowed,
@@ -81,39 +83,21 @@ const installedProviders = [
 
 let providerAuthCache = { expiresAt: 0, providers: [] };
 
-function authenticatedProviders(refresh = false) {
-  const now = Date.now();
-  if (!refresh && providerAuthCache.expiresAt > now) return providerAuthCache.providers;
-  const providers = [];
-  if (installedProviders.includes('openai')) {
-    // `codex login status` reports "logged in" from a stored token WITHOUT
-    // checking that it can still be exchanged. A token whose refresh has
-    // expired therefore passes this check and then fails mid-analysis with a
-    // 401 against the responses endpoint - the app offers OpenAI, the user
-    // waits, and the analysis dies. So the status output is also scanned for
-    // the refresh failure the CLI prints in that state.
-    const status = spawnSync(CODEX_COMMAND, ['login', 'status'], { encoding: 'utf8' });
-    const output = `${status.stdout || ''}${status.stderr || ''}`;
-    const tokenDead = /could not be refreshed|log ?out and sign in again|401 unauthorized/i.test(output);
-    if (status.status === 0 && /logged in/i.test(output) && !tokenDead) providers.push('openai');
-  }
-  if (installedProviders.includes('anthropic')) {
-    // A headless service authenticates Claude Code via CLAUDE_CODE_OAUTH_TOKEN
-    // (from `claude setup-token`) or an API key. Non-bare `claude --print` uses
-    // these per Claude Code's auth precedence, but `claude auth status` does not
-    // reliably report `loggedIn` for an env-only credential, so accept the token
-    // directly and fall back to the stored-credential check for an interactive login.
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
-      providers.push('anthropic');
-    } else {
-      const status = spawnSync('claude', ['auth', 'status'], { encoding: 'utf8' });
-      try {
-        if (status.status === 0 && JSON.parse(status.stdout || '{}').loggedIn === true) providers.push('anthropic');
-      } catch { /* not authenticated or older CLI output */ }
-    }
-  }
-  providerAuthCache = { expiresAt: now + 30_000, providers };
-  return providers;
+// Provider health is LEARNED from real failures - see createProviderHealth in
+// the core module for why it cannot be checked up front.
+const providerHealth = createProviderHealth();
+
+function isProviderDead(provider) {
+  return providerHealth.isDead(provider);
+}
+
+function markProviderDead(provider, requestId) {
+  providerHealth.markDead(provider);
+  providerAuthCache = { expiresAt: 0, providers: [] };
+  console.error(
+    `[photo-worker ${requestId}] ${provider} credential looks broken; `
+    + 'not offering it for 15 minutes',
+  );
 }
 
 function isOriginAllowed(origin) {
@@ -280,6 +264,8 @@ async function withProviderFallback(requested, run, requestId) {
   try {
     return { result: await run(requested), provider: requested };
   } catch (error) {
+    // A broken credential is worth remembering; a one-off timeout is not.
+    if (isCredentialFailure(error)) markProviderDead(requested, requestId);
     if (!authenticatedProviders(true).includes(alternative)) throw error;
     console.error(
       `[photo-worker ${requestId}] ${requested} failed, retrying on ${alternative}:`,

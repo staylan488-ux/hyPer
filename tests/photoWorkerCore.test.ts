@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  WorkerBusyError,
-  createJobGate,
-  createTTLCache,
-  normalizeIdempotencyKey,
-  parseCSVSet,
-  userIsAllowed,
-} from '../scripts/photo-food-worker-core.mjs';
+import { WorkerBusyError, createJobGate, createProviderHealth, createTTLCache, isCredentialFailure, normalizeIdempotencyKey, parseCSVSet, userIsAllowed } from '../scripts/photo-food-worker-core.mjs';
 
 describe('photo worker safety boundaries', () => {
   it('requires an explicit matching user in production mode', () => {
@@ -46,5 +39,73 @@ describe('photo worker safety boundaries', () => {
     cache.set('job', { ok: true }, 1_000);
     expect(cache.get('job', 1_500)).toEqual({ ok: true });
     expect(cache.get('job', 2_001)).toBeUndefined();
+  });
+});
+
+describe('isCredentialFailure', () => {
+  it('recognises the expired-OAuth failure that broke Codex', () => {
+    expect(isCredentialFailure(new Error(
+      'codex exited with code 1: Your access token could not be refreshed. Please log out and sign in again.',
+    ))).toBe(true);
+  });
+
+  it('recognises a bare 401', () => {
+    expect(isCredentialFailure(new Error('HTTP error: 401 Unauthorized'))).toBe(true);
+  });
+
+  it('does NOT treat a timeout as a broken credential', () => {
+    // setting a healthy provider aside over one slow call would take it dark
+    expect(isCredentialFailure(new Error('codex timed out after 240 seconds.'))).toBe(false);
+  });
+
+  it('does not treat a schema or parse failure as a credential problem', () => {
+    expect(isCredentialFailure(new Error('The model returned no food estimate.'))).toBe(false);
+    expect(isCredentialFailure(new Error('Unexpected token < in JSON at position 0'))).toBe(false);
+  });
+
+  it('does not match 401 inside an unrelated number', () => {
+    expect(isCredentialFailure(new Error('used 24016 tokens'))).toBe(false);
+  });
+
+  it('survives a non-Error value', () => {
+    expect(isCredentialFailure(undefined)).toBe(false);
+    expect(isCredentialFailure('401 unauthorized')).toBe(true);
+  });
+});
+
+describe('createProviderHealth', () => {
+  it('offers a provider until it is marked dead', () => {
+    const health = createProviderHealth();
+    expect(health.isDead('openai')).toBe(false);
+    health.markDead('openai');
+    expect(health.isDead('openai')).toBe(true);
+  });
+
+  it('sets aside only the provider that failed', () => {
+    const health = createProviderHealth();
+    health.markDead('openai');
+    expect(health.isDead('anthropic')).toBe(false);
+  });
+
+  it('offers it again once the window passes', () => {
+    let clock = 1_000;
+    const health = createProviderHealth({ deadMs: 5_000, now: () => clock });
+    health.markDead('openai');
+    expect(health.isDead('openai')).toBe(true);
+    clock += 4_999;
+    expect(health.isDead('openai')).toBe(true);
+    clock += 2;
+    expect(health.isDead('openai')).toBe(false);
+    expect(health.deadProviders()).toEqual([]);
+  });
+
+  it('re-marking extends the window from now', () => {
+    let clock = 0;
+    const health = createProviderHealth({ deadMs: 1_000, now: () => clock });
+    health.markDead('openai');
+    clock += 900;
+    health.markDead('openai');
+    clock += 200;
+    expect(health.isDead('openai')).toBe(true);
   });
 });

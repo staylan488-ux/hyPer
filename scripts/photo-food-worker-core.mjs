@@ -98,3 +98,47 @@ export function createTTLCache({ ttlMs = 15 * 60_000, maxEntries = 100 } = {}) {
     },
   };
 }
+
+/**
+ * Whether a failure means the provider's CREDENTIAL is broken, as opposed to
+ * the call merely being unlucky.
+ *
+ * The distinction matters because a broken credential is worth remembering - it
+ * will fail again immediately - while a timeout or a busy upstream is not. Set
+ * aside for the wrong reason and a healthy provider goes dark; ignore a broken
+ * one and every request pays for a doomed attempt before falling back.
+ */
+export function isCredentialFailure(error) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /could not be refreshed|log ?out and sign in again|\b401\b|unauthorized|invalid[_ ]api[_ ]key|authentication/i
+    .test(message);
+}
+
+/**
+ * Remembers providers whose credential just failed, so they stop being offered
+ * for a while.
+ *
+ * Validity cannot be checked cheaply: `codex login status` reports success from
+ * an expired token (verified - an expired credential and a fresh one print the
+ * same thing), and the only honest test is a real call, which is far too
+ * expensive for a health poll. So failure is learned rather than predicted.
+ */
+export function createProviderHealth({ deadMs = 15 * 60_000, now = () => Date.now() } = {}) {
+  const deadUntil = new Map();
+  return {
+    isDead(provider) {
+      const until = deadUntil.get(provider);
+      if (until == null) return false;
+      if (until > now()) return true;
+      deadUntil.delete(provider);   // recovered on its own; offer it again
+      return false;
+    },
+    markDead(provider) {
+      deadUntil.set(provider, now() + deadMs);
+    },
+    /** Only for tests and diagnostics. */
+    deadProviders() {
+      return [...deadUntil.keys()].filter((provider) => this.isDead(provider));
+    },
+  };
+}
