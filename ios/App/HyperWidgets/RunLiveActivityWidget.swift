@@ -229,12 +229,39 @@ struct RunLiveActivityWidget: Widget {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(runEmber)
             } compactTrailing: {
-                Text(context.state.isResting ? "REST" : context.state.livePace)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(context.state.isResting ? runEmber : .white)
+                // The ticking clock, not pace: pace lives in-app and on the
+                // lock screen, but the timer is the one number a runner wants
+                // at a glance, and compact is most of what they ever see.
+                Group {
+                    if context.state.isResting {
+                        Text(context.state.elapsedLabel)
+                    } else {
+                        Text(timerInterval: context.state.elapsedRange, countsDown: false)
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+                .monospacedDigit()
+                .multilineTextAlignment(.trailing)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: 56, alignment: .trailing)
+                .foregroundColor(context.state.isResting ? runEmber : .white)
             } minimal: {
-                Image(systemName: context.state.isResting ? "pause.fill" : "figure.run")
-                    .foregroundColor(runEmber)
+                // When music is playing, iOS gives Spotify the island and
+                // demotes this activity to the minimal slot - which used to
+                // show a static icon, so the timer vanished exactly when the
+                // runner had music on. The minimal view IS the app while
+                // audio plays; it has to carry the clock.
+                Group {
+                    if context.state.isResting {
+                        Text(context.state.elapsedLabel)
+                    } else {
+                        Text(timerInterval: context.state.elapsedRange, countsDown: false)
+                    }
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .minimumScaleFactor(0.4)
+                .foregroundColor(runEmber)
             }
             .keylineTint(runEmber)
         }

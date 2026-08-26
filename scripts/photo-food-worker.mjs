@@ -7,6 +7,7 @@ import { loadEnvFile } from 'node:process';
 import path from 'node:path';
 import {
   WorkerBusyError,
+  createInflightJobs,
   createJobGate,
   createProviderHealth,
   createTTLCache,
@@ -36,6 +37,15 @@ const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeout)
   ? Math.max(30_000, configuredCommandTimeout)
   : 240_000;
+// Research and photo analysis are agentic - web searches, cross-checking,
+// vision at high effort - and a hard timeout here throws the whole analysis
+// away at the finish line. Give them the room they need; the client no longer
+// holds one fragile connection open for the duration (it re-attaches), so a
+// long ceiling costs nothing when runs are quick.
+const configuredResearchTimeout = Number(process.env.PHOTO_WORKER_RESEARCH_TIMEOUT_MS || 0);
+const RESEARCH_TIMEOUT_MS = Number.isFinite(configuredResearchTimeout) && configuredResearchTimeout > 0
+  ? Math.max(60_000, configuredResearchTimeout)
+  : Math.max(480_000, COMMAND_TIMEOUT_MS);
 const AUTH_TIMEOUT_MS = 10_000;
 const REQUIRE_ALLOWLIST = process.env.PHOTO_WORKER_REQUIRE_ALLOWLIST === '1'
   || process.env.NODE_ENV === 'production';
@@ -45,6 +55,9 @@ const jobGate = createJobGate({
   maxQueued: Number(process.env.PHOTO_WORKER_MAX_QUEUED || 4),
 });
 const idempotencyCache = createTTLCache({ ttlMs: 15 * 60_000, maxEntries: 100 });
+// completed results live in idempotencyCache; STILL-RUNNING jobs live here so a
+// client retry attaches to its own job instead of queueing a duplicate
+const inflightAnalyses = createInflightJobs();
 const BUNDLED_CODEX_PATH = '/Applications/ChatGPT.app/Contents/Resources/codex';
 const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
   || (process.platform === 'darwin' && existsSync(BUNDLED_CODEX_PATH) ? BUNDLED_CODEX_PATH : 'codex');
@@ -156,6 +169,9 @@ function corsHeaders(origin) {
 }
 
 function sendJson(response, status, body, origin) {
+  // a client that timed out and re-attached may have abandoned this socket;
+  // the result is already in the idempotency cache for its next attempt
+  if (response.writableEnded || response.destroyed) return;
   response.writeHead(status, { ...corsHeaders(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   response.end(JSON.stringify(body));
 }
@@ -227,12 +243,13 @@ function runCommand(command, args, options = {}) {
     });
     let stdout = '';
     let stderr = '';
+    const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
       const killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
       killTimer.unref();
-      reject(new Error(`${command} timed out after ${COMMAND_TIMEOUT_MS / 1000} seconds.`));
-    }, COMMAND_TIMEOUT_MS);
+      reject(new Error(`${command} timed out after ${timeoutMs / 1000} seconds.`));
+    }, timeoutMs);
 
     child.stdout.on('data', (chunk) => { if (stdout.length < 1_000_000) stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { if (stderr.length < 200_000) stderr += chunk.toString(); });
@@ -320,7 +337,7 @@ async function analyzeWithCodex(jobDir, imagePaths, prompt) {
     '--ignore-user-config', '--ignore-rules', '--output-schema', SCHEMA_PATH,
     '--output-last-message', outputPath, '-C', jobDir, '-',
   ];
-  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt });
+  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs: RESEARCH_TIMEOUT_MS });
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
 
@@ -331,7 +348,7 @@ async function analyzeWithClaude(jobDir, prompt) {
   ];
   args.push('--model', ANTHROPIC_MODEL, '--effort', ANTHROPIC_EFFORT);
   args.push(prompt);
-  const { stdout } = await runCommand('claude', args, { cwd: jobDir });
+  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs: RESEARCH_TIMEOUT_MS });
   const outer = JSON.parse(stdout);
   if (outer.structured_output) return outer.structured_output;
   if (typeof outer.result === 'string') return JSON.parse(outer.result);
@@ -346,7 +363,7 @@ async function describeWithCodex(jobDir, prompt) {
     '--ignore-user-config', '--ignore-rules', '--output-schema', DESCRIPTION_SCHEMA_PATH,
     '--output-last-message', outputPath, '-C', jobDir, '-',
   ];
-  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt });
+  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs: RESEARCH_TIMEOUT_MS });
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
 
@@ -363,7 +380,7 @@ async function describeWithClaude(jobDir, prompt) {
     '--tools', 'WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--no-session-persistence', '--safe-mode',
     '--model', ANTHROPIC_MODEL, '--effort', ANTHROPIC_EFFORT, prompt,
   ];
-  const { stdout } = await runCommand('claude', args, { cwd: jobDir });
+  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs: RESEARCH_TIMEOUT_MS });
   const outer = JSON.parse(stdout);
   if (outer.structured_output) return outer.structured_output;
   if (typeof outer.result === 'string') return JSON.parse(outer.result);
@@ -461,6 +478,12 @@ const server = createServer(async (request, response) => {
     const cachedResult = cacheKey ? idempotencyCache.get(cacheKey) : undefined;
     if (cachedResult) return sendJson(response, 200, cachedResult, origin);
 
+    // A retry of a slow analysis re-attaches to the job it already started.
+    // The idempotency key is a hash of the request body, so an identical retry
+    // collides here by construction - before the 9 MB body is even parsed.
+    const inflight = inflightAnalyses.get(cacheKey);
+    if (inflight) return sendJson(response, 200, await inflight, origin);
+
     const body = await readJsonBody(request);
     const provider = body.provider === 'anthropic' ? 'anthropic' : 'openai';
     if (!installedProviders.includes(provider)) return sendJson(response, 503, { error: `${provider} CLI is not installed or available.` }, origin);
@@ -480,17 +503,21 @@ const server = createServer(async (request, response) => {
       jobDir = path.join(JOB_ROOT, randomUUID());
       await mkdir(jobDir, { recursive: true, mode: 0o700 });
       const prompt = descriptionPrompt(description);
-      const attempt = await withProviderFallback(
-        provider,
-        (chosen) => (chosen === 'anthropic'
-          ? describeWithClaude(jobDir, prompt)
-          : describeWithCodex(jobDir, prompt)),
-        requestId,
-      );
-      const result = attempt.result;
-      const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-      const responseBody = normalizeDescriptionResult(attempt.provider, model, result);
-      if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
+      const responseBody = await inflightAnalyses.run(cacheKey, async () => {
+        const attempt = await withProviderFallback(
+          provider,
+          (chosen) => (chosen === 'anthropic'
+            ? describeWithClaude(jobDir, prompt)
+            : describeWithCodex(jobDir, prompt)),
+          requestId,
+        );
+        const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+        const body = normalizeDescriptionResult(attempt.provider, model, attempt.result);
+        // cache BEFORE responding: if this client already gave up and went
+        // away, its next attempt finds the finished answer here
+        if (cacheKey) idempotencyCache.set(cacheKey, body);
+        return body;
+      });
       return sendJson(response, 200, responseBody, origin);
     }
 
@@ -530,17 +557,20 @@ const server = createServer(async (request, response) => {
     }
 
     const prompt = analysisPrompt(images, typeof body.hint === 'string' ? body.hint.slice(0, 1500) : '');
-    const attempt = await withProviderFallback(
-      provider,
-      (chosen) => (chosen === 'anthropic'
-        ? analyzeWithClaude(jobDir, prompt)
-        : analyzeWithCodex(jobDir, images.map((image) => image.path), prompt)),
-      requestId,
-    );
-    const result = attempt.result;
-    const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    const responseBody = normalizeResult(attempt.provider, model, result);
-    if (cacheKey) idempotencyCache.set(cacheKey, responseBody);
+    const responseBody = await inflightAnalyses.run(cacheKey, async () => {
+      const attempt = await withProviderFallback(
+        provider,
+        (chosen) => (chosen === 'anthropic'
+          ? analyzeWithClaude(jobDir, prompt)
+          : analyzeWithCodex(jobDir, images.map((image) => image.path), prompt)),
+        requestId,
+      );
+      const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+      const body = normalizeResult(attempt.provider, model, attempt.result);
+      // cache BEFORE responding, for the client that already gave up
+      if (cacheKey) idempotencyCache.set(cacheKey, body);
+      return body;
+    });
     return sendJson(response, 200, responseBody, origin);
   } catch (error) {
     if (error instanceof WorkerBusyError) {

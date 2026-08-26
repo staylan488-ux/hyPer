@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { WorkerBusyError, createJobGate, createProviderHealth, createTTLCache, isCredentialFailure, normalizeIdempotencyKey, parseCSVSet, userIsAllowed } from '../scripts/photo-food-worker-core.mjs';
+import { WorkerBusyError, createInflightJobs, createJobGate, createProviderHealth, createTTLCache, isCredentialFailure, normalizeIdempotencyKey, parseCSVSet, userIsAllowed } from '../scripts/photo-food-worker-core.mjs';
 
 describe('photo worker safety boundaries', () => {
   it('requires an explicit matching user in production mode', () => {
@@ -107,5 +107,68 @@ describe('createProviderHealth', () => {
     health.markDead('openai');
     clock += 200;
     expect(health.isDead('openai')).toBe(true);
+  });
+});
+
+describe('createInflightJobs', () => {
+  it('runs a computation and returns its result', async () => {
+    const jobs = createInflightJobs();
+    await expect(jobs.run('k', async () => 'answer')).resolves.toBe('answer');
+  });
+
+  it('attaches a concurrent identical request to the running job', async () => {
+    // the retry-after-timeout case: the second request must NOT start a second
+    // model run - it waits for the first and gets the same result object
+    const jobs = createInflightJobs();
+    let runs = 0;
+    let release!: (value: string) => void;
+    const gate = new Promise<string>((resolve) => { release = resolve; });
+
+    const first = jobs.run('k', async () => { runs += 1; return gate; });
+    const second = jobs.run('k', async () => { runs += 1; return gate; });
+    expect(jobs.size()).toBe(1);
+    release('one result');
+    expect(await first).toBe('one result');
+    expect(await second).toBe('one result');
+    expect(runs).toBe(1);
+  });
+
+  it('clears the entry once the job settles, so a retry after FAILURE starts fresh', async () => {
+    const jobs = createInflightJobs();
+    await expect(jobs.run('k', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(jobs.size()).toBe(0);
+    await expect(jobs.run('k', async () => 'recovered')).resolves.toBe('recovered');
+  });
+
+  it('propagates the failure to every attached request', async () => {
+    const jobs = createInflightJobs();
+    let reject!: (error: Error) => void;
+    const gate = new Promise((_, rej) => { reject = rej; });
+    const a = jobs.run('k', () => gate);
+    const b = jobs.run('k', () => gate);
+    reject(new Error('model died'));
+    await expect(a).rejects.toThrow('model died');
+    await expect(b).rejects.toThrow('model died');
+  });
+
+  it('runs directly with no key rather than colliding all keyless requests', async () => {
+    const jobs = createInflightJobs();
+    const [a, b] = await Promise.all([
+      jobs.run(null, async () => 'a'),
+      jobs.run(null, async () => 'b'),
+    ]);
+    expect(a).toBe('a');
+    expect(b).toBe('b');
+    expect(jobs.size()).toBe(0);
+  });
+
+  it('does not collide different keys', async () => {
+    const jobs = createInflightJobs();
+    const [a, b] = await Promise.all([
+      jobs.run('k1', async () => 'a'),
+      jobs.run('k2', async () => 'b'),
+    ]);
+    expect(a).toBe('a');
+    expect(b).toBe('b');
   });
 });
