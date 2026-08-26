@@ -1,5 +1,6 @@
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
+import { patientPost } from '@/lib/patientFetch';
 
 export type PhotoAnalysisProvider = 'openai' | 'anthropic';
 export type PhotoAnalysisAngle = 'top' | 'side';
@@ -96,26 +97,23 @@ export async function analyzeFoodPhoto(input: {
     throw new Error('Add a top photo and, optionally, one side photo.');
   }
 
-  const controller = new AbortController();
-  // Must exceed the worker's own model-command timeout (240s) plus time to
-  // upload two full-resolution images, or the client aborts mid-analysis and
-  // the user sees a generic network failure instead of the worker's real error.
-  const timeout = window.setTimeout(() => controller.abort(), 300_000);
   try {
     const requestBody = JSON.stringify({
       provider: settings.provider,
       images: input.images,
       hint: input.hint?.trim() || null,
     });
-    const response = await fetch(`${settings.url.replace(/\/+$/, '')}/analyze`, {
-      method: 'POST',
+    // The key is a hash of the body, so retries inside patientPost re-attach to
+    // the analysis the first attempt started rather than re-running the model.
+    const idempotencyKey = await createRequestIdempotencyKey('photo', requestBody);
+    const response = await patientPost({
+      url: `${settings.url.replace(/\/+$/, '')}/analyze`,
+      body: requestBody,
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         'Content-Type': 'application/json',
-        'X-Idempotency-Key': await createRequestIdempotencyKey('photo', requestBody),
+        'X-Idempotency-Key': idempotencyKey,
       },
-      body: requestBody,
-      signal: controller.signal,
     });
 
     const payload = await response.json().catch(() => null) as (PhotoAnalysisResult & { error?: string }) | null;
@@ -130,11 +128,9 @@ export async function analyzeFoodPhoto(input: {
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Photo analysis timed out. Confirm the Mac worker is running and try again.');
+      throw new Error('Analysis kept running past every retry. The worker may be down - check Settings.');
     }
     throw error;
-  } finally {
-    window.clearTimeout(timeout);
   }
 }
 

@@ -1665,3 +1665,45 @@ question proves it works. Any edit that replaces a RANGE between two markers
 must have the deleted span reviewed, not just the result compiled.
 
 Validation: 51 files / 566 tests, node --check, tsc clean, eslint clean.
+
+## Rev 97 — food research outlasts timeouts; the island timer survives Spotify (2026-08-02)
+
+**"Food research timed out" had two causes and one deeper flaw.** First, the
+describe path still aborted at 150s - Rev 82's timeout-headroom fix raised the
+photo path to 300s and missed this second call site. Second, a timeout threw the
+whole analysis away even though the worker finished moments later.
+
+Fix is structural, not another number: one fragile long request is replaced by
+short attempts that RE-ATTACH.
+- Client (`src/lib/patientFetch.ts`): 120s attempts, 2s apart, 15-minute total
+  budget. Transient failures (abort, network drop) retry; an HTTP error is an
+  answer and is never retried.
+- Worker: `createInflightJobs` (core, tested) keyed by the idempotency key -
+  which is a SHA-256 of the body, so identical retries collide by construction,
+  BEFORE the 9 MB body is parsed. A retry attaches to the running job instead of
+  queueing a duplicate model run. Results are cached before responding, so a
+  client that gave up finds the answer on its next attempt.
+- Worker: research/analysis commands get their own ceiling,
+  `PHOTO_WORKER_RESEARCH_TIMEOUT_MS` (default max(480s, command timeout)) - a
+  multi-item description at high effort legitimately outlives 240s.
+- `sendJson` now guards `writableEnded/destroyed`: an attach can complete after
+  its client hung up.
+
+Net: an analysis fails only if the WORKER gives up (8 min), never because a
+socket blinked. App backgrounding mid-research now recovers too - the next
+attempt after foregrounding hits the result cache.
+
+**The Dynamic Island timer (from the user's note: "see the timer on top of
+screen even when I have the little Spotify thing up there").** When audio plays,
+iOS gives the island to the media app and demotes hyPer to the MINIMAL slot -
+which showed a static icon (run) or a serif "P" logo (lift rest). So the timer
+vanished precisely when music was on. Both widgets now render live
+`Text(timerInterval:)` in minimal - rest countdown when resting, session clock
+otherwise - and the run widget's compactTrailing shows the ticking clock instead
+of pace (pace remains in-app, expanded, and on the lock screen). iOS arbitration
+cannot be overridden; carrying the clock in whatever slot iOS grants is the
+whole available lever. Swift compiles (CODE_SIGNING_ALLOWED=NO build).
+
+Validation: 52 files / 578 tests (12 new), node --check, boot test, tsc, eslint,
+vite build, Xcode compile. Worker staged; needs VM deploy + /ship (widgets and
+client are app-side).

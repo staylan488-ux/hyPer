@@ -142,3 +142,39 @@ export function createProviderHealth({ deadMs = 15 * 60_000, now = () => Date.no
     },
   };
 }
+
+/**
+ * Deduplicates concurrent identical requests onto one running computation.
+ *
+ * The client retries a slow analysis with the same idempotency key (the key is
+ * a hash of the body, so retries collide by construction). Without this, each
+ * retry STARTED A NEW JOB behind the first in the queue: the user's photo was
+ * analysed twice or three times, each pass costing full model time, and the
+ * retry waited behind the very job it duplicated. Attaching instead means a
+ * retry after a client-side timeout simply resumes waiting for the job it
+ * already started.
+ *
+ * Entries clear when the computation settles, so a retry after a FAILURE gets
+ * a fresh attempt rather than the memory of the old error.
+ */
+export function createInflightJobs() {
+  const jobs = new Map();
+  return {
+    get(key) {
+      return key ? jobs.get(key) ?? null : null;
+    },
+    run(key, compute) {
+      if (!key) return compute();
+      const existing = jobs.get(key);
+      if (existing) return existing;
+      const promise = Promise.resolve()
+        .then(compute)
+        .finally(() => { jobs.delete(key); });
+      jobs.set(key, promise);
+      return promise;
+    },
+    size() {
+      return jobs.size;
+    },
+  };
+}

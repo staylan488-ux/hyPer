@@ -162,10 +162,23 @@ struct HyperWidgetsLiveActivity: Widget {
                         .frame(maxWidth: 56, alignment: .trailing)
                 }
             } minimal: {
-                Text("P")
-                    .font(.system(size: 15, design: .serif))
-                    .italic()
-                    .foregroundColor(ember)
+                // With music playing, iOS demotes this activity to the minimal
+                // slot; a logo there hides the rest countdown exactly when the
+                // lifter is mid-rest with Spotify up. Show the countdown, or
+                // the session clock between rests.
+                if let restRange = context.state.restRange {
+                    Text(timerInterval: restRange, countsDown: true)
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.5)
+                        .foregroundColor(ember)
+                } else {
+                    Text(timerInterval: context.state.sessionRange, countsDown: false)
+                        .font(.system(size: 11, weight: .semibold))
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.4)
+                        .foregroundColor(.white.opacity(0.85))
+                }
             }
             .keylineTint(ember)
         }

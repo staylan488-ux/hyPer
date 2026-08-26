@@ -1,6 +1,7 @@
 import { getPhotoWorkerSettings, type PhotoAnalysisProvider, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
+import { patientPost } from '@/lib/patientFetch';
 
 export interface FoodDescriptionSource {
   title: string;
@@ -79,19 +80,20 @@ export async function describeFoodWithAi(input: {
   }
   if (!settings.url) throw new Error('Set the food-analysis worker URL in Settings first.');
 
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 150_000);
   try {
     const requestBody = JSON.stringify({ provider: settings.provider, description });
-    const response = await fetch(`${settings.url.replace(/\/+$/, '')}/describe`, {
-      method: 'POST',
+    // The key is a hash of the body, so every retry inside patientPost carries
+    // the same one - which is what lets the worker re-attach the retry to the
+    // research it already started instead of starting over.
+    const idempotencyKey = await createRequestIdempotencyKey('describe', requestBody);
+    const response = await patientPost({
+      url: `${settings.url.replace(/\/+$/, '')}/describe`,
+      body: requestBody,
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
         'Content-Type': 'application/json',
-        'X-Idempotency-Key': await createRequestIdempotencyKey('describe', requestBody),
+        'X-Idempotency-Key': idempotencyKey,
       },
-      body: requestBody,
-      signal: controller.signal,
     });
     const payload = await response.json().catch(() => null) as (FoodDescriptionResult & { error?: string }) | null;
     if (!response.ok) throw new Error(payload?.error || `Food worker returned ${response.status}.`);
@@ -101,10 +103,8 @@ export async function describeFoodWithAi(input: {
     return result;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Food research timed out. Confirm the Mac worker is running and try again.');
+      throw new Error('Research kept running past every retry. The worker may be down - check Settings.');
     }
     throw error;
-  } finally {
-    window.clearTimeout(timeout);
   }
 }
