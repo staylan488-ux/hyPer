@@ -34,6 +34,8 @@ export interface CoachContext {
   /** The adaptive engine's learned daily burn - the most valuable field here. */
   measured_expenditure_kcal: number | null;
   expenditure_confidence: string | null;
+  /** Actual recent rate of change from the user's weigh-ins; negative = losing. */
+  weight_trend_kg_per_week: number | null;
   current_targets: { calories: number; protein: number; carbs: number; fat: number } | null;
 }
 
@@ -41,7 +43,19 @@ export function buildCoachContext(
   profile: NutritionProfile,
   weightKg: number | null,
   currentTargets: TargetNumbers | null,
+  options: {
+    /** Measured rate of weight change over the recent window, kg/week. */
+    trendKgPerWeek?: number | null;
+    /**
+     * Whether the user chose to share the app's measurements (learned burn and
+     * weight trend). Off withholds them entirely - the coach then reasons only
+     * from what the user typed plus their basic stats, which is exactly what
+     * they asked for by unticking the box.
+     */
+    shareMeasured?: boolean;
+  } = {},
 ): CoachContext {
+  const share = options.shareMeasured ?? true;
   return {
     sex: profile.sex,
     age: Math.max(13, new Date().getFullYear() - profile.birth_year),
@@ -49,8 +63,9 @@ export function buildCoachContext(
     weight_kg: weightKg,
     activity: profile.activity,
     current_goal: `${profile.goal} at ${profile.rate_pct_per_week}% bodyweight/week`,
-    measured_expenditure_kcal: profile.adaptive_enabled ? profile.expenditure_kcal : null,
-    expenditure_confidence: profile.adaptive_enabled ? profile.expenditure_confidence : null,
+    measured_expenditure_kcal: share && profile.adaptive_enabled ? profile.expenditure_kcal : null,
+    expenditure_confidence: share && profile.adaptive_enabled ? profile.expenditure_confidence : null,
+    weight_trend_kg_per_week: share ? options.trendKgPerWeek ?? null : null,
     current_targets: currentTargets
       ? {
         calories: currentTargets.calories,
@@ -138,7 +153,10 @@ export async function requestCoachRecommendation(input: {
   if (!settings.url) throw new Error('Set the analysis worker URL in Settings first.');
 
   const requestBody = JSON.stringify({
-    provider: settings.provider,
+    // Always the Claude path: the worker runs the coach on Opus 5 at maximum
+    // effort, and falls back to the other provider on its own if Claude fails.
+    // The photo-provider preference is about photo analysis, not this.
+    provider: 'anthropic',
     goals,
     context: input.context,
   });
