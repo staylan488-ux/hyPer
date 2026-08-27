@@ -1750,3 +1750,31 @@ reviewed them, so they are manual in the sense that matters).
 
 Validation: 53 files / 587 tests (9 new), node --check + boot test, tsc,
 eslint, vite build. Needs VM deploy (worker) + /ship (app).
+
+## Rev 99 — coach on Opus 5 at max; trend shared by choice (2026-08-02)
+
+Product decisions from the owner: one-shot by design (the user includes
+everything in one message, no follow-up questions); sharing the app's measured
+data with the coach is the USER'S choice; no periodization; the coach runs on
+Opus 5 at maximum effort.
+
+- `/coach` now always takes the Claude path (client sends provider 'anthropic'
+  regardless of the photo-provider preference) at `--effort max`, overridable
+  via PHOTO_WORKER_COACH_EFFORT. Verified 'max' is a valid CLI level. Rationale:
+  targets are set a handful of times a year, shape months of eating, and nobody
+  waits mid-gym for the answer - the opposite trade-off from photo analysis.
+  Codex remains the worker-side automatic fallback if Claude fails.
+- Context now carries `weight_trend_kg_per_week` (21-day OLS from the user's
+  weigh-ins, via the existing buildWeightTrend), and the prompt names the field.
+- A "Share my measured data" checkbox (default on) gates BOTH the learned burn
+  and the trend. Off = the coach sees basic stats + typed goals only. Tested:
+  opting out nulls every measured field.
+
+Process note: the first edit script asserted mid-run and wrote nothing, then a
+partial re-run referenced COACH_EFFORT without declaring it - the
+authenticatedProviders failure class again, invisible to node --check. Caught
+by grepping declaration+use before moving on; the boot test does not cover
+lazily-evaluated closures, so range edits still need their spans reviewed.
+
+Validation: 53 files / 589 tests, node --check + boot test, tsc, eslint, build.
+Needs VM deploy (worker) + /ship (app).

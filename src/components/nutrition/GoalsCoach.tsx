@@ -7,6 +7,8 @@ import {
   requestCoachRecommendation,
   type CoachRecommendation,
 } from '@/lib/nutritionCoach';
+import { getBodyWeightHistorySince } from '@/lib/healthWeights';
+import { buildWeightTrend } from '@/lib/weightTrend';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
 import type { TargetNumbers } from '@/lib/nutritionCoach';
 
@@ -36,6 +38,9 @@ export function GoalsCoach({
   onRecommendation: (recommendation: CoachRecommendation) => void;
 }) {
   const [goals, setGoals] = useState(() => globalThis.localStorage?.getItem('hyper.coach.goals') ?? '');
+  // On by default: the measured burn and weight trend are what make the advice
+  // personal. Off means the coach sees only basic stats plus the typed goals.
+  const [shareMeasured, setShareMeasured] = useState(true);
   const [recommendation, setRecommendation] = useState<CoachRecommendation | null>(null);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +56,23 @@ export function GoalsCoach({
       globalThis.localStorage?.setItem('hyper.coach.goals', goals);
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
-      if (!accessToken) throw new Error('Your session expired. Sign out and back in.');
+      const userId = sessionData.session?.user?.id;
+      if (!accessToken || !userId) throw new Error('Your session expired. Sign out and back in.');
+
+      // the measured rate of change over the last three weeks, if shared
+      let trendKgPerWeek: number | null = null;
+      if (shareMeasured) {
+        try {
+          const samples = await getBodyWeightHistorySince(userId, 21);
+          trendKgPerWeek = buildWeightTrend(samples, { windowDays: 21 }).kgPerWeek;
+        } catch {
+          // no weigh-ins is not a reason to refuse to coach
+        }
+      }
+
       const result = await requestCoachRecommendation({
         goals,
-        context: buildCoachContext(profile, weightKg, currentTargets),
+        context: buildCoachContext(profile, weightKg, currentTargets, { trendKgPerWeek, shareMeasured }),
         accessToken,
       });
       setRecommendation(result);
@@ -75,6 +93,18 @@ export function GoalsCoach({
         placeholder="e.g., Cut to 175 lb by November without losing strength. I lift 4x a week and run intervals twice."
         className="well w-full min-h-24 px-3 py-3 mt-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-muted)]"
       />
+      <label className="flex items-start gap-3 mt-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={shareMeasured}
+          onChange={(event) => setShareMeasured(event.target.checked)}
+          className="mt-0.5 w-4 h-4 shrink-0 accent-[var(--color-accent)]"
+        />
+        <span className="t-caption">
+          Share my measured data — learned daily burn and recent weight trend.
+          This is what makes the advice yours rather than generic.
+        </span>
+      </label>
       <Button
         className="w-full mt-3"
         variant="secondary"

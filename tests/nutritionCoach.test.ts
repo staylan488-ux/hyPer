@@ -23,11 +23,31 @@ describe('buildCoachContext', () => {
     expect(ctx.expenditure_confidence).toBe('learning');
   });
 
+  it('carries the measured weight trend when provided', () => {
+    const ctx = buildCoachContext(profile(), 82, null, { trendKgPerWeek: -0.42 });
+    expect(ctx.weight_trend_kg_per_week).toBe(-0.42);
+  });
+
   it('withholds a stale expenditure when adaptive is off', () => {
     // a number the engine is no longer maintaining must not be presented as measured
     const ctx = buildCoachContext(profile({ adaptive_enabled: false }), 82, null);
     expect(ctx.measured_expenditure_kcal).toBeNull();
     expect(ctx.expenditure_confidence).toBeNull();
+  });
+
+  it('withholds ALL measured data when the user opts out of sharing', () => {
+    // the toggle is a promise: off means the coach reasons only from basic
+    // stats and the typed goals, never from the app's measurements
+    const ctx = buildCoachContext(profile(), 82, null, {
+      trendKgPerWeek: -0.42,
+      shareMeasured: false,
+    });
+    expect(ctx.measured_expenditure_kcal).toBeNull();
+    expect(ctx.expenditure_confidence).toBeNull();
+    expect(ctx.weight_trend_kg_per_week).toBeNull();
+    // basic stats still flow - the user typed nothing secret about their height
+    expect(ctx.height_cm).toBe(180);
+    expect(ctx.weight_kg).toBe(82);
   });
 });
 
