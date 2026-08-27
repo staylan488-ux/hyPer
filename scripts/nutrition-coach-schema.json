@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["calories", "protein_g", "carbs_g", "fat_g", "rationale", "cautions", "confidence"],
+  "properties": {
+    "calories": { "type": "number", "minimum": 800, "maximum": 8000 },
+    "protein_g": { "type": "number", "minimum": 20, "maximum": 500 },
+    "carbs_g": { "type": "number", "minimum": 0, "maximum": 1000 },
+    "fat_g": { "type": "number", "minimum": 15, "maximum": 400 },
+    "rationale": { "type": "string", "minLength": 1, "maxLength": 1200 },
+    "cautions": { "type": "string", "maxLength": 600 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
