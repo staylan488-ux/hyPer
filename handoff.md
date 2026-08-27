@@ -1707,3 +1707,46 @@ whole available lever. Swift compiles (CODE_SIGNING_ALLOWED=NO build).
 Validation: 52 files / 578 tests (12 new), node --check, boot test, tsc, eslint,
 vite build, Xcode compile. Worker staged; needs VM deploy + /ship (widgets and
 client are app-side).
+
+## Rev 98 — goals-to-targets coach; manual entry hardened (2026-08-02)
+
+The ask: type goals in plain words, get LLM-recommended calories and macros;
+plus manual entry of both, separate from the LLM path.
+
+Manual entry already existed (Settings > Daily targets > "Set manually": four
+fields -> source 'manual' -> adaptive loop skips manual targets -> "Resume
+adaptive" hands them back). Discovered mid-build; the first cut of the editor
+duplicated it and was thrown away. What was genuinely missing was the coach.
+
+**The coach** (`GoalsCoach.tsx`, Settings > Daily targets > "Describe a goal"):
+free-text goals -> worker `/coach` -> structured recommendation. What makes it
+more than a chatbot answer:
+- The request carries `buildCoachContext`: sex/age/height/weight/activity,
+  current targets, and the adaptive engine's MEASURED expenditure with its
+  confidence. The prompt tells the model to anchor on measurement over
+  formulas. A stale expenditure (adaptive off) is withheld rather than passed
+  as truth.
+- `normalizeCoachResult` enforces rails in code, not just prompt: bounds
+  (kcal 1200-6000, protein 50-400, carbs 0-800, fat 25-250) and macro-calorie
+  reconciliation - when the model's calories drift >2% from its own macro
+  arithmetic, the macros win, because they carry the decisions and a stray
+  calorie figure is a summing mistake.
+- Nothing applies directly. The recommendation pre-fills the SAME manual draft
+  the hand-edit path uses (source 'manual', so adaptive pauses exactly as for
+  hand edits), with rationale + cautions shown; the user adjusts and saves.
+- Rides the Rev 97 plumbing free: patientPost retries, inflight attach by
+  idempotency key, provider fallback, 8-min research ceiling.
+
+**Worker** `/coach`: cloned from /describe with its own schema
+(`nutrition-coach-schema.json`); describeWith{Claude,Codex} parameterized by
+schema. Goals text treated as untrusted; context JSON capped at 4KB.
+
+**Manual entry hardened**: a consistency meter under the fields flags macros
+that disagree with the calorie figure by >5% ("adds up to N kcal - one of them
+is probably a typo").
+
+No schema/SQL change: applied coach targets are source 'manual' (the user
+reviewed them, so they are manual in the sense that matters).
+
+Validation: 53 files / 587 tests (9 new), node --check + boot test, tsc,
+eslint, vite build. Needs VM deploy (worker) + /ship (app).

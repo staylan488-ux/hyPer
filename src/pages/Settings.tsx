@@ -11,6 +11,8 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
 import { NutritionWizard, type NutritionWizardOutcome } from '@/components/nutrition/NutritionWizard';
+import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
+import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
 import { tapHaptic } from '@/lib/haptics';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
@@ -598,6 +600,20 @@ export function Settings() {
     setMacroError(null);
   };
 
+  // The coach's numbers land in the manual draft, pre-filled but not saved -
+  // the user adjusts and saves exactly as if they had typed them, and the
+  // manual source keeps the adaptive loop off them afterwards.
+  const handleCoachRecommendation = (recommendation: CoachRecommendation) => {
+    clearMacroFeedback();
+    setMacroDraft({
+      calories: recommendation.calories,
+      protein: recommendation.protein,
+      carbs: recommendation.carbs,
+      fat: recommendation.fat,
+      source: 'manual',
+    });
+  };
+
   // A hand edit makes the target manual, which keeps the adaptive loop off it.
   const editMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat', raw: string) => {
     clearMacroFeedback();
@@ -817,6 +833,13 @@ export function Settings() {
           />
         </button>
 
+        <GoalsCoach
+          profile={nutritionProfile}
+          weightKg={latestBodyWeight ? Number(latestBodyWeight.kilograms) : null}
+          currentTargets={baseMacros}
+          onRecommendation={handleCoachRecommendation}
+        />
+
         <div className="mt-8 mb-1">
           <span className="t-label-sm">Set manually</span>
         </div>
@@ -850,6 +873,19 @@ export function Settings() {
             onChange={(e) => editMacro('fat', e.target.value)}
           />
         </div>
+
+        {(() => {
+          const kcalFromMacros = Math.round(macros.protein * 4 + macros.carbs * 4 + macros.fat * 9);
+          const driftPct = macros.calories > 0
+            ? Math.round(Math.abs(macros.calories - kcalFromMacros) / macros.calories * 100)
+            : 0;
+          return driftPct > 5 ? (
+            <p className="t-caption mt-3 text-[var(--color-accent)]">
+              These macros add up to {kcalFromMacros.toLocaleString()} kcal — {driftPct}% off the
+              calorie figure. One of them is probably a typo.
+            </p>
+          ) : null;
+        })()}
 
         {macrosChanged && (
           <Button className="w-full mt-6" onClick={handleSaveMacros} loading={savingMacros}>
