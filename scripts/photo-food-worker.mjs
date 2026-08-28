@@ -46,6 +46,11 @@ const configuredResearchTimeout = Number(process.env.PHOTO_WORKER_RESEARCH_TIMEO
 const RESEARCH_TIMEOUT_MS = Number.isFinite(configuredResearchTimeout) && configuredResearchTimeout > 0
   ? Math.max(60_000, configuredResearchTimeout)
   : Math.max(480_000, COMMAND_TIMEOUT_MS);
+// When the primary provider burns its whole ceiling and the fallback runs, the
+// two legs must together fit inside the client's 15-minute patience - otherwise
+// the user stares at a spinner while a result they will never see is computed.
+// 480s + 300s + overhead lands near 13 minutes.
+const FALLBACK_RESEARCH_TIMEOUT_MS = Math.min(300_000, RESEARCH_TIMEOUT_MS);
 const AUTH_TIMEOUT_MS = 10_000;
 const REQUIRE_ALLOWLIST = process.env.PHOTO_WORKER_REQUIRE_ALLOWLIST === '1'
   || process.env.NODE_ENV === 'production';
@@ -58,6 +63,24 @@ const idempotencyCache = createTTLCache({ ttlMs: 15 * 60_000, maxEntries: 100 })
 // completed results live in idempotencyCache; STILL-RUNNING jobs live here so a
 // client retry attaches to its own job instead of queueing a duplicate
 const inflightAnalyses = createInflightJobs();
+// A finished FAILURE is an answer too. Without this, an error is delivered only
+// to a client connected at the moment the job dies; a retrying client that was
+// between attempts silently restarts the whole multi-minute run, and the user
+// stares at a spinner until their budget expires with a generic message.
+const failureCache = createTTLCache({ ttlMs: 90_000, maxEntries: 50 });
+
+/** Runs the shared analysis and memoizes a failure for the next attempt. */
+async function runMemoized(cacheKey, compute) {
+  try {
+    return await inflightAnalyses.run(cacheKey, compute);
+  } catch (error) {
+    if (cacheKey) {
+      const message = error instanceof Error ? error.message : String(error);
+      failureCache.set(cacheKey, message);
+    }
+    throw error;
+  }
+}
 const BUNDLED_CODEX_PATH = '/Applications/ChatGPT.app/Contents/Resources/codex';
 const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
   || (process.platform === 'darwin' && existsSync(BUNDLED_CODEX_PATH) ? BUNDLED_CODEX_PATH : 'codex');
@@ -357,7 +380,7 @@ function descriptionPrompt(description) {
 async function withProviderFallback(requested, run, requestId) {
   const alternative = requested === 'anthropic' ? 'openai' : 'anthropic';
   try {
-    return { result: await run(requested), provider: requested };
+    return { result: await run(requested, false), provider: requested };
   } catch (error) {
     // A broken credential is worth remembering; a one-off timeout is not.
     if (isCredentialFailure(error)) markProviderDead(requested, requestId);
@@ -366,12 +389,14 @@ async function withProviderFallback(requested, run, requestId) {
       `[photo-worker ${requestId}] ${requested} failed, retrying on ${alternative}:`,
       error instanceof Error ? error.message : error,
     );
-    const result = await run(alternative);
+    // the fallback leg runs on a SHORTER ceiling: the primary already spent
+    // its budget, and both legs together must beat the client's patience
+    const result = await run(alternative, true);
     return { result, provider: alternative, fellBackFrom: requested };
   }
 }
 
-async function analyzeWithCodex(jobDir, imagePaths, prompt) {
+async function analyzeWithCodex(jobDir, imagePaths, prompt, timeoutMs = RESEARCH_TIMEOUT_MS) {
   const outputPath = path.join(jobDir, 'codex-result.json');
   const args = [
     'exec', '--model', OPENAI_MODEL, '-c', `model_reasoning_effort="${OPENAI_EFFORT}"`,
@@ -380,25 +405,25 @@ async function analyzeWithCodex(jobDir, imagePaths, prompt) {
     '--ignore-user-config', '--ignore-rules', '--output-schema', SCHEMA_PATH,
     '--output-last-message', outputPath, '-C', jobDir, '-',
   ];
-  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs: RESEARCH_TIMEOUT_MS });
+  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs });
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
 
-async function analyzeWithClaude(jobDir, prompt) {
+async function analyzeWithClaude(jobDir, prompt, timeoutMs = RESEARCH_TIMEOUT_MS) {
   const args = [
     '--print', '--output-format', 'json', '--json-schema', claudeSchema,
     '--tools', 'Read', '--permission-mode', 'dontAsk', '--no-session-persistence', '--safe-mode',
   ];
   args.push('--model', ANTHROPIC_MODEL, '--effort', ANTHROPIC_EFFORT);
   args.push(prompt);
-  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs: RESEARCH_TIMEOUT_MS });
+  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs });
   const outer = JSON.parse(stdout);
   if (outer.structured_output) return outer.structured_output;
   if (typeof outer.result === 'string') return JSON.parse(outer.result);
   return outer;
 }
 
-async function describeWithCodex(jobDir, prompt, schemaPath = DESCRIPTION_SCHEMA_PATH) {
+async function describeWithCodex(jobDir, prompt, schemaPath = DESCRIPTION_SCHEMA_PATH, timeoutMs = RESEARCH_TIMEOUT_MS) {
   const outputPath = path.join(jobDir, 'codex-description-result.json');
   const args = [
     '--search', 'exec', '--model', OPENAI_MODEL, '-c', `model_reasoning_effort="${OPENAI_EFFORT}"`,
@@ -406,11 +431,11 @@ async function describeWithCodex(jobDir, prompt, schemaPath = DESCRIPTION_SCHEMA
     '--ignore-user-config', '--ignore-rules', '--output-schema', schemaPath,
     '--output-last-message', outputPath, '-C', jobDir, '-',
   ];
-  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs: RESEARCH_TIMEOUT_MS });
+  await runCommand(CODEX_COMMAND, args, { cwd: jobDir, stdin: prompt, timeoutMs });
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
 
-async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescriptionSchema, effort = ANTHROPIC_EFFORT) {
+async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescriptionSchema, effort = ANTHROPIC_EFFORT, timeoutMs = RESEARCH_TIMEOUT_MS) {
   const args = [
     '--print', '--output-format', 'json', '--json-schema', schemaJson,
     // WebSearch and WebFetch require permission, and 'dontAsk' does not prompt,
@@ -423,7 +448,7 @@ async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescription
     '--tools', 'WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--no-session-persistence', '--safe-mode',
     '--model', ANTHROPIC_MODEL, '--effort', effort, prompt,
   ];
-  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs: RESEARCH_TIMEOUT_MS });
+  const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs });
   const outer = JSON.parse(stdout);
   if (outer.structured_output) return outer.structured_output;
   if (typeof outer.result === 'string') return JSON.parse(outer.result);
@@ -527,6 +552,14 @@ const server = createServer(async (request, response) => {
     const inflight = inflightAnalyses.get(cacheKey);
     if (inflight) return sendJson(response, 200, await inflight, origin);
 
+    // a recent failure of this same request IS its answer - restarting the run
+    // would burn the same minutes to hit the same wall. The short TTL means a
+    // deliberate retry a minute later starts fresh.
+    const recentFailure = cacheKey ? failureCache.get(cacheKey) : undefined;
+    if (recentFailure) {
+      return sendJson(response, 504, { error: `The last attempt failed: ${recentFailure}`, requestId }, origin);
+    }
+
     const body = await readJsonBody(request);
     const provider = body.provider === 'anthropic' ? 'anthropic' : 'openai';
     if (!installedProviders.includes(provider)) return sendJson(response, 503, { error: `${provider} CLI is not installed or available.` }, origin);
@@ -552,12 +585,14 @@ const server = createServer(async (request, response) => {
       jobDir = path.join(JOB_ROOT, randomUUID());
       await mkdir(jobDir, { recursive: true, mode: 0o700 });
       const prompt = coachPrompt(goals, context);
-      const responseBody = await inflightAnalyses.run(cacheKey, async () => {
+      const responseBody = await runMemoized(cacheKey, async () => {
         const attempt = await withProviderFallback(
           provider,
-          (chosen) => (chosen === 'anthropic'
-            ? describeWithClaude(jobDir, prompt, claudeCoachSchema, COACH_EFFORT)
-            : describeWithCodex(jobDir, prompt, COACH_SCHEMA_PATH)),
+          (chosen, isFallback) => (chosen === 'anthropic'
+            ? describeWithClaude(jobDir, prompt, claudeCoachSchema, COACH_EFFORT,
+              isFallback ? FALLBACK_RESEARCH_TIMEOUT_MS : RESEARCH_TIMEOUT_MS)
+            : describeWithCodex(jobDir, prompt, COACH_SCHEMA_PATH,
+              isFallback ? FALLBACK_RESEARCH_TIMEOUT_MS : RESEARCH_TIMEOUT_MS)),
           requestId,
         );
         const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
@@ -577,7 +612,7 @@ const server = createServer(async (request, response) => {
       jobDir = path.join(JOB_ROOT, randomUUID());
       await mkdir(jobDir, { recursive: true, mode: 0o700 });
       const prompt = descriptionPrompt(description);
-      const responseBody = await inflightAnalyses.run(cacheKey, async () => {
+      const responseBody = await runMemoized(cacheKey, async () => {
         const attempt = await withProviderFallback(
           provider,
           (chosen) => (chosen === 'anthropic'
@@ -631,7 +666,7 @@ const server = createServer(async (request, response) => {
     }
 
     const prompt = analysisPrompt(images, typeof body.hint === 'string' ? body.hint.slice(0, 1500) : '');
-    const responseBody = await inflightAnalyses.run(cacheKey, async () => {
+    const responseBody = await runMemoized(cacheKey, async () => {
       const attempt = await withProviderFallback(
         provider,
         (chosen) => (chosen === 'anthropic'
@@ -655,6 +690,9 @@ const server = createServer(async (request, response) => {
     }
     const diagnostic = error instanceof Error ? error.stack || error.message : String(error);
     process.stderr.write(`[photo-worker ${requestId}] ${diagnostic}\n`);
+    if (error instanceof Error && /timed out after/.test(error.message)) {
+      return sendJson(response, 504, { error: error.message, requestId }, origin);
+    }
     return sendJson(response, 500, {
       error: `Food analysis failed. Reference ${requestId} in the worker logs.`,
       requestId,
