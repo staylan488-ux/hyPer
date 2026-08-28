@@ -205,7 +205,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     const stored = globalThis.localStorage?.getItem(COMBINE_MEAL_KEY);
     return stored == null ? true : stored === '1';
   });
-  const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>('openai');
+  // seed from the saved worker settings so the label reflects the user's
+  // choice before the first analysis instead of a hardcoded default
+  const [photoProvider, setPhotoProvider] = useState<PhotoAnalysisProvider>(() => getPhotoWorkerSettings().provider);
   const [photoModel, setPhotoModel] = useState('');
   const [photoSummary, setPhotoSummary] = useState('');
   const topPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -321,12 +323,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       const accessToken = sessionData.session?.access_token;
       if (!accessToken) throw new Error('Your session expired. Please sign out and sign back in.');
 
+      const describeSettings = getPhotoWorkerSettings();
       const result = await describeFoodWithAi({
         description: foodDescription,
         accessToken,
-        settings: getPhotoWorkerSettings(),
+        settings: describeSettings,
       });
-      setFoodDescriptionResult(result);
+      // surface a provider fallback instead of silently labeling the answer
+      // with a different name than the one the user chose
+      const describeFallbackNote = result.provider !== describeSettings.provider
+        ? `${describeSettings.provider === 'anthropic' ? 'Claude' : 'OpenAI'} was unavailable, so ${result.provider === 'anthropic' ? 'Claude' : 'OpenAI'} answered. `
+        : '';
+      setFoodDescriptionResult(describeFallbackNote
+        ? { ...result, notes: `${describeFallbackNote}${result.notes || ''}`.trim() }
+        : result);
       setManualFood({
         name: result.name,
         calories: formatMacroInput(result.calories),
@@ -827,7 +837,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
       setPhotoProvider(result.provider);
       setPhotoModel(result.model);
-      setPhotoSummary(result.summary);
+      // the worker silently falls back to the other provider when the chosen
+      // one fails — say so instead of quietly showing the wrong name
+      const chosenProvider = getPhotoWorkerSettings().provider;
+      const fallbackNote = result.provider !== chosenProvider
+        ? `${chosenProvider === 'anthropic' ? 'Claude' : 'OpenAI'} was unavailable, so ${result.provider === 'anthropic' ? 'Claude' : 'OpenAI'} analyzed this photo. `
+        : '';
+      setPhotoSummary(`${fallbackNote}${result.summary}`);
       setPhotoItems(grounded);
     } catch (analysisError) {
       setPhotoError(analysisError instanceof Error ? analysisError.message : 'Could not analyze photo.');

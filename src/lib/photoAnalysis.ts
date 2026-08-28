@@ -1,6 +1,7 @@
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { patientPost } from '@/lib/patientFetch';
+import { supabase } from '@/lib/supabase';
 
 export type PhotoAnalysisProvider = 'openai' | 'anthropic';
 export type PhotoAnalysisAngle = 'top' | 'side';
@@ -57,6 +58,36 @@ export function savePhotoWorkerSettings(settings: PhotoWorkerSettings): void {
   const normalizedUrl = settings.url.trim().replace(/\/+$/, '');
   globalThis.localStorage?.setItem(URL_KEY, normalizedUrl);
   globalThis.localStorage?.setItem(PROVIDER_KEY, settings.provider);
+  // mirror to auth user metadata so the choice survives WebView storage
+  // eviction and app reinstalls; fire-and-forget — localStorage stays the
+  // synchronous source of truth
+  void supabase.auth.updateUser({
+    data: { photo_worker_settings: { url: normalizedUrl, provider: settings.provider } },
+  }).catch(() => {});
+}
+
+// restores saved worker settings after WebView storage was wiped (iOS can
+// evict localStorage under storage pressure). Local values always win — the
+// mirror only fills in when the local copy is gone, so a saved choice holds
+// until the user explicitly changes it.
+export async function hydratePhotoWorkerSettings(): Promise<void> {
+  const storage = globalThis.localStorage;
+  if (!storage) return;
+  if (storage.getItem(PROVIDER_KEY) !== null || storage.getItem(URL_KEY) !== null) return;
+  try {
+    const { data } = await supabase.auth.getUser();
+    const stored = data.user?.user_metadata?.photo_worker_settings as
+      { url?: unknown; provider?: unknown } | undefined;
+    if (!stored) return;
+    if (typeof stored.url === 'string' && stored.url.trim()) {
+      storage.setItem(URL_KEY, stored.url.trim());
+    }
+    if (stored.provider === 'anthropic' || stored.provider === 'openai') {
+      storage.setItem(PROVIDER_KEY, stored.provider);
+    }
+  } catch {
+    // offline boot: build defaults apply until the next launch
+  }
 }
 
 function normalizeItem(item: PhotoAnalysisItem): PhotoAnalysisItem {
