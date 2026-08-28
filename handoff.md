@@ -1778,3 +1778,37 @@ lazily-evaluated closures, so range edits still need their spans reviewed.
 
 Validation: 53 files / 589 tests, node --check + boot test, tsc, eslint, build.
 Needs VM deploy (worker) + /ship (app).
+
+## Rev 100 — a slow research run could strand the user past their whole budget (2026-08-02)
+
+Field report: "Gott's roadside American burger in San Francisco" spun for 10+
+minutes and never finished. Reconstructed sequence: codex burned the full 8-min
+research ceiling, withProviderFallback then retried on Claude with ANOTHER full
+8-min ceiling inside the same job, and the app's 15-minute patience expired
+while leg two was still thinking. Two structural defects underneath:
+
+1. **Unbounded worst case.** Primary + fallback legs could total ~16 min,
+   guaranteeing the client gives up first. The fallback leg now runs on a
+   reduced ceiling (FALLBACK_RESEARCH_TIMEOUT_MS, 300s), so worst case is
+   ~13 min inside the client's 15.
+2. **Failures were not memoized.** A job that died delivered its error only to
+   a client connected at that instant; a retrying client between attempts
+   silently RESTARTED the whole multi-minute run. Failures now cache for 90s
+   (failureCache) and the next attempt gets an immediate 504 with the real
+   reason ("The last attempt failed: codex timed out after N seconds"). The
+   short TTL means a deliberate retry a minute later starts fresh.
+
+Also: a command timeout now maps to 504 with its actual message rather than the
+generic "Food analysis failed. Reference ...".
+
+Verified end-to-end locally with a forced 60s ceiling: attempt 1 returned the
+real timeout error at 61s; attempt 2 with the same idempotency key returned the
+memoized 504 in 12 MILLISECONDS instead of re-running.
+
+Process confessions: the first "reproduction" of the user's query never ran -
+macOS has no GNU `timeout`, the command died instantly, and I reported it as
+running without checking. Rerun without it. And the >8-min codex behaviour on
+this query class is confirmed only to ">60s"; the full rerun was still going at
+write time.
+
+All server-side; no /ship needed. Needs VM deploy.
