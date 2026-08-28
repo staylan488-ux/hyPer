@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { User, Session } from '@supabase/supabase-js';
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
+import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { supabase } from '@/lib/supabase';
 
 const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
@@ -56,15 +57,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (session) {
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
+      // no-op when local settings exist; restores them after storage eviction
+      void hydratePhotoWorkerSettings();
     } else {
       set({ loading: false, initialized: true });
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
       set({ session, user: session?.user ?? null });
-      
+
       if (session?.user) {
         get().fetchProfile();
+        void hydratePhotoWorkerSettings();
       } else {
         set({ profile: null });
       }

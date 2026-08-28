@@ -6,8 +6,16 @@ import { Button, Input } from '@/components/shared';
 import { normalizeBarcode, normalizeFoodBarcode } from '@/lib/barcodes';
 import { tapHaptic } from '@/lib/haptics';
 import { NativeBarcode, isNativeIOS } from '@/lib/nativeBridge';
+import { withTimeout } from '@/lib/withTimeout';
 
 const SCAN_INTERVAL_MS = 180;
+// hard ceilings so no await can strand the UI in a disabled busy state: the
+// catalog lookup chain (saved → FatSecret → USDA → OFF) has no per-leg
+// timeouts, and a native plugin call whose bridge callback is lost would
+// otherwise leave 'starting' stuck forever with the button unusable
+const LOOKUP_TIMEOUT_MS = 45_000;
+const NATIVE_AVAILABILITY_TIMEOUT_MS = 10_000;
+const NATIVE_SCAN_TIMEOUT_MS = 300_000;
 const FOOD_BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
 
 prepareZXingModule({
@@ -52,6 +60,10 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
   const detectorRef = useRef<BarcodeDetector | null>(null);
   const detectingRef = useRef(false);
   const stoppedRef = useRef(true);
+  // increments on every startCamera so a superseded invocation (e.g. its
+  // native scan rejected as CANCELLED after a restart) cannot clobber the
+  // state the newer invocation owns
+  const sessionRef = useRef(0);
   const [state, setState] = useState<ScannerState>('idle');
   const [message, setMessage] = useState('Point the rear camera at a UPC or EAN food barcode.');
   const [manualBarcode, setManualBarcode] = useState('');
@@ -84,8 +96,17 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
     setMessage(`Looking up ${barcode}…`);
 
     try {
-      const found = await onDetected(barcode);
-      if (!found) {
+      const found = await withTimeout(
+        onDetected(barcode),
+        LOOKUP_TIMEOUT_MS,
+        'The lookup took too long. Check your connection and scan again.',
+      );
+      if (found) {
+        // without a terminal state here the UI stayed on the 'looking-up'
+        // spinner forever after a successful scan
+        setState('idle');
+        setMessage('Product found — review the details below.');
+      } else {
         setState('error');
         setMessage('Barcode read, but USDA and Open Food Facts had no product record. Use Describe with AI or add it manually.');
       }
@@ -134,16 +155,26 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
 
   const startCamera = useCallback(async () => {
     stopCamera();
+    const session = ++sessionRef.current;
     setState('starting');
     setMessage('Starting rear camera…');
 
     try {
       if (isNativeIOS()) {
-        const availability = await NativeBarcode.getAvailability();
+        const availability = await withTimeout(
+          NativeBarcode.getAvailability(),
+          NATIVE_AVAILABILITY_TIMEOUT_MS,
+          'The camera did not respond. Try again.',
+        );
         if (!availability.available) {
           throw new Error('Native barcode scanning is unavailable on this iPhone.');
         }
-        const result = await NativeBarcode.scanBarcode();
+        const result = await withTimeout(
+          NativeBarcode.scanBarcode(),
+          NATIVE_SCAN_TIMEOUT_MS,
+          'The scanner did not respond. Try again.',
+        );
+        if (session !== sessionRef.current) return;
         await resolveBarcode(result.rawValue, result.format);
         return;
       }
@@ -162,6 +193,10 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
           frameRate: { ideal: 30 },
         },
       });
+      if (session !== sessionRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
       const video = videoRef.current;
       if (!video) {
@@ -184,6 +219,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       setMessage('Hold the barcode inside the frame. Move closer until the bars are sharp.');
       scanFrame();
     } catch (error) {
+      if (session !== sessionRef.current) return;
       stopCamera();
       if (error instanceof Error && 'code' in error && error.code === 'CANCELLED') {
         setState('idle');

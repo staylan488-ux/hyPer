@@ -9,6 +9,7 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
     private weak var plugin: HyperBarcodePlugin?
     private let call: CAPPluginCall
     private let scanner: DataScannerViewController
+    private var navigation: UINavigationController?
     private var finished = false
 
     init(plugin: HyperBarcodePlugin, call: CAPPluginCall) {
@@ -36,9 +37,17 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
     }
 
     func present(from presenter: UIViewController) {
+        // present from the topmost controller: presenting from one that is
+        // already covered by another modal fails silently, its completion
+        // never runs, and the JS promise would never settle
+        var top = presenter
+        while let next = top.presentedViewController, !next.isBeingDismissed {
+            top = next
+        }
         let navigation = UINavigationController(rootViewController: scanner)
         navigation.modalPresentationStyle = .fullScreen
-        presenter.present(navigation, animated: true) { [weak self] in
+        self.navigation = navigation
+        top.present(navigation, animated: true) { [weak self] in
             guard let self else { return }
             do {
                 try self.scanner.startScanning()
@@ -72,11 +81,23 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
         guard !finished else { return }
         finished = true
         scanner.stopScanning()
-        scanner.dismiss(animated: true) { [weak self] in
-            guard let self else { return }
-            self.call.reject("Barcode scanning was cancelled.", "CANCELLED")
-            self.plugin?.finishSession()
+        // settle the call before dismissing: a dismissal whose completion
+        // never fires must not be able to strand the JS promise
+        call.reject("Barcode scanning was cancelled.", "CANCELLED")
+        plugin?.finishSession()
+        dismissPresentation(animated: true, completion: nil)
+    }
+
+    // used when a new scan request arrives while this session is still
+    // registered — settles the old call, tears the sheet down without
+    // animation, then lets the caller present the fresh session
+    func forceCancel(completion: @escaping () -> Void) {
+        if !finished {
+            finished = true
+            scanner.stopScanning()
+            call.reject("Barcode scanning was restarted.", "CANCELLED")
         }
+        dismissPresentation(animated: false, completion: completion)
     }
 
     private func resolveFirstBarcode(in items: [RecognizedItem]) {
@@ -95,11 +116,9 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
             case .upce: format = "upc_e"
             default: format = "unknown"
             }
-            scanner.dismiss(animated: true) { [weak self] in
-                guard let self else { return }
-                self.call.resolve(["rawValue": value, "format": format])
-                self.plugin?.finishSession()
-            }
+            call.resolve(["rawValue": value, "format": format])
+            plugin?.finishSession()
+            dismissPresentation(animated: true, completion: nil)
             return
         }
     }
@@ -108,11 +127,17 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
         guard !finished else { return }
         finished = true
         scanner.stopScanning()
-        scanner.dismiss(animated: true) { [weak self] in
-            guard let self else { return }
-            self.call.reject("Native barcode scanning failed.", "SCAN_FAILED", error)
-            self.plugin?.finishSession()
+        call.reject("Native barcode scanning failed.", "SCAN_FAILED", error)
+        plugin?.finishSession()
+        dismissPresentation(animated: true, completion: nil)
+    }
+
+    private func dismissPresentation(animated: Bool, completion: (() -> Void)?) {
+        guard let navigation, let presenting = navigation.presentingViewController else {
+            completion?()
+            return
         }
+        presenting.dismiss(animated: animated, completion: completion)
     }
 }
 
@@ -155,17 +180,30 @@ final class HyperBarcodePlugin: CAPPlugin, CAPBridgedPlugin {
                 call.unavailable("Native barcode scanning is unavailable on this device.")
                 return
             }
-            guard self.activeSession == nil else {
-                call.reject("A barcode scan is already in progress.", "SCAN_IN_PROGRESS")
-                return
-            }
             guard let presenter = self.bridge?.viewController else {
                 call.unavailable("Unable to present the barcode scanner.")
                 return
             }
-            let session = NativeBarcodeSession(plugin: self, call: call)
-            self.activeSession = session
-            session.present(from: presenter)
+
+            let begin: () -> Void = { [weak self] in
+                guard let self else {
+                    call.unavailable("Barcode scanning is unavailable.")
+                    return
+                }
+                let session = NativeBarcodeSession(plugin: self, call: call)
+                self.activeSession = session
+                session.present(from: presenter)
+            }
+
+            // a stale session (its dismissal completion was lost, or the
+            // WebView reloaded mid-scan) must never brick future scans:
+            // settle it and tear it down, then start the new one
+            if let stale = self.activeSession as? NativeBarcodeSession {
+                self.activeSession = nil
+                stale.forceCancel(completion: begin)
+            } else {
+                begin()
+            }
         }
     }
 
@@ -173,4 +211,3 @@ final class HyperBarcodePlugin: CAPPlugin, CAPBridgedPlugin {
         activeSession = nil
     }
 }
-
