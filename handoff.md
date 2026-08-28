@@ -1812,3 +1812,45 @@ this query class is confirmed only to ">60s"; the full rerun was still going at
 write time.
 
 All server-side; no /ship needed. Needs VM deploy.
+
+## Rev 101 (2026-08-28): scanner hang fixes + durable provider choice (PR #101, merged)
+
+User reported the barcode scanner stuck forever on "Starting rear camera…"
+with the button disabled after a scan+lookup cycle, plus lookups that never
+finished. Root causes found and fixed (needs /ship — app + native code):
+
+1. Successful lookup NEVER set a terminal state - 'looking-up' spinner forever.
+   Now resolves to idle + "Product found" message.
+2. Lookup chain (saved → FatSecret → USDA → OFF) had zero timeouts. Now a 45s
+   ceiling via new src/lib/withTimeout.ts (4 unit tests).
+3. Native plugin could strand the JS promise permanently three ways: present()
+   from a covered VC fails silently (completion never runs), the call was
+   settled inside the dismissal completion (lost completion = stranded call),
+   WebView reload mid-scan orphaned the session. activeSession then leaked so
+   EVERY later scan was rejected SCAN_IN_PROGRESS. HyperBarcodePlugin.swift
+   now: settles the call BEFORE dismissing, presents from the topmost VC,
+   force-cancels a stale session instead of rejecting new scans. JS adds
+   10s availability / 300s scan watchdogs + a per-invocation session token so
+   a superseded call's CANCELLED rejection can't clobber the newer scan.
+
+Provider stickiness (user: "sticks with the choice i made until I NEXT CHANGE
+IT" / "seems to be using codex but the last thing i saved was claude"):
+- FoodLogger seeded its provider label with hardcoded 'openai' → now reads
+  getPhotoWorkerSettings().provider.
+- Photo + describe results now SAY when the worker fell back to the other
+  provider instead of silently relabeling. If the user keeps seeing the
+  fallback note with Claude chosen, the VM's claude credential is failing at
+  runtime (health check can lie) - check journal: sudo journalctl -u
+  hyper-photo-worker | grep -i fallback.
+- savePhotoWorkerSettings mirrors to supabase auth user metadata
+  (photo_worker_settings); hydratePhotoWorkerSettings() restores it on sign-in
+  ONLY when localStorage is empty (local always wins). Called from
+  authStore.initialize. iOS WKWebView can evict localStorage - that was the
+  suspected cause of the choice not sticking.
+
+Validation: 593/593 vitest, tsc+vite build clean, xcodebuild Debug simulator
+BUILD SUCCEEDED. Squash-merged to main (55a930b5).
+
+Outstanding: user still needs to run `sudo bash /home/aross/worker-code-deploy.sh`
+on the VM for Rev 100 (fallback ceiling cap + failure memoization), and /ship
+for this Rev.
