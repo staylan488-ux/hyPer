@@ -60,7 +60,48 @@ SESSION HANDOFF SUMMARY
 - Next recommended command:
 ```
 
-## Current Handoff State
+## Current Handoff State — adaptive workout calendar
+
+- Updated: 2026-09-04
+- Implementation branch: `codex/adaptive-workout-calendar`
+- Base: `e196e10` — workout set-save fix (preserved).
+- Status: implemented and verified locally; no release/deployment requested.
+
+### What Changed
+
+- Successfully persisted completed split workouts anchor their workout date to the performed split day. Selecting or starting an unfinished workout does not shift the plan. Anchors derive from existing workout rows, so reloads and other devices reconstruct the same schedule without changing history or adding a DB schema migration.
+- The saved workout order and saved weekday rest gaps form the repeating cycle, including cycles spanning multiple weeks. Both Today and Train use the same projection and completion inputs. Completing Upper B instead of queued Lower A yields Lower B, Rest, Rest, Upper A, Lower A, Rest next. Completing delayed Lower A the following day also shifts the cycle; no skip workflow is needed.
+- Fixed schedules continue by calendar date; flexible schedules retain their completion-driven queue and follow the actual completed split day. Flexible mode has no saved rest rhythm.
+- Completion reads are paginated and filtered to the active split (except the legacy flex-offset compatibility read). Failed reads show Retry instead of an unshifted schedule. A later schedule edit takes precedence over already-started sessions, and stale remote schedule responses cannot overwrite a newer local edit.
+- Legacy flex offsets remain readable. New explicit flexible split indexes use `flexAnchorIndex` in memory/cache and the previously unused flex `weekdays` array (`[index]`, `anchor_day: null`) in the existing DB table, permitting indexes beyond 6. Fixed-mode weekday storage is unchanged.
+- Calendar cells identify workout names/rest for accessibility; today's completion remains visible while browsing other weeks.
+
+### Files Touched
+
+- `src/lib/planSchedule.ts`
+- `src/hooks/usePlanSchedule.ts`, `src/hooks/useScheduleWorkouts.ts` (new)
+- `src/pages/Dashboard.tsx`, `src/pages/Workout.tsx`
+- `tests/planSchedule.test.ts`
+- `tests/adaptivePlanSchedule.test.ts`, `tests/schedulePersistence.test.ts` (new)
+- `AGENTS.md`
+
+### Verification
+
+- `npm run test`: PASS (58 files, 643 tests). This clean worktree has no `.env`; tests ran with non-secret placeholders: `VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SUPABASE_ANON_KEY=test-public-key npm run test`.
+- `npm run lint`: PASS.
+- `npm run build`: PASS, including TypeScript; existing chunk-size/Browserslist warnings.
+- 80 scheduling tests cover the acceptance sequence, delayed Lower A, rest gaps, arbitrary split lengths, history isolation, same-date ordering, DST/year boundaries, cache-clear DB recovery, legacy flex offsets, query failure, pagination, and late background-sync races.
+- Browser: completed Upper B fixture produces Lower B tomorrow, two rests, then Upper A/Lower A; Today and Train both show adapted Lower A from yesterday's Upper A. Temporary fixtures were restored. Preview's existing missing relational sets prevent a full new-session start flow, so that portion used a persisted completion fixture and integration tests.
+
+### Remaining Tasks / Risks
+
+- Device validation and any merge/release remain separate work. No auth, set-saving, bot, or DB-schema changes.
+- History remains authoritative: deleting a completion or editing it so the existing history flow marks it incomplete removes that scheduling anchor. Editing only weight/reps on a completed session leaves the anchor intact.
+- Older app builds do not interpret the new explicit flex-index encoding; validate new schedule edits with this implementation.
+- `CLAUDE.md` is absent in this worktree; `AGENTS.md` and `TOOL_SWITCHING_CHECKLIST.md` were read.
+- Next recommended command: `git log -1 && git status --short`.
+
+## Previous Handoff State — workout set-save recovery
 
 - Updated: 2026-09-04
 - Implementation branch: `fix/workout-set-save-stall`
