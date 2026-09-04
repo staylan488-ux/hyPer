@@ -4,13 +4,12 @@ import {
   ArrowRight,
   ArrowUpRight,
   Dumbbell,
-  Play,
   Plus,
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { format, startOfDay } from 'date-fns';
 import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail } from '@/components/shared';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -18,7 +17,6 @@ import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
-import { springs } from '@/lib/animations';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
 
@@ -32,7 +30,7 @@ interface NutritionTotals {
 type HeroState =
   | { kind: 'loading' }
   | { kind: 'schedule-error'; retry: () => void }
-  | { kind: 'resume'; completedSets: number; totalSets: number; title: string; dayName: string; exerciseCount: number; elapsed: string }
+  | { kind: 'resume'; completedSets: number; totalSets: number; title: string; dayName: string; exerciseCount: number; elapsed: string; nextExercise: string | null; nextSet: number | null }
   | { kind: 'done'; title: string }
   | { kind: 'planned'; day: SplitDay }
   | { kind: 'rest' }
@@ -41,10 +39,11 @@ type HeroState =
   | { kind: 'first-run' };
 
 export function Dashboard() {
-  const { profile, user } = useAuthStore();
+  const { user } = useAuthStore();
   const {
     activeSplit,
     currentWorkout,
+    currentWorkoutDayPlan,
     macroTarget,
     weeklyVolume,
     workoutMode,
@@ -169,6 +168,12 @@ export function Dashboard() {
     if (loading) return { kind: 'loading' };
 
     if (currentWorkout && !currentWorkout.completed) {
+      const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
+      const upcomingSet = getWorkoutResumeSet(currentWorkout, workoutDay, currentWorkoutDayPlan);
+      const upcomingName = upcomingSet ? upcomingSet.exercise?.name
+        ?? workoutDay?.exercises.find((exercise) => exercise.exercise_id === upcomingSet.exercise_id)?.exercise?.name
+        ?? (currentWorkoutDayPlan?.workout_id === currentWorkout.id ? currentWorkoutDayPlan.items.find((item) => item.exercise_id === upcomingSet.exercise_id)?.exercise_name : null)
+        ?? 'Next exercise' : null;
       const total = currentWorkout.sets.length;
       const done = currentWorkout.sets.filter((s) => s.completed).length;
       const dayName =
@@ -180,6 +185,8 @@ export function Dashboard() {
         completedSets: done,
         totalSets: total,
         title: 'Session in progress',
+        nextExercise: upcomingName,
+        nextSet: upcomingSet?.set_number ?? null,
         dayName,
         exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
         elapsed: currentWorkout.created_at
@@ -205,11 +212,7 @@ export function Dashboard() {
       scheduleWorkouts
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt]);
-
-  const hour = new Date().getHours();
-  const greetingSlot = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const greeting = profile?.display_name ? `${greetingSlot}, ${profile.display_name}` : greetingSlot;
+  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt]);
 
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
@@ -224,38 +227,23 @@ export function Dashboard() {
   return (
     <>
       <Screen>
-        {/* ── Dateline ── */}
-        <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Today</span>
-            <span className="t-label-sm">{format(new Date(), 'EEE · MMM d')}</span>
+        <header>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="t-display-italic text-[21px]">hyPer</span>
+            <span className="t-caption">{format(new Date(), 'EEE · MMM d')}</span>
           </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">{greeting}</h1>
-        </motion.header>
+          <h1 className="t-label mt-5">Today</h1>
+        </header>
 
-        {/* ── Training hero ── */}
-        <motion.section
-          className="mt-9"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.05 }}
-        >
+        <section className="mt-5">
           <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
-        </motion.section>
+        </section>
 
         {/* ── Fuel ── */}
-        <motion.section
-          className="mt-10 pt-8 border-t border-[var(--color-border)]"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.1 }}
+        <section
+          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
         >
-          <div className="flex items-baseline justify-between mb-4">
-            <span className="t-label">Fuel</span>
-            <Link to="/nutrition" className="t-label-sm flex items-center gap-1 hover:text-[var(--color-text)] transition-colors">
-              Log <ArrowUpRight className="w-3 h-3" strokeWidth={1.75} />
-            </Link>
-          </div>
+          <h2 className="t-label mb-4">Fuel</h2>
 
           {loading ? (
             <div className="space-y-4">
@@ -264,14 +252,13 @@ export function Dashboard() {
             </div>
           ) : hasAnyNutrition ? (
             <>
-              <div className="mb-7">
+              <div className="mb-4">
                 <div className="flex items-baseline gap-2">
                   <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                  <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal left</span>
+                  <span className="t-caption">kcal left</span>
                 </div>
-                <span className="t-label-sm">Energy remaining today</span>
               </div>
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" />
                 <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" />
               </div>
@@ -280,7 +267,7 @@ export function Dashboard() {
             <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
           )}
 
-          <div className="mt-7 flex gap-3">
+          <div className="mt-4 flex gap-3">
             <Link to="/nutrition" className="flex-1">
               <Button variant="secondary" size="md" className="w-full">
                 <Plus className="w-4 h-4" strokeWidth={1.75} />
@@ -293,14 +280,11 @@ export function Dashboard() {
               </Link>
             )}
           </div>
-        </motion.section>
+        </section>
 
         {/* ── Contents / stations ── */}
-        <motion.nav
-          className="mt-10 pt-8 border-t border-[var(--color-border)]"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.smooth, delay: 0.14 }}
+        <nav
+          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
         >
           <span className="t-label block mb-3">Contents</span>
           <ul>
@@ -311,7 +295,6 @@ export function Dashboard() {
                   onClick={() => tapHaptic()}
                   className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border)]"
                 >
-                  <span className="t-data-sm text-[var(--color-muted)] w-6">{s.index}</span>
                   <span className="flex-1 min-w-0">
                     <span className="t-heading block">{s.label}</span>
                     <span className="t-caption">{s.sub}</span>
@@ -321,22 +304,19 @@ export function Dashboard() {
               </li>
             ))}
           </ul>
-        </motion.nav>
+        </nav>
 
         {/* ── One insight, only when it exists ── */}
         {insight && (
-          <motion.section
-            className="mt-10 pt-8 border-t border-[var(--color-border)]"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.smooth, delay: 0.18 }}
+          <section
+            className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
           >
             <Link to="/analysis" className="block group">
               <div className="flex items-baseline justify-between mb-3">
                 <span className="t-label">This week</span>
                 <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
               </div>
-              <p className="t-display text-[1.5rem] text-[var(--color-text)] mb-2">{insight.headline}</p>
+              <p className="t-heading mb-2">{insight.headline}</p>
               <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
               {insight.landmark && (
                 <VolumeRail
@@ -348,7 +328,7 @@ export function Dashboard() {
                 />
               )}
             </Link>
-          </motion.section>
+          </section>
         )}
       </Screen>
       <DashboardMonolithIntro />
@@ -379,28 +359,24 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
   if (hero.kind === 'resume') {
     return (
-      <div className="border-l-2 border-[var(--color-accent)] pl-5">
+      <div>
         <div className="flex items-center gap-2 mb-3">
-          <span className="w-1.5 h-1.5 bg-[var(--color-accent)] animate-breathe" />
-          <span className="t-label text-[var(--color-accent)]">{hero.title}</span>
+          <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" />
+          <span className="t-label">{hero.title}</span>
         </div>
-        <div className="flex items-baseline gap-2.5 mb-4">
-          <span className="number-hero text-[var(--color-text)]">
-            <RollingNumber value={String(hero.completedSets)} />
-            <span className="text-[var(--color-muted)]">/{hero.totalSets}</span>
-          </span>
-          <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">sets done</span>
+        <h2 className="t-title">{hero.dayName}</h2>
+        {programName && <p className="t-caption mt-2">{programName}</p>}
+        <div className="flex items-baseline gap-2 mt-5">
+          <span className="t-data">{hero.completedSets} <span className="text-[var(--color-text-dim)]">/ {hero.totalSets}</span></span>
+          <span className="t-caption">sets complete{hero.elapsed !== '—' ? ` · ${hero.elapsed}` : ''}</span>
         </div>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="lg" live className="mb-5" />
+        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="sm" className="mt-3 w-full [&>span]:flex-1" />
+        <div className="py-4">
+          <p className="t-caption mb-1">{hero.nextExercise ? `Up next · Set ${hero.nextSet}` : 'All sets logged'}</p>
+          <p className="t-body">{hero.nextExercise ?? 'Review and finish your session'}</p>
+        </div>
         <Link to="/train">
-          <Button size="lg" className="w-full">
-            <Play className="w-4 h-4" strokeWidth={2} fill="currentColor" />
-            Resume session
-          </Button>
-        </Link>
-        <Link to="/train" className="flex items-center justify-between gap-2 mt-4 t-caption">
-          <span>{hero.elapsed} elapsed</span>
-          <span>{hero.dayName} · {hero.exerciseCount} {hero.exerciseCount === 1 ? 'exercise' : 'exercises'}</span>
+          <Button size="lg" className="w-full justify-between!">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
         </Link>
       </div>
     );
@@ -410,7 +386,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow>Trained today</HeroEyebrow>
-        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-6">The work is banked.</p>
+        <p className="t-title mb-6">The work is banked.</p>
         <Link to="/history">
           <Button variant="secondary" size="lg" className="w-full">Review session</Button>
         </Link>
@@ -427,7 +403,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <HeroEyebrow accent>Today · {programName}</HeroEyebrow>
           <span className="t-data-sm text-[var(--color-muted)]">{exercises.length} ex · {totalSets} sets</span>
         </div>
-        <h2 className="[font-family:var(--font-display)] text-[2.75rem] leading-[0.95] font-light tracking-[-0.03em] text-[var(--color-text)] mb-5">
+        <h2 className="t-title mb-5">
           {hero.day.day_name}
         </h2>
         <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
@@ -445,7 +421,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow>Rest day</HeroEyebrow>
-        <p className="t-display text-[1.875rem] leading-[1.08] text-[var(--color-text-dim)] mb-5">Growth happens between sessions.</p>
+        <p className="t-title mb-5">Growth happens between sessions.</p>
         <Link to="/train">
           <Button variant="ghost" size="sm">Train anyway →</Button>
         </Link>
@@ -457,7 +433,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>Flexible mode</HeroEyebrow>
-        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-6">Build today as you go.</p>
+        <p className="t-title mb-6">Build today as you go.</p>
         <Link to="/train">
           <Button size="lg" className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
@@ -472,7 +448,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>{programName}</HeroEyebrow>
-        <p className="t-display text-[2rem] leading-[1.05] text-[var(--color-text)] mb-2">Pick your training days.</p>
+        <p className="t-title mb-2">Pick your training days.</p>
         <p className="t-caption mb-6 max-w-[34ch]">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
         <Link to="/train">
           <Button size="lg" className="w-full">Set plan start</Button>
@@ -485,7 +461,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
   return (
     <div>
       <HeroEyebrow accent>Start here</HeroEyebrow>
-      <p className="t-display text-[2.25rem] leading-[1.02] text-[var(--color-text)] mb-2">Build your program.</p>
+      <p className="t-title mb-2">Build your program.</p>
       <p className="t-caption mb-5 max-w-[34ch]">
         Answer five questions and hyPer assembles an evidence-based split around your week.
       </p>
@@ -523,7 +499,7 @@ function FuelRow({ label, current, target, unit }: { label: string; current: num
         value={current / maxScale}
         notch={target / maxScale}
         tone={over ? 'berry' : 'chalk'}
-        size="md"
+        size="sm"
       />
       <span className="sr-only">{pct}% of target</span>
     </div>

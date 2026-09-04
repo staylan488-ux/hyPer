@@ -1,11 +1,9 @@
-import { motion } from 'motion/react';
 import { format, parseISO } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
 import { useAdherenceData } from '@/hooks/useAdherenceData';
 import { useAppStore } from '@/stores/appStore';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS } from '@/types';
 import type { MuscleGroup } from '@/types';
-import { springs, staggerContainer, fadeUp } from '@/lib/animations';
 import { Flame, Zap, Target, Activity } from 'lucide-react';
 
 // ─── Streak Pill ───────────────────────────────────────
@@ -14,29 +12,22 @@ function StreakPill({
   icon: Icon,
   count,
   label,
-  delay,
 }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   count: number;
   label: string;
-  delay: number;
 }) {
   const isActive = count > 0;
 
   return (
-    <motion.div
-      className="relative border-t border-[var(--color-text)] pt-3"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, ...springs.smooth }}
-    >
+    <div className="pt-3">
       <Icon
         className={`w-3.5 h-3.5 mb-2 ${isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}
         strokeWidth={1.5}
       />
-      <span className="number-large text-[2rem] text-[var(--color-text)] tabular-nums block leading-none">{count}</span>
+      <span className="number-large text-[var(--color-text)] tabular-nums block">{count}</span>
       <span className="t-label-sm mt-2 block">{label}</span>
-    </motion.div>
+    </div>
   );
 }
 
@@ -53,7 +44,7 @@ function WeeklyNutritionChart({
 }) {
   if (weeklyNutrition.length === 0) {
     return (
-      <p className="text-editorial py-4">
+      <p className="t-caption py-4">
         Log your meals to see your weekly nutrition trend.
       </p>
     );
@@ -80,23 +71,17 @@ function WeeklyNutritionChart({
                     className="absolute w-full border-t border-dashed border-[var(--color-border-strong)]"
                     style={{ bottom: `${(1 / 1.3) * 100}%` }}
                   />
-                  <motion.div
+                  <div
                     className="w-full"
                     style={{
                       backgroundColor: over ? 'var(--color-accent)' : 'var(--color-text)',
                       opacity: over ? 1 : isHit ? (isToday ? 1 : 0.85) : isToday ? 0.5 : 0.32,
-                    }}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${heightPct}%` }}
-                    transition={{
-                      duration: 0.7,
-                      delay: i * 0.06,
-                      ease: [0.16, 1, 0.3, 1],
+                      height: `${heightPct}%`,
                     }}
                   />
                 </div>
                 <span
-                  className={`t-data-sm text-[9px] ${
+                  className={`t-caption ${
                     isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
@@ -126,23 +111,17 @@ function WeeklyNutritionChart({
                     className="absolute w-full border-t border-dashed border-[var(--color-border-strong)]"
                     style={{ bottom: `${(1 / 1.3) * 100}%` }}
                   />
-                  <motion.div
+                  <div
                     className="w-full"
                     style={{
                       backgroundColor: over ? 'var(--color-accent)' : 'var(--color-text)',
                       opacity: over ? 1 : isHit ? (isToday ? 1 : 0.85) : isToday ? 0.5 : 0.32,
-                    }}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${heightPct}%` }}
-                    transition={{
-                      duration: 0.7,
-                      delay: i * 0.06,
-                      ease: [0.16, 1, 0.3, 1],
+                      height: `${heightPct}%`,
                     }}
                   />
                 </div>
                 <span
-                  className={`t-data-sm text-[9px] ${
+                  className={`t-caption ${
                     isToday ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
                   }`}
                 >
@@ -155,18 +134,18 @@ function WeeklyNutritionChart({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-5 pt-3 border-t border-[var(--color-border)]">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-3 border-t border-[var(--color-border)]">
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 bg-[var(--color-text)]" />
-          <span className="t-label-sm text-[8px]">On target</span>
+          <span className="t-label-sm">On target</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 bg-[var(--color-text)] opacity-32" />
-          <span className="t-label-sm text-[8px]">Under</span>
+          <span className="t-label-sm">Under</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 bg-[var(--color-accent)]" />
-          <span className="t-label-sm text-[8px]">Over</span>
+          <span className="t-label-sm">Over</span>
         </div>
       </div>
     </div>
@@ -182,7 +161,7 @@ function LiftReadiness({
 }) {
   if (data.length === 0) {
     return (
-      <p className="text-editorial py-4">
+      <p className="t-caption py-4">
         Complete workouts with volume tracking to see readiness signals.
       </p>
     );
@@ -213,11 +192,7 @@ function LiftReadiness({
   });
 
   return (
-    <motion.ul
-      variants={staggerContainer}
-      initial="hidden"
-      animate="visible"
-    >
+    <ul>
       {sorted.map((item) => {
         const cfg = statusConfig[item.status];
         const label =
@@ -225,23 +200,21 @@ function LiftReadiness({
           item.label;
 
         return (
-          <motion.li
+          <li
             key={item.muscleGroup}
             className="flex items-center gap-3 py-2.5 border-t border-[var(--color-border)]"
-            variants={fadeUp}
-            transition={springs.smooth}
           >
-            <span className={`w-[3px] h-4 flex-shrink-0 ${cfg.mark}`} />
-            <span className="flex-1 min-w-0 t-body text-[13px] text-[var(--color-text)] truncate">
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.mark}`} />
+            <span className="flex-1 min-w-0 t-body text-[var(--color-text)]">
               {label}
             </span>
-            <span className={`t-label-sm text-[9px] flex-shrink-0 ${cfg.text}`}>
+            <span className={`t-label-sm flex-shrink-0 ${cfg.text}`}>
               {cfg.badge}
             </span>
-          </motion.li>
+          </li>
         );
       })}
-    </motion.ul>
+    </ul>
   );
 }
 
@@ -301,11 +274,7 @@ export function AdherenceDashboard() {
   const proteinTarget = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={springs.smooth}
-    >
+    <div>
       <Card variant="slab" className="overflow-hidden">
         {/* Section header */}
         <div className="flex items-center gap-2 mb-6 pb-4 border-b border-[var(--color-text)]">
@@ -325,19 +294,16 @@ export function AdherenceDashboard() {
                   icon={Flame}
                   count={streaks.protein}
                   label="Protein"
-                  delay={0}
                 />
                 <StreakPill
                   icon={Target}
                   count={streaks.calories}
                   label="Calories"
-                  delay={0.06}
                 />
                 <StreakPill
                   icon={Zap}
                   count={streaks.workout}
                   label="Training"
-                  delay={0.12}
                 />
               </div>
             </div>
@@ -359,6 +325,6 @@ export function AdherenceDashboard() {
           </div>
         )}
       </Card>
-    </motion.div>
+    </div>
   );
 }

@@ -234,7 +234,7 @@ export function Splits() {
   return (
     <Screen>
       {/* Masthead */}
-      <motion.header className="mb-7" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <header className="mb-7">
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">Training plan</span>
           <span className="t-label-sm">
@@ -244,7 +244,7 @@ export function Splits() {
           </span>
         </div>
 
-        <div className="mt-3 pt-5 border-t border-[var(--color-text)] flex items-end justify-between gap-3">
+        <div className="mt-5 flex items-end justify-between gap-3">
           <h1 className="t-title">Program</h1>
           {workoutMode === 'split' && (
             <Button size="sm" onClick={() => setShowBuilder(true)}>
@@ -272,7 +272,7 @@ export function Splits() {
             <p className="mt-3 t-caption">Finish the current workout to switch modes.</p>
           )}
         </div>
-      </motion.header>
+      </header>
 
       {workoutMode === 'flexible' ? (
         <div>
@@ -318,7 +318,7 @@ export function Splits() {
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="t-heading block truncate">{template.label}</span>
+                            <span className="t-heading block break-words">{template.label}</span>
                             <span className="t-caption">{visibleItems.length} {visibleItems.length === 1 ? 'exercise' : 'exercises'}</span>
                           </span>
                           <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="self-center shrink-0">
@@ -338,7 +338,7 @@ export function Splits() {
                           <button
                             type="button"
                             aria-label="Rename template"
-                            className="pressable p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                            className="pressable studio-row-action p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                             onClick={() => handleOpenRenameTemplate(template)}
                           >
                             <Edit3 className="w-4 h-4" strokeWidth={1.5} />
@@ -346,7 +346,7 @@ export function Splits() {
                           <button
                             type="button"
                             aria-label="Delete template"
-                            className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+                            className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
                             onClick={() => setTemplateToDelete(template)}
                           >
                             <Trash2 className="w-4 h-4" strokeWidth={1.5} />
@@ -377,7 +377,7 @@ export function Splits() {
                                         <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
                                           {String(itemIndex + 1).padStart(2, '0')}
                                         </span>
-                                        <p className="flex-1 min-w-0 t-body text-[var(--color-text)] truncate">
+                                        <p className="flex-1 min-w-0 t-body text-[var(--color-text)] break-words">
                                           {item.exercise_name || 'Exercise'}
                                         </p>
                                         <span className="t-data-sm text-[var(--color-muted)] shrink-0">{setsLabel}×{repsLabel}</span>
@@ -421,7 +421,7 @@ export function Splits() {
             return (
               <motion.li
                 key={split.id}
-                className={`border-t ${split.is_active ? 'border-t-2 border-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}
+                className="border-t border-[var(--color-border)]"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
@@ -437,8 +437,8 @@ export function Splits() {
                       {String(index + 1).padStart(2, '0')}
                     </span>
                     <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2.5">
-                        <span className="t-title text-[1.25rem] truncate">{split.name}</span>
+                      <span className="flex flex-wrap items-center gap-2.5">
+                        <span className="t-heading break-words">{split.name}</span>
                         {split.is_active && (
                           <span className="t-label-sm shrink-0 text-[var(--color-accent)]">Active</span>
                         )}
@@ -457,9 +457,9 @@ export function Splits() {
 
                   <div className="relative shrink-0">
                     <motion.button
-                      className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                      className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                       onClick={() => setShowMenu(showMenu === split.id ? null : split.id)}
-                      whileTap={{ scale: 0.9 }}
+                      whileTap={{ scale: 0.985 }}
                       aria-label="Program options"
                     >
                       <MoreVertical className="w-4 h-4" strokeWidth={1.5} />
@@ -468,7 +468,7 @@ export function Splits() {
                     <AnimatePresence>
                       {showMenu === split.id && (
                         <motion.div
-                          className="absolute right-0 top-full mt-1 bg-[var(--color-surface-2)] hairline-strong z-10 min-w-[160px] overflow-hidden"
+                          className="absolute right-0 top-full mt-1 bg-[var(--color-surface-2)] rounded-[11px] hairline-strong z-10 min-w-[160px] overflow-hidden"
                           initial={{ opacity: 0, y: -4, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -4, scale: 0.98 }}
@@ -537,7 +537,7 @@ export function Splits() {
                                   {String(dayIndex + 1).padStart(2, '0')}
                                 </span>
                                 <span className="flex-1 min-w-0">
-                                  <span className="t-heading block truncate">{day.day_name}</span>
+                                  <span className="t-heading block break-words">{day.day_name}</span>
                                   <span className="t-caption">
                                     {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                                   </span>
@@ -567,7 +567,7 @@ export function Splits() {
                                             transition={{ delay: exIndex * 0.03, ...springs.smooth }}
                                           >
                                             <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">{exIndex + 1}</span>
-                                            <p className="flex-1 min-w-0 t-body text-[var(--color-text)] truncate">
+                                            <p className="flex-1 min-w-0 t-body text-[var(--color-text)] break-words">
                                               {ex.exercise?.name || 'Unknown Exercise'}
                                             </p>
                                             <span className="t-data-sm text-[var(--color-muted)] shrink-0">
@@ -649,7 +649,7 @@ export function Splits() {
       >
         <div className="space-y-4 pt-1">
           <p className="t-body text-[var(--color-text)]">
-            Delete <span className="font-semibold">{templateToDelete?.label}</span>?
+            Delete <span className="font-medium">{templateToDelete?.label}</span>?
           </p>
           <p className="t-caption">This removes the template from your flexible dashboard.</p>
           <div className="flex gap-3 pt-1">
@@ -670,7 +670,7 @@ export function Splits() {
       >
         <div className="space-y-4 pt-1">
           <p className="t-body text-[var(--color-text)]">
-            <span className="font-semibold">{promptSplit?.name || 'This program'}</span> is now active.
+            <span className="font-medium">{promptSplit?.name || 'This program'}</span> is now active.
           </p>
           <p className="t-caption">
             Set your Day 1 and weekly rhythm now — it takes about 15 seconds and lets hyPer call your next session.

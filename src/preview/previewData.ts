@@ -74,13 +74,15 @@ let wsId = 0;
 const ws = (e: Exercise, n: number, weight: number | null, reps: number | null, rpe: number | null, completed: boolean, completedAt: Date | null): WorkoutSet =>
   ({ id: `cs${++wsId}`, workout_id: 'w_current', exercise_id: e.id, exercise: e, set_number: n, weight, reps, rpe, completed, completed_at: completedAt ? iso(completedAt) : null });
 
+const sessionMinutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+
 export const previewCurrentWorkout: Workout = {
-  id: 'w_current', user_id: PREVIEW_USER_ID, split_day_id: 'd1', date: PREVIEW_TODAY, notes: null, completed: false,
-  created_at: iso(at(now, 18, 5)),
+  id: 'w_current', user_id: PREVIEW_USER_ID, split_day_id: 'd1', date: ymd(sessionMinutesAgo(23)), notes: null, completed: false,
+  created_at: iso(sessionMinutesAgo(23)),
   sets: [
-    ws(exBench, 1, 100, 8, 8, true, at(now, 18, 9)),
-    ws(exBench, 2, 100, 8, 8.5, true, at(now, 18, 13)),
-    ws(exBench, 3, 102.5, 6, 9, true, at(now, 18, 18)),
+    ws(exBench, 1, 100, 8, 8, true, sessionMinutesAgo(19)),
+    ws(exBench, 2, 100, 8, 8.5, true, sessionMinutesAgo(15)),
+    ws(exBench, 3, 102.5, 6, 9, true, sessionMinutesAgo(10)),
     ws(exRow, 1, 80, 10, 7, false, null),
     ws(exRow, 2, 80, 10, 7, false, null),
     ws(exRow, 3, 80, 9, 8, false, null),
@@ -374,7 +376,7 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   exercises: stamp(previewExercises.map((e) => ({ ...e }))),
   splits: [{ id: 'split1', user_id: PREVIEW_USER_ID, name: previewSplit.name, description: previewSplit.description, days_per_week: 4, is_active: true, created_at: iso(daysAgo(40)) }],
   split_days: previewSplit.days.map((d) => ({ id: d.id, split_id: 'split1', day_name: d.day_name, day_order: d.day_order, created_at: iso(daysAgo(40)) })),
-  split_exercises: stamp(previewSplit.days.flatMap((d) => d.exercises.map((x) => ({ id: x.id, split_day_id: d.id, exercise_id: x.exercise_id, target_sets: x.target_sets, target_reps_min: x.target_reps_min, target_reps_max: x.target_reps_max, exercise_order: x.exercise_order, notes: x.notes })))),
+  split_exercises: stamp(previewSplit.days.flatMap((d) => d.exercises.map((x) => ({ id: x.id, split_day_id: d.id, exercise_id: x.exercise_id, target_sets: x.target_sets, target_reps_min: x.target_reps_min, target_reps_max: x.target_reps_max, exercise_order: x.exercise_order, notes: x.notes, superset_group_id: x.superset_group_id ?? null })))),
   macro_targets: [{ ...previewMacroTarget, created_at: iso(daysAgo(40)) }],
   volume_landmarks: previewLandmarks.map((l) => ({ ...l, created_at: iso(daysAgo(40)) })),
   foods: stamp(previewFoods.map((f) => ({ ...f }))),
@@ -382,13 +384,13 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   nutrition_import_batches: [],
   nutrition_logs: previewNutritionLogs.map((l) => ({ ...l })),
   workouts: [
-    { id: 'w_current', user_id: PREVIEW_USER_ID, split_day_id: 'd1', date: PREVIEW_TODAY, notes: null, completed: false, completed_at: null, created_at: previewCurrentWorkout.created_at },
+    { id: 'w_current', user_id: PREVIEW_USER_ID, split_day_id: 'd1', date: previewCurrentWorkout.date, notes: null, completed: false, completed_at: null, created_at: previewCurrentWorkout.created_at },
     ...histWorkoutRows,
   ],
   sets: [...currentWorkoutSetRows, ...histSetRows],
   workout_day_plans: [],
   flex_day_templates: [],
-  program_preferences: [],
+  program_preferences: [{ user_id: PREVIEW_USER_ID, workout_mode: 'split' }],
   plan_schedules: [],
   activity_sessions: previewActivitySessions.map((activity) => ({ ...activity })),
   activity_segments: previewActivitySegments.map((segment) => ({ ...segment })),

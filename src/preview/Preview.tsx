@@ -52,9 +52,14 @@ export function PreviewGallery() {
         </nav>
 
         <p className="mt-10 pt-6 border-t border-[var(--color-border)] t-caption max-w-[34ch]">
-          Use the bottom navigation to move between sections. Data is sample-only — actions
-          (logging, editing) are stubbed and won't persist.
+          Data is sample-only. Logging, editing and starting sessions use the in-memory
+          preview database. Changes last until a full page reload.
         </p>
+        <a href="/preview?previewSetSave=fail" className="t-caption min-h-11 flex items-center gap-2 mt-3">
+          Test set-save recovery <ArrowRight size={14} />
+        </a>
+        {new URLSearchParams(window.location.search).get('previewSetSave') === 'fail' &&
+          <p role="status" className="t-caption mt-2">Recovery test ready. Open Train and save a set. Both automatic attempts fail; your next Retry succeeds.</p>}
       </div>
     </div>
   );

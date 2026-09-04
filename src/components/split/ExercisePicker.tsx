@@ -190,7 +190,7 @@ function ExercisePickerContent({
                       >
                         <span className="flex-1 min-w-0">
                           <span className="flex items-baseline gap-2">
-                            <span className="t-body text-[var(--color-text)] truncate">
+                            <span className="t-body text-[var(--color-text)] break-words">
                               {exercise.name}
                             </span>
                             {exercise.is_compound && (

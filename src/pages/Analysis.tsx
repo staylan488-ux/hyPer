@@ -22,13 +22,6 @@ interface CoachingCall {
   priority: number;
 }
 
-const TONE_STYLES: Record<CoachingTone, { text: string; bg: string }> = {
-  amber: { text: 'var(--color-accent)', bg: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' },
-  sage: { text: 'var(--color-sage)', bg: 'color-mix(in srgb, var(--color-sage) 14%, transparent)' },
-  berry: { text: 'var(--color-danger)', bg: 'color-mix(in srgb, var(--color-danger) 14%, transparent)' },
-  stone: { text: 'var(--color-stone)', bg: 'color-mix(in srgb, var(--color-stone) 16%, transparent)' },
-};
-
 function buildCoachingCall(mv: MuscleVolume): CoachingCall {
   const mev = mv.landmark?.mev ?? 0;
   switch (mv.status) {
@@ -110,10 +103,10 @@ export function Analysis() {
   return (
     <Screen>
       {/* Header */}
-      <motion.header className="mb-8" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <header className="mb-7">
         <Link
           to="/"
-          className="pressable inline-flex items-center gap-1.5 t-label-sm hover:text-[var(--color-text)] mb-4 -ml-1 py-1 px-1 transition-colors"
+          className="studio-row-action mb-4 -ml-4"
         >
           <ArrowLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
           Home
@@ -123,7 +116,7 @@ export function Analysis() {
           <span className="t-label-sm">Week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</span>
         </div>
         <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Coaching</h1>
-      </motion.header>
+      </header>
 
       {/* Per-muscle calls */}
       {weeklyVolume.length === 0 ? (
@@ -141,7 +134,7 @@ export function Analysis() {
         />
       ) : (
         <div className="mb-12 border-t border-[var(--color-text)]">
-          {coached.map(({ mv, call }, index) => {
+          {coached.map(({ mv, call }) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
             const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
             const isHot = call.tone === 'berry';
@@ -149,22 +142,20 @@ export function Analysis() {
             return (
               <motion.div
                 key={mv.muscle_group}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
                 className="border-b border-[var(--color-border)]"
               >
                 <button
                   type="button"
                   className="w-full text-left py-5"
+                  aria-expanded={isExpanded}
                   onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
                 >
-                  <div className="flex items-baseline justify-between gap-3 mb-3">
+                  <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
                     <span className="t-label">
                       {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
                     </span>
                     <span className="flex items-center gap-2.5 shrink-0">
-                      <span className={`t-label-sm text-[9px] ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-dim)]'}`}>
+                      <span className={`t-label-sm ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-dim)]'}`}>
                         {call.chip}
                       </span>
                       <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
@@ -175,10 +166,10 @@ export function Analysis() {
 
                   <div className="flex items-end justify-between gap-4 mb-4">
                     <span className="flex items-baseline gap-1.5">
-                      <span className={`number-large text-[2.5rem] ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
+                      <span className={`number-large ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
                         {mv.weekly_sets}
                       </span>
-                      <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">sets</span>
+                      <span className="t-caption">sets</span>
                     </span>
                     <p className="t-caption text-right max-w-[20ch]">{call.headline}</p>
                   </div>
@@ -217,13 +208,13 @@ export function Analysis() {
                               key={item.label}
                               className={`py-3 ${itemIndex > 0 ? 'border-l border-[var(--color-border)]' : ''} pl-3`}
                             >
-                              <p className="t-label-sm text-[9px]">{item.label}</p>
-                              <p className="number-medium text-[1.125rem] text-[var(--color-text)] mt-1">{item.value ?? '—'}</p>
+                              <p className="t-label-sm">{item.label}</p>
+                              <p className="t-data text-[var(--color-text)] mt-1">{item.value ?? '—'}</p>
                             </div>
                           ))}
                         </div>
                         {recommendation && (
-                          <p className="text-editorial text-[15px]">{recommendation.message}</p>
+                          <p className="t-caption">{recommendation.message}</p>
                         )}
                       </div>
                     </motion.div>
@@ -237,10 +228,7 @@ export function Analysis() {
 
       {/* Training hours */}
       <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.1 }}
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
         <div className="flex items-baseline justify-between mb-5">
           <span className="t-label">Training hours</span>
@@ -259,24 +247,19 @@ export function Analysis() {
 
       {/* Adherence */}
       <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.14 }}
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
         <AdherenceDashboard />
       </motion.section>
 
       {/* Research explainer — supporting detail, not the primary UI */}
       <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.18 }}
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
         <button
           type="button"
-          className="w-full flex items-center justify-between text-left"
+          className="w-full min-h-11 flex items-center justify-between text-left"
+          aria-expanded={showExplainer}
           onClick={() => setShowExplainer(!showExplainer)}
         >
           <span className="flex items-center gap-2">
@@ -304,12 +287,8 @@ export function Analysis() {
                   { tone: 'berry', label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
                 ].map((item) => (
                   <div key={item.label} className="flex items-start gap-3 py-3 border-t border-[var(--color-border)]">
-                    <span
-                      className="w-[3px] h-8 mt-0.5 shrink-0"
-                      style={{ backgroundColor: TONE_STYLES[item.tone as CoachingTone].text }}
-                    />
                     <div>
-                      <p className="t-heading text-[12px] normal-case tracking-[0.04em]">{item.label}</p>
+                      <p className="t-heading">{item.label}</p>
                       <p className="t-caption mt-1">{item.desc}</p>
                     </div>
                   </div>

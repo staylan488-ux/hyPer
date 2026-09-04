@@ -158,8 +158,8 @@ export function NutritionGroupLedger({
               </p>
             </div>
             <span className="flex items-baseline gap-1 shrink-0">
-              <span className="number-medium text-[var(--color-text)]">{Math.round((log.food?.calories || 0) * log.servings)}</span>
-              <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
+              <span className="t-data text-[var(--color-text)]">{Math.round((log.food?.calories || 0) * log.servings)}</span>
+              <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
             </span>
           </div>
         </div>
@@ -190,7 +190,7 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)]' : 'border-[var(--color-text)]'} transition-colors`}
+        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-border)] bg-[var(--color-surface-2)]' : 'border-[var(--color-border)]'} transition-colors`}
       >
         <div className="flex items-center justify-between gap-2 py-3">
           <div className="min-w-0">

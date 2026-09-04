@@ -80,7 +80,7 @@ export function CronometerImporter({ onImported }: CronometerImporterProps) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="pressable mt-5 w-full border border-dashed border-[var(--color-border-strong)] py-9 flex flex-col items-center gap-3"
+          className="pressable mt-5 w-full rounded-[11px] bg-[var(--color-surface-2)] py-9 flex flex-col items-center gap-3"
         >
           <FileUp className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
           <span className="t-heading">{fileName || 'Choose servings.csv'}</span>
@@ -98,7 +98,7 @@ export function CronometerImporter({ onImported }: CronometerImporterProps) {
       </div>
 
       {csvText && !summary && (
-        <div className="border-l-2 border-[var(--color-text)] pl-4">
+        <div>
           <span className="t-label block">Ready to import</span>
           <p className="t-data mt-1 text-[var(--color-text)]">{validRows} valid row{validRows === 1 ? '' : 's'}</p>
           {invalidRows > 0 && <p className="t-caption mt-1">{invalidRows} invalid row{invalidRows === 1 ? '' : 's'} will be skipped.</p>}
@@ -106,7 +106,7 @@ export function CronometerImporter({ onImported }: CronometerImporterProps) {
       )}
 
       {summary && (
-        <div className="border-l-2 border-[var(--color-accent)] pl-4">
+        <div>
           <span className="t-label flex items-center gap-2"><Check className="w-3.5 h-3.5" /> Import complete</span>
           <p className="t-data mt-1 text-[var(--color-text)]">
             {summary.imported} new · {summary.skipped} already present

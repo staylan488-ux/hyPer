@@ -129,12 +129,12 @@ function ExerciseRow({
       exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
       transition={springs.smooth}
       className={`relative border-t border-[var(--color-border)] py-3 space-y-3 ${
-        exercise.superset_group_id ? 'border-l-2 border-l-[var(--color-text)] pl-3' : ''
+        exercise.superset_group_id ? 'bg-[var(--color-surface-2)] px-3' : ''
       }`}
     >
       {/* ── Top row: index + name + actions ── */}
-      <div className="flex items-center gap-3">
-        {/* Mono index */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Record index */}
         <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
           {String(index + 1).padStart(2, '0')}
         </span>
@@ -146,7 +146,7 @@ function ExerciseRow({
           onClick={() => onPickExercise(day.id, 'swap', exercise.id)}
         >
           <span className="flex flex-col min-w-0">
-            <span className="t-body text-[var(--color-text)] truncate">
+            <span className="t-body text-[var(--color-text)] break-words">
               {exercise.exercise.name}
             </span>
             {exercise.superset_group_id && (
@@ -160,53 +160,58 @@ function ExerciseRow({
         </button>
 
         {/* Reorder + remove */}
-        <div className="flex items-center shrink-0">
+        <div className="flex items-center justify-end shrink-0 basis-full ml-auto">
           {exercise.superset_group_id ? (
             <motion.button
               type="button"
-              className="p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
+              className="studio-row-action p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
               onClick={() => clearExerciseSuperset(day.id, exercise.id)}
-              whileTap={{ scale: 0.85 }}
+              whileTap={{ scale: 0.985 }}
               title="Remove Superset"
+              aria-label={`Remove superset for ${exercise.exercise.name}`}
             >
               <Unlink2 className="w-3.5 h-3.5" strokeWidth={1.5} />
             </motion.button>
           ) : (
             <motion.button
               type="button"
-              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => onPickExercise(day.id, 'superset', exercise.id)}
-              whileTap={{ scale: 0.85 }}
+              whileTap={{ scale: 0.985 }}
               title="Add Superset"
+              aria-label={`Add superset for ${exercise.exercise.name}`}
             >
               <Link2 className="w-3.5 h-3.5" strokeWidth={1.5} />
             </motion.button>
           )}
           <motion.button
             type="button"
-            className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isFirst}
+            aria-label={`Move ${exercise.exercise.name} earlier`}
             onClick={() => reorderExercise(day.id, exercise.id, -1)}
-            whileTap={isFirst ? undefined : { scale: 0.85 }}
+            whileTap={isFirst ? undefined : { scale: 0.985 }}
           >
             <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
           </motion.button>
 
           <motion.button
             type="button"
-            className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isLast}
+            aria-label={`Move ${exercise.exercise.name} later`}
             onClick={() => reorderExercise(day.id, exercise.id, 1)}
-            whileTap={isLast ? undefined : { scale: 0.85 }}
+            whileTap={isLast ? undefined : { scale: 0.985 }}
           >
             <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
           </motion.button>
 
           <motion.button
             type="button"
-            className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+            aria-label={`Remove ${exercise.exercise.name}`}
             onClick={() => removeExercise(day.id, exercise.id)}
-            whileTap={{ scale: 0.85 }}
+            whileTap={{ scale: 0.985 }}
           >
             <X className="w-3.5 h-3.5" strokeWidth={1.5} />
           </motion.button>
@@ -214,7 +219,7 @@ function ExerciseRow({
       </div>
 
       {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
-      <div className="grid grid-cols-5 gap-2 pl-8">
+      <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
         <SetRepCell label="Min sets">
           <input
             type="number"
@@ -230,7 +235,7 @@ function ExerciseRow({
                 commitSetRangeDraft();
               }
             }}
-            className="well w-full min-h-10 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
+            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
         <SetRepCell label="Sets">
@@ -248,7 +253,7 @@ function ExerciseRow({
                 commitSetRangeDraft();
               }
             }}
-            className="well w-full min-h-10 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
+            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
           />
         </SetRepCell>
         <SetRepCell label="Max sets">
@@ -266,7 +271,7 @@ function ExerciseRow({
                 commitSetRangeDraft();
               }
             }}
-            className="well w-full min-h-10 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
+            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
         <SetRepCell label="Reps↓">
@@ -284,7 +289,7 @@ function ExerciseRow({
                 commitRepDraft('minReps', exercise.target_reps_min);
               }
             }}
-            className="well w-full min-h-10 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
+            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
         <SetRepCell label="Reps↑">
@@ -302,7 +307,7 @@ function ExerciseRow({
                 commitRepDraft('maxReps', exercise.target_reps_max);
               }
             }}
-            className="well w-full min-h-10 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
+            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
       </div>
@@ -314,7 +319,7 @@ function ExerciseRow({
 function SetRepCell({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm text-[9px]">{label}</span>
+      <span className="t-label-sm">{label}</span>
       {children}
     </label>
   );
@@ -358,15 +363,16 @@ function DayCard({
     >
       <Card variant="slab" animated={false} className="space-y-5">
         {/* ── Day header ── */}
-        <div className="flex items-start gap-3 pb-4 border-b border-[var(--color-border)]">
-          {/* Serif day number */}
-          <span className="number-medium text-[var(--color-text-dim)] shrink-0 leading-none mt-0.5 w-9">
+        <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-[var(--color-border)]">
+          {/* Day index */}
+          <span className="t-data-sm text-[var(--color-text-dim)] shrink-0 w-5">
             {String(index + 1).padStart(2, '0')}
           </span>
 
           {/* Day name input */}
           <div className="flex-1 min-w-0">
             <Input
+              aria-label={`Day ${index + 1} name`}
               value={day.day_name}
               onChange={(e) => renameDay(day.id, e.target.value)}
               placeholder="Day name"
@@ -374,32 +380,35 @@ function DayCard({
           </div>
 
           {/* Day actions: reorder + delete */}
-          <div className="flex items-center shrink-0 mt-1">
+          <div className="flex items-center justify-end shrink-0 basis-full">
             <motion.button
               type="button"
-              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               disabled={isFirst}
+              aria-label={`Move ${day.day_name || `day ${index + 1}`} earlier`}
               onClick={() => reorderDays(day.id, -1)}
-              whileTap={isFirst ? undefined : { scale: 0.85 }}
+              whileTap={isFirst ? undefined : { scale: 0.985 }}
             >
               <ChevronUp className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
 
             <motion.button
               type="button"
-              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               disabled={isLast}
+              aria-label={`Move ${day.day_name || `day ${index + 1}`} later`}
               onClick={() => reorderDays(day.id, 1)}
-              whileTap={isLast ? undefined : { scale: 0.85 }}
+              whileTap={isLast ? undefined : { scale: 0.985 }}
             >
               <ChevronDown className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
 
             <motion.button
               type="button"
-              className="p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+              aria-label={`Remove ${day.day_name || `day ${index + 1}`}`}
               onClick={handleRemoveDay}
-              whileTap={{ scale: 0.85 }}
+              whileTap={{ scale: 0.985 }}
             >
               <Trash2 className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
@@ -445,7 +454,7 @@ function DayCard({
         {/* ── Add exercise button ── */}
         <motion.button
           type="button"
-          className="pressable w-full flex items-center justify-center gap-2 py-3 border-t border-[var(--color-text)] t-label hover:text-[var(--color-text)] transition-colors"
+          className="pressable studio-row-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
           onClick={() => onPickExercise(day.id, 'add')}
           whileTap={{ scale: 0.99 }}
         >
@@ -510,7 +519,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
   }
 
   return (
-    <div className="pt-4 pb-24 space-y-8">
+    <div className="pt-1 pb-2 space-y-6">
       {/* ═══════════════════════════════════ */}
       {/* PROGRAM HEADER SECTION              */}
       {/* ═══════════════════════════════════ */}
@@ -576,7 +585,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
       >
         <motion.button
           type="button"
-          className="pressable w-full flex items-center justify-center gap-2 py-3 border-t border-b border-[var(--color-text)] t-label hover:text-[var(--color-text)] transition-colors"
+          className="pressable studio-secondary-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
           onClick={handleAddDay}
           whileTap={{ scale: 0.99 }}
         >
@@ -588,8 +597,11 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
       {/* ═══════════════════════════════════ */}
       {/* STICKY BOTTOM BAR                   */}
       {/* ═══════════════════════════════════ */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--color-base)] border-t border-[var(--color-text)]">
-        <div className="w-full max-w-lg mx-auto px-4 py-3 space-y-2">
+      <div
+        className="sticky z-20 -mx-6 bg-[var(--color-surface-2)] rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
+      >
+        <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
           {/* Error message */}
           <AnimatePresence>
             {error && (

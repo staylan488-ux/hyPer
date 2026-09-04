@@ -677,7 +677,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           <li>
             <button
               type="button"
-              className="pressable group w-full flex items-center gap-4 py-5 border-t-2 border-[var(--color-accent)] text-left"
+              className="pressable group w-full flex items-center gap-4 py-5 border-t border-[var(--color-border)] text-left"
               onClick={() => {
                 setGuidedStage(0);
                 setStep('guided');
@@ -789,7 +789,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         </AnimatePresence>
 
         {/* Live recommendation preview — updates with every answer */}
-        <div className="border-l-2 border-[var(--color-accent)] pl-4 mb-7">
+        <div className="mb-7">
           <p className="t-label-sm mb-1.5 flex items-center gap-1.5">
             <Wand2 className="w-3 h-3 text-[var(--color-accent)]" strokeWidth={1.75} />
             Currently building
@@ -824,7 +824,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           <BackLink onClick={() => setStep('guided')} />
         </div>
 
-        <div className="border-t-2 border-[var(--color-accent)] pt-5 mb-7">
+        <div className="border-t border-[var(--color-border)] pt-5 mb-7">
           <p className="t-label text-[var(--color-accent)] mb-2">Your program</p>
           <h4 className="t-title mb-2">{guidedTemplate.name}</h4>
           <p className="text-editorial mb-4 max-w-[42ch]">{guidedTemplate.description}</p>
@@ -847,7 +847,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               <div className="pl-10">
                 {day.exercises.slice(0, 4).map((exercise, exerciseIndex) => (
                   <div key={`${exercise.name}-${exerciseIndex}`} className="flex items-baseline justify-between gap-2 py-1 border-t border-[var(--color-border-soft)]">
-                    <span className="t-caption text-[var(--color-text-dim)] truncate">{exercise.name}</span>
+                    <span className="t-caption text-[var(--color-text-dim)] break-words">{exercise.name}</span>
                     <span className="t-data-sm text-[var(--color-muted)] shrink-0">
                       {exercise.sets}×{exercise.reps_min}–{exercise.reps_max}
                     </span>
@@ -951,6 +951,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                 {String(index + 1).padStart(2, '0')}
               </span>
               <Input
+                aria-label={`Day ${index + 1} name`}
                 value={day.day_name}
                 onChange={(event) => {
                   const next = [...days];
@@ -993,7 +994,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               onClick={() => setActiveCustomDayIndex(index)}
             >
               {day.day_name}
-              <span className="t-data-sm text-[10px] opacity-70">{day.exercises.length}</span>
+              <span className="t-data-sm opacity-70">{day.exercises.length}</span>
             </Chip>
           ))}
         </div>
@@ -1034,7 +1035,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         alreadyAdded ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                       }`}
                     >
-                      <span className="truncate">{exercise.name}</span>
+                      <span className="min-w-0 break-words">{exercise.name}</span>
                       {alreadyAdded ? (
                         <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
                       ) : (
@@ -1083,14 +1084,14 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                   <div
                     key={exercise.local_id}
                     className={`border-t border-[var(--color-border)] py-3 space-y-3 ${
-                      exercise.superset_group_id ? 'border-l-2 border-l-[var(--color-text)] pl-3' : ''
+                      exercise.superset_group_id ? 'bg-[var(--color-surface-2)] px-3' : ''
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex items-baseline gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0 w-full flex items-baseline gap-3">
                         <span className="t-data-sm text-[var(--color-muted)] shrink-0">{String(exerciseIndex + 1).padStart(2, '0')}</span>
                         <div className="min-w-0">
-                          <p className="t-body text-[var(--color-text)] truncate">
+                          <p className="t-body text-[var(--color-text)] break-words">
                             {exercise.name}
                           </p>
                           {exercise.superset_group_id && (
@@ -1101,11 +1102,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center shrink-0">
+                      <div className="flex items-center shrink-0 ml-auto">
                         <button
                           type="button"
-                          aria-label="Move up"
-                          className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                          aria-label={`Move ${exercise.name} earlier`}
+                          className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
                           onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, -1)}
                           disabled={exerciseIndex === 0}
                         >
@@ -1113,8 +1114,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         </button>
                         <button
                           type="button"
-                          aria-label="Move down"
-                          className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                          aria-label={`Move ${exercise.name} later`}
+                          className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
                           onClick={() => moveCustomExercise(activeCustomDayIndex, exercise.local_id, 1)}
                           disabled={exerciseIndex === activeCustomDay.exercises.length - 1}
                         >
@@ -1123,8 +1124,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         {exercise.superset_group_id ? (
                           <button
                             type="button"
-                            aria-label="Remove superset"
-                            className="pressable p-2 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
+                            aria-label={`Remove superset for ${exercise.name}`}
+                            className="pressable studio-row-action p-2 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
                             onClick={() => {
                               const groupId = exercise.superset_group_id;
                               setDays((current) =>
@@ -1147,8 +1148,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         ) : (
                           <button
                             type="button"
-                            aria-label="Add superset"
-                            className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                            aria-label={`Add superset for ${exercise.name}`}
+                            className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                             onClick={() => {
                               setSupersetSourceLocalId(exercise.local_id);
                               setTapFeedback({ message: 'Select a partner exercise from library', tone: 'info' });
@@ -1159,15 +1160,15 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         )}
                         <button
                           type="button"
-                          aria-label="Remove exercise"
-                          className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+                          aria-label={`Remove ${exercise.name}`}
+                          className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
                           onClick={() => removeCustomExercise(activeCustomDayIndex, exercise.local_id)}
                         >
                           <X className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-5 gap-1.5 pl-8">
+                    <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
                       <RangeCell
                         label="Min"
                         value={exercise.target_sets_min}
@@ -1251,7 +1252,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
           </>
         )}
 
-        {customError && <p className="border-l-2 border-[var(--color-accent)] pl-4 py-1 t-caption text-[var(--color-accent)]">{customError}</p>}
+        {customError && <p className="py-1 t-caption text-[var(--color-accent)]">{customError}</p>}
 
         <Button size="lg" className="w-full" onClick={handleCreateCustom} disabled={loading} loading={loading}>
           {loading ? 'Creating program…' : 'Create program'}
@@ -1277,13 +1278,13 @@ function RangeCell({
 }) {
   return (
     <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm text-[9px]">{label}</span>
+      <span className="t-label-sm">{label}</span>
       <input
         type="number"
         inputMode="numeric"
         value={String(value)}
         onChange={(event) => onCommit(Number(event.target.value || 0))}
-        className={`well w-full min-h-10 text-center t-data-sm outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] ${
+        className={`well w-full min-h-11 text-center t-data-sm outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] ${
           emphasized ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
         }`}
       />

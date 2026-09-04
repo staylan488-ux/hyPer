@@ -9,11 +9,7 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
   loading?: boolean;
 }
 
-/**
- * FOLIO button — tracked-caps grotesque, square corners, no gradient or glow.
- * primary = solid ink (lacquer on press) · secondary = ghost outline that
- * inverts · danger = lacquer outline that fills · ghost = bare tracked label.
- */
+/** Studio actions: solid primary, quiet filled secondary, unboxed contextual. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
     const baseStyles = `
@@ -21,9 +17,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       [font-family:var(--font-sans)] uppercase font-medium
       transition-colors duration-200
       focus:outline-none
-      focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
+      focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
       disabled:opacity-35 disabled:cursor-not-allowed
-      rounded-none
+      rounded-[var(--radius-control)]
     `;
 
     const variants = {
@@ -33,14 +29,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         active:bg-[var(--button-primary-active)]
       `,
       secondary: `
-        bg-transparent text-[var(--color-text)]
-        border border-[var(--color-text)]
-        hover:bg-[var(--color-text)] hover:text-[var(--color-base)]
+        bg-[var(--color-well)] text-[var(--color-text)]
+        hover:bg-[var(--color-surface-3)]
       `,
       danger: `
-        bg-transparent text-[var(--color-accent)]
-        border border-[var(--color-accent)]
-        hover:bg-[var(--color-accent)] hover:text-[var(--color-base)]
+        bg-[var(--button-danger-bg)] text-[var(--button-danger-fg)]
+        hover:bg-[var(--button-danger-hover)]
       `,
       ghost: `
         bg-transparent text-[var(--color-text-dim)]
@@ -49,9 +43,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes = {
-      sm: 'px-4 min-h-9 text-[10px] tracking-[0.2em] gap-2',
-      md: 'px-6 min-h-11 text-[11px] tracking-[0.22em] gap-2',
-      lg: 'px-7 min-h-[54px] text-[12px] tracking-[0.24em] gap-2.5',
+      sm: 'px-4 min-h-11 text-[11px] tracking-[0.16em] gap-2',
+      md: 'px-4 min-h-[45px] text-[11px] tracking-[0.16em] gap-2',
+      lg: 'px-4 min-h-[51px] text-[11px] tracking-[0.16em] gap-2',
     };
 
     const isDisabled = disabled || loading;

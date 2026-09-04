@@ -18,8 +18,10 @@ import {
 } from 'date-fns';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Modal } from './Modal';
+import { Button } from './Button';
 import { Chip } from './Chip';
 import { tapHaptic } from '@/lib/haptics';
+import { createWheelSelection } from '@/lib/wheelSelection';
 
 /* ───────────────────────── DateField ───────────────────────── */
 
@@ -73,7 +75,7 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
         className={`pressable well w-full flex items-center gap-2.5 px-3.5 min-h-11 text-left ${className}`}
       >
         <CalendarDays className="w-4 h-4 shrink-0 text-[var(--color-stone)]" strokeWidth={1.75} />
-        <span className="text-sm font-medium text-[var(--color-text)]">
+        <span className="t-body text-[var(--color-text)]">
           {isToday(value) ? 'Today' : isSameDay(value, yesterday) ? 'Yesterday' : format(value, 'EEE, MMM d')}
         </span>
       </button>
@@ -93,7 +95,7 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
             <button
               type="button"
               onClick={() => setViewMonth((m) => subMonths(m, 1))}
-              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+              className="pressable flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-well)] text-[var(--color-text)]"
               aria-label="Previous month"
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={2} />
@@ -102,21 +104,21 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
             <button
               type="button"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="pressable p-2.5 rounded-[var(--radius-sm)] text-[var(--color-muted)]"
+              className="pressable flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-well)] text-[var(--color-text)]"
               aria-label="Next month"
             >
               <ChevronRight className="w-4 h-4" strokeWidth={2} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 mb-1">
+          <div className="grid grid-cols-7 -mx-5 sm:mx-0 mb-1">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
               <span key={i} className="t-label-sm text-center py-1">
                 {d}
               </span>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-y-0.5">
+          <div className="grid grid-cols-7 -mx-5 sm:mx-0 gap-y-0.5">
             {days.map((day) => {
               const selected = isSameDay(day, value);
               const outside = !isSameMonth(day, viewMonth);
@@ -127,9 +129,12 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
                   type="button"
                   disabled={disabled}
                   onClick={() => pick(day)}
-                  className={`relative h-10 rounded-[var(--radius-sm)] t-data-sm transition-colors ${
+                  aria-label={format(day, 'EEEE, MMMM d, yyyy')}
+                  aria-pressed={selected}
+                  aria-current={isToday(day) ? 'date' : undefined}
+                  className={`relative min-h-11 rounded-[var(--radius-control)] t-data transition-colors ${
                     selected
-                      ? 'bg-[var(--color-text)] text-[var(--color-base)] font-semibold'
+                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
                       : disabled
                         ? 'text-[color-mix(in_srgb,var(--color-muted)_45%,transparent)]'
                         : outside
@@ -167,38 +172,37 @@ function WheelColumn({
   ariaLabel: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const settling = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suppress = useRef(false);
+  const onChangeRef = useRef(onIndexChange);
+  useEffect(() => { onChangeRef.current = onIndexChange; }, [onIndexChange]);
+  const [selection] = useState(() => createWheelSelection(index, (next) => {
+    tapHaptic();
+    onChangeRef.current(next);
+  }));
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    suppress.current = true;
     el.scrollTop = index * ITEM_H;
-    const release = setTimeout(() => {
-      suppress.current = false;
-    }, 120);
-    return () => clearTimeout(release);
     // Only re-center when the column identity changes, not on every parent re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleScroll = () => {
-    if (suppress.current) return;
-    if (settling.current) clearTimeout(settling.current);
-    settling.current = setTimeout(() => {
-      const el = ref.current;
-      if (!el) return;
-      const next = Math.min(items.length - 1, Math.max(0, Math.round(el.scrollTop / ITEM_H)));
-      if (next !== index) tapHaptic();
-      onIndexChange(next);
-    }, 90);
+    const el = ref.current;
+    if (!el) return;
+    selection.scroll(Math.min(items.length - 1, Math.max(0, Math.round(el.scrollTop / ITEM_H))));
   };
 
   return (
     <div
       ref={ref}
       onScroll={handleScroll}
+      onPointerDown={() => selection.beginGesture()}
+      onTouchStart={() => selection.beginGesture()}
+      onWheel={() => selection.beginGesture()}
+      onKeyDown={(event) => {
+        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) selection.beginGesture();
+      }}
       aria-label={ariaLabel}
       className="h-[220px] overflow-y-auto snap-y snap-mandatory no-scrollbar flex-1"
       style={{ scrollPaddingBlock: ITEM_H * 2 }}
@@ -209,11 +213,11 @@ function WheelColumn({
           key={`${item}-${i}`}
           type="button"
           onClick={() => {
+            selection.choose(i);
             const el = ref.current;
-            if (el) el.scrollTo({ top: i * ITEM_H, behavior: 'smooth' });
-            onIndexChange(i);
+            if (el) el.scrollTo({ top: i * ITEM_H, behavior: 'instant' });
           }}
-          className={`snap-center w-full flex items-center justify-center t-data-lg transition-colors ${
+          className={`snap-center w-full flex items-center justify-center t-data transition-colors ${
             i === index ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
           }`}
           style={{ height: ITEM_H }}
@@ -259,10 +263,15 @@ interface TimeFieldProps {
 export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
   const [open, setOpen] = useState(false);
   const parts = toParts(value || format(new Date(), 'HH:mm'));
+  const latestValue = useRef(value);
+  useEffect(() => { latestValue.current = value; }, [value]);
 
   const setPart = (next: Partial<{ hourIndex: number; minuteIndex: number; pm: boolean }>) => {
-    const merged = { ...parts, ...next };
-    onChange(toValue(merged.hourIndex, merged.minuteIndex, merged.pm));
+    const current = toParts(latestValue.current || format(new Date(), 'HH:mm'));
+    const merged = { ...current, ...next };
+    const nextValue = toValue(merged.hourIndex, merged.minuteIndex, merged.pm);
+    latestValue.current = nextValue;
+    onChange(nextValue);
   };
 
   return (
@@ -321,13 +330,9 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="pressable mt-4 w-full min-h-12 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] text-sm font-semibold"
-          >
+          <Button type="button" onClick={() => setOpen(false)} className="mt-4 w-full">
             Done
-          </button>
+          </Button>
         </div>
       </Modal>
     </>

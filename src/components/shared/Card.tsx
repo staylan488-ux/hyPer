@@ -11,10 +11,10 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onD
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
-      default: 'bg-[var(--color-surface-1)] border border-[var(--color-border)]',
-      elevated: 'bg-[var(--color-surface-1)] border border-[var(--color-border-strong)]',
+      default: 'bg-[var(--color-surface-1)]',
+      elevated: 'bg-[var(--color-surface-1)]',
       outlined: 'bg-transparent border border-[var(--color-border-strong)]',
-      slab: 'bg-[var(--color-surface-2)] border border-[var(--color-border-soft)]',
+      slab: 'bg-[var(--color-surface-2)]',
     };
 
     if (!animated) {
@@ -34,7 +34,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         ref={ref}
         className={`rounded-none p-5 ${variants[variant]} ${className}`}
         transition={springs.smooth}
-        whileTap={{ scale: 0.995 }}
+        whileTap={props.onClick ? { scale: 0.995 } : undefined}
         {...props}
       >
         {children}

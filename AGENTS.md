@@ -60,7 +60,40 @@ SESSION HANDOFF SUMMARY
 - Next recommended command:
 ```
 
-## Current Handoff State — adaptive workout calendar
+## Current Handoff State — approved Studio implementation
+
+- Updated: 2026-09-04
+- Branch: `codex/studio-app-wide`
+- Worktree: `/private/tmp/hyper-studio-20260904`
+- Base: `f711882` — adaptive workout calendar (#104)
+- Status: implemented and verified, ready for draft PR review. No merge, deployment or TestFlight upload.
+- Plan and detailed evidence: `docs/plans/2026-09-04-studio-app-wide.md`.
+
+### What changed
+
+- App-wide approved Studio: Fraunces/Geist roles, coherent Paper/Ink tokens, quiet filled controls, contextual row actions, neutral editorial content and an inset four-tab navigation.
+- Anchored workout set/rest surface preserves save recovery, draft edits and superset progression. Today uses the same ordered next-set selection.
+- Stationary safe-area shell, visible-viewport keyboard variables, tab scroll memory, portal sheets with nested focus/background isolation; removed route transforms around fixed descendants and decorative moving light/grain.
+- Consolidated Fuel/food sheets, Programs/editor, History/past edits, Settings, volume/adherence views and shared controls. Fixed time-wheel selection races.
+- DEV preview supports real mutable program/workout paths and explicit two-failure save recovery. No auth flow, store business logic, DB schema, dependencies or native source changes.
+
+### Verification
+
+- `npm run test`: PASS — 62 files, 668 tests.
+- `npm run lint`: PASS.
+- `npm run build`: PASS; existing chunk-size and Browserslist-data warnings.
+- Browser: Paper/Ink, 390px and 320px layouts; food/time and past edits; program snapshot save; workout draft/save/edit/rest/completion/new session; failure→Retry; nested sheets; exact tab scroll restoration.
+- Safe-area clipping verified with temporary 59px top/34px bottom simulation; those styles were removed before final build.
+
+### Remaining / gotchas
+
+- Physical iPhone status bar, software keyboard, touch feel/haptics, frame pacing and scanner/camera/native integrations still need device validation. No build has been sent to the phone.
+- Preview uses in-memory data; a full reload resets records. Open `/preview?previewSetSave=fail` to exercise two failed automatic attempts followed by successful Retry.
+- Preview at `http://127.0.0.1:5175/preview`. Screenshots and local paths are in the plan file.
+- Saved checkout `/Users/sinan/orca/hyPer` remains untouched, including its `.gitignore` change and `supabase/.temp/linked-project.json`.
+- Next: review `codex/studio-app-wide`, then device validation before release. No merge/deploy implied.
+
+## Previous Handoff State — adaptive calendar — adaptive workout calendar
 
 - Updated: 2026-09-04
 - Implementation branch: `codex/adaptive-workout-calendar`

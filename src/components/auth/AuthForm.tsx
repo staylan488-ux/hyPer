@@ -194,7 +194,7 @@ export function AuthForm() {
             <AnimatePresence>
               {!isLogin && signupSuccess && (
                 <motion.div
-                  className="border-l-2 border-[var(--color-text)] pl-4 py-1"
+                  className="py-2"
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
@@ -219,7 +219,7 @@ export function AuthForm() {
             <AnimatePresence>
               {error && (
                 <motion.p
-                  className="border-l-2 border-[var(--color-accent)] pl-4 py-1 t-caption text-[var(--color-accent)]"
+                  className="py-2 t-caption text-[var(--color-accent)]"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
