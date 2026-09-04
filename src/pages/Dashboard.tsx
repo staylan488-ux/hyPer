@@ -14,10 +14,12 @@ import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
+import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
-import { loadPlanSchedule, plannedDayForDate, type PlanSchedule } from '@/lib/planSchedule';
+import { plannedDayForDate } from '@/lib/planSchedule';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
 
 interface NutritionTotals {
@@ -29,6 +31,7 @@ interface NutritionTotals {
 
 type HeroState =
   | { kind: 'loading' }
+  | { kind: 'schedule-error'; retry: () => void }
   | { kind: 'resume'; completedSets: number; totalSets: number; title: string; dayName: string; exerciseCount: number; elapsed: string }
   | { kind: 'done'; title: string }
   | { kind: 'planned'; day: SplitDay }
@@ -63,15 +66,12 @@ export function Dashboard() {
     fat: 0,
   });
   const [todayDone, setTodayDone] = useState<{ title: string } | null>(null);
-  const [flexCompletedCount, setFlexCompletedCount] = useState(0);
   const [mountedAt] = useState(() => Date.now());
 
   const userId = user?.id;
   const activeSplitId = activeSplit?.id;
-  const schedule = useMemo<PlanSchedule | null>(
-    () => (userId && activeSplitId ? loadPlanSchedule(userId, activeSplitId) : null),
-    [userId, activeSplitId]
-  );
+  const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplitId);
+  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout);
 
   const fetchNutritionTotals = useCallback(async () => {
     try {
@@ -165,18 +165,6 @@ export function Dashboard() {
     return () => clearTimeout(timer);
   }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode, refreshAdaptiveTargets]);
 
-  // Flex-rotation schedules advance by completed sessions since the plan start
-  useEffect(() => {
-    if (!userId || schedule?.mode !== 'flex') return;
-    supabase
-      .from('workouts')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('completed', true)
-      .gte('date', schedule.startDate)
-      .then(({ count }) => setFlexCompletedCount(count ?? 0));
-  }, [userId, schedule]);
-
   const hero = useMemo<HeroState>(() => {
     if (loading) return { kind: 'loading' };
 
@@ -205,16 +193,19 @@ export function Dashboard() {
     if (workoutMode === 'flexible') return { kind: 'flexible' };
 
     if (!activeSplit) return { kind: 'first-run' };
+    if (scheduleLoading || scheduleWorkoutsLoading) return { kind: 'loading' };
+    if (scheduleError) return { kind: 'schedule-error', retry: retrySchedule };
     if (!schedule) return { kind: 'no-schedule' };
 
     const planned = plannedDayForDate(
       startOfDay(new Date()),
       activeSplit.days,
       schedule,
-      schedule.mode === 'flex' ? flexCompletedCount : 0
+      0,
+      scheduleWorkouts
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, todayDone, workoutMode, activeSplit, schedule, flexCompletedCount, mountedAt]);
+  }, [loading, currentWorkout, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt]);
 
   const hour = new Date().getHours();
   const greetingSlot = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -380,6 +371,10 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
         <div className="shimmer h-12 w-full" />
       </div>
     );
+  }
+
+  if (hero.kind === 'schedule-error') {
+    return <div><p className="t-caption mb-3">Couldn’t load your workout schedule.</p><Button onClick={hero.retry}>Retry</Button></div>;
   }
 
   if (hero.kind === 'resume') {

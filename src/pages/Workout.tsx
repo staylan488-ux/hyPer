@@ -24,6 +24,7 @@ import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'dat
 import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { RestTimerLauncher } from '@/components/workout/RestTimerLauncher';
@@ -151,7 +152,7 @@ export function Workout() {
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
   const [lastCompletedWorkout, setLastCompletedWorkout] = useState<Pick<Workout, 'date' | 'split_day_id'> | null>(null);
-  const [completedSinceStartDates, setCompletedSinceStartDates] = useState<string[]>([]);
+  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, planSchedule, currentWorkout);
   const [movementNotes, setMovementNotes] = useState<Record<string, string>>({});
   const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
@@ -305,7 +306,7 @@ export function Workout() {
       setSetupMode(schedule.mode);
       setSetupStartChoice('pick');
       setSetupAnchorDay(schedule.anchorDay ?? schedule.weekdays?.[0] ?? defaultWeekdays(daysPerWeek)[0] ?? 1);
-      setSetupFlexDayIndex(normalizeIndex(schedule.anchorDay ?? 0, splitDayCount));
+      setSetupFlexDayIndex(normalizeIndex(schedule.flexAnchorIndex ?? schedule.anchorDay ?? 0, splitDayCount));
     };
 
     // Load local cache instantly + background sync from DB
@@ -339,7 +340,6 @@ export function Workout() {
     if (!userId || !activeSplit || !planSchedule) {
       setWeekWorkouts([]);
       setLastCompletedWorkout(null);
-      setCompletedSinceStartDates([]);
       return;
     }
 
@@ -353,15 +353,9 @@ export function Workout() {
         .select('id, date, split_day_id, completed')
         .eq('user_id', userId)
         .gte('date', format(weekStart, 'yyyy-MM-dd'))
-        .lte('date', format(weekEnd, 'yyyy-MM-dd'));
-
-      const { data: completedSinceStart } = await supabase
-        .from('workouts')
-        .select('date')
-        .eq('user_id', userId)
-        .eq('completed', true)
-        .gte('date', planSchedule.startDate)
-        .lte('date', format(weekEnd, 'yyyy-MM-dd'));
+        .lte('date', format(weekEnd, 'yyyy-MM-dd'))
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
 
       const { data: lastCompleted } = await supabase
         .from('workouts')
@@ -375,7 +369,6 @@ export function Workout() {
       if (cancelled) return;
       setWeekWorkouts((workouts || []) as Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]);
       setLastCompletedWorkout((lastCompleted as Pick<Workout, 'date' | 'split_day_id'>) || null);
-      setCompletedSinceStartDates((completedSinceStart || []).map((row) => row.date));
     };
 
     void fetchCalendarWorkouts();
@@ -612,27 +605,7 @@ export function Workout() {
       if (setupMode === 'fixed') {
         computedAnchorDay = setupAnchorDay;
       } else if (splitDayCount > 0) {
-        const targetIndex = normalizeIndex(setupFlexDayIndex, splitDayCount);
-        const todayKey = format(new Date(), 'yyyy-MM-dd');
-
-        let completedBeforeToday = completedSinceStartDates.filter((dateValue) => (
-          dateValue >= setupStartDate && dateValue < todayKey
-        )).length;
-
-        const { count, error } = await supabase
-          .from('workouts')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('completed', true)
-          .gte('date', setupStartDate)
-          .lt('date', todayKey);
-
-        if (!error && typeof count === 'number') {
-          completedBeforeToday = count;
-        }
-
-        const completedOffset = completedBeforeToday % splitDayCount;
-        computedAnchorDay = normalizeIndex(targetIndex - completedOffset, splitDayCount);
+        computedAnchorDay = normalizeIndex(setupFlexDayIndex, splitDayCount);
       }
 
       const schedule: PlanSchedule = {
@@ -640,11 +613,11 @@ export function Workout() {
         startDate: setupStartDate,
         mode: setupMode,
         weekdays: computedWeekdays,
-        anchorDay: computedAnchorDay,
+        anchorDay: setupMode === 'fixed' ? computedAnchorDay : 0,
+        flexAnchorIndex: setupMode === 'flex' ? computedAnchorDay : undefined,
       };
 
-      savePlanSchedule(userId, schedule);
-      setPlanSchedule(schedule);
+      setPlanSchedule(savePlanSchedule(userId, schedule));
       setShowScheduleEditor(false);
     } finally {
       setSavingPlanSchedule(false);
@@ -1156,24 +1129,23 @@ export function Workout() {
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 
   const startDate = planSchedule ? parseISO(`${planSchedule.startDate}T00:00:00`) : null;
-  const completedInWeek = weekWorkouts.filter((workout) => workout.completed);
-
-  const completedBefore = (date: Date) =>
-    completedSinceStartDates.filter((dateValue) => isBefore(parseISO(`${dateValue}T00:00:00`), date)).length;
 
   const today = new Date();
   const todayPlannedDay =
     planSchedule && startDate && !isBefore(today, startDate)
-      ? plannedDayForDate(today, splitDays, planSchedule, completedBefore(today))
+      ? plannedDayForDate(today, splitDays, planSchedule, 0, scheduleWorkouts)
       : null;
 
-  const todayCompletedWorkout = completedInWeek.find((workout) => workout.date === format(today, 'yyyy-MM-dd'));
+  // Today's status must not depend on which calendar week is being browsed.
+  const todayKey = format(today, 'yyyy-MM-dd');
+  const todayCompletedWorkout = scheduleWorkouts.find((workout) => workout.date === todayKey)
+    || (lastCompletedWorkout?.date === todayKey ? lastCompletedWorkout : null);
 
   const openScheduleEditor = () => {
     if (!planSchedule) return;
 
     const splitDayCount = splitDays.length;
-    const fallbackFlexDay = normalizeIndex(planSchedule.anchorDay ?? 0, splitDayCount);
+    const fallbackFlexDay = normalizeIndex(planSchedule.flexAnchorIndex ?? planSchedule.anchorDay ?? 0, splitDayCount);
 
     const todayPlannedIndex = todayPlannedDay
       ? splitDays.findIndex((day) => day.id === todayPlannedDay.id)
@@ -1303,7 +1275,11 @@ export function Workout() {
           <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Today</h1>
         </header>
 
-        {!planSchedule ? (
+        {planSchedule && scheduleWorkoutsLoading ? (
+          <p className="t-caption py-8">Loading workout schedule…</p>
+        ) : planSchedule && scheduleError ? (
+          <div className="py-8"><p className="t-caption mb-3">Couldn’t load your workout schedule.</p><Button onClick={retrySchedule}>Retry</Button></div>
+        ) : !planSchedule ? (
           planScheduleResolving ? (
             <div className="border-t border-[var(--color-border)]">
               <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
@@ -1423,7 +1399,7 @@ export function Workout() {
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
-                  const plannedDay = plannedDayForDate(date, activeSplit?.days || [], planSchedule, completedBefore(date));
+                  const plannedDay = plannedDayForDate(date, activeSplit?.days || [], planSchedule, 0, scheduleWorkouts);
                   const isToday = isSameDay(date, today);
 
                   let status: 'completed' | 'planned' | 'rest' | 'missed' = 'rest';
@@ -1438,6 +1414,8 @@ export function Workout() {
                   return (
                     <div
                       key={dateKey}
+                      title={`${format(date, 'EEE, MMM d')}: ${workout ? activeSplit?.days.find((day) => day.id === workout.split_day_id)?.day_name || 'Completed workout' : plannedDay?.day_name || 'Rest'}`}
+                      aria-label={`${format(date, 'EEE, MMM d')}: ${workout ? activeSplit?.days.find((day) => day.id === workout.split_day_id)?.day_name || 'Completed workout' : plannedDay?.day_name || 'Rest'} (${status})`}
                       className={`relative flex flex-col items-center gap-1.5 py-2.5 ${
                         completed ? 'bg-[var(--color-text)]' : 'bg-[var(--color-surface-1)]'
                       }`}
@@ -1479,6 +1457,9 @@ export function Workout() {
             {/* Other days */}
             <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
               <p className="t-label mb-1">Train a different day</p>
+              <p className="t-caption mb-3">{planSchedule.mode === 'fixed'
+                ? 'Finishing a different day shifts upcoming workouts and rest days to follow your split.'
+                : 'Finishing a different day moves your next workout forward from that day.'}</p>
               <ul>
                 {(activeSplit?.days || []).map((day) => (
                   <li

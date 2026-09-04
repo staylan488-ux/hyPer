@@ -391,7 +391,8 @@ describe('planSchedule', () => {
           weekdays: [0, 6],
         };
         expect(plannedDayForDate(localDate('2024-01-06'), mockSplitDays, schedule, 0)?.day_name).toBe('Day B');
-        expect(plannedDayForDate(localDate('2024-01-07'), mockSplitDays, schedule, 0)?.day_name).toBe('Day A');
+        // Three split days across two weekly slots must continue to Day C.
+        expect(plannedDayForDate(localDate('2024-01-07'), mockSplitDays, schedule, 0)?.day_name).toBe('Day C');
       });
     });
 
@@ -726,6 +727,43 @@ describe('planSchedule', () => {
 
       await expect(done).resolves.toBeUndefined();
       expect(onRemoteUpdate).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('keeps a newly saved schedule when an older in-flight response arrives (initial cache: %s)', async (hasInitialCache) => {
+      const oldRemote = {
+        split_id: 'split1',
+        start_date: '2024-06-01',
+        mode: 'fixed',
+        weekdays: [1, 3, 5],
+        anchor_day: 1,
+        updated_at: '2024-06-02T12:00:00Z',
+      };
+      if (hasInitialCache) {
+        localStorageMock.setItem('plan-schedule:user1:split1', JSON.stringify({
+          splitId: 'split1', startDate: '2024-06-01', mode: 'fixed', weekdays: [1, 3, 5],
+          updatedAt: '2024-06-01T12:00:00Z',
+        }));
+      }
+      let finishRemote!: (result: { data: typeof oldRemote; error: null }) => void;
+      const pendingRemote = new Promise<{ data: typeof oldRemote; error: null }>((resolve) => {
+        finishRemote = resolve;
+      });
+      supabaseMock.from.mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: vi.fn(() => pendingRemote) })),
+          })),
+        })),
+      });
+      const onRemoteUpdate = vi.fn();
+      const { done } = loadWithBackgroundSync('user1', 'split1', onRemoteUpdate);
+      const newlySaved = savePlanSchedule('user1', {
+        splitId: 'split1', startDate: '2024-06-15', mode: 'fixed', weekdays: [2, 4, 6], anchorDay: 2,
+      });
+      finishRemote({ data: oldRemote, error: null });
+      await done;
+      expect(onRemoteUpdate).not.toHaveBeenCalled();
+      expect(loadPlanSchedule('user1', 'split1')).toEqual(newlySaved);
     });
 
     it('resolves done promise after applying remote update', async () => {
