@@ -129,6 +129,7 @@ class MockBuilder implements PromiseLike<{ data: unknown; error: null; count: nu
     return this;
   }
   update(values: Row) { this.updateVals = values; return this; }
+  abortSignal() { return this; }
   delete() { this.del = true; return this; }
 
   eq(col: string, val: unknown) { this.filters.push((r) => r[col] === val); return this; }

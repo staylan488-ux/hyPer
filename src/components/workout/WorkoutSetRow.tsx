@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Pencil, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppStore } from '@/stores/appStore';
@@ -47,6 +47,8 @@ export function WorkoutSetRow({
   const [rpe, setRpe] = useState(set.rpe?.toString() || '');
   const [isEditing, setIsEditing] = useState(!set.completed);
   const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const formattedTarget = previousTarget ? formatSetPerformanceTarget(previousTarget) : '';
   const performanceStatus =
@@ -63,11 +65,13 @@ export function WorkoutSetRow({
   };
 
   const handleSave = async () => {
-    if (!weight || !reps || saving) return;
+    if (!weight || !reps || saveInFlight.current) return;
+    saveInFlight.current = true;
     tapHaptic();
 
     try {
       setSaving(true);
+      setSaveError(null);
 
       if (onBeforeComplete) {
         const verdict = await onBeforeComplete(set);
@@ -91,7 +95,9 @@ export function WorkoutSetRow({
       onComplete?.(set);
     } catch (error) {
       console.error('Failed to log set:', error);
+      setSaveError('Couldn’t confirm this set was saved. Your numbers are still here. Check your connection and tap Retry.');
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -197,7 +203,8 @@ export function WorkoutSetRow({
           disabled={!canLog}
           whileTap={canLog ? { scale: 0.92 } : undefined}
           transition={springs.snappy}
-          aria-label={`Log set ${setNumber}`}
+          aria-label={`${saveError ? 'Retry logging' : 'Log'} set ${setNumber}`}
+          aria-busy={saving}
           className={`flex items-center justify-center w-12 h-12 shrink-0 border transition-colors ${
             canLog
               ? 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
@@ -210,11 +217,19 @@ export function WorkoutSetRow({
               animate={{ rotate: 360 }}
               transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
             />
+          ) : saveError ? (
+            <span className="text-[11px] font-semibold">Retry</span>
           ) : (
             <Check className="w-[18px] h-[18px]" strokeWidth={2.75} />
           )}
         </motion.button>
       </div>
+
+      {saveError && (
+        <p role="alert" className="mt-2 pl-9 text-[11px] text-[var(--color-text-dim)]">
+          {saveError}
+        </p>
+      )}
 
       {(formattedTarget || autofillValues) && (
         <div className="flex items-center justify-between mt-2 pl-9">

@@ -35,6 +35,7 @@ type Chain = {
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   select: ReturnType<typeof vi.fn>;
+  abortSignal: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
 };
@@ -54,6 +55,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
     order: vi.fn(),
     limit: vi.fn(),
     select: vi.fn(),
+    abortSignal: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
   } as unknown as Chain;
@@ -70,6 +72,7 @@ function createChain(overrides: Partial<Chain> = {}): Chain {
   chain.order.mockImplementation(() => chain);
   chain.limit.mockImplementation(() => chain);
   chain.select.mockImplementation(() => chain);
+  chain.abortSignal.mockImplementation(() => chain);
   chain.single.mockResolvedValue({ data: null, error: null });
   chain.maybeSingle.mockResolvedValue({ data: null, error: null });
 
@@ -643,8 +646,7 @@ describe('must-work store contracts', () => {
       })
     );
     expect(setsChain.eq).toHaveBeenNthCalledWith(1, 'workout_id', 'workout-1');
-    expect(setsChain.eq).toHaveBeenNthCalledWith(2, 'exercise_id', 'exercise-1');
-    expect(setsChain.eq).toHaveBeenNthCalledWith(3, 'set_number', 1);
+    expect(setsChain.eq).toHaveBeenNthCalledWith(2, 'id', 'set-1');
   });
 
   it('edits a past workout set locally after update call', async () => {

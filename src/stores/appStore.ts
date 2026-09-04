@@ -9,6 +9,7 @@ import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
+import { saveWorkoutSet } from '@/lib/saveWorkoutSet';
 import {
   getNutritionProfile,
   isNewPhase,
@@ -1331,47 +1332,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   logSet: async (exerciseId, setNumber, weight, reps, rpe) => {
     const { currentWorkout } = get();
-    if (!currentWorkout) return;
+    if (!currentWorkout) throw new Error('No active workout to log this set.');
+    const target = currentWorkout.sets.find(s => s.exercise_id === exerciseId && s.set_number === setNumber);
+    if (!target) throw new Error('This set is no longer in the workout.');
 
-    const { data: updatedSet, error } = await supabase
-      .from('sets')
-      .update({
-        weight,
-        reps,
-        rpe: rpe || null,
-        completed: true,
-        completed_at: new Date().toISOString(),
-      })
-      .eq('workout_id', currentWorkout.id)
-      .eq('exercise_id', exerciseId)
-      .eq('set_number', setNumber)
-      .select()
-      .single();
+    const updatedSet = await saveWorkoutSet(target, { weight, reps, rpe: rpe ?? null });
+    const latestWorkout = get().currentWorkout;
+    // A slow response must never write into a different workout opened meanwhile.
+    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
 
-    if (error) {
-      console.error('Error logging set:', error);
-      throw error;
-    }
+    const updatedSets = latestWorkout.sets.map(s => s.id === target.id
+      ? {
+          ...s,
+          weight: updatedSet.weight,
+          reps: updatedSet.reps,
+          rpe: updatedSet.rpe,
+          completed: updatedSet.completed,
+          completed_at: updatedSet.completed_at,
+        }
+      : s);
 
-    if (updatedSet) {
-      const latestWorkout = get().currentWorkout;
-      if (!latestWorkout) return;
-
-      const updatedSets = latestWorkout.sets.map(s =>
-        s.exercise_id === exerciseId && s.set_number === setNumber
-          ? {
-              ...s,
-              weight: updatedSet.weight,
-              reps: updatedSet.reps,
-              rpe: updatedSet.rpe,
-              completed: updatedSet.completed,
-              completed_at: updatedSet.completed_at,
-            }
-          : s
-      );
-
-      set({ currentWorkout: { ...latestWorkout, sets: updatedSets } });
-    }
+    set({ currentWorkout: { ...latestWorkout, sets: updatedSets } });
   },
 
   updateSet: async (setId, updates) => {
