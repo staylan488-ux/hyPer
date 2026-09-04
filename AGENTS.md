@@ -64,6 +64,7 @@ SESSION HANDOFF SUMMARY
 
 - Updated: 2026-09-04
 - Implementation branch: `fix/workout-set-save-stall`
+- PR: https://github.com/staylan488-ux/hyPer/pull/103
 - Base commit: `d5e3fce` — Handoff: Rev 101 scanner + provider stickiness (#102)
 - Sync: fetched GitHub and fast-forwarded local `main` by 48 commits before branching.
 - Status: structural Supabase lock fix plus workout set save recovery verified; TestFlight deployment and device validation pending.
@@ -103,7 +104,7 @@ SESSION HANDOFF SUMMARY
 - User confirmed TestFlight, remaining focused in the app during stalls. Shared-auth-queue blocking is reproduced and fixed; the exact trigger on the user's phone remains unconfirmed. A stalled token refresh itself (as distinct from an unrelated user lookup) still needs to resolve before expired credentials can be renewed. Aborting a request cannot guarantee the server did not already write it; automatic retries reuse the same row/payload.
 - Supabase 2.115.0 requires Node >=22 for tooling (this Mac uses a compatible runtime). Physical-device validation is still pending.
 - Preserve the pre-existing `.gitignore` modification and untracked `supabase/.temp/linked-project.json`; neither belongs to this fix.
-- Next recommended command: `git diff -- src/components/workout/WorkoutSetRow.tsx src/stores/appStore.ts`
+- Next recommended command: `gh pr view 103`
 
 ## Previous Handoff State — design elevation
 
