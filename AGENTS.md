@@ -65,7 +65,8 @@ SESSION HANDOFF SUMMARY
 - Updated: 2026-09-04
 - Implementation branch: `codex/adaptive-workout-calendar`
 - Base: `e196e10` — workout set-save fix (preserved).
-- Status: implemented and verified locally; no release/deployment requested.
+- PR: https://github.com/staylan488-ux/hyPer/pull/104
+- Status: implemented and verified; user authorized GitHub PR creation and merge. Device validation remains pending.
 
 ### What Changed
 
@@ -95,11 +96,11 @@ SESSION HANDOFF SUMMARY
 
 ### Remaining Tasks / Risks
 
-- Device validation and any merge/release remain separate work. No auth, set-saving, bot, or DB-schema changes.
+- GitHub PR creation and merge are authorized in this session; device validation and a TestFlight release remain separate work. No auth, set-saving, bot, or DB-schema changes.
 - History remains authoritative: deleting a completion or editing it so the existing history flow marks it incomplete removes that scheduling anchor. Editing only weight/reps on a completed session leaves the anchor intact.
 - Older app builds do not interpret the new explicit flex-index encoding; validate new schedule edits with this implementation.
 - `CLAUDE.md` is absent in this worktree; `AGENTS.md` and `TOOL_SWITCHING_CHECKLIST.md` were read.
-- Next recommended command: `git log -1 && git status --short`.
+- Next recommended command: `gh pr view 104`.
 
 ## Previous Handoff State — workout set-save recovery
 
