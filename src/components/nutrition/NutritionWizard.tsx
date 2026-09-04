@@ -233,7 +233,7 @@ export function NutritionWizard({
               type="button"
               aria-pressed={active}
               className={`pressable w-full text-left flex items-center gap-4 py-4 border-t border-[var(--color-border)] transition-colors ${
-                active ? 'border-l-2 border-l-[var(--color-accent)] pl-4' : 'pl-[calc(1rem+2px)]'
+                active ? 'bg-[var(--color-surface-2)] px-4' : 'px-4'
               }`}
               onClick={() => onSelect(option.value)}
             >
@@ -524,7 +524,7 @@ export function NutritionWizard({
                   type="button"
                   aria-label="Slower"
                   disabled={roundRate(rate) <= rateMin + 1e-9}
-                  className="pressable shrink-0 w-10 h-10 flex items-center justify-center border border-[var(--color-border-strong)] disabled:opacity-30 transition-opacity"
+                  className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => setRate(Math.max(rateMin, roundRate(rate - RATE_STEP)))}
                 >
                   <Minus className="w-4 h-4" strokeWidth={1.75} />
@@ -535,7 +535,7 @@ export function NutritionWizard({
                     {displayedRate > 0 ? '+' : ''}
                     {displayedRate.toFixed(2)}
                   </span>
-                  <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)] ml-1">
+                  <span className="t-caption text-[var(--color-text-dim)] ml-1">
                     %
                   </span>
                   <p className="t-caption mt-1">
@@ -547,7 +547,7 @@ export function NutritionWizard({
                   type="button"
                   aria-label="Faster"
                   disabled={roundRate(rate) >= rateMax - 1e-9}
-                  className="pressable shrink-0 w-10 h-10 flex items-center justify-center border border-[var(--color-border-strong)] disabled:opacity-30 transition-opacity"
+                  className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => setRate(Math.min(rateMax, roundRate(rate + RATE_STEP)))}
                 >
                   <Plus className="w-4 h-4" strokeWidth={1.75} />
@@ -585,7 +585,7 @@ export function NutritionWizard({
             <p className="t-label-sm mb-1">Daily calories</p>
             <div className="flex items-baseline gap-2">
               <span className="number-hero text-[var(--color-text)]">{result.calories.toLocaleString()}</span>
-              <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
+              <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
             </div>
             <p className="t-data-sm text-[var(--color-muted)] mt-2">
               {result.tdeeIsMeasured ? 'Measured' : 'Estimated'} burn {result.tdee.toLocaleString()} kcal
@@ -594,7 +594,7 @@ export function NutritionWizard({
             </p>
           </div>
 
-          {/* Macro breakdown — serif numerals on hairline rows */}
+          {/* Macro breakdown */}
           <dl className="border-t border-[var(--color-text)]">
             {[
               { label: 'Protein', grams: result.protein, pct: percentages.protein },
@@ -634,7 +634,7 @@ export function NutritionWizard({
               {result.notes.map((note) => (
                 <li
                   key={note.code}
-                  className="border-l-2 border-[var(--color-accent)] pl-4 t-caption max-w-[44ch]"
+                  className="t-caption max-w-[44ch]"
                 >
                   {note.message}
                 </li>

@@ -18,7 +18,7 @@ import {
   X,
   Footprints,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip } from '@/components/shared';
@@ -28,6 +28,8 @@ import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { RestTimerLauncher } from '@/components/workout/RestTimerLauncher';
+import { nextWorkoutSet } from '@/components/workout/workoutFocus';
+import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
@@ -42,6 +44,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { formatSetPerformanceTarget } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
 function normalizeIndex(value: number, size: number): number {
@@ -136,6 +139,7 @@ export function Workout() {
   // for the whole live session (native app only).
   useKeepAwakeWhile(Boolean(currentWorkout));
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
@@ -200,6 +204,9 @@ export function Workout() {
     Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
     noteSaveTimersRef.current = {};
     setFlexibleTargetSetDrafts({});
+    setActiveExerciseId(null);
+    setSelectedSetId(null);
+    setRestTimerSeed(0);
   }, [currentWorkoutId]);
 
   useEffect(() => {
@@ -788,6 +795,20 @@ export function Workout() {
     return map;
   }, [currentWorkout?.sets]);
 
+  const focusOrder = useMemo(() => currentWorkout?.split_day_id === null
+    ? activeFlexibleItems.map((item) => item.exercise_id)
+    : orderedExerciseEntries.map(([id]) => id), [currentWorkout?.split_day_id, activeFlexibleItems, orderedExerciseEntries]);
+  // Restore straight into the next unfinished movement. Explicit user selection wins.
+  const resolvedActiveExerciseId = activeExerciseId && focusOrder.includes(activeExerciseId)
+    ? activeExerciseId
+    : nextWorkoutSet(orderedSets, focusOrder, undefined, undefined, supersetFlowMap)?.exercise_id ?? focusOrder[0] ?? null;
+  const selectedSet = selectedSetId ? orderedSets.find((set) => set.id === selectedSetId && set.exercise_id === resolvedActiveExerciseId) : undefined;
+  const composerSet = selectedSet ?? orderedSets.find((set) => set.exercise_id === resolvedActiveExerciseId && !set.completed);
+  const selectMovement = (exerciseId: string) => {
+    setActiveExerciseId(exerciseId);
+    setSelectedSetId(null);
+  };
+
   const handleStartFlexibleWorkout = async () => {
     const trimmed = flexibleDayLabel.trim();
     if (!trimmed || startingFlexibleWorkout) return;
@@ -898,28 +919,18 @@ export function Workout() {
   // saved preference applies; fall back to last-used / default when no card is
   // active (empty id won't be persisted by onDurationChange).
   const handleManualRestStart = () => {
-    startRestForExercise(activeExerciseId ?? '');
+    startRestForExercise(resolvedActiveExerciseId ?? '');
   };
 
   const handleSetLogged = (loggedSet: WorkoutSet) => {
-    if (loggedSet.completed) return;
-
+    if (useAppStore.getState().currentWorkout?.id !== currentWorkoutId) return;
+    setSelectedSetId(null);
+    if (loggedSet.completed) return; // Editing a saved set never starts rest.
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
-
-    if (!supersetFlow) {
-      startRestForExercise(loggedSet.exercise_id, {
-        exerciseId: loggedSet.exercise_id,
-        setNumber: loggedSet.set_number + 1,
-      });
-      return;
-    }
-
-    if (supersetFlow.role === 'B') {
-      // Rest follows the B side of the pair; next up is A of the next round.
-      startRestForExercise(loggedSet.exercise_id, {
-        exerciseId: supersetFlow.partnerExerciseId,
-        setNumber: loggedSet.set_number + 1,
-      });
+    const next = nextWorkoutSet(useAppStore.getState().currentWorkout?.sets ?? [], focusOrder, loggedSet, supersetFlow, supersetFlowMap);
+    if (next) setActiveExerciseId(next.exercise_id);
+    if (!supersetFlow || supersetFlow.role === 'B') {
+      startRestForExercise(loggedSet.exercise_id, next ? { exerciseId: next.exercise_id, setNumber: next.set_number } : undefined);
     }
   };
 
@@ -987,10 +998,8 @@ export function Workout() {
       return;
     }
 
-    const activeName = activeExerciseId ? workoutExerciseMap.get(activeExerciseId)?.name : undefined;
-    const nextSetNumber = activeExerciseId
-      ? currentWorkout.sets.filter((set) => set.exercise_id === activeExerciseId).length + 1
-      : null;
+    const activeName = resolvedActiveExerciseId ? workoutExerciseMap.get(resolvedActiveExerciseId)?.name : undefined;
+    const nextSetNumber = composerSet?.set_number ?? null;
     const tonnage = currentWorkout.sets
       .filter((set) => set.completed)
       .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
@@ -1008,7 +1017,7 @@ export function Workout() {
         ? new Date(currentWorkoutCreatedAt).getTime()
         : Date.now(),
     });
-  }, [currentWorkout, activeExerciseId, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
+  }, [currentWorkout, resolvedActiveExerciseId, composerSet?.set_number, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
   // ── End exercise ordering ──
 
   const captureCompletionSummary = () => {
@@ -1078,7 +1087,7 @@ export function Workout() {
 
   if (initializing) {
     return (
-      <motion.div className="px-5 pt-6 pb-nav">
+      <motion.div className="px-6 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between">
             <span className="t-label-sm">Train</span>
@@ -1099,7 +1108,7 @@ export function Workout() {
 
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div className="px-5 pt-6 pb-nav">
+      <motion.div className="px-6 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between">
             <span className="t-label-sm">Train</span>
@@ -1168,7 +1177,7 @@ export function Workout() {
       );
 
       return (
-        <motion.div className="px-5 pt-6 pb-nav">
+        <motion.div className="px-6 pt-6 pb-nav">
           <header className="mb-8">
             <div className="flex items-baseline justify-between">
               <span className="t-label-sm">Train</span>
@@ -1176,7 +1185,7 @@ export function Workout() {
                 <button
                   type="button"
                   onClick={() => navigate('/train/run')}
-                  className="min-h-11 px-4 border-2 border-[var(--color-text)] t-label text-[var(--color-text)] flex items-center gap-1.5 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+                  className="min-h-11 px-4 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] flex items-center gap-1.5"
                 >
                   <Footprints className="w-4 h-4" strokeWidth={1.75} />
                   Run
@@ -1187,7 +1196,7 @@ export function Workout() {
             <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</h1>
           </header>
 
-          <div className="panel-hot p-5">
+          <div className="py-5">
             <Input
               label="What are you training?"
               value={flexibleDayLabel}
@@ -1247,7 +1256,7 @@ export function Workout() {
     }
 
     return (
-      <motion.div className="px-5 pt-6 pb-nav">
+      <motion.div className="px-6 pt-6 pb-nav">
         <header className="mb-8">
           <div className="flex items-baseline justify-between gap-3">
             <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
@@ -1255,7 +1264,7 @@ export function Workout() {
               <button
                 type="button"
                 onClick={() => navigate('/train/run')}
-                className="min-h-11 px-4 border-2 border-[var(--color-text)] t-label text-[var(--color-text)] flex items-center gap-1.5 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+                className="min-h-11 px-4 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] flex items-center gap-1.5"
               >
                 <Footprints className="w-4 h-4" strokeWidth={1.75} />
                 Run
@@ -1316,16 +1325,16 @@ export function Workout() {
           <div className="space-y-4">
             {/* Today hero */}
             {todayCompletedWorkout ? (
-              <div className="panel-sage p-5">
+              <div className="py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="block w-2 h-2 bg-[var(--color-text)]" aria-hidden />
                   <span className="t-label">Trained today</span>
                 </div>
-                <p className="t-display text-[1.6rem] text-[var(--color-text)]">The work is banked.</p>
+                <p className="t-title text-[var(--color-text)]">The work is banked.</p>
                 <p className="t-caption mt-2">Rest, or pick a different day below.</p>
               </div>
             ) : todayPlannedDay ? (
-              <div className="panel-hot p-5">
+              <div className="py-5">
                 <div className="flex items-baseline justify-between mb-3">
                   <p className="t-label text-[var(--color-accent)]">Today</p>
                   <span className="t-data-sm text-[var(--color-muted)]">
@@ -1333,7 +1342,7 @@ export function Workout() {
                     {(todayPlannedDay.exercises || []).reduce((sum, ex) => sum + (ex.target_sets || 0), 0)} sets
                   </span>
                 </div>
-                <h2 className="[font-family:var(--font-display)] text-[2.5rem] leading-[0.95] font-light tracking-[-0.03em] text-[var(--color-text)] mb-5">
+                <h2 className="t-title text-[var(--color-text)] mb-5">
                   {todayPlannedDay.day_name}
                 </h2>
                 <TickStrip total={Math.min(todayPlannedDay.exercises?.length || 0, 16)} filled={0} tone="amber" size="md" className="mb-6" />
@@ -1349,12 +1358,12 @@ export function Workout() {
                 </Button>
               </div>
             ) : (
-              <div className="panel p-5">
+              <div className="py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <Moon className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
                   <span className="t-label">Rest day</span>
                 </div>
-                <p className="t-display text-[1.5rem] text-[var(--color-text-dim)]">Recovery is part of the program.</p>
+                <p className="t-title text-[var(--color-text)]">Recovery is part of the program.</p>
               </div>
             )}
 
@@ -1421,9 +1430,9 @@ export function Workout() {
                       }`}
                     >
                       {isToday && (
-                        <span className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--color-accent)]" aria-hidden />
+                        <span className="absolute bottom-1 w-1 h-1 rounded-full bg-[var(--color-accent)]" aria-hidden />
                       )}
-                      <span className={`t-label-sm text-[9px] ${completed ? 'text-[var(--color-base)]' : ''}`}>
+                      <span className={`t-label-sm ${completed ? 'text-[var(--color-base)]' : ''}`}>
                         {weekdayLetters[date.getDay()]}
                       </span>
                       <span
@@ -1467,10 +1476,10 @@ export function Workout() {
                     className="flex items-center justify-between gap-3 py-3.5 border-t border-[var(--color-border)]"
                   >
                     <div className="min-w-0">
-                      <p className="t-heading truncate">{day.day_name}</p>
+                      <p className="t-heading">{day.day_name}</p>
                       <p className="t-caption">{day.exercises?.length || 0} exercises</p>
                     </div>
-                    <Button size="sm" variant="secondary" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
+                    <Button size="sm" variant="ghost" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
                       {startingDayId === day.id ? 'Starting…' : 'Start'}
                     </Button>
                   </li>
@@ -1515,43 +1524,18 @@ export function Workout() {
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
 
   return (
-    <motion.div className="px-5 pb-44">
-      {/* Sticky session header */}
-      <div
-        className="sticky z-30 -mx-5 px-5 pt-4 pb-3 mb-5 border-b border-[var(--color-text)]"
-        style={{
-          top: 0,
-          backgroundColor: 'color-mix(in srgb, var(--color-base) 86%, transparent)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-        }}
-      >
-        <div className="flex items-end justify-between gap-3 mb-3">
-          <div className="min-w-0">
-            <p className="t-label-sm flex items-center gap-1.5 mb-1.5">
-              <span className="w-1.5 h-1.5 bg-[var(--color-accent)] animate-breathe" />
-              In session
-            </p>
-            <h1 className="t-caps text-[17px] font-light tracking-[0.18em] text-[var(--color-text)] truncate">{currentSessionTitle}</h1>
-          </div>
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="text-right">
-              <p className="t-data text-[var(--color-text)]">{sessionDurationLabel}</p>
-              <p className="t-data-sm text-[10px] text-[var(--color-muted)]">
-                {completedSets}/{totalSets} sets
-              </p>
-            </div>
-            <Button size="sm" onClick={handleCompleteWorkout}>
-              Finish
-            </Button>
-          </div>
+    <motion.div className="studio-workout-page px-6">
+      <header className="studio-session-header">
+        <div className="studio-session-top">
+          <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
+          <span>{sessionDurationLabel}</span>
+          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout}>Finish</Button>
         </div>
+        <div className="studio-session-summary"><h1 className="t-label">{currentSessionTitle}</h1><span>{completedSets} / {totalSets} sets</span></div>
         {totalSets > 0 && totalSets <= 40 ? (
-          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" live={completedSets < totalSets} />
-        ) : (
-          <RailStrip value={progress / 100} tone="amber" size="sm" />
-        )}
-      </div>
+          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" />
+        ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
+      </header>
 
       {isFlexibleSession ? (
         <div className="space-y-3">
@@ -1603,7 +1587,7 @@ export function Workout() {
               const flexibleTargetInputValue = typeof flexibleTargetDraft === 'string'
                 ? flexibleTargetDraft
                 : String(flexibleTargetSet);
-              const isActive = activeExerciseId === exerciseId;
+              const isActive = resolvedActiveExerciseId === exerciseId;
               const allComplete = sets.length > 0 && completedInExercise === sets.length;
               const movementNote = movementNotes[exerciseId] || item.notes || '';
               const canMoveUp = index > 0;
@@ -1620,11 +1604,12 @@ export function Workout() {
                   key={exerciseId}
                   index={index}
                   exerciseName={exerciseName}
+                  previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                   completedCount={completedInExercise}
                   totalCount={sets.length || flexibleTargetSet}
                   allComplete={allComplete}
                   isActive={isActive}
-                  onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                  onToggle={() => selectMovement(exerciseId)}
                   supersetRole={supersetRole}
                   supersetLabel={
                     supersetPartner
@@ -1671,7 +1656,7 @@ export function Workout() {
                   {/* Target sets + add/remove */}
                   <div className="flex items-center justify-between gap-2 mb-2.5">
                     <label className="flex items-center gap-2">
-                      <span className="text-[11px] font-medium text-[var(--color-muted)]">Target sets</span>
+                      <span className="t-caption">Target sets</span>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -1723,6 +1708,12 @@ export function Workout() {
                           })}
                           previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                           isNext={set.id === firstUncompletedSetId}
+                          composer={set.id === composerSet?.id}
+                          composerHidden={showRestTimer}
+                          exerciseName={exerciseName}
+                          onSelect={() => { setSelectedSetId(set.id); setActiveExerciseId(exerciseId); setShowRestTimer(false); clearRestTimerSession(); }}
+                          onCancel={() => setSelectedSetId(null)}
+                          onStartRest={handleManualRestStart}
                           onBeforeComplete={validateSupersetOrderBeforeLog}
                           onComplete={handleSetLogged}
                         />
@@ -1773,7 +1764,7 @@ export function Workout() {
             const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
             const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
             const completedInExercise = sets.filter(s => s.completed).length;
-            const isActive = activeExerciseId === exerciseId;
+            const isActive = resolvedActiveExerciseId === exerciseId;
             const allComplete = completedInExercise === sets.length;
             const movementNote = movementNotes[exerciseId] || '';
             const isFirst = index === 0;
@@ -1794,11 +1785,12 @@ export function Workout() {
                 key={exerciseId}
                 index={index}
                 exerciseName={exerciseName}
+                previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                 completedCount={completedInExercise}
                 totalCount={sets.length}
                 allComplete={allComplete}
                 isActive={isActive}
-                onToggle={() => setActiveExerciseId(isActive ? null : exerciseId)}
+                onToggle={() => selectMovement(exerciseId)}
                 supersetRole={supersetRole}
                 supersetLabel={
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
@@ -1824,8 +1816,8 @@ export function Workout() {
                 }
               >
                 <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <span className="text-[11px] font-medium text-[var(--color-muted)]">
-                    Range {setRange.minSets}–{setRange.maxSets} · Target {setRange.targetSets}
+                  <span className="t-caption">
+                    Target {splitDay?.exercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–{splitDay?.exercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · {setRange.targetSets} sets
                   </span>
                   <div className="flex items-center gap-1.5">
                     <SetCountButton
@@ -1860,6 +1852,12 @@ export function Workout() {
                         })}
                         previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                         isNext={set.id === firstUncompletedSetId}
+                          composer={set.id === composerSet?.id}
+                          composerHidden={showRestTimer}
+                          exerciseName={exerciseName}
+                          onSelect={() => { setSelectedSetId(set.id); setActiveExerciseId(exerciseId); setShowRestTimer(false); clearRestTimerSession(); }}
+                          onCancel={() => setSelectedSetId(null)}
+                          onStartRest={handleManualRestStart}
                         onBeforeComplete={validateSupersetOrderBeforeLog}
                         onComplete={handleSetLogged}
                       />
@@ -1881,9 +1879,6 @@ export function Workout() {
         </div>
       )}
 
-      {/* Fade list content into the base behind the docked rest control */}
-      <div className="rest-dock-scrim" aria-hidden />
-
       {/* Ambient rest dock — live countdown when running, manual launcher otherwise */}
       {showRestTimer ? (
         <RestTimerPill
@@ -1899,9 +1894,9 @@ export function Workout() {
           }}
           onDismiss={() => setShowRestTimer(false)}
         />
-      ) : (
+      ) : !composerSet ? (
         <RestTimerLauncher onStart={handleManualRestStart} />
-      )}
+      ) : null}
 
       {/* Complete Confirmation */}
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
@@ -1963,6 +1958,7 @@ type CardMenuAction = {
 function ExerciseCard({
   index,
   exerciseName,
+  previousTargetText,
   completedCount,
   totalCount,
   allComplete,
@@ -1976,6 +1972,7 @@ function ExerciseCard({
 }: {
   index: number;
   exerciseName: string;
+  previousTargetText: string | null;
   completedCount: number;
   totalCount: number;
   allComplete: boolean;
@@ -1988,144 +1985,43 @@ function ExerciseCard({
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const roleColor = supersetRole === 'B' ? 'var(--color-sage)' : 'var(--color-accent)';
-
+  const headingRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isActive || !headingRef.current) return;
+    const bounds = headingRef.current.getBoundingClientRect();
+    if (bounds.top < 0 || bounds.bottom > window.innerHeight - 320) {
+      headingRef.current.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  }, [isActive]);
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...springs.smooth, delay: Math.min(index * 0.04, 0.3) }}
-    >
-      <div
-        className={`relative transition-colors ${
-          allComplete ? 'panel-sage' : isActive ? 'panel-hot' : 'panel'
-        }`}
-      >
-        {/* superset role edge */}
-        {supersetRole && (
-          <span
-            className="absolute left-0 top-4 bottom-4 w-[2px]"
-            style={{ backgroundColor: roleColor }}
-          />
-        )}
-        <div
-          role="button"
-          tabIndex={0}
-          className="w-full text-left px-4 py-4 cursor-pointer"
-          onClick={onToggle}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onToggle();
-            }
-          }}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                {allComplete && (
-                  <motion.span
-                    className="flex items-center justify-center w-[18px] h-[18px] bg-[var(--color-text)] shrink-0"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: [0, 1.15, 1] }}
-                    transition={{ duration: 0.35 }}
-                  >
-                    <Check className="w-2.5 h-2.5 text-[var(--color-base)]" strokeWidth={3} />
-                  </motion.span>
-                )}
-                <h3 className="t-caps text-[14px] font-normal tracking-[0.14em] text-[var(--color-text)] truncate">{exerciseName}</h3>
-              </div>
-              {supersetLabel && (
-                <p className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: roleColor }}>
-                  <Link2 className="w-3.5 h-3.5" strokeWidth={2.25} />
-                  Superset {supersetLabel}
-                </p>
-              )}
-              {notePreview && (
-                <p className="mt-1 text-[12px] italic text-[var(--color-text-dim)] truncate">{notePreview}</p>
-              )}
+    <section className={`studio-movement ${isActive ? 'is-active' : ''}`} aria-label={exerciseName}>
+      <div className="studio-movement-header" ref={headingRef}>
+        <button type="button" className="studio-movement-toggle" aria-expanded={isActive} onClick={onToggle}>
+          {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
+          <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
+            {allComplete && <Check size={14} aria-hidden />}{exerciseName}
+          </span>
+          {!isActive && <span className="studio-movement-count">{completedCount} / {totalCount}</span>}
+        </button>
+        {menuActions.length > 0 && <div className="relative">
+          <button type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
+            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+          {menuOpen && <>
+            <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
+            <div className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl bg-[var(--color-surface-3)] border border-[var(--color-border)]">
+              {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
+                className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
+                onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.icon}{action.label}</button>)}
             </div>
-
-            <div className="relative flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-              {menuActions.length > 0 && (
-                <button
-                  type="button"
-                  aria-label="Exercise options"
-                  className="pressable p-2.5 rounded-[var(--radius-xs)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
-                  onClick={() => setMenuOpen((open) => !open)}
-                >
-                  <MoreHorizontal className="w-5 h-5" strokeWidth={2} />
-                </button>
-              )}
-              <motion.span
-                animate={{ rotate: isActive ? 90 : 0 }}
-                transition={springs.snappy}
-                className="p-1 cursor-pointer"
-                onClick={onToggle}
-              >
-                <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" />
-              </motion.span>
-
-              <AnimatePresence>
-                {menuOpen && (
-                  <motion.div
-                    className="absolute right-0 top-full mt-1 z-20 min-w-[180px] py-1 rounded-[var(--radius-md)] bg-[var(--color-surface-3)] hairline-strong raised overflow-hidden"
-                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                    transition={{ duration: 0.14 }}
-                  >
-                    {menuActions.map((action) => (
-                      <button
-                        key={action.label}
-                        type="button"
-                        disabled={action.disabled}
-                        className={`w-full px-4 py-3 text-left text-[13px] font-semibold flex items-center gap-2.5 disabled:opacity-30 disabled:pointer-events-none hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] ${
-                          action.tone === 'danger'
-                            ? 'text-[var(--color-danger)]'
-                            : action.tone === 'sage'
-                              ? 'text-[var(--color-sage)]'
-                              : 'text-[var(--color-text)]'
-                        }`}
-                        onClick={() => {
-                          setMenuOpen(false);
-                          action.onClick();
-                        }}
-                      >
-                        {action.icon}
-                        {action.label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 mt-2.5">
-            <span className="t-data text-[15px] text-[var(--color-text)]">
-              {completedCount}<span className="text-[var(--color-muted)]">/{totalCount}</span>
-              <span className="text-[12px] text-[var(--color-muted)] ml-1">sets</span>
-            </span>
-            <TickStrip total={Math.min(totalCount, 12)} filled={Math.min(completedCount, 12)} tone={allComplete ? 'sage' : 'amber'} size="md" />
-          </div>
-        </div>
-
-        <AnimatePresence initial={false}>
-          {isActive && (
-            <motion.div
-              className="overflow-hidden"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={springs.smooth}
-            >
-              <div className="px-4 pb-4 pt-1 border-t border-[var(--color-border)]">{children}</div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          </>}
+        </div>}
       </div>
-    </motion.div>
+      {isActive && previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
+      {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} />Superset {supersetLabel}</p>}
+      {notePreview && <p className="studio-movement-detail">{notePreview}</p>}
+      {/* Keep every draft mounted while the user browses other movements. */}
+      <div hidden={!isActive} className="studio-movement-content">{children}</div>
+    </section>
   );
 }
 
@@ -2149,7 +2045,7 @@ function SetCountButton({
       }}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="pressable flex items-center justify-center w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] hairline-strong text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
+      className="pressable flex items-center justify-center w-11 h-11 rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
     >
       {children}
     </button>
@@ -2172,7 +2068,8 @@ function MovementNote({
   onBlur: () => void;
 }) {
   return (
-    <div className="mt-3 pt-3 border-t border-[var(--color-border-soft)]">
+    <details className="studio-movement-note" open={value.trim() ? true : undefined}>
+      <summary className="t-caption min-h-11 flex items-center cursor-pointer">Movement note{value.trim() ? ' · Edit' : ' · Add'}</summary>
       <textarea
         id={`movement-note-${exerciseId}`}
         value={value}
@@ -2182,15 +2079,15 @@ function MovementNote({
         maxLength={200}
         placeholder="Note — technique, feel, cues…"
         aria-label="Movement note"
-        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm italic text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
       />
       <div className="mt-1 flex items-center justify-between min-h-4">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-muted)]">
+        <span className="t-caption">
           {saving ? 'Saving…' : saved ? <span className="text-[var(--color-sage)]">Saved</span> : ''}
         </span>
-        {value.length >= 160 && <span className="t-data-sm text-[10px] text-[var(--color-muted)]">{value.length}/200</span>}
+        {value.length >= 160 && <span className="t-caption tabular-nums">{value.length}/200</span>}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -2209,7 +2106,7 @@ function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | nu
             />
             <span className="t-label">Session complete</span>
           </div>
-          <p className="t-display text-[2rem] leading-[1.02] text-[var(--color-text)] mb-1.5">Session banked.</p>
+          <p className="t-title text-[var(--color-text)] mb-1.5">Session banked.</p>
           <p className="t-caption mb-6">{summary.title}</p>
           <TickStrip total={Math.min(summary.totalSets, 30)} filled={Math.min(summary.completedSets, 30)} tone="sage" className="mb-6" />
           <div className="grid grid-cols-2 border-t border-[var(--color-border)]">

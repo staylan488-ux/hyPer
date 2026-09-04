@@ -323,7 +323,7 @@ export function RunTracker() {
 
         {splits.length > 1 && (
           <div className="mt-8 border-t border-[var(--color-border)] pt-3">
-            <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm text-[9px] pb-1">
+            <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm pb-1">
               <span>#</span>
               <span>Time</span>
               <span>Dist</span>
@@ -381,7 +381,7 @@ export function RunTracker() {
   if (running) {
     return (
       <div
-        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto select-none overscroll-none"
+        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto select-none overscroll-none"
       >
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">
@@ -405,7 +405,7 @@ export function RunTracker() {
         <div className="flex-1 flex flex-col justify-center gap-8">
           <div>
             <p className="t-label-sm">{state.config.mode === 'intervals' ? 'Lap pace' : 'Pace'}</p>
-            <p className="t-data-hero mt-1 [font-family:var(--font-display)] text-[3.4rem] leading-none">
+            <p className="t-data-hero mt-1">
               {paceLabel}
             </p>
           </div>
@@ -496,7 +496,7 @@ export function RunTracker() {
 
   /* ── pre-start config ── */
   return (
-    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto flex flex-col overscroll-none" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto flex flex-col overscroll-none" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
       <p className="t-label-sm">Field tracker</p>
       <h1 className="t-display text-[2rem] mt-2">Run</h1>
 

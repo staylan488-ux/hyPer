@@ -1,6 +1,3 @@
-import { motion } from 'motion/react';
-
-import { springs } from '@/lib/animations';
 import type { TrainingHoursPoint } from '@/lib/workoutSessions';
 
 interface TrainingHoursHistogramProps {
@@ -15,8 +12,8 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   if (!hasTraining) {
     return (
       <div className="py-12 text-center">
-        <p className="t-display text-[15px] text-[var(--color-text-dim)]">No training hours yet.</p>
-        <p className="t-label-sm mt-3">Complete a workout to chart your weekly time</p>
+        <p className="t-heading">No training hours yet.</p>
+        <p className="t-caption mt-3">Complete a workout to chart your weekly time</p>
       </div>
     );
   }
@@ -24,27 +21,24 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   return (
     <div className="space-y-4">
       <div className="h-40 flex items-end gap-px border-b border-[var(--color-border-strong)]">
-        {points.map((point, index) => {
+        {points.map((point) => {
           const height = Math.max(4, Math.round((point.totalMinutes / maxMinutes) * 100));
           const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
 
           return (
             <div key={point.weekStart} className="flex-1 flex flex-col items-center justify-end gap-2 h-full">
               <span
-                className={`number-medium text-[1rem] leading-none tabular-nums ${
+                className={`t-data tabular-nums ${
                   isPeak ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
                 }`}
               >
                 {point.totalHours > 0 ? point.totalHours : '0'}
-                <span className="t-data-sm text-[10px] text-[var(--color-muted)] ml-0.5">h</span>
+                <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
               </span>
               <div className="w-full h-24 flex items-end">
-                <motion.div
+                <div
                   className="w-full"
-                  style={{ backgroundColor: isPeak ? 'var(--color-accent)' : 'var(--color-text)' }}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${height}%` }}
-                  transition={{ delay: index * 0.05, ...springs.smooth }}
+                  style={{ backgroundColor: isPeak ? 'var(--color-accent)' : 'var(--color-text)', height: `${height}%` }}
                 />
               </div>
             </div>
@@ -53,7 +47,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       </div>
       <div className="flex items-end gap-px">
         {points.map((point) => (
-          <span key={point.weekStart} className="flex-1 text-center t-label-sm text-[9px]">
+          <span key={point.weekStart} className="flex-1 text-center t-caption">
             {point.label}
           </span>
         ))}

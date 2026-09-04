@@ -1,22 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  /* ═════════════════════════════════════════════════════════════
-     FOLIO
-     A field journal for strength & nourishment.
-     Premium uncoated paper · warm near-black ink · one lacquer red,
-     spent carefully. Hierarchy through scale, weight & negative
-     space — never boxes, shadows, gradients or glows.
-
-     TYPE PAIRING (justification)
-     · Fraunces  — high-contrast serif w/ live optical-size axis.
-                   Headlines + hero data get fashion-cover contrast;
-                   its numerals are the most beautiful thing on screen.
-     · Geist     — precise neo-grotesque (Söhne / Suisse / Neue Haas
-                   lineage). The quiet UI workhorse so the serif can speak.
-     · Geist Mono— tabular instrument voice for dense ledgers (sets, reps,
-                   timestamps). Same family → one tight typographic house.
-     ═════════════════════════════════════════════════════════════ */
+  /* Studio — Fraunces for titles and key figures; Geist for all interface
+     text and tabular data. Paper, ink and one restrained red accent. */
 
   /* Defaults (PAPER) — runtime values overridden by .light / .dark */
   --color-base: #F4F0E7;
@@ -26,7 +12,7 @@
   --color-surface-3: #E3DBCC;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #978E7E;
+  --color-muted: #5A5249;
   --color-text: #1A1612;
   --color-text-dim: #5A5249;
 
@@ -52,8 +38,8 @@
   --color-volume-approaching-mrv: color-mix(in srgb, var(--color-text) 84%, var(--color-base));
   --color-volume-above-mrv: var(--color-accent);
 
-  /* Radius — FOLIO is sharp. Corners are square; rules do the work.
-     --radius-full kept only for true circles (dots, avatars). */
+  /* Content remains editorial and flat. Controls and anchored surfaces
+     use explicit Studio radii rather than rounding every container. */
   --radius-xs: 0px;
   --radius-sm: 0px;
   --radius-md: 0px;
@@ -61,14 +47,17 @@
   --radius-xl: 0px;
   --radius-2xl: 0px;
   --radius-full: 9999px;
+  --radius-control: 11px;
+  --radius-sheet: 20px;
+  --radius-nav: 22px;
 
   /* Typography */
   --font-sans: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-mono: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
 
   /* Spacing */
-  --spacing-section: 3.25rem;
+  --spacing-section: 1.875rem;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -83,7 +72,7 @@
   --color-surface-3: #E3DBCC;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #978E7E;
+  --color-muted: #5A5249;
   --color-text: #1A1612;
   --color-text-dim: #5A5249;
   --color-accent: #A8352A;
@@ -98,19 +87,21 @@
   --color-border: rgba(26, 22, 18, 0.16);
   --color-border-strong: rgba(26, 22, 18, 0.32);
   --color-border-soft: rgba(26, 22, 18, 0.08);
-  --noise-opacity: 0.022;
-  /* Slow warm light drifting across the paper — felt, not seen */
-  --paperlight: radial-gradient(95% 60% at 25% 0%, rgba(206, 178, 132, 0.20), rgba(206, 178, 132, 0) 70%);
+  --noise-opacity: 0.012;
+  --paperlight: none;
   --overlay-backdrop: rgba(26, 22, 18, 0.38);
   --surface-atmosphere: none;
-  --well-shadow: inset 0 0 0 1px var(--color-border-soft);
+  --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: 0 -1px 0 var(--color-border-strong), 0 24px 60px rgba(26, 22, 18, 0.16);
+  --sheet-shadow: none;
   --strip-track: rgba(26, 22, 18, 0.12);
+  --button-danger-bg: #A8352A;
+  --button-danger-hover: #872A20;
+  --button-danger-fg: #F4F0E7;
   --button-primary-bg: var(--color-text);
   --button-primary-fg: var(--color-base);
-  --button-primary-hover: var(--color-accent);
-  --button-primary-active: var(--color-accent-deep);
+  --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
+  --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -118,15 +109,15 @@
    ───────────────────────────────────────────────────────────── */
 .dark {
   --color-base: #14110C;
-  --color-well: #100D09;
+  --color-well: #241E18;
   --color-surface-1: #1D1813;
   --color-surface-2: #241E18;
   --color-surface-3: #2C251D;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #6E665A;
+  --color-muted: #B5AB9B;
   --color-text: #EDE7DB;
-  --color-text-dim: #A39A8A;
+  --color-text-dim: #B5AB9B;
   --color-accent: #CC5240;
   --color-accent-deep: #A83D2D;
   --color-sage: var(--color-text);
@@ -139,19 +130,21 @@
   --color-border: rgba(237, 231, 219, 0.16);
   --color-border-strong: rgba(237, 231, 219, 0.30);
   --color-border-soft: rgba(237, 231, 219, 0.07);
-  --noise-opacity: 0.025;
-  /* Faint ember warmth rising from the desk in the dark room */
-  --paperlight: radial-gradient(95% 65% at 78% 100%, rgba(188, 104, 58, 0.08), rgba(188, 104, 58, 0) 70%);
+  --noise-opacity: 0.012;
+  --paperlight: none;
   --overlay-backdrop: rgba(8, 6, 4, 0.74);
   --surface-atmosphere: none;
-  --well-shadow: inset 0 0 0 1px var(--color-border-soft);
+  --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: 0 -1px 0 var(--color-border-strong), 0 24px 60px rgba(0, 0, 0, 0.55);
+  --sheet-shadow: none;
   --strip-track: rgba(237, 231, 219, 0.12);
+  --button-danger-bg: #A8352A;
+  --button-danger-hover: #872A20;
+  --button-danger-fg: #F4F0E7;
   --button-primary-bg: var(--color-text);
   --button-primary-fg: var(--color-base);
-  --button-primary-hover: var(--color-accent);
-  --button-primary-active: var(--color-accent-deep);
+  --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
+  --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
 }
 
 * {
@@ -175,32 +168,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: 0;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.45;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Atmosphere layers — light on a desk, grain in the stock. Rendered by
-   <PaperAtmosphere /> above all UI (nav z-40, modals z-50), never interactive.
-   The old static SVG noise (body::after) was replaced by the living canvas. */
-.paperlight {
-  position: fixed;
-  inset: -15%;
-  z-index: 60;
-  pointer-events: none;
-  background: var(--paperlight);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .paperlight {
-    animation: paperlight-drift 90s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes paperlight-drift {
-  from { transform: translate3d(-2%, -1%, 0) scale(1); }
-  to { transform: translate3d(2%, 1.5%, 0) scale(1.04); }
-}
-
+/* Quiet paper grain; no moving light over text or controls. */
+.paperlight { display: none; }
 .papergrain {
   position: fixed;
   inset: 0;
@@ -211,269 +185,124 @@ body {
   opacity: var(--noise-opacity);
 }
 
-/* ═════════════════════════════════════════════════════════════
-   TYPE VOICES
-   Display (Fraunces) · Interface (Geist) · Instrument (Geist Mono)
-   ═════════════════════════════════════════════════════════════ */
-
-/* Tracked-caps label — the recurring editorial device */
-.t-caps {
+/* Typography roles. Legacy names share these same roles while their
+   consumers migrate; compact data always uses tabular Geist. */
+.t-caps { font-family: var(--font-sans); text-transform: uppercase; letter-spacing: .16em; }
+.t-label, .t-label-sm, .heading-section, .label-section {
   font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-}
-
-.t-label {
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;      /* 11px */
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.24em;
+  line-height: 1.4;
+  letter-spacing: .16em;
   text-transform: uppercase;
-  color: var(--color-muted);
 }
-
-.t-label-sm {
-  font-family: var(--font-sans);
-  font-size: 0.625rem;       /* 10px */
-  font-weight: 500;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-
-/* Section title — Fraunces, mixed-case, the editorial header */
 .t-title {
   font-family: var(--font-display);
-  font-size: 1.75rem;        /* 28px */
-  font-weight: 380;
-  letter-spacing: -0.02em;
-  line-height: 1.12;
-  color: var(--color-text);
+  font-size: 40px;
+  font-weight: 340;
+  line-height: 1.06;
+  letter-spacing: -.025em;
 }
-
-/* Strong small label in text colour (sub-section) */
-.t-heading {
+.t-heading, .heading-display {
   font-family: var(--font-sans);
-  font-size: 0.75rem;        /* 12px */
+  font-size: 14px;
   font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   line-height: 1.4;
-  color: var(--color-text);
+  letter-spacing: 0;
 }
-
-.t-body {
+.t-body, .text-body {
   font-family: var(--font-sans);
-  font-size: 0.9375rem;      /* 15px */
-  line-height: 1.6;
-}
-
-.t-caption {
-  font-family: var(--font-sans);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: var(--color-text-dim);
-}
-
-/* Instrument voice — mono, tabular, dense data only */
-.t-data {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.t-data-sm {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-/* Hero data — Fraunces numerals: the point of the whole system */
-.t-data-lg {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-variation-settings: 'opsz' 80;
-  font-size: 1.625rem;       /* 26px */
-  font-weight: 360;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-}
-
-.t-data-xl {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-variation-settings: 'opsz' 120;
-  font-size: 2.75rem;        /* 44px */
-  font-weight: 340;
-  letter-spacing: -0.03em;
-  line-height: 1.0;
-}
-
-.t-data-hero {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-variation-settings: 'opsz' 144;
-  font-size: 4.5rem;         /* 72px */
-  font-weight: 330;
-  letter-spacing: -0.035em;
-  line-height: 0.92;
-}
-
-/* Brand / editorial statement — light Fraunces */
-.t-display {
-  font-family: var(--font-display);
-  font-weight: 340;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-
-.t-display-italic {
-  font-family: var(--font-display);
-  font-style: italic;
+  font-size: 14px;
   font-weight: 400;
-  letter-spacing: -0.01em;
-}
-
-/* Hero numerals (legacy name kept) — Fraunces */
-.t-numeral,
-.t-numeral-light {
-  font-family: var(--font-display);
-  font-weight: 330;
-  font-variation-settings: 'opsz' 144;
-  letter-spacing: -0.03em;
-  line-height: 0.95;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── Legacy type utilities → re-pointed to FOLIO ── */
-
-.heading-display {
-  font-family: var(--font-sans);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.heading-section {
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-
-.number-display {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-weight: 360;
-  letter-spacing: -0.02em;
-}
-
-.font-display {
-  font-family: var(--font-display);
-  font-weight: 380;
-}
-
-.font-display-italic {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-}
-
-.number-hero {
-  font-family: var(--font-display);
-  font-size: 4.5rem;
-  font-weight: 330;
-  font-variation-settings: 'opsz' 144;
-  line-height: 0.92;
-  letter-spacing: -0.035em;
-  font-variant-numeric: tabular-nums;
-}
-
-.number-large {
-  font-family: var(--font-display);
-  font-size: 2.75rem;
-  font-weight: 340;
-  font-variation-settings: 'opsz' 120;
-  line-height: 1.0;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-
-.number-medium {
-  font-family: var(--font-display);
-  font-size: 1.625rem;
-  font-weight: 360;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.text-editorial {
-  font-family: var(--font-display);
-  font-size: 1.125rem;
-  font-style: italic;
   line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--color-text-dim);
-}
-
-.text-body-lg {
-  font-size: 1rem;
-  line-height: 1.65;
   letter-spacing: 0;
 }
-
-.text-body {
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  letter-spacing: 0;
-}
-
-.label-section {
+.t-caption, .text-editorial {
   font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.4;
+  letter-spacing: 0;
 }
+.t-data, .t-data-sm, .font-mono {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+.t-data { font-size: 14px; }
+.t-data-sm { font-size: 12px; }
+.t-data-lg, .number-medium {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.t-data-xl, .t-data-hero, .number-hero, .number-large {
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-weight: 340;
+  font-variation-settings: 'opsz' 144;
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.t-display, .font-display, .number-display, .t-numeral, .t-numeral-light {
+  font-family: var(--font-display);
+  font-weight: 340;
+  line-height: 1.06;
+  letter-spacing: -.025em;
+}
+.t-numeral, .t-numeral-light, .number-display { font-variant-numeric: tabular-nums; }
+.t-display-italic, .font-display-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -.01em;
+}
+.text-body-lg { font-size: 16px; line-height: 1.45; letter-spacing: 0; }
+
+/* Semantic roles supply default ink; explicit status/selection utilities
+   can still set accessible foregrounds on filled controls. */
+@layer base {
+  .t-label, .t-label-sm, .heading-section, .label-section, .t-caption, .text-editorial { color: var(--color-text-dim); }
+  .t-title, .t-heading, .heading-display { color: var(--color-text); }
+}
+
+@layer components {
+.studio-secondary-action, .studio-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 16px;
+  border: 0;
+  font: 500 11px/1.4 var(--font-sans);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  transition: background-color 160ms ease, opacity 160ms ease;
+}
+.studio-secondary-action { background: var(--color-well); border-radius: var(--radius-control); }
+.studio-row-action { background: transparent; border-radius: 0; }
+.studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
+}
+:where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
 
 /* ═════════════════════════════════════════════════════════════
    MATERIAL — flat blocks, hairline rules. No floating cards.
    ═════════════════════════════════════════════════════════════ */
 
-/* A "panel" is a flat ruled block — faint tonal separation + hairline,
-   sharp corners, no shadow, no gradient, no glow. */
-.panel {
+/* Neutral, flat content surfaces. Status belongs in the content itself. */
+.panel, .panel-hot, .panel-sage {
   border-radius: 0;
-  border: 1px solid var(--color-border);
-  background-color: var(--color-surface-1);
-  background-image: none;
-}
-
-/* Hot panel — marks the one important block with a lacquer top rule */
-.panel-hot {
-  border-radius: 0;
-  border: 1px solid var(--color-border);
-  border-top: 2px solid var(--color-accent);
-  background-color: var(--color-surface-1);
-  background-image: none;
-  box-shadow: none;
-}
-
-/* Sage panel collapsed → a quiet ink left rule */
-.panel-sage {
-  border-radius: 0;
-  border: 1px solid var(--color-border);
-  border-left: 2px solid var(--color-text);
+  border: 0;
   background-color: var(--color-surface-1);
   background-image: none;
   box-shadow: none;
@@ -486,11 +315,11 @@ body {
 }
 .panel-wave::after { content: none; }
 
-/* Inset control well — flat recessed paper, square */
+/* Quiet control surface. */
 .well {
   background-color: var(--color-well);
-  box-shadow: var(--well-shadow);
-  border-radius: 0;
+  box-shadow: none;
+  border-radius: var(--radius-control);
 }
 
 /* No elevation in FOLIO — surfaces sit flat on the page */
@@ -510,26 +339,6 @@ body {
 /* Clears the bottom nav + safe area */
 .pb-nav {
   padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
-}
-
-/* Grounds the docked rest control: fades scrolling content into the base just
-   above the nav, so a fixed launcher/pill never looks stamped onto a mid-list
-   card. Purely decorative — never intercepts taps. */
-.rest-dock-scrim {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(11.5rem + env(safe-area-inset-bottom, 0px));
-  pointer-events: none;
-  z-index: 30;
-  background: linear-gradient(
-    to top,
-    var(--color-base) 0%,
-    var(--color-base) 42%,
-    color-mix(in srgb, var(--color-base) 32%, transparent) 72%,
-    color-mix(in srgb, var(--color-base) 0%, transparent) 100%
-  );
 }
 
 /* ═════════════════════════════════════════════════════════════
@@ -588,9 +397,6 @@ input, textarea, select, button { font-family: inherit; }
 .bg-rose-tint { background-color: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .bg-rose-tint-strong { background-color: color-mix(in srgb, var(--color-accent) 16%, transparent); }
 
-.border-l-accent { border-left: 2px solid var(--color-accent); }
-.border-l-sage { border-left: 2px solid var(--color-text); }
-.border-l-rose { border-left: 2px solid var(--color-accent); }
 .border-l-4 { border-left-width: 2px; }
 
 /* Progress fills — flat solids, never gradients */
@@ -744,3 +550,56 @@ input, textarea, select, button { font-family: inherit; }
 .safe-area-inset-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
 .safe-area-inset-top { padding-top: env(safe-area-inset-top, 0); }
 .safe-area-top-offset { top: calc(env(safe-area-inset-top, 0) + 1rem); }
+
+/* Safe insets belong to a stationary shell, never its scrolling content. */
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
+}
+.app-viewport {
+  position: fixed;
+  top: var(--app-viewport-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+  padding: var(--app-safe-top) var(--app-safe-right) 0 var(--app-safe-left);
+  background: var(--color-base);
+}
+.app-scroll-viewport {
+  height: 100%;
+  max-width: 32rem;
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  background: var(--color-base);
+}
+.bottom-nav {
+  position: fixed;
+  bottom: calc(12px + var(--app-safe-bottom));
+  left: max(17px, var(--app-safe-left));
+  right: max(17px, var(--app-safe-right));
+  z-index: 40;
+  max-width: 478px;
+  margin: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-nav);
+  background: var(--color-base);
+  overflow: hidden;
+}
+html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events: none; }
+.studio-sheet-overlay {
+  top: var(--app-viewport-top, 0px);
+  height: var(--app-viewport-height, 100dvh);
+  padding-top: max(16px, var(--app-safe-top));
+  padding-left: var(--app-safe-left);
+  padding-right: var(--app-safe-right);
+}
+.studio-sheet {
+  max-height: 100%;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  background: var(--color-base);
+}
+@media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useOutlet } from 'react-router-dom';
-import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { MotionConfig, motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { BottomNav } from '@/components/shared';
 import { AuthForm } from '@/components/auth/AuthForm';
@@ -13,12 +13,14 @@ import { Analysis } from '@/pages/Analysis';
 import { History } from '@/pages/History';
 import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
-import { pageTransition, springs } from '@/lib/animations';
+import { springs } from '@/lib/animations';
 import { PaperAtmosphere } from '@/components/shared/PaperAtmosphere';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
 import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
 import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
+import { useAppViewport } from '@/hooks/useAppViewport';
+import { bindRouteScroll } from '@/lib/routeScroll';
 
 function BootSplash() {
   return (
@@ -47,37 +49,29 @@ function BootSplash() {
 }
 
 /**
- * Page turning: the outlet is keyed by pathname so the old page exits before
- * the new one develops. Nav chrome lives outside and never re-mounts.
+ * Tab changes preserve reading position and appear immediately. Never transform
+ * this ancestor: workout controls and native run overlays use viewport-fixed
+ * positioning, which a transformed ancestor would capture.
  */
 function AnimatedOutlet() {
   const location = useLocation();
   const outlet = useOutlet();
+  const positions = useRef(new Map<string, number>());
 
-  // New leaf, fresh top. Scrolling lives inside the fixed app viewport (iOS
-  // Safari clipped-scroll workaround), so reset it there, not on the window.
-  useEffect(() => {
-    document.querySelector('[data-app-scroll-viewport]')?.scrollTo(0, 0);
-    window.scrollTo(0, 0);
+  useLayoutEffect(() => {
+    const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
+    if (viewport) return bindRouteScroll(viewport, location.pathname, positions.current, {
+      navigation: viewport.parentElement ?? viewport,
+      history: window,
+    });
   }, [location.pathname]);
 
-  return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={location.pathname}
-        variants={pageTransition}
-        initial="hidden"
-        animate="visible"
-        exit="exit"
-      >
-        {outlet}
-      </motion.div>
-    </AnimatePresence>
-  );
+  return <div key={location.pathname} data-route-content>{outlet}</div>;
 }
 
 function PrivateLayout() {
   const { user, initialized } = useAuthStore();
+  useAppViewport();
 
   if (!initialized) {
     return <BootSplash />;
@@ -88,10 +82,10 @@ function PrivateLayout() {
   }
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[var(--color-base)]">
+    <div className="app-viewport">
       <main
         data-app-scroll-viewport
-        className="h-full max-w-lg mx-auto overflow-y-auto overscroll-y-contain bg-[var(--color-base)] safe-area-inset-top"
+        className="app-scroll-viewport"
       >
         <AnimatedOutlet />
       </main>

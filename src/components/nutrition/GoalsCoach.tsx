@@ -120,7 +120,7 @@ export function GoalsCoach({
         </p>
       )}
       {recommendation && !asking && (
-        <div className="mt-4 border-l-2 border-[var(--color-text)] pl-4">
+        <div className="mt-4">
           <p className="t-caption">{recommendation.rationale}</p>
           {recommendation.cautions && (
             <p className="t-caption mt-2 text-[var(--color-accent)]">{recommendation.cautions}</p>
@@ -131,7 +131,7 @@ export function GoalsCoach({
         </div>
       )}
       {error && (
-        <p className="mt-3 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{error}</p>
+        <p className="mt-3 t-caption text-[var(--color-accent)]">{error}</p>
       )}
     </div>
   );

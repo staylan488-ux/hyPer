@@ -1,13 +1,11 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
-import { motion } from 'motion/react';
 import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { FoodLogger } from '@/components/nutrition/FoodLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
-import { springs } from '@/lib/animations';
 import {
   insertNutritionGroupByTime,
   legacyMealTypeForGroup,
@@ -430,20 +428,17 @@ export function Nutrition() {
       <Toast show={showSuccess} message="Entry saved" />
 
       {/* ── Dateline ── */}
-      <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <header>
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">{isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE')}</span>
           <span className="t-label-sm">{format(selectedDate, 'MMM d')}</span>
         </div>
-        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Fuel</h1>
-      </motion.header>
+        <h1 className="t-title mt-5">Fuel</h1>
+      </header>
 
       {/* ── Energy hero — the day's calories, big ── */}
-      <motion.section
-        className="mt-9"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.05 }}
+      <section
+        className="mt-6"
       >
         {loading ? (
           <div className="space-y-4">
@@ -458,7 +453,7 @@ export function Nutrition() {
                 <span className="t-label block mb-3">Energy consumed</span>
                 <div className="flex items-baseline gap-2.5">
                   <RollingNumber value={Math.round(dayTotals.calories).toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                  <span className="[font-family:var(--font-display)] italic text-lg text-[var(--color-text-dim)]">kcal</span>
+                  <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
                 </div>
               </div>
               <div className="text-right shrink-0 pb-1.5">
@@ -477,58 +472,11 @@ export function Nutrition() {
             />
           </>
         )}
-      </motion.section>
-
-      {/* ── Macro ledger — protein / carbs / fat as serif figures ── */}
-      <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.09 }}
-      >
-        <span className="t-label block mb-5">Macros</span>
-        {loading ? (
-          <div className="grid grid-cols-3 gap-5">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="space-y-2.5">
-                <div className="shimmer h-2.5 w-10" />
-                <div className="shimmer h-8 w-14" />
-                <div className="shimmer h-px w-full" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-5">
-            {macroFigures.map((macro) => {
-              const max = Math.max(macro.target * 1.18, macro.current);
-              const over = macro.current > macro.target;
-              return (
-                <div key={macro.label}>
-                  <span className="t-label-sm block mb-2">{macro.label}</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="number-medium text-[var(--color-text)]">{Math.round(macro.current)}</span>
-                    <span className="[font-family:var(--font-display)] italic text-sm text-[var(--color-text-dim)]">g</span>
-                  </div>
-                  <span className="t-data-sm text-[var(--color-muted)] block mb-2.5">/ {Math.round(macro.target)}</span>
-                  <RailStrip
-                    value={macro.current / max}
-                    notch={macro.target / max}
-                    tone={over ? 'berry' : 'chalk'}
-                    size="sm"
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </motion.section>
+      </section>
 
       {/* ── Primary action ── */}
-      <motion.div
-        className="mt-9"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.12 }}
+      <div
+        className="mt-6"
       >
         <Button
           size="lg"
@@ -541,20 +489,52 @@ export function Nutrition() {
           <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
           Log food
         </Button>
-        <div className="mt-3">
-          <Button variant="secondary" className="w-full" onClick={() => setShowGroupSheet(true)}>
-            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
-            Add meal
-          </Button>
-        </div>
-      </motion.div>
+      </div>
+
+      {/* Supporting macro ledger keeps energy as the single hero. */}
+      <section
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+      >
+        <span className="t-label block mb-5">Macros</span>
+        {loading ? (
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="space-y-2.5">
+                <div className="shimmer h-2.5 w-10" />
+                <div className="shimmer h-8 w-14" />
+                <div className="shimmer h-px w-full" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {macroFigures.map((macro) => {
+              const max = Math.max(macro.target * 1.18, macro.current);
+              const over = macro.current > macro.target;
+              return (
+                <div key={macro.label}>
+                  <div className="flex items-baseline justify-between gap-3 mb-2">
+                    <span className="t-body">{macro.label}</span>
+                    <span className="t-data-sm text-[var(--color-text)]">
+                      {Math.round(macro.current)} <span className="text-[var(--color-text-dim)]">/ {Math.round(macro.target)} g</span>
+                    </span>
+                  </div>
+                  <RailStrip
+                    value={macro.current / max}
+                    notch={macro.target / max}
+                    tone={over ? 'berry' : 'chalk'}
+                    size="sm"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* ── Week strip + month jump ── */}
-      <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.16 }}
+      <section
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
         <div className="flex items-baseline justify-between mb-4">
           <span className="t-label">{format(weekStart, 'MMMM')}</span>
@@ -562,7 +542,7 @@ export function Nutrition() {
             <button
               type="button"
               aria-label="Previous week"
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setWeekAnchor((current) => addDays(current, -7))}
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
@@ -570,7 +550,7 @@ export function Nutrition() {
             <button
               type="button"
               aria-label="Next week"
-              className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setWeekAnchor((current) => addDays(current, 7))}
             >
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
@@ -578,7 +558,7 @@ export function Nutrition() {
             <button
               type="button"
               aria-label="Open month calendar"
-              className="pressable p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setShowMonthSheet(true)}
             >
               <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
@@ -586,7 +566,7 @@ export function Nutrition() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 border-t border-[var(--color-border)]">
+        <div className="grid grid-cols-7 gap-1">
           {weekDays.map((day) => {
             const key = getDateKey(day);
             const isSelected = isSameDay(day, selectedDate);
@@ -598,7 +578,9 @@ export function Nutrition() {
                 key={key}
                 type="button"
                 onClick={() => pickDate(day)}
-                className={`relative flex flex-col items-center gap-1.5 py-3 transition-colors ${
+                aria-label={format(day, 'EEEE, MMMM d')}
+                aria-pressed={isSelected}
+                className={`relative rounded-[11px] flex flex-col items-center gap-1.5 py-3 transition-colors ${
                   isSelected ? 'bg-[var(--color-text)]' : 'pressable'
                 }`}
               >
@@ -619,22 +601,25 @@ export function Nutrition() {
             );
           })}
         </div>
-      </motion.section>
+      </section>
 
       {/* ── Unified food inbox + meal groups ── */}
-      <motion.section
-        className="mt-10 pt-8 border-t border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.2 }}
+      <section
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
         <div className="flex items-baseline justify-between mb-4">
-          <span className="t-label">Meals</span>
-          {!loading && selectedDayLogs.length > 0 && (
+          <div className="flex items-baseline gap-2">
+            <span className="t-label">Meals</span>
+            {!loading && selectedDayLogs.length > 0 && (
             <span className="t-data-sm text-[var(--color-muted)]">
               {selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}
             </span>
-          )}
+            )}
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setShowGroupSheet(true)}>
+            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
+            Add meal
+          </Button>
         </div>
 
         {loading ? (
@@ -690,7 +675,7 @@ export function Nutrition() {
             onDeleteGroup={(group) => void deleteGroup(group)}
           />
         )}
-      </motion.section>
+      </section>
 
       {/* Month jump sheet */}
       <Modal isOpen={showMonthSheet} onClose={() => setShowMonthSheet(false)} title="Jump to date">
@@ -700,7 +685,7 @@ export function Nutrition() {
               type="button"
               aria-label="Previous month"
               onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
-              className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -709,7 +694,7 @@ export function Nutrition() {
               type="button"
               aria-label="Next month"
               onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
-              className="pressable p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             >
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -731,11 +716,13 @@ export function Nutrition() {
                 <button
                   key={key}
                   type="button"
+                  aria-label={format(day, 'EEEE, MMMM d')}
+                  aria-pressed={isSelected}
                   onClick={() => {
                     pickDate(day);
                     setShowMonthSheet(false);
                   }}
-                  className={`relative h-10 t-data transition-colors ${
+                  className={`relative h-11 rounded-[11px] t-data transition-colors ${
                     isSelected
                       ? 'bg-[var(--color-text)] text-[var(--color-base)]'
                       : inMonth

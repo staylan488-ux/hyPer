@@ -1,22 +1,10 @@
 import { useEffect, useRef } from 'react';
 
-/**
- * Living paper — the app's atmosphere layer.
- *
- * Two parts, both purely decorative (pointer-events: none, aria-hidden):
- *  - .paperlight: a barely-there warm light that drifts over the page like
- *    a slow afternoon across a desk. Plain alpha, monochrome-adjacent warmth,
- *    never a surface gradient. Static under prefers-reduced-motion.
- *  - .papergrain: animated film grain on a canvas, replacing the old static
- *    SVG noise. Ink-coloured specks at ~9fps, so the page feels printed on
- *    stock that breathes. Theme-aware (rebuilt when .dark/.light flips),
- *    paused when the tab is hidden, a single static frame under reduced motion.
- */
+/** A static, theme-aware paper texture. No ongoing canvas animation. */
 
 const TILE = 128;
 const FRAME_COUNT = 6;
 const SCALE = 0.66; // chunky film grain, cheap backing store
-const FRAME_MS = 110; // ~9fps flicker — filmic, not video
 
 function hexToRgb(hex: string): [number, number, number] {
   const m = hex.replace('#', '');
@@ -33,11 +21,8 @@ export function PaperAtmosphere() {
     if (!canvas || !ctx) return;
 
     let tiles: HTMLCanvasElement[] = [];
-    let raf = 0;
-    let last = 0;
     let frame = 0;
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     const buildTiles = () => {
       const ink = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim();
@@ -79,21 +64,9 @@ export function PaperAtmosphere() {
       }
     };
 
-    const loop = (t: number) => {
-      raf = requestAnimationFrame(loop);
-      if (document.hidden || t - last < FRAME_MS) return;
-      last = t;
-      paint();
-    };
-
     buildTiles();
     resize();
-
-    if (reduced.matches) {
-      paint(); // one still frame, no flicker
-    } else {
-      raf = requestAnimationFrame(loop);
-    }
+    paint();
 
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     const onResize = () => {
@@ -114,7 +87,6 @@ export function PaperAtmosphere() {
     window.addEventListener('resize', onResize);
 
     return () => {
-      cancelAnimationFrame(raf);
       clearTimeout(resizeTimer);
       observer.disconnect();
       window.removeEventListener('resize', onResize);
@@ -123,7 +95,6 @@ export function PaperAtmosphere() {
 
   return (
     <>
-      <div className="paperlight" aria-hidden />
       <canvas ref={canvasRef} className="papergrain" aria-hidden />
     </>
   );

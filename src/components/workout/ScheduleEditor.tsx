@@ -27,9 +27,7 @@ const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const shortWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /**
- * FOLIO schedule editor — an editorial form. Tracked-caps eyebrows, hairline
- * selectable cells that fill with ink when chosen, square corners, and the
- * resolved weekly rhythm read back as a mono ledger line.
+ * Studio schedule editor: quiet filled choices with an explicit selected state.
  */
 function OptionButton({
   active,
@@ -46,10 +44,11 @@ function OptionButton({
     <button
       type="button"
       onClick={onClick}
-      className={`pressable min-h-11 px-3 border uppercase font-medium tracking-[0.16em] text-[10px] transition-colors ${
+      aria-pressed={active}
+      className={`pressable min-h-11 px-3 rounded-[11px] uppercase font-medium tracking-[0.16em] text-[11px] transition-colors ${
         active
-          ? 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
-          : 'bg-transparent text-[var(--color-text-dim)] border-[var(--color-border-strong)] hover:text-[var(--color-text)] hover:border-[var(--color-text)]'
+          ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+          : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
       } ${className}`}
     >
       {children}
@@ -86,7 +85,7 @@ export function ScheduleEditor({
 
       <div className="pt-6 border-t border-[var(--color-border)]">
         <p className="t-label-sm mb-3">When should Day 1 start?</p>
-        <div className="grid grid-cols-3 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+        <div className="grid grid-cols-3 gap-2">
           <OptionButton active={startChoice === 'today'} onClick={() => onStartChoiceChange('today')} className="border-0">
             Today
           </OptionButton>
@@ -102,6 +101,7 @@ export function ScheduleEditor({
           <div className="mt-3 w-full min-w-0 overflow-hidden well px-3 py-2.5">
             <input
               type="date"
+              aria-label="Plan start date"
               value={startDate}
               onChange={(event) => onStartDateChange(event.target.value)}
               className="w-full min-w-0 bg-transparent text-[var(--color-text)] t-data outline-none"
@@ -112,7 +112,7 @@ export function ScheduleEditor({
 
       <div className="pt-6 border-t border-[var(--color-border)]">
         <p className="t-label-sm mb-3">Schedule style</p>
-        <div className="grid grid-cols-2 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+        <div className="grid grid-cols-2 gap-2">
           <OptionButton active={mode === 'fixed'} onClick={() => onModeChange('fixed')} className="border-0 min-h-12">
             Fixed weekly rhythm
           </OptionButton>
@@ -125,7 +125,7 @@ export function ScheduleEditor({
       {mode === 'fixed' ? (
         <div className="pt-6 border-t border-[var(--color-border)]">
           <p className="t-label-sm mb-3">Choose first training day</p>
-          <div className="grid grid-cols-7 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+          <div className="grid grid-cols-7 gap-2">
             {shortWeekdayLabels.map((label, weekday) => {
               const active = anchorDay === weekday;
               return (
@@ -152,7 +152,7 @@ export function ScheduleEditor({
         <div className="pt-6 border-t border-[var(--color-border)]">
           <p className="t-label-sm mb-2">Active training day</p>
           <p className="t-caption mb-3 max-w-[42ch]">Choose which split day should be next in your sequence.</p>
-          <div className="grid grid-cols-2 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+          <div className="grid grid-cols-2 gap-2">
             {splitDays.map((day, index) => {
               const active = index === flexDayIndex;
               return (
@@ -160,10 +160,11 @@ export function ScheduleEditor({
                   type="button"
                   key={day.id}
                   onClick={() => onFlexDayIndexChange(index)}
-                  className={`pressable min-h-12 px-3.5 text-left text-[13px] font-medium transition-colors ${
+                  aria-pressed={active}
+                  className={`pressable rounded-[11px] min-h-12 px-3.5 text-left t-body transition-colors ${
                     active
                       ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                      : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
+                      : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                   }`}
                 >
                   {day.day_name}

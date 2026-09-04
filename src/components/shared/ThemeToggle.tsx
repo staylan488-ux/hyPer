@@ -16,7 +16,7 @@ export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProp
 
   return (
     <div
-      className={`inline-flex border border-[var(--color-border-strong)] ${className}`}
+      className={`inline-flex gap-1 p-1 bg-[var(--color-well)] rounded-[var(--radius-control)] ${className}`}
       role="group"
       aria-label="Theme"
     >
@@ -28,7 +28,7 @@ export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProp
             type="button"
             onClick={() => setTheme(opt.mode)}
             aria-pressed={active}
-            className={`px-3.5 min-h-9 text-[10px] font-medium uppercase tracking-[0.2em] transition-colors duration-200 ${
+            className={`px-3.5 min-h-11 rounded-[var(--radius-control)] text-[11px] font-medium uppercase tracking-[0.16em] transition-colors duration-200 ${
               active
                 ? 'bg-[var(--color-text)] text-[var(--color-base)]'
                 : 'bg-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'

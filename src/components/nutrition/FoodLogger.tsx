@@ -1603,7 +1603,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {whenRow}
 
         <div
-          className="sticky z-20 -mx-6 border-t border-[var(--color-border-strong)] bg-[var(--color-surface-1)] px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          className="sticky z-20 -mx-6 rounded-t-[20px] bg-[var(--color-surface-2)] px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
           style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
         >
           {photoError && (
@@ -1633,11 +1633,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </label>
           )}
           <div className="flex items-end gap-2">
-            <div className="min-w-[4.5rem] flex-1 border-l-2 border-[var(--color-accent)] pl-3">
+            <div className="min-w-[4.5rem] flex-1">
               <span className="t-label-sm block mb-1">Plate total</span>
               <div className="flex items-baseline gap-1.5">
                 <span className="number-medium text-[var(--color-text)]">{totalCalories}</span>
-                <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">kcal</span>
+                <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
               </div>
             </div>
             <Button variant="ghost" className="shrink-0 !px-3" disabled={saving} onClick={resetPhotoState}>Retake</Button>
@@ -1694,7 +1694,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </p>
           )}
 
-          <div className="grid grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-2 min-[420px]:grid-cols-4 gap-4 mt-6">
             {[
               { label: 'kcal', value: Math.round(selectedFood.calories) },
               { label: 'protein', value: Math.round(selectedFood.protein), unit: 'g' },
@@ -1704,9 +1704,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <div key={cell.label} className="border-t border-[var(--color-border)] pt-2.5">
                 <span className="t-label-sm block mb-1.5">{cell.label}</span>
                 <span className="flex items-baseline gap-0.5">
-                  <span className="number-medium text-[var(--color-text)]">{cell.value}</span>
+                  <span className="t-data text-[var(--color-text)]">{cell.value}</span>
                   {cell.unit && (
-                    <span className="[font-family:var(--font-display)] italic text-xs text-[var(--color-text-dim)]">{cell.unit}</span>
+                    <span className="t-caption text-[var(--color-text-dim)]">{cell.unit}</span>
                   )}
                 </span>
               </div>
@@ -1782,11 +1782,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {whenRow}
 
         {/* ── This entry — the one important figure ── */}
-        <div className="border-l-2 border-[var(--color-accent)] pl-5">
+        <div>
           <span className="t-label block mb-2">This entry</span>
           <div className="flex items-baseline gap-2">
             <span className="number-large text-[var(--color-text)]">{selectedFoodTotalCalories}</span>
-            <span className="[font-family:var(--font-display)] italic text-[1rem] text-[var(--color-text-dim)]">kcal</span>
+            <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
             <span className="t-data-sm text-[var(--color-muted)] ml-2">{selectedFoodTotalProtein}g protein</span>
           </div>
         </div>
@@ -1889,12 +1889,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           </div>
 
           {savedMealMessage && (
-            <p className="border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]" role="status" aria-live="polite">
+            <p className="t-caption text-[var(--color-text)]" role="status" aria-live="polite">
               {savedMealMessage}
             </p>
           )}
           {savedMealError && (
-            <p className="border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]" role="alert">
+            <p className="t-caption text-[var(--color-accent)]" role="alert">
               {savedMealError}
             </p>
           )}
@@ -2036,7 +2036,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="t-body font-medium text-[var(--color-text)] truncate">{food.name}</p>
+                  <p className="t-body font-medium text-[var(--color-text)] break-words">{food.name}</p>
                   <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                     {Math.round(food.calories)} kcal / {food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}
                   </p>
@@ -2057,7 +2057,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <div className="space-y-4">
             <BarcodeScanner onDetected={handleBarcodeDetected} />
             {missedBarcode && (
-              <div className="border border-[var(--color-border)] p-4">
+              <div className="bg-[var(--color-surface-2)] rounded-[11px] p-4">
                 <p className="t-caption">
                   No catalog match for barcode {missedBarcode}. Enter it from the
                   package label once and it will be yours on every future scan.
@@ -2134,13 +2134,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 </Button>
 
                 {foodDescriptionError && (
-                  <p className="border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]" role="alert">
+                  <p className="t-caption text-[var(--color-accent)]" role="alert">
                     {foodDescriptionError}
                   </p>
                 )}
 
                 {foodDescriptionResult && (
-                  <div className="border-l-2 border-[var(--color-text)] pl-4 space-y-2">
+                  <div className="space-y-2">
                     <div className="flex items-baseline justify-between gap-4">
                       <span className="t-label">Estimate filled below</span>
                       <span className="t-data-sm text-[var(--color-muted)]">
@@ -2196,7 +2196,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       onClick={() => handleSelectSavedMeal(meal)}
                       className="pressable w-full text-left py-2.5 border-t border-[var(--color-border)]"
                     >
-                      <p className="t-body font-medium text-[var(--color-text)] truncate">{meal.name}</p>
+                      <p className="t-body font-medium text-[var(--color-text)] break-words">{meal.name}</p>
                       <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                         {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                       </p>
@@ -2350,9 +2350,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <button
                 type="button"
                 onClick={() => topPhotoInputRef.current?.click()}
-                className="pressable w-full border border-dashed border-[var(--color-border-strong)] py-10 flex flex-col items-center gap-3"
+                className="pressable w-full rounded-[11px] bg-[var(--color-surface-2)] py-10 flex flex-col items-center gap-3"
               >
-                <span className="flex items-center justify-center w-12 h-12 border border-[var(--color-border-strong)]">
+                <span className="flex items-center justify-center w-12 h-12">
                   <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
                 </span>
                 <span className="t-heading">Add top photo</span>
@@ -2414,9 +2414,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 type="button"
                 onClick={() => sidePhotoInputRef.current?.click()}
                 disabled={photoAnalyzing}
-                className="pressable w-full min-h-20 border border-dashed border-[var(--color-border-strong)] px-4 flex items-center gap-4 text-left disabled:opacity-40"
+                className="pressable w-full min-h-20 rounded-[11px] bg-[var(--color-surface-2)] px-4 flex items-center gap-4 text-left disabled:opacity-40"
               >
-                <span className="flex items-center justify-center w-10 h-10 border border-[var(--color-border-strong)] shrink-0">
+                <span className="flex items-center justify-center w-10 h-10 shrink-0">
                   <ImagePlus className="w-4 h-4 text-[var(--color-text-dim)]" strokeWidth={1.5} />
                 </span>
                 <span>

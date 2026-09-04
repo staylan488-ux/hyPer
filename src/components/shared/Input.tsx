@@ -1,78 +1,29 @@
-import { type InputHTMLAttributes, forwardRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { type InputHTMLAttributes, forwardRef, useId } from 'react';
 
-interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'> {
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
 }
 
-/**
- * FOLIO input — no box. A baseline hairline that a lacquer rule draws across
- * on focus. Text sits on the page like a filled-in form field.
- */
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className = '', label, error, id, onFocus, onBlur, ...props }, ref) => {
-    const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
-    const [isFocused, setIsFocused] = useState(false);
-
+  ({ className = '', label, error, id, 'aria-describedby': describedBy, ...props }, ref) => {
+    const generatedId = useId();
+    const inputId = id || generatedId;
+    const errorId = `${inputId}-error`;
     return (
       <div className="w-full">
-        {label && (
-          <label htmlFor={inputId} className="t-label-sm block mb-2">
-            {label}
-          </label>
-        )}
-        <div className="relative">
-          <input
-            ref={ref}
-            id={inputId}
-            className={`
-              w-full px-0 min-h-11 py-2
-              bg-transparent border-0
-              text-[var(--color-text)]
-              text-[1rem] font-normal [font-family:var(--font-sans)]
-              placeholder:text-[var(--color-muted)]
-              focus:outline-none
-              disabled:opacity-40 disabled:cursor-not-allowed
-              ${className}
-            `}
-            onFocus={(e) => {
-              setIsFocused(true);
-              onFocus?.(e);
-            }}
-            onBlur={(e) => {
-              setIsFocused(false);
-              onBlur?.(e);
-            }}
-            {...props}
-          />
-          {/* baseline track */}
-          <span
-            className="pointer-events-none absolute left-0 right-0 bottom-0 h-px"
-            style={{ background: error ? 'var(--color-accent)' : 'var(--color-border-strong)' }}
-          />
-          {/* drawn rule on focus / error */}
-          <motion.span
-            className="pointer-events-none absolute left-0 bottom-0 h-[2px] origin-left"
-            style={{ background: error ? 'var(--color-accent)' : 'var(--color-text)', right: 0 }}
-            initial={false}
-            animate={{ scaleX: error || isFocused ? 1 : 0 }}
-            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-          />
-        </div>
-        {error && (
-          <motion.p
-            className="mt-2 text-xs text-[var(--color-accent)]"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {error}
-          </motion.p>
-        )}
+        {label && <label htmlFor={inputId} className="t-label block mb-2">{label}</label>}
+        <input
+          ref={ref}
+          id={inputId}
+          className={`w-full px-3 min-h-11 py-2 bg-[var(--color-well)] border-0 rounded-[var(--radius-control)] text-[var(--color-text)] text-[1rem] font-normal [font-family:var(--font-sans)] placeholder:text-[var(--color-muted)] disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={[describedBy, error ? errorId : undefined].filter(Boolean).join(' ') || undefined}
+          {...props}
+        />
+        {error && <p id={errorId} className="t-caption mt-2 text-[var(--color-accent)]" role="alert">{error}</p>}
       </div>
     );
   }
 );
-
 Input.displayName = 'Input';

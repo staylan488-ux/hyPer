@@ -9,7 +9,7 @@ interface ScreenProps {
 
 /**
  * Standard page wrapper: generous gutter, top spacing, bottom-nav clearance.
- * Entry motion lives at the route level (AnimatedOutlet) — one turn per page.
+ * The shell owns scroll restoration and stationary safe-area insets.
  */
 export function Screen({ children, className = '', bare = false }: ScreenProps) {
   return (

@@ -56,9 +56,7 @@ interface SavedMeal {
 
 function SettingsGroup({
   label,
-  index,
   children,
-  delay = 0,
 }: {
   label: string;
   index: string;
@@ -66,18 +64,12 @@ function SettingsGroup({
   delay?: number;
 }) {
   return (
-    <motion.section
-      className="mt-10 pt-8 border-t border-[var(--color-border)]"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...springs.smooth, delay }}
-    >
+    <section className="mt-[30px] pt-5 border-t border-[var(--color-border)]">
       <div className="flex items-baseline justify-between mb-5">
         <span className="t-label">{label}</span>
-        <span className="t-data-sm text-[var(--color-muted)]">{index}</span>
       </div>
       {children}
-    </motion.section>
+    </section>
   );
 }
 
@@ -712,13 +704,13 @@ export function Settings() {
   return (
     <Screen>
       {/* Header */}
-      <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <header>
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">Account</span>
           <span className="t-label-sm">Settings</span>
         </div>
-        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">{profile?.display_name || 'You'}</h1>
-      </motion.header>
+        <h1 className="t-title mt-5">{profile?.display_name || 'You'}</h1>
+      </header>
 
       {/* ── Profile ── */}
       <SettingsGroup label="Profile" index="01">
@@ -737,10 +729,10 @@ export function Settings() {
           </Button>
         )}
         {nameMessage && (
-          <p className="mt-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{nameMessage}</p>
+          <p className="mt-4 t-caption text-[var(--color-text)]">{nameMessage}</p>
         )}
         {nameError && (
-          <p className="mt-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{nameError}</p>
+          <p className="mt-4 t-caption text-[var(--color-accent)]">{nameError}</p>
         )}
       </SettingsGroup>
 
@@ -750,7 +742,7 @@ export function Settings() {
           <div>
             <p className="t-heading">Theme</p>
             <p className="t-caption mt-1">
-              {theme === 'light' ? 'Chalk paper light' : 'Charcoal rubber dark'}
+              {theme === 'light' ? 'Paper' : 'Ink'}
             </p>
           </div>
           <ThemeToggle />
@@ -759,7 +751,7 @@ export function Settings() {
 
       {/* ── Nutrition targets ── */}
       <SettingsGroup label="Daily targets" index="03" delay={0.08}>
-        {/* Targets as serif numerals — the data is the hero */}
+        {/* Compact records share one quiet numeric role. */}
         <dl>
           {[
             { label: 'Calories', value: macros.calories.toLocaleString(), unit: 'kcal' },
@@ -773,7 +765,7 @@ export function Settings() {
             >
               <dt className="t-label-sm">{cell.label}</dt>
               <dd className="flex items-baseline gap-1.5">
-                <span className="number-medium text-[var(--color-text)]">{cell.value}</span>
+                <span className="t-data text-[var(--color-text)]">{cell.value}</span>
                 <span className="t-data-sm text-[var(--color-muted)]">{cell.unit}</span>
               </dd>
             </div>
@@ -893,10 +885,10 @@ export function Settings() {
           </Button>
         )}
         {macroMessage && (
-          <p className="mt-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{macroMessage}</p>
+          <p className="mt-4 t-caption text-[var(--color-text)]">{macroMessage}</p>
         )}
         {macroError && (
-          <p className="mt-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{macroError}</p>
+          <p className="mt-4 t-caption text-[var(--color-accent)]">{macroError}</p>
         )}
       </SettingsGroup>
 
@@ -907,7 +899,7 @@ export function Settings() {
             <p className="t-heading">Reusable meals</p>
             <p className="t-caption mt-1">{savedMealsCountLabel}</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={openManageMeals}>
+          <Button variant="ghost" size="sm" onClick={openManageMeals}>
             Manage
           </Button>
         </div>
@@ -969,7 +961,7 @@ export function Settings() {
           {whoopError && <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>}
         </div>
 
-        <div className="mt-8 pt-8 border-t border-[var(--color-border)]">
+        <div className="mt-6 pt-5 border-t border-[var(--color-border)]">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="t-heading">Body weight</p>
@@ -1008,7 +1000,7 @@ export function Settings() {
                 <span className="number-medium text-[var(--color-text)]">
                   {formatWeight(latestBodyWeight.kilograms, weightUnit)}
                 </span>
-                <span className="[font-family:var(--font-display)] italic text-sm text-[var(--color-text-dim)]">{weightUnit}</span>
+                <span className="t-caption text-[var(--color-text-dim)]">{weightUnit}</span>
                 {weightTrend.kgPerWeek !== null && (
                   <span className="t-data-sm text-[var(--color-text-dim)]">
                     {weightTrend.kgPerWeek > 0 ? '+' : '−'}
@@ -1096,7 +1088,7 @@ export function Settings() {
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-4 mt-8 pt-8 border-t border-[var(--color-border)]">
+        <div className="flex items-center justify-between gap-4 mt-6 pt-5 border-t border-[var(--color-border)]">
           <div>
             <p className="t-heading">iPhone GPS</p>
             <p className="t-caption mt-1">Built in • no paid account</p>
@@ -1123,14 +1115,14 @@ export function Settings() {
         transition={{ ...springs.smooth, delay: 0.2 }}
       >
         <div className="flex items-baseline justify-between">
-          <h2 className="[font-family:var(--font-display)] text-[2rem] leading-none font-light tracking-[-0.04em] text-[var(--color-text-dim)]">
+          <h2 className="t-display-italic text-[21px] text-[var(--color-text-dim)]">
             hy<span className="italic text-[var(--color-accent)]">P</span>er
           </h2>
           {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
           <button
             type="button"
             onClick={() => tapHaptic()}
-            className="t-data-sm text-[var(--color-muted)] py-2"
+            className="t-data-sm text-[var(--color-muted)] min-h-11 py-2"
           >
             build {__BUILD_ID__}
           </button>
@@ -1158,10 +1150,10 @@ export function Settings() {
       <Modal isOpen={manageMealsOpen} onClose={closeManageMeals} title="Saved meals">
         <div className="pt-1 pb-2">
           {mealManagerMessage && (
-            <p className="mb-4 border-l-2 border-[var(--color-text)] pl-4 t-caption text-[var(--color-text)]">{mealManagerMessage}</p>
+            <p className="mb-4 t-caption text-[var(--color-text)]">{mealManagerMessage}</p>
           )}
           {mealManagerError && (
-            <p className="mb-4 border-l-2 border-[var(--color-accent)] pl-4 t-caption text-[var(--color-accent)]">{mealManagerError}</p>
+            <p className="mb-4 t-caption text-[var(--color-accent)]">{mealManagerError}</p>
           )}
 
           {loadingSavedMeals ? (
@@ -1182,7 +1174,7 @@ export function Settings() {
                   className="py-4 border-t border-[var(--color-border)] first:border-t-0"
                 >
                   {editingMealId === meal.id ? (
-                    <div className="border-l-2 border-[var(--color-accent)] pl-5 space-y-5">
+                    <div className="space-y-5">
                       <Input
                         label="Meal name"
                         value={editingMealDraft.name}

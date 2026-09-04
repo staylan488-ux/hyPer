@@ -24,7 +24,6 @@ export function Toast({ show, message, tone = 'sage' }: ToastProps) {
         >
           <div
             className="flex items-center gap-2.5 px-4 py-3 bg-[var(--color-text)]"
-            style={{ borderLeft: tone === 'berry' ? '2px solid var(--color-accent)' : undefined }}
           >
             <Icon
               className="w-3.5 h-3.5 shrink-0"

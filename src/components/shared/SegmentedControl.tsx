@@ -18,8 +18,8 @@ interface SegmentedControlProps<T extends string> {
 }
 
 /**
- * FOLIO segmented control — tracked-caps tabs on a baseline hairline; the
- * active one is underscored by an ink rule that slides between options.
+ * Studio segmented choices: one quiet well with a neutral selected surface.
+ * Long option groups can scroll without shrinking labels or touch targets.
  */
 export function SegmentedControl<T extends string>({
   options,
@@ -30,15 +30,23 @@ export function SegmentedControl<T extends string>({
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const item = size === 'sm'
-    ? 'min-h-11 pb-2.5 text-[10px] tracking-[0.18em]'
-    : 'min-h-11 pb-3 text-[11px] tracking-[0.2em]';
+  const item = size === 'sm' ? 'px-2' : 'px-3';
 
   return (
     <div
-      className={`${distribution === 'equal' ? 'grid' : 'flex gap-7'} border-b border-[var(--color-border)] ${className}`}
-      style={distribution === 'equal' ? { gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` } : undefined}
+      className={`flex gap-1 p-1 well overflow-x-auto no-scrollbar ${className}`}
       role="tablist"
+      onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        if (current < 0 || tabs.length === 0) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      }}
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -48,20 +56,21 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
             onClick={() => {
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative min-w-0 uppercase font-medium [font-family:var(--font-sans)] -mb-px transition-colors duration-200 ${item} ${
+            className={`relative min-h-11 min-w-11 shrink-0 rounded-[var(--radius-control)] uppercase font-medium text-[11px] tracking-[0.16em] [font-family:var(--font-sans)] transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
               selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}
           >
-            <span className={`relative z-10 flex items-center gap-1.5 ${distribution === 'equal' ? 'justify-center' : ''}`}>{option.label}</span>
+            <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap">{option.label}</span>
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}
-                className="absolute left-0 right-0 bottom-0 h-[2px] bg-[var(--color-text)]"
-                transition={springs.smooth}
+                className="absolute inset-0 rounded-[var(--radius-control)] bg-[var(--color-surface-3)]"
+                transition={springs.snappy}
               />
             )}
           </button>

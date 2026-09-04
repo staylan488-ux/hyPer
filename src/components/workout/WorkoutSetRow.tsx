@@ -1,98 +1,71 @@
 import { useRef, useState } from 'react';
-import { Check, Pencil, RotateCcw } from 'lucide-react';
-import { motion } from 'motion/react';
+import { createPortal } from 'react-dom';
+import { Check, ChevronRight, RotateCcw, Timer, X } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
-import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { compareSetPerformance, formatSetPerformanceTarget } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 
-interface PreviousTarget {
-  weight: number | null;
-  reps: number | null;
-  rpe: number | null;
-}
-
+interface PreviousTarget { weight: number | null; reps: number | null; rpe: number | null }
 interface WorkoutSetRowProps {
   set: WorkoutSet;
   setNumber: number;
   autofillValues?: AutofillSetValues | null;
   previousTarget?: PreviousTarget | null;
-  /** This is the next set to log — gets the live amber tick */
   isNext?: boolean;
+  composer?: boolean;
+  composerHidden?: boolean;
+  exerciseName?: string;
+  onSelect?: () => void;
+  onCancel?: () => void;
+  onStartRest?: () => void;
   onComplete?: (set: WorkoutSet) => void;
   onBeforeComplete?: (set: WorkoutSet) => Promise<true | string> | true | string;
 }
 
-/**
- * A typographer's ledger row. Completed sets settle into a hairline-ruled line —
- * a filled ink square, a mono index, the weight×reps as data. The live row keeps
- * the weight/reps wells with the log action on the thumb side; the single lacquer
- * accent marks only the set being worked. Previous performance rides along as
- * ghost placeholders and a "last" line — never a separate card.
- */
-export function WorkoutSetRow({
-  set,
-  setNumber,
-  autofillValues,
-  previousTarget,
-  isNext = false,
-  onComplete,
-  onBeforeComplete,
-}: WorkoutSetRowProps) {
-  const { logSet } = useAppStore();
-  const [weight, setWeight] = useState(set.weight?.toString() || '');
-  const [reps, setReps] = useState(set.reps?.toString() || '');
-  const [rpe, setRpe] = useState(set.rpe?.toString() || '');
-  const [isEditing, setIsEditing] = useState(!set.completed);
+/** One persistent draft per real set. The selected row supplies the anchored editor. */
+export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, isNext = false,
+  composer = false, composerHidden = false, exerciseName, onSelect, onCancel, onStartRest,
+  onComplete, onBeforeComplete }: WorkoutSetRowProps) {
+  const logSet = useAppStore((state) => state.logSet);
+  const [weight, setWeight] = useState(set.weight?.toString() ?? '');
+  const [reps, setReps] = useState(set.reps?.toString() ?? '');
+  const [rpe, setRpe] = useState(set.rpe?.toString() ?? '');
   const [saving, setSaving] = useState(false);
   const saveInFlight = useRef(false);
+  const hasDraft = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
   const formattedTarget = previousTarget ? formatSetPerformanceTarget(previousTarget) : '';
-  const performanceStatus =
-    set.completed && previousTarget
-      ? compareSetPerformance({ weight: set.weight, reps: set.reps }, previousTarget)
-      : 'unknown';
-
-  const handleAutofill = () => {
-    if (!autofillValues) return;
-    tapHaptic();
-    setWeight(autofillValues.weight);
-    setReps(autofillValues.reps);
-    setRpe(autofillValues.rpe);
-  };
+  const performance = set.completed && previousTarget ? compareSetPerformance(set, previousTarget) : 'unknown';
+  const validNumbers = weight.trim() !== '' && Number.isFinite(Number(weight)) && Number(weight) >= 0 &&
+    reps.trim() !== '' && Number.isInteger(Number(reps)) && Number(reps) > 0 &&
+    (rpe.trim() === '' || (Number.isFinite(Number(rpe)) && Number(rpe) >= 1 && Number(rpe) <= 10));
 
   const handleSave = async () => {
-    if (!weight || !reps || saveInFlight.current) return;
+    if (!validNumbers || saveInFlight.current) return;
     saveInFlight.current = true;
     tapHaptic();
-
+    setSaving(true);
+    setSaveError(null);
+    // Capture this exact row before awaiting. The store owns deadline/retry and ID isolation.
+    const originalSet = set;
     try {
-      setSaving(true);
-      setSaveError(null);
-
       if (onBeforeComplete) {
-        const verdict = await onBeforeComplete(set);
+        const verdict = await onBeforeComplete(originalSet);
         if (verdict !== true) {
-          if (typeof verdict === 'string' && verdict.trim()) {
-            window.alert(verdict);
-          }
+          setSaveError(verdict || 'Complete the previous superset round first.');
           return;
         }
       }
-
-      await logSet(
-        set.exercise_id,
-        set.set_number,
-        parseFloat(weight),
-        parseInt(reps),
-        rpe ? parseFloat(rpe) : undefined
-      );
-
-      setIsEditing(false);
-      onComplete?.(set);
+      const liveWorkout = useAppStore.getState().currentWorkout;
+      const liveSet = liveWorkout?.sets.find((candidate) => candidate.exercise_id === originalSet.exercise_id && candidate.set_number === originalSet.set_number);
+      if (liveWorkout?.id !== originalSet.workout_id || liveSet?.id !== originalSet.id) {
+        throw new Error('This workout set is no longer active.');
+      }
+      await logSet(originalSet.exercise_id, originalSet.set_number, Number(weight), Number(reps), rpe ? Number(rpe) : undefined);
+      hasDraft.current = false;
+      onComplete?.(originalSet);
     } catch (error) {
       console.error('Failed to log set:', error);
       setSaveError('Couldn’t confirm this set was saved. Your numbers are still here. Check your connection and tap Retry.');
@@ -102,197 +75,69 @@ export function WorkoutSetRow({
     }
   };
 
-  /* ── Completed (ledger line) ── */
-  if (set.completed && !isEditing) {
-    const statusLabel =
-      performanceStatus === 'beat' ? 'Beat' : performanceStatus === 'matched' ? 'Matched' : performanceStatus === 'below' ? 'Below' : null;
-    const statusColor =
-      performanceStatus === 'beat'
-        ? 'var(--color-sage)'
-        : performanceStatus === 'matched'
-          ? 'var(--color-stone)'
-          : 'var(--color-rose)';
+  const chooseSet = () => {
+    tapHaptic();
+    if (set.completed && !hasDraft.current) {
+      setWeight(set.weight?.toString() ?? '');
+      setReps(set.reps?.toString() ?? '');
+      setRpe(set.rpe?.toString() ?? '');
+    }
+    onSelect?.();
+  };
 
-    return (
-      <motion.div
-        className="flex items-center gap-3 min-h-11 border-b border-[var(--color-border)]"
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={springs.smooth}
-      >
-        <motion.span
-          className="block w-2 h-2 bg-[var(--color-text)] shrink-0"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ ...springs.bouncy, duration: 0.45 }}
-          aria-hidden
-        />
-        <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0">{String(setNumber).padStart(2, '0')}</span>
-        <div className="flex items-baseline gap-4 flex-1 min-w-0 t-data text-[var(--color-text)]">
-          <span>{set.weight}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">lb</span></span>
-          <span>{set.reps}<span className="text-[var(--color-muted)] text-[11px] ml-0.5">reps</span></span>
-          {set.rpe != null && <span className="text-[var(--color-text-dim)]">@{set.rpe}</span>}
+  return <>
+    <button type="button" className="studio-set-ledger" onClick={chooseSet}
+      aria-label={`${set.completed ? 'Edit' : 'Enter'} set ${setNumber}${exerciseName ? ` of ${exerciseName}` : ''}`}
+      aria-current={composer && !composerHidden ? 'step' : undefined}>
+      <span className="studio-set-index">{set.completed ? <Check size={13} /> : String(setNumber).padStart(2, '0')}</span>
+      <span>{set.weight != null ? `${set.weight} lb` : weight ? `${weight} lb` : '— lb'}</span>
+      <span>{set.reps != null ? `${set.reps} reps` : reps ? `${reps} reps` : '— reps'}</span>
+      <span>{set.rpe != null ? `${set.rpe} RPE` : isNext ? 'Next set' : 'Planned'}</span>
+      <ChevronRight size={13} aria-hidden />
+      {performance !== 'unknown' && <span className="sr-only">{performance} previous workout</span>}
+    </button>
+    {composer && createPortal(
+      <section className="studio-workout-dock" aria-label={`Set ${setNumber} entry`} hidden={composerHidden}>
+        <div className="studio-composer-label">
+          <span className="t-label">{set.completed ? 'Edit' : 'Set'} {String(setNumber).padStart(2, '0')}</span>
+          <span className="t-caption" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Previously saved' : 'Ready to log'}</span>
+          {set.completed && <button type="button" aria-label="Cancel set edit" disabled={saving} onClick={() => {
+            hasDraft.current = false;
+            setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
+            setSaveError(null); onCancel?.();
+          }}><X size={17} /></button>}
         </div>
-        {statusLabel && (
-          <span className="t-label-sm text-[10px] shrink-0" style={{ color: statusColor }}>
-            {statusLabel}
-          </span>
-        )}
-        <motion.button
-          className="p-2.5 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors shrink-0"
-          onClick={() => setIsEditing(true)}
-          whileTap={{ scale: 0.9 }}
-          aria-label={`Edit set ${setNumber}`}
-        >
-          <Pencil className="w-3 h-3" />
-        </motion.button>
-      </motion.div>
-    );
-  }
-
-  /* ── Logging (live row) ── */
-  const canLog = Boolean(weight && reps) && !saving;
-
-  return (
-    <div
-      className={`px-3 py-2.5 bg-[var(--color-surface-1)] border ${
-        isNext ? 'border-[var(--color-border)] border-l-2 border-l-[var(--color-accent)]' : 'border-[var(--color-border)]'
-      }`}
-    >
-      <div className="flex items-center gap-2.5">
-        <div className="flex flex-col items-center w-7 shrink-0">
-          <span className={`t-data-sm ${isNext ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
-            {String(setNumber).padStart(2, '0')}
-          </span>
-          {isNext && <span className="mt-1 w-[3px] h-2 bg-[var(--color-accent)] animate-tick-live" />}
+        <p className="studio-composer-movement">{exerciseName}</p>
+        <form onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
+          <div className="studio-set-entry">
+            <SetInput label="Weight" unit="lb" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={previousTarget?.weight?.toString() ?? '0'} disabled={saving} inputMode="decimal" min={0} step="any" />
+            <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={1} step={1} />
+            <SetInput label="Effort" unit="RPE" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={previousTarget?.rpe?.toString() ?? '—'} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
+          </div>
+          {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
+          <button type="submit" className="studio-save-set" disabled={!validNumbers || saving} aria-busy={saving}>
+            <span>{saving ? 'Saving…' : saveError ? 'Retry' : set.completed ? 'Save changes' : 'Save set'}</span><Check size={16} />
+          </button>
+        </form>
+        <div className="studio-composer-foot">
+          {autofillValues ? <button type="button" disabled={saving} onClick={() => {
+            tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
+          }}><RotateCcw size={13} />{autofillValues.source === 'current_workout' ? 'Repeat last set' : 'Use last workout'}</button> :
+            <span>{formattedTarget ? `Last ${formattedTarget}` : 'Effort is optional'}</span>}
+          {onStartRest && <button type="button" disabled={saving} onClick={onStartRest}><Timer size={13} /> Rest</button>}
         </div>
-
-        <div className="grid grid-cols-3 gap-1.5 flex-1 min-w-0">
-          <SetInput
-            value={weight}
-            onChange={setWeight}
-            placeholder={previousTarget?.weight != null ? String(previousTarget.weight) : '0'}
-            unit="lb"
-            inputMode="decimal"
-            disabled={saving}
-          />
-          <SetInput
-            value={reps}
-            onChange={setReps}
-            placeholder={previousTarget?.reps != null ? String(previousTarget.reps) : '0'}
-            unit="reps"
-            inputMode="numeric"
-            disabled={saving}
-          />
-          <SetInput
-            value={rpe}
-            onChange={setRpe}
-            placeholder={previousTarget?.rpe != null ? String(previousTarget.rpe) : '—'}
-            unit="rpe"
-            inputMode="decimal"
-            disabled={saving}
-            min={1}
-            max={10}
-            step={0.5}
-          />
-        </div>
-
-        <motion.button
-          type="button"
-          onClick={handleSave}
-          disabled={!canLog}
-          whileTap={canLog ? { scale: 0.92 } : undefined}
-          transition={springs.snappy}
-          aria-label={`${saveError ? 'Retry logging' : 'Log'} set ${setNumber}`}
-          aria-busy={saving}
-          className={`flex items-center justify-center w-12 h-12 shrink-0 border transition-colors ${
-            canLog
-              ? 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
-              : 'bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-muted)] opacity-60'
-          }`}
-        >
-          {saving ? (
-            <motion.span
-              className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
-            />
-          ) : saveError ? (
-            <span className="text-[11px] font-semibold">Retry</span>
-          ) : (
-            <Check className="w-[18px] h-[18px]" strokeWidth={2.75} />
-          )}
-        </motion.button>
-      </div>
-
-      {saveError && (
-        <p role="alert" className="mt-2 pl-9 text-[11px] text-[var(--color-text-dim)]">
-          {saveError}
-        </p>
-      )}
-
-      {(formattedTarget || autofillValues) && (
-        <div className="flex items-center justify-between mt-2 pl-9">
-          <span className="text-[11px] text-[var(--color-muted)]">
-            {formattedTarget ? (
-              <>Last <span className="t-data-sm text-[var(--color-text-dim)]">{formattedTarget}</span></>
-            ) : (
-              ' '
-            )}
-          </span>
-          {autofillValues && (
-            <button
-              type="button"
-              onClick={handleAutofill}
-              disabled={saving}
-              className="pressable flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text-dim)] px-2 py-1 -mr-1 hover:text-[var(--color-text)]"
-            >
-              <RotateCcw className="w-3 h-3" strokeWidth={2.25} />
-              {autofillValues.source === 'current_workout' ? 'Repeat last set' : 'Use last workout'}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+      </section>, document.body
+    )}
+  </>;
 }
 
-function SetInput({
-  value,
-  onChange,
-  placeholder,
-  unit,
-  inputMode,
-  disabled,
-  min,
-  max,
-  step,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  unit: string;
-  inputMode: 'decimal' | 'numeric';
-  disabled?: boolean;
-  min?: number;
-  max?: number;
-  step?: number;
+function SetInput({ label, unit, value, onChange, placeholder, disabled, inputMode, min, max, step }: {
+  label: string; unit?: string; value: string; onChange: (value: string) => void; placeholder: string;
+  disabled: boolean; inputMode: 'decimal' | 'numeric'; min: number; max?: number; step: string | number;
 }) {
-  return (
-    <label className="well flex flex-col items-center justify-center min-h-12 px-1 cursor-text focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
-      <input
-        type="number"
-        inputMode={inputMode}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        min={min}
-        max={max}
-        step={step}
-        className="w-full text-center t-data-lg bg-transparent outline-none text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_50%,transparent)] disabled:opacity-60"
-      />
-      <span className="t-label-sm text-[9px] leading-none mt-[1px]">{unit}</span>
-    </label>
-  );
+  return <label className="studio-set-field"><span className="t-label">{label}</span><span className="studio-set-value">
+    <input type="number" aria-label={label} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder} disabled={disabled} min={min} max={max} step={step} />
+    {unit && <small>{unit}</small>}
+  </span></label>;
 }

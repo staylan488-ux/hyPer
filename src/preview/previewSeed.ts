@@ -1,5 +1,6 @@
 // DEV-ONLY store seeder. Populates the Zustand stores with sample data and
-// neutralises the on-mount fetch actions so the seed isn't clobbered. Imports
+// preserves illustrative volume totals while real program/workout actions use
+// the in-memory client for fetch, edit, start and resume flows. Imports
 // the stores (so it must NOT be imported by lib/supabase.ts — no cycle).
 import { isPreviewActive } from './flag';
 import { useAppStore } from '@/stores/appStore';
@@ -11,9 +12,7 @@ import {
   previewMacroTarget,
   previewLandmarks,
   previewWeeklyVolume,
-  previewHistoryWorkouts,
 } from './previewData';
-import type { Workout } from '@/types';
 
 let seeded = false;
 
@@ -29,7 +28,6 @@ export function maybeSeedPreview(): void {
   });
 
   const noop = async () => {};
-  const allWorkouts = [previewCurrentWorkout, ...previewHistoryWorkouts];
 
   useAppStore.setState({
     activeSplit: previewSplit,
@@ -42,18 +40,11 @@ export function maybeSeedPreview(): void {
     volumeLandmarks: previewLandmarks,
     weeklyVolume: previewWeeklyVolume,
     loading: false,
-    // neutralise reads that run on screen mount so they can't overwrite the seed
-    fetchSplits: noop,
-    fetchCurrentWorkout: noop,
-    fetchWorkoutMode: noop,
+    // Keep the illustrative nutrition/volume totals. Workout and program reads
+    // use the real store actions against the relational in-memory client.
     fetchMacroTarget: noop,
     fetchVolumeLandmarks: noop,
     calculateWeeklyVolume: noop,
-    fetchFlexTemplates: noop,
-    fetchCurrentWorkoutDayPlan: noop,
-    fetchWorkoutsByMonth: async () => previewHistoryWorkouts,
-    fetchWorkoutById: async (id: string): Promise<Workout | null> => allWorkouts.find((w) => w.id === id) ?? null,
-    fetchWorkoutDayPlanByWorkoutId: async () => null,
-    ensureWorkoutDayPlan: async () => null,
+
   });
 }

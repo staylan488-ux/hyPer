@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Pause, Play, RotateCcw, Settings2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
@@ -57,10 +58,8 @@ function formatTime(totalSeconds: number) {
 }
 
 /**
- * Ambient rest timer: a sharp bar docked above the bottom nav that drains in
- * place — square corners, a precise mono countdown, a hairline progress rule
- * and a single lacquer live tick. Tap to expand for presets — never a blocking
- * modal between sets.
+ * Anchored recovery face shares the set-entry surface. The existing persisted timer,
+ * notification and Live Activity lifecycle is retained; options stay in a sheet.
  */
 export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel = null, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
@@ -221,90 +220,20 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   return (
     <>
-      <AnimatePresence>
-        <motion.div
-          key="rest-pill"
-          className="fixed left-0 right-0 z-40 pointer-events-none"
-          style={{ bottom: 'calc(5.9rem + env(safe-area-inset-bottom, 0px))' }}
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 24 }}
-          transition={springs.smooth}
-        >
-          <div className="max-w-lg mx-auto px-5">
-            <motion.div
-              className="pointer-events-auto bg-[var(--color-surface-2)] border border-[var(--color-border-strong)]"
-              style={{ borderTop: `2px solid ${tone}` }}
-              animate={isWarning ? { scale: [1, 1.008, 1] } : {}}
-              transition={isWarning ? { duration: 1, repeat: Infinity } : springs.smooth}
-            >
-              <div className="flex items-center gap-3 pl-3 pr-1 py-1.5">
-                <button
-                  type="button"
-                  onClick={handleToggleRunning}
-                  disabled={isComplete}
-                  aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}
-                  className="pressable flex items-center justify-center w-9 h-9 border border-[var(--color-border-strong)] text-[var(--color-text)] disabled:opacity-40 shrink-0"
-                >
-                  {isRunning ? (
-                    <Pause className="w-3.5 h-3.5" fill="currentColor" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 ml-0.5" fill="currentColor" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className="flex items-center gap-3 flex-1 min-w-0 py-1"
-                  onClick={() => setExpanded(true)}
-                  aria-label="Open rest timer options"
-                >
-                  {!isComplete && (
-                    <span
-                      className="shrink-0 w-[3px] h-5 animate-tick-live"
-                      style={{ backgroundColor: tone }}
-                      aria-hidden
-                    />
-                  )}
-                  {isComplete ? (
-                    <span
-                      className="shrink-0 t-caps text-[15px] font-normal tracking-[0.24em]"
-                      style={{ color: tone }}
-                    >
-                      Go
-                    </span>
-                  ) : (
-                    <RollingNumber
-                      value={formatTime(timeLeft)}
-                      className="shrink-0 t-data-lg tabular-nums"
-                      style={{ color: tone }}
-                    />
-                  )}
-                  <span className="t-label-sm shrink-0 ml-auto flex items-center gap-1.5">
-                    <Timer className="w-3 h-3" strokeWidth={1.75} />
-                    {isComplete ? 'rest done' : 'rest'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDismiss}
-                  aria-label="Dismiss rest timer"
-                  className="pressable flex items-center justify-center w-9 h-9 text-[var(--color-muted)] hover:text-[var(--color-text)] shrink-0"
-                >
-                  <X className="w-4 h-4" strokeWidth={1.75} />
-                </button>
-              </div>
-
-              <RailStrip
-                value={isComplete ? 1 : remainingRatio}
-                tone={isComplete ? 'sage' : isWarning ? 'berry' : 'amber'}
-                size="sm"
-              />
-            </motion.div>
+      {createPortal(<section className="studio-workout-dock" aria-label="Rest timer">
+        <div className="studio-composer-label"><span className="t-label">{isComplete ? 'Rest complete' : 'Recovery'}</span>
+          <button type="button" onClick={() => setExpanded(true)} aria-label="Open rest timer options"><Settings2 size={17} /></button>
+        </div>
+        <div className="studio-rest-face">
+          <div><div className="studio-rest-time"><RollingNumber value={formatTime(timeLeft)} /></div>
+            <p className="studio-rest-next">{isComplete ? 'Ready when you are' : isRunning ? 'Time to recover' : 'Paused'}{nextUpLabel && <><br />Next · {nextUpLabel}</>}</p>
           </div>
-        </motion.div>
-      </AnimatePresence>
+          <div className="studio-rest-actions"><button type="button" onClick={handleToggleRunning} disabled={isComplete}
+            aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button></div>
+        </div>
+        <button type="button" className="studio-save-set" onClick={handleDismiss}>{isComplete ? 'Continue training' : 'Skip rest'}<Play size={14} /></button>
+        <div className="studio-rest-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft}><span style={{width:`${Math.max(0, remainingRatio) * 100}%`}} /></div>
+      </section>, document.body)}
 
       <Modal isOpen={expanded} onClose={() => { setExpanded(false); setCustomOpen(false); }} title="Rest timer">
         <div className="pt-1 pb-2">
@@ -331,7 +260,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               type="button"
               onClick={handleToggleRunning}
               disabled={isComplete}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] text-[var(--color-text)] disabled:opacity-40"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-text)] disabled:opacity-40"
               aria-label={isRunning ? 'Pause' : 'Resume'}
             >
               {isRunning ? (
@@ -343,7 +272,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
             <button
               type="button"
               onClick={handleReset}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
               aria-label="Restart timer"
             >
               <RotateCcw className="w-5 h-5" />
@@ -404,7 +333,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                     aria-label="Custom rest time, minutes and seconds"
                     aria-invalid={customError}
                     autoFocus
-                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-[var(--color-surface-1)] text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none border-l-2 ${customError ? 'border-[var(--color-accent)]' : 'border-transparent'}`}
+                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-[var(--color-surface-1)] text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
                   />
                   <button
                     type="button"
@@ -424,7 +353,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <button
             type="button"
             onClick={handleDismiss}
-            className="pressable w-full min-h-12 bg-[var(--color-surface-2)] border border-[var(--color-border-strong)] text-[11px] uppercase font-medium tracking-[0.22em] text-[var(--color-text)] hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
+            className="pressable w-full min-h-12 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
           >
             Done resting
           </button>
