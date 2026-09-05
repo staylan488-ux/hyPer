@@ -25,6 +25,8 @@ import {
   type PhotoAnalysisProvider,
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
+import { FoodTrialLogger } from './FoodTrialLogger';
+import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
 import { combineIntoOneMeal } from '@/lib/combineMeal';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
@@ -134,6 +136,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [initialEntry?.date, selectedDate]);
 
   const [mode, setMode] = useState<'saved' | 'search' | 'barcode' | 'manual' | 'photo'>(initialEntry ? 'manual' : 'saved');
+  const [foodAnalysisMode] = useState(getFoodAnalysisMode);
+  const [trialInitialHint, setTrialInitialHint] = useState('');
+  const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
+  const trialEntryIds = useRef(new WeakMap<TrialFoodItem, string>());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
@@ -315,6 +321,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
   const handleDescribeFood = async () => {
     if (foodDescriptionBusy) return;
+    if (foodAnalysisMode === 'gemini') {
+      setTrialInitialHint(foodDescription);
+      setMode('photo');
+      return;
+    }
 
     setFoodDescriptionBusy(true);
     setFoodDescriptionError(null);
@@ -1066,6 +1077,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     servingsCount: number,
     source = initialEntry?.source || 'manual',
     shouldComplete = true,
+    retryEntryId?: string,
   ): Promise<boolean> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -1152,9 +1164,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           return false;
         }
       } else {
-        const { error } = await supabase
-          .from('nutrition_logs')
-          .insert({ user_id: user.id, ...cleanPayload });
+        const query = supabase.from('nutrition_logs');
+        const { error } = retryEntryId
+          ? await query.upsert({ id: retryEntryId, user_id: user.id, ...cleanPayload }, { onConflict: 'id' })
+          : await query.insert({ user_id: user.id, ...cleanPayload });
 
         if (!error) {
           if (shouldComplete) onComplete();
@@ -1207,6 +1220,32 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       carbs: Math.round((item.groundedFood?.carbs ?? item.modelCarbs) * factor * 10) / 10,
       fat: Math.round((item.groundedFood?.fat ?? item.modelFat) * factor * 10) / 10,
     };
+  };
+
+  const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void) => {
+    if (!timeValue) throw new Error('Choose a logging time.');
+    if (initialEntry && items.length !== 1) throw new Error('Keep one food when editing an existing entry.');
+    for (const item of items) {
+      const entryId = trialEntryIds.current.get(item) || crypto.randomUUID();
+      trialEntryIds.current.set(item, entryId);
+      const totals = trialFoodTotals(item);
+      const foodId = trialSavedFoods.current.get(item) || await upsertFoodIfNeeded({
+        id: `photo-gemini-${Date.now()}`,
+        user_id: null,
+        name: item.name.trim(),
+        ...totals,
+        serving_size: item.quantity,
+        serving_unit: item.unit,
+        source: 'custom',
+        fdc_id: null,
+        description: `${item.evidence === 'label' ? 'Label-based nutrition.' : 'Estimated nutrition.'} ${item.amountConfirmed ? 'Amount supplied or adjusted by user.' : 'Estimated amount reviewed when saved.'} ${item.notes}`,
+      });
+      if (!foodId) throw new Error(`Could not save ${item.name}.`);
+      trialSavedFoods.current.set(item, foodId);
+      if (!await saveNutritionEntry(foodId, 1, item.evidence === 'label' ? 'gemini_label' : 'gemini_estimate', false, entryId)) throw new Error(`Could not log ${item.name}.`);
+      onItemSaved(item);
+    }
+    onComplete();
   };
 
   const handleSavePhotoItems = async () => {
@@ -1841,7 +1880,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           { value: 'search', label: 'USDA' },
           { value: 'barcode', label: 'Scan' },
           { value: 'manual', label: 'Manual' },
-          { value: 'photo', label: 'Photo' },
+          { value: 'photo', label: foodAnalysisMode === 'gemini' ? 'AI' : 'Photo' },
         ]}
         distribution="equal"
         size="sm"
@@ -2130,7 +2169,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   loading={foodDescriptionBusy}
                   disabled={foodDescriptionBusy || foodDescription.trim().length < 5}
                 >
-                  Research &amp; fill fields
+                  {foodAnalysisMode === 'gemini' ? 'Review with Gemini' : 'Research & fill fields'}
                 </Button>
 
                 {foodDescriptionError && (
@@ -2319,6 +2358,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </>
+      ) : foodAnalysisMode === 'gemini' ? (
+        <FoodTrialLogger whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
       ) : (
         <div className="space-y-5">
           <input

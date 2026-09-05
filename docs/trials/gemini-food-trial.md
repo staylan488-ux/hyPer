@@ -1,0 +1,166 @@
+# Gemini–Tavily food analysis — two-day evaluation
+
+Current implementation is committed on `codex/gemini-food-trial` (`9800fe8`), with main through native glass/materials #106 integrated at `b773643`. Following explicit authorization, `analyze-food-trial` is deployed on Hypertrophy-App (`nnwfaaxmyvqsdnfcdxom`); hosted negative-authentication and native CORS checks pass. The latest direct provider test accepted six chicken tikka samosas at 270 kcal / P13.5 g / C21 g / F15 g in 13.564 seconds using secondary-source evidence, not independent verification of the user’s package. The merged tree passes 759 tests, lint, build, strict backend TypeScript and signed iOS compilation. A positive signed-in hosted meal, real Storage transactions and physical-device behavior remain unverified. PR/merge are authorized; the user will upload the TestFlight build. No real diary write or TestFlight upload has occurred.
+
+## Current meal flow
+
+Settings → Food analysis → Gemini 3.8 Flash selects hosted meal analysis independently of the existing worker/coach preference. Fuel → Log food → AI accepts a description, up to two photos, or both; Manual → Describe with AI opens the same flow. Meal analysis runs on demand in Supabase without a Mac worker or Tailscale. The separate goal coach retains its existing worker.
+
+The backend uses the exact `gemini-3.8-flash` Developer API model, medium thinking and structured output. Gemini plans any branded-product research, Tavily performs basic Search and advanced Extract, and Gemini returns compact editable meal facts. Search queries contain planned public product names rather than the raw description, photo, identity or diary. Manufacturer/restaurant pages are preferred; a search snippet alone is not treated as a nutrition label. Google Search grounding is absent from the current pipeline. No model/provider fallback or automatic paid retry exists.
+
+The person sees meal calories/macros, individual foods and quantities, plus a short material uncertainty statement. Adjust opens the amount, serving basis and nutrition fields. Sources are optional details. A material unresolved product, serving or amount question gets one short clarification with an answer/photo action; unresolved results cannot be saved. There is no blanket confirmation checkbox and no requirement to read a research report.
+
+Nutrition is represented per an explicit basis, with a separate amount eaten; code multiplies each nutrient by amount/basis. Six pieces with a three-piece label therefore scales by two without asking the model to calculate totals. Label evidence is checked against supplied or extracted content using product, serving-unit and nutrient support; unsupported claims are downgraded or require clarification. **This is not independent proof of a correct product match or image transcription.** Amounts may still be inferred even when the nutrition basis comes from a label. A label and actually known consumed amount support reproducible arithmetic; an estimated portion remains an estimate. Hidden oil, unknown ingredients and weight cannot be resolved by stronger reasoning alone.
+
+Nothing enters the diary until Save meal. Existing logging functions preserve the date, time, destination and past-entry editing. New reviewed foods use stable log UUIDs on retries; successful rows leave the pending review, and fields lock after saving begins. Multiple foods cannot overwrite one past entry. Saved descriptions distinguish label/estimated nutrition from supplied/estimated amounts. Closing or reloading discards the local draft: same-day analysis replay does not restore a partially saved review.
+
+## Authentication, request limits and retention
+
+Normal Supabase `getUser(token)` authentication and user ownership apply. **No allowlist, enrollment, special account gate, trial ID or start/end window exists.** Any normally signed-in account can use a deployed build/function.
+
+- Input: at most 9 MB, two JPEG/PNG/WebP images with checked signatures, and 1,500 description characters.
+- One analysis: at most three Gemini requests (two for an ordinary generic meal), two basic Tavily searches and two selected URLs for advanced extraction; an overall 90-second model/research deadline and 8,192 output tokens per Gemini request. Clarification/failure can stop earlier.
+- Daily quota: 24 analysis attempts per user per UTC date by default, configurable from 1–40. Each full analysis reserves one atomic quota slot before paid work. Failed and unknown attempts remain counted; storage errors fail closed. This limits requests and output, **not an exact dollar budget**.
+- Idempotency: normalized input plus `gemini-tavily-v1` is hashed. The version prevents an old Google answer from replaying as a Tavily answer, while daily quota objects remain shared under `food-v1/<authenticated-user-id>/<UTC-date>/…`. Concurrent identical inputs cannot start a second pipeline on that UTC date. Repeating after UTC midnight can start another paid analysis.
+
+A process lost after claiming leaves a pending/unknown result and is not automatically reclaimed. Do not delete current-day claims/slots or change the quota prefix to force a retry. A clarification changes the input and consumes another attempt.
+
+The private ledger retains compact claims, normalized meal facts, source title/URL provenance and usage, including known partial usage on failures. Submitted photos/descriptions, fetched pages, search snippets, label-support quotes and model reasoning are not archived by this ledger. `originalText` is the normalized factual result, not the raw research response. No automatic cleanup has been deployed; operator cleanup must preserve active-day idempotency. The bucket has no client policies; its service-role key stays on the backend. Provider retention and source-specific rights still apply. `store:false` disables optional Gemini request logging, not mandatory provider retention.
+
+## Usage and two-day comparison
+
+Settings → Check analysis usage reports today's UTC count, Gemini token estimates across attempted model calls, and Tavily reported credits separately from request-based estimates. Missing totals remain unknown; observed subtotals survive partial failures. Old Google Search records, if any, are identified separately and never priced as Tavily. Status currently covers today only, so record it at each UTC day's end.
+
+Gemini estimates use the published standard introductory prices through December 31, 2026: $0.75/M uncached input, $0.075/M cached input and $3.75/M output including thinking; January 2027 rates are $1.50/$0.15/$7.50. Missing counters prevent a complete estimate. Tavily estimates use basic searches and successful advanced extraction URLs at the published pay-as-you-go credit price; extraction groups, plan/free credits and failed or unreported work mean estimated and invoiced costs may differ. The bounded live timings and returned usage are recorded below; food accuracy and invoiced charges remain unverified. Hosting, taxes and outside requests are excluded. [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [Tavily credits](https://docs.tavily.com/documentation/api-credits)
+
+For each person, use several known-label or completely weighed meals and a few ordinary ambiguous meals:
+
+1. Before adjusting, record the original calorie total, whether the product/variant matched, and any short uncertainty or clarification.
+2. Independently calculate the reference from the actual package and consumed quantity, or a complete weighed recipe including oil, sauce and consumed fraction. A weighed plate alone is not a complete recipe; labels are rounded.
+3. Compare text-only and supplied-label photo cases separately. Record corrections, wrong-product results, failures and major misses. Unknown ingredients or amounts make a meal unscorable, not a zero-error result.
+4. Review per-meal and summed daily error. A 200-kcal flag is a practical review aid, not an accuracy guarantee; this small convenience sample cannot establish broad reliability.
+
+Replace the fictional values in `docs/trials/food-trial-comparison.example.json`, then run `node scripts/summarize-food-trial.mjs path/to/comparisons.json`. This offline script reports signed/absolute calorie error and large misses without a network call. Its `amountConfirmed` field refers to the independently known comparison reference, not a meal-entry checkbox.
+
+## Provider decision and remaining limitations
+
+The accepted [search/workflow decision](2026-09-05-search-workflow-decision.md) explains why Tavily was selected for background research and editable factual records. Published Tavily guidance supports processing and storing outputs; it does not grant blanket rights to republish source pages or erase source-specific licenses/notices. Only compact factual records/provenance are retained.
+
+The earlier Google-grounded design had unresolved storage/editing and suggestion-display applicability questions. Those are historical reasons for the provider change, not a requirement to obtain Google Search permission before testing the current non-grounded pipeline. No conclusion that all personal food logging is prohibited was established. Exa was researched but not selected. USDA remains supplemental and was not silently substituted for web research.
+
+## Hosted preparation — 2026-09-05
+
+Authorized preparation targets Supabase Hypertrophy-App (`nnwfaaxmyvqsdnfcdxom`, main production):
+
+- `GEMINI_API_KEY` was saved from the existing AI Studio key using masked UI transfer. Metadata verified presence; the earlier direct experiment established that key's Gemini access, not the current Edge Function's access.
+- `TAVILY_API_KEY` was verified in the correct Supabase project's secret metadata at **2026-09-05 08:12:41 UTC**. Its value is not recorded here. Presence does not establish Tavily usability or run a request.
+- `FOOD_ANALYSIS_BUCKET=food-analysis-ledger` and `FOOD_ANALYSIS_ALLOWED_ORIGINS=capacitor://localhost` are saved. No web/development origin was added.
+- `food-analysis-ledger` was created and reopened with Public bucket off; inventory showed zero policies. No client policy was added.
+- `FOOD_ANALYSIS_MAX_DAILY_REQUESTS` is optional; no override was required, so the default is 24. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are supplied by Supabase; their runtime use is untested.
+- AI Studio previously showed Tier 1 Prepay, $10.00 credit and auto-reload off after the user's payment. That historical balance is not a current balance check or a per-request budget cap.
+
+The new `analyze-food-trial` function was subsequently deployed under explicit authorization; see deployment evidence below. No new paid resource or billing configuration was created for this Tavily implementation. Keep provider keys in Supabase secrets, never chat, local comparison files or `VITE_` variables.
+
+## Direct Tavily adapter check — 2026-09-05
+
+One basic Search and one advanced Extract completed in **6.146 seconds** without invoking Gemini. Tavily reported **1 credit total**; the code's amortized request estimate was **1.4 credits / $0.0112** at the pay-as-you-go rate, not an invoiced charge. Before the check, the account showed 1,000 free credits, zero prior use and pay-as-you-go off.
+
+The chicken tikka samosa search returned four secondary chicken-product pages and a manufacturer page for **vegetable samosas**. The deliberately simple test harness preferred the manufacturer domain and selected that vegetable page, extracting 7,784 characters. This verifies adapter connectivity, extraction and reported usage only; it is **not successful product matching or food-accuracy evidence**. The later combined rerun used Gemini selection and excluded the manufacturer vegetable result, but still produced no usable meal after validation. This isolated adapter check did not test that selection or establish accuracy.
+
+## Combined live attempts — 2026-09-05
+
+After explicit authorization for one complete combined test and at most one fix-driven rerun, the actual implemented `analyzeMeal` pipeline ran on “I ate six Trader Joe's chicken tikka samosas.” It used the exact model and medium thinking through a one-attempt loopback harness, with masked credentials held in memory only and no hosted deployment/ledger/diary write.
+
+The initial attempt failed after **8.138 seconds**: Gemini planning and source selection returned HTTP 200; Tavily completed one basic search and one advanced extraction of two URLs; the third Gemini request (final structured meal response) returned HTTP 400. No meal result or accuracy verdict follows. Its detailed upstream error was not captured by the original adapter, so schema complexity is a diagnostic hypothesis, not a proven cause. Numeric and array bounds were then removed from the wire schema while runtime bounds remained. The schema-complexity explanation remains a hypothesis: the original detailed error was unavailable, and the later success does not prove its cause.
+
+Known Gemini counters from the two successful calls: prompt 207 + 775; output 55 + 22; thinking 82 + 266; total 344 + 1,063. Cached counters and final failed-request usage were absent, so the aggregate price remains unknown. Tavily reported **2 credits**, versus **1.8 credits / $0.0144** amortized estimate at the pay-as-you-go rate; free allowance remained applicable. No automatic retry occurred.
+
+
+The **one authorized fix-driven rerun** completed in **12.298 seconds**, with all three Gemini requests returning HTTP 200. Aggregate usage was **9,259 prompt, 384 output, 972 thinking and 10,615 total tokens**. Cached-token counters were missing, so the implemented complete token-price estimate remains unknown; no cache count was assumed to be zero. Tavily used one basic search and one advanced extraction of two URLs, reporting **2 credits** versus **1.8 estimated credits / $0.0144** at the illustrative pay-as-you-go rate, with the free allowance applicable. This is not a billing statement.
+
+The planner identified Chicken Tikka Samosas with variant `Regular`. Gemini selected chicken-product pages from Open Food Facts and Eat This Much, excluding the official vegetable result at index 4. The app nevertheless returned its generic package-label clarification with `items=[]`: **no calorie or macro estimate was delivered by this combined run**. Post-validation stopped the result. The raw final model candidate was not captured, so the specific rejection cause is unknown. Subsequent local work addresses an invented default `Regular` variant and plural `Fats`/table-format parsing; these are observed matching/format risks, not proven explanations of the captured run. Final local guard checks passed, but these adjustments have not been rerun live.
+
+An independent read of the secondary [Eat This Much chicken tikka mini-samosa page](https://www.eatthismuch.com/calories/mini-samosas-chicken-tikka-2328292) lists **4 pieces / 80 g: 180 kcal, P9 g, C14 g, F10 g**. Multiplying that particular record by 6/4 gives **270 kcal, P13.5 g, C21 g, F15 g**. This is independently read secondary-source arithmetic, **not the combined model's output or a verified match to the user's package**. The earlier plain Google Search response took 13.891 seconds with four queries/eight sources and conflicting 240-versus-270-kcal records. These concern the same product but used different prompts and workflows; they do not constitute a provider quality benchmark.
+
+The user authorized one combined meal and one fix-driven rerun; **both have been used, with no further paid requests authorized by that instruction**. No additional live rerun occurred. The temporary wrapper was removed, all harness servers were stopped, masked credentials were not exposed, and the clipboard was replaced with nonsecret content. These direct tests did not deploy the function or write Supabase ledger/diary records.
+
+## Newly authorized final live check — 2026-09-05
+
+The user separately authorized **one** live check of the corrected code. It completed in **12.787 seconds** through the actual `analyzeMeal` implementation, with three Gemini HTTP 200 responses, one Tavily basic search and one advanced extraction of two URLs. The planner used the correct chicken tikka product and an empty variant. Gemini excluded the vegetable result at index 4 and selected Fooducate and Open Food Facts chicken pages. Fooducate's extracted page said “No product found”; Open Food Facts supplied the interpreted nutrient data. This is secondary-source evidence, not an independently inspected authoritative package label.
+
+**Original model decision:** no clarification, six pieces, label basis four pieces (80 g), 180 kcal / protein 9 g / carbs 14 g / fat 10 g per basis. The application's deterministic arithmetic yields **270 kcal / P13.5 g / C21 g / F15 g** for six. These are model-proposed, secondary-source values, **not a validated saved meal** or proof of current package accuracy.
+
+**Actual app decision:** generic package-label clarification, `items=[]`. The safe diagnostic captured all support excerpts as present in the retrieved text, but the four nutrient excerpts were bare values (180 kcal, 9 g, 14 g, 10 g). The validator requires each value to be paired with its nutrient name; thus `parseMealResponse` downgraded label evidence, and the branded-product guard rejected the meal. This run establishes an instruction/validator mismatch: the prompt previously asked for numeric quotes without explicitly requiring named fields. It does not establish why the prior run failed, whose final candidate was not captured.
+
+Local correction: the final instruction now requires an exact nutrient-name/value/unit excerpt from the same serving-basis field, explicitly rejects bare values, and forbids inventing/rearranging quotations or substituting the per-100-g column. Runtime product, serving and nutrient validation was **not weakened**. A regression confirms that bare values remain insufficient even when found in source text. **At that point the prompt correction had not been rerun live.** The subsequently authorized successful check is below. Complex multi-column tables remain a broader coverage limit; no automatic paid retry ran.
+
+Measured usage: **7,515 prompt / 393 output / 911 thinking / 8,819 total Gemini tokens**. Cached/tool counters were absent; the implementation leaves complete token cost unknown. If all prompt tokens were uncached and the recorded introductory rates apply, the token component would be **$0.01052625**; this is an explicit illustration, not observed cost or an invoice. Tavily reported **1 credit** (search 1, extract 0) versus an amortized estimate of **1.8 credits / $0.0144** before the free allowance. An extraction report of zero does not establish permanently free extraction or final grouped billing. Across the direct adapter probe and all three combined attempts, six Tavily credits have been reported; no invoice reconciliation was performed.
+
+Comparison: 12.787 seconds versus the previous 12.298-second combined run and 13.891-second Google plain-search diagnostic is a small, uncontrolled observation. Correct product selection and proposed arithmetic are now directly visible; the app still did not deliver usable macros. There is no established accuracy improvement over Google, and historical 240-versus-270-kcal secondary records remain unresolved against the user's actual package.
+
+The loopback harness was stopped, credentials remained masked/in memory, and clipboard content was replaced with the nonsecret URL. No fetched pages, credentials, ledger entries or diary entries were written to files/storage. This separately authorized single run is consumed; further paid verification needs new authorization. Next: address/verify named nutrient evidence on real source-table structure before activation, preserving the original model-versus-app distinction.
+
+## Accepted live application result — 2026-09-05
+
+The user separately authorized one additional bounded verification of the latest prompt. It completed in **13.564 seconds**, with all three Gemini requests returning HTTP 200 and final returned model version `gemini-3.8-flash`. The actual `analyzeMeal` pipeline returned **one accepted item, `clarification=null`**, preserving Gemini's proposed product and serving values. This is the first accepted combined live meal result; it is not a fixture or hand-crafted alternate pipeline.
+
+The selected sources were Open Food Facts and Eat This Much chicken-product pages. No vegetable page appeared in this search batch, so this run does not repeat the earlier wrong-variant exclusion test. The accepted item's source index points to [Eat This Much](https://www.eatthismuch.com/calories/mini-samosas-chicken-tikka-2328292). The retrieved named rows bind calories 180, protein 9 g, carbs 14 g and fats 10 g to a **four-piece (80 g)** serving. The original exact source excerpts were found in the retrieved page and passed unchanged product, serving and nutrient validation. Open Food Facts' detailed table separately contains a serving/80-g column with the same values; it also has per-100-g and comparison columns. No full page was archived.
+
+**Accepted result:** six pieces / four-piece basis = 1.5 servings; **270 kcal, protein 13.5 g, carbs 21 g, fat 15 g**. The consumed amount is supplied by the user. Both nutrition pages are secondary records; the app's `label` evidence classification means its source checks passed, not that a current manufacturer/package label was independently inspected. The package/formulation and older conflicting secondary records remain unverified. Success here proves one real accepted interpretation and arithmetic, not broad accuracy or reliability.
+
+Measured Gemini usage: **9,317 prompt / 403 output / 3,298 thinking / 13,018 total tokens**. Cached/tool counters were absent, so complete token cost remains unknown. With the explicit assumption that all prompt tokens were uncached at the recorded introductory rates, the token component would be **$0.0208665**; this is an illustrative estimate, not an invoice. Tavily reported **2 credits** (one search, one advanced extraction of two URLs), versus **1.8 estimated credits / $0.0144** amortized before free allowance. Eight credits have been reported across the direct adapter probe and four combined attempts. Pay-as-you-go was off; invoice/grouped-credit reconciliation was not performed.
+
+Comparison: 13.564 seconds versus 12.787 seconds for the previous rejected run and 13.891 seconds for the historical Google plain-search diagnostic. Search contents and model work differed, so these isolated timings do not establish a speed or accuracy advantage. The concrete improvement is that the application accepted named nutrient citations and delivered a usable result. The same six-piece arithmetic appeared in earlier secondary-source proposals; matching numbers do not validate the actual package.
+
+The actual accepted normalized response was shown in the existing `FoodTrialLogger` at Paper 390px through a temporary local review harness. Readback confirmed 270 kcal/P13.5/C21/F15, six pieces, no question; Adjust showed the four-piece basis and original 180/P9/C14/F10 values; Sources expanded the two actual links. Save was visibly disabled and never clicked. The transport was intercepted only to the already completed real result, with no further provider calls. This checks real-result rendering, not hosted transport or persistence. Temporary review files/tab/dev server and the one-attempt live harness were removed/stopped; RAM-only pages were discarded and the clipboard held only the nonsecret URL. This run changed no production code and did not invoke the hosted Supabase function or write ledger/diary records. The separately authorized one-run allowance is consumed; no automatic retry or additional paid request occurred.
+
+## Historical Google-only display experiment — 2026-09-05
+
+The following predates the current Gemini–Tavily implementation. It is evidence about the old Google Search path only, not a Tavily benchmark or current end-to-end verification.
+
+
+The user subsequently authorized a small Google Search test displaying results without saving food entries. Three deliberate HTTP attempts were made for the supplied six-samosa example, with no automatic retries, model substitution, Supabase invocation, ledger write, diary save, deployment or phone release. A temporary loopback viewer accepted the key through a masked field, forwarded it in an HTTPS header, and displayed original responses and associated sources/suggestions. It did not persist raw model results to files or a database. Key contents were not printed or written to files, and the clipboard was replaced with the viewer URL afterward. The provider's own retention rules still apply.
+
+1. The initial request returned HTTP 400 in 148 ms before generation because `responseFormat.text.mimeType` requires the REST enum `APPLICATION_JSON`. The structured-output guide's string example disagrees with the REST reference and actual API. No usage metadata was returned; billing for this rejected request was not independently checked.
+2. After fixing that enum locally, the exact `gemini-3.8-flash` returned HTTP 200 / STOP in 27,352 ms with medium thinking, Google Search enabled, structured output, and an 8,192-token output cap. It claimed a product/label match but returned no grounding metadata or Search suggestions, so Search execution and label attribution were not established. Usage: 1,972 prompt tokens (1,073 cached), 267 output tokens, 2,650 thinking tokens; 4,889 total.
+3. The final diagnostic used the same exact model, medium thinking, output cap and Google Search tool, with plain text instead of structured output and explicit search instructions in the temporary harness. It returned HTTP 200 / STOP in 13,891 ms, four Search queries, eight source chunks, ten grounding supports and Search suggestions. Usage: 740 prompt tokens (172 cached), 866 output tokens, 2,130 thinking tokens; 3,736 total. This confirms live Search access, but does not establish that the structured-output constraint caused the earlier missing grounding because the prompt also differed.
+
+The grounded result identified the mini chicken variant, distinguished conflicting nutrition records, and showed internally consistent six-piece serving arithmetic. Returned source links were secondary food registries/recall material, without a current manufacturer-hosted nutrition label. Product existence has supporting evidence, but which formulation matches the user's package and its macro accuracy remain unverified. The model's wording presented some label claims more strongly than its source provenance supported. No raw grounded response or source-link collection is retained in this guide.
+
+At the verified standard introductory prices ($0.75/M uncached input, $0.075/M cached input, $3.75/M output including thinking), estimated tokens cost $0.011693475 for the structured generation and $0.011673900 for the plain generation: approximately $0.02337 combined. Four returned Search queries add $0.056 if the shared free allowance is exhausted, giving approximately $0.07937 for those known components. Missing query metadata for the structured generation is unknown, not zero; actual Search allowance, provider billing completeness, rejected-request treatment, taxes and invoice reconciliation were not checked. The $10 prepaid balance is not an exact per-test budget cap. [Pricing](https://ai.google.dev/gemini-api/docs/pricing), [Search billing and grounding metadata](https://ai.google.dev/gemini-api/docs/generate-content/google-search).
+
+Historical local fixes: use the REST `APPLICATION_JSON` enum and set `store:false` to opt out of optional request logging; this does not bypass mandatory provider retention or the application's separately implemented storage ledger. At that earlier Google-only revision, `npm run test` passed 67 files / 709 tests; lint and build passed with existing warnings. Those checks do not verify the current Gemini–Tavily changes. [REST output enum and request logging control](https://ai.google.dev/api/generate-content).
+
+Original results were displayed only in temporary Safari viewer tabs (structured: port 5187; grounded plain-text: port 5188); their continued availability is not guaranteed and reloading cannot restore results. This experiment did not authorize everyday Google-grounded logging, deployment or a phone release. The later Gemini–Tavily implementation is a separate authorized change.
+
+## Deployment and merged verification — September 5
+
+Only `analyze-food-trial` was deployed through the authenticated Supabase dashboard on Hypertrophy-App (`nnwfaaxmyvqsdnfcdxom`). The CLI account returned Unauthorized, so the existing dashboard session was used without creating another credential. The modular source was bundled with esbuild (ESM, external HTTPS imports, ES2022); its 46,446-byte editor contents matched the local artifact byte for byte, SHA-256 `7bfaa0d8d0568769001b6eeca6fe94f846df8138988958a431ea7548c5b5d7a8`. The dashboard shows one deployment. Existing food-lookup/process-food-photo/whoop-oauth/whoop-sync deployment counts remain 10/17/10/11.
+
+Legacy gateway JWT verification is OFF, matching `supabase/config.toml`; the saved setting was verified after reload. The handler still performs normal network `getUser(token)` verification before paid work. Live endpoint checks returned:
+
+- Missing authorization, invalid user token, and the project's anonymous key used as a user token: **401 unauthorized**.
+- Unconfigured origin: **403 origin_forbidden**.
+- `capacitor://localhost` preflight: **204**, with matching allow-origin.
+
+Required secret names and private ledger bucket were verified without displaying provider values. These checks establish function startup/configuration and negative-auth/CORS behavior; they do not exercise authenticated provider calls, Storage claims/quota writes or replay. No ordinary signed-in application session was available. A dashboard administrator session is not an application user session, and no bypass token/account was created. The explicitly authorized bounded positive hosted smoke remains pending a legitimate app sign-in.
+
+After integrating main #106 at `b773643`, `npm run test` **PASS — 69 files, 759 tests**; lint, build and strict backend TypeScript **PASS**. Existing chunk-size/Browserslist/Node warnings remain. The feature diff does not change auth flow, application DB schema or native source.
+
+Production-configured `npm run ios:sync`, signed generic iOS Debug arm64 compilation including the merged glass plugin, and `codesign --verify --deep --strict` **PASS**. Artifact: `/private/tmp/hyper-gemini-ios-b773643/Build/Products/Debug-iphoneos/App.app`, bundle `app.hyper.mobile`. Build verification used the existing public Supabase configuration and `VITE_FOOD_ANALYSIS_MODE=gemini`; no provider credentials entered the bundle. This is compile/signature evidence, not an archive upload or device validation. No tracked native files changed.
+
+Prior browser fixtures passed at Paper 390px and Ink 320px: six→nine fictional pieces scaled 360→540 kcal (P18/C72/F21). Saving September 4 at 7:30 PM produced exactly one entry; September 5 stayed unchanged. Live-result rendering showed the actual accepted 270 kcal response, with saving disabled. These checks do not establish real-food accuracy.
+
+## TestFlight handoff and remaining checks
+
+The user explicitly authorized scoped PR/merge and will upload TestFlight themselves. No USB pairing or direct install is needed for that plan. Keep the normal public Supabase build variables; select **Settings → Food analysis → Gemini 3.8 Flash**, or use `VITE_FOOD_ANALYSIS_MODE=gemini` as a build default. Existing saved Settings take precedence. Neither provider key belongs in `VITE_` variables.
+
+On the signed-in TestFlight app, verify a bounded text product, supplied label photo, generic meal and ambiguous product; inspect sources, serving arithmetic, actual usage and same-day replay. Check private-ledger access isolation and real Storage error/collision behavior. Validate camera, keyboard, interruption recovery, prior date/time saving and edits with the worker off and Tailscale disconnected. No real diary save was made during this work. Actual-package accuracy, photo accuracy, broader reliability, full hosted transactions and phone behavior remain unverified.
+
+## API references
+
+- [Exact Gemini model](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+- [REST request controls and usage](https://ai.google.dev/api/generate-content)
+- [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Extract](https://docs.tavily.com/documentation/api-reference/endpoint/extract)
+- [Tavily terms](https://www.tavily.com/terms), [documented output processing/storage](https://help.tavily.com/articles/8603494007-connecting-tavily-to-n8n)
+- [Supabase atomic uploads](https://supabase.com/docs/guides/storage/uploads/standard-uploads)
