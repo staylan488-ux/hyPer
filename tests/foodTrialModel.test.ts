@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { analyzeMeal, buildMealRequest, mealUsage, parseMealResponse, trialFoodTotals, validateTrialItems, MealAnalysisError } from '../supabase/functions/analyze-food-trial/model';
+import { analyzeMeal, buildMealRequest, buildPlanningRequest, mealUsage, parseMealResponse, trialFoodTotals, validateTrialItems, MealAnalysisError } from '../supabase/functions/analyze-food-trial/model';
 const input = { images: [], hint: 'six Fixture samosas' };
 const labelText = 'Fixture samosas\nServing 3 pieces\nCalories 180\nProtein 6 g\nCarbs 24 g\nFat 7 g';
 const source = { title: 'Manufacturer', url: 'https://example.com/samosas', description: 'Fixture samosas', content: labelText };
@@ -10,9 +10,9 @@ const usageMetadata = { promptTokenCount: 5000, candidatesTokenCount: 1000, thou
 const envelope = (body: unknown, extra = {}) => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'hidden thoughts' }, { text: JSON.stringify(body) }] } }], usageMetadata, ...extra });
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 const plan = { products: [{ brand: 'Fixture', product: 'samosas', variant: '' }], clarification: null };
-function researchFetch(final = meal()) {
+function researchFetch(final = meal(), planning: object = plan) {
   return vi.fn()
-    .mockResolvedValueOnce(json(envelope(plan)))
+    .mockResolvedValueOnce(json(envelope(planning)))
     .mockResolvedValueOnce(json({ results: [{ title: source.title, url: source.url, content: source.description }], usage: { credits: 1 } }))
     .mockResolvedValueOnce(json(envelope({ sourceIndexes: [0], clarification: null })))
     .mockResolvedValueOnce(json({ results: [{ url: source.url, raw_content: `${labelText}\nPRIVATE FULL PAGE MARKER` }], usage: { credits: 0 } }))
@@ -87,6 +87,68 @@ describe('Gemini + independent web food pipeline', () => {
     expect(JSON.stringify(requests.filter(r => r.url.includes('tavily')))).not.toMatch(/Sinan|bulking|gemini-key|imageBase64/);
     expect(result.usage).toMatchObject({ modelCalls: 3, promptTokens: 15000, thinkingTokens: 3000, estimatedTokenUsd: 0.03375, knownEstimatedTokenUsd: 0.03375,
       searchQueries: 0, webResearch: { searchRequests: 1, extractedUrls: 1, reportedCredits: 1, knownReportedCredits: 1, estimatedCredits: 1.4, complete: true } });
+  });
+  it.each(['text', 'photo'])('returns familiar eggs from the first %s interpretation with no web research or second model call', async kind => {
+    const hint = kind === 'text' ? 'two boiled eggs' : '';
+    const images = kind === 'photo' ? [{ angle: 'top' as const, mimeType: 'image/jpeg', imageBase64: 'AAAA' }] : [];
+    const eggs = { ...item, productIndex: null, name: 'Boiled eggs', quantity: 2, basisQuantity: 1,
+      calories: 72, protein: 6, carbs: 0.4, fat: 5, evidence: 'estimate', notes: 'Assumed two large eggs.',
+      amountQuote: hint, labelSupport: { ...labelSupport, origin: 'none' } };
+    const fetcher = vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: false,
+      ...meal([eggs], 'Two eggs, using a typical large egg.') }, { modelVersion: 'gemini-3.8-flash', responseId: 'first-response' })));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await analyzeMeal({ hint, images }, 'g', 't');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][0]).toContain('/gemini-3.8-flash:generateContent');
+    expect(result).toMatchObject({ clarification: null, modelVersion: 'gemini-3.8-flash', responseId: 'first-response', sources: [] });
+    expect(result.items[0]).toMatchObject({ name: 'Boiled eggs', evidence: 'estimate', amountConfirmed: kind === 'text', sourceIndexes: [] });
+    expect(trialFoodTotals(result.items[0])).toEqual({ calories: 144, protein: 12, carbs: 0.8, fat: 10 });
+    expect(result.usage).toMatchObject({ modelCalls: 1, promptTokens: 5000, thinkingTokens: 1000, estimatedTokenUsd: 0.01125, knownEstimatedTokenUsd: 0.01125,
+      webResearch: { searchRequests: 0, extractedUrls: 0, reportedCredits: 0, knownReportedCredits: 0, estimatedCredits: 0, complete: true } });
+    expect(result.originalText).not.toMatch(/hidden thoughts|labelSupport/);
+  });
+  it('includes the same nutrition basis rules when the first interpretation can complete the meal', () => {
+    const body = buildPlanningRequest({ hint: 'two eggs', images: [] });
+    const instruction = body.systemInstruction.parts[0].text;
+    expect(body).toMatchObject({ store: false, generationConfig: { thinkingConfig: { thinkingLevel: 'MEDIUM' }, responseFormat: { text: { mimeType: 'APPLICATION_JSON' } } } });
+    expect(body).not.toHaveProperty('tools');
+    expect(instruction).toContain('basisQuantity');
+    expect(instruction).toContain('evidence=estimate');
+    expect(instruction).toContain('amountQuote');
+    expect(instruction).toContain('must begin with its actual nutrient name');
+  });
+  it('uses supplied label nutrition immediately without researching an already provided product', async () => {
+    const supplied = { ...item, productIndex: null, labelSupport: { ...labelSupport, origin: 'description', sourceIndex: null } };
+    const fetcher = vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: false, ...meal([supplied]) })));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await analyzeMeal({ images: [], hint: `${input.hint}\n${labelText}` }, 'g', 't');
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(result.items[0]).toMatchObject({ evidence: 'label', sourceIndexes: [], amountConfirmed: true });
+    expect(trialFoodTotals(result.items[0]).calories).toBe(360);
+    expect(result.usage).toMatchObject({ modelCalls: 1, webResearch: { searchRequests: 0, extractedUrls: 0 } });
+  });
+  it('still researches an identified product when planning also includes a premature inline estimate', async () => {
+    const premature = meal([{ ...item, calories: 999, evidence: 'estimate' }]);
+    const fetcher = researchFetch(meal(), { ...plan, needsFoodIdentity: false, ...premature });
+    vi.stubGlobal('fetch', fetcher);
+    const result = await analyzeMeal(input, 'g', 't');
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(result.items[0]).toMatchObject({ calories: 180, evidence: 'label' });
+    expect(result.usage).toMatchObject({ modelCalls: 3, webResearch: { searchRequests: 1, extractedUrls: 1 } });
+  });
+  it.each([
+    meal([], 'Nothing identified.'),
+    { ...meal([]), clarification: 'Could you add a package label?' },
+    meal([{ ...item, calories: undefined }]),
+    meal([{ ...item, basisQuantity: 0 }]),
+    { ...meal(), items: 'not a food list' },
+  ])('rejects an invalid inline meal without researching or making a paid retry %#', async inlineMeal => {
+    const fetcher = vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: false, ...inlineMeal })));
+    vi.stubGlobal('fetch', fetcher);
+    const error = await analyzeMeal(input, 'g', 't').catch(value => value) as MealAnalysisError;
+    expect(error).toBeInstanceOf(MealAnalysisError);
+    expect(error.usage).toMatchObject({ modelCalls: 1, knownEstimatedTokenUsd: 0.01125, webResearch: { searchRequests: 0, extractedUrls: 0 } });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
   it('handles generic photo meals with no searches, clearly estimated portions', async () => {
     const estimate = { ...item, productIndex: null, evidence: 'estimate', amountQuote: '', notes: 'Assumed portion; oil unknown.', labelSupport: { ...labelSupport, origin: 'none' } };
@@ -255,6 +317,17 @@ describe('Gemini + independent web food pipeline', () => {
     expect(fetcher).toHaveBeenCalledTimes(stage === 'search' ? 3 : 5);
     expect(result.usage.modelCalls).toBe(stage === 'search' ? 2 : 3);
     expect(result.usage.webResearch?.searchRequests).toBe(1);
+  });
+  it('completes an answered identity clarification when the first response still flags unknown food and has empty items', async () => {
+    const estimate = { ...item, evidence: 'estimate', notes: 'Estimated from the answer.', labelSupport: { ...labelSupport, origin: 'none' } };
+    const fetcher = vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: true, ...meal([], '') })))
+      .mockResolvedValueOnce(json(envelope(meal([estimate]))));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await analyzeMeal({ hint: 'An unclear plate.\nAnswer: six samosas', images: [], clarificationUsed: true }, 'g', 't');
+    expect(result.clarification).toBeNull();
+    expect(result.items).toHaveLength(1);
+    expect(result.usage).toMatchObject({ modelCalls: 2, webResearch: { searchRequests: 0 } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it('rejects an invalid finalizer question without showing another question or making a paid retry', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: false })))

@@ -10,7 +10,8 @@ The pipeline permitted questions from the planner, source selector and finalizer
 
 ## Corrected behavior
 
-- Research and estimate by default, including branded foods and ordinary sauces with missing amounts. Prefer exact sources; use a plausible serving and show the assumption where exact information is unavailable. Never request a package label, photo of a label or exact macros as a condition of producing an estimate.
+- First decide whether food knowledge is sufficient. Familiar foods such as eggs, rice, fruit and simple homemade meals return a complete estimate directly from the first Gemini call, with no web requests or separate finalizer. Supplied readable labels can also return directly. Search only when product-specific information would materially improve the answer. First-call meals use the same validation and usage accounting; this reduces calls, but live latency has not been remeasured.
+- Research when useful and estimate by default, including branded foods and ordinary sauces with missing amounts. Prefer exact sources; use a plausible serving and show the assumption where exact information is unavailable. Never request a package label, photo of a label or exact macros as a condition of producing an estimate.
 - Only the planner can request clarification, solely when the main food cannot be identified at all. It emits a boolean; application code renders one fixed question, “What was the main food in this meal?” Freeform compound model questions cannot reach the user.
 - A single answer or Use an estimate consumes the clarification. The final output schema requires `clarification: null`. New clients send `clarificationUsed`; the gateway also recognizes the older client's `Answer:` context, so the backend correction suppresses repeats on already installed clients.
 - Empty or failed research proceeds to the existing finalizer with available evidence and food knowledge. It does not retry paid calls. Exact-label claims still require supporting evidence; mismatches become estimates and lose the false label citation. A wrong variant cannot retain its identity merely because label validation already downgraded it. Missing researched foods and malformed final responses fail explicitly rather than silently omitting part of the meal or creating another question.
@@ -21,11 +22,11 @@ Auth, DB schema, nutrition-save behavior, exact Gemini model, provider choice an
 
 ## Verification
 
-- `npm run test`: PASS — 69 files, 779 tests, with nonsecret local Supabase placeholders.
+- `npm run test`: PASS — 69 files, 790 tests, with nonsecret local Supabase placeholders.
 - `npm run lint`: PASS.
 - `npm run build`: PASS; existing chunk-size, Browserslist and Node warnings.
 - Strict standalone backend TypeScript: PASS.
-- Focused model/gateway regressions: 70 tests pass, including both reported question patterns, legacy answers, missing/failed research, identity integrity, incomplete meal rejection and old-cache invalidation. Client/review tests verify consumed-question transport and preservation of the original meal.
+- Focused model/gateway regressions: 81 tests pass, including first-call eggs and supplied-label completion, accurate zero-search accounting, retained product research when needed, invalid direct output rejection, both reported question patterns, legacy answers, missing/failed research, identity integrity, incomplete meal rejection and old-cache invalidation. Client/review tests verify consumed-question transport and preservation of the original meal.
 - Safari with temporary fixtures and the production component: Paper 390px answer→review, skip→review, Change meal reset; Ink 320px stale second question→single error with original question hidden and same-input retry. These were component widths, not physical native viewports. Fixtures, local server and tab were cleaned up.
 
 Automated provider responses and browser review data are fixtures, not measured live-model performance. No paid provider test, hosted deployment, diary write, native installation or TestFlight upload was performed for this correction.
