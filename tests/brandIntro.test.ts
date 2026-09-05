@@ -36,10 +36,11 @@ function setup({ animationFails = false, fontSize = 24, viewportWidth = 390 } = 
     parent?: FakeElement;
     className = '';
     classList = { add: vi.fn() };
-    style = { visibility: '', top: '' };
+    style = { visibility: '', top: '', left: '', fontSize: '', transform: '' };
     attributes = new Map<string, string>();
     inert = false;
     bounds = bounds(0, 0, 0, 0);
+    paintedBounds?: ReturnType<typeof bounds>;
     getAttribute(name: string) { return this.attributes.get(name) ?? null; }
     setAttribute(name: string, value: string) { this.attributes.set(name, value); }
     removeAttribute(name: string) { this.attributes.delete(name); }
@@ -47,7 +48,17 @@ function setup({ animationFails = false, fontSize = 24, viewportWidth = 390 } = 
     remove() {
       if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this);
     }
-    getBoundingClientRect() { return this.bounds; }
+    getBoundingClientRect() {
+      if (this.paintedBounds) return this.paintedBounds;
+      if (this.style.left) {
+        const translation = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(this.style.transform);
+        return bounds(
+          parseFloat(this.style.left) + Number(translation?.[1] ?? 0),
+          parseFloat(this.style.top) + Number(translation?.[2] ?? 0), 0, 0,
+        );
+      }
+      return this.bounds;
+    }
     cloneNode() {
       const clone = new FakeElement();
       this.children.forEach(() => clone.append(new FakeElement()));
@@ -75,7 +86,16 @@ function setup({ animationFails = false, fontSize = 24, viewportWidth = 390 } = 
   const body = new FakeElement();
   const documentElement = new FakeElement();
   const root = new FakeElement();
-  const win = Object.assign(new EventTarget(), { innerWidth: viewportWidth, innerHeight: 844 });
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  const win = Object.assign(new EventTarget(), {
+    innerWidth: viewportWidth, innerHeight: 844,
+    requestAnimationFrame: vi.fn((callback: FrameRequestCallback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    }),
+    cancelAnimationFrame: vi.fn((id: number) => frames.delete(id)),
+  });
   const doc = Object.assign(new EventTarget(), {
     body, documentElement, getElementById: () => root,
     createElement: () => new FakeElement(), fonts: { load: () => fonts.promise },
@@ -85,7 +105,18 @@ function setup({ animationFails = false, fontSize = 24, viewportWidth = 390 } = 
   vi.stubGlobal('document', doc);
   vi.stubGlobal('getComputedStyle', () => ({ fontSize: `${fontSize}px` }));
   return {
-    target, body, documentElement, root, fonts, animations, win, preference, childBounds,
+    target, body, documentElement, root, fonts, animations, win, preference, childBounds, frames,
+    frame: () => {
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(0));
+    },
+    moveTarget: (dx: number, dy: number) => {
+      [target, ...target.children].forEach((element) => {
+        const box = element.bounds;
+        element.bounds = bounds(box.left + dx, box.top + dy, box.width, box.height);
+      });
+    },
     play: (options: { duration?: number; pauseAt?: number } = {}) => playBrandIntro(
       target as unknown as HTMLElement, preference as MediaQueryList, options,
     ),
@@ -202,6 +233,8 @@ describe('brand intro lifecycle', () => {
     expect(env.documentElement.getAttribute('data-brand-intro')).toBe('true');
     env.animations[0].complete();
     await Promise.resolve();
+    env.frame();
+    env.frame();
     expect(env.body.children).toHaveLength(0);
     expect(env.target.style.visibility).toBe('');
     expect(env.documentElement.getAttribute('data-brand-intro')).toBeNull();
@@ -219,7 +252,7 @@ describe('brand intro text rendering', () => {
     { variant: 'login', fontSize: 64, viewportWidth: 390, openingSize: 125.8, composedSize: 68 },
     { variant: 'narrow dashboard', fontSize: 24, viewportWidth: 320, openingSize: 106.56, composedSize: 57.6 },
     { variant: 'narrow login', fontSize: 64, viewportWidth: 320, openingSize: 106.56, composedSize: 57.6 },
-  ])('paints $variant at displayed font sizes and lands on measured letter positions', async ({
+  ])('keeps $variant crisp with fixed large text layers and lands on measured letter positions', async ({
     fontSize, viewportWidth, openingSize, composedSize,
   }) => {
     const env = setup({ fontSize, viewportWidth });
@@ -228,34 +261,50 @@ describe('brand intro text rendering', () => {
     const mark = env.body.children[0].children[1];
     const textAnimations = mark.children.map((child) => env.animations.find((animation) => animation.element === child)!);
 
-    // Text must repaint at its actual size: no scaled ancestor or transformed
-    // glyph layer may turn a masthead-sized backing into an enlarged bitmap.
+    const renderedPose = (animation: typeof textAnimations[number], frame: Keyframe) => {
+      const match = /^translate\(([-\d.e]+)px, ([-\d.e]+)px\) scale\(([-\d.e]+)\)$/.exec(String(frame.transform));
+      expect(match).not.toBeNull();
+      return {
+        left: parseFloat(mark.style.left) + Number(match![1]),
+        top: parseFloat(mark.style.top) + Number(match![2]),
+        fontSize: parseFloat(animation.element.style.fontSize) * Number(match![3]),
+        scale: Number(match![3]),
+      };
+    };
+    // Each layer's native text is large enough for its full animation. No
+    // ancestor magnification or per-frame font/layout writes are allowed.
     expect(textAnimations).toHaveLength(3);
     expect(env.animations.some((animation) => animation.element === mark)).toBe(false);
     textAnimations.forEach((animation, index) => {
       expect(animation).toBeDefined();
       expect(animation.options).toMatchObject({ duration: 1800, fill: 'both' });
+      expect(parseFloat(animation.element.style.fontSize)).toBeCloseTo(
+        Math.max(fontSize, index === 1 ? openingSize : composedSize), 8,
+      );
       animation.keyframes.forEach((frame) => {
-        expect(frame.transform).toBeUndefined();
-        expect(frame.scale).toBeUndefined();
-        expect(Number.parseFloat(String(frame.fontSize))).toBeGreaterThan(0);
+        expect(Object.keys(frame).every((key) => ['transform', 'opacity', 'offset', 'easing'].includes(key))).toBe(true);
+        const pose = renderedPose(animation, frame);
+        expect(pose.scale).toBeGreaterThan(0);
+        expect(pose.scale).toBeLessThanOrEqual(1);
       });
       const landing = animation.keyframes.at(-1)!;
+      const pose = renderedPose(animation, landing);
       expect(landing.offset).toBe(1);
-      expect(Number.parseFloat(String(landing.fontSize))).toBe(fontSize);
-      expect(Number.parseFloat(String(landing.left))).toBeCloseTo(env.childBounds[index].left, 8);
-      expect(Number.parseFloat(String(landing.top))).toBeCloseTo(env.childBounds[index].top, 8);
+      expect(pose.fontSize).toBeCloseTo(fontSize, 8);
+      expect(pose.left).toBeCloseTo(env.childBounds[index].left, 8);
+      expect(pose.top).toBeCloseTo(env.childBounds[index].top, 8);
     });
 
     const pOpening = textAnimations[1].keyframes.find((frame) => frame.offset === .17)!;
-    expect(Number.parseFloat(String(pOpening.fontSize))).toBeCloseTo(openingSize, 8);
+    const openingPose = renderedPose(textAnimations[1], pOpening);
+    expect(openingPose.fontSize).toBeCloseTo(openingSize, 8);
     const enlargedPWidth = env.childBounds[1].width * openingSize / fontSize;
-    expect(Number.parseFloat(String(pOpening.left)) + enlargedPWidth / 2).toBeCloseTo(viewportWidth / 2, 8);
+    expect(openingPose.left + enlargedPWidth / 2).toBeCloseTo(viewportWidth / 2, 8);
 
-    const composed = textAnimations.map((animation) => animation.keyframes.find((frame) => frame.offset === .54)!);
-    composed.forEach((frame) => expect(Number.parseFloat(String(frame.fontSize))).toBeCloseTo(composedSize, 8));
-    const composedLeft = Number.parseFloat(String(composed[0].left));
-    const composedRight = Number.parseFloat(String(composed[2].left)) + env.childBounds[2].width * composedSize / fontSize;
+    const composed = textAnimations.map((animation) => renderedPose(animation, animation.keyframes.find((frame) => frame.offset === .54)!));
+    composed.forEach((pose) => expect(pose.fontSize).toBeCloseTo(composedSize, 8));
+    const composedLeft = composed[0].left;
+    const composedRight = composed[2].left + env.childBounds[2].width * composedSize / fontSize;
     expect((composedLeft + composedRight) / 2).toBeCloseTo(viewportWidth / 2, 8);
     expect(env.target.style.visibility).toBe('hidden');
     cleanup();
@@ -275,5 +324,143 @@ describe('brand intro text rendering', () => {
     expect(env.target.style.visibility).toBe('');
     expect(env.documentElement.getAttribute('data-brand-intro')).toBeNull();
     env.animations.forEach((animation) => expect(animation.cancel).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('brand intro live landing', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('does not restart animations while geometry is stable and reveals the masthead after two settled frames', async () => {
+    const env = setup();
+    env.play();
+    await resolveFonts(env.fonts);
+    const animationCount = env.animations.length;
+    for (let index = 0; index < 10; index++) env.frame();
+    expect(env.animations).toHaveLength(animationCount);
+    expect(env.frames.size).toBe(1);
+    env.animations[0].complete();
+    await Promise.resolve();
+    env.frame();
+    expect(env.target.style.visibility).toBe('hidden');
+    env.frame();
+    expect(env.target.style.visibility).toBe('');
+    expect(env.body.children).toHaveLength(0);
+    expect(env.frames.size).toBe(0);
+  });
+
+  it('follows a viewport shift during flight using translation alone and preserves the original glyph animations', async () => {
+    const env = setup();
+    env.play();
+    await resolveFonts(env.fonts);
+    const mark = env.body.children[0].children[1];
+    const originalAnimations = [...env.animations];
+    env.moveTarget(9, 62);
+    env.frame();
+    const correction = env.animations.at(-1)!;
+    expect(correction.element).toBe(mark);
+    expect(correction.options.duration).toBe(160);
+    expect(correction.keyframes).toEqual([
+      { transform: 'translate(0px, 0px)' },
+      { transform: 'translate(9px, 62px)' },
+    ]);
+    originalAnimations.forEach((animation) => expect(animation.cancel).not.toHaveBeenCalled());
+    correction.complete();
+    await Promise.resolve();
+    env.frame();
+    env.frame();
+    expect(env.target.style.visibility).toBe('hidden');
+    expect(mark.getBoundingClientRect().left).toBe(env.target.bounds.left);
+    expect(mark.getBoundingClientRect().top).toBe(env.target.bounds.top);
+    originalAnimations[0].complete();
+    await Promise.resolve();
+    env.frame();
+    env.frame();
+    expect(env.target.style.visibility).toBe('');
+    expect(env.frames.size).toBe(0);
+  });
+
+  it('waits for a late notch correction after flight completion before handing off to the real masthead', async () => {
+    const env = setup();
+    env.play();
+    await resolveFonts(env.fonts);
+    env.animations[0].complete();
+    await Promise.resolve();
+    env.frame();
+    env.moveTarget(0, 62);
+    env.frame();
+    const correction = env.animations.at(-1)!;
+    expect(correction.keyframes.at(-1)).toEqual({ transform: 'translate(0px, 62px)' });
+    env.frame();
+    env.frame();
+    expect(env.target.style.visibility).toBe('hidden');
+    correction.complete();
+    await Promise.resolve();
+    env.frame();
+    expect(env.target.style.visibility).toBe('hidden');
+    env.frame();
+    expect(env.target.style.visibility).toBe('');
+    expect(env.documentElement.getAttribute('data-brand-intro')).toBeNull();
+    expect(env.frames.size).toBe(0);
+  });
+
+  it('retargets from the currently painted position when the destination moves again', async () => {
+    const env = setup();
+    env.play();
+    await resolveFonts(env.fonts);
+    const mark = env.body.children[0].children[1];
+    env.moveTarget(0, 62);
+    env.frame();
+    const firstCorrection = env.animations.at(-1)!;
+    // Represent a compositor frame partway through the first correction. A
+    // restart from its old endpoint would introduce another visible jump.
+    mark.paintedBounds = { ...mark.bounds, left: 37.25, top: 119, right: 37.25, bottom: 119 };
+    env.moveTarget(20, -14);
+    env.frame();
+    const secondCorrection = env.animations.at(-1)!;
+    expect(firstCorrection.cancel).toHaveBeenCalledTimes(1);
+    expect(secondCorrection.keyframes).toEqual([
+      { transform: 'translate(0px, 27.5px)' },
+      { transform: 'translate(20px, 48px)' },
+    ]);
+    // A stale completion must not clear the new correction or reveal the page.
+    firstCorrection.complete();
+    env.animations[0].complete();
+    await Promise.resolve();
+    env.frame();
+    env.frame();
+    expect(env.target.style.visibility).toBe('hidden');
+    mark.paintedBounds = undefined;
+    secondCorrection.complete();
+    await Promise.resolve();
+    env.frame();
+    expect(mark.getBoundingClientRect().left).toBe(env.target.bounds.left);
+    expect(mark.getBoundingClientRect().top).toBe(env.target.bounds.top);
+    env.frame();
+    expect(env.target.style.visibility).toBe('');
+    expect(env.frames.size).toBe(0);
+  });
+
+  it('removes queued tracking and ignores late callbacks when interrupted during correction', async () => {
+    const env = setup();
+    const cleanup = env.play({ pauseAt: .999 });
+    await resolveFonts(env.fonts);
+    env.moveTarget(0, 62);
+    env.frame();
+    const correction = env.animations.at(-1)!;
+    const queuedCallback = [...env.frames.values()][0];
+    const animationCount = env.animations.length;
+    cleanup();
+    expect(env.frames.size).toBe(0);
+    expect(correction.cancel).toHaveBeenCalledTimes(1);
+    expect(env.target.style.visibility).toBe('');
+    env.moveTarget(0, 10);
+    queuedCallback(0);
+    correction.complete();
+    await Promise.resolve();
+    expect(env.animations).toHaveLength(animationCount);
+    expect(env.body.children).toHaveLength(0);
+    expect(env.frames.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
