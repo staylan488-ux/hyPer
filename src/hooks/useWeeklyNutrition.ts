@@ -70,7 +70,7 @@ async function fetchWeeklyNutrition() {
         .from('foods')
         .select('id, calories, protein')
         .in('id', foodIds);
-      
+
       if (foodsError) throw foodsError;
 
       if (foods) {
@@ -113,4 +113,3 @@ async function fetchWeeklyNutrition() {
     return null;
   }
 }
-
