@@ -176,7 +176,7 @@ function ExercisePickerContent({
           <div key={selectedMuscle} className="space-y-7">
             {groupedExercises.map(([group, groupExercises]) => (
               <section key={group}>
-                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-text)]">
+                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
                   <span className="t-heading">{MUSCLE_GROUP_LABELS[group]}</span>
                   <span className="t-data-sm text-[var(--color-muted)]">{groupExercises.length}</span>
                 </div>

@@ -24,11 +24,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary: `
+        material-button-primary
         bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
         hover:bg-[var(--button-primary-hover)]
         active:bg-[var(--button-primary-active)]
       `,
       secondary: `
+        material-button-secondary
         bg-[var(--color-well)] text-[var(--color-text)]
         hover:bg-[var(--color-surface-3)]
       `,

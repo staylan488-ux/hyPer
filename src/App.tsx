@@ -14,7 +14,6 @@ import { History } from '@/pages/History';
 import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
-import { PaperAtmosphere } from '@/components/shared/PaperAtmosphere';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
 import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
@@ -24,7 +23,7 @@ import { bindRouteScroll } from '@/lib/routeScroll';
 
 function BootSplash() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-[var(--color-base)]">
+    <div className="material-foundation min-h-screen flex flex-col items-center justify-center px-6">
       <motion.div
         className="w-full max-w-sm text-center"
         initial={{ opacity: 0, y: 12 }}
@@ -113,7 +112,6 @@ function App() {
   return (
     <MotionConfig reducedMotion="user">
       <BrowserRouter>
-        <PaperAtmosphere />
         <Routes>
           {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
           {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}

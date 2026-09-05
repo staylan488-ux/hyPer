@@ -233,7 +233,7 @@ export function NutritionWizard({
               type="button"
               aria-pressed={active}
               className={`pressable w-full text-left flex items-center gap-4 py-4 border-t border-[var(--color-border)] transition-colors ${
-                active ? 'bg-[var(--color-surface-2)] px-4' : 'px-4'
+                active ? 'material-surface px-4' : 'px-4'
               }`}
               onClick={() => onSelect(option.value)}
             >
@@ -263,7 +263,7 @@ export function NutritionWizard({
   ) => (
     <div>
       <label className="t-label-sm block mb-2">{label}</label>
-      <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+      <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
         <input
           type="number"
           inputMode="decimal"
@@ -319,7 +319,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition calculator</p>
             <h4 className="t-title">Units &amp; biological sex</h4>
             <p className="t-caption mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
@@ -365,7 +365,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body measurements</p>
             <h4 className="t-title">Your current stats</h4>
             <p className="t-caption mt-3 max-w-[34ch]">
@@ -389,7 +389,7 @@ export function NutritionWizard({
               <div>
                 <label className="t-label-sm block mb-2">Height</label>
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+                  <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
                     <input
                       type="number"
                       inputMode="numeric"
@@ -399,7 +399,7 @@ export function NutritionWizard({
                     />
                     <span className="t-label-sm shrink-0">ft</span>
                   </div>
-                  <div className="relative flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+                  <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
                     <input
                       type="number"
                       inputMode="numeric"
@@ -430,7 +430,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body composition</p>
             <h4 className="t-title">Body fat, if you know it</h4>
             <p className="t-caption mt-3 max-w-[38ch]">
@@ -482,7 +482,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Daily activity</p>
             <h4 className="t-title">How active are you?</h4>
             <p className="t-caption mt-3 max-w-[38ch]">
@@ -507,7 +507,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition goal</p>
             <h4 className="t-title">What are you optimising for?</h4>
             <p className="t-caption mt-3 max-w-[34ch]">This sets how fast your weight should move.</p>
@@ -575,7 +575,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.smooth}
         >
-          <div className="pt-1 border-t border-[var(--color-text)]">
+          <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Suggested daily targets</p>
             <h4 className="t-title">Based on your profile</h4>
           </div>
@@ -595,7 +595,7 @@ export function NutritionWizard({
           </div>
 
           {/* Macro breakdown */}
-          <dl className="border-t border-[var(--color-text)]">
+          <dl className="border-t border-[var(--color-border)]">
             {[
               { label: 'Protein', grams: result.protein, pct: percentages.protein },
               { label: 'Carbs', grams: result.carbs, pct: percentages.carbs },

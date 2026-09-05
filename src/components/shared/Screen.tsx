@@ -33,7 +33,7 @@ interface TopBarProps {
 export function TopBar({ eyebrow, title, action, subtitle, className = '' }: TopBarProps) {
   return (
     <header className={`mb-7 ${className}`}>
-      <div className="flex items-end justify-between gap-3 border-b border-[var(--color-text)] pb-3">
+      <div className="flex items-end justify-between gap-3 pb-3">
         <div className="min-w-0">
           {eyebrow && <p className="t-label-sm mb-2">{eyebrow}</p>}
           <h1 className="t-title">{title}</h1>

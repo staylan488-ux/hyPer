@@ -69,7 +69,7 @@ export function SegmentedControl<T extends string>({
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}
-                className="absolute inset-0 rounded-[var(--radius-control)] bg-[var(--color-surface-3)]"
+                className="material-selected absolute inset-0 rounded-[var(--radius-control)]"
                 transition={springs.snappy}
               />
             )}

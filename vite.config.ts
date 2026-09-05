@@ -36,8 +36,8 @@ export default defineConfig({
         name: 'hyPer',
         short_name: 'hyPer',
         description: 'A field journal for strength & nourishment',
-        theme_color: '#F4F0E7',
-        background_color: '#F4F0E7',
+        theme_color: '#F5F5F0',
+        background_color: '#F5F5F0',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
