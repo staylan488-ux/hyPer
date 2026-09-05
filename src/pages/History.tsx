@@ -306,7 +306,7 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           rows={3}
           maxLength={280}
           placeholder="Optional"
-          className="w-full bg-transparent border-b border-[var(--color-border-strong)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-text)] transition-colors resize-none"
+          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
         />
       </div>
 
@@ -404,7 +404,7 @@ function WorkoutActivityPanel({
       </div>
 
       {attached ? (
-        <div className="grid grid-cols-4 gap-2 mt-3">
+        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 gap-2 mt-3 p-3">
           {([
             ['strain', workout.strain != null ? workout.strain.toFixed(1) : '—'],
             ['avg hr', workout.avg_hr != null ? String(workout.avg_hr) : '—'],
@@ -493,7 +493,7 @@ function ActivityLedgerRow({
             aria-checked={selected}
             aria-label={`Select ${title} to merge`}
             onClick={onToggleSelected}
-            className="pressable h-11 w-11 shrink-0 rounded-[11px] bg-[var(--color-surface-2)] flex items-center justify-center"
+            className="pressable h-11 w-11 shrink-0 rounded-[11px] material-control flex items-center justify-center"
           >
             {selected && <span className="h-2.5 w-2.5 bg-[var(--color-text)]" />}
           </button>
@@ -1512,7 +1512,7 @@ export function History() {
                   <div className="overflow-hidden">
                     <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="w-full text-left flex items-center justify-between gap-3 py-4" onClick={() => { void handleToggleWorkout(workout); }}>
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 bg-[var(--color-surface-2)] rounded-[11px] flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 material-surface rounded-[11px] flex items-center justify-center shrink-0">
                           {progress.completed ? (
                             <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
                           ) : (
@@ -1804,7 +1804,7 @@ export function History() {
                                           rows={2}
                                           maxLength={200}
                                           placeholder="Note - technique, feel, cues..."
-                                          className="w-full bg-transparent border-b border-[var(--color-border-strong)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-text)] transition-colors resize-none"
+                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
                                         />
                                         <div className="mt-2 flex items-center justify-between">
                                           <div>

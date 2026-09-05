@@ -1,0 +1,187 @@
+/* Diffuse browser materials: broad tonal light and background translucency.
+   Apple Liquid Glass remains a separate native navigation implementation. */
+:root, .light {
+  --material-foundation: #F5F5F0;
+  --material-glass: rgba(250,250,247,.58);
+  --material-sheet: rgba(250,250,247,.82);
+  --material-surface: rgba(233,235,229,.72);
+  --material-secondary: rgba(221,224,217,.64);
+  --material-inset: rgba(220,224,216,.52);
+  --material-wash: linear-gradient(125deg, rgba(255,255,255,.24), rgba(255,255,255,0) 68%);
+  --material-action-wash: linear-gradient(125deg, rgba(255,255,255,.045), rgba(255,255,255,0) 68%);
+  --material-rim: 0 0 0 0 transparent;
+  --material-optics: saturate(1.12);
+  --material-shadow: 0 10px 30px rgba(24,28,24,.10);
+  --material-sheet-shadow: 0 -10px 40px rgba(24,28,24,.10);
+  --material-dock-shadow: 0 12px 36px rgba(24,28,24,.12);
+  --material-control: var(--button-primary-bg);
+  --material-control-shadow: none;
+  --material-inset-shadow: none;
+  --material-selection: rgba(0,0,0,.07);
+  --material-selection-shadow: none;
+  --material-blur: 22px;
+  --material-nav-muted: #626262;
+  --material-accent: #923127;
+}
+.dark {
+  --material-foundation: #000000;
+  --material-glass: rgba(24,24,24,.62);
+  --material-sheet: rgba(22,22,22,.84);
+  --material-surface: rgba(27,27,27,.76);
+  --material-secondary: rgba(42,42,42,.66);
+  --material-inset: rgba(255,255,255,.075);
+  --material-wash: linear-gradient(125deg, rgba(255,255,255,.055), rgba(255,255,255,0) 68%);
+  --material-action-wash: linear-gradient(125deg, rgba(255,255,255,.025), rgba(255,255,255,0) 68%);
+  --material-rim: 0 0 0 0 transparent;
+  --material-optics: saturate(1.12);
+  --material-shadow: 0 12px 32px rgba(0,0,0,.32);
+  --material-sheet-shadow: 0 -12px 40px rgba(0,0,0,.28);
+  --material-dock-shadow: 0 12px 36px rgba(0,0,0,.36);
+  --material-control: var(--button-primary-bg);
+  --material-control-shadow: none;
+  --material-inset-shadow: none;
+  --material-selection: rgba(255,255,255,.10);
+  --material-selection-shadow: none;
+  --material-nav-muted: #B3B3B3;
+  --material-accent: #F0A092;
+}
+
+@layer components {
+  .material-foundation { background: var(--material-foundation); }
+  .material-glass, .material-toolbar {
+    background-color: var(--material-glass);
+    box-shadow: var(--material-rim), var(--material-shadow);
+    -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+    backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+  }
+  .material-toolbar { border-radius: var(--radius-sheet); }
+  .material-surface {
+    background-color: var(--material-surface);
+    border-radius: 16px;
+  }
+  .material-control, .material-inset {
+    background-color: var(--material-inset);
+    border-radius: var(--radius-control);
+    box-shadow: var(--material-inset-shadow);
+  }
+  .material-selected {
+    background: var(--material-selection);
+    box-shadow: var(--material-selection-shadow);
+  }
+  .material-button-primary {
+    background-color: var(--button-primary-bg);
+    box-shadow: var(--material-control-shadow);
+  }
+  .material-button-secondary { box-shadow: var(--material-inset-shadow); }
+  .material-button-primary:hover { background-color: var(--button-primary-hover); }
+  .material-button-primary:active { background-color: var(--button-primary-active); }
+}
+
+/* A single broad wash adds a diffuse finish. No bright rim or inset highlight. */
+.material-glass, .material-toolbar, .bottom-nav, .studio-sheet, .material-toast,
+.material-surface, .material-control, .material-inset, .studio-secondary-action, .material-button-secondary {
+  background-image: var(--material-wash);
+}
+.material-button-primary, .studio-save-set {
+  background-image: var(--material-action-wash);
+}
+.bottom-nav {
+  box-shadow: var(--material-rim), var(--material-shadow);
+  -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+  backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+}
+.material-nav-selection {
+  background: var(--material-selection);
+  box-shadow: none;
+}
+.studio-secondary-action, .material-button-secondary {
+  background-color: var(--material-secondary);
+  box-shadow: none;
+}
+.studio-sheet {
+  -webkit-backdrop-filter: blur(28px) var(--material-optics);
+  backdrop-filter: blur(28px) var(--material-optics);
+}
+.material-glass, .material-toolbar, .studio-sheet, .material-toast {
+  --color-accent: var(--material-accent);
+}
+/* A sheet already supplies material. Its inner command bar needs an opaque
+   readable backing, not a second expensive glass layer. */
+.studio-sheet .material-toolbar {
+  background: var(--color-surface-1);
+  box-shadow: 0 -8px 20px color-mix(in srgb, var(--color-base) 40%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+}
+.studio-sheet .material-glass {
+  background: var(--color-surface-2);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.studio-sheet .material-button-secondary,
+.studio-workout-dock .material-button-secondary {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Obscured layers retain their tone without paying for another live blur. */
+.studio-sheet[inert], .material-glass[inert], .studio-workout-dock[inert],
+#root[inert] .bottom-nav,
+#root[inert] .material-glass,
+#root[inert] .material-toolbar {
+  background: var(--color-surface-1);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.material-sheet-handle {
+  width: 32px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--color-text-dim);
+  opacity: .4;
+}
+.material-sheet-header { border-bottom: 0; }
+.material-sheet-close {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+.material-page-actions {
+  margin-inline: max(17px, var(--app-safe-left));
+  border-radius: var(--radius-sheet);
+}
+.material-toast {
+  background-color: var(--material-glass);
+  color: var(--color-text);
+  box-shadow: var(--material-rim), var(--material-shadow);
+  border-radius: 16px;
+  -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+  backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+}
+
+/* Transparent backdrops degrade to the established opaque token palette. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, .light, .dark {
+    --material-wash: none;
+    --material-action-wash: none;
+    --material-surface: var(--color-surface-1);
+    --material-inset: var(--color-well);
+  }
+  .material-glass, .material-toolbar, .bottom-nav, .studio-sheet, .material-toast, .studio-secondary-action, .material-button-secondary {
+    background: var(--color-surface-1) !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root, .light, .dark {
+    --material-wash: none;
+    --material-action-wash: none;
+    --material-surface: var(--color-surface-1);
+    --material-inset: var(--color-well);
+  }
+  .material-glass, .material-toolbar, .bottom-nav, .studio-sheet, .material-toast, .studio-secondary-action, .material-button-secondary {
+    background: var(--color-surface-1) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: inset 0 0 0 1px var(--color-border-strong) !important;
+  }
+  .app-viewport, .material-foundation { background: var(--color-base) !important; }
+}

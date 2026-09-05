@@ -129,7 +129,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   return (
     <button
       type="button"
-      className="relative w-full min-h-20 border-2 border-[var(--color-border-strong)] overflow-hidden select-none touch-none transition-transform duration-75 active:scale-[0.94]"
+      className="relative material-control rounded-[11px] w-full min-h-20 overflow-hidden select-none touch-none transition-transform duration-75 active:scale-[0.94]"
       onPointerDown={(event) => {
         event.stopPropagation();
         begin();
@@ -140,14 +140,14 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
       onClick={(event) => event.stopPropagation()}
     >
       <motion.span
-        className="absolute inset-y-0 left-0 bg-[var(--color-text)]"
+        className="absolute inset-y-0 left-0 bg-[var(--button-primary-bg)]"
         initial={false}
         animate={{ width: holding ? '100%' : '0%' }}
         transition={holding ? { duration: HOLD_TO_FINISH_MS / 1000, ease: 'linear' } : { duration: 0.15 }}
       />
       <span
         className={`relative z-10 t-label text-lg transition-colors ${
-          holding ? 'text-[var(--color-base)]' : 'text-[var(--color-text)]'
+          holding ? 'text-[var(--button-primary-fg)]' : 'text-[var(--color-text)]'
         }`}
       >
         {holding ? 'Keep holding…' : 'Hold to finish'}
@@ -381,7 +381,8 @@ export function RunTracker() {
   if (running) {
     return (
       <div
-        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto select-none overscroll-none"
+        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-w-lg mx-auto select-none overscroll-none"
+        style={{ background: 'var(--material-foundation, var(--color-base))' }}
       >
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">
@@ -466,14 +467,13 @@ export function RunTracker() {
 
         </div>
 
-        {/* Hit targets sized for a moving, sweating hand, and a press that is
-            unmistakable at a glance: the button inverts and scales down rather
-            than shifting a border colour nobody can see mid-stride. */}
-        <div className="flex items-stretch gap-3">
+        {/* Large tactile controls share one foreground material while the
+            pace and session records stay directly on the foundation. */}
+        <div className="material-toolbar flex items-stretch gap-3 rounded-[20px] p-3 -mx-3">
           {state.config.mode === 'intervals' && !tracker.resting && (
             <button
               type="button"
-              className="min-h-20 min-w-[6rem] flex-1 px-5 border-2 border-[var(--color-border-strong)] t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)] active:border-[var(--color-text)]"
+              className="material-control rounded-[11px] min-h-20 min-w-0 flex-1 px-3 t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] "
               onClick={() => { tapHaptic(); tracker.split(); }}
             >
               Split
@@ -481,12 +481,12 @@ export function RunTracker() {
           )}
           <button
             type="button"
-            className="min-h-20 min-w-[6rem] flex-1 px-5 border-2 border-[var(--color-border-strong)] t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] active:bg-[var(--color-text)] active:text-[var(--color-base)] active:border-[var(--color-text)]"
+            className="material-control rounded-[11px] min-h-20 min-w-0 flex-1 px-3 t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] "
             onClick={() => { tapHaptic(); tracker.toggleRest(); }}
           >
             {tracker.resting ? 'Resume' : 'Rest'}
           </button>
-          <div className="flex-1 min-w-[6rem]">
+          <div className="flex-1 min-w-0">
             <HoldToFinish onFinish={handleFinish} />
           </div>
         </div>
@@ -496,12 +496,12 @@ export function RunTracker() {
 
   /* ── pre-start config ── */
   return (
-    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] bg-[var(--color-base)] max-w-lg mx-auto flex flex-col overscroll-none" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] max-w-lg mx-auto flex flex-col overscroll-none" style={{ background: 'var(--material-foundation, var(--color-base))' }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
       <p className="t-label-sm">Field tracker</p>
       <h1 className="t-display text-[2rem] mt-2">Run</h1>
 
       {tracker.resumable && (
-        <div className="mt-6 border border-[var(--color-border-strong)] p-4">
+        <div className="material-surface rounded-[16px] mt-6 p-4">
           <p className="t-heading">Run in progress</p>
           <p className="t-caption mt-1">A tracked run was interrupted. Pick it back up?</p>
           <div className="flex gap-3 mt-4">
@@ -535,7 +535,7 @@ export function RunTracker() {
                 step={1}
                 value={customAutoLapM}
                 onChange={(event) => setCustomAutoLapM(event.target.value)}
-                className="w-full min-h-12 border border-[var(--color-border-strong)] bg-transparent px-4 t-data"
+                className="material-inset rounded-[11px] w-full min-h-12 px-4 t-data"
                 aria-invalid={!customAutoLapValid}
               />
               {!customAutoLapValid && (

@@ -7,21 +7,21 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onD
   animated?: boolean;
 }
 
-/** FOLIO card — a flat ruled block. Square corners, hairline borders, no shadow. */
+/** Readable content surfaces stay solid beneath the app's glass controls. */
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className = '', variant = 'default', animated = true, children, ...props }, ref) => {
     const variants = {
-      default: 'bg-[var(--color-surface-1)]',
-      elevated: 'bg-[var(--color-surface-1)]',
-      outlined: 'bg-transparent border border-[var(--color-border-strong)]',
-      slab: 'bg-[var(--color-surface-2)]',
+      default: 'material-surface',
+      elevated: 'material-surface',
+      outlined: 'material-surface',
+      slab: 'material-surface bg-[var(--color-surface-2)]',
     };
 
     if (!animated) {
       return (
         <div
           ref={ref}
-          className={`rounded-none p-5 ${variants[variant]} ${className}`}
+          className={`p-5 ${variants[variant]} ${className}`}
           {...props}
         >
           {children}
@@ -32,7 +32,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        className={`rounded-none p-5 ${variants[variant]} ${className}`}
+        className={`p-5 ${variants[variant]} ${className}`}
         transition={springs.smooth}
         whileTap={props.onClick ? { scale: 0.995 } : undefined}
         {...props}

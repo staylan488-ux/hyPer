@@ -468,7 +468,7 @@ export function Splits() {
                     <AnimatePresence>
                       {showMenu === split.id && (
                         <motion.div
-                          className="absolute right-0 top-full mt-1 bg-[var(--color-surface-2)] rounded-[11px] hairline-strong z-10 min-w-[160px] overflow-hidden"
+                          className="absolute right-0 top-full mt-1 material-glass rounded-[11px] z-10 min-w-[160px] overflow-hidden"
                           initial={{ opacity: 0, y: -4, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -4, scale: 0.98 }}

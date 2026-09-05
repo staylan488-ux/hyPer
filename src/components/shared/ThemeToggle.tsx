@@ -5,13 +5,13 @@ interface ThemeToggleProps {
   className?: string;
 }
 
-/** FOLIO theme toggle — a binary Paper/Ink switch set in tracked caps. */
+/** Material appearances retain the existing light/dark preference values. */
 export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProps) {
   const { theme, setTheme } = useThemeStore();
 
   const options: { mode: 'light' | 'dark'; label: string }[] = [
-    { mode: 'light', label: compact ? 'Pa' : 'Paper' },
-    { mode: 'dark', label: compact ? 'In' : 'Ink' },
+    { mode: 'light', label: compact ? 'Iv' : 'Ivory' },
+    { mode: 'dark', label: compact ? 'Bk' : 'Black' },
   ];
 
   return (

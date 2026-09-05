@@ -8,8 +8,8 @@ const STORAGE_KEY = 'hyper-theme';
 const TRANSITION_CLASS = 'theme-transition-active';
 
 const THEME_COLOR_BY_MODE: Record<ThemeMode, string> = {
-  dark: '#14110C',
-  light: '#F4F0E7',
+  dark: '#000000',
+  light: '#F5F5F0',
 };
 
 function isBrowser() {
@@ -29,7 +29,7 @@ function resolveInitialTheme(): ThemeMode {
     return saved;
   }
 
-  // FOLIO opens on Paper (light) by default; Ink stays available via toggle.
+  // Ivory opens by default; Black retains the existing dark preference.
   return 'light';
 }
 
