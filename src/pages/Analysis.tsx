@@ -115,7 +115,7 @@ export function Analysis() {
           <span className="t-label-sm">Progress</span>
           <span className="t-label-sm">Week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</span>
         </div>
-        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Coaching</h1>
+        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-border)]">Coaching</h1>
       </header>
 
       {/* Per-muscle calls */}
@@ -133,7 +133,7 @@ export function Analysis() {
           }
         />
       ) : (
-        <div className="mb-12 border-t border-[var(--color-text)]">
+        <div className="mb-12 border-t border-[var(--color-border)]">
           {coached.map(({ mv, call }) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
             const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
@@ -197,7 +197,7 @@ export function Analysis() {
                       transition={springs.smooth}
                     >
                       <div className="pb-5 pt-1">
-                        <div className="grid grid-cols-4 border-t border-[var(--color-border)] mb-4">
+                        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 mb-4">
                           {[
                             { label: 'MV', value: mv.landmark?.mv },
                             { label: 'MEV', value: mv.landmark?.mev },
@@ -206,7 +206,7 @@ export function Analysis() {
                           ].map((item, itemIndex) => (
                             <div
                               key={item.label}
-                              className={`py-3 ${itemIndex > 0 ? 'border-l border-[var(--color-border)]' : ''} pl-3`}
+                              className={`py-3 ${itemIndex > 0 ? 'border-l border-[var(--color-border-soft)]' : ''} pl-3`}
                             >
                               <p className="t-label-sm">{item.label}</p>
                               <p className="t-data text-[var(--color-text)] mt-1">{item.value ?? '—'}</p>

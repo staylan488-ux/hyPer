@@ -220,7 +220,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   return (
     <>
-      {createPortal(<section className="studio-workout-dock" aria-label="Rest timer">
+      {createPortal(<section className="material-glass studio-workout-dock" aria-label="Rest timer">
         <div className="studio-composer-label"><span className="t-label">{isComplete ? 'Rest complete' : 'Recovery'}</span>
           <button type="button" onClick={() => setExpanded(true)} aria-label="Open rest timer options"><Settings2 size={17} /></button>
         </div>
@@ -228,7 +228,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <div><div className="studio-rest-time"><RollingNumber value={formatTime(timeLeft)} /></div>
             <p className="studio-rest-next">{isComplete ? 'Ready when you are' : isRunning ? 'Time to recover' : 'Paused'}{nextUpLabel && <><br />Next · {nextUpLabel}</>}</p>
           </div>
-          <div className="studio-rest-actions"><button type="button" onClick={handleToggleRunning} disabled={isComplete}
+          <div className="studio-rest-actions"><button type="button" className="material-control" onClick={handleToggleRunning} disabled={isComplete}
             aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button></div>
         </div>
         <button type="button" className="studio-save-set" onClick={handleDismiss}>{isComplete ? 'Continue training' : 'Skip rest'}<Play size={14} /></button>
@@ -260,7 +260,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               type="button"
               onClick={handleToggleRunning}
               disabled={isComplete}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-text)] disabled:opacity-40"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] material-control text-[var(--color-text)] disabled:opacity-40"
               aria-label={isRunning ? 'Pause' : 'Resume'}
             >
               {isRunning ? (
@@ -272,23 +272,23 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
             <button
               type="button"
               onClick={handleReset}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] material-control text-[var(--color-muted)] hover:text-[var(--color-text)]"
               aria-label="Restart timer"
             >
               <RotateCcw className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-5 gap-px bg-[var(--color-border)] border border-[var(--color-border)] mb-5">
+          <div className="grid grid-cols-5 gap-1.5 mb-5">
             {PRESET_TIMES.map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => handleSetTime(preset)}
-                className={`pressable min-h-11 t-data-sm transition-colors ${
+                className={`pressable rounded-[11px] min-h-11 t-data-sm transition-colors ${
                   !isCustom && seconds === preset
-                    ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                    : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
+                    ? 'material-button-primary text-[var(--button-primary-fg)]'
+                    : 'material-control text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                 }`}
               >
                 {preset >= 60 ? `${preset / 60}m` : `${preset}s`}
@@ -298,10 +298,10 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               type="button"
               onClick={handleOpenCustom}
               aria-label="Set a custom rest time"
-              className={`pressable min-h-11 transition-colors ${
+              className={`pressable rounded-[11px] min-h-11 transition-colors ${
                 isCustom
-                  ? 'bg-[var(--color-text)] text-[var(--color-base)] t-data-sm tabular-nums'
-                  : 'bg-[var(--color-surface-1)] text-[var(--color-text-dim)] hover:text-[var(--color-text)] t-label-sm'
+                  ? 'material-button-primary text-[var(--button-primary-fg)] t-data-sm tabular-nums'
+                  : 'material-control text-[var(--color-text-dim)] hover:text-[var(--color-text)] t-label-sm'
               }`}
             >
               {isCustom ? formatTime(seconds) : 'Custom'}
@@ -318,7 +318,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 transition={springs.smooth}
                 className="overflow-hidden"
               >
-                <div className="flex items-stretch gap-px bg-[var(--color-border)] border border-[var(--color-border)] mb-2">
+                <div className="material-inset rounded-[11px] overflow-hidden flex items-stretch gap-px mb-2">
                   <input
                     type="text"
                     value={customDraft}
@@ -333,12 +333,12 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                     aria-label="Custom rest time, minutes and seconds"
                     aria-invalid={customError}
                     autoFocus
-                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-[var(--color-surface-1)] text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
+                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-transparent text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
                   />
                   <button
                     type="button"
                     onClick={handleCustomSubmit}
-                    className="pressable min-h-11 px-5 bg-[var(--color-surface-2)] text-[var(--color-text)] t-label-sm hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
+                    className="pressable min-h-11 px-5 material-control text-[var(--color-text)] t-label-sm hover:bg-[var(--button-primary-hover)] hover:text-[var(--button-primary-fg)] transition-colors"
                   >
                     Set
                   </button>
@@ -353,7 +353,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <button
             type="button"
             onClick={handleDismiss}
-            className="pressable w-full min-h-12 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] hover:bg-[var(--color-text)] hover:text-[var(--color-base)] transition-colors"
+            className="pressable w-full min-h-12 rounded-[11px] material-control t-label text-[var(--color-text)] hover:bg-[var(--button-primary-hover)] hover:text-[var(--button-primary-fg)] transition-colors"
           >
             Done resting
           </button>

@@ -1,5 +1,27 @@
 # Current work snapshot
 
+Recorded 2026-09-05. The saved checkout is integrating latest main `aba6358`
+(PRs #106–108) on `feat/refined-app-icon`; the earlier local work was committed
+as `ae9036e`. The user requested a PR and merge containing the icon, instruction
+cleanup, app simplification and approved brand animation. Their subsequent
+concern about the stale starting point prompted a fresh latest-main audit before
+publication. See [the reassessment](../audits/2026-09-05-latest-app-simplification.md).
+
+The latest Ivory/Black materials, native glass navigation and hosted
+Gemini/Tavily estimate-first meal analysis are preserved. Retained changes are
+the removal of misleading readiness/streak indicators, complete nutrition
+saves with existing trial retry IDs, the weekly chart, and the shared intro.
+The Studio skill now reflects the newer approved materials. The newer main's
+embedded handoff is preserved in the [native glass archive](archive/2026-09-04-native-glass.md).
+
+Integrated checks: 821 tests passed, lint/instruction checks passed, production
+web build passed, Capacitor sync passed, and the unsigned Xcode simulator
+build passed. Physical-device appearance/behavior and production
+food-analysis calls remain unverified. No new backend or TestFlight release is
+authorized by the local audit. Preserve unrelated `supabase/.temp/linked-project.json`.
+
+## Earlier snapshot
+
 Recorded 2026-09-04. Read when resuming work; confirm current git state before
 acting. This file records state, not fresh authorization to merge or release.
 

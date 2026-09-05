@@ -1074,7 +1074,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
             {/* Day plan */}
             <div className="space-y-2">
-              <span className="t-label block pb-2.5 border-b border-[var(--color-text)]">{activeCustomDay.day_name} · plan</span>
+              <span className="t-label block pb-2.5 border-b border-[var(--color-border)]">{activeCustomDay.day_name} · plan</span>
               {activeCustomDay.exercises.length === 0 ? (
                 <p className="t-caption py-3 border-b border-dashed border-[var(--color-border-strong)]">
                   No exercises yet — add from the library above.
@@ -1084,7 +1084,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                   <div
                     key={exercise.local_id}
                     className={`border-t border-[var(--color-border)] py-3 space-y-3 ${
-                      exercise.superset_group_id ? 'bg-[var(--color-surface-2)] px-3' : ''
+                      exercise.superset_group_id ? 'material-surface px-3' : ''
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">

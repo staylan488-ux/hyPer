@@ -1,0 +1,16 @@
+[
+  {
+    "meal": "Illustrative three-piece label, six pieces consumed (replace this example)",
+    "estimatedKcal": 360,
+    "referenceKcal": 360,
+    "reference": "EXAMPLE ONLY: 180 kcal per 3 pieces multiplied by 6/3; not a real product label",
+    "amountConfirmed": true
+  },
+  {
+    "meal": "Illustrative photo estimate with unknown oil (replace this example)",
+    "estimatedKcal": 650,
+    "referenceKcal": null,
+    "reference": "No complete weighed recipe, cannot score accuracy",
+    "amountConfirmed": false
+  }
+]

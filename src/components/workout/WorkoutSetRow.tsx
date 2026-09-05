@@ -97,7 +97,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       {performance !== 'unknown' && <span className="sr-only">{performance} previous workout</span>}
     </button>
     {composer && createPortal(
-      <section className="studio-workout-dock" aria-label={`Set ${setNumber} entry`} hidden={composerHidden}>
+      <section className="material-glass studio-workout-dock" aria-label={`Set ${setNumber} entry`} hidden={composerHidden}>
         <div className="studio-composer-label">
           <span className="t-label">{set.completed ? 'Edit' : 'Set'} {String(setNumber).padStart(2, '0')}</span>
           <span className="t-caption" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Previously saved' : 'Ready to log'}</span>

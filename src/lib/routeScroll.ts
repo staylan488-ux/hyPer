@@ -47,6 +47,7 @@ export function bindRouteScroll(
   const navigation = surfaces.navigation ?? viewport;
   navigation.addEventListener('click', remember, { capture: true });
   surfaces.history?.addEventListener('popstate', remember, { capture: true });
+  surfaces.history?.addEventListener('hyper:native-navigation', remember);
 
   return () => {
     observer.disconnect();
@@ -57,5 +58,6 @@ export function bindRouteScroll(
     viewport.removeEventListener('keydown', onKey);
     navigation.removeEventListener('click', remember, { capture: true });
     surfaces.history?.removeEventListener('popstate', remember, { capture: true });
+    surfaces.history?.removeEventListener('hyper:native-navigation', remember);
   };
 }

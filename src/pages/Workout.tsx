@@ -1185,7 +1185,7 @@ export function Workout() {
                 <button
                   type="button"
                   onClick={() => navigate('/train/run')}
-                  className="min-h-11 px-4 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] flex items-center gap-1.5"
+                  className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
                 >
                   <Footprints className="w-4 h-4" strokeWidth={1.75} />
                   Run
@@ -1264,7 +1264,7 @@ export function Workout() {
               <button
                 type="button"
                 onClick={() => navigate('/train/run')}
-                className="min-h-11 px-4 rounded-[11px] bg-[var(--color-surface-2)] t-label text-[var(--color-text)] flex items-center gap-1.5"
+                className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
               >
                 <Footprints className="w-4 h-4" strokeWidth={1.75} />
                 Run
@@ -2008,7 +2008,7 @@ function ExerciseCard({
             className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl bg-[var(--color-surface-3)] border border-[var(--color-border)]">
+            <div className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
               {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
                 className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
                 onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.icon}{action.label}</button>)}
@@ -2045,7 +2045,7 @@ function SetCountButton({
       }}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="pressable flex items-center justify-center w-11 h-11 rounded-[11px] bg-[var(--color-surface-2)] text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
+      className="pressable flex items-center justify-center w-11 h-11 rounded-[11px] material-control text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
     >
       {children}
     </button>

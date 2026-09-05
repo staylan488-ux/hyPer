@@ -17,6 +17,9 @@ export function playBrandIntro(
   overlay.append(veil);
   document.body.append(overlay);
 
+  const documentElement = document.documentElement;
+  const previousIntro = documentElement.getAttribute('data-brand-intro');
+  documentElement.setAttribute('data-brand-intro', 'true');
   const visibility = target.style.visibility;
   target.style.visibility = 'hidden';
   const animations: Animation[] = [];
@@ -29,6 +32,8 @@ export function playBrandIntro(
     animations.forEach((animation) => animation.cancel());
     target.style.visibility = visibility;
     overlay.remove();
+    if (previousIntro === null) documentElement.removeAttribute('data-brand-intro');
+    else documentElement.setAttribute('data-brand-intro', previousIntro);
     window.removeEventListener('click', skip, true);
     window.removeEventListener('keydown', skip, true);
     window.removeEventListener('wheel', finish, true);

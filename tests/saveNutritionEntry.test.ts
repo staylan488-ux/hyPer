@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   insert: vi.fn(),
   update: vi.fn(),
+  upsert: vi.fn(),
   eq: vi.fn(),
 }));
 
@@ -25,6 +26,7 @@ const payload = {
 
 function mockWrite(error: unknown = null) {
   mocks.insert.mockResolvedValue({ error });
+  mocks.upsert.mockResolvedValue({ error });
   mocks.eq.mockImplementation((column: string) => (
     column === 'user_id' ? Promise.resolve({ error }) : mocks
   ));
@@ -55,18 +57,45 @@ describe('nutrition entry persistence', () => {
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 
+  it('reuses the same trial entry id after an uncertain save, keeping the complete payload', async () => {
+    mocks.upsert.mockRejectedValueOnce(new Error('Connection lost'));
+
+    await expect(persistNutritionEntry(payload, undefined, 'retry-1')).rejects.toThrow('Connection lost');
+    await persistNutritionEntry(payload, undefined, 'retry-1');
+
+    expect(mocks.upsert.mock.calls).toEqual([
+      [{ id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' }],
+      [{ id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' }],
+    ]);
+    expect(mocks.insert).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('updates an existing entry instead of creating a trial entry when both ids are supplied', async () => {
+    await persistNutritionEntry(payload, 'entry-1', 'retry-1');
+
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith(payload);
+    expect(mocks.eq.mock.calls).toEqual([['id', 'entry-1'], ['user_id', 'user-1']]);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
   it.each(['logged_at', 'meal_type', 'created_at', 'group_id', 'source'])(
-    'rejects a missing %s column without retrying an incomplete insert or update',
+    'rejects a missing %s column without retrying an incomplete insert, update or upsert',
     async (column) => {
       const error = { message: `column nutrition_logs.${column} does not exist in schema cache` };
       mockWrite(error);
 
       await expect(persistNutritionEntry(payload)).rejects.toBe(error);
       await expect(persistNutritionEntry(payload, 'entry-1')).rejects.toBe(error);
+      await expect(persistNutritionEntry(payload, undefined, 'retry-1')).rejects.toBe(error);
 
       expect(mocks.insert).toHaveBeenCalledExactlyOnceWith({ user_id: 'user-1', ...payload });
       expect(mocks.update).toHaveBeenCalledExactlyOnceWith(payload);
-      expect(mocks.from).toHaveBeenCalledTimes(2);
+      expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith(
+        { id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' },
+      );
+      expect(mocks.from).toHaveBeenCalledTimes(3);
     },
   );
 

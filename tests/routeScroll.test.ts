@@ -123,3 +123,20 @@ describe('tab scroll continuity', () => {
     expect(disconnect).toHaveBeenCalledOnce();
   });
 });
+
+describe('native tab scroll continuity', () => {
+  it('captures a pending compositor position before the native router changes pages', () => {
+    setupObserver();
+    const viewport = new ScrollViewport();
+    const memory = new Map<string, number>();
+    const history = new EventTarget();
+    const cleanup = bindRouteScroll(viewport.asElement(), '/', memory, { history });
+    viewport.scrollTop = 430;
+    history.dispatchEvent(new Event('hyper:native-navigation'));
+    viewport.scrollTop = 0;
+    cleanup();
+    expect(memory.get('/')).toBe(430);
+    history.dispatchEvent(new Event('hyper:native-navigation'));
+    expect(memory.get('/')).toBe(430);
+  });
+});

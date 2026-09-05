@@ -292,7 +292,7 @@ export function Dashboard() {
               <Link
                 to={s.to}
                 onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border)]"
+                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]"
               >
                 <span className="flex-1 min-w-0">
                   <span className="t-heading block">{s.label}</span>

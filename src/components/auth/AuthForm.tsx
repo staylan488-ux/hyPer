@@ -102,7 +102,7 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-base)] flex flex-col justify-center px-7 py-14">
+    <div className="material-foundation min-h-screen flex flex-col justify-center px-7 py-14">
       <div className="w-full max-w-[26rem] mx-auto">
         {/* ─── Masthead ─── */}
         <header>

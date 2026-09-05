@@ -26,6 +26,8 @@ import {
   type PhotoAnalysisProvider,
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
+import { FoodTrialLogger } from './FoodTrialLogger';
+import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
 import { combineIntoOneMeal } from '@/lib/combineMeal';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
@@ -135,6 +137,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [initialEntry?.date, selectedDate]);
 
   const [mode, setMode] = useState<'saved' | 'search' | 'barcode' | 'manual' | 'photo'>(initialEntry ? 'manual' : 'saved');
+  const [foodAnalysisMode] = useState(getFoodAnalysisMode);
+  const [trialInitialHint, setTrialInitialHint] = useState('');
+  const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
+  const trialEntryIds = useRef(new WeakMap<TrialFoodItem, string>());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
@@ -317,6 +323,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
   const handleDescribeFood = async () => {
     if (foodDescriptionBusy) return;
+    if (foodAnalysisMode === 'gemini') {
+      setTrialInitialHint(foodDescription);
+      setMode('photo');
+      return;
+    }
 
     setFoodDescriptionBusy(true);
     setFoodDescriptionError(null);
@@ -1068,6 +1079,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     servingsCount: number,
     source = initialEntry?.source || 'manual',
     shouldComplete = true,
+    retryEntryId?: string,
   ): Promise<boolean> => {
     setSaveError(null);
     const loggedAt = buildLoggedAt(entryDate, timeValue);
@@ -1088,7 +1100,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     };
 
     try {
-      await persistNutritionEntry(fullPayload, initialEntry?.id);
+      await persistNutritionEntry(fullPayload, initialEntry?.id, retryEntryId);
       if (shouldComplete) onComplete();
       return true;
     } catch (error) {
@@ -1126,6 +1138,32 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       carbs: Math.round((item.groundedFood?.carbs ?? item.modelCarbs) * factor * 10) / 10,
       fat: Math.round((item.groundedFood?.fat ?? item.modelFat) * factor * 10) / 10,
     };
+  };
+
+  const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void) => {
+    if (!timeValue) throw new Error('Choose a logging time.');
+    if (initialEntry && items.length !== 1) throw new Error('Keep one food when editing an existing entry.');
+    for (const item of items) {
+      const entryId = trialEntryIds.current.get(item) || crypto.randomUUID();
+      trialEntryIds.current.set(item, entryId);
+      const totals = trialFoodTotals(item);
+      const foodId = trialSavedFoods.current.get(item) || await upsertFoodIfNeeded({
+        id: `photo-gemini-${Date.now()}`,
+        user_id: null,
+        name: item.name.trim(),
+        ...totals,
+        serving_size: item.quantity,
+        serving_unit: item.unit,
+        source: 'custom',
+        fdc_id: null,
+        description: `${item.evidence === 'label' ? 'Label-based nutrition.' : 'Estimated nutrition.'} ${item.amountConfirmed ? 'Amount supplied or adjusted by user.' : 'Estimated amount reviewed when saved.'} ${item.notes}`,
+      });
+      if (!foodId) throw new Error(`Could not save ${item.name}.`);
+      trialSavedFoods.current.set(item, foodId);
+      if (!await saveNutritionEntry(foodId, 1, item.evidence === 'label' ? 'gemini_label' : 'gemini_estimate', false, entryId)) throw new Error(`Could not log ${item.name}.`);
+      onItemSaved(item);
+    }
+    onComplete();
   };
 
   const handleSavePhotoItems = async () => {
@@ -1423,7 +1461,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}{photoModel ? ` · ${photoModel}` : ''}
             </span>
           </div>
-          <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-text)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
+          <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-border)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
           {photoSummary && <p className="t-caption mt-4">{photoSummary}</p>}
           <p className="t-caption mt-2">Review every component and portion. USDA suggestions are never applied until you choose one.</p>
         </div>
@@ -1525,7 +1563,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {whenRow}
 
         <div
-          className="sticky z-20 -mx-6 rounded-t-[20px] bg-[var(--color-surface-2)] px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
           style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
         >
           {photoError && (
@@ -1582,7 +1620,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {/* ── Food header + macro ledger ── */}
         <div>
           <span className="t-label-sm block mb-2">{loggerMode === 'edit' ? 'Editing entry' : 'Selected'}</span>
-          <h3 className="t-title pb-4 border-b border-[var(--color-text)]">{selectedFood.name}</h3>
+          <h3 className="t-title pb-4 border-b border-[var(--color-border)]">{selectedFood.name}</h3>
 
           {selectedFoodMeta?.source === 'photo' && (
             <div className="mt-5">
@@ -1763,7 +1801,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           { value: 'search', label: 'USDA' },
           { value: 'barcode', label: 'Scan' },
           { value: 'manual', label: 'Manual' },
-          { value: 'photo', label: 'Photo' },
+          { value: 'photo', label: foodAnalysisMode === 'gemini' ? 'AI' : 'Photo' },
         ]}
         distribution="equal"
         size="sm"
@@ -1799,7 +1837,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           </div>
 
-          <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
+          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
@@ -1898,7 +1936,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         </div>
       ) : mode === 'search' ? (
         <>
-          <div className="flex items-center gap-3 border-b border-[var(--color-border-strong)] pb-2">
+          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
@@ -1979,7 +2017,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <div className="space-y-4">
             <BarcodeScanner onDetected={handleBarcodeDetected} />
             {missedBarcode && (
-              <div className="bg-[var(--color-surface-2)] rounded-[11px] p-4">
+              <div className="material-surface rounded-[11px] p-4">
                 <p className="t-caption">
                   No catalog match for barcode {missedBarcode}. Enter it from the
                   package label once and it will be yours on every future scan.
@@ -2052,7 +2090,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   loading={foodDescriptionBusy}
                   disabled={foodDescriptionBusy || foodDescription.trim().length < 5}
                 >
-                  Research &amp; fill fields
+                  {foodAnalysisMode === 'gemini' ? 'Review with Gemini' : 'Research & fill fields'}
                 </Button>
 
                 {foodDescriptionError && (
@@ -2241,6 +2279,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </>
+      ) : foodAnalysisMode === 'gemini' ? (
+        <FoodTrialLogger whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
       ) : (
         <div className="space-y-5">
           <input
@@ -2272,7 +2312,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <button
                 type="button"
                 onClick={() => topPhotoInputRef.current?.click()}
-                className="pressable w-full rounded-[11px] bg-[var(--color-surface-2)] py-10 flex flex-col items-center gap-3"
+                className="pressable w-full rounded-[11px] material-control py-10 flex flex-col items-center gap-3"
               >
                 <span className="flex items-center justify-center w-12 h-12">
                   <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
@@ -2299,7 +2339,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <button
                   type="button"
                   onClick={() => handleRetakePhoto('top')}
-                  className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
+                  className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"
                 >
                   <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                   Retake
@@ -2324,7 +2364,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   <button
                     type="button"
                     onClick={() => handleRetakePhoto('side')}
-                    className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 bg-[color-mix(in_srgb,var(--color-base)_82%,transparent)] backdrop-blur t-label text-[var(--color-text)]"
+                    className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"
                   >
                     <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                     Retake
@@ -2336,7 +2376,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 type="button"
                 onClick={() => sidePhotoInputRef.current?.click()}
                 disabled={photoAnalyzing}
-                className="pressable w-full min-h-20 rounded-[11px] bg-[var(--color-surface-2)] px-4 flex items-center gap-4 text-left disabled:opacity-40"
+                className="pressable w-full min-h-20 rounded-[11px] material-control px-4 flex items-center gap-4 text-left disabled:opacity-40"
               >
                 <span className="flex items-center justify-center w-10 h-10 shrink-0">
                   <ImagePlus className="w-4 h-4 text-[var(--color-text-dim)]" strokeWidth={1.5} />

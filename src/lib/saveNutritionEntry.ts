@@ -11,7 +11,11 @@ type NutritionEntryPayload = {
 };
 
 /** Save the complete entry, or fail without silently discarding its fields. */
-export async function persistNutritionEntry(payload: NutritionEntryPayload, entryId?: string): Promise<void> {
+export async function persistNutritionEntry(
+  payload: NutritionEntryPayload,
+  entryId?: string,
+  retryEntryId?: string,
+): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
 
@@ -20,8 +24,11 @@ export async function persistNutritionEntry(payload: NutritionEntryPayload, entr
       .update(payload)
       .eq('id', entryId)
       .eq('user_id', user.id)
-    : await supabase.from('nutrition_logs')
-      .insert({ user_id: user.id, ...payload });
+    : retryEntryId
+      ? await supabase.from('nutrition_logs')
+        .upsert({ id: retryEntryId, user_id: user.id, ...payload }, { onConflict: 'id' })
+      : await supabase.from('nutrition_logs')
+        .insert({ user_id: user.id, ...payload });
 
   if (error) throw error;
 }
