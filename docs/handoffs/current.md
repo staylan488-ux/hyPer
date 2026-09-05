@@ -1,8 +1,10 @@
 # Current work snapshot
 
-Recorded 2026-09-05. The saved checkout is integrating latest main `aba6358`
-(PRs #106–108) on `feat/refined-app-icon`; the earlier local work was committed
-as `ae9036e`. The user requested a PR and merge containing the icon, instruction
+Recorded 2026-09-05. The saved checkout integrated latest main `aba6358`
+(PRs #106–108) in `871a0b1` on `feat/refined-app-icon`; the earlier local work was
+committed as `ae9036e`. [PR #109](https://github.com/staylan488-ux/hyPer/pull/109)
+contains this batch; check its current merge status before resuming. The user
+requested a PR and merge containing the icon, instruction
 cleanup, app simplification and approved brand animation. Their subsequent
 concern about the stale starting point prompted a fresh latest-main audit before
 publication. See [the reassessment](../audits/2026-09-05-latest-app-simplification.md).
