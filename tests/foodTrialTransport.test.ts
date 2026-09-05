@@ -47,6 +47,24 @@ describe('hosted food trial transport', () => {
     fetcher.mockImplementation(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, clarification: 'Which package size?' })));
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('clarification details');
   });
+  it('marks an answered or skipped clarification as consumed for the hosted model', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult)));
+    vi.stubGlobal('fetch', fetcher);
+    const hint = 'Lunch\nQuestion: What is the main food?\nAnswer: Chicken';
+    const result = await analyzeFoodTrial({ images: [], hint, accessToken: 'user-token', clarificationUsed: true });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ images: [], hint, clarificationUsed: true });
+    expect(result.items).toHaveLength(1);
+  });
+  it('never forwards a second question from a stale or noncompliant backend', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, items: [], clarification: 'Could you add the exact package nutrition label?' })));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(analyzeFoodTrial({ images: [], hint: 'Chicken with sauce; use an estimate', accessToken: 'user-token', clarificationUsed: true })).rejects.toThrow('couldn’t make an estimate');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it('does not turn an empty final estimate into another clarification screen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, items: [], clarification: null }))));
+    await expect(analyzeFoodTrial({ images: [], hint: 'Unknown lunch', accessToken: 'user-token', clarificationUsed: true })).rejects.toThrow('No food could be identified');
+  });
   it('rejects empty inputs before network and sends photos plus hint', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult)));
     vi.stubGlobal('fetch', fetcher);

@@ -1,6 +1,7 @@
 export interface MealInput {
   images: { angle: 'top' | 'side'; imageBase64: string; mimeType: string }[];
   hint: string;
+  clarificationUsed?: boolean;
 }
 
 export interface TrialConfig {
@@ -28,7 +29,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 // Change the content namespace when the analysis pipeline changes, while retaining
 // the same daily quota objects. A provider change must never refresh the quota.
-export const ANALYSIS_VERSION = 'gemini-tavily-v1';
+export const ANALYSIS_VERSION = 'gemini-tavily-v2';
 
 export function validateConfig(config: TrialConfig): void {
   if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1 || config.maxAttempts > 40
@@ -84,6 +85,7 @@ async function boundedJson(request: Request): Promise<Record<string, unknown>> {
 
 export function normalizeInput(body: Record<string, unknown>): MealInput {
   if (body.hint !== undefined && typeof body.hint !== 'string') throw new RequestError(400, 'invalid_request', 'Invalid meal description.');
+  if (body.clarificationUsed !== undefined && typeof body.clarificationUsed !== 'boolean') throw new RequestError(400, 'invalid_request', 'Invalid clarification state.');
   const hint = ((body.hint ?? '') as string).trim().normalize('NFC');
   const rawImages = body.images ?? [];
   if (hint.length > 1500 || !Array.isArray(rawImages) || rawImages.length > 2) {
@@ -107,7 +109,7 @@ export function normalizeInput(body: Record<string, unknown>): MealInput {
     return { angle, imageBase64: btoa(binary), mimeType };
   }).sort((a, b) => a.angle.localeCompare(b.angle) || a.imageBase64.localeCompare(b.imageBase64));
   if (!images.length && hint.length < 5) throw new RequestError(400, 'invalid_request', 'Add a photo or describe your meal.');
-  return { images, hint };
+  return { images, hint, clarificationUsed: body.clarificationUsed === true || /(?:^|\n)Answer:/i.test(hint) };
 }
 
 async function inputHash(input: MealInput): Promise<string> {

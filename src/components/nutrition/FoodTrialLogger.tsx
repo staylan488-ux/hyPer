@@ -21,7 +21,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
   const [hint, setHint] = useState(initialHint);
   const [answer, setAnswer] = useState('');
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
-  const [analyzedPhotos, setAnalyzedPhotos] = useState<File[]>([]);
+  const [clarificationUsed, setClarificationUsed] = useState(false);
   const [result, setResult] = useState<FoodTrialResult | null>(null);
   const [items, setItems] = useState<TrialFoodItem[]>([]);
   const [busy, setBusy] = useState<'analysis' | 'save' | null>(null);
@@ -36,22 +36,20 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
   const update = (index: number, patch: Partial<TrialFoodItem>) => {
     setItems((current) => current.map((item, position) => position === index ? { ...item, ...patch } : item));
   };
-  const photosChanged = photos.length !== analyzedPhotos.length || photos.some((photo, index) => photo.file !== analyzedPhotos[index]);
   const analyze = async (clarify = false) => {
-    if (busyRef.current || (!clarify && !hint.trim() && !photos.length) || (clarify && !answer.trim() && !photosChanged)) return;
+    if (busyRef.current || (!clarify && !hint.trim() && !photos.length)) return;
     busyRef.current = true;
     setBusy('analysis');
     setError(null);
     try {
       const requestHint = clarify ? buildClarifiedMealHint(hint, result?.clarification || result?.summary || '', answer) : hint;
+      if (clarify) setClarificationUsed(true);
       const { data } = await supabase.auth.getSession();
       if (!data.session?.access_token) throw new Error('Sign in again to analyze your meal.');
       const images: PhotoAnalysisImage[] = await Promise.all(photos.map(async (photo, index) => ({
         ...await prepareImage(photo.file), angle: index === 0 ? 'top' as const : 'side' as const,
       })));
-      const response = await analyzeFoodTrial({ images, hint: requestHint, accessToken: data.session.access_token });
-      setAnalyzedPhotos(photos.map((photo) => photo.file));
-      setHint(requestHint);
+      const response = await analyzeFoodTrial({ images, hint: requestHint, accessToken: data.session.access_token, ...(clarify ? { clarificationUsed: true } : {}) });
       setAnswer('');
       setResult(response);
       setItems(response.items.map((item) => ({ ...item })));
@@ -82,7 +80,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     const itemTotals = trialFoodTotals(item);
     return { calories: sum.calories + itemTotals.calories, protein: sum.protein + itemTotals.protein, carbs: sum.carbs + itemTotals.carbs, fat: sum.fat + itemTotals.fat };
   }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
-  const changeMeal = () => { setResult(null); setItems([]); setAnswer(''); setError(null); };
+  const changeMeal = () => { setResult(null); setItems([]); setAnswer(''); setClarificationUsed(false); setError(null); };
   const photoControls = <>
     <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => {
       const selected = Array.from(event.target.files || []);
@@ -95,10 +93,10 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       setPhotos((current) => [...current, ...selected.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
     }} />
     {photos.length > 0 && <div className="grid grid-cols-2 gap-3">{photos.map((photo, index) => <div key={photo.preview} className="space-y-2">
-      <img src={photo.preview} alt={`Meal or nutrition label ${index + 1}`} className="w-full h-36 object-cover rounded-xl" />
+      <img src={photo.preview} alt={`Meal photo ${index + 1}`} className="w-full h-36 object-cover rounded-xl" />
       <Button variant="ghost" disabled={!!busy} onClick={() => { URL.revokeObjectURL(photo.preview); setPhotos((current) => current.filter((entry) => entry !== photo)); }}>Remove photo {index + 1}</Button>
     </div>)}</div>}
-    <Button variant="secondary" className="w-full" disabled={!!busy || photos.length === 2} onClick={() => inputRef.current?.click()}><ImagePlus className="w-4 h-4" />Add photo or label</Button>
+    <Button variant="secondary" className="w-full" disabled={!!busy || photos.length === 2} onClick={() => inputRef.current?.click()}><ImagePlus className="w-4 h-4" />Add photo</Button>
   </>;
 
   return <div className="space-y-6">
@@ -112,10 +110,11 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       <p className="t-caption">Photo, text, or both. Include the amount and any added oil or sauce you know about.</p>
       <Button className="w-full" loading={busy === 'analysis'} disabled={!!busy || (!hint.trim() && !photos.length)} onClick={() => void analyze()}><Sparkles className="w-4 h-4" />Analyze meal</Button>
     </> : (result.clarification || result.items.length === 0) && !saveStarted ? <>
-      <div><p className="t-label">One detail</p><h3 className="t-heading mt-3">{result.clarification || result.summary || 'What food and amount did you have?'}</h3></div>
-      <Input label="Your answer" value={answer} disabled={!!busy} onChange={(event) => setAnswer(event.target.value)} placeholder="Add the missing detail" />
-      {photoControls}
-      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'analysis'} disabled={!!busy || (!answer.trim() && !photosChanged)} onClick={() => void analyze(true)}>Update estimate</Button></div>
+      {clarificationUsed ? <div><p className="t-label">Your meal</p><h3 className="t-heading mt-3">{busy === 'analysis' ? 'Making your estimate…' : 'We couldn’t estimate this meal yet.'}</h3></div> : <>
+        <div><p className="t-label">One quick detail</p><h3 className="t-heading mt-3">{result.clarification || 'What is the main food in this meal?'}</h3></div>
+        <Input label="Your answer (optional)" value={answer} disabled={!!busy} onChange={(event) => setAnswer(event.target.value)} placeholder="Or let us use an estimate" />
+      </>}
+      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'analysis'} disabled={!!busy} onClick={() => void analyze(true)}>{clarificationUsed ? 'Retry estimate' : answer.trim() ? 'Update estimate' : 'Use an estimate'}</Button></div>
     </> : <>
       <div>
         <p className="t-label">Your meal</p>

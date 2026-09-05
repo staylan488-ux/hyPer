@@ -36,8 +36,12 @@ describe('one-detail meal clarification', () => {
   it('preserves the meal and question when adding the user’s answer', () => {
     expect(buildClarifiedMealHint('Chicken samosas', 'How many pieces?', 'Six')).toBe('Chicken samosas\nQuestion: How many pieces?\nAnswer: Six');
   });
-  it('allows a new label photo to answer the clarification', () => {
-    expect(buildClarifiedMealHint('Six samosas', 'Which package size?', '')).toContain('Photo selection updated for clarification.');
+  it('lets the user skip the question without a photo or label', () => {
+    const hint = buildClarifiedMealHint('Lunch with sauce', 'What is the main food?', '');
+    expect(hint).toContain('Lunch with sauce\nQuestion: What is the main food?');
+    expect(hint).toContain('Answer: Use a reasonable estimate');
+    expect(hint).toContain('Do not ask another question or request a package nutrition label.');
+    expect(hint).not.toContain('Photo selection updated');
   });
   it('does not silently truncate a material amount or earlier detail at the request limit', () => {
     expect(() => buildClarifiedMealHint('x'.repeat(1490), 'How much?', 'Six pieces')).toThrow('too long');
