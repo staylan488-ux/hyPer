@@ -1,0 +1,60 @@
+.brand-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: normal;
+  font-variation-settings: 'opsz' 96;
+  line-height: .9;
+  letter-spacing: -.05em;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.brand-wordmark--dashboard { font-size: 24px; }
+.brand-wordmark--login { font-size: 64px; }
+.brand-wordmark__p {
+  color: var(--color-accent);
+  font-style: italic;
+  font-weight: 400;
+  transform-origin: 50% 60%;
+}
+
+.brand-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: auto;
+  user-select: none;
+  overflow: hidden;
+}
+
+.brand-intro__veil {
+  position: absolute;
+  inset: 0;
+  background: var(--color-base);
+}
+
+.brand-intro__mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.brand-intro__rule {
+  position: absolute;
+  left: 50%;
+  width: 48px;
+  height: 1px;
+  margin-left: -24px;
+  background: var(--color-accent);
+  transform-origin: center;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-intro { display: none; }
+  .brand-wordmark { visibility: visible !important; }
+}

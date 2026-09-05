@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
+import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
@@ -143,6 +144,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [measurementAmount, setMeasurementAmount] = useState(initialEntry ? String(initialEntry.servings) : '1');
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('serving');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [entryDate, setEntryDate] = useState<Date>(initialLogDate);
   const [timeValue, setTimeValue] = useState(() =>
     toLocalTimeInput(initialEntry?.logged_at || null, isToday(initialLogDate) ? new Date() : initialLogDate)
@@ -1067,12 +1069,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     source = initialEntry?.source || 'manual',
     shouldComplete = true,
   ): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.error('No user found');
-      return false;
-    }
-
+    setSaveError(null);
     const loggedAt = buildLoggedAt(entryDate, timeValue);
     const day = format(entryDate, 'yyyy-MM-dd');
     const selectedGroup = orderedGroups.find((group) => group.id === groupId) || null;
@@ -1090,93 +1087,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       logged_at: loggedAt,
     };
 
-    const legacyFullPayload = {
-      ...fullPayload,
-      group_id: undefined,
-      source: undefined,
-    };
-
-    const loggedAtFallbackPayload = {
-      ...legacyFullPayload,
-      logged_at: undefined,
-      created_at: loggedAt,
-    };
-
-    const mealAndLoggedFallbackPayload = {
-      ...loggedAtFallbackPayload,
-      meal_type: undefined,
-    };
-
-    const mealAndLoggedNoCreatedPayload = {
-      ...legacyFullPayload,
-      logged_at: undefined,
-      meal_type: undefined,
-    };
-
-    const payloadAttempts = [
-      fullPayload,
-      legacyFullPayload,
-      loggedAtFallbackPayload,
-      mealAndLoggedFallbackPayload,
-      mealAndLoggedNoCreatedPayload,
-    ];
-
-    let lastError: unknown = null;
-
-    for (const payload of payloadAttempts) {
-      const cleanPayload = Object.fromEntries(
-        Object.entries(payload).filter(([, value]) => value !== undefined)
-      );
-
-      if (initialEntry) {
-        const { error } = await supabase
-          .from('nutrition_logs')
-          .update(cleanPayload)
-          .eq('id', initialEntry.id)
-          .eq('user_id', user.id);
-
-        if (!error) {
-          if (shouldComplete) onComplete();
-          return true;
-        }
-
-        lastError = error;
-        const shouldRetry =
-          shouldDropColumn(error, 'logged_at')
-          || shouldDropColumn(error, 'meal_type')
-          || shouldDropColumn(error, 'created_at')
-          || shouldDropColumn(error, 'group_id')
-          || shouldDropColumn(error, 'source');
-        if (!shouldRetry) {
-          console.error('Error updating entry:', error);
-          return false;
-        }
-      } else {
-        const { error } = await supabase
-          .from('nutrition_logs')
-          .insert({ user_id: user.id, ...cleanPayload });
-
-        if (!error) {
-          if (shouldComplete) onComplete();
-          return true;
-        }
-
-        lastError = error;
-        const shouldRetry =
-          shouldDropColumn(error, 'logged_at')
-          || shouldDropColumn(error, 'meal_type')
-          || shouldDropColumn(error, 'created_at')
-          || shouldDropColumn(error, 'group_id')
-          || shouldDropColumn(error, 'source');
-        if (!shouldRetry) {
-          console.error('Error logging food:', error);
-          return false;
-        }
-      }
+    try {
+      await persistNutritionEntry(fullPayload, initialEntry?.id);
+      if (shouldComplete) onComplete();
+      return true;
+    } catch (error) {
+      console.error('Error saving nutrition entry:', error);
+      setSaveError('Could not save this entry. Your changes are still here. Please try again.');
+      return false;
     }
-
-    console.error('Error saving nutrition entry after retries:', lastError);
-    return false;
   };
 
   const handleSaveFromSelectedFood = async (food: Food, servingsCount: number) => {
@@ -1460,6 +1379,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   /* ── Shared "when" row: date · time · destination ── */
   const whenRow = (
     <div className="grid grid-cols-2 gap-3">
+      {saveError && (
+        <p role="alert" className="col-span-2 t-caption text-[var(--color-accent)]">{saveError}</p>
+      )}
       <DateField
         value={entryDate}
         onChange={(nextDate) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -15,7 +16,6 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
-import { DashboardMonolithIntro } from '@/components/intro/DashboardMonolithIntro';
 import { supabase } from '@/lib/supabase';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
@@ -225,114 +225,111 @@ export function Dashboard() {
   ];
 
   return (
-    <>
-      <Screen>
-        <header>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="t-display-italic text-[21px]">hyPer</span>
-            <span className="t-caption">{format(new Date(), 'EEE · MMM d')}</span>
+    <Screen>
+      <header>
+        <div className="flex items-baseline justify-between gap-3">
+          <BrandWordmark variant="dashboard" />
+          <span className="t-caption">{format(new Date(), 'EEE · MMM d')}</span>
+        </div>
+        <h1 className="t-label mt-5">Today</h1>
+      </header>
+
+      <section className="mt-5">
+        <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
+      </section>
+
+      {/* ── Fuel ── */}
+      <section
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+      >
+        <h2 className="t-label mb-4">Fuel</h2>
+
+        {loading ? (
+          <div className="space-y-4">
+            <div className="shimmer h-12 w-40" />
+            <div className="shimmer h-px w-full" />
           </div>
-          <h1 className="t-label mt-5">Today</h1>
-        </header>
+        ) : hasAnyNutrition ? (
+          <>
+            <div className="mb-4">
+              <div className="flex items-baseline gap-2">
+                <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
+                <span className="t-caption">kcal left</span>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" />
+              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" />
+            </div>
+          </>
+        ) : (
+          <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
+        )}
 
-        <section className="mt-5">
-          <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
-        </section>
+        <div className="mt-4 flex gap-3">
+          <Link to="/nutrition" className="flex-1">
+            <Button variant="secondary" size="md" className="w-full">
+              <Plus className="w-4 h-4" strokeWidth={1.75} />
+              Log food
+            </Button>
+          </Link>
+          {!macroTarget && !loading && (
+            <Link to="/settings" className="flex-1">
+              <Button variant="ghost" size="md" className="w-full">Set targets</Button>
+            </Link>
+          )}
+        </div>
+      </section>
 
-        {/* ── Fuel ── */}
+      {/* ── Contents / stations ── */}
+      <nav
+        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+      >
+        <span className="t-label block mb-3">Contents</span>
+        <ul>
+          {stations.map((s) => (
+            <li key={s.to}>
+              <Link
+                to={s.to}
+                onClick={() => tapHaptic()}
+                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border)]"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="t-heading block">{s.label}</span>
+                  <span className="t-caption">{s.sub}</span>
+                </span>
+                <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* ── One insight, only when it exists ── */}
+      {insight && (
         <section
           className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
         >
-          <h2 className="t-label mb-4">Fuel</h2>
-
-          {loading ? (
-            <div className="space-y-4">
-              <div className="shimmer h-12 w-40" />
-              <div className="shimmer h-px w-full" />
+          <Link to="/analysis" className="block group">
+            <div className="flex items-baseline justify-between mb-3">
+              <span className="t-label">This week</span>
+              <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
             </div>
-          ) : hasAnyNutrition ? (
-            <>
-              <div className="mb-4">
-                <div className="flex items-baseline gap-2">
-                  <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                  <span className="t-caption">kcal left</span>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" />
-                <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" />
-              </div>
-            </>
-          ) : (
-            <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
-          )}
-
-          <div className="mt-4 flex gap-3">
-            <Link to="/nutrition" className="flex-1">
-              <Button variant="secondary" size="md" className="w-full">
-                <Plus className="w-4 h-4" strokeWidth={1.75} />
-                Log food
-              </Button>
-            </Link>
-            {!macroTarget && !loading && (
-              <Link to="/settings" className="flex-1">
-                <Button variant="ghost" size="md" className="w-full">Set targets</Button>
-              </Link>
+            <p className="t-heading mb-2">{insight.headline}</p>
+            <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
+            {insight.landmark && (
+              <VolumeRail
+                current={insight.volume.weekly_sets}
+                mev={insight.landmark.mev}
+                mavLow={insight.landmark.mav_low}
+                mavHigh={insight.landmark.mav_high}
+                mrv={insight.landmark.mrv}
+              />
             )}
-          </div>
+          </Link>
         </section>
-
-        {/* ── Contents / stations ── */}
-        <nav
-          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-        >
-          <span className="t-label block mb-3">Contents</span>
-          <ul>
-            {stations.map((s) => (
-              <li key={s.to}>
-                <Link
-                  to={s.to}
-                  onClick={() => tapHaptic()}
-                  className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border)]"
-                >
-                  <span className="flex-1 min-w-0">
-                    <span className="t-heading block">{s.label}</span>
-                    <span className="t-caption">{s.sub}</span>
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* ── One insight, only when it exists ── */}
-        {insight && (
-          <section
-            className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-          >
-            <Link to="/analysis" className="block group">
-              <div className="flex items-baseline justify-between mb-3">
-                <span className="t-label">This week</span>
-                <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
-              </div>
-              <p className="t-heading mb-2">{insight.headline}</p>
-              <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
-              {insight.landmark && (
-                <VolumeRail
-                  current={insight.volume.weekly_sets}
-                  mev={insight.landmark.mev}
-                  mavLow={insight.landmark.mav_low}
-                  mavHigh={insight.landmark.mav_high}
-                  mrv={insight.landmark.mrv}
-                />
-              )}
-            </Link>
-          </section>
-        )}
-      </Screen>
-      <DashboardMonolithIntro />
-    </>
+      )}
+    </Screen>
   );
 }
 

@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 
 const screens: { to: string; index: string; label: string; sub: string }[] = [
+  { to: '/preview/intro', index: '↗', label: 'Brand intro', sub: 'Replay the wordmark animation' },
+  { to: '/preview/sign-in', index: '00', label: 'Sign in', sub: 'Sign-in presentation with mock authentication' },
   { to: '/', index: '01', label: 'Today', sub: 'Dashboard — hero data, fuel, contents' },
   { to: '/train', index: '02', label: 'Train', sub: 'In-session set ledger + rest timer' },
   { to: '/nutrition', index: '03', label: 'Fuel', sub: 'Macros as hero numerals + timeline' },

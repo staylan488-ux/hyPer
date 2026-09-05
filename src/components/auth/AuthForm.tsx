@@ -1,16 +1,14 @@
 import { useCallback, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { Button, Input } from '@/components/shared';
-import { LoginMonolithIntro } from '@/components/intro/LoginMonolithIntro';
-import { markLoginIntroPlayed, shouldPlayLoginIntro } from '@/components/intro/introState';
+import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import { springs } from '@/lib/animations';
 import { isNativeIOS } from '@/lib/nativeBridge';
 
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 
 export function AuthForm() {
-  const reduceMotion = useReducedMotion();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +19,6 @@ export function AuthForm() {
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [signupButtonLocked, setSignupButtonLocked] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
-  const [showIntro, setShowIntro] = useState(() => shouldPlayLoginIntro() && !reduceMotion);
 
   const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
   const showAppleSignIn = isNativeIOS();
@@ -104,19 +101,9 @@ export function AuthForm() {
     }
   };
 
-  const finishIntro = useCallback(() => {
-    markLoginIntroPlayed();
-    setShowIntro(false);
-  }, []);
-
   return (
     <div className="min-h-screen bg-[var(--color-base)] flex flex-col justify-center px-7 py-14">
-      <motion.div
-        className="w-full max-w-[26rem] mx-auto"
-        initial={showIntro ? { opacity: 0, y: 16 } : false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={showIntro ? { duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 1.1 } : springs.smooth}
-      >
+      <div className="w-full max-w-[26rem] mx-auto">
         {/* ─── Masthead ─── */}
         <header>
           <div className="flex items-baseline justify-between">
@@ -124,9 +111,7 @@ export function AuthForm() {
             <span className="t-label-sm">Est. MMXXVI</span>
           </div>
           <div className="border-t border-[var(--color-text)] mt-3 pt-6">
-            <h1 className="[font-family:var(--font-display)] text-[4rem] leading-[0.86] font-light tracking-[-0.05em] text-[var(--color-text)]">
-              hy<span className="italic text-[var(--color-accent)]">P</span>er
-            </h1>
+            <h1><BrandWordmark variant="login" /></h1>
             <p className="t-display-italic text-[var(--color-text-dim)] text-lg mt-5 max-w-[20ch]">
               Strength &amp; nourishment, kept like a journal.
             </p>
@@ -318,9 +303,7 @@ export function AuthForm() {
             </button>
           </p>
         </div>
-      </motion.div>
-
-      <LoginMonolithIntro active={showIntro} onComplete={finishIntro} />
+      </div>
     </div>
   );
 }
