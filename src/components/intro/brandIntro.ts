@@ -24,11 +24,13 @@ export function playBrandIntro(
   target.style.visibility = 'hidden';
   const animations: Animation[] = [];
   let finished = false;
+  let trackingFrame = 0;
 
   const finish = () => {
     if (finished) return;
     finished = true;
     clearTimeout(fontTimeout);
+    window.cancelAnimationFrame(trackingFrame);
     animations.forEach((animation) => animation.cancel());
     target.style.visibility = visibility;
     overlay.remove();
@@ -81,6 +83,8 @@ export function playBrandIntro(
     mark.removeAttribute('aria-label');
     mark.classList.add('brand-intro__mark');
     mark.style.visibility = 'visible';
+    mark.style.left = `${rect.left}px`;
+    mark.style.top = `${rect.top}px`;
     overlay.append(mark);
 
     const [left, p, right] = Array.from(mark.children) as HTMLElement[];
@@ -92,37 +96,46 @@ export function playBrandIntro(
     const centeredP = centerX - (pRect.left - rect.left + pRect.width / 2) * scale;
     const centeredWord = centerX - rect.width * scale / 2;
 
-    // Repaint actual letterforms at their displayed size. Scaling a small text
-    // layer (especially nested animated layers) blurs and clips it in iOS WebKit.
-    // Only three decorative text runs relayout; the real page never moves.
-    const pose = (
-      box: DOMRect, x: number, top: number, size: number,
-      emphasis = 1, dx = 0, dy = 0,
-    ): Keyframe => ({
-      left: `${x + size * (box.left - rect.left + box.width * (1 - emphasis) / 2 + dx)}px`,
-      top: `${top + size * (box.top - rect.top + box.height * (1 - emphasis) * .6 + dy)}px`,
-      fontSize: `${fontSize * size * emphasis}px`,
+    // Paint each run once at its largest displayed size. Flat layers only ever
+    // scale DOWN: no magnified masthead bitmap, nested scale or per-frame text
+    // layout/paint. Transform and opacity animation can stay on the compositor.
+    const rasterSizes = [
+      Math.max(fontSize, fontSize * scale),
+      Math.max(fontSize, fontSize * scale * 1.85),
+      Math.max(fontSize, fontSize * scale),
+    ];
+    [left, p, right].forEach((run, index) => {
+      run.style.fontSize = `${rasterSizes[index]}px`;
     });
-    const pOpening = pose(pRect, centeredP, y, scale, 1.85);
-    const pComposed = pose(pRect, centeredWord, y, scale);
+    const pose = (
+      index: number, x: number, top: number, size: number,
+      emphasis = 1, dx = 0, dy = 0,
+    ): Keyframe => {
+      const box = boxes[index];
+      const xOffset = x - rect.left + size * (box.left - rect.left + box.width * (1 - emphasis) / 2 + dx);
+      const yOffset = top - rect.top + size * (box.top - rect.top + box.height * (1 - emphasis) * .6 + dy);
+      return { transform: `translate(${xOffset}px, ${yOffset}px) scale(${fontSize * size * emphasis / rasterSizes[index]})` };
+    };
+    const pOpening = pose(1, centeredP, y, scale, 1.85);
+    const pComposed = pose(1, centeredWord, y, scale);
     const travel = animate(p, [
-      { ...pose(pRect, centeredP, y, scale, 1.85, 0, .08 * fontSize * 1.85), opacity: 0, offset: 0, easing: EASE },
+      { ...pose(1, centeredP, y, scale, 1.85, 0, .08 * fontSize * 1.85), opacity: 0, offset: 0, easing: EASE },
       { ...pOpening, opacity: 1, offset: .17 },
       { ...pOpening, opacity: 1, offset: .2, easing: EASE },
       { ...pComposed, opacity: 1, offset: .47 },
       { ...pComposed, opacity: 1, offset: .54, easing: EASE },
-      { ...pose(pRect, rect.left, rect.top, 1), opacity: 1, offset: 1 },
+      { ...pose(1, rect.left, rect.top, 1), opacity: 1, offset: 1 },
     ]);
     [left, right].forEach((side, index) => {
-      const box = boxes[index === 0 ? 0 : 2];
-      const opening = pose(box, centeredP, y, scale, 1, (index ? -.3 : .3) * fontSize);
-      const composed = pose(box, centeredWord, y, scale);
+      const runIndex = index === 0 ? 0 : 2;
+      const opening = pose(runIndex, centeredP, y, scale, 1, (index ? -.3 : .3) * fontSize);
+      const composed = pose(runIndex, centeredWord, y, scale);
       animate(side, [
         { ...opening, opacity: 0, offset: 0 },
         { ...opening, opacity: 0, offset: .24, easing: EASE },
         { ...composed, opacity: 1, offset: .49 },
         { ...composed, opacity: 1, offset: .54, easing: EASE },
-        { ...pose(box, rect.left, rect.top, 1), opacity: 1, offset: 1 },
+        { ...pose(runIndex, rect.left, rect.top, 1), opacity: 1, offset: 1 },
       ]);
     });
     animate(veil, [
@@ -150,9 +163,41 @@ export function playBrandIntro(
         animation.currentTime = duration * pauseAt;
       });
     }
-    // Cancellation rejects finished; both normal completion and interruption
-    // restore the real wordmark and remove every listener through the same path.
-    void travel.finished.then(finish, finish);
+    // WKWebView can publish safe-area/visible-viewport insets after startup.
+    // Follow the live masthead, easing any correction instead of landing on a
+    // stale pre-notch coordinate then revealing the header somewhere else.
+    let destinationX = rect.left;
+    let destinationY = rect.top;
+    let correction: Animation | null = null;
+    let travelComplete = false;
+    let alignedFrames = 0;
+    const trackLanding = () => {
+      if (finished) return;
+      const destination = target.getBoundingClientRect();
+      if (Math.abs(destination.left - destinationX) > .1 || Math.abs(destination.top - destinationY) > .1) {
+        const painted = mark.getBoundingClientRect();
+        correction?.cancel();
+        destinationX = destination.left;
+        destinationY = destination.top;
+        const transform = `translate(${destinationX - rect.left}px, ${destinationY - rect.top}px)`;
+        mark.style.transform = transform;
+        const update = mark.animate([
+          { transform: `translate(${painted.left - rect.left}px, ${painted.top - rect.top}px)` },
+          { transform },
+        ], { duration: 160, easing: EASE });
+        correction = update;
+        animations.push(update);
+        void update.finished.then(() => {
+          if (correction === update) correction = null;
+        }, () => {});
+        alignedFrames = 0;
+      }
+      if (travelComplete && !correction && ++alignedFrames >= 2) return finish();
+      trackingFrame = window.requestAnimationFrame(trackLanding);
+    };
+    trackingFrame = window.requestAnimationFrame(trackLanding);
+    // Keep the clone until both the flight and any late inset correction end.
+    void travel.finished.then(() => { travelComplete = true; }, finish);
   };
 
   // Font failure must never hold the UI behind a splash. Load both faces before
