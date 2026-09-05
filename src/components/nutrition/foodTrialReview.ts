@@ -10,7 +10,7 @@ export function isValidTrialReview(items: TrialFoodItem[], editingEntry = false)
 }
 
 export function buildClarifiedMealHint(hint: string, question: string, answer: string): string {
-  const combined = [hint.trim(), question.trim() ? `Question: ${question.trim()}` : '', answer.trim() ? `Answer: ${answer.trim()}` : 'Photo selection updated for clarification.'].filter(Boolean).join('\n');
+  const combined = [hint.trim(), question.trim() ? `Question: ${question.trim()}` : '', `Answer: ${answer.trim() || 'Use a reasonable estimate from the available meal information. Do not ask another question or request a package nutrition label.'}`].filter(Boolean).join('\n');
   if (combined.length > 1500) throw new Error('This description is too long. Choose Change meal to shorten it before adding the missing detail.');
   return combined;
 }

@@ -57,9 +57,9 @@ describe('authenticated food analysis gateway', () => {
   it('allows authenticated text-only and photo-only meals without storing submitted payloads', async () => {
     const h = harness();
     expect((await h.request({ hint: '  six chicken samosas  ' })).status).toBe(200);
-    expect(h.analyze).toHaveBeenNthCalledWith(1, { images: [], hint: 'six chicken samosas' });
+    expect(h.analyze).toHaveBeenNthCalledWith(1, { images: [], hint: 'six chicken samosas', clarificationUsed: false });
     expect((await h.request({ images: [photo] })).status).toBe(200);
-    expect(h.analyze).toHaveBeenNthCalledWith(2, { images: [photo], hint: '' });
+    expect(h.analyze).toHaveBeenNthCalledWith(2, { images: [photo], hint: '', clarificationUsed: false });
     expect(JSON.stringify([...h.objects.values()])).not.toContain('imageBase64');
     expect(JSON.stringify([...h.objects.values()])).not.toContain('six chicken samosas');
   });
@@ -73,6 +73,43 @@ describe('authenticated food analysis gateway', () => {
     }
     expect(normalizeInput({ images: [{ angle: 'top', mimeType: 'image/png', imageBase64: btoa('\x89PNG\r\n\x1a\n') }] }).images).toHaveLength(1);
     expect(normalizeInput({ images: [{ angle: 'side', mimeType: 'image/webp', imageBase64: btoa('RIFF1234WEBP') }] }).images).toHaveLength(1);
+  });
+
+  it('normalizes the clarification budget and rejects non-boolean values', () => {
+    expect(normalizeInput({ hint: 'six samosas' }).clarificationUsed).toBe(false);
+    expect(normalizeInput({ hint: 'six samosas', clarificationUsed: true }).clarificationUsed).toBe(true);
+    for (const clarificationUsed of ['true', 'false', 1, null, {}]) {
+      expect(() => normalizeInput({ hint: 'six samosas', clarificationUsed })).toThrow();
+    }
+  });
+
+  it('uses a separate request identity after the one clarification while preserving replay and daily accounting', async () => {
+    const h = harness();
+    const first = await (await h.request({ hint: 'six samosas' })).json();
+    const explicitUnused = await (await h.request({ hint: 'six samosas', clarificationUsed: false })).json();
+    expect(explicitUnused).toMatchObject({ requestId: first.requestId, replayed: true });
+    const answered = await (await h.request({ hint: 'six samosas', clarificationUsed: true })).json();
+    expect(answered.requestId).not.toBe(first.requestId);
+    expect(h.analyze).toHaveBeenNthCalledWith(2, { images: [], hint: 'six samosas', clarificationUsed: true });
+    expect((await (await h.request({ hint: 'six samosas', clarificationUsed: true })).json()).replayed).toBe(true);
+    expect(h.analyze).toHaveBeenCalledTimes(2);
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ attemptsUsed: 2 });
+  });
+
+  it('does not replay a v1 label-question dead end under the updated analysis version', async () => {
+    const h = harness({ maxAttempts: 2 });
+    const input = { images: [], hint: 'six samosas' };
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ version: 'gemini-tavily-v1', input })));
+    const oldRequestId = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    const base = `food-v1/${USER}/2026-09-05`;
+    h.objects.set(`${base}/slots/0.json`, { requestId: oldRequestId, analysisVersion: 'gemini-tavily-v1', createdAt: new Date(NOW).toISOString() });
+    h.objects.set(`${base}/results/${oldRequestId}.json`, { status: 200, body: { requestId: oldRequestId, items: [], clarification: 'Could you add the exact package nutrition label?' } });
+    const result = await (await h.request(input)).json();
+    expect(result.requestId).not.toBe(oldRequestId);
+    expect(result.analysisVersion).not.toBe('gemini-tavily-v1');
+    expect(result.items).toHaveLength(1);
+    expect(h.analyze).toHaveBeenCalledOnce();
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ attemptsUsed: 2 });
   });
 
   it('bounds streamed bodies even without content-length and rejects invalid JSON/method', async () => {

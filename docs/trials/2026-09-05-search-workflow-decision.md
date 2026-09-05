@@ -4,6 +4,8 @@
 
 The [implementation/evaluation guide](gemini-food-trial.md) is the current operational handoff. It also preserves the separate earlier three-request Google-only display experiment, including measured latency/tokens and unresolved accuracy/billing limitations. Those results do not establish Tavily performance.
 
+The later [estimate-first correction](2026-09-05-estimate-first-fix.md) supersedes the clarification policy below. The user reported repeated package-label demands with no usable result. That correction is local and awaits deployment; historical provider measurements remain unchanged.
+
 ## Accepted workflow and implementation
 
 Photo or text → concise meal and macros → adjust if needed → save. Research happens in the backend. A missing fact that materially changes the result produces one short clarification instead of a list of articles. Sources are optional details; short material uncertainty remains visible before saving. There is no blanket confirmation checkbox. Amounts may be inferred even when a nutrition label supplies the serving basis.

@@ -49,7 +49,7 @@ export const previewFoodTrialResult: FoodTrialResult = {
     priceDate: '', elapsedMs: 0, raw: {} },
 };
 
-export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hint: string; accessToken: string }): Promise<FoodTrialResult> {
+export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hint: string; accessToken: string; clarificationUsed?: boolean }): Promise<FoodTrialResult> {
   const hint = input.hint.trim();
   if (input.images.length > 2 || hint.length > 1500 || (!input.images.length && hint.length < 5)) {
     throw new Error('Add a meal description (5–1,500 characters), or one or two photos.');
@@ -58,11 +58,13 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
   try {
     // No patientPost retries. Server computes a durable content hash, so a user retry
     // of identical input can retrieve an outcome but cannot start a second paid call.
-    const payload = await post({ images: input.images, hint }, input.accessToken);
+    const payload = await post({ images: input.images, hint, ...(input.clarificationUsed ? { clarificationUsed: true } : {}) }, input.accessToken);
     if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL) throw new Error('The trial returned an unexpected model. Nothing was saved.');
     if (payload.researchProvider !== 'tavily') throw new Error('The meal research service needs an update. Nothing was saved.');
     const items = validateTrialItems(payload.items);
     if (payload.clarification != null && (typeof payload.clarification !== 'string' || !payload.clarification.trim() || payload.clarification.length > 180 || items.length)) throw new Error('The trial returned invalid clarification details.');
+    if (input.clarificationUsed && payload.clarification) throw new Error('We couldn’t make an estimate from these details. Change the meal description and try again.');
+    if (!items.length && !payload.clarification) throw new Error('No food could be identified. Change the meal description and try again.');
     if (typeof payload.summary !== 'string' || typeof payload.originalText !== 'string' || !Array.isArray(payload.sources) || !payload.usage) throw new Error('The trial returned incomplete food details.');
     const sourceMap = new Map<number, number>();
     const sources: FoodTrialResult['sources'] = [];
