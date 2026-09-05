@@ -37,10 +37,18 @@
 
 .brand-intro__mark {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
-  will-change: transform;
+  inset: 0;
+  display: block;
+  overflow: visible;
+}
+
+.brand-intro__mark > span {
+  position: absolute;
+  /* Italic ink extends beyond its advance box. Include it in each painted
+     layer without changing the text origin or the final masthead spacing. */
+  padding: .25em;
+  margin: -.25em;
+  letter-spacing: -.05em;
 }
 
 .brand-intro__rule {

@@ -35,6 +35,7 @@ export function playBrandIntro(
     if (previousIntro === null) documentElement.removeAttribute('data-brand-intro');
     else documentElement.setAttribute('data-brand-intro', previousIntro);
     window.removeEventListener('click', skip, true);
+    overlay.removeEventListener('click', skip);
     window.removeEventListener('keydown', skip, true);
     window.removeEventListener('wheel', finish, true);
     window.removeEventListener('resize', finish);
@@ -52,6 +53,9 @@ export function playBrandIntro(
     }
     finish();
   };
+  // iOS Safari only synthesizes taps as clicks on an interactive target.
+  // A window-only handler leaves this otherwise decorative veil untappable.
+  overlay.addEventListener('click', skip);
   window.addEventListener('click', skip, true);
   window.addEventListener('keydown', skip, true);
   window.addEventListener('wheel', finish, true);
@@ -71,6 +75,8 @@ export function playBrandIntro(
     clearTimeout(fontTimeout);
     const rect = target.getBoundingClientRect();
     if (!rect.width || rect.bottom < 0 || rect.top > window.innerHeight) return finish();
+    const boxes = Array.from(target.children, (child) => child.getBoundingClientRect());
+    const fontSize = parseFloat(getComputedStyle(target).fontSize);
     const mark = target.cloneNode(true) as HTMLElement;
     mark.removeAttribute('aria-label');
     mark.classList.add('brand-intro__mark');
@@ -78,35 +84,47 @@ export function playBrandIntro(
     overlay.append(mark);
 
     const [left, p, right] = Array.from(mark.children) as HTMLElement[];
-    const pRect = p.getBoundingClientRect();
-    const fontSize = parseFloat(getComputedStyle(mark).fontSize);
+    const pRect = boxes[1];
     const scale = Math.min(68, window.innerWidth * .18) / fontSize;
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight * .4;
     const y = centerY - rect.height * scale / 2;
-    const centeredP = `translate(${centerX - (pRect.left + pRect.width / 2) * scale}px, ${y}px) scale(${scale})`;
-    const centeredWord = `translate(${centerX - rect.width * scale / 2}px, ${y}px) scale(${scale})`;
-    const landed = `translate(${rect.left}px, ${rect.top}px) scale(1)`;
+    const centeredP = centerX - (pRect.left - rect.left + pRect.width / 2) * scale;
+    const centeredWord = centerX - rect.width * scale / 2;
 
-    const travel = animate(mark, [
-      { transform: centeredP, offset: 0 },
-      { transform: centeredP, offset: .2, easing: EASE },
-      { transform: centeredWord, offset: .47 },
-      { transform: centeredWord, offset: .54, easing: EASE },
-      { transform: landed, offset: 1 },
+    // Repaint actual letterforms at their displayed size. Scaling a small text
+    // layer (especially nested animated layers) blurs and clips it in iOS WebKit.
+    // Only three decorative text runs relayout; the real page never moves.
+    const pose = (
+      box: DOMRect, x: number, top: number, size: number,
+      emphasis = 1, dx = 0, dy = 0,
+    ): Keyframe => ({
+      left: `${x + size * (box.left - rect.left + box.width * (1 - emphasis) / 2 + dx)}px`,
+      top: `${top + size * (box.top - rect.top + box.height * (1 - emphasis) * .6 + dy)}px`,
+      fontSize: `${fontSize * size * emphasis}px`,
+    });
+    const pOpening = pose(pRect, centeredP, y, scale, 1.85);
+    const pComposed = pose(pRect, centeredWord, y, scale);
+    const travel = animate(p, [
+      { ...pose(pRect, centeredP, y, scale, 1.85, 0, .08 * fontSize * 1.85), opacity: 0, offset: 0, easing: EASE },
+      { ...pOpening, opacity: 1, offset: .17 },
+      { ...pOpening, opacity: 1, offset: .2, easing: EASE },
+      { ...pComposed, opacity: 1, offset: .47 },
+      { ...pComposed, opacity: 1, offset: .54, easing: EASE },
+      { ...pose(pRect, rect.left, rect.top, 1), opacity: 1, offset: 1 },
     ]);
-    animate(p, [
-      { opacity: 0, transform: 'scale(1.85) translateY(.08em)', offset: 0, easing: EASE },
-      { opacity: 1, transform: 'scale(1.85) translateY(0)', offset: .17, easing: EASE },
-      { opacity: 1, transform: 'scale(1)', offset: .47 },
-      { opacity: 1, transform: 'scale(1)', offset: 1 },
-    ]);
-    [left, right].forEach((side, index) => animate(side, [
-      { opacity: 0, transform: `translateX(${index ? '-.3' : '.3'}em)`, offset: 0 },
-      { opacity: 0, transform: `translateX(${index ? '-.3' : '.3'}em)`, offset: .24, easing: EASE },
-      { opacity: 1, transform: 'translateX(0)', offset: .49 },
-      { opacity: 1, transform: 'translateX(0)', offset: 1 },
-    ]));
+    [left, right].forEach((side, index) => {
+      const box = boxes[index === 0 ? 0 : 2];
+      const opening = pose(box, centeredP, y, scale, 1, (index ? -.3 : .3) * fontSize);
+      const composed = pose(box, centeredWord, y, scale);
+      animate(side, [
+        { ...opening, opacity: 0, offset: 0 },
+        { ...opening, opacity: 0, offset: .24, easing: EASE },
+        { ...composed, opacity: 1, offset: .49 },
+        { ...composed, opacity: 1, offset: .54, easing: EASE },
+        { ...pose(box, rect.left, rect.top, 1), opacity: 1, offset: 1 },
+      ]);
+    });
     animate(veil, [
       { opacity: 1, offset: 0 },
       { opacity: 1, offset: .4, easing: 'cubic-bezier(.4, 0, .2, 1)' },
