@@ -1,30 +1,23 @@
-const LOGIN_INTRO_KEY = 'hyper:intro:login:v1';
-const DASHBOARD_INTRO_KEY = 'hyper:intro:dashboard:v1';
+export type IntroVariant = 'dashboard' | 'login';
 
-function canUseSessionStorage() {
-  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+const played = new Set<IntroVariant>();
+const storageKey = (variant: IntroVariant) => `hyper:intro:${variant}:v2`;
+
+/** Reading eligibility is safe in React's repeated initial renders. */
+export function shouldPlayIntro(variant: IntroVariant): boolean {
+  if (played.has(variant) || typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(storageKey(variant)) !== '1';
+  } catch {
+    return true;
+  }
 }
 
-export function shouldPlayLoginIntro() {
-  if (!canUseSessionStorage()) return false;
-
-  return window.sessionStorage.getItem(LOGIN_INTRO_KEY) !== '1';
-}
-
-export function markLoginIntroPlayed() {
-  if (!canUseSessionStorage()) return;
-
-  window.sessionStorage.setItem(LOGIN_INTRO_KEY, '1');
-}
-
-export function shouldPlayDashboardIntro() {
-  if (!canUseSessionStorage()) return false;
-
-  return window.sessionStorage.getItem(DASHBOARD_INTRO_KEY) !== '1';
-}
-
-export function markDashboardIntroPlayed() {
-  if (!canUseSessionStorage()) return;
-
-  window.sessionStorage.setItem(DASHBOARD_INTRO_KEY, '1');
+export function markIntroPlayed(variant: IntroVariant): void {
+  played.add(variant);
+  try {
+    window.sessionStorage.setItem(storageKey(variant), '1');
+  } catch {
+    // The in-memory guard still prevents repeats when storage is unavailable.
+  }
 }

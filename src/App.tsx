@@ -15,6 +15,7 @@ import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
+import { IntroPreview } from '@/preview/IntroPreview'; // DEV-ONLY
 import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
 import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
@@ -114,6 +115,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
+          {import.meta.env.DEV && <Route path="/preview/intro" element={<IntroPreview />} />}
+          {import.meta.env.DEV && <Route path="/preview/sign-in" element={<AuthForm />} />}
           {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
           <Route element={<PrivateLayout />}>
             <Route path="/" element={<Dashboard />} />

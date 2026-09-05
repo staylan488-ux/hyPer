@@ -9,7 +9,7 @@ import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/splitTemplates';
 import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
-import { AdherenceDashboard } from '@/components/dashboard/AdherenceDashboard';
+import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 
@@ -245,11 +245,11 @@ export function Analysis() {
         )}
       </motion.section>
 
-      {/* Adherence */}
+      {/* Weekly nutrition */}
       <motion.section
         className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
       >
-        <AdherenceDashboard />
+        <WeeklyNutrition />
       </motion.section>
 
       {/* Research explainer — supporting detail, not the primary UI */}

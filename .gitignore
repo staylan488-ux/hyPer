@@ -29,6 +29,16 @@ secrets.json
 
 # Local AI assistant instructions
 CLAUDE.md
+.claude/skills/
+
+# Share the canonical adapter and these skill links; keep other local skills private.
+!/CLAUDE.md
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/studio-design
+!/.claude/skills/ship-ios
+!/.claude/skills/supabase-deploy
+CLAUDE.local.md
 
 # Editor directories and files
 .vscode/*

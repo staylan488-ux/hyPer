@@ -1,7 +1,7 @@
 # Approved Studio — app-wide implementation
 
-Status: implemented and verified; ready for review. Base: f711882 (adaptive workout calendar, PR #104).
-Branch: codex/studio-app-wide. No merge, deployment or TestFlight upload authorized.
+Historical implementation record: merged as 1fe8e4b through PR #105. Base: f711882 (adaptive workout calendar, PR #104).
+Original branch: codex/studio-app-wide. This record does not authorize a new deployment or TestFlight upload. Current UI guidance lives in [.agents/skills/studio-design](../../.agents/skills/studio-design/SKILL.md).
 
 ## Design contract
 

@@ -26,7 +26,11 @@ export function useNativeGlassNavigation(path: string, routeVisible: boolean) {
     const root = document.getElementById('root');
     const current = () => ({
       ...state.current,
-      visible: state.current.visible && !root?.inert && document.documentElement.dataset.keyboardOpen !== 'true' && !document.hidden,
+      visible: state.current.visible
+        && !root?.inert
+        && document.documentElement.dataset.keyboardOpen !== 'true'
+        && document.documentElement.dataset.brandIntro !== 'true'
+        && !document.hidden,
     });
     const connection = connectGlassNavigation(NativeGlassNavigation, current(), {
       ready: setActive,
@@ -36,7 +40,7 @@ export function useNativeGlassNavigation(path: string, routeVisible: boolean) {
     refresh.current = update;
     const observer = new MutationObserver(update);
     if (root) observer.observe(root, { attributes: true, attributeFilter: ['inert'] });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-keyboard-open'] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-keyboard-open', 'data-brand-intro'] });
     document.addEventListener('visibilitychange', update);
     const pageHide = () => connection.update({ ...current(), visible: false });
     window.addEventListener('pagehide', pageHide);
