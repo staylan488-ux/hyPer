@@ -15,6 +15,8 @@ import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
 import { tapHaptic } from '@/lib/haptics';
+import { summarizeFoodTrialStatus } from '@/lib/foodTrialUsage';
+import { getFoodAnalysisMode, saveFoodAnalysisMode, getFoodTrialStatus } from '@/lib/foodTrial';
 import { checkPhotoWorker, getPhotoWorkerSettings, savePhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import {
   enableNativeBodyWeightSync,
@@ -125,6 +127,9 @@ export function Settings() {
   const [whoopAction, setWhoopAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
   const [whoopMessage, setWhoopMessage] = useState<string | null>(null);
   const [whoopError, setWhoopError] = useState<string | null>(null);
+  const [foodAnalysisMode, setFoodAnalysisMode] = useState(getFoodAnalysisMode);
+  const [foodTrialBusy, setFoodTrialBusy] = useState(false);
+  const [foodTrialMessage, setFoodTrialMessage] = useState<string | null>(null);
   const [photoWorkerDraft, setPhotoWorkerDraft] = useState<PhotoWorkerSettings>(() => getPhotoWorkerSettings());
   const [photoWorkerBusy, setPhotoWorkerBusy] = useState(false);
   const [photoWorkerMessage, setPhotoWorkerMessage] = useState<string | null>(null);
@@ -223,6 +228,20 @@ export function Settings() {
     setHealthWeightSyncEnabled(false);
     setHealthWeightEnabled(false);
     setHealthWeightMessage('Automatic weight sync stopped. Existing measurements were kept.');
+  };
+
+  const handleFoodTrialStatus = async () => {
+    if (foodTrialBusy) return;
+    setFoodTrialBusy(true);
+    setFoodTrialMessage(null);
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error('Sign in again to check analysis usage.');
+      const status = await getFoodTrialStatus(data.session.access_token);
+      setFoodTrialMessage(summarizeFoodTrialStatus(status));
+    } catch (error) {
+      setFoodTrialMessage(error instanceof Error ? error.message : 'Could not check analysis usage.');
+    } finally { setFoodTrialBusy(false); }
   };
 
   const handlePhotoWorkerSave = async () => {
@@ -907,9 +926,22 @@ export function Settings() {
 
       {/* ── Local food analysis ── */}
       <SettingsGroup label="Food analysis" index="05" delay={0.14}>
+        <div className="space-y-4 mb-6">
+          <SelectSheet title="Meal analysis" value={foodAnalysisMode} onChange={(mode) => {
+            saveFoodAnalysisMode(mode); setFoodAnalysisMode(mode); setFoodTrialMessage(null);
+          }} options={[
+            { value: 'gemini', label: 'Gemini 3.8 Flash + Tavily', description: 'Photo and text analysis with Tavily nutrition lookup. No Mac worker needed for meals.' },
+            { value: 'worker', label: 'Private Mac worker', description: 'Your existing Codex or Claude food analysis.' },
+          ]} />
+          {foodAnalysisMode === 'gemini' && <>
+            <p className="t-caption">Gemini interprets your meal; Tavily looks up nutrition sources when needed. Adjust the result before saving. Daily request limits help control API costs.</p>
+            <Button variant="secondary" className="w-full" loading={foodTrialBusy} onClick={() => void handleFoodTrialStatus()}>Check analysis usage</Button>
+            {foodTrialMessage && <p className="t-caption" role="status">{foodTrialMessage}</p>}
+          </>}
+        </div>
         <p className="t-heading">Private Mac worker</p>
         <p className="t-caption mt-1 mb-5">
-          Uses your local Codex or Claude login. Credentials never enter hyPer. On a phone, enter the worker’s Tailscale HTTPS URL.
+          Worker settings also serve the existing coach. Uses your local Codex or Claude login. On a phone, enter the worker’s Tailscale HTTPS URL.
         </p>
         <div className="space-y-4">
           <Input

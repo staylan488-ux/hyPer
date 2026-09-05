@@ -12,3 +12,8 @@ verify_jwt = true
 
 [functions.process-food-photo]
 verify_jwt = true
+
+# JWT identity is checked in-code with getUser; normal signed-in users are accepted.
+# This supports current Supabase signing keys; no unauthenticated analysis is allowed.
+[functions.analyze-food-trial]
+verify_jwt = false

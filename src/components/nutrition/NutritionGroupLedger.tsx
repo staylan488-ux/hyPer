@@ -45,6 +45,8 @@ function sourceLabel(source?: string): string {
   if (source === 'cronometer_csv') return 'Cronometer';
   if (source === 'photo_openai') return 'OpenAI photo';
   if (source === 'photo_anthropic') return 'Claude photo';
+  if (source === 'gemini_label') return 'Gemini · label reviewed';
+  if (source === 'gemini_estimate' || source === 'gemini_trial') return 'Gemini estimate';
   if (source === 'barcode_fatsecret') return 'FatSecret';
   if (source === 'barcode_open_food_facts') return 'Open Food Facts';
   if (source === 'barcode') return 'Barcode';
