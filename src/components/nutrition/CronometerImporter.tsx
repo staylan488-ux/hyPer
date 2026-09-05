@@ -80,7 +80,7 @@ export function CronometerImporter({ onImported }: CronometerImporterProps) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="pressable mt-5 w-full rounded-[11px] bg-[var(--color-surface-2)] py-9 flex flex-col items-center gap-3"
+          className="pressable mt-5 w-full rounded-[11px] material-control py-9 flex flex-col items-center gap-3"
         >
           <FileUp className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
           <span className="t-heading">{fileName || 'Choose servings.csv'}</span>

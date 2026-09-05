@@ -7,12 +7,12 @@ interface StickyActionBarProps {
   className?: string;
 }
 
-/** Persistent action dock — solid paper with a hairline rule, no gradient scrim. */
+/** A material command surface; sheet footers use a readable opaque fallback. */
 export function StickyActionBar({ children, context = 'sheet', className = '' }: StickyActionBarProps) {
   if (context === 'page') {
     return (
       <div className="fixed left-0 right-0 z-40" style={{ bottom: 'max(var(--app-keyboard-inset, 0px), calc(5.75rem + var(--app-safe-bottom)))' }}>
-        <div className={`max-w-lg mx-auto px-6 pb-3 pt-4 bg-[var(--color-base)] border-t border-[var(--color-border-strong)] ${className}`}>
+        <div className={`material-toolbar material-page-actions max-w-lg mx-auto px-6 pb-3 pt-4 ${className}`}>
           {children}
         </div>
       </div>
@@ -20,7 +20,7 @@ export function StickyActionBar({ children, context = 'sheet', className = '' }:
   }
 
   return (
-    <div className={`sticky bottom-0 -mx-6 px-6 pt-4 pb-1 bg-[var(--color-base)] border-t border-[var(--color-border)] ${className}`}>
+    <div className={`material-toolbar sticky bottom-0 -mx-6 px-6 pt-4 pb-1 ${className}`}>
       {children}
     </div>
   );

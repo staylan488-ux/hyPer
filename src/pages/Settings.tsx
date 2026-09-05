@@ -761,7 +761,7 @@ export function Settings() {
           <div>
             <p className="t-heading">Theme</p>
             <p className="t-caption mt-1">
-              {theme === 'light' ? 'Paper' : 'Ink'}
+              {theme === 'light' ? 'Ivory' : 'Black'}
             </p>
           </div>
           <ThemeToggle />
@@ -780,7 +780,7 @@ export function Settings() {
           ].map((cell) => (
             <div
               key={cell.label}
-              className="flex items-baseline justify-between gap-4 py-4 border-t border-[var(--color-border)]"
+              className="flex items-baseline justify-between gap-4 py-4 border-t border-[var(--color-border-soft)]"
             >
               <dt className="t-label-sm">{cell.label}</dt>
               <dd className="flex items-baseline gap-1.5">
@@ -1078,7 +1078,7 @@ export function Settings() {
           <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
             <label className="t-label-sm block mb-2" htmlFor="weigh-in">Record a weigh-in</label>
             <div className="flex items-end gap-4">
-              <div className="flex-1 min-w-0 flex items-baseline gap-2 border-b border-[var(--color-border-strong)] focus-within:border-[var(--color-text)] transition-colors">
+              <div className="material-inset flex-1 min-w-0 flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
                 <input
                   id="weigh-in"
                   type="number"
@@ -1141,7 +1141,7 @@ export function Settings() {
 
       {/* App info — colophon */}
       <motion.footer
-        className="mt-12 pt-8 border-t border-[var(--color-text)]"
+        className="mt-12 pt-8 border-t border-[var(--color-border)]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ ...springs.smooth, delay: 0.2 }}

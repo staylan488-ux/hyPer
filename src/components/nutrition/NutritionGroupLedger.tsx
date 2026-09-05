@@ -192,7 +192,7 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-border)] bg-[var(--color-surface-2)]' : 'border-[var(--color-border)]'} transition-colors`}
+        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-border)] material-surface' : 'border-[var(--color-border)]'} transition-colors`}
       >
         <div className="flex items-center justify-between gap-2 py-3">
           <div className="min-w-0">

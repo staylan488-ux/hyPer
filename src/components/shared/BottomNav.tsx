@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
+import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
@@ -19,8 +20,9 @@ export function BottomNav() {
   const isSessionRoute =
     location.pathname.startsWith('/train/session') || location.pathname.startsWith('/train/run') ||
     (hasActiveWorkout && ['/train', '/workout'].includes(location.pathname));
+  const nativeNavigation = useNativeGlassNavigation(location.pathname, !isSessionRoute);
 
-  if (isSessionRoute) {
+  if (isSessionRoute || nativeNavigation) {
     return null;
   }
 
@@ -39,7 +41,7 @@ export function BottomNav() {
       initial={false}
       transition={springs.smooth}
     >
-      <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4 bg-[var(--color-base)]">
+      <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4">
         {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
           const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
 
@@ -53,21 +55,28 @@ export function BottomNav() {
                 if (!isActive) tapHaptic();
               }}
             >
+              {isActive && (
+                <motion.span
+                  layoutId="material-nav-selection"
+                  className="material-nav-selection pointer-events-none absolute inset-x-1 inset-y-1.5 rounded-[16px]"
+                  transition={springs.snappy}
+                />
+              )}
               <motion.span
                 whileTap={{ scale: 0.9 }}
                 animate={{ scale: isActive ? 1.04 : 1 }}
                 transition={springs.snappy}
-                className="flex flex-col items-center gap-1.5"
+                className="relative flex flex-col items-center gap-1.5"
               >
                 <Icon
                   className={`w-[19px] h-[19px] transition-colors duration-200 ${
-                    isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
                   strokeWidth={1.5}
                 />
                 <span
                   className={`text-[11px] font-medium uppercase tracking-[0.12em] [font-family:var(--font-sans)] transition-colors duration-200 ${
-                    isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'
+                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
                 >
                   {label}

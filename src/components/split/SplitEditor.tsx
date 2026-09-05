@@ -129,7 +129,7 @@ function ExerciseRow({
       exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
       transition={springs.smooth}
       className={`relative border-t border-[var(--color-border)] py-3 space-y-3 ${
-        exercise.superset_group_id ? 'bg-[var(--color-surface-2)] px-3' : ''
+        exercise.superset_group_id ? 'material-surface px-3' : ''
       }`}
     >
       {/* ── Top row: index + name + actions ── */}
@@ -361,7 +361,7 @@ function DayCard({
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.2 } }}
       transition={springs.smooth}
     >
-      <Card variant="slab" animated={false} className="space-y-5">
+      <Card variant="slab" animated={false} className="material-surface space-y-5">
         {/* ── Day header ── */}
         <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-[var(--color-border)]">
           {/* Day index */}
@@ -529,7 +529,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
         transition={{ ...springs.smooth, delay: 0.05 }}
         className="space-y-4"
       >
-        <p className="t-label pb-3 border-b border-[var(--color-text)]">
+        <p className="t-label pb-3 border-b border-[var(--color-border)]">
           Program details
         </p>
         <Input
@@ -555,7 +555,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
         animate="visible"
         className="space-y-4"
       >
-        <div className="flex items-baseline justify-between pb-3 border-b border-[var(--color-text)]">
+        <div className="flex items-baseline justify-between pb-3 border-b border-[var(--color-border)]">
           <p className="t-label">
             Training days
           </p>
@@ -598,7 +598,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
       {/* STICKY BOTTOM BAR                   */}
       {/* ═══════════════════════════════════ */}
       <div
-        className="sticky z-20 -mx-6 bg-[var(--color-surface-2)] rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
         style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
       >
         <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">

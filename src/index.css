@@ -1,20 +1,20 @@
 @import "tailwindcss";
+@import "./styles/materials.css";
 
 @theme {
-  /* Studio — Fraunces for titles and key figures; Geist for all interface
-     text and tabular data. Paper, ink and one restrained red accent. */
+  /* Studio typography with Ivory / Black materials. */
 
   /* Defaults (PAPER) — runtime values overridden by .light / .dark */
-  --color-base: #F4F0E7;
-  --color-well: #ECE6D9;
-  --color-surface-1: #EFEAE0;
-  --color-surface-2: #ECE6D9;
-  --color-surface-3: #E3DBCC;
+  --color-base: #F5F5F0;
+  --color-well: #E8E9E4;
+  --color-surface-1: #F0F1EC;
+  --color-surface-2: #E8E9E4;
+  --color-surface-3: #DCE0D9;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #5A5249;
-  --color-text: #1A1612;
-  --color-text-dim: #5A5249;
+  --color-muted: #60645F;
+  --color-text: #232625;
+  --color-text-dim: #60645F;
 
   /* The single accent — Lacquer. Everything else is ink on paper. */
   --color-accent: #A8352A;
@@ -61,20 +61,20 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   PAPER — primary mode (the app opens here)
+   IVORY — primary mode (the app opens here)
    ───────────────────────────────────────────────────────────── */
 :root,
 .light {
-  --color-base: #F4F0E7;
-  --color-well: #ECE6D9;
-  --color-surface-1: #EFEAE0;
-  --color-surface-2: #ECE6D9;
-  --color-surface-3: #E3DBCC;
+  --color-base: #F5F5F0;
+  --color-well: #E8E9E4;
+  --color-surface-1: #F0F1EC;
+  --color-surface-2: #E8E9E4;
+  --color-surface-3: #DCE0D9;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #5A5249;
-  --color-text: #1A1612;
-  --color-text-dim: #5A5249;
+  --color-muted: #60645F;
+  --color-text: #232625;
+  --color-text-dim: #60645F;
   --color-accent: #A8352A;
   --color-accent-deep: #872A20;
   --color-sage: var(--color-text);
@@ -84,20 +84,20 @@
   --color-success: var(--color-text);
   --color-warning: var(--color-accent);
   --color-danger: var(--color-accent);
-  --color-border: rgba(26, 22, 18, 0.16);
-  --color-border-strong: rgba(26, 22, 18, 0.32);
-  --color-border-soft: rgba(26, 22, 18, 0.08);
-  --noise-opacity: 0.012;
+  --color-border: rgba(35, 38, 37, 0.16);
+  --color-border-strong: rgba(35, 38, 37, 0.32);
+  --color-border-soft: rgba(35, 38, 37, 0.08);
+  --noise-opacity: 0;
   --paperlight: none;
-  --overlay-backdrop: rgba(26, 22, 18, 0.38);
+  --overlay-backdrop: rgba(24, 29, 26, 0.16);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: none;
-  --strip-track: rgba(26, 22, 18, 0.12);
+  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
+  --strip-track: rgba(35, 38, 37, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
-  --button-danger-fg: #F4F0E7;
+  --button-danger-fg: #F5F5F0;
   --button-primary-bg: var(--color-text);
   --button-primary-fg: var(--color-base);
   --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
@@ -105,21 +105,21 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   INK — dark counterpart, "printed on black stock"
+   BLACK — neutral dark mode
    ───────────────────────────────────────────────────────────── */
 .dark {
-  --color-base: #14110C;
-  --color-well: #241E18;
-  --color-surface-1: #1D1813;
-  --color-surface-2: #241E18;
-  --color-surface-3: #2C251D;
+  --color-base: #000000;
+  --color-well: #1C1C1C;
+  --color-surface-1: #111111;
+  --color-surface-2: #1C1C1C;
+  --color-surface-3: #2A2A2A;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #B5AB9B;
-  --color-text: #EDE7DB;
-  --color-text-dim: #B5AB9B;
-  --color-accent: #CC5240;
-  --color-accent-deep: #A83D2D;
+  --color-muted: #A8A8A8;
+  --color-text: #F2F2F2;
+  --color-text-dim: #A8A8A8;
+  --color-accent: #E58477;
+  --color-accent-deep: #F0A092;
   --color-sage: var(--color-text);
   --color-sage-deep: var(--color-text);
   --color-rose: var(--color-accent);
@@ -127,24 +127,24 @@
   --color-success: var(--color-text);
   --color-warning: var(--color-accent);
   --color-danger: var(--color-accent);
-  --color-border: rgba(237, 231, 219, 0.16);
-  --color-border-strong: rgba(237, 231, 219, 0.30);
-  --color-border-soft: rgba(237, 231, 219, 0.07);
-  --noise-opacity: 0.012;
+  --color-border: rgba(255, 255, 255, 0.16);
+  --color-border-strong: rgba(255, 255, 255, 0.30);
+  --color-border-soft: rgba(255, 255, 255, 0.07);
+  --noise-opacity: 0;
   --paperlight: none;
-  --overlay-backdrop: rgba(8, 6, 4, 0.74);
+  --overlay-backdrop: rgba(0, 0, 0, 0.34);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: none;
-  --strip-track: rgba(237, 231, 219, 0.12);
+  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
+  --strip-track: rgba(255, 255, 255, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
-  --button-danger-fg: #F4F0E7;
-  --button-primary-bg: var(--color-text);
-  --button-primary-fg: var(--color-base);
-  --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
-  --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
+  --button-danger-fg: #F5F5F0;
+  --button-primary-bg: #303030;
+  --button-primary-fg: #EAEAEA;
+  --button-primary-hover: #363636;
+  --button-primary-active: #3B3B3B;
 }
 
 * {
@@ -173,8 +173,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Quiet paper grain; no moving light over text or controls. */
-.paperlight { display: none; }
+/* Legacy atmosphere hooks remain inert; material light belongs behind content. */
+.paperlight, .papergrain { display: none; }
 .papergrain {
   position: fixed;
   inset: 0;
@@ -289,14 +289,14 @@ body {
   color: var(--color-text);
   transition: background-color 160ms ease, opacity 160ms ease;
 }
-.studio-secondary-action { background: var(--color-well); border-radius: var(--radius-control); }
+.studio-secondary-action { border-radius: var(--radius-control); }
 .studio-row-action { background: transparent; border-radius: 0; }
 .studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
 }
 :where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
 
 /* ═════════════════════════════════════════════════════════════
-   MATERIAL — flat blocks, hairline rules. No floating cards.
+   CONTENT — calm, readable surfaces beneath the glass control layer.
    ═════════════════════════════════════════════════════════════ */
 
 /* Neutral, flat content surfaces. Status belongs in the content itself. */
@@ -318,11 +318,11 @@ body {
 /* Quiet control surface. */
 .well {
   background-color: var(--color-well);
-  box-shadow: none;
+  box-shadow: var(--material-inset-shadow);
   border-radius: var(--radius-control);
 }
 
-/* No elevation in FOLIO — surfaces sit flat on the page */
+/* Explicit elevation is reserved for command surfaces. */
 .raised {
   box-shadow: var(--raised-shadow);
 }
@@ -566,7 +566,7 @@ input, textarea, select, button { font-family: inherit; }
   height: var(--app-viewport-height, 100dvh);
   overflow: hidden;
   padding: var(--app-safe-top) var(--app-safe-right) 0 var(--app-safe-left);
-  background: var(--color-base);
+  background: var(--material-foundation);
 }
 .app-scroll-viewport {
   height: 100%;
@@ -574,7 +574,7 @@ input, textarea, select, button { font-family: inherit; }
   margin: auto;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  background: var(--color-base);
+  background: transparent;
 }
 .bottom-nav {
   position: fixed;
@@ -584,9 +584,9 @@ input, textarea, select, button { font-family: inherit; }
   z-index: 40;
   max-width: 478px;
   margin: auto;
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-nav);
-  background: var(--color-base);
+  background-color: var(--material-glass);
   overflow: hidden;
 }
 html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events: none; }
@@ -600,6 +600,6 @@ html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events
 .studio-sheet {
   max-height: 100%;
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--color-base);
+  background-color: var(--material-sheet);
 }
 @media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }

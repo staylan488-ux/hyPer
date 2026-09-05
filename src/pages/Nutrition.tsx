@@ -625,7 +625,7 @@ export function Nutrition() {
         {loading ? (
           <div className="space-y-px">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-t border-[var(--color-border)]">
+              <div key={i} className="flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]">
                 <div className="shimmer h-3 w-12" />
                 <div className="flex-1 space-y-1.5">
                   <div className="shimmer h-3.5 w-2/3" />
@@ -753,7 +753,7 @@ export function Nutrition() {
             <button
               key={option.kind}
               type="button"
-              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border)] text-left"
+              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border-soft)] text-left"
               onClick={() => void createGroup(option.kind)}
             >
               <span>
