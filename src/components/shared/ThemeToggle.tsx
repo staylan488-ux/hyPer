@@ -1,15 +1,16 @@
-import { useThemeStore } from '@/stores/themeStore';
+import { useThemeStore, type ThemePreference } from '@/stores/themeStore';
 
 interface ThemeToggleProps {
   compact?: boolean;
   className?: string;
 }
 
-/** Material appearances retain the existing light/dark preference values. */
+/** Keep the saved preference distinct from the currently resolved appearance. */
 export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProps) {
-  const { theme, setTheme } = useThemeStore();
+  const { preference, setTheme } = useThemeStore();
 
-  const options: { mode: 'light' | 'dark'; label: string }[] = [
+  const options: { mode: ThemePreference; label: string }[] = [
+    { mode: 'system', label: compact ? 'Auto' : 'Follow system' },
     { mode: 'light', label: compact ? 'Iv' : 'Ivory' },
     { mode: 'dark', label: compact ? 'Bk' : 'Black' },
   ];
@@ -21,12 +22,13 @@ export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProp
       aria-label="Theme"
     >
       {options.map((opt) => {
-        const active = theme === opt.mode;
+        const active = preference === opt.mode;
         return (
           <button
             key={opt.mode}
             type="button"
             onClick={() => setTheme(opt.mode)}
+            aria-label={opt.mode === 'system' ? 'Follow system' : opt.mode === 'light' ? 'Ivory (light)' : 'Black (dark)'}
             aria-pressed={active}
             className={`px-3.5 min-h-11 rounded-[var(--radius-control)] text-[11px] font-medium uppercase tracking-[0.16em] transition-colors duration-200 ${
               active

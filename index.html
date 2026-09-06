@@ -15,8 +15,9 @@
       (function () {
         try {
           var stored = localStorage.getItem('hyper-theme');
-          // FOLIO opens on Paper (light); an explicit stored choice still wins.
-          var theme = stored === 'light' || stored === 'dark' ? stored : 'light';
+          // Apply the saved choice or phone appearance before the first paint.
+          var theme = stored === 'light' || stored === 'dark' ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
           document.documentElement.classList.remove('dark', 'light');
           document.documentElement.classList.add(theme);
           document.documentElement.style.colorScheme = theme;

@@ -52,3 +52,11 @@ describe('settings and feature search', () => {
     expect(search('log weight')[0]?.href).toBe('/settings/weight#search-log-weight');
   });
 });
+
+// Settings introduced alongside search remain discoverable.
+describe('new settings destinations', () => {
+  it('finds system appearance and adaptive scheduling', () => {
+    expect(searchApp('follow system', { nativeIOS: false })[0]?.id).toBe('appearance');
+    expect(searchApp('automatic workout scheduling', { nativeIOS: false })[0]?.href).toBe('/settings/training#search-adaptive-scheduling');
+  });
+});

@@ -14,7 +14,8 @@ function setting(id: string, title: string, path: string, route: string, aliases
 
 /** Curated destinations only: search never reads personal records or changes a setting. */
 export const APP_SEARCH_ENTRIES: readonly AppSearchEntry[] = [
-  setting('appearance', 'Appearance', 'Appearance · Theme', 'appearance', ['dark mode', 'light mode', 'theme', 'black', 'ivory', 'app color'], true),
+  setting('appearance', 'Appearance', 'Appearance · Theme', 'appearance', ['dark mode', 'light mode', 'theme', 'black', 'ivory', 'app color', 'follow system', 'system appearance', 'automatic dark mode'], true),
+  setting('adaptive-scheduling', 'Adaptive split scheduling', 'Training', 'training', ['automatic workout scheduling', 'adjust rest days', 'reschedule workouts', 'adaptive schedule', 'keep saved schedule'], true),
   setting('weight-units', 'Weight units', 'Body weight', 'weight', ['pounds', 'kilograms', 'lbs', 'lb', 'kg', 'metric', 'imperial', 'change weight units'], true),
   setting('log-weight', 'Log weight', 'Body weight', 'weight', ['weigh in', 'weigh-in', 'record weight', 'manual weight', 'add body weight'], true),
   setting('body-weight', 'Body weight', 'Body weight', 'weight', ['weight history', 'weight trend', 'weigh ins', 'weight measurements']),

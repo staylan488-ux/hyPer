@@ -17,6 +17,8 @@ import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
 import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
+import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { shouldBlockSettingsExit, targetModeLabel } from '@/lib/settingsUx';
 import { getNutritionProfile } from '@/lib/nutritionProfile';
 import { isPreviewActive, isAppSandboxActive } from '@/preview/flag';
@@ -65,6 +67,7 @@ interface SavedMeal {
 }
 
 export function Settings() {
+  const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const navigate = useNavigate();
   const location = useLocation();
   const page = location.pathname.replace(/^\/settings\/?/, '') || 'home';
@@ -148,6 +151,8 @@ export function Settings() {
     syncWhoop,
   } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
+  const themePreference = useThemeStore((state) => state.preference);
+  const appearanceLabel = `${themePreference === 'system' ? 'Follow system · ' : ''}${theme === 'light' ? 'Ivory' : 'Black'}`;
   const [searchParams] = useSearchParams();
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
@@ -928,6 +933,7 @@ export function Settings() {
     connections: 'Connections',
     'connections/whoop': 'WHOOP',
     'connections/health': 'Apple Health',
+    training: 'Training',
     appearance: 'Appearance',
     account: 'Account',
     about: 'About',
@@ -1069,11 +1075,16 @@ export function Settings() {
             />
             <SettingsRow
               title="Appearance"
-              description={theme === 'light' ? 'Ivory' : 'Black'}
+              description={appearanceLabel}
               onClick={() => go('/settings/appearance')}
             />
           </SettingsSection>
           <SettingsSection label="Activity">
+            <SettingsRow
+              title="Training"
+              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
+              onClick={() => go('/settings/training')}
+            />
             <SettingsRow
               title="Start a run"
               description="GPS run tracking"
@@ -1133,13 +1144,14 @@ export function Settings() {
           </div>
         </>
       )}
+      {page === 'training' && <div id="search-adaptive-scheduling" tabIndex={-1}><AdaptiveSplitSchedulingSetting /></div>}
       {page === 'appearance' && (
         <>
-          <p className="t-body mb-5">Choose the appearance that is easiest for you to read.</p>{' '}
-          <div id="search-appearance" className="flex items-center justify-between gap-4">
+          <p className="t-body mb-5">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>{' '}
+          <div id="search-appearance" className="flex flex-col items-start gap-4">
             <div>
               <p className="t-heading">Theme</p>
-              <p className="t-caption mt-1">{theme === 'light' ? 'Ivory' : 'Black'}</p>
+              <p className="t-caption mt-1">{appearanceLabel}</p>
             </div>
             <ThemeToggle />
           </div>
