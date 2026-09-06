@@ -5,8 +5,9 @@ Recorded 2026-09-05 (Pacific). Implemented locally on
 (PR #112, current You settings). The former `3735/hyPer` worktree was removed;
 this task uses an isolated clone at `/private/tmp/hyPer-adaptive-setting-20260905`.
 The saved main checkout and its unrelated `supabase/.temp/linked-project.json`
-were left untouched. Implementation only is authorized; no push, PR, merge,
-production write, deployment, or iOS release is part of this request.
+were left untouched. After reviewing the implementation and account-wide
+persistence, the user explicitly authorized a GitHub PR and merge in this
+session. A separate production change or iOS release was not requested.
 
 You → Training (within the existing Activity directory) now has one standard
 “Adaptive split scheduling” switch and short explanatory text. No duplicate
@@ -44,8 +45,8 @@ SDK persistence regression uses a mocked auth server with real session storage
 behavior. Account metadata uses the existing session refresh behavior on other
 devices. No local cache is used as a substitute for a successful account save.
 
-Next: review the local branch. Publication/integration needs fresh authorization.
-The prior tasks' PR/merge permission does not apply to this setting.
+Next: check the GitHub PR for `codex/adaptive-scheduling-toggle`. PR creation
+and merge are authorized for this setting; native device validation remains pending.
 
 # Previous work snapshot — You simplification
 
