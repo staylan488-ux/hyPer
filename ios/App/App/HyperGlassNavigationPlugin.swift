@@ -144,6 +144,10 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
             button.addAction(UIAction { [weak self] _ in
                 guard let self, self.canShowDock(),
                       self.bridge?.viewController?.presentedViewController == nil else { return }
+                // Match the web navigation's light tick only when changing tabs.
+                if self.buttons[tab.id]?.isSelected == false {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
                 // Selection is acknowledged by the router's next sync, so a
                 // rejected navigation never leaves a misleading selected tab.
                 self.notifyListeners("select", data: ["tab": tab.id])
