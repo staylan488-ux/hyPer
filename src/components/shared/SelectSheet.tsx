@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { Modal } from './Modal';
 
@@ -18,6 +18,7 @@ interface SelectSheetProps<T extends string> {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  ariaLabelledBy?: string;
 }
 
 /** App-native replacement for <select>: a well-styled trigger opening a bottom sheet of options. */
@@ -29,8 +30,10 @@ export function SelectSheet<T extends string>({
   placeholder = 'Select…',
   disabled,
   className = '',
+  ariaLabelledBy,
 }: SelectSheetProps<T>) {
   const [open, setOpen] = useState(false);
+  const valueId = useId();
   const selected = options.find((o) => o.value === value);
 
   return (
@@ -39,11 +42,12 @@ export function SelectSheet<T extends string>({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
+        aria-labelledby={ariaLabelledBy ? `${ariaLabelledBy} ${valueId}` : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
         className={`pressable well w-full flex items-center justify-between gap-2 px-3.5 min-h-11 text-left disabled:opacity-40 ${className}`}
       >
-        <span className={`t-body min-w-0 break-words py-2 ${selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
+        <span id={valueId} className={`t-body min-w-0 break-words py-2 ${selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={2} />

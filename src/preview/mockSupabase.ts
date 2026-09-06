@@ -5,6 +5,9 @@
 // like the real database; a full page reload re-seeds from scratch.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { previewTables, PREVIEW_USER_ID } from './previewData';
+import { buildYouFixtures, getYouPreviewState, youSavedMeals } from './youFixtures';
+
+let youFixturesApplied = false;
 
 const PREVIEW_USER = {
   id: PREVIEW_USER_ID,
@@ -342,6 +345,15 @@ function saveMockSplitSnapshot(params: Row): MockResult {
 }
 
 export function createMockClient(options?: { setSaveFailures?: number }): SupabaseClient {
+  if (!youFixturesApplied) {
+    youFixturesApplied = true;
+    const state = getYouPreviewState();
+    if (state) {
+      Object.assign(previewTables, buildYouFixtures(state));
+      previewTables.foods = previewTables.foods.filter((food) => food.source !== 'custom' && food.source !== 'saved_meal');
+      if (state === 'populated') previewTables.foods.push(...youSavedMeals);
+    }
+  }
   // DEV mock-only QA: enter /preview?previewSetSave=fail, then Save set.
   // Both automatic attempts fail before any write; the next explicit Retry succeeds.
   const requestedFailure = import.meta.env.DEV && typeof window !== 'undefined' &&

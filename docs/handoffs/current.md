@@ -1,5 +1,38 @@
 # Current work snapshot
 
+Recorded 2026-09-05 (Pacific). Current task: approved YOU-screen simplification,
+implemented locally on `codex/simplify-you`, based on latest-main commit `9d14193`.
+The user reviewed and approved the private phone preview, then explicitly
+authorized PR creation and merge. Production deployment and an iOS release
+remain separate actions and were not requested.
+
+The screen is now a compact directory with weight entry, nutrition targets,
+saved meals, analysis setup, connections, appearance, account and About.
+All existing capabilities are retained. Long tasks have `/settings/*` routes;
+React Router's data router supports unsaved-draft blocking for Back/tab changes.
+The Settings subtree stays mounted across its detail routes to preserve drafts.
+Calculator profile/weight saves and later adaptive effects remain separate from
+saving target drafts and are disclosed explicitly.
+
+Preview entry: `/preview/you` (populated), or append `?youState=empty`.
+The private phone URL was delivered in the conversation. Tailnet-only Tailscale Serve port 8444 proxies
+127.0.0.1:5191. Existing port 8443 was preserved. The dev server runs detached;
+its PID is recorded in `/tmp/hyper-you-preview.pid`, log in
+`/tmp/hyper-you-preview.log`. Keep it running for the user's review. Preview
+records reset on reload; theme/method preferences may remain on that origin.
+Coach/worker/usage actions in the normal preview do not call real providers.
+Native Apple Health, real WHOOP OAuth, physical-device haptics and VoiceOver
+were not verified by this web preview.
+
+See [the implementation review](../audits/2026-09-05-you-ux-preview.md) for
+verification and limitations. Final checks: 864 tests, lint and build passed;
+independent implementation review scored 8.6/10. This snapshot records the
+approved implementation before publication; check the PR state before resuming.
+Preserve unrelated `supabase/.temp/linked-project.json`. Earlier handoffs below
+are historical and do not grant additional release authorization.
+
+# Previous work snapshot
+
 Recorded 2026-09-05. The saved checkout integrated latest main `aba6358`
 (PRs #106–108) in `871a0b1` on `feat/refined-app-icon`; the earlier local work was
 committed as `ae9036e`. [PR #109](https://github.com/staylan488-ux/hyPer/pull/109)

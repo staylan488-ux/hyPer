@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Minus, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/shared';
@@ -41,6 +41,9 @@ interface NutritionWizardProps {
   initialWeightKg?: number | null;
   onApply: (outcome: NutritionWizardOutcome) => void;
   onCancel: () => void;
+  saving?: boolean;
+  saveError?: string | null;
+  onDraftChange?: (dirty: boolean) => void;
 }
 
 type WizardStep = 'units' | 'body' | 'composition' | 'activity' | 'goal' | 'review';
@@ -92,13 +95,27 @@ export function NutritionWizard({
   initialWeightKg,
   onApply,
   onCancel,
+  saving = false,
+  saveError = null,
+  onDraftChange,
 }: NutritionWizardProps) {
+  const inputId = useId();
   const savedUnits = initialProfile?.unit_system ?? 'imperial';
   const savedWeightKg = initialWeightKg ?? 77;
   const savedHeightCm = initialProfile?.height_cm ?? 178;
   const savedHeight = cmToFeetInches(savedHeightCm);
 
   const [step, setStep] = useState<WizardStep>('units');
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef<WizardStep>(step);
+  useLayoutEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    const heading = stepHeading.current;
+    if (!heading || heading.closest('[hidden]')) return;
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [step]);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(savedUnits);
   const [sex, setSex] = useState<BiologicalSex>(initialProfile?.sex ?? 'male');
   const [age, setAge] = useState(
@@ -235,13 +252,17 @@ export function NutritionWizard({
               className={`pressable w-full text-left flex items-center gap-4 py-4 border-t border-[var(--color-border)] transition-colors ${
                 active ? 'material-surface px-4' : 'px-4'
               }`}
-              onClick={() => onSelect(option.value)}
+              onClick={() => {
+                if (option.value === selected) return;
+                onDraftChange?.(true);
+                onSelect(option.value);
+              }}
             >
               <span className="flex-1 min-w-0">
                 <span className={`t-heading block normal-case tracking-normal ${active ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
                   {option.label}
                 </span>
-                <span className="t-caption">{option.hint}</span>
+                <span className="text-sm leading-relaxed text-[var(--color-text-dim)]">{option.hint}</span>
               </span>
               <span
                 className={`shrink-0 w-1.5 h-1.5 ${active ? 'bg-[var(--color-accent)]' : 'bg-transparent border border-[var(--color-border-strong)]'}`}
@@ -262,15 +283,20 @@ export function NutritionWizard({
     placeholder?: string
   ) => (
     <div>
-      <label className="t-label-sm block mb-2">{label}</label>
+      <label htmlFor={`${inputId}-${label.replaceAll(' ', '-')}`} className="block mb-2 text-sm font-medium">{label}</label>
       <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
         <input
+          id={`${inputId}-${label.replaceAll(' ', '-')}`}
+          aria-label={`${label}${suffix ? ` (${suffix})` : ''}`}
           type="number"
           inputMode="decimal"
           value={value}
           placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+          onChange={(e) => {
+            if (e.target.value !== value) onDraftChange?.(true);
+            onChange(e.target.value);
+          }}
+          className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
         />
         {suffix && <span className="t-label-sm shrink-0">{suffix}</span>}
       </div>
@@ -290,7 +316,8 @@ export function NutritionWizard({
       <div className="flex items-center justify-between">
         <button
           type="button"
-          className="flex items-center gap-1.5 t-label-sm hover:text-[var(--color-text)] transition-colors"
+          disabled={saving}
+          className="min-h-11 flex items-center gap-1.5 text-sm hover:text-[var(--color-text)] transition-colors"
           onClick={goBack}
         >
           <ChevronLeft className="w-3 h-3" strokeWidth={1.75} />
@@ -321,13 +348,14 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition calculator</p>
-            <h4 className="t-title">Units &amp; biological sex</h4>
-            <p className="t-caption mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Units &amp; biological sex</h2>
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
           </div>
 
           <div>
             <p className="t-label mb-2">Unit system</p>
             {renderOptionRow(UNIT_OPTIONS, unitSystem, (v) => {
+              if (v === unitSystem) return;
               setUnitSystem(v);
               if (v === 'metric') {
                 const kg = Math.round(lbsToKg(parseFloat(weightInput) || 170));
@@ -351,7 +379,7 @@ export function NutritionWizard({
             {renderOptionRow(SEX_OPTIONS, sex, setSex)}
           </div>
 
-          <Button size="lg" className="w-full" onClick={goNext}>
+          <Button size="lg" className="w-full normal-case tracking-normal text-sm" onClick={goNext}>
             Continue
           </Button>
         </motion.div>
@@ -367,8 +395,8 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body measurements</p>
-            <h4 className="t-title">Your current stats</h4>
-            <p className="t-caption mt-3 max-w-[34ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Your current stats</h2>
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">
               {initialWeightKg != null
                 ? 'Weight is prefilled from your latest weigh-in.'
                 : 'Used to estimate your resting metabolic rate.'}
@@ -387,15 +415,19 @@ export function NutritionWizard({
 
             {unitSystem === 'imperial' ? (
               <div>
-                <label className="t-label-sm block mb-2">Height</label>
+                <p className="text-sm font-medium block mb-2">Height</p>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
                     <input
                       type="number"
                       inputMode="numeric"
+                      aria-label="Height (feet)"
                       value={heightFeet}
-                      onChange={(e) => setHeightFeet(e.target.value)}
-                      className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+                      onChange={(e) => {
+                        if (e.target.value !== heightFeet) onDraftChange?.(true);
+                        setHeightFeet(e.target.value);
+                      }}
+                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
                     />
                     <span className="t-label-sm shrink-0">ft</span>
                   </div>
@@ -403,9 +435,13 @@ export function NutritionWizard({
                     <input
                       type="number"
                       inputMode="numeric"
+                      aria-label="Height (inches)"
                       value={heightInches}
-                      onChange={(e) => setHeightInches(e.target.value)}
-                      className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
+                      onChange={(e) => {
+                        if (e.target.value !== heightInches) onDraftChange?.(true);
+                        setHeightInches(e.target.value);
+                      }}
+                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
                     />
                     <span className="t-label-sm shrink-0">in</span>
                   </div>
@@ -416,7 +452,7 @@ export function NutritionWizard({
             )}
           </div>
 
-          <Button size="lg" className="w-full" onClick={goNext} disabled={!canProceedFromBody}>
+          <Button size="lg" className="w-full normal-case tracking-normal text-sm" onClick={goNext} disabled={!canProceedFromBody}>
             Continue
           </Button>
         </motion.div>
@@ -432,8 +468,8 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body composition</p>
-            <h4 className="t-title">Body fat, if you know it</h4>
-            <p className="t-caption mt-3 max-w-[38ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Body fat, if you know it</h2>
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[38ch]">
               Optional. With it, calories come from lean mass rather than a population average, and
               protein scales off the tissue that actually needs it. A rough estimate still helps.
             </p>
@@ -457,13 +493,14 @@ export function NutritionWizard({
           )}
 
           <div className="space-y-3">
-            <Button size="lg" className="w-full" onClick={goNext}>
+            <Button size="lg" className="w-full normal-case tracking-normal text-sm" onClick={goNext}>
               Continue
             </Button>
             <button
               type="button"
-              className="w-full t-label-sm hover:text-[var(--color-text)] transition-colors"
+              className="min-h-11 w-full text-sm hover:text-[var(--color-text)] transition-colors"
               onClick={() => {
+                if (bodyFatInput !== '') onDraftChange?.(true);
                 setBodyFatInput('');
                 goNext();
               }}
@@ -484,16 +521,16 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Daily activity</p>
-            <h4 className="t-title">How active are you?</h4>
-            <p className="t-caption mt-3 max-w-[38ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">How active are you?</h2>
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[38ch]">
               Lifestyle and training combined. Pick the lower option when torn — this is only a
-              starting estimate, and it gets corrected once there is enough logged data.
+              starting estimate. With adaptive targets enabled, logged data can refine it over time.
             </p>
           </div>
 
           {renderOptionRow(ACTIVITY_OPTIONS, activity, setActivity)}
 
-          <Button size="lg" className="w-full" onClick={goNext}>
+          <Button size="lg" className="w-full normal-case tracking-normal text-sm" onClick={goNext}>
             Continue
           </Button>
         </motion.div>
@@ -509,8 +546,8 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition goal</p>
-            <h4 className="t-title">What are you optimising for?</h4>
-            <p className="t-caption mt-3 max-w-[34ch]">This sets how fast your weight should move.</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">What are you optimising for?</h2>
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">This sets how fast your weight should move.</p>
           </div>
 
           {renderOptionRow(GOAL_OPTIONS, goal, selectGoal)}
@@ -525,7 +562,10 @@ export function NutritionWizard({
                   aria-label="Slower"
                   disabled={roundRate(rate) <= rateMin + 1e-9}
                   className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
-                  onClick={() => setRate(Math.max(rateMin, roundRate(rate - RATE_STEP)))}
+                  onClick={() => {
+                    onDraftChange?.(true);
+                    setRate(Math.max(rateMin, roundRate(rate - RATE_STEP)));
+                  }}
                 >
                   <Minus className="w-4 h-4" strokeWidth={1.75} />
                 </button>
@@ -535,10 +575,10 @@ export function NutritionWizard({
                     {displayedRate > 0 ? '+' : ''}
                     {displayedRate.toFixed(2)}
                   </span>
-                  <span className="t-caption text-[var(--color-text-dim)] ml-1">
+                  <span className="text-sm leading-relaxed text-[var(--color-text-dim)] ml-1">
                     %
                   </span>
-                  <p className="t-caption mt-1">
+                  <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-1">
                     of bodyweight per {gainGoal ? 'month' : 'week'}
                   </p>
                 </div>
@@ -548,20 +588,23 @@ export function NutritionWizard({
                   aria-label="Faster"
                   disabled={roundRate(rate) >= rateMax - 1e-9}
                   className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
-                  onClick={() => setRate(Math.min(rateMax, roundRate(rate + RATE_STEP)))}
+                  onClick={() => {
+                    onDraftChange?.(true);
+                    setRate(Math.min(rateMax, roundRate(rate + RATE_STEP)));
+                  }}
                 >
                   <Plus className="w-4 h-4" strokeWidth={1.75} />
                 </button>
               </div>
 
-              <p className="t-caption mt-5 max-w-[38ch]">
+              <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-5 max-w-[38ch]">
                 About {weeklyChangeInUnit.toFixed(2)} {weightUnitLabel} a week at your current
                 bodyweight.
               </p>
             </div>
           )}
 
-          <Button size="lg" className="w-full" onClick={goNext}>
+          <Button size="lg" className="w-full normal-case tracking-normal text-sm" onClick={goNext}>
             Review targets
           </Button>
         </motion.div>
@@ -577,7 +620,7 @@ export function NutritionWizard({
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Suggested daily targets</p>
-            <h4 className="t-title">Based on your profile</h4>
+            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Based on your profile</h2>
           </div>
 
           {/* Calories hero — the data is the point */}
@@ -585,10 +628,10 @@ export function NutritionWizard({
             <p className="t-label-sm mb-1">Daily calories</p>
             <div className="flex items-baseline gap-2">
               <span className="number-hero text-[var(--color-text)]">{result.calories.toLocaleString()}</span>
-              <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
+              <span className="text-sm leading-relaxed text-[var(--color-text-dim)]">kcal</span>
             </div>
             <p className="t-data-sm text-[var(--color-muted)] mt-2">
-              {result.tdeeIsMeasured ? 'Measured' : 'Estimated'} burn {result.tdee.toLocaleString()} kcal
+              {result.tdeeIsMeasured ? 'Learned daily-burn estimate' : 'Estimated daily burn'} {result.tdee.toLocaleString()} kcal
               {' · '}
               {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
             </p>
@@ -634,7 +677,7 @@ export function NutritionWizard({
               {result.notes.map((note) => (
                 <li
                   key={note.code}
-                  className="t-caption max-w-[44ch]"
+                  className="text-sm leading-relaxed text-[var(--color-text-dim)] max-w-[44ch]"
                 >
                   {note.message}
                 </li>
@@ -643,19 +686,22 @@ export function NutritionWizard({
           )}
 
           {/* Methodology note */}
-          <p className="t-caption max-w-[44ch]">
+          <p className="text-sm leading-relaxed text-[var(--color-text-dim)] max-w-[44ch]">
             {result.bmrMethod === 'katch_mcardle'
               ? `Katch-McArdle resting rate (${result.bmr} kcal) from your lean mass, protein set per kg of fat-free mass.`
               : `Mifflin-St Jeor resting rate (${result.bmr} kcal), protein set per kg of bodyweight. Add body fat for a lean-mass-based estimate.`}
           </p>
 
           <div className="space-y-3">
-            <Button size="lg" className="w-full" onClick={handleApply}>
-              Apply these targets
+            <Button size="lg" className="w-full normal-case tracking-normal text-sm" loading={saving} onClick={handleApply}>
+              Save profile &amp; review targets
             </Button>
-            <p className="t-caption text-center">
-              You can fine-tune values manually after applying.
+            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] text-center">
+              Saves these profile details and records a changed weight. Save targets on the next
+              screen to use these suggested numbers. If adaptive targets are active, saved profile
+              and weight changes can also affect a later automatic update.
             </p>
+            {saveError && <p role="alert" className="text-sm leading-relaxed text-[var(--color-accent)]">{saveError}</p>}
           </div>
         </motion.div>
       )}

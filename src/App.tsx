@@ -1,5 +1,13 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useOutlet } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  RouterProvider,
+  Route,
+  Navigate,
+  useLocation,
+  useOutlet,
+} from 'react-router-dom';
 import { MotionConfig, motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { BottomNav } from '@/components/shared';
@@ -39,10 +47,17 @@ function BootSplash() {
           className="h-px bg-[var(--color-accent)] mt-7 mx-auto"
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
-          transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], repeat: Infinity, repeatType: 'reverse' }}
+          transition={{
+            duration: 1.1,
+            ease: [0.16, 1, 0.3, 1],
+            repeat: Infinity,
+            repeatType: 'reverse',
+          }}
           style={{ width: '64px', transformOrigin: 'center' }}
         />
-        <p className="mt-7 text-[10px] tracking-[0.24em] uppercase text-[var(--color-muted)]">Preparing your edition</p>
+        <p className="mt-7 text-[10px] tracking-[0.24em] uppercase text-[var(--color-muted)]">
+          Preparing your edition
+        </p>
       </motion.div>
     </div>
   );
@@ -60,13 +75,21 @@ function AnimatedOutlet() {
 
   useLayoutEffect(() => {
     const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
-    if (viewport) return bindRouteScroll(viewport, location.pathname, positions.current, {
-      navigation: viewport.parentElement ?? viewport,
-      history: window,
-    });
+    if (viewport)
+      return bindRouteScroll(viewport, location.pathname, positions.current, {
+        navigation: viewport.parentElement ?? viewport,
+        history: window,
+      });
   }, [location.pathname]);
 
-  return <div key={location.pathname} data-route-content>{outlet}</div>;
+  return (
+    <div
+      key={location.pathname.startsWith('/settings') ? '/settings' : location.pathname}
+      data-route-content
+    >
+      {outlet}
+    </div>
+  );
 }
 
 function PrivateLayout() {
@@ -83,16 +106,41 @@ function PrivateLayout() {
 
   return (
     <div className="app-viewport">
-      <main
-        data-app-scroll-viewport
-        className="app-scroll-viewport"
-      >
+      <main data-app-scroll-viewport className="app-scroll-viewport">
         <AnimatedOutlet />
       </main>
       <BottomNav />
     </div>
   );
 }
+
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
+      {import.meta.env.DEV && (
+        <Route path="/preview/you" element={<Navigate to="/settings" replace />} />
+      )}
+      {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
+      {import.meta.env.DEV && <Route path="/preview/intro" element={<IntroPreview />} />}
+      {import.meta.env.DEV && <Route path="/preview/sign-in" element={<AuthForm />} />}
+      {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
+      <Route element={<PrivateLayout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/train" element={<Workout />} />
+        <Route path="/nutrition" element={<Nutrition />} />
+        <Route path="/train/program" element={<Splits />} />
+        <Route path="/train/run" element={<RunTracker />} />
+        <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
+        <Route path="/workout" element={<Navigate to="/train" replace />} />
+        <Route path="/splits" element={<Navigate to="/train/program" replace />} />
+        <Route path="/settings/*" element={<Settings />} />
+        <Route path="/analysis" element={<Analysis />} />
+        <Route path="/history" element={<History />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </>,
+  ),
+);
 
 function App() {
   const { initialize, user } = useAuthStore();
@@ -112,28 +160,7 @@ function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <BrowserRouter>
-        <Routes>
-          {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
-          {import.meta.env.DEV && <Route path="/preview/intro" element={<IntroPreview />} />}
-          {import.meta.env.DEV && <Route path="/preview/sign-in" element={<AuthForm />} />}
-          {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
-          <Route element={<PrivateLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/train" element={<Workout />} />
-            <Route path="/nutrition" element={<Nutrition />} />
-            <Route path="/train/program" element={<Splits />} />
-            <Route path="/train/run" element={<RunTracker />} />
-            <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
-            <Route path="/workout" element={<Navigate to="/train" replace />} />
-            <Route path="/splits" element={<Navigate to="/train/program" replace />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/analysis" element={<Analysis />} />
-            <Route path="/history" element={<History />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </MotionConfig>
   );
 }
