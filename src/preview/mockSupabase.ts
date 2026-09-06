@@ -18,6 +18,17 @@ const PREVIEW_USER = {
   created_at: new Date(0).toISOString(),
 };
 
+/** Preview preferences persist on this origin; workout fixtures still reset. */
+export function getPreviewUser() {
+  let metadata: Record<string, unknown> = {};
+  try {
+    const raw = globalThis.localStorage?.getItem('hyper:preview:user-metadata');
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>;
+  } catch { /* Preview works even without browser storage. */ }
+  return { ...PREVIEW_USER, user_metadata: { ...PREVIEW_USER.user_metadata, ...metadata } };
+}
+
 type Row = Record<string, unknown>;
 type Predicate = (r: Row) => boolean;
 
@@ -360,15 +371,22 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
     new URLSearchParams(window.location.search).get('previewSetSave') === 'fail';
   const scenario: MockScenario = { remainingSetFailures: options?.setSaveFailures ?? (requestedFailure ? 2 : 0), delayMs: requestedFailure ? 600 : 0 };
   const auth = {
-    getUser: async () => ({ data: { user: PREVIEW_USER }, error: null }),
-    getSession: async () => ({ data: { session: { user: PREVIEW_USER, access_token: 'preview' } }, error: null }),
+    getUser: async () => ({ data: { user: getPreviewUser() }, error: null }),
+    getSession: async () => ({ data: { session: { user: getPreviewUser(), access_token: 'preview' } }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-    signInWithPassword: async () => ({ data: { user: PREVIEW_USER }, error: null }),
-    signUp: async () => ({ data: { user: PREVIEW_USER }, error: null }),
+    signInWithPassword: async () => ({ data: { user: getPreviewUser() }, error: null }),
+    signUp: async () => ({ data: { user: getPreviewUser() }, error: null }),
     signInWithOAuth: async () => ({ data: {}, error: null }),
     signOut: async () => ({ error: null }),
     resend: async () => ({ data: {}, error: null }),
-    updateUser: async () => ({ data: { user: PREVIEW_USER }, error: null }),
+    updateUser: async (attributes: { data?: Record<string, unknown> }) => {
+      const user = getPreviewUser();
+      user.user_metadata = { ...user.user_metadata, ...attributes.data };
+      try {
+        globalThis.localStorage?.setItem('hyper:preview:user-metadata', JSON.stringify(user.user_metadata));
+      } catch { /* The confirmed value still applies for this render. */ }
+      return { data: { user }, error: null };
+    },
   };
 
   const client = {

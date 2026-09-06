@@ -1,4 +1,53 @@
-# Current work snapshot
+# Current work snapshot — adaptive scheduling setting
+
+Recorded 2026-09-05 (Pacific). Implemented locally on
+`codex/adaptive-scheduling-toggle`, based on freshly fetched upstream `f026eeb`
+(PR #112, current You settings). The former `3735/hyPer` worktree was removed;
+this task uses an isolated clone at `/private/tmp/hyPer-adaptive-setting-20260905`.
+The saved main checkout and its unrelated `supabase/.temp/linked-project.json`
+were left untouched. Implementation only is authorized; no push, PR, merge,
+production write, deployment, or iOS release is part of this request.
+
+You → Training (within the existing Activity directory) now has one standard
+“Adaptive split scheduling” switch and short explanatory text. No duplicate
+Train/dashboard control or new dashboard card. Missing settings on existing/new
+accounts default on. Successful changes are saved to the existing account user
+metadata and persisted session; no schema migration or auth-flow changes. Failed
+saves retain the previous value and show an error; delayed saves cannot overwrite
+another account's local state.
+
+Today and Train share the reactive preference. On retains existing completed-day
+anchoring. Off uses the original saved fixed calendar, with no completion-read
+dependency; flexible mode still advances by eligible completion counts in saved
+order, including compatibility with legacy offsets. Re-enabling immediately
+returns to the existing adaptive history projection. Workouts and saved splits
+are never rewritten by the switch. The preview backend now echoes and retains
+mock account metadata across reloads; workout fixtures continue to reset.
+
+Verification: 890 tests across 76 files passed, including 26 new toggle cases and
+an actual Supabase SDK persisted-session restoration test; lint/instruction
+checks and production build/TypeScript passed. Tests used non-secret localhost
+Supabase placeholders because this isolated checkout has no .env. Existing
+large-bundle/Browserslist warnings remain. Independent final review found no
+actionable issues.
+
+Bundled Playwright browser verification at 390×844 covered Ivory/Black, default-on,
+off/on after reload, failed saves retaining their confirmed value, and identical
+Today/Train changes (saved Lower A when off; adaptive Lower B when re-enabled from
+completed Upper B). No page errors or horizontal overflow. Test fixtures stayed
+in the isolated preview browser; no source fixtures or real account data changed.
+Screenshots: `/private/tmp/adaptive-toggle-ivory-on.png` and
+`/private/tmp/adaptive-toggle-black-off.png`.
+
+Native/device appearance and real-service persistence were not exercised; the
+SDK persistence regression uses a mocked auth server with real session storage
+behavior. Account metadata uses the existing session refresh behavior on other
+devices. No local cache is used as a substitute for a successful account save.
+
+Next: review the local branch. Publication/integration needs fresh authorization.
+The prior tasks' PR/merge permission does not apply to this setting.
+
+# Previous work snapshot — You simplification
 
 Recorded 2026-09-05 (Pacific). Current task: approved YOU-screen simplification,
 implemented locally on `codex/simplify-you`, based on latest-main commit `9d14193`.

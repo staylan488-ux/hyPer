@@ -3,6 +3,7 @@
 // the in-memory client for fetch, edit, start and resume flows. Imports
 // the stores (so it must NOT be imported by lib/supabase.ts — no cycle).
 import { isPreviewActive } from './flag';
+import { getPreviewUser } from './mockSupabase';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getYouPreviewState } from './youFixtures';
@@ -23,7 +24,7 @@ export function maybeSeedPreview(): void {
 
   useAuthStore.setState({
     // minimal stand-in for a Supabase User / profile
-    user: { id: PREVIEW_USER_ID, email: 'preview@hyper.app' } as never,
+    user: getPreviewUser(),
     profile: { id: PREVIEW_USER_ID, display_name: 'Sam Rivera', created_at: new Date(0).toISOString() } as never,
     initialized: true,
   });

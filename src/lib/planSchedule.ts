@@ -285,6 +285,7 @@ export function plannedDayForDate(
   schedule: PlanSchedule,
   completedWorkoutsSinceStart: number,
   history: ScheduleWorkout[] = [],
+  adaptiveEnabled = true,
 ): SplitDay | null {
   if (splitDays.length === 0) return null;
   const dateKey = format(date, 'yyyy-MM-dd');
@@ -300,7 +301,7 @@ export function plannedDayForDate(
 
   if (schedule.mode === 'flex') {
     const last = relevant.at(-1);
-    if (last) {
+    if (adaptiveEnabled && last) {
       const index = splitDays.findIndex((day) => day.id === last.split_day_id);
       // Flexible schedules have no saved rest rhythm and still wait for completion.
       return splitDays[(index + (last.date < dateKey ? 1 : 0)) % splitDays.length];
@@ -311,7 +312,12 @@ export function plannedDayForDate(
       workout.completed && workout.date >= schedule.startDate && workout.date < dateKey
       && (!schedule.updatedAt || Date.parse(workout.created_at) < Date.parse(schedule.updatedAt))
     )).length : completedWorkoutsSinceStart;
-    const index = normalizeBySize(schedule.flexAnchorIndex ?? ((schedule.anchorDay ?? 0) + legacyCount), splitDays.length);
+    // With adaptation off, each completion advances the saved order by one;
+    // the identity of a manually chosen day does not move the sequence.
+    const usesUnboundedLegacyCount = schedule.flexAnchorIndex === undefined && !schedule.updatedAt;
+    const completedOffset = adaptiveEnabled || usesUnboundedLegacyCount
+      ? 0 : relevant.filter((workout) => workout.date < dateKey).length;
+    const index = normalizeBySize((schedule.flexAnchorIndex ?? ((schedule.anchorDay ?? 0) + legacyCount)) + completedOffset, splitDays.length);
     return splitDays[index];
   }
 
@@ -321,7 +327,7 @@ export function plannedDayForDate(
   // Day 1 is the first saved weekday on/before the plan's start date.
   let anchorDate = addDays(start, -normalizeBySize(start.getDay() - schedule.weekdays[0], 7));
   let anchorIndex = 0;
-  for (const workout of relevant) {
+  for (const workout of adaptiveEnabled ? relevant : []) {
     const performedDate = parseISO(workout.date);
     const expectedIndex = normalizeBySize(anchorIndex + differenceInCalendarDays(performedDate, anchorDate), cycle.length);
     const candidates = cycle.flatMap((day, index) => day?.id === workout.split_day_id ? [index] : []);
