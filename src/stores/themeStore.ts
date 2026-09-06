@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 export type ThemeMode = 'dark' | 'light';
+export type ThemePreference = ThemeMode | 'system';
 
 const STORAGE_KEY = 'hyper-theme';
 const TRANSITION_CLASS = 'theme-transition-active';
@@ -21,16 +22,19 @@ function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function resolveInitialTheme(): ThemeMode {
-  if (!isBrowser()) return 'light';
+function resolveInitialPreference(): ThemePreference {
+  if (!isBrowser()) return 'system';
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+  } catch { /* Keep appearance usable when storage is unavailable. */ }
+  return 'system';
+}
 
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  if (saved === 'light' || saved === 'dark') {
-    return saved;
-  }
-
-  // Ivory opens by default; Black retains the existing dark preference.
-  return 'light';
+function resolveTheme(preference: ThemePreference): ThemeMode {
+  if (preference !== 'system') return preference;
+  return isBrowser() && window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark' : 'light';
 }
 
 function applyThemeClass(theme: ThemeMode) {
@@ -64,30 +68,53 @@ function applyTransitionFlourish() {
 
 interface ThemeState {
   theme: ThemeMode;
+  preference: ThemePreference;
   initialized: boolean;
-  initializeTheme: () => void;
-  setTheme: (theme: ThemeMode) => void;
+  initializeTheme: () => (() => void) | undefined;
+  setTheme: (preference: ThemePreference) => void;
   toggleTheme: () => void;
 }
 
+const initialPreference = resolveInitialPreference();
+
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  theme: resolveInitialTheme(),
+  preference: initialPreference,
+  theme: resolveTheme(initialPreference),
   initialized: false,
   initializeTheme: () => {
-    const theme = get().theme;
+    const theme = resolveTheme(get().preference);
     applyThemeClass(theme);
-    set({ initialized: true });
-  },
-  setTheme: (theme) => {
-    if (!isBrowser()) {
-      set({ theme });
-      return;
-    }
-
-    applyTransitionFlourish();
-    applyThemeClass(theme);
-    window.localStorage.setItem(STORAGE_KEY, theme);
     set({ theme, initialized: true });
+    if (!isBrowser()) return;
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncSystemTheme = () => {
+      if (get().preference !== 'system') return;
+      const nextTheme = resolveTheme('system');
+      if (nextTheme === get().theme) return;
+      applyThemeClass(nextTheme);
+      set({ theme: nextTheme });
+    };
+    media.addEventListener('change', syncSystemTheme);
+    // Recheck when returning from the phone's Settings app.
+    document.addEventListener('visibilitychange', syncSystemTheme);
+    window.addEventListener('pageshow', syncSystemTheme);
+    return () => {
+      media.removeEventListener('change', syncSystemTheme);
+      document.removeEventListener('visibilitychange', syncSystemTheme);
+      window.removeEventListener('pageshow', syncSystemTheme);
+    };
+  },
+  setTheme: (preference) => {
+    const theme = resolveTheme(preference);
+    if (isBrowser()) {
+      if (theme !== get().theme) applyTransitionFlourish();
+      applyThemeClass(theme);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, preference);
+      } catch { /* The choice still applies for this session. */ }
+    }
+    set({ preference, theme, initialized: true });
   },
   toggleTheme: () => {
     const nextTheme: ThemeMode = get().theme === 'dark' ? 'light' : 'dark';

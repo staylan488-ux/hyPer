@@ -155,7 +155,7 @@ function App() {
   }, [initialize]);
 
   useEffect(() => {
-    initializeTheme();
+    return initializeTheme();
   }, [initializeTheme]);
 
   return (
