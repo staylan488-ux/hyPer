@@ -16,6 +16,8 @@ import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
+import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { shouldBlockSettingsExit, targetModeLabel } from '@/lib/settingsUx';
 import { getNutritionProfile } from '@/lib/nutritionProfile';
 import { isPreviewActive, isAppSandboxActive } from '@/preview/flag';
@@ -64,6 +66,7 @@ interface SavedMeal {
 }
 
 export function Settings() {
+  const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const navigate = useNavigate();
   const location = useLocation();
   const page = location.pathname.replace(/^\/settings\/?/, '') || 'home';
@@ -906,6 +909,7 @@ export function Settings() {
     connections: 'Connections',
     'connections/whoop': 'WHOOP',
     'connections/health': 'Apple Health',
+    training: 'Training',
     appearance: 'Appearance',
     account: 'Account',
     about: 'About',
@@ -1042,6 +1046,11 @@ export function Settings() {
           </SettingsSection>
           <SettingsSection label="Activity">
             <SettingsRow
+              title="Training"
+              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
+              onClick={() => go('/settings/training')}
+            />
+            <SettingsRow
               title="Start a run"
               description="GPS run tracking"
               onClick={() => go('/train/run')}
@@ -1097,6 +1106,7 @@ export function Settings() {
           </SettingsSection>
         </>
       )}
+      {page === 'training' && <AdaptiveSplitSchedulingSetting />}
       {page === 'appearance' && (
         <>
           <p className="t-body mb-5">Choose the appearance that is easiest for you to read.</p>{' '}

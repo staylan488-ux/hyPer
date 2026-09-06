@@ -25,6 +25,7 @@ import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip } fr
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { RestTimerLauncher } from '@/components/workout/RestTimerLauncher';
@@ -156,7 +157,8 @@ export function Workout() {
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
   const [lastCompletedWorkout, setLastCompletedWorkout] = useState<Pick<Workout, 'date' | 'split_day_id'> | null>(null);
-  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, planSchedule, currentWorkout);
+  const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
+  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, planSchedule, currentWorkout, adaptiveSchedulingEnabled);
   const [movementNotes, setMovementNotes] = useState<Record<string, string>>({});
   const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
@@ -1142,7 +1144,7 @@ export function Workout() {
   const today = new Date();
   const todayPlannedDay =
     planSchedule && startDate && !isBefore(today, startDate)
-      ? plannedDayForDate(today, splitDays, planSchedule, 0, scheduleWorkouts)
+      ? plannedDayForDate(today, splitDays, planSchedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled)
       : null;
 
   // Today's status must not depend on which calendar week is being browsed.
@@ -1408,7 +1410,7 @@ export function Workout() {
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
-                  const plannedDay = plannedDayForDate(date, activeSplit?.days || [], planSchedule, 0, scheduleWorkouts);
+                  const plannedDay = plannedDayForDate(date, activeSplit?.days || [], planSchedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
                   const isToday = isSameDay(date, today);
 
                   let status: 'completed' | 'planned' | 'rest' | 'missed' = 'rest';
@@ -1466,7 +1468,9 @@ export function Workout() {
             {/* Other days */}
             <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
               <p className="t-label mb-1">Train a different day</p>
-              <p className="t-caption mb-3">{planSchedule.mode === 'fixed'
+              <p className="t-caption mb-3">{!adaptiveSchedulingEnabled
+                ? 'Adaptive split scheduling is off. Workouts follow your saved schedule.'
+                : planSchedule.mode === 'fixed'
                 ? 'Finishing a different day shifts upcoming workouts and rest days to follow your split.'
                 : 'Finishing a different day moves your next workout forward from that day.'}</p>
               <ul>

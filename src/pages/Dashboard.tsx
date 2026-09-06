@@ -15,6 +15,7 @@ import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { supabase } from '@/lib/supabase';
 import { plannedDayForDate } from '@/lib/planSchedule';
@@ -70,7 +71,8 @@ export function Dashboard() {
   const userId = user?.id;
   const activeSplitId = activeSplit?.id;
   const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplitId);
-  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout);
+  const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
+  const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
 
   const fetchNutritionTotals = useCallback(async () => {
     try {
@@ -209,10 +211,11 @@ export function Dashboard() {
       activeSplit.days,
       schedule,
       0,
-      scheduleWorkouts
+      scheduleWorkouts,
+      adaptiveSchedulingEnabled
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt]);
+  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt, adaptiveSchedulingEnabled]);
 
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
