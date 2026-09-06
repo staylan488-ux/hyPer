@@ -114,7 +114,9 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
         <div><p className="t-label">One quick detail</p><h3 className="t-heading mt-3">{result.clarification || 'What is the main food in this meal?'}</h3></div>
         <Input label="Your answer (optional)" value={answer} disabled={!!busy} onChange={(event) => setAnswer(event.target.value)} placeholder="Or let us use an estimate" />
       </>}
-      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'analysis'} disabled={!!busy} onClick={() => void analyze(true)}>{clarificationUsed ? 'Retry estimate' : answer.trim() ? 'Update estimate' : 'Use an estimate'}</Button></div>
+      {photoControls}
+      <p className="t-caption">Add a meal or nutrition label photo. Up to two photos, 10 MB each. Remove a photo to replace it.</p>
+      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'analysis'} disabled={!!busy} onClick={() => void analyze(true)}>{clarificationUsed ? 'Retry estimate' : answer.trim() || photos.length ? 'Update estimate' : 'Use an estimate'}</Button></div>
     </> : <>
       <div>
         <p className="t-label">Your meal</p>
