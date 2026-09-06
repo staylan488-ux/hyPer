@@ -55,6 +55,8 @@ export function summarizeFoodTrialStatus(value: unknown): string {
         estimatedTavilyKnown = true;
       }
       if (research.complete !== true || reported === null || creditEstimate === null || usdEstimate === null) incompleteTavily += 1;
+    } else if (attempt.analysisVersion === 'gemini-serving-v1') {
+      // Serving interpretation has no web research step. Token usage is counted above.
     } else if (attempt.analysisVersion === 'legacy-google' || 'searchUsdIfAllowanceExhausted' in usage && !String(attempt.analysisVersion).startsWith('gemini-tavily')) {
       legacyAttempts += 1;
       const searchCost = amount(usage.searchUsdIfAllowanceExhausted);

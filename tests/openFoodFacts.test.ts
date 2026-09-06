@@ -40,6 +40,8 @@ describe('Open Food Facts product mapping', () => {
       status: 1,
       product: {
         product_name: 'Cereal',
+        serving_size: '5 pieces (40 g)',
+        serving_quantity: 40,
         nutriments: {
           'energy-kcal_100g': '371.4',
           proteins_100g: '8.2',
@@ -50,6 +52,7 @@ describe('Open Food Facts product mapping', () => {
     }, '4006381333931');
 
     expect(food).toEqual(expect.objectContaining({
+      serving_label: undefined,
       calories: 371.4,
       serving_size: 100,
       serving_unit: 'g',

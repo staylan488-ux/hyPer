@@ -23,13 +23,14 @@ function harness(overrides: Partial<TrialConfig> = {}) {
     read: vi.fn(async path => objects.get(path) ?? null),
   };
   const analyze = vi.fn<(input: MealInput) => Promise<Record<string, unknown>>>(async () => ({ items: [{ name: 'Meal' }], usage: { inputTokens: 20, outputTokens: 10, thinkingTokens: 5 } }));
+  const interpretServing = vi.fn(async () => ({ provider: 'gemini', interpretation: { status: 'resolved', quantity: 6, optionId: 'defined', servings: 1.2, unit: 'piece', basisQuantity: 5 } }));
   const authenticate = vi.fn(async token => token === 'friend' ? FRIEND : token === 'valid' ? USER : token === 'other' ? '33333333-3333-4333-8333-333333333333' : null);
   let time = NOW;
-  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, authenticate, now: () => time });
+  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, now: () => time });
   const request = (body: unknown, token = 'valid', origin = 'capacitor://localhost') => handler(new Request('http://trial', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', origin }, body: JSON.stringify(body),
   }));
-  return { objects, ledger, analyze, authenticate, handler, request, setTime: (value: number) => { time = value; } };
+  return { objects, ledger, analyze, interpretServing, authenticate, handler, request, setTime: (value: number) => { time = value; } };
 }
 
 describe('authenticated food analysis gateway', () => {
@@ -278,5 +279,33 @@ describe('Supabase storage ledger adapter', () => {
     await expect(ledger(json({ code: 'NoSuchBucket' }, 404)).api.read('claim')).rejects.toThrow();
     expect(await ledger(json({ code: 'NoSuchKey' }, 404)).api.read('claim')).toBeNull();
     expect(await ledger(json({ error: 'not_found', message: 'Object not found' }, 400)).api.read('claim')).toBeNull();
+  });
+});
+
+
+describe('serving interpretation through the shared gateway', () => {
+  const food = { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' };
+  const input = { action: 'interpret-serving', text: 'I ate 6 pieces', food };
+  it('authenticates, dispatches without meal research, and replays identical requests', async () => {
+    const h = harness();
+    expect((await h.request(input, 'bad')).status).toBe(401);
+    expect(h.interpretServing).not.toHaveBeenCalled();
+    const first = await (await h.request(input)).json();
+    const again = await (await h.request(input)).json();
+    expect(first).toMatchObject({ analysisVersion: 'gemini-serving-v1', interpretation: { servings: 1.2 } });
+    expect(again).toMatchObject({ replayed: true, requestId: first.requestId });
+    expect(h.analyze).not.toHaveBeenCalled();
+    expect(h.interpretServing).toHaveBeenCalledOnce();
+    const changedFood = await (await h.request({ ...input, food: { ...food, serving_size: 3 } })).json();
+    expect(changedFood.requestId).not.toBe(first.requestId);
+    expect(h.interpretServing).toHaveBeenCalledTimes(2);
+  });
+  it('shares meal quota and rejects invalid definitions before a paid call', async () => {
+    const h = harness({ maxAttempts: 1 });
+    expect((await h.request({ ...input, food: { ...food, serving_size: 0 } })).status).toBe(400);
+    expect(h.interpretServing).not.toHaveBeenCalled();
+    expect((await h.request(input)).status).toBe(200);
+    expect((await h.request({ hint: 'rice and chicken' })).status).toBe(429);
+    expect(h.analyze).not.toHaveBeenCalled();
   });
 });
