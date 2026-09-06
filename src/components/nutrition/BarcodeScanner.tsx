@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Barcode, Flashlight, Keyboard, Loader2, ScanLine } from 'lucide-react';
 import { BarcodeDetector, prepareZXingModule } from 'barcode-detector/ponyfill';
 import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
@@ -64,8 +64,8 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
   // native scan rejected as CANCELLED after a restart) cannot clobber the
   // state the newer invocation owns
   const sessionRef = useRef(0);
-  const [state, setState] = useState<ScannerState>('idle');
-  const [message, setMessage] = useState('Point the rear camera at a UPC or EAN food barcode.');
+  const [state, setState] = useState<ScannerState>('starting');
+  const [message, setMessage] = useState('Starting rear camera…');
   const [manualBarcode, setManualBarcode] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -166,6 +166,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
           NATIVE_AVAILABILITY_TIMEOUT_MS,
           'The camera did not respond. Try again.',
         );
+        if (session !== sessionRef.current) return;
         if (!availability.available) {
           throw new Error('Native barcode scanning is unavailable on this iPhone.');
         }
@@ -207,12 +208,14 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       streamRef.current = stream;
       video.srcObject = stream;
       await video.play();
+      if (session !== sessionRef.current) return;
 
       const track = stream.getVideoTracks()[0];
       const capabilities = track?.getCapabilities?.() as TorchCapabilities | undefined;
       if (track && capabilities?.focusMode?.includes('continuous')) {
         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as TorchConstraintSet] }).catch(() => {});
       }
+      if (session !== sessionRef.current) return;
       setTorchAvailable(capabilities?.torch === true);
       stoppedRef.current = false;
       setState('scanning');
@@ -244,7 +247,20 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
     }
   };
 
-  useEffect(() => stopCamera, [stopCamera]);
+  const endSession = useCallback(() => {
+    ++sessionRef.current;
+    stopCamera();
+  }, [stopCamera]);
+  const startOnMount = useEffectEvent(() => { void startCamera(); });
+  useEffect(() => {
+    // Defer until the preview is mounted. Cancelling this frame also prevents
+    // StrictMode's effect replay from opening a second native scanner.
+    const frame = requestAnimationFrame(() => startOnMount());
+    return () => {
+      cancelAnimationFrame(frame);
+      endSession();
+    };
+  }, [endSession]);
 
   const busy = state === 'starting' || state === 'looking-up';
   const scanning = state === 'scanning';
@@ -277,16 +293,16 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
         {message}
       </p>
 
-      {!scanning ? (
-        <Button className="w-full" size="lg" onClick={() => { void startCamera(); }} loading={state === 'starting'} disabled={busy}>
+      {(state === 'idle' || state === 'error') ? (
+        <Button className="w-full" size="lg" onClick={() => { void startCamera(); }}>
           <ScanLine className="w-4 h-4" />
-          {state === 'error' ? 'Scan again' : 'Start scanner'}
+          Scan again
         </Button>
-      ) : (
+      ) : scanning ? (
         <Button variant="secondary" className="w-full" onClick={() => { stopCamera(); setState('idle'); }}>
           Stop camera
         </Button>
-      )}
+      ) : null}
 
       <button
         type="button"
