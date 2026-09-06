@@ -5,6 +5,7 @@
 import { isPreviewActive } from './flag';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import { getYouPreviewState } from './youFixtures';
 import {
   PREVIEW_USER_ID,
   previewSplit,
@@ -36,13 +37,12 @@ export function maybeSeedPreview(): void {
     workoutMode: 'split',
     currentWorkoutDayPlan: null,
     flexTemplates: [],
-    macroTarget: previewMacroTarget,
+    macroTarget: getYouPreviewState() === 'empty' ? null : previewMacroTarget,
     volumeLandmarks: previewLandmarks,
     weeklyVolume: previewWeeklyVolume,
     loading: false,
-    // Keep the illustrative nutrition/volume totals. Workout and program reads
-    // use the real store actions against the relational in-memory client.
-    fetchMacroTarget: noop,
+    // Keep illustrative volume totals. Nutrition, workout and program reads
+    // use the real store actions so saved edits survive route remounts.
     fetchVolumeLandmarks: noop,
     calculateWeeklyVolume: noop,
 

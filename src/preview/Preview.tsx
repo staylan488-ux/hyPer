@@ -57,6 +57,16 @@ export function PreviewGallery() {
           Data is sample-only. Logging, editing and starting sessions use the in-memory
           preview database. Changes last until a full page reload.
         </p>
+        <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+          <h2 className="t-heading">You screen review</h2>
+          <a href="/preview/you?youState=populated" className="t-caption min-h-11 flex items-center gap-2">
+            Sample account · weight, targets and saved meals <ArrowRight size={14} />
+          </a>
+          <a href="/preview/you?youState=empty" className="t-caption min-h-11 flex items-center gap-2">
+            New account · empty states <ArrowRight size={14} />
+          </a>
+          <p className="t-caption">Switching scenarios reloads and resets sample edits.</p>
+        </div>
         <a href="/preview?previewSetSave=fail" className="t-caption min-h-11 flex items-center gap-2 mt-3">
           Test set-save recovery <ArrowRight size={14} />
         </a>
