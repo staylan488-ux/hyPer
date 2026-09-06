@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 import { createTrialHandler } from './gateway.ts';
 import { createStorageLedger } from './storageLedger.ts';
 import { analyzeMeal } from './model.ts';
+import { interpretServing } from './serving.ts';
 
 // No client-provided API key, provider, model, URL or user ID is trusted.
 // The operator provisions a private bucket and these secrets before deployment.
@@ -31,6 +32,7 @@ Deno.serve(async (request: Request) => {
         return error ? null : data.user?.id ?? null;
       },
       analyze: input => analyzeMeal(input, apiKey, tavilyKey),
+      interpretServing: input => interpretServing(input, apiKey),
     });
     return handler(request);
   } catch {

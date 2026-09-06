@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.mock('@/preview/flag', () => ({ isPreviewActive: () => false, isAppSandboxActive: () => false }));
-import { analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult } from '@/lib/foodTrial';
+import { interpretFoodServing, analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult } from '@/lib/foodTrial';
 afterEach(() => vi.unstubAllGlobals());
 describe('hosted food trial transport', () => {
   it('uses the hosted endpoint for text-only without worker settings and leaves review unconfirmed', async () => {
@@ -84,5 +84,31 @@ describe('hosted food trial transport', () => {
     vi.stubGlobal('fetch', fetcher);
     await getFoodTrialStatus('token');
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ action: 'status' });
+  });
+});
+
+
+describe('serving interpretation transport', () => {
+  const food = { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' };
+  it('sends only serving context and recomputes a returned multiplier', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ provider: 'gemini', model: previewFoodTrialResult.model,
+      interpretation: { status: 'resolved', quantity: 6, optionId: 'defined', servings: 999, calories: 999 } })));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await interpretFoodServing({ ...food, calories: 250 } as typeof food, 'I ate 6 pieces', 'token');
+    expect(result).toMatchObject({ servings: 1.2, quantity: 6 });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ action: 'interpret-serving', food, text: 'I ate 6 pieces' });
+  });
+  it('preserves ambiguity without a multiplier and never retries a network failure', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ provider: 'gemini', model: previewFoodTrialResult.model,
+      interpretation: { status: 'clarification', message: 'How many pieces?' } })));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await interpretFoodServing(food, 'a handful', 'token')).toEqual({ status: 'clarification', message: 'How many pieces?' });
+    fetcher.mockImplementation(async () => { throw new TypeError('offline'); });
+    await expect(interpretFoodServing(food, '6 pieces', 'token')).rejects.toThrow('Retry the same description');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('rejects a stale service response without changing the amount', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult))));
+    await expect(interpretFoodServing(food, '6 pieces', 'token')).rejects.toThrow('service update');
   });
 });

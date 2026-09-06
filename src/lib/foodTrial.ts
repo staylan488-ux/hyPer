@@ -4,6 +4,8 @@ import { FOOD_TRIAL_MODEL, validateTrialItems, type FoodTrialResult } from '../.
 export { trialFoodTotals } from '../../supabase/functions/analyze-food-trial/model';
 export type { FoodTrialResult, TrialFoodItem, TrialUsage } from '../../supabase/functions/analyze-food-trial/model';
 
+import { getServingOptions, normalizeServingInput, resolveServingInterpretation, type ServingFood, type ServingInterpretation } from '../../supabase/functions/analyze-food-trial/serving';
+
 const MODE_KEY = 'hyper.food-analysis.mode';
 export function getFoodAnalysisMode(): 'worker' | 'gemini' {
   const mode = globalThis.localStorage?.getItem(MODE_KEY);
@@ -86,6 +88,31 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
   } catch (error) {
     if (error instanceof TypeError || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
       throw new Error('Connection interrupted. Your analysis may still be running. Retry the same input on the same UTC date to check it without starting another paid analysis.');
+    }
+    throw error;
+  }
+}
+
+/** Interpret only the amount. Nutrition and division stay in application code. */
+export async function interpretFoodServing(food: ServingFood, text: string, accessToken: string): Promise<ServingInterpretation> {
+  const input = normalizeServingInput({ action: 'interpret-serving', food, text });
+  if (isPreviewActive() && !isAppSandboxActive()) {
+    // Deliberately narrow offline fixture; never make a live provider call in preview.
+    const match = input.text.match(/^(?:I ate )?(\d+(?:\.\d+)?)\s+([a-z]+)\.?$/i);
+    const option = match && getServingOptions(food).find(option => option.unit.replace(/s$/, '') === match[2].toLowerCase().replace(/s$/, ''));
+    return resolveServingInterpretation(food, option ? { status: 'resolved', quantity: Number(match![1]), optionId: option.id, message: '' }
+      : { status: 'clarification', message: 'Preview accepts a number and a defined unit, such as “I ate 6 pieces.”' });
+  }
+  try {
+    const payload = await post(input, accessToken);
+    if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL || !payload.interpretation) {
+      throw new Error('Serving interpretation needs a service update. Enter the amount manually.');
+    }
+    // Recompute against the selected record; never trust a returned multiplier or macros.
+    return resolveServingInterpretation(food, payload.interpretation);
+  } catch (error) {
+    if (error instanceof TypeError || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
+      throw new Error('Connection interrupted. Retry the same description to check this attempt, or enter the amount manually.');
     }
     throw error;
   }

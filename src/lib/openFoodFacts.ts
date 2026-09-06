@@ -90,7 +90,7 @@ export function mapOpenFoodFactsProduct(
   const servingLabelWithoutMetric = rawServingLabel.replace(/\s*\(\s*[\d.,]+\s*(?:g|ml)\s*\)\s*$/i, '').trim();
   const normalizedLabel = servingLabelWithoutMetric.toLowerCase().replace(/\s+/g, '');
   const normalizedMetric = `${servingSize}${servingUnit}`.toLowerCase().replace(/\s+/g, '');
-  const servingLabel = servingLabelWithoutMetric && normalizedLabel !== normalizedMetric
+  const servingLabel = hasServingNutrition && servingLabelWithoutMetric && normalizedLabel !== normalizedMetric
     ? servingLabelWithoutMetric
     : undefined;
 
