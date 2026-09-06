@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { ArrowLeft, LogOut, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
@@ -15,6 +15,7 @@ import {
 import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
+import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
 import { shouldBlockSettingsExit, targetModeLabel } from '@/lib/settingsUx';
 import { getNutritionProfile } from '@/lib/nutritionProfile';
@@ -68,6 +69,8 @@ export function Settings() {
   const location = useLocation();
   const page = location.pathname.replace(/^\/settings\/?/, '') || 'home';
   const preview = isPreviewActive() && !isAppSandboxActive();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [weighInOpen, setWeighInOpen] = useState(false);
   const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const allowNavigation = useRef(false);
@@ -108,6 +111,25 @@ export function Settings() {
       lastPath.current = location.pathname;
     }
   }, [location.pathname]);
+  useEffect(() => {
+    if (!location.hash.startsWith('#search-') || searchOpen) return;
+    let target: HTMLElement | null = null;
+    // Wait until the search sheet has released background isolation and focus.
+    const timer = window.setTimeout(() => {
+      target = document.getElementById(location.hash.slice(1)) ?? pageHeading.current;
+      if (!target) return;
+      if (!target.hasAttribute('tabindex') && !target.matches('button, input')) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'center', behavior: 'instant' });
+      target.classList.add('you-search-highlight');
+    }, 300);
+    const clear = window.setTimeout(() => target?.classList.remove('you-search-highlight'), 2400);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(clear);
+      target?.classList.remove('you-search-highlight');
+    };
+  }, [location.key, location.hash, searchOpen]);
   useEffect(() => {
     if (page === 'targets/coach') setCoachVisited(true);
     if (page === 'targets/calculate') setCalculatorVisited(true);
@@ -954,6 +976,11 @@ export function Settings() {
 
   return (
     <Screen className="you-settings">
+      <SettingsSearch open={searchOpen} query={searchQuery} onQuery={setSearchQuery}
+        onClose={() => setSearchOpen(false)} onSelect={(href) => {
+          setSearchOpen(false);
+          go(href);
+        }} />
       <header className="mb-5">
         {page !== 'home' && (
           <button type="button" onClick={() => go(backPath)} className="you-back">
@@ -961,9 +988,15 @@ export function Settings() {
             {backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')]}
           </button>
         )}
-        <h1 ref={pageHeading} tabIndex={-1} className="t-title outline-none">
-          {titles[page] || 'You'}
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 ref={pageHeading} tabIndex={-1} className="t-title outline-none">
+            {titles[page] || 'You'}
+          </h1>
+          <button type="button" className="you-text-action flex items-center justify-center gap-2 px-2 shrink-0"
+            aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
+            <Search size={20} aria-hidden="true" /><span>Search</span>
+          </button>
+        </div>
         {page === 'home' && (
           <div className="flex items-center justify-between gap-3 mt-2">
             <p className="t-body break-words min-w-0">
@@ -1064,6 +1097,7 @@ export function Settings() {
       {page === 'account' && (
         <>
           <Input
+            id="search-display-name"
             label="Display name"
             value={displayName}
             onChange={(e) => {
@@ -1088,19 +1122,21 @@ export function Settings() {
             </p>
           )}
 
-          <SettingsSection label="Sign out">
-            <p className="t-body mb-3">Sign out of your account on this device.</p>
-            <Button variant="danger" disabled={busy} onClick={handleSignOut}>
-              <LogOut size={16} />
-              Sign out
-            </Button>
-          </SettingsSection>
+          <div id="search-sign-out" tabIndex={-1}>
+            <SettingsSection label="Sign out">
+              <p className="t-body mb-3">Sign out of your account on this device.</p>
+              <Button variant="danger" disabled={busy} onClick={handleSignOut}>
+                <LogOut size={16} />
+                Sign out
+              </Button>
+            </SettingsSection>
+          </div>
         </>
       )}
       {page === 'appearance' && (
         <>
           <p className="t-body mb-5">Choose the appearance that is easiest for you to read.</p>{' '}
-          <div className="flex items-center justify-between gap-4">
+          <div id="search-appearance" className="flex items-center justify-between gap-4">
             <div>
               <p className="t-heading">Theme</p>
               <p className="t-caption mt-1">{theme === 'light' ? 'Ivory' : 'Black'}</p>
@@ -1256,6 +1292,7 @@ export function Settings() {
           </p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-4">
             <Input
+              id="search-calories"
               label="Calories"
               type="number"
               inputMode="numeric"
@@ -1264,6 +1301,7 @@ export function Settings() {
               onChange={(e) => editMacro('calories', e.target.value)}
             />
             <Input
+              id="search-protein"
               label="Protein (g)"
               type="number"
               inputMode="numeric"
@@ -1272,6 +1310,7 @@ export function Settings() {
               onChange={(e) => editMacro('protein', e.target.value)}
             />
             <Input
+              id="search-carbs"
               label="Carbs (g)"
               type="number"
               inputMode="numeric"
@@ -1280,6 +1319,7 @@ export function Settings() {
               onChange={(e) => editMacro('carbs', e.target.value)}
             />
             <Input
+              id="search-fat"
               label="Fat (g)"
               type="number"
               inputMode="numeric"
@@ -1525,7 +1565,7 @@ export function Settings() {
       {page === 'analysis' && (
         <>
           {' '}
-          <div className="space-y-4 mb-6">
+          <div id="search-analysis-mode" className="space-y-4 mb-6">
             <label className="t-body block mb-2" id="analysis-method-label">
               Meal analysis method
             </label>
@@ -1591,6 +1631,7 @@ export function Settings() {
           </p>
           <div className="space-y-4">
             <Input
+              id="search-worker-url"
               label="Worker URL"
               value={photoWorkerDraft.url}
               onChange={(event) =>
@@ -1598,6 +1639,7 @@ export function Settings() {
               }
               placeholder="http://127.0.0.1:8788"
             />
+            <div id="search-analysis-provider">
             <label id="photo-provider-label" className="t-body block">
               Photo-analysis provider
             </label>
@@ -1620,6 +1662,7 @@ export function Settings() {
                 },
               ]}
             />
+            </div>
             <Button
               variant="secondary"
               className="w-full"
@@ -1749,8 +1792,9 @@ export function Settings() {
       {page === 'weight' && (
         <>
           <div className="flex items-center justify-between gap-3 mb-4">
-            <Button onClick={() => setWeighInOpen(true)}>Log weight</Button>
+            <Button id="search-log-weight" onClick={() => setWeighInOpen(true)}>Log weight</Button>
             <button
+              id="search-weight-units"
               className="you-text-action"
               aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
               onClick={handleToggleWeightUnit}
