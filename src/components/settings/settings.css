@@ -93,3 +93,19 @@
   font-size: 14px;
   line-height: 1.5;
 }
+
+.you-search-highlight {
+  outline: 2px solid var(--color-text);
+  outline-offset: 5px;
+  scroll-margin-block: 24px;
+}
+
+/* Keep the input stationary as results change, including above the keyboard. */
+.studio-sheet:has(.you-search) {
+  height: min(680px, 100%);
+}
+.studio-sheet .you-search {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
