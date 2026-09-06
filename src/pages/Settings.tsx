@@ -126,6 +126,8 @@ export function Settings() {
     syncWhoop,
   } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
+  const themePreference = useThemeStore((state) => state.preference);
+  const appearanceLabel = `${themePreference === 'system' ? 'Follow system · ' : ''}${theme === 'light' ? 'Ivory' : 'Black'}`;
   const [searchParams] = useSearchParams();
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
@@ -1036,7 +1038,7 @@ export function Settings() {
             />
             <SettingsRow
               title="Appearance"
-              description={theme === 'light' ? 'Ivory' : 'Black'}
+              description={appearanceLabel}
               onClick={() => go('/settings/appearance')}
             />
           </SettingsSection>
@@ -1099,11 +1101,11 @@ export function Settings() {
       )}
       {page === 'appearance' && (
         <>
-          <p className="t-body mb-5">Choose the appearance that is easiest for you to read.</p>{' '}
-          <div className="flex items-center justify-between gap-4">
+          <p className="t-body mb-5">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>{' '}
+          <div className="flex flex-col items-start gap-4">
             <div>
               <p className="t-heading">Theme</p>
-              <p className="t-caption mt-1">{theme === 'light' ? 'Ivory' : 'Black'}</p>
+              <p className="t-caption mt-1">{appearanceLabel}</p>
             </div>
             <ThemeToggle />
           </div>
