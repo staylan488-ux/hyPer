@@ -603,3 +603,10 @@ html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events
   background-color: var(--material-sheet);
 }
 @media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }
+
+/* iOS focuses small editable text by zooming the entire WKWebView. Keep an
+   explicit floor even when compact display typography is reused on controls.
+   Pinch zoom and larger inherited text sizes remain available. */
+:is(input, textarea, select, [contenteditable='true']):not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']) {
+  font-size: max(16px, 1em);
+}
