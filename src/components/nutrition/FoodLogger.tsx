@@ -1008,7 +1008,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       foodId = newFood.id;
     }
 
-    if (food.source === 'custom') {
+    if (food.source === 'custom' || food.source === 'saved_meal' || food.source === 'manual_entry') {
       const hasTemporaryId = !food.id || food.id.startsWith('photo-');
 
       if (!hasTemporaryId) {
@@ -1040,8 +1040,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         protein: food.protein,
         carbs: food.carbs,
         fat: food.fat,
-        source: 'custom' as const,
-        // only set for a combined meal; every other custom food leaves it null
+        source: food.source,
         ...(food.description ? { description: food.description } : {}),
       };
 
@@ -1140,7 +1139,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     };
   };
 
-  const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void) => {
+  const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void, saveAsReusableMeal: boolean) => {
     if (!timeValue) throw new Error('Choose a logging time.');
     if (initialEntry && items.length !== 1) throw new Error('Keep one food when editing an existing entry.');
     for (const item of items) {
@@ -1154,7 +1153,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         ...totals,
         serving_size: item.quantity,
         serving_unit: item.unit,
-        source: 'custom',
+        source: saveAsReusableMeal ? 'saved_meal' : 'manual_entry',
         fdc_id: null,
         description: `${item.evidence === 'label' ? 'Label-based nutrition.' : 'Estimated nutrition.'} ${item.amountConfirmed ? 'Amount supplied or adjusted by user.' : 'Estimated amount reviewed when saved.'} ${item.notes}`,
       });

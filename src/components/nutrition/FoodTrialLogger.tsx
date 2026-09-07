@@ -9,7 +9,7 @@ import type { PhotoAnalysisImage } from '@/lib/photoAnalysis';
 interface FoodTrialLoggerProps {
   whenRow: ReactNode;
   prepareImage: (file: File) => Promise<{ imageBase64: string; mimeType: string }>;
-  onSave: (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void) => Promise<void>;
+  onSave: (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void, saveAsReusableMeal: boolean) => Promise<void>;
   initialHint?: string;
   editingEntry?: boolean;
 }
@@ -30,6 +30,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
   const photosRef = useRef(photos);
   const inputRef = useRef<HTMLInputElement>(null);
   const [saveStarted, setSaveStarted] = useState(false);
+  const [saveAsReusableMeal, setSaveAsReusableMeal] = useState(false);
   useEffect(() => { photosRef.current = photos; }, [photos]);
   useEffect(() => () => photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.preview)), []);
 
@@ -68,7 +69,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     setError(null);
     setSaveStarted(true);
     try {
-      await onSave(items, (savedItem) => setItems((current) => current.filter((item) => item !== savedItem)));
+      await onSave(items, (savedItem) => setItems((current) => current.filter((item) => item !== savedItem)), saveAsReusableMeal);
     } catch (failure) {
       setError(`${failure instanceof Error ? failure.message : 'Could not save the meal.'} Saved foods are removed; retry the remaining foods.`);
     } finally {
@@ -80,7 +81,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     const itemTotals = trialFoodTotals(item);
     return { calories: sum.calories + itemTotals.calories, protein: sum.protein + itemTotals.protein, carbs: sum.carbs + itemTotals.carbs, fat: sum.fat + itemTotals.fat };
   }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
-  const changeMeal = () => { setResult(null); setItems([]); setAnswer(''); setClarificationUsed(false); setError(null); };
+  const changeMeal = () => { setResult(null); setItems([]); setAnswer(''); setClarificationUsed(false); setError(null); setSaveAsReusableMeal(false); };
   const photoControls = <>
     <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => {
       const selected = Array.from(event.target.files || []);
@@ -146,7 +147,16 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       })}
       {result.sources.length > 0 && <details className="t-caption"><summary className="min-h-11 flex items-center cursor-pointer">Sources ({result.sources.length})</summary><div className="space-y-3 pb-3">{result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="block underline underline-offset-2 break-words">{source.title}</a>)}</div></details>}
       {whenRow}
-      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{editingEntry ? 'Save changes' : 'Save meal'}</Button></div>
+      <label className="flex items-center gap-3 min-h-11 cursor-pointer">
+        <input type="checkbox" checked={saveAsReusableMeal} disabled={!!busy || saveStarted}
+          onChange={(event) => setSaveAsReusableMeal(event.target.checked)}
+          className="w-[18px] h-[18px] shrink-0 accent-[var(--color-text)]" />
+        <span>
+          <span className="t-label block">Save as reusable meal</span>
+          <span className="t-caption block mt-1">{items.length > 1 ? 'Also add these foods to Saved meals for future logging.' : 'Also add this food to Saved meals for future logging.'}</span>
+        </span>
+      </label>
+      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{editingEntry ? 'Save changes' : 'Log meal'}</Button></div>
     </>}
     {error && <p className="t-caption text-[var(--color-accent)]" role="alert">{error}</p>}
   </div>;
