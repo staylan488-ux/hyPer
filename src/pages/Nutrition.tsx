@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
 import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
-import { FoodLogger } from '@/components/nutrition/FoodLogger';
+import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
@@ -48,6 +48,7 @@ interface NutritionLogEntry {
   food: {
     id: string;
     name: string;
+    description?: string | null;
     calories: number;
     protein: number;
     carbs: number;
@@ -79,6 +80,7 @@ function buildCalendarDays(baseDate: Date): Date[] {
 export function Nutrition() {
   const { macroTarget, fetchMacroTarget } = useAppStore();
   const [showLogger, setShowLogger] = useState(false);
+  const [loggerBusy, setLoggerBusy] = useState(false);
   const [monthLogs, setMonthLogs] = useState<NutritionLogEntry[]>([]);
   const [monthGroups, setMonthGroups] = useState<NutritionGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,7 +139,7 @@ export function Nutrition() {
       const foodIds = [...new Set(logs.map((log) => log.food_id))];
       const { data: foods, error: foodsError } = await supabase
         .from('foods')
-        .select('id, name, calories, protein, carbs, fat, serving_size, serving_unit')
+        .select('id, name, description, calories, protein, carbs, fat, serving_size, serving_unit')
         .in('id', foodIds);
 
       if (foodsError) {
@@ -770,12 +772,15 @@ export function Nutrition() {
       <Modal
         isOpen={showLogger}
         onClose={() => {
+          if (loggerBusy) return;
           setShowLogger(false);
           setEditingEntry(null);
         }}
         title={editingEntry ? 'Edit entry' : 'Log food'}
       >
-        <FoodLogger
+        <MealLogger
+          onBusyChange={setLoggerBusy}
+          onCancel={() => { setShowLogger(false); setEditingEntry(null); }}
           selectedDate={selectedDate}
           initialEntry={editingEntry}
           groups={selectedDayGroups}

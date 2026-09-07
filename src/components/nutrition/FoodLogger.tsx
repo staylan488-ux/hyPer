@@ -30,6 +30,7 @@ import { ServingEntry } from './ServingEntry';
 import { FoodTrialLogger } from './FoodTrialLogger';
 import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
 import { combineIntoOneMeal } from '@/lib/combineMeal';
+import { createMealIngredient, decodeMealComposition, type MealIngredient } from '@/lib/mealComposition';
 import { legacyMealTypeForGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { bindFoodToBarcode, findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
@@ -99,7 +100,7 @@ type SelectedFoodMeta = {
   provider: 'usda' | 'open_food_facts' | 'saved' | 'fatsecret';
 };
 
-interface EditableNutritionEntry {
+export interface EditableNutritionEntry {
   id: string;
   date: string;
   logged_at: string | null;
@@ -117,17 +118,23 @@ interface EditableNutritionEntry {
     fat: number;
     serving_size?: number;
     serving_unit?: string;
+    description?: string | null;
   } | null;
 }
 
-interface FoodLoggerProps {
+export type FoodCaptureMethod = 'saved' | 'search' | 'barcode' | 'manual' | 'photo';
+export interface FoodLoggerProps {
   selectedDate: Date;
   onComplete: () => void;
   initialEntry?: EditableNutritionEntry | null;
   groups?: NutritionGroup[];
+  onAddIngredients?: (ingredients: MealIngredient[]) => void;
+  initialMethod?: FoodCaptureMethod;
+  onMethodChange?: (method: FoodCaptureMethod) => void;
+  onComposeMeal?: (food: Food, editSaved?: boolean) => void;
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [] }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -138,7 +145,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [initialEntry?.date, selectedDate]);
 
   const [servingReviewOpen, setServingReviewOpen] = useState(false);
-  const [mode, setMode] = useState<'saved' | 'search' | 'barcode' | 'manual' | 'photo'>(initialEntry ? 'manual' : 'saved');
+  const [mode, setMode] = useState<FoodCaptureMethod>(initialEntry ? 'manual' : initialMethod || 'saved');
+  useEffect(() => { onMethodChange?.(mode); }, [mode, onMethodChange]);
   const [foodAnalysisMode] = useState(getFoodAnalysisMode);
   const [trialInitialHint, setTrialInitialHint] = useState('');
   const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
@@ -515,7 +523,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
       const { data, error } = await supabase
         .from('foods')
-        .select('id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id')
+        .select('id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, description')
         .eq('user_id', user.id)
         .in('source', ['saved_meal', 'custom'])
         .order('created_at', { ascending: false })
@@ -545,6 +553,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           serving_unit: meal.serving_unit || 'serving',
           source: 'custom',
           fdc_id: meal.fdc_id,
+          description: meal.description,
         });
       }
 
@@ -555,6 +564,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, []);
 
   const handleSelectSavedMeal = (meal: Food) => {
+    if (decodeMealComposition(meal.description)) {
+      if (onAddIngredients || !onComposeMeal) {
+        setSelectedFood(meal);
+        setSelectedFoodMeta(null);
+        setServings('1');
+      } else onComposeMeal?.(meal);
+      return;
+    }
     clearSavedMealFeedback();
     setManualFood({
       name: meal.name,
@@ -569,6 +586,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleLogSavedMeal = (meal: Food) => {
+    if (!onAddIngredients && onComposeMeal && decodeMealComposition(meal.description)) {
+      onComposeMeal(meal);
+      return;
+    }
     setSelectedFoodMeta(null);
     setSelectedFood(meal);
     setMeasurementUnit('serving');
@@ -577,6 +598,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleEditSavedMeal = (meal: Food) => {
+    if (onComposeMeal && decodeMealComposition(meal.description)) {
+      onComposeMeal(meal, true);
+      return;
+    }
     handleSelectSavedMeal(meal);
     setManagingSavedMeals(false);
     setMode('manual');
@@ -1112,6 +1137,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleSaveFromSelectedFood = async (food: Food, servingsCount: number) => {
+    if (onAddIngredients) {
+      try { onAddIngredients([createMealIngredient(food, servingsCount)]); }
+      catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not add ingredient.'); }
+      return;
+    }
     setSaving(true);
     try {
       const foodId = await upsertFoodIfNeeded(food);
@@ -1142,6 +1172,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void, saveAsReusableMeal: boolean) => {
+    if (onAddIngredients) {
+      onAddIngredients(items.map((item) => createMealIngredient({
+        id: `photo-${crypto.randomUUID()}`, user_id: null, name: item.name.trim(),
+        ...trialFoodTotals(item), serving_size: item.quantity, serving_unit: item.unit,
+        source: 'manual_entry', fdc_id: null, description: item.notes,
+      }, 1)));
+      return;
+    }
     if (!timeValue) throw new Error('Choose a logging time.');
     if (initialEntry && items.length !== 1) throw new Error('Keep one food when editing an existing entry.');
     for (const item of items) {
@@ -1174,6 +1212,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       return;
     }
 
+    if (onAddIngredients) {
+      try {
+        onAddIngredients(photoItems.map((item) => createMealIngredient(item.groundedFood || {
+          id: `photo-${item.id}`, user_id: null, name: item.name.trim(), ...photoItemTotals(item),
+          serving_size: item.amountGrams, serving_unit: 'g', source: 'manual_entry', fdc_id: null,
+        }, item.groundedFood ? item.amountGrams / Math.max(1, item.groundedFood.serving_size || 100) : 1)));
+      } catch (error) { setPhotoError(error instanceof Error ? error.message : 'Could not add ingredients.'); }
+      return;
+    }
     setSaving(true);
     setPhotoError(null);
     let savedCount = 0;
@@ -1310,6 +1357,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleManualSubmit = async () => {
+    if (onAddIngredients) {
+      try {
+        onAddIngredients([createMealIngredient({ id: crypto.randomUUID(), user_id: null,
+          ...manualMacroValues, serving_size: 1, serving_unit: 'serving', source: 'manual_entry', fdc_id: null,
+        }, manualServingsValue)]);
+      } catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not add ingredient.'); }
+      return;
+    }
     setSaving(true);
     clearSavedMealFeedback();
     try {
@@ -1416,7 +1471,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   /* ── Shared "when" row: date · time · destination ── */
-  const whenRow = (
+  const whenRow = onAddIngredients ? (saveError && <p role="alert" className="t-caption text-[var(--color-accent)]">{saveError}</p>) : (
     <div className="grid grid-cols-2 gap-3">
       {saveError && (
         <p role="alert" className="col-span-2 t-caption text-[var(--color-accent)]">{saveError}</p>
@@ -1572,7 +1627,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {photoError}
             </p>
           )}
-          {photoItems.length > 1 && (
+          {!onAddIngredients && photoItems.length > 1 && (
             <label className="flex items-start gap-3 py-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -1603,7 +1658,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
             <Button variant="ghost" className="shrink-0 !px-3" disabled={saving} onClick={resetPhotoState}>Retake</Button>
             <Button className="min-w-0 shrink-0 !px-4" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
-              {combineAsOneMeal && photoItems.length > 1
+              {onAddIngredients ? 'Add ingredients' : combineAsOneMeal && photoItems.length > 1
                 ? 'Log 1 meal'
                 : `Log ${photoItems.length} item${photoItems.length === 1 ? '' : 's'}`}
             </Button>
@@ -1788,7 +1843,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             loading={saving}
             disabled={servingReviewOpen || !timeValue || resolvedSelectedFoodServings === null}
           >
-            {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
+            {onAddIngredients ? 'Add ingredient' : loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </div>
       </div>
@@ -2031,21 +2086,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             {missedBarcode && (
               <div className="material-surface rounded-[11px] p-4">
                 <p className="t-caption">
-                  No catalog match for barcode {missedBarcode}. Enter it from the
-                  package label once and it will be yours on every future scan.
+                  {onAddIngredients ? `No catalog match for barcode ${missedBarcode}. Enter the package nutrition to add this ingredient.` : `No catalog match for barcode ${missedBarcode}. Enter it from the package label once and it will be yours on every future scan.`}
                 </p>
                 <Button
                   variant="secondary"
                   size="sm"
                   className="mt-3"
                   onClick={() => {
-                    setPendingBarcodeBinding(missedBarcode);
+                    setPendingBarcodeBinding(onAddIngredients ? null : missedBarcode);
                     setSaveAsReusableMeal(true);
                     setSelectedSavedMealId(null);
                     setMode('manual');
                   }}
                 >
-                  Create a saved product for this barcode
+                  {onAddIngredients ? 'Enter ingredient manually' : 'Create a saved product for this barcode'}
                 </Button>
               </div>
             )}
@@ -2181,7 +2235,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           )}
 
-          {selectedSavedMealId && (
+          {!onAddIngredients && selectedSavedMealId && (
             <p className="t-label-sm text-[var(--color-text)]">
               {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
             </p>
@@ -2243,7 +2297,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             />
           </FormField>
 
-          {!selectedSavedMealId && (
+          {!onAddIngredients && !selectedSavedMealId && (
             <button
               type="button"
               onClick={() => setSaveAsReusableMeal(!saveAsReusableMeal)}
@@ -2264,7 +2318,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </button>
           )}
 
-          {selectedSavedMealId && (
+          {!onAddIngredients && selectedSavedMealId && (
             <Button
               variant="secondary"
               className="w-full"
@@ -2288,11 +2342,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             disabled={!manualFood.name || saving || !timeValue}
             loading={saving}
           >
-            {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
+            {onAddIngredients ? 'Add ingredient' : loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </>
       ) : foodAnalysisMode === 'gemini' ? (
-        <FoodTrialLogger whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
+        <FoodTrialLogger addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
       ) : (
         <div className="space-y-5">
           <input

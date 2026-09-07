@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowDown, ArrowUp, GripVertical, MoveLeft, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Pencil, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/shared';
 import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
 import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { springs } from '@/lib/animations';
+import { decodeMealComposition } from '@/lib/mealComposition';
 import type { NutritionGroup } from '@/types';
 
 export interface NutritionLedgerEntry {
@@ -19,6 +20,7 @@ export interface NutritionLedgerEntry {
   source?: string;
   food: {
     name: string;
+    description?: string | null;
     calories: number;
     protein: number;
     serving_size?: number;
@@ -40,6 +42,7 @@ interface NutritionGroupLedgerProps {
 }
 
 function sourceLabel(source?: string): string {
+  if (source === 'meal_builder') return 'Meal';
   if (!source || source === 'manual') return 'Manual';
   if (source === 'usda') return 'USDA';
   if (source === 'cronometer_csv') return 'Cronometer';
@@ -53,7 +56,7 @@ function sourceLabel(source?: string): string {
   return 'Manual';
 }
 
-function servingLabel(log: NutritionLedgerEntry): string {
+function servingLabel(log: Pick<NutritionLedgerEntry, 'food' | 'servings'>): string {
   const unit = log.food?.serving_unit?.trim();
   const servingSize = Number(log.food?.serving_size) || 1;
   if (unit && unit.toLowerCase() !== 'serving') {
@@ -91,6 +94,7 @@ export function NutritionGroupLedger({
 
   const renderEntry = (log: NutritionLedgerEntry, index: number) => {
     const provenance = sourceLabel(log.source);
+    const composition = decodeMealComposition(log.food?.description);
     return (
       <motion.li
         key={log.id}
@@ -164,6 +168,33 @@ export function NutritionGroupLedger({
               <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
             </span>
           </div>
+          {composition && (
+            <details className="group border-t border-[var(--color-border)]">
+              <summary className="pressable flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[var(--color-muted)] [&::-webkit-details-marker]:hidden">
+                <span className="t-caption">{composition.ingredients.length} ingredient{composition.ingredients.length === 1 ? '' : 's'}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 group-open:rotate-180" strokeWidth={1.5} />
+              </summary>
+              <ul className="pb-2">
+                {composition.ingredients.map((ingredient) => {
+                  const servings = ingredient.servings * log.servings;
+                  return (
+                    <li key={ingredient.id} className="flex items-start justify-between gap-3 border-t border-[var(--color-border)] py-3">
+                      <div className="min-w-0">
+                        <p className="t-body break-words text-[var(--color-text)]">{ingredient.food.name}</p>
+                        <p className="t-data-sm mt-1 text-[var(--color-muted)]">
+                          {servingLabel({ food: ingredient.food, servings })}
+                        </p>
+                        <p className="t-data-sm mt-1 text-[var(--color-text-dim)]">
+                          {Math.round(ingredient.food.protein * servings)}g P · {Math.round(ingredient.food.carbs * servings)}g C · {Math.round(ingredient.food.fat * servings)}g F
+                        </p>
+                      </div>
+                      <span className="t-data-sm shrink-0 text-[var(--color-muted)]">{Math.round(ingredient.food.calories * servings)} kcal</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          )}
         </div>
       </motion.li>
     );

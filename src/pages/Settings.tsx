@@ -8,13 +8,15 @@ import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
+import { MealLogger } from '@/components/nutrition/MealLogger';
+import { decodeMealComposition } from '@/lib/mealComposition';
 import {
   NutritionWizard,
   type NutritionWizardOutcome,
 } from '@/components/nutrition/NutritionWizard';
 import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
-import { DEFAULT_MACRO_TARGET, type MacroTargetSource } from '@/types';
+import { DEFAULT_MACRO_TARGET, type Food, type MacroTargetSource } from '@/types';
 import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
 import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
@@ -64,6 +66,9 @@ interface SavedMeal {
   carbs: number;
   fat: number;
   source: string;
+  description?: string | null;
+  serving_size?: number;
+  serving_unit?: string;
 }
 
 export function Settings() {
@@ -172,6 +177,7 @@ export function Settings() {
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [editingComposedMeal, setEditingComposedMeal] = useState<Food | null>(null);
   const [editingMealDraft, setEditingMealDraft] = useState({
     name: '',
     calories: '',
@@ -485,7 +491,7 @@ export function Settings() {
 
       const { data, error } = await supabase
         .from('foods')
-        .select('id, user_id, name, calories, protein, carbs, fat, source')
+        .select('id, user_id, name, calories, protein, carbs, fat, source, description, serving_size, serving_unit')
         .eq('user_id', user.id)
         .in('source', ['saved_meal', 'custom'])
         .order('created_at', { ascending: false })
@@ -512,6 +518,9 @@ export function Settings() {
           carbs: Number(meal.carbs) || 0,
           fat: Number(meal.fat) || 0,
           source: meal.source,
+          description: meal.description,
+          serving_size: meal.serving_size,
+          serving_unit: meal.serving_unit,
         });
       }
 
@@ -542,6 +551,18 @@ export function Settings() {
   const beginEditingMeal = (meal: SavedMeal, replacing = false) => {
     if (editingMealId && editingMealId !== meal.id && !replacing) {
       setDiscardAction(() => () => beginEditingMeal(meal, true));
+      return;
+    }
+    if (decodeMealComposition(meal.description)) {
+      setEditingMealId(null);
+      clearMealManagerFeedback();
+      setEditingComposedMeal({
+        ...meal,
+        source: meal.source === 'custom' ? 'custom' : 'saved_meal',
+        serving_size: meal.serving_size || 1,
+        serving_unit: meal.serving_unit || 'serving',
+        fdc_id: null,
+      });
       return;
     }
     setEditingMealId(meal.id);
@@ -916,7 +937,10 @@ export function Settings() {
       setCalculatorDirty(false);
     }
     if (leavingSettings || page === 'analysis/worker') setPhotoWorkerDraft(workerSaved);
-    if (leavingSettings || page === 'meals') setEditingMealId(null);
+    if (leavingSettings || page === 'meals') {
+      setEditingMealId(null);
+      setEditingComposedMeal(null);
+    }
     setWeighInDraft('');
   };
   const titles: Record<string, string> = {
@@ -1910,6 +1934,28 @@ export function Settings() {
         </>
       )}
       {!titles[page] && <SettingsRow title="Back to You" onClick={() => go('/settings')} />}
+      <Modal
+        isOpen={editingComposedMeal !== null}
+        title="Edit saved meal"
+        onClose={() => {
+          if (savingMealEdit) return;
+          setEditingComposedMeal(null);
+        }}
+      >
+        {editingComposedMeal && (
+          <MealLogger
+            selectedDate={new Date()}
+            initialSavedMeal={editingComposedMeal}
+            onCancel={() => setEditingComposedMeal(null)}
+            onBusyChange={setSavingMealEdit}
+            onComplete={() => {
+              setEditingComposedMeal(null);
+              setMealManagerMessage('Saved meal updated for future logs.');
+              void fetchSavedMeals();
+            }}
+          />
+        )}
+      </Modal>
       <Modal
         contentClassName="you-settings"
         isOpen={weighInOpen}
