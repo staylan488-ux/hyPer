@@ -118,6 +118,7 @@ const food = (id: string, name: string, cal: number, p: number, c: number, f: nu
   ({ id, name, calories: cal, protein: p, carbs: c, fat: f, serving_size: size, serving_unit: unit, source, fdc_id: source === 'usda' ? `fdc-${id}` : null, user_id: source === 'custom' ? PREVIEW_USER_ID : null });
 
 export const previewFoods: Food[] = [
+  food('f_serving_demo', 'Samosas (serving demo)', 250, 10, 30, 10, 5, 'pieces', 'custom'),
   food('f_oats', 'Rolled Oats', 150, 5, 27, 3, 40, 'g'),
   food('f_eggs', 'Whole Eggs', 156, 13, 1, 11, 2, 'large'),
   food('f_chicken', 'Chicken Breast, grilled', 248, 47, 0, 5, 150, 'g'),

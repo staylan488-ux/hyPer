@@ -49,6 +49,12 @@ describe('analysis usage status', () => {
     expect(pending).toContain('Tavily reported credits (known subtotal): unreported');
     expect(pending).not.toContain('$0.0000');
   });
+  it('counts serving model usage without classifying it as research', () => {
+    const message = summarizeFoodTrialStatus({ ...status, attempts: [{ analysisVersion: 'gemini-serving-v1', usage: { modelCalls: 1, estimatedTokenUsd: 0.001, searchUsdIfAllowanceExhausted: null } }] });
+    expect(message).toContain('across 1 recorded model requests');
+    expect(message).not.toContain('Google Search');
+    expect(message).not.toContain('unreported research');
+  });
   it('reports a recorded empty day and preview fixtures accurately', () => {
     expect(summarizeFoodTrialStatus({ ...status, attemptsUsed: 0, attempts: [] })).toContain('No analysis usage is recorded today.');
     expect(summarizeFoodTrialStatus({ preview: true })).toBe('Preview fixture only. No hosted usage check or API usage occurred.');

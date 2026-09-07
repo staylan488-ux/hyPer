@@ -249,7 +249,7 @@ export interface Food {
   description?: string | null;
   external_source?: string | null;
   external_id?: string | null;
-  serving_label?: string; // display-only, e.g. "1 large"; never written to the DB
+  serving_label?: string; // household equivalent of this nutrition serving, e.g. "5 pieces"; not persisted
 }
 
 export interface NutritionLog {

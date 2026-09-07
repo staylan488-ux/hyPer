@@ -26,6 +26,7 @@ import {
   type PhotoAnalysisProvider,
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
+import { ServingEntry } from './ServingEntry';
 import { FoodTrialLogger } from './FoodTrialLogger';
 import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
 import { combineIntoOneMeal } from '@/lib/combineMeal';
@@ -136,6 +137,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     return new Date(selectedDate);
   }, [initialEntry?.date, selectedDate]);
 
+  const [servingReviewOpen, setServingReviewOpen] = useState(false);
   const [mode, setMode] = useState<'saved' | 'search' | 'barcode' | 'manual' | 'photo'>(initialEntry ? 'manual' : 'saved');
   const [foodAnalysisMode] = useState(getFoodAnalysisMode);
   const [trialInitialHint, setTrialInitialHint] = useState('');
@@ -1738,6 +1740,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           </FormField>
         </div>
 
+        <ServingEntry
+          key={JSON.stringify([selectedFood.id, selectedFood.serving_size, selectedFood.serving_unit, selectedFood.serving_label, measurementAmount, measurementUnit])}
+          food={selectedFood}
+          disabled={saving}
+          onReviewChange={setServingReviewOpen}
+          onApply={(amount) => {
+            setMeasurementUnit('serving');
+            setMeasurementAmount(String(amount));
+          }}
+        />
+
         {whenRow}
 
         {/* ── This entry — the one important figure ── */}
@@ -1773,7 +1786,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               void handleSaveFromSelectedFood(selectedFood, resolvedSelectedFoodServings);
             }}
             loading={saving}
-            disabled={!timeValue || resolvedSelectedFoodServings === null}
+            disabled={servingReviewOpen || !timeValue || resolvedSelectedFoodServings === null}
           >
             {loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
