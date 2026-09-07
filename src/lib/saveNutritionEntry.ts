@@ -15,9 +15,13 @@ export async function persistNutritionEntry(
   payload: NutritionEntryPayload,
   entryId?: string,
   retryEntryId?: string,
+  expectedUserId?: string,
 ): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
+  if (expectedUserId !== undefined && user.id !== expectedUserId) {
+    throw new Error('Your account changed. Reopen this meal before saving.');
+  }
 
   const { error } = entryId
     ? await supabase.from('nutrition_logs')

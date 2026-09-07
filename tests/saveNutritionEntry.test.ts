@@ -99,6 +99,20 @@ describe('nutrition entry persistence', () => {
     },
   );
 
+  it('rejects an account switch after a composed food was saved before writing its log', async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-2' } } });
+    await expect(persistNutritionEntry(payload, undefined, 'retry-1', 'user-1')).rejects.toThrow('account changed');
+    await expect(persistNutritionEntry(payload, 'entry-1', 'retry-1', 'user-1')).rejects.toThrow('account changed');
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it('permits a matching expected owner and preserves retry identity', async () => {
+    await persistNutritionEntry(payload, undefined, 'retry-1', 'user-1');
+    expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith(
+      { id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' },
+    );
+  });
+
   it('does not write without a signed-in user', async () => {
     mocks.getUser.mockResolvedValue({ data: { user: null } });
 
