@@ -1,0 +1,24 @@
+.studio-movement-controls { flex-shrink: 0; width: 44px; display: flex; flex-direction: column; align-items: center; }
+.studio-movement-controls .studio-movement-options { width: 44px; height: 44px; margin: 0; }
+.studio-movement-drag-handle { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-text-dim); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.studio-movement-drag-handle:active { cursor: grabbing; }
+.studio-movement-drag-handle:focus-visible { outline: 1px solid var(--color-text); outline-offset: -4px; border-radius: var(--radius-control); }
+.studio-movement-drag-handle[aria-disabled="true"] { opacity: .4; }
+.studio-reorder-list.is-reordering { user-select: none; -webkit-user-select: none; }
+.studio-reorder-list.is-reordering .studio-movement { position: relative; padding: 12px 0; transform: translateY(var(--movement-drag-offset, 0px)); transition: transform .18s ease; }
+.studio-reorder-list.is-reordering .studio-movement-header, .studio-reorder-list.is-reordering .studio-movement-toggle { align-items: center; }
+.studio-reorder-list.is-reordering .studio-movement-name, .studio-reorder-list.is-reordering .studio-movement-name-compact { margin: 0; font-family: var(--font-sans); font-size: 17px; line-height: 1.4; letter-spacing: normal; }
+.studio-reorder-list.is-reordering .studio-movement-content,
+.studio-reorder-list.is-reordering .studio-movement-summary,
+.studio-reorder-list.is-reordering .studio-movement-next,
+.studio-reorder-list.is-reordering .studio-movement-heading > .t-label,
+.studio-reorder-list.is-reordering .studio-movement-detail,
+.studio-reorder-list.is-reordering .studio-movement-note-preview,
+.studio-reorder-list.is-reordering .studio-movement-options { display: none; }
+.studio-reorder-list.is-reordering [data-drag-source] { opacity: .25; }
+.studio-movement-drag-ghost { position: fixed; z-index: 80; top: 0; display: flex; align-items: center; gap: 12px; padding: 16px; pointer-events: none; border-radius: var(--radius-sheet); box-shadow: var(--material-dock-shadow); }
+.studio-movement-drag-ghost > svg { flex-shrink: 0; color: var(--color-text-dim); }
+.studio-movement-drag-ghost > div { min-width: 0; }
+.studio-movement-drag-ghost p { font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+.studio-reorder-error { position: sticky; top: 0; z-index: 1; padding: 12px 0; font-size: 12px; line-height: 1.45; color: var(--color-text); background: var(--color-base); }
+@media (prefers-reduced-motion: reduce) { .studio-reorder-list.is-reordering .studio-movement { transition: none; } }

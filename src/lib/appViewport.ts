@@ -10,9 +10,9 @@ export function appViewport(layoutHeight: number, viewport?: { height: number; o
   return { height, top, inset, keyboardOpen: layoutHeight - height > 100, zoomed };
 }
 
-/** Scroll only the sheet's own containers, never the document or underlying route. */
-export function revealSheetField(field: HTMLElement, dialog: HTMLElement) {
-  for (let parent = field.parentElement; parent && parent !== dialog; parent = parent.parentElement) {
+/** Scroll containers within the boundary, never the boundary itself or its ancestors. */
+export function revealSheetField(field: HTMLElement, boundary: HTMLElement) {
+  for (let parent = field.parentElement; parent && parent !== boundary; parent = parent.parentElement) {
     if (parent.scrollHeight <= parent.clientHeight || !/auto|scroll/.test(getComputedStyle(parent).overflowY)) continue;
     const bounds = parent.getBoundingClientRect();
     const rect = field.getBoundingClientRect();

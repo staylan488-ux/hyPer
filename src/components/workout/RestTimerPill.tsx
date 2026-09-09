@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pause, Play, RotateCcw, Settings2 } from 'lucide-react';
+import { Pause, Play, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
@@ -21,6 +21,7 @@ import {
   syncRestTimerSession,
   type RestTimerSession,
 } from '@/lib/restTimer';
+import './rest-timer.css';
 
 interface RestTimerPillProps {
   workoutId: string;
@@ -58,8 +59,8 @@ function formatTime(totalSeconds: number) {
 }
 
 /**
- * Anchored recovery face shares the set-entry surface. The existing persisted timer,
- * notification and Live Activity lifecycle is retained; options stay in a sheet.
+ * Compact recovery bar stays available while the workout and set entry remain
+ * usable. Timer options live in a sheet; the session persists across navigation.
  */
 export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel = null, onDismiss, onDurationChange }: RestTimerPillProps) {
   const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
@@ -68,23 +69,48 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const [customDraft, setCustomDraft] = useState('');
   const [customError, setCustomError] = useState(false);
   const completionHandledRef = useRef(false);
+  const barRef = useRef<HTMLElement>(null);
 
   const isRunning = session?.status === 'running';
+
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty('--workout-rest-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(bar);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty('--workout-rest-height');
+    };
+  }, [nextUpLabel, isRunning]);
 
   useEffect(() => {
     if (!isRunning) return;
 
-    const intervalId = window.setInterval(() => {
+    const sync = () => {
       setSession((current) => {
         if (!current) return current;
         const nextSession = syncRestTimerSession(current);
         saveRestTimerSession(nextSession);
         return nextSession;
       });
-    }, 1000);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    const intervalId = window.setInterval(sync, 1000);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', sync);
 
     return () => {
       window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', sync);
     };
   }, [isRunning]);
 
@@ -116,8 +142,8 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     }
   }, [sessionStatus, sessionStartedAt, sessionEndsAt, nextUpLabel]);
 
-  // Dismissed or unmounted (workout finished, navigation) — the session card
-  // stays up; only the rest state clears. Workout.tsx owns the card lifecycle.
+  // Dismissed or unmounted (workout finished, navigation) — the workout session
+  // stays up; only the rest state clears. Workout.tsx owns that lifecycle.
   useEffect(() => () => {
     void cancelRestEndNotification();
     syncWorkoutActivityRest(null);
@@ -216,23 +242,24 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     onDismiss();
   };
 
-  const tone = isComplete ? 'var(--color-sage)' : isWarning ? 'var(--color-rose)' : 'var(--color-accent)';
+  const tone = isWarning ? 'var(--color-accent)' : 'var(--color-text)';
+  const statusLabel = isComplete ? 'Rest complete' : isRunning ? 'Rest' : 'Paused';
 
   return (
     <>
-      {createPortal(<section className="material-glass studio-workout-dock" aria-label="Rest timer">
-        <div className="studio-composer-label"><span className="t-label">{isComplete ? 'Rest complete' : 'Recovery'}</span>
-          <button type="button" onClick={() => setExpanded(true)} aria-label="Open rest timer options"><Settings2 size={17} /></button>
-        </div>
-        <div className="studio-rest-face">
-          <div><div className="studio-rest-time"><RollingNumber value={formatTime(timeLeft)} /></div>
-            <p className="studio-rest-next">{isComplete ? 'Ready when you are' : isRunning ? 'Time to recover' : 'Paused'}{nextUpLabel && <><br />Next · {nextUpLabel}</>}</p>
-          </div>
-          <div className="studio-rest-actions"><button type="button" className="material-control" onClick={handleToggleRunning} disabled={isComplete}
-            aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button></div>
-        </div>
-        <button type="button" className="studio-save-set" onClick={handleDismiss}>{isComplete ? 'Continue training' : 'Skip rest'}<Play size={14} /></button>
-        <div className="studio-rest-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft}><span style={{width:`${Math.max(0, remainingRatio) * 100}%`}} /></div>
+      {createPortal(<section ref={barRef} className="material-glass studio-rest-bar" aria-label="Rest timer">
+        <button type="button" className="studio-rest-summary" onClick={() => setExpanded(true)}
+          aria-label={`Open rest timer options, ${statusLabel.toLowerCase()}, ${formatTime(timeLeft)}${nextUpLabel ? `, next ${nextUpLabel}` : ''}`}
+          aria-haspopup="dialog" aria-expanded={expanded}>
+          <span className="studio-rest-countdown" style={{ color: tone }}><RollingNumber value={formatTime(timeLeft)} /></span>
+          <span className="studio-rest-status">{statusLabel}</span>
+          <span className="studio-rest-context">{nextUpLabel ? `Next · ${nextUpLabel}` : isComplete ? 'Ready when you are' : 'Tap timer for options'}</span>
+        </button>
+        {!isComplete && <button type="button" className="material-control studio-rest-pause" onClick={handleToggleRunning}
+          aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button>}
+        <button type="button" className="studio-rest-dismiss" onClick={handleDismiss}
+          aria-label={isComplete ? 'Continue training' : 'Skip rest'}>{isComplete ? 'Continue' : 'Skip'}</button>
+        <div className="studio-rest-bar-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft} aria-valuetext={`${formatTime(timeLeft)} remaining`}><span style={{ width: `${Math.max(0, remainingRatio) * 100}%` }} /></div>
       </section>, document.body)}
 
       <Modal isOpen={expanded} onClose={() => { setExpanded(false); setCustomOpen(false); }} title="Rest timer">
@@ -246,6 +273,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               <RollingNumber value={formatTime(timeLeft)} />
             </motion.p>
             <p className="t-label-sm mt-1">{isRunning ? 'Remaining' : isComplete ? 'Complete' : 'Paused'}</p>
+            {nextUpLabel && <p className="mt-3 text-xs text-[var(--color-text-dim)]">Next · {nextUpLabel}</p>}
           </div>
 
           <RailStrip

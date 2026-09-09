@@ -1,0 +1,90 @@
+/* Recovery stays within thumb reach without covering the workout ledger. */
+.studio-rest-bar {
+  position: fixed;
+  z-index: 40;
+  bottom: calc(max(var(--app-keyboard-inset, 0px), var(--app-safe-bottom, env(safe-area-inset-bottom, 0px))) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 24px);
+  max-width: 488px;
+  min-height: 76px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sheet);
+  color: var(--color-text);
+  box-shadow: var(--material-dock-shadow);
+  overflow: hidden;
+}
+
+.studio-rest-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 3px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  text-align: left;
+  padding: 2px 0;
+}
+
+.studio-rest-countdown {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 340;
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-rest-status {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+}
+
+.studio-rest-context {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+  overflow-wrap: anywhere;
+}
+
+.studio-rest-pause, .studio-rest-dismiss {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.studio-rest-dismiss { padding: 0 6px; font-size: 12px; }
+.studio-rest-bar button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; border-radius: var(--radius-control); }
+
+.studio-rest-bar-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-border);
+}
+
+.studio-rest-bar-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--color-text-dim);
+  transition: width 1s linear;
+}
+
+/* Give numeric entry the visible viewport; hiding the bar never pauses rest. */
+html[data-keyboard-open="true"] .studio-rest-bar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-rest-bar *, .studio-rest-bar-progress > span { transition: none !important; animation: none !important; }
+}
