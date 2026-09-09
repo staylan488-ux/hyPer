@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
@@ -10,6 +10,7 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   contentClassName?: string;
+  initialFocusRef?: RefObject<HTMLInputElement | null>;
 }
 
 const openSheets: HTMLElement[] = [];
@@ -28,7 +29,7 @@ function isolateSheets() {
 }
 
 /** An anchored sheet with a shared keyboard and focus boundary. */
-export function Modal({ isOpen, onClose, title, children, contentClassName = '' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -130,6 +131,14 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '' 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
             transition={springs.smooth}
+            onAnimationComplete={() => {
+              // WebKit can leave the caret at stale coordinates if an input is
+              // focused while its sheet is moving. Wait for the sheet to settle,
+              // and preserve focus if the user has already chosen a control.
+              if (isOpen && document.activeElement === dialogRef.current) {
+                initialFocusRef?.current?.focus({ preventScroll: true });
+              }
+            }}
             drag={sheetDrag ? 'y' : false}
             dragListener={false}
             dragControls={dragControls}
