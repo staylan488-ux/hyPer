@@ -193,6 +193,7 @@ describe('must-work store contracts', () => {
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
+      if (table === 'workout_day_plans') return createChain();
       throw new Error(`Unexpected table: ${table}`);
     });
 
@@ -1549,5 +1550,79 @@ describe('must-work store contracts', () => {
     expect(createSession).not.toHaveBeenCalled();
     expect(upsertSegments).toHaveBeenCalledOnce();
     expect(segmentChain.update).toHaveBeenCalledWith(expect.objectContaining({ session_id: existingSession.id }));
+  });
+});
+
+describe('session-only exercise substitution', () => {
+  beforeEach(() => {
+    useAppStore.setState({ currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Today', items: [
+      { exercise_id: 'original', order: 0, target_sets: 6, target_reps_min: 3, target_reps_max: 5 },
+    ] } });
+  });
+  const original: WorkoutSet = {
+    id: 'original-set', workout_id: 'workout-1', exercise_id: 'original',
+    set_number: 1, weight: 100, reps: 5, rpe: 9, completed: false, completed_at: null,
+  };
+  const replacement = { id: 'replacement', name: 'Cable fly', muscle_group: 'chest',
+    muscle_group_secondary: null, equipment: 'cable', is_compound: false } as import('@/types').Exercise;
+
+  it('creates independent defaults and preserves completed original sets without touching the program', async () => {
+    const chain = createChain();
+    supabaseMock.from.mockReturnValue(chain);
+    const completed = { ...original, id: 'logged', completed: true };
+    useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [completed, original] } });
+    await useAppStore.getState().substituteWorkoutExercise('original', replacement);
+    const sets = useAppStore.getState().currentWorkout!.sets;
+    expect(sets.filter((row) => row.exercise_id === 'original')).toEqual([completed]);
+    expect(sets.filter((row) => row.exercise_id === 'replacement')).toHaveLength(3);
+    expect(sets.find((row) => row.exercise_id === 'replacement')).toMatchObject({ weight: null, reps: null, rpe: null, set_number: 1, completed: false });
+    expect(supabaseMock.from.mock.calls.every(([table]) => ['sets', 'workout_day_plans'].includes(table))).toBe(true);
+    expect(chain.eq).toHaveBeenCalledWith('completed', false);
+  });
+
+  it('changes only the flexible session plan and clears inherited targets and notes', async () => {
+    supabaseMock.from.mockReturnValue(createChain());
+    useAppStore.setState({
+      currentWorkout: { ...makeWorkoutWithSet(original), split_day_id: null },
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Today', items: [
+        { exercise_id: 'original', order: 0, target_sets: 6, target_reps_min: 3, target_reps_max: 5, notes: 'Original cue' },
+      ] },
+    });
+    await useAppStore.getState().substituteWorkoutExercise('original', replacement);
+    expect(useAppStore.getState().currentWorkoutDayPlan!.items[0]).toMatchObject({
+      exercise_id: 'replacement', target_sets: 3, target_reps_min: 8, target_reps_max: 12, notes: null,
+    });
+    expect(supabaseMock.from.mock.calls.map(([table]) => table)).not.toContain('flex_day_templates');
+  });
+
+  it('leaves the original intact if insertion fails', async () => {
+    const chain = createChain();
+    chain.insert.mockResolvedValue({ error: { message: 'offline' } });
+    supabaseMock.from.mockReturnValue(chain);
+    useAppStore.setState({ currentWorkout: makeWorkoutWithSet(original) });
+    await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('Could not add');
+    expect(useAppStore.getState().currentWorkout!.sets).toEqual([original]);
+    expect(chain.delete).not.toHaveBeenCalled();
+  });
+
+  it('rolls back replacement rows if removing pending original sets fails', async () => {
+    const insert = createChain();
+    const removal = createChain();
+    removal.eq.mockReturnValue(removal);
+    Object.assign(removal, { error: { message: 'offline' } });
+    const cleanup = createChain();
+    supabaseMock.from.mockReturnValueOnce(insert).mockReturnValueOnce(createChain()).mockReturnValueOnce(removal).mockReturnValueOnce(cleanup).mockReturnValueOnce(createChain());
+    useAppStore.setState({ currentWorkout: makeWorkoutWithSet(original) });
+    await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('Please try again');
+    expect(cleanup.delete).toHaveBeenCalled();
+    expect(useAppStore.getState().currentWorkout!.sets).toEqual([original]);
+  });
+
+  it('rejects duplicates and finished movements before writing', async () => {
+    useAppStore.setState({ currentWorkout: makeWorkoutWithSet({ ...original, completed: true }) });
+    await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('no remaining sets');
+    useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [original, { ...original, exercise_id: replacement.id }] } });
+    await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('already in');
+    expect(supabaseMock.from).not.toHaveBeenCalled();
   });
 });

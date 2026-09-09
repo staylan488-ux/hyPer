@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeftRight,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -123,6 +124,7 @@ export function Workout() {
     fetchFlexTemplates,
     completeWorkout,
     addWorkoutSet,
+    substituteWorkoutExercise,
     removeLastUncompletedSet,
     setFlexibleWorkoutLabel,
     addFlexibleExercise,
@@ -184,6 +186,9 @@ export function Workout() {
   const [startingFlexibleWorkout, setStartingFlexibleWorkout] = useState(false);
   const [showSaveTemplatePrompt, setShowSaveTemplatePrompt] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [substitutionSource, setSubstitutionSource] = useState<string | null>(null);
+  const [substituting, setSubstituting] = useState(false);
+  const [substitutionError, setSubstitutionError] = useState<string | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [supersetPickerSourceExerciseId, setSupersetPickerSourceExerciseId] = useState<string | null>(null);
 
@@ -655,19 +660,24 @@ export function Workout() {
 
   // ── Exercise ordering (must be before early returns for hook rules) ──
   const splitDay = activeSplit?.days.find((day) => day.id === currentWorkout?.split_day_id) ?? null;
+  const sessionPlanItems = currentWorkoutDayPlan?.workout_id === currentWorkout?.id ? currentWorkoutDayPlan?.items : undefined;
+  const sessionExercises = useMemo(() => sessionPlanItems?.map((item) => ({
+    ...item, exercise_order: item.order, target_sets: item.target_sets ?? 3,
+    notes: item.notes ?? null,
+  })) ?? splitDay?.exercises ?? [], [sessionPlanItems, splitDay?.exercises]);
   const exerciseOrderById = useMemo(() => new Map(
-    (splitDay?.exercises || []).map((exercise, index) => [
+    sessionExercises.map((exercise, index) => [
       exercise.exercise_id,
       exercise.exercise_order ?? index,
     ])
-  ), [splitDay?.exercises]);
+  ), [sessionExercises]);
 
   const exerciseSetRanges = useMemo(() => new Map(
-    (splitDay?.exercises || []).map((exercise) => {
+    sessionExercises.map((exercise) => {
       const parsedRange = parseSetRangeNotes(exercise.notes, exercise.target_sets);
       return [exercise.exercise_id, parsedRange] as const;
     })
-  ), [splitDay?.exercises]);
+  ), [sessionExercises]);
 
   const orderedSets = useMemo(() => {
     if (!currentWorkout) return [];
@@ -724,9 +734,7 @@ export function Workout() {
   }, []);
 
   useEffect(() => {
-    if (workoutMode !== 'flexible') return;
-
-    if (currentWorkout?.split_day_id === null && currentWorkout.id) {
+    if (currentWorkout?.id) {
       void fetchCurrentWorkoutDayPlan(currentWorkout.id);
     }
   }, [workoutMode, currentWorkout?.id, currentWorkout?.split_day_id, fetchCurrentWorkoutDayPlan]);
@@ -745,13 +753,13 @@ export function Workout() {
 
   const splitSupersetByExerciseId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const exercise of splitDay?.exercises || []) {
+    for (const exercise of sessionExercises) {
       if (exercise.superset_group_id) {
         map.set(exercise.exercise_id, exercise.superset_group_id);
       }
     }
     return map;
-  }, [splitDay?.exercises]);
+  }, [sessionExercises]);
 
   const flexibleSupersetByExerciseId = useMemo(() => {
     const map = new Map<string, string>();
@@ -938,7 +946,7 @@ export function Workout() {
 
   const splitSupersetPartnerByExerciseId = useMemo(() => {
     const grouped = new Map<string, string[]>();
-    for (const exercise of splitDay?.exercises || []) {
+    for (const exercise of sessionExercises) {
       if (!exercise.superset_group_id) continue;
       const current = grouped.get(exercise.superset_group_id) || [];
       current.push(exercise.exercise_id);
@@ -953,7 +961,7 @@ export function Workout() {
     }
 
     return partnerMap;
-  }, [splitDay?.exercises]);
+  }, [sessionExercises]);
 
   const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => {
     if (candidateSet.completed) return true;
@@ -1020,6 +1028,13 @@ export function Workout() {
         : Date.now(),
     });
   }, [currentWorkout, resolvedActiveExerciseId, composerSet?.set_number, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
+  const substitutionAction = (exerciseId: string) => ({
+    label: 'Substitute exercise',
+    icon: <ArrowLeftRight className="w-4 h-4" />,
+    disabled: substituting || !exerciseGroups[exerciseId]?.some((entry) => !entry.completed),
+    onClick: () => { setSubstitutionError(null); setSubstitutionSource(exerciseId); },
+  });
+
   // ── End exercise ordering ──
 
   const captureCompletionSummary = () => {
@@ -1622,6 +1637,7 @@ export function Workout() {
                   }
                   notePreview={!isActive && movementNote.trim() ? movementNote : null}
                   menuActions={[
+                    substitutionAction(exerciseId),
                     {
                       label: 'Move up',
                       icon: <ChevronUp className="w-4 h-4" />,
@@ -1778,7 +1794,7 @@ export function Workout() {
               ? (workoutExerciseMap.get(supersetPartnerId)?.name || 'Exercise')
               : null;
             const supersetRole = supersetFlowMap.get(exerciseId)?.role;
-            const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: sets.length, targetSets: sets.length, maxSets: sets.length };
+            const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: 1, targetSets: sets.length, maxSets: 12 };
             const canAddSet = sets.length < setRange.maxSets;
             const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
             const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
@@ -1800,7 +1816,7 @@ export function Workout() {
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
                 }
                 notePreview={!isActive && movementNote.trim() ? movementNote : null}
-                menuActions={
+                menuActions={[substitutionAction(exerciseId), ...(
                   orderedExerciseEntries.length > 1
                     ? [
                         {
@@ -1817,11 +1833,13 @@ export function Workout() {
                         },
                       ]
                     : []
-                }
+                )]}
               >
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <span className="t-caption">
-                    Target {splitDay?.exercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–{splitDay?.exercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · {setRange.targetSets} sets
+                    {exerciseSetRanges.has(exerciseId)
+                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
+                      : `Choose your reps · ${sets.length} sets`}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <SetCountButton
@@ -1882,6 +1900,28 @@ export function Workout() {
           })}
         </div>
       )}
+
+      {substituting && <p className="t-caption" role="status">Substituting exercise…</p>}
+      {substitutionError && <p className="t-caption text-[var(--color-accent)]" role="alert">{substitutionError}</p>}
+      <ExercisePicker
+        isOpen={substitutionSource !== null}
+        onClose={() => setSubstitutionSource(null)}
+        title="Substitute · this workout only"
+        initialMuscleGroup={substitutionSource ? workoutExerciseMap.get(substitutionSource)?.muscle_group : undefined}
+        excludeExerciseIds={exerciseIds}
+        onSelect={(replacement) => {
+          const source = substitutionSource;
+          if (!source || substituting) return;
+          setSubstitutionSource(null);
+          setSubstituting(true);
+          void substituteWorkoutExercise(source, replacement).then(() => {
+            setActiveExerciseId(replacement.id);
+            setSelectedSetId(null);
+          }).catch((error: unknown) => {
+            setSubstitutionError(error instanceof Error ? error.message : 'Could not substitute. Please try again.');
+          }).finally(() => setSubstituting(false));
+        }}
+      />
 
       {/* Ambient rest dock — live countdown when running, manual launcher otherwise */}
       {showRestTimer ? (
