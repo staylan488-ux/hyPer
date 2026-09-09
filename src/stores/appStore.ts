@@ -1,3 +1,4 @@
+import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
@@ -177,6 +178,7 @@ interface AppState {
   startWorkout: (splitDayId: string) => Promise<Workout | null>;
   startFlexibleWorkout: (dayLabel: string, templateLabel?: string | null) => Promise<Workout | null>;
   fetchCurrentWorkout: () => Promise<void>;
+  substituteWorkoutExercise: (exerciseId: string, replacement: Exercise) => Promise<void>;
   addWorkoutSet: (exerciseId: string) => Promise<void>;
   removeLastUncompletedSet: (exerciseId: string) => Promise<void>;
   logSet: (exerciseId: string, setNumber: number, weight: number, reps: number, rpe?: number) => Promise<void>;
@@ -807,14 +809,77 @@ export const useAppStore = create<AppState>((set, get) => ({
       const nextWorkout = workout as Workout;
       set({ currentWorkout: nextWorkout });
 
-      if (nextWorkout.split_day_id === null) {
-        await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
-      } else {
-        set({ currentWorkoutDayPlan: null });
-      }
+      await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
     } else {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
+  },
+
+  substituteWorkoutExercise: async (exerciseId, replacement) => {
+    const { currentWorkout, currentWorkoutDayPlan } = get();
+    if (!currentWorkout || currentWorkout.completed) throw new Error('No active workout.');
+    const originalSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
+    if (!originalSets.some((entry) => !entry.completed)) throw new Error('This movement has no remaining sets.');
+    if (currentWorkout.sets.some((entry) => entry.exercise_id === replacement.id)) {
+      throw new Error('That exercise is already in this workout.');
+    }
+
+    const plan = currentWorkoutDayPlan?.workout_id === currentWorkout.id
+      ? currentWorkoutDayPlan
+      : await get().ensureWorkoutDayPlan(currentWorkout.id);
+    if (!plan) throw new Error('Could not prepare the workout. Please try again.');
+
+    // Fresh movement defaults, never the original movement's prescription or loads.
+    // Its history is loaded by the same target/autofill path as every other movement.
+    const rows = Array.from({ length: 3 }, (_, index) => ({
+      id: crypto.randomUUID(), workout_id: currentWorkout.id,
+      exercise_id: replacement.id, set_number: index + 1, completed: false,
+      weight: null, reps: null, rpe: null, completed_at: null,
+    }));
+    const { error: insertError } = await supabase.from('sets').insert(rows);
+    if (insertError) throw new Error('Could not add the replacement. Please try again.');
+
+    const nextItems = plan.items.filter((item) => item.exercise_id !== replacement.id).flatMap((item) => {
+      if (item.exercise_id !== exerciseId) return [item];
+      const replacementItem = {
+        ...item, exercise_id: replacement.id, exercise_name: replacement.name,
+        target_sets: 3, target_reps_min: 8, target_reps_max: 12,
+        notes: currentWorkout.split_day_id ? serializeSetRangeNotes(null, 1, 3, 10) : null,
+      };
+      return originalSets.some((entry) => entry.completed)
+        ? [{ ...item, target_sets: originalSets.filter((entry) => entry.completed).length, superset_group_id: null }, replacementItem]
+        : [replacementItem];
+    }).map((item, order) => ({ ...item, order }));
+
+    try {
+      if (plan && nextItems) {
+        const { error } = await supabase.from('workout_day_plans').update({ items: nextItems }).eq('id', plan.id);
+        if (error) throw error;
+      }
+      const { error } = await supabase.from('sets').delete()
+        .eq('workout_id', currentWorkout.id).eq('exercise_id', exerciseId).eq('completed', false);
+      if (error) throw error;
+    } catch {
+      const { error: cleanupError } = await supabase.from('sets').delete().in('id', rows.map((row) => row.id));
+      const rollback = plan
+        ? await supabase.from('workout_day_plans').update({ items: plan.items }).eq('id', plan.id)
+        : null;
+      if (cleanupError || rollback?.error) {
+        await get().fetchCurrentWorkout();
+        throw new Error('The substitution only partly saved. Check the workout before trying again.');
+      }
+      throw new Error('Could not substitute the exercise. Please try again.');
+    }
+
+    const latest = get().currentWorkout;
+    if (!latest || latest.id !== currentWorkout.id) return;
+    set({
+      currentWorkout: { ...latest, sets: [
+        ...latest.sets.filter((entry) => entry.exercise_id !== exerciseId || entry.completed),
+        ...rows.map((row) => ({ ...row, exercise: replacement } as WorkoutSet)),
+      ] },
+      ...(plan && nextItems ? { currentWorkoutDayPlan: { ...plan, items: nextItems } } : {}),
+    });
   },
 
   addWorkoutSet: async (exerciseId) => {
