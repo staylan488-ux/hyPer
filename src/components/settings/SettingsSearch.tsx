@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Input, Modal } from '@/components/shared';
 import { SettingsRow } from './SettingsRow';
 import { searchApp } from '@/lib/appSearch';
@@ -13,13 +13,8 @@ export function SettingsSearch({ open, query, onQuery, onClose, onSelect }: {
 }) {
   const input = useRef<HTMLInputElement>(null);
   const results = searchApp(query, { nativeIOS: isNativeIOS() });
-  useEffect(() => {
-    if (!open) return;
-    const frame = requestAnimationFrame(() => input.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
   return (
-    <Modal isOpen={open} onClose={onClose} title="Search" contentClassName="you-settings you-search">
+    <Modal isOpen={open} onClose={onClose} title="Search" contentClassName="you-settings you-search" initialFocusRef={input}>
       <form className="shrink-0" onSubmit={(event) => {
         event.preventDefault();
         if (results[0]) onSelect(results[0].href);
