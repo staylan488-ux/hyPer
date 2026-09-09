@@ -33,8 +33,14 @@ tokens; an already approved direction does not need another design exploration.
 - Use the dedicated radius tokens: controls 11px, sheets 20px, navigation 22px.
   Ordinary content containers retain square corners.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
-  web fallback elsewhere. Preserve the anchored workout set/rest surface.
-  Set entry becomes rest only after the save succeeds; retain drafts and Retry.
+  web fallback elsewhere. Workouts open as a movement list; tapping a movement
+  expands its details and inline set entry in place, with an explicit collapse.
+  Keep drafts when rows or movements close. Rest uses a compact anchored bar,
+  starts only after a successful set save (or an explicit manual start), and
+  continues while browsing or editing. Failed saves retain numbers and Retry.
+  Reorder movements directly with a visible drag handle and keyboard support;
+  move supersets together. Save order to the session, preserve mounted drafts,
+  and restore the previous order with an error if saving fails.
 
 ## Motion and mobile behavior
 

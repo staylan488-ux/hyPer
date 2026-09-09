@@ -2656,9 +2656,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   reorderWorkoutExercises: async (workoutId, exerciseIds) => {
-    const plan = await get().ensureWorkoutDayPlan(workoutId);
-    if (!plan) return;
+    const currentPlan = get().currentWorkoutDayPlan;
+    const plan = currentPlan?.workout_id === workoutId
+      ? currentPlan
+      : await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan) throw new Error('Could not load the workout order. Please try again.');
 
+    const planAtSave = get().currentWorkoutDayPlan;
     const orderedMap = new Map(exerciseIds.map((id, index) => [id, index]));
     const nextItems = [...plan.items]
       .sort((a, b) => {
@@ -2669,7 +2673,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
       .map((item, index) => ({ ...item, order: index }));
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    // Reordering changes only session-plan order, never set data or the program.
+    const { data: updatedPlan, error } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', plan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+    if (error) throw error;
+    if (!updatedPlan) throw new Error('Could not save the workout order. Please try again.');
+
+    // Do not replace a different session (or newer plan edit) after a slow save.
+    const latest = get();
+    if (latest.currentWorkout?.id === workoutId && latest.currentWorkoutDayPlan === planAtSave && (!planAtSave || planAtSave.id === plan.id)) {
+      set({ currentWorkoutDayPlan: {
+        ...plan,
+        items: normalizeFlexiblePlanItems(updatedPlan.items),
+      } });
+    }
   },
 
   fetchMacroTarget: async () => {

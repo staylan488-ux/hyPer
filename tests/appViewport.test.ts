@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appViewport, revealSheetField } from '../src/lib/appViewport';
 import { useAppViewport } from '../src/hooks/useAppViewport';
 
 const lifecycle = vi.hoisted(() => ({ effect: undefined as (() => void | (() => void)) | undefined }));
+const native = vi.hoisted(() => ({ isNativePlatform: vi.fn(() => false), addListener: vi.fn() }));
 vi.mock('react', () => ({ useLayoutEffect: (effect: () => void | (() => void)) => { lifecycle.effect = effect; } }));
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: native.isNativePlatform } }));
+vi.mock('@capacitor/app', () => ({ App: { addListener: native.addListener } }));
 
 class TestElement {
   parentElement: TestElement | null = null;
@@ -14,10 +17,17 @@ class TestElement {
   inert = false;
   editable = false;
   dialog: TestElement | null = null;
+  workoutEntry: TestElement | null = null;
+  appViewport: TestElement | null = null;
   bounds = { top: 0, bottom: 300 };
   getBoundingClientRect() { return this.bounds; }
   matches() { return this.editable; }
-  closest() { return this.dialog; }
+  closest(selector: string) {
+    if (selector === '[role="dialog"]') return this.dialog;
+    if (selector === '[data-workout-set-entry]') return this.workoutEntry;
+    if (selector === '.app-viewport') return this.appViewport;
+    return null;
+  }
 }
 const element = (value: TestElement) => value as unknown as HTMLElement;
 const computedStyle = (value: TestElement) => ({ overflowY: value.overflowY });
@@ -31,7 +41,9 @@ function browser() {
   };
   const viewport = Object.assign(new EventTarget(), { height: 800, offsetTop: 0, scale: 1 });
   const win = Object.assign(new EventTarget(), { innerHeight: 800, visualViewport: viewport });
-  const doc = Object.assign(new EventTarget(), { documentElement: root, activeElement: null as TestElement | null });
+  const doc = Object.assign(new EventTarget(), {
+    documentElement: root, activeElement: null as TestElement | null, visibilityState: 'visible',
+  });
   let nextFrame = 0;
   const frames = new Map<number, FrameRequestCallback>();
   vi.stubGlobal('window', win);
@@ -47,7 +59,11 @@ function browser() {
   };
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  native.isNativePlatform.mockReturnValue(false);
+  native.addListener.mockReset();
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('app viewport geometry', () => {
   it('uses layout height when visualViewport is unavailable', () => {
@@ -230,6 +246,259 @@ describe('useAppViewport keyboard lifecycle', () => {
     env.viewport.dispatchEvent(new Event('resize'));
     env.flush();
     expect(container.scrollTop).toBe(92);
+    cleanup();
+  });
+
+  it('keeps the inline workout input and save row visible inside the resized app scroll container', () => {
+    const env = browser();
+    const documentScroller = new TestElement();
+    const shell = new TestElement();
+    const route = new TestElement();
+    const entry = new TestElement();
+    const field = new TestElement();
+    shell.parentElement = documentScroller;
+    route.parentElement = shell;
+    entry.parentElement = route;
+    entry.appViewport = shell;
+    field.parentElement = entry;
+    field.workoutEntry = entry;
+    field.editable = true;
+    for (const container of [documentScroller, shell, route]) {
+      container.scrollHeight = 1200;
+      container.overflowY = 'auto';
+    }
+    documentScroller.scrollTop = 60;
+    route.bounds = { top: 0, bottom: 800 };
+    entry.getBoundingClientRect = () => ({ top: 700 - route.scrollTop, bottom: 760 - route.scrollTop });
+    field.getBoundingClientRect = () => ({ top: 700 - route.scrollTop, bottom: 724 - route.scrollTop });
+    env.doc.activeElement = field;
+    const cleanup = env.mount();
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(route.scrollTop).toBe(0);
+
+    // Resizing for the keyboard must retain the save control as well as the input.
+    env.viewport.height = 480;
+    route.bounds.bottom = 480;
+    env.viewport.dispatchEvent(new Event('resize'));
+    env.flush();
+    expect(route.scrollTop).toBe(292);
+    expect(entry.getBoundingClientRect()).toEqual({ top: 408, bottom: 468 });
+    expect(documentScroller.scrollTop).toBe(60);
+    expect(shell.scrollTop).toBe(0);
+
+    route.scrollTop = 0;
+    env.viewport.scale = 2;
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(route.scrollTop).toBe(0);
+    env.viewport.scale = 1;
+    shell.inert = true;
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(route.scrollTop).toBe(0);
+    shell.inert = false;
+    field.workoutEntry = null;
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(route.scrollTop).toBe(0);
+    cleanup();
+  });
+
+  it('prioritizes the dialog boundary over an inline workout marker, including inert dialogs', () => {
+    const env = browser();
+    const dialog = new TestElement();
+    const container = new TestElement();
+    const entry = new TestElement();
+    const field = new TestElement();
+    container.parentElement = dialog;
+    container.scrollHeight = 1000;
+    container.overflowY = 'auto';
+    entry.parentElement = container;
+    entry.bounds = { top: 250, bottom: 400 };
+    entry.appViewport = dialog;
+    field.parentElement = entry;
+    field.dialog = dialog;
+    field.workoutEntry = entry;
+    field.editable = true;
+    field.bounds = { top: 250, bottom: 280 };
+    env.doc.activeElement = field;
+    const cleanup = env.mount();
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(container.scrollTop).toBe(0); // Only the dialog's focused field needs revealing.
+    dialog.inert = true;
+    field.bounds = { top: 350, bottom: 380 };
+    env.doc.dispatchEvent(new Event('focusin'));
+    env.flush();
+    expect(container.scrollTop).toBe(0);
+    cleanup();
+  });
+});
+
+describe('useAppViewport foreground recovery', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  it.each(['visibilitychange', 'pageshow', 'focus'])('remeasures on %s when no viewport resize was delivered', (event) => {
+    const env = browser();
+    Object.assign(env.viewport, { height: 480, offsetTop: 20 });
+    const cleanup = env.mount();
+    expect(env.values.get('--app-keyboard-inset')).toBe('300px');
+
+    Object.assign(env.viewport, { height: 800, offsetTop: 0 });
+    (event === 'visibilitychange' ? env.doc : env.win).dispatchEvent(new Event(event));
+    expect(env.values.get('--app-viewport-height')).toBe('800px');
+    expect(env.values.get('--app-viewport-top')).toBe('0px');
+    expect(env.values.get('--app-keyboard-inset')).toBe('0px');
+    expect(env.root.dataset.keyboardOpen).toBe('false');
+    cleanup();
+  });
+
+  it('recovers geometry that settles after foreground without blurring or changing page scroll', () => {
+    const env = browser();
+    const page = new TestElement();
+    const dialog = new TestElement();
+    const container = new TestElement();
+    const field = new TestElement();
+    dialog.parentElement = page;
+    container.parentElement = dialog;
+    container.scrollHeight = 1000;
+    container.overflowY = 'auto';
+    field.parentElement = container;
+    field.dialog = dialog;
+    field.editable = true;
+    field.bounds = { top: 350, bottom: 380 };
+    page.scrollTop = 120;
+    env.doc.activeElement = field;
+    Object.assign(env.viewport, { height: 480, offsetTop: 20 });
+    const cleanup = env.mount();
+    env.doc.visibilityState = 'hidden';
+    env.doc.dispatchEvent(new Event('visibilitychange'));
+    env.doc.visibilityState = 'visible';
+    env.doc.dispatchEvent(new Event('visibilitychange'));
+    env.flush();
+    expect(env.root.dataset.keyboardOpen).toBe('true');
+
+    // The first resumed frame still reported the suspended keyboard layout.
+    vi.advanceTimersByTime(250);
+    Object.assign(env.viewport, { height: 800, offsetTop: 0 });
+    vi.advanceTimersByTime(50);
+    expect(env.values.get('--app-viewport-height')).toBe('800px');
+    expect(env.values.get('--app-viewport-top')).toBe('0px');
+    expect(env.values.get('--app-keyboard-inset')).toBe('0px');
+    expect(env.root.dataset.keyboardOpen).toBe('false');
+    expect(env.doc.activeElement).toBe(field);
+    expect(page.scrollTop).toBe(120);
+    expect(container.scrollTop).toBe(0);
+    vi.advanceTimersByTime(2000);
+    expect(vi.getTimerCount()).toBe(0);
+    cleanup();
+  });
+
+  it.each([
+    { height: 480, offsetTop: 20, scale: 1, expectedHeight: '480px', expectedTop: '20px', inset: '300px', keyboardOpen: 'true' },
+    { height: 250, offsetTop: 90, scale: 2, expectedHeight: '500px', expectedTop: '0px', inset: '300px', keyboardOpen: 'true' },
+    { height: 400, offsetTop: 150, scale: 2, expectedHeight: '800px', expectedTop: '0px', inset: '0px', keyboardOpen: 'false' },
+  ])('preserves live keyboard and zoom geometry on resume: $height/$scale', (geometry) => {
+    const env = browser();
+    Object.assign(env.viewport, geometry);
+    const cleanup = env.mount();
+    env.win.dispatchEvent(new Event('pageshow'));
+    env.flush();
+    vi.runAllTimers();
+    expect(env.values.get('--app-viewport-height')).toBe(geometry.expectedHeight);
+    expect(env.values.get('--app-viewport-top')).toBe(geometry.expectedTop);
+    expect(env.values.get('--app-keyboard-inset')).toBe(geometry.inset);
+    expect(env.root.dataset.keyboardOpen).toBe(geometry.keyboardOpen);
+    cleanup();
+  });
+
+  it('cancels recovery while hidden or unmounted and coalesces repeated foreground events', () => {
+    const env = browser();
+    const cleanup = env.mount();
+    env.win.dispatchEvent(new Event('pageshow'));
+    const timerCount = vi.getTimerCount();
+    env.win.dispatchEvent(new Event('focus'));
+    env.doc.dispatchEvent(new Event('visibilitychange'));
+    expect(vi.getTimerCount()).toBe(timerCount);
+    expect(env.frames.size).toBe(1);
+
+    env.doc.visibilityState = 'hidden';
+    env.doc.dispatchEvent(new Event('visibilitychange'));
+    expect(vi.getTimerCount()).toBe(0);
+    expect(env.frames.size).toBe(0);
+    Object.assign(env.viewport, { height: 480, offsetTop: 20 });
+    env.viewport.dispatchEvent(new Event('resize'));
+    env.flush();
+    expect(env.values.get('--app-viewport-height')).toBe('800px');
+
+    env.doc.visibilityState = 'visible';
+    env.doc.dispatchEvent(new Event('visibilitychange'));
+    cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(env.frames.size).toBe(0);
+    env.win.dispatchEvent(new Event('focus'));
+    env.win.dispatchEvent(new Event('pageshow'));
+    vi.runAllTimers();
+    expect(env.values.size).toBe(0);
+  });
+
+  it('recovers from native foreground independently of browser events and removes its listener', async () => {
+    native.isNativePlatform.mockReturnValue(true);
+    const remove = vi.fn(async () => undefined);
+    native.addListener.mockResolvedValue({ remove });
+    const env = browser();
+    const cleanup = env.mount();
+    await Promise.resolve();
+    expect(native.addListener).toHaveBeenCalledWith('appStateChange', expect.any(Function));
+    const notify = native.addListener.mock.calls[0][1] as (state: { isActive: boolean }) => void;
+    env.win.dispatchEvent(new Event('focus'));
+    notify({ isActive: false });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(env.frames.size).toBe(0);
+    Object.assign(env.viewport, { height: 480, offsetTop: 20 });
+    env.viewport.dispatchEvent(new Event('resize'));
+    env.flush();
+    expect(env.values.get('--app-viewport-height')).toBe('800px');
+
+    notify({ isActive: true });
+    expect(env.values.get('--app-viewport-height')).toBe('480px');
+    expect(env.root.dataset.keyboardOpen).toBe('true');
+    Object.assign(env.viewport, { height: 800, offsetTop: 0 });
+    vi.advanceTimersByTime(700);
+    expect(env.values.get('--app-keyboard-inset')).toBe('0px');
+    cleanup();
+    expect(remove).toHaveBeenCalledOnce();
+    notify({ isActive: true });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(env.values.size).toBe(0);
+  });
+
+  it('removes a native listener whose registration completes after unmount', async () => {
+    native.isNativePlatform.mockReturnValue(true);
+    const remove = vi.fn(async () => undefined);
+    let registered!: (listener: { remove: () => Promise<void> }) => void;
+    native.addListener.mockReturnValue(new Promise(resolve => { registered = resolve; }));
+    const env = browser();
+    const cleanup = env.mount();
+    cleanup();
+    registered({ remove });
+    await Promise.resolve();
+    expect(remove).toHaveBeenCalledOnce();
+    expect(env.values.size).toBe(0);
+  });
+
+  it('keeps browser recovery available when the native listener cannot attach', async () => {
+    native.isNativePlatform.mockReturnValue(true);
+    native.addListener.mockRejectedValue(new Error('Unavailable'));
+    const env = browser();
+    Object.assign(env.viewport, { height: 480, offsetTop: 20 });
+    const cleanup = env.mount();
+    await Promise.resolve();
+    await Promise.resolve();
+    Object.assign(env.viewport, { height: 800, offsetTop: 0 });
+    env.win.dispatchEvent(new Event('focus'));
+    expect(env.values.get('--app-keyboard-inset')).toBe('0px');
     cleanup();
   });
 });

@@ -119,13 +119,12 @@
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-.studio-sheet .material-button-secondary,
-.studio-workout-dock .material-button-secondary {
+.studio-sheet .material-button-secondary {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 /* Obscured layers retain their tone without paying for another live blur. */
-.studio-sheet[inert], .material-glass[inert], .studio-workout-dock[inert],
+.studio-sheet[inert], .material-glass[inert],
 #root[inert] .bottom-nav,
 #root[inert] .material-glass,
 #root[inert] .material-toolbar {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   Check,
@@ -13,7 +13,9 @@ import {
   Moon,
   MoreHorizontal,
   Plus,
+  Pencil,
   Settings2,
+  Timer,
   Trash2,
   Unlink2,
   X,
@@ -27,10 +29,10 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
-import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
+import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
-import { RestTimerLauncher } from '@/components/workout/RestTimerLauncher';
-import { nextWorkoutSet } from '@/components/workout/workoutFocus';
+import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
+import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -132,7 +134,7 @@ export function Workout() {
     clearFlexibleSuperset,
     updateFlexibleExerciseMeta,
     removeFlexibleExerciseFromPlan,
-    reorderFlexibleExercises,
+    reorderWorkoutExercises,
     saveFlexibleTemplateFromCurrentWorkout,
   } = useAppStore();
   const userId = useAuthStore((state) => state.user?.id || null);
@@ -142,7 +144,9 @@ export function Workout() {
   // for the whole live session (native app only).
   useKeepAwakeWhile(Boolean(currentWorkout));
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
-  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
+  const [expansion, dispatchExpansion] = useReducer(workoutExpansionReducer, initialWorkoutExpansion);
+  const [showSessionDetails, setShowSessionDetails] = useState(false);
+  const [setAdjustmentExerciseId, setSetAdjustmentExerciseId] = useState<string | null>(null);
   const [showRestTimer, setShowRestTimer] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
@@ -166,7 +170,6 @@ export function Workout() {
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
   const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
-  const [displayOrder, setDisplayOrder] = useState<string[]>([]);
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
@@ -212,7 +215,9 @@ export function Workout() {
     noteSaveTimersRef.current = {};
     setFlexibleTargetSetDrafts({});
     setActiveExerciseId(null);
-    setSelectedSetId(null);
+    dispatchExpansion({ type: 'reset' });
+    setSetAdjustmentExerciseId(null);
+    setShowSessionDetails(false);
     setRestTimerSeed(0);
   }, [currentWorkoutId]);
 
@@ -698,40 +703,11 @@ export function Workout() {
   }, {}), [orderedSets]);
 
   const exerciseIds = Object.keys(exerciseGroups);
-  const exerciseIdsKey = exerciseIds.join(',');
-
-  useEffect(() => {
-    setDisplayOrder((prev) => {
-      // Only reset if the set of exercises actually changed (new workout, not just a reorder)
-      const prevKey = [...prev].sort().join(',');
-      const newKey = [...exerciseIds].sort().join(',');
-      if (prevKey === newKey && prev.length > 0) return prev;
-      return exerciseIds;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exerciseIdsKey]);
-
-  const orderedExerciseEntries = useMemo(() => {
-    const entries = Object.entries(exerciseGroups);
-    if (displayOrder.length === 0) return entries;
-    return [...entries].sort((a, b) => {
-      const idxA = displayOrder.indexOf(a[0]);
-      const idxB = displayOrder.indexOf(b[0]);
-      return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
-    });
-  }, [exerciseGroups, displayOrder]);
-
-  const moveExercise = useCallback((exerciseId: string, direction: 'up' | 'down') => {
-    setDisplayOrder((prev) => {
-      const idx = prev.indexOf(exerciseId);
-      if (idx === -1) return prev;
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const next = [...prev];
-      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
-      return next;
-    });
-  }, []);
+  const orderedExerciseEntries = useMemo(() => Object.entries(exerciseGroups), [exerciseGroups]);
+  const reorderSessionMovements = useCallback(async (ids: string[]) => {
+    if (!currentWorkoutId) throw new Error('No active workout.');
+    await reorderWorkoutExercises(currentWorkoutId, ids);
+  }, [currentWorkoutId, reorderWorkoutExercises]);
 
   useEffect(() => {
     if (currentWorkout?.id) {
@@ -808,15 +784,18 @@ export function Workout() {
   const focusOrder = useMemo(() => currentWorkout?.split_day_id === null
     ? activeFlexibleItems.map((item) => item.exercise_id)
     : orderedExerciseEntries.map(([id]) => id), [currentWorkout?.split_day_id, activeFlexibleItems, orderedExerciseEntries]);
-  // Restore straight into the next unfinished movement. Explicit user selection wins.
+  const nextMovementId = nextWorkoutSet(orderedSets, focusOrder, undefined, undefined, supersetFlowMap)?.exercise_id;
+  // Progression drives the resume cue; expansion is an independent user choice.
   const resolvedActiveExerciseId = activeExerciseId && focusOrder.includes(activeExerciseId)
     ? activeExerciseId
     : nextWorkoutSet(orderedSets, focusOrder, undefined, undefined, supersetFlowMap)?.exercise_id ?? focusOrder[0] ?? null;
-  const selectedSet = selectedSetId ? orderedSets.find((set) => set.id === selectedSetId && set.exercise_id === resolvedActiveExerciseId) : undefined;
-  const composerSet = selectedSet ?? orderedSets.find((set) => set.exercise_id === resolvedActiveExerciseId && !set.completed);
+  const editorSet = expandedWorkoutSet(orderedSets, expansion);
   const selectMovement = (exerciseId: string) => {
+    tapHaptic();
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea') && focused.closest('.studio-workout-page')) focused.blur();
     setActiveExerciseId(exerciseId);
-    setSelectedSetId(null);
+    dispatchExpansion({ type: 'toggle', exerciseId });
   };
 
   const handleStartFlexibleWorkout = async () => {
@@ -841,6 +820,13 @@ export function Workout() {
       ...prev,
       [exerciseId]: value,
     }));
+  };
+
+  const closeSetAdjustment = () => {
+    // Escape/backdrop closure must commit a focused target just like tapping away.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLInputElement && focused.closest('[role="dialog"]')) focused.blur();
+    setSetAdjustmentExerciseId(null);
   };
 
   const handleFlexibleTargetSetBlur = (exerciseId: string, fallbackValue: number) => {
@@ -875,45 +861,6 @@ export function Workout() {
     void setFlexibleWorkoutLabel(trimmedDraft);
   };
 
-  const handleFlexibleReorder = async (exerciseId: string, direction: 'up' | 'down') => {
-    const idx = activeFlexibleItems.findIndex((item) => item.exercise_id === exerciseId);
-    if (idx === -1) return;
-
-    const groupId = activeFlexibleItems[idx]?.superset_group_id || null;
-
-    if (groupId) {
-      const groupIndices = activeFlexibleItems
-        .map((item, index) => ({ item, index }))
-        .filter(({ item }) => item.superset_group_id === groupId)
-        .map(({ index }) => index)
-        .sort((a, b) => a - b);
-
-      if (groupIndices.length === 2) {
-        const start = groupIndices[0];
-        const end = groupIndices[1];
-        const targetStart = direction === 'up' ? start - 1 : end + 1;
-
-        if (targetStart < 0 || targetStart >= activeFlexibleItems.length) return;
-
-        const next = [...activeFlexibleItems];
-        const block = next.splice(start, 2);
-        const insertAt = direction === 'up' ? start - 1 : start + 1;
-        next.splice(insertAt, 0, ...block);
-
-        await reorderFlexibleExercises(next.map((item) => item.exercise_id));
-        return;
-      }
-    }
-
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= activeFlexibleItems.length) return;
-
-    const next = [...activeFlexibleItems];
-    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
-
-    await reorderFlexibleExercises(next.map((item) => item.exercise_id));
-  };
-
   const startRestForExercise = (exerciseId: string, nextUp?: { exerciseId: string; setNumber: number }) => {
     const prefs = userId ? loadRestPreferences(userId) : {};
     const nextUpName = nextUp ? workoutExerciseMap.get(nextUp.exerciseId)?.name : undefined;
@@ -934,11 +881,11 @@ export function Workout() {
 
   const handleSetLogged = (loggedSet: WorkoutSet) => {
     if (useAppStore.getState().currentWorkout?.id !== currentWorkoutId) return;
-    setSelectedSetId(null);
+    dispatchExpansion({ type: 'saved', exerciseId: loggedSet.exercise_id, setId: loggedSet.id });
     if (loggedSet.completed) return; // Editing a saved set never starts rest.
     const supersetFlow = supersetFlowMap.get(loggedSet.exercise_id);
     const next = nextWorkoutSet(useAppStore.getState().currentWorkout?.sets ?? [], focusOrder, loggedSet, supersetFlow, supersetFlowMap);
-    if (next) setActiveExerciseId(next.exercise_id);
+    if (next) setActiveExerciseId((active) => !active || active === loggedSet.exercise_id ? next.exercise_id : active);
     if (!supersetFlow || supersetFlow.role === 'B') {
       startRestForExercise(loggedSet.exercise_id, next ? { exerciseId: next.exercise_id, setNumber: next.set_number } : undefined);
     }
@@ -1009,7 +956,7 @@ export function Workout() {
     }
 
     const activeName = resolvedActiveExerciseId ? workoutExerciseMap.get(resolvedActiveExerciseId)?.name : undefined;
-    const nextSetNumber = composerSet?.set_number ?? null;
+    const nextSetNumber = orderedSets.find((set) => set.exercise_id === resolvedActiveExerciseId && !set.completed)?.set_number ?? null;
     const tonnage = currentWorkout.sets
       .filter((set) => set.completed)
       .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
@@ -1027,7 +974,7 @@ export function Workout() {
         ? new Date(currentWorkoutCreatedAt).getTime()
         : Date.now(),
     });
-  }, [currentWorkout, resolvedActiveExerciseId, composerSet?.set_number, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
+  }, [currentWorkout, resolvedActiveExerciseId, orderedSets, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
   const substitutionAction = (exerciseId: string) => ({
     label: 'Substitute exercise',
     icon: <ArrowLeftRight className="w-4 h-4" />,
@@ -1543,45 +1490,43 @@ export function Workout() {
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
 
   return (
-    <motion.div className="studio-workout-page px-6">
+    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
       <header className="studio-session-header">
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
           <span>{sessionDurationLabel}</span>
           <Button variant="ghost" size="sm" onClick={handleCompleteWorkout}>Finish</Button>
         </div>
-        <div className="studio-session-summary"><h1 className="t-label">{currentSessionTitle}</h1><span>{completedSets} / {totalSets} sets</span></div>
+        <div className="studio-session-summary">
+          <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
+          <span>{completedSets} / {totalSets} sets</span>
+        </div>
         {totalSets > 0 && totalSets <= 40 ? (
           <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" />
         ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
+        <div className="studio-session-actions">
+          <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
+          <div>
+            <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
+            {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add movement</button>}
+          </div>
+        </div>
       </header>
 
+      <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements}
+        items={focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }))}>
       {isFlexibleSession ? (
         <div className="space-y-3">
-          <div className="panel p-4">
-            <div className="flex items-end gap-3">
+          <Modal isOpen={showSessionDetails} onClose={() => setShowSessionDetails(false)} title="Workout name">
               <Input
-                label="Day label"
+                label="Name"
                 value={inSessionFlexibleDayLabel}
                 onChange={(event) => setInSessionFlexibleDayLabel(event.target.value)}
                 onBlur={handleInSessionDayLabelBlur}
                 placeholder="Upper / Push / Legs"
-                className="flex-1"
               />
-              <Button
-                variant="secondary"
-                size="md"
-                className="shrink-0"
-                onClick={() => {
-                  setSupersetPickerSourceExerciseId(null);
-                  setShowExercisePicker(true);
-                }}
-              >
-                <Plus className="w-4 h-4" strokeWidth={2.25} />
-                Add
-              </Button>
-            </div>
-          </div>
+              <Button className="w-full mt-4" onClick={() => setShowSessionDetails(false)}>Done</Button>
+          </Modal>
 
           {activeFlexibleItems.length === 0 ? (
             <EmptyState
@@ -1606,11 +1551,9 @@ export function Workout() {
               const flexibleTargetInputValue = typeof flexibleTargetDraft === 'string'
                 ? flexibleTargetDraft
                 : String(flexibleTargetSet);
-              const isActive = resolvedActiveExerciseId === exerciseId;
+              const isActive = expansion.expandedExerciseId === exerciseId;
               const allComplete = sets.length > 0 && completedInExercise === sets.length;
               const movementNote = movementNotes[exerciseId] || item.notes || '';
-              const canMoveUp = index > 0;
-              const canMoveDown = index < activeFlexibleItems.length - 1;
               const supersetGroupId = item.superset_group_id || null;
               const supersetPartner = supersetGroupId
                 ? activeFlexibleItems.find((candidate) => candidate.exercise_id !== exerciseId && candidate.superset_group_id === supersetGroupId)
@@ -1621,6 +1564,7 @@ export function Workout() {
               return (
                 <ExerciseCard
                   key={exerciseId}
+                  exerciseId={exerciseId}
                   index={index}
                   exerciseName={exerciseName}
                   previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
@@ -1628,6 +1572,9 @@ export function Workout() {
                   totalCount={sets.length || flexibleTargetSet}
                   allComplete={allComplete}
                   isActive={isActive}
+                  isNext={exerciseId === nextMovementId}
+                  targetRepsMin={item.target_reps_min}
+                  targetRepsMax={item.target_reps_max}
                   onToggle={() => selectMovement(exerciseId)}
                   supersetRole={supersetRole}
                   supersetLabel={
@@ -1637,19 +1584,8 @@ export function Workout() {
                   }
                   notePreview={!isActive && movementNote.trim() ? movementNote : null}
                   menuActions={[
+                    { label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) },
                     substitutionAction(exerciseId),
-                    {
-                      label: 'Move up',
-                      icon: <ChevronUp className="w-4 h-4" />,
-                      disabled: !canMoveUp,
-                      onClick: () => { void handleFlexibleReorder(exerciseId, 'up'); },
-                    },
-                    {
-                      label: 'Move down',
-                      icon: <ChevronDown className="w-4 h-4" />,
-                      disabled: !canMoveDown,
-                      onClick: () => { void handleFlexibleReorder(exerciseId, 'down'); },
-                    },
                     supersetGroupId
                       ? {
                           label: 'Unlink superset',
@@ -1673,7 +1609,7 @@ export function Workout() {
                     },
                   ]}
                 >
-                  {/* Target sets + add/remove */}
+                  <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
                   <div className="flex items-center justify-between gap-2 mb-2.5">
                     <label className="flex items-center gap-2">
                       <span className="t-caption">Target sets</span>
@@ -1708,8 +1644,10 @@ export function Workout() {
                       </SetCountButton>
                     </div>
                   </div>
+                  </Modal>
 
-                  <div className="space-y-1.5">
+                  <div>
+                    <WorkoutSetHeadings />
                     {sets.map((set, idx) => (
                       <motion.div
                         key={set.id}
@@ -1728,12 +1666,10 @@ export function Workout() {
                           })}
                           previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                           isNext={set.id === firstUncompletedSetId}
-                          composer={set.id === composerSet?.id}
-                          composerHidden={showRestTimer}
+                          editing={set.id === editorSet?.id}
                           exerciseName={exerciseName}
-                          onSelect={() => { setSelectedSetId(set.id); setActiveExerciseId(exerciseId); setShowRestTimer(false); clearRestTimerSession(); }}
-                          onCancel={() => setSelectedSetId(null)}
-                          onStartRest={handleManualRestStart}
+                          onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
+                          onHide={() => dispatchExpansion({ type: 'hide', exerciseId })}
                           onBeforeComplete={validateSupersetOrderBeforeLog}
                           onComplete={handleSetLogged}
                         />
@@ -1784,11 +1720,9 @@ export function Workout() {
             const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
             const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
             const completedInExercise = sets.filter(s => s.completed).length;
-            const isActive = resolvedActiveExerciseId === exerciseId;
+            const isActive = expansion.expandedExerciseId === exerciseId;
             const allComplete = completedInExercise === sets.length;
             const movementNote = movementNotes[exerciseId] || '';
-            const isFirst = index === 0;
-            const isLast = index === orderedExerciseEntries.length - 1;
             const supersetPartnerId = splitSupersetPartnerByExerciseId.get(exerciseId) || null;
             const supersetPartnerName = supersetPartnerId
               ? (workoutExerciseMap.get(supersetPartnerId)?.name || 'Exercise')
@@ -1799,10 +1733,12 @@ export function Workout() {
             const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
             const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
             const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
+            const prescription = sessionExercises.find((entry) => entry.exercise_id === exerciseId);
 
             return (
               <ExerciseCard
                 key={exerciseId}
+                exerciseId={exerciseId}
                 index={index}
                 exerciseName={exerciseName}
                 previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
@@ -1810,31 +1746,23 @@ export function Workout() {
                 totalCount={sets.length}
                 allComplete={allComplete}
                 isActive={isActive}
+                isNext={exerciseId === nextMovementId}
+                targetRepsMin={prescription?.target_reps_min}
+                targetRepsMax={prescription?.target_reps_max}
                 onToggle={() => selectMovement(exerciseId)}
                 supersetRole={supersetRole}
                 supersetLabel={
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
                 }
                 notePreview={!isActive && movementNote.trim() ? movementNote : null}
-                menuActions={[substitutionAction(exerciseId), ...(
-                  orderedExerciseEntries.length > 1
-                    ? [
-                        {
-                          label: 'Move up',
-                          icon: <ChevronUp className="w-4 h-4" />,
-                          disabled: isFirst,
-                          onClick: () => moveExercise(exerciseId, 'up'),
-                        },
-                        {
-                          label: 'Move down',
-                          icon: <ChevronDown className="w-4 h-4" />,
-                          disabled: isLast,
-                          onClick: () => moveExercise(exerciseId, 'down'),
-                        },
-                      ]
-                    : []
-                )]}
+                menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, substitutionAction(exerciseId)]}
               >
+                <p className="t-caption mb-3">
+                  {exerciseSetRanges.has(exerciseId)
+                    ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
+                    : `${sets.length} sets`}
+                </p>
+                <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <span className="t-caption">
                     {exerciseSetRanges.has(exerciseId)
@@ -1854,8 +1782,10 @@ export function Workout() {
                     </SetCountButton>
                   </div>
                 </div>
+                </Modal>
 
-                <div className="space-y-1.5">
+                <div>
+                  <WorkoutSetHeadings />
                   {sets.map((set, idx) => (
                     <motion.div
                       key={set.id}
@@ -1874,12 +1804,10 @@ export function Workout() {
                         })}
                         previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                         isNext={set.id === firstUncompletedSetId}
-                          composer={set.id === composerSet?.id}
-                          composerHidden={showRestTimer}
-                          exerciseName={exerciseName}
-                          onSelect={() => { setSelectedSetId(set.id); setActiveExerciseId(exerciseId); setShowRestTimer(false); clearRestTimerSession(); }}
-                          onCancel={() => setSelectedSetId(null)}
-                          onStartRest={handleManualRestStart}
+                        editing={set.id === editorSet?.id}
+                        exerciseName={exerciseName}
+                        onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
+                        onHide={() => dispatchExpansion({ type: 'hide', exerciseId })}
                         onBeforeComplete={validateSupersetOrderBeforeLog}
                         onComplete={handleSetLogged}
                       />
@@ -1901,6 +1829,7 @@ export function Workout() {
         </div>
       )}
 
+      </MovementReorderList>
       {substituting && <p className="t-caption" role="status">Substituting exercise…</p>}
       {substitutionError && <p className="t-caption text-[var(--color-accent)]" role="alert">{substitutionError}</p>}
       <ExercisePicker
@@ -1912,19 +1841,21 @@ export function Workout() {
         onSelect={(replacement) => {
           const source = substitutionSource;
           if (!source || substituting) return;
+          const workoutId = currentWorkout.id;
           setSubstitutionSource(null);
           setSubstituting(true);
           void substituteWorkoutExercise(source, replacement).then(() => {
-            setActiveExerciseId(replacement.id);
-            setSelectedSetId(null);
+            if (useAppStore.getState().currentWorkout?.id !== workoutId) return;
+            setActiveExerciseId((active) => active === source ? replacement.id : active);
+            dispatchExpansion({ type: 'replace', exerciseId: source, replacementId: replacement.id });
           }).catch((error: unknown) => {
             setSubstitutionError(error instanceof Error ? error.message : 'Could not substitute. Please try again.');
           }).finally(() => setSubstituting(false));
         }}
       />
 
-      {/* Ambient rest dock — live countdown when running, manual launcher otherwise */}
-      {showRestTimer ? (
+      {/* Rest is independent of movement expansion and set entry. */}
+      {showRestTimer && (
         <RestTimerPill
           key={`${currentWorkout.id}:${restTimerSeed}`}
           workoutId={currentWorkout.id}
@@ -1938,9 +1869,7 @@ export function Workout() {
           }}
           onDismiss={() => setShowRestTimer(false)}
         />
-      ) : !composerSet ? (
-        <RestTimerLauncher onStart={handleManualRestStart} />
-      ) : null}
+      )}
 
       {/* Complete Confirmation */}
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
@@ -2000,6 +1929,7 @@ type CardMenuAction = {
 };
 
 function ExerciseCard({
+  exerciseId,
   index,
   exerciseName,
   previousTargetText,
@@ -2007,6 +1937,9 @@ function ExerciseCard({
   totalCount,
   allComplete,
   isActive,
+  isNext,
+  targetRepsMin,
+  targetRepsMax,
   onToggle,
   supersetRole,
   supersetLabel,
@@ -2014,6 +1947,7 @@ function ExerciseCard({
   menuActions,
   children,
 }: {
+  exerciseId: string;
   index: number;
   exerciseName: string;
   previousTargetText: string | null;
@@ -2021,6 +1955,9 @@ function ExerciseCard({
   totalCount: number;
   allComplete: boolean;
   isActive: boolean;
+  isNext: boolean;
+  targetRepsMin?: number | null;
+  targetRepsMax?: number | null;
   onToggle: () => void;
   supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
@@ -2029,42 +1966,79 @@ function ExerciseCard({
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const contentId = useId();
+  const summaryId = useId();
+  const repTarget = targetRepsMin && targetRepsMax
+    ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
+    : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
   const headingRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!isActive || !headingRef.current) return;
+    const scroller = headingRef.current.closest<HTMLElement>('[data-app-scroll-viewport]');
+    if (!scroller) return;
     const bounds = headingRef.current.getBoundingClientRect();
-    if (bounds.top < 0 || bounds.bottom > window.innerHeight - 320) {
-      headingRef.current.scrollIntoView({ block: 'start', behavior: 'instant' });
+    const viewport = scroller.getBoundingClientRect();
+    // Opening near an edge reveals the heading and first row in this scroller only.
+    if (bounds.top < viewport.top + 12 || bounds.bottom + 150 > viewport.bottom) {
+      scroller.scrollTop += bounds.top - viewport.top - 12;
     }
   }, [isActive]);
   return (
-    <section className={`studio-movement ${isActive ? 'is-active' : ''}`} aria-label={exerciseName}>
+    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
       <div className="studio-movement-header" ref={headingRef}>
-        <button type="button" className="studio-movement-toggle" aria-expanded={isActive} onClick={onToggle}>
-          {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
-          <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
-            {allComplete && <Check size={14} aria-hidden />}{exerciseName}
+        <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
+          aria-describedby={!isActive ? summaryId : undefined}
+          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={onToggle}>
+          <span className="studio-movement-heading">
+            {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
+            {!isActive && isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
+            <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
+              {allComplete && <Check size={14} aria-hidden />}{exerciseName}
+            </span>
+            {!isActive && <span id={summaryId} className="studio-movement-summary">
+              <span>{totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}</span>
+              {!allComplete && previousTargetText && <span className="studio-movement-previous">Last workout <span>{previousTargetText}</span></span>}
+            </span>}
           </span>
-          {!isActive && <span className="studio-movement-count">{completedCount} / {totalCount}</span>}
+          <span className="studio-movement-count">{completedCount} / {totalCount}</span>
+          <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
         </button>
+        <div className="studio-movement-controls">
         {menuActions.length > 0 && <div className="relative">
-          <button type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
+          <button ref={optionsRef} type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
             className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
             <div className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
               {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
                 className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
-                onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.icon}{action.label}</button>)}
+                onClick={() => { setMenuOpen(false); optionsRef.current?.focus({ preventScroll: true }); action.onClick(); }}>{action.icon}{action.label}</button>)}
             </div>
           </>}
         </div>}
+        <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
+        </div>
       </div>
-      {isActive && previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
       {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} />Superset {supersetLabel}</p>}
-      {notePreview && <p className="studio-movement-detail">{notePreview}</p>}
+      {notePreview && <p className="studio-movement-note-preview">{notePreview}</p>}
       {/* Keep every draft mounted while the user browses other movements. */}
-      <div hidden={!isActive} className="studio-movement-content">{children}</div>
+      <div id={contentId} hidden={!isActive} className="studio-movement-content">
+        {previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
+        {children}
+        <button type="button" className="studio-collapse-movement" onClick={() => {
+          onToggle();
+          requestAnimationFrame(() => {
+            toggleRef.current?.focus({ preventScroll: true });
+            const heading = headingRef.current;
+            const scroller = heading?.closest<HTMLElement>('[data-app-scroll-viewport]');
+            if (!heading || !scroller) return;
+            const top = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+            if (top < 0) scroller.scrollTop += top - 12;
+          });
+        }}>All movements <ChevronUp size={14} aria-hidden /></button>
+      </div>
     </section>
   );
 }
@@ -2111,10 +2085,15 @@ function MovementNote({
   onChange: (value: string) => void;
   onBlur: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
   return (
-    <details className="studio-movement-note" open={value.trim() ? true : undefined}>
-      <summary className="t-caption min-h-11 flex items-center cursor-pointer">Movement note{value.trim() ? ' · Edit' : ' · Add'}</summary>
-      <textarea
+    <div className="studio-movement-note">
+      {!editing && value.trim() && <p className="studio-note-text">{value}</p>}
+      <button type="button" className="t-caption min-h-11 flex items-center gap-1" aria-expanded={editing}
+        aria-controls={`movement-note-${exerciseId}`} onClick={() => setEditing((open) => !open)}>
+        {editing ? 'Hide note editor' : value.trim() ? 'Edit note' : 'Add note'}
+      </button>
+      <textarea hidden={!editing}
         id={`movement-note-${exerciseId}`}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -2125,13 +2104,13 @@ function MovementNote({
         aria-label="Movement note"
         className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
       />
-      <div className="mt-1 flex items-center justify-between min-h-4">
+      <div hidden={!editing} className="mt-1 flex items-center justify-between min-h-4">
         <span className="t-caption">
           {saving ? 'Saving…' : saved ? <span className="text-[var(--color-sage)]">Saved</span> : ''}
         </span>
         {value.length >= 160 && <span className="t-caption tabular-nums">{value.length}/200</span>}
       </div>
-    </details>
+    </div>
   );
 }
 

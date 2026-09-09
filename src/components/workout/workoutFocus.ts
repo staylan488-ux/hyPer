@@ -1,5 +1,51 @@
 import type { WorkoutSet, Workout, SplitExercise, WorkoutDayPlan } from '@/types';
 
+export interface WorkoutExpansion {
+  expandedExerciseId: string | null;
+  /** Missing chooses the first unfinished set; null leaves every row closed. */
+  selectedSets: Record<string, string | null>;
+}
+
+export const initialWorkoutExpansion: WorkoutExpansion = { expandedExerciseId: null, selectedSets: {} };
+
+type ExpansionAction =
+  | { type: 'toggle'; exerciseId: string }
+  | { type: 'select'; exerciseId: string; setId: string }
+  | { type: 'hide'; exerciseId: string }
+  | { type: 'saved'; exerciseId: string; setId: string }
+  | { type: 'replace'; exerciseId: string; replacementId: string }
+  | { type: 'reset' };
+
+/** Browsing is independent of progression and rest; late saves never move the user. */
+export function workoutExpansionReducer(state: WorkoutExpansion, action: ExpansionAction): WorkoutExpansion {
+  switch (action.type) {
+    case 'reset': return initialWorkoutExpansion;
+    case 'toggle': return { ...state, expandedExerciseId: state.expandedExerciseId === action.exerciseId ? null : action.exerciseId };
+    case 'select': return { expandedExerciseId: action.exerciseId, selectedSets: { ...state.selectedSets, [action.exerciseId]: action.setId } };
+    case 'hide': return { ...state, selectedSets: { ...state.selectedSets, [action.exerciseId]: null } };
+    case 'replace': {
+      const selectedSets = { ...state.selectedSets };
+      delete selectedSets[action.exerciseId];
+      delete selectedSets[action.replacementId];
+      return { expandedExerciseId: state.expandedExerciseId === action.exerciseId ? action.replacementId : state.expandedExerciseId, selectedSets };
+    }
+    case 'saved': {
+      const selected = state.selectedSets[action.exerciseId];
+      if (selected !== undefined && selected !== action.setId) return state;
+      return { ...state, selectedSets: { ...state.selectedSets, [action.exerciseId]: null } };
+    }
+  }
+}
+
+export function expandedWorkoutSet(sets: WorkoutSet[], state: WorkoutExpansion): WorkoutSet | undefined {
+  const exerciseId = state.expandedExerciseId;
+  if (!exerciseId) return undefined;
+  const selectedId = state.selectedSets[exerciseId];
+  if (selectedId === null) return undefined;
+  return sets.find((set) => set.exercise_id === exerciseId && set.id === selectedId)
+    ?? sets.find((set) => set.exercise_id === exerciseId && !set.completed);
+}
+
 /** Resolve the next real row, respecting paired A/B rounds and display order. */
 export function nextWorkoutSet(
   sets: WorkoutSet[],

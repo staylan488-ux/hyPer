@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Check, ChevronRight, RotateCcw, Timer, X } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { Check, ChevronRight, ChevronUp, Loader2, RotateCcw } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { tapHaptic } from '@/lib/haptics';
 import { compareSetPerformance, formatSetPerformanceTarget } from '@/lib/workoutProgress';
@@ -14,20 +13,17 @@ interface WorkoutSetRowProps {
   autofillValues?: AutofillSetValues | null;
   previousTarget?: PreviousTarget | null;
   isNext?: boolean;
-  composer?: boolean;
-  composerHidden?: boolean;
+  editing?: boolean;
   exerciseName?: string;
   onSelect?: () => void;
-  onCancel?: () => void;
-  onStartRest?: () => void;
+  onHide?: () => void;
   onComplete?: (set: WorkoutSet) => void;
   onBeforeComplete?: (set: WorkoutSet) => Promise<true | string> | true | string;
 }
 
-/** One persistent draft per real set. The selected row supplies the anchored editor. */
+/** One draft per real set, retained while its row or movement is collapsed. */
 export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, isNext = false,
-  composer = false, composerHidden = false, exerciseName, onSelect, onCancel, onStartRest,
-  onComplete, onBeforeComplete }: WorkoutSetRowProps) {
+  editing = false, exerciseName, onSelect, onHide, onComplete, onBeforeComplete }: WorkoutSetRowProps) {
   const logSet = useAppStore((state) => state.logSet);
   const [weight, setWeight] = useState(set.weight?.toString() ?? '');
   const [reps, setReps] = useState(set.reps?.toString() ?? '');
@@ -35,6 +31,9 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const [saving, setSaving] = useState(false);
   const saveInFlight = useRef(false);
   const hasDraft = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const focusOnOpen = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const formattedTarget = previousTarget ? formatSetPerformanceTarget(previousTarget) : '';
   const performance = set.completed && previousTarget ? compareSetPerformance(set, previousTarget) : 'unknown';
@@ -42,13 +41,34 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
     reps.trim() !== '' && Number.isInteger(Number(reps)) && Number(reps) > 0 &&
     (rpe.trim() === '' || (Number.isFinite(Number(rpe)) && Number(rpe) >= 1 && Number(rpe) <= 10));
 
+  useLayoutEffect(() => {
+    if (!editing || !focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    const target = formRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')
+      ?? formRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    target?.focus({ preventScroll: true });
+  }, [editing]);
+
+  const releaseEditorFocus = () => {
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement) || !formRef.current?.contains(focused)) return;
+    focused.blur();
+    requestAnimationFrame(() => {
+      // A save can finish after the user has opened another movement.
+      if (rowRef.current?.getClientRects().length && document.activeElement === document.body) {
+        rowRef.current.focus({ preventScroll: true });
+      }
+    });
+  };
+
   const handleSave = async () => {
     if (!validNumbers || saveInFlight.current) return;
     saveInFlight.current = true;
     tapHaptic();
+    // Pin an implicitly opened row until its save callback confirms completion.
+    onSelect?.();
     setSaving(true);
     setSaveError(null);
-    // Capture this exact row before awaiting. The store owns deadline/retry and ID isolation.
     const originalSet = set;
     try {
       if (onBeforeComplete) {
@@ -65,6 +85,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       }
       await logSet(originalSet.exercise_id, originalSet.set_number, Number(weight), Number(reps), rpe ? Number(rpe) : undefined);
       hasDraft.current = false;
+      releaseEditorFocus();
       onComplete?.(originalSet);
     } catch (error) {
       console.error('Failed to log set:', error);
@@ -77,6 +98,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
 
   const chooseSet = () => {
     tapHaptic();
+    focusOnOpen.current = true;
     if (set.completed && !hasDraft.current) {
       setWeight(set.weight?.toString() ?? '');
       setReps(set.reps?.toString() ?? '');
@@ -85,59 +107,62 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
     onSelect?.();
   };
 
+  const displayWeight = hasDraft.current ? weight : set.weight?.toString() ?? weight;
+  const displayReps = hasDraft.current ? reps : set.reps?.toString() ?? reps;
+  const displayRpe = hasDraft.current ? rpe : set.rpe?.toString() ?? rpe;
+  const setLabel = `set ${setNumber}${exerciseName ? ` of ${exerciseName}` : ''}`;
+
   return <>
-    <button type="button" className="studio-set-ledger" onClick={chooseSet}
-      aria-label={`${set.completed ? 'Edit' : 'Enter'} set ${setNumber}${exerciseName ? ` of ${exerciseName}` : ''}`}
-      aria-current={composer && !composerHidden ? 'step' : undefined}>
-      <span className="studio-set-index">{set.completed ? <Check size={13} /> : String(setNumber).padStart(2, '0')}</span>
-      <span>{set.weight != null ? `${set.weight} lb` : weight ? `${weight} lb` : '— lb'}</span>
-      <span>{set.reps != null ? `${set.reps} reps` : reps ? `${reps} reps` : '— reps'}</span>
-      <span>{set.rpe != null ? `${set.rpe} RPE` : isNext ? 'Next set' : 'Planned'}</span>
-      <ChevronRight size={13} aria-hidden />
+    <button ref={rowRef} type="button" className="studio-set-ledger" hidden={editing} onClick={chooseSet}
+      aria-label={`${set.completed ? 'Edit' : 'Enter'} ${setLabel}${hasDraft.current ? ', draft' : ''}${displayWeight ? `, ${displayWeight} pounds` : ''}${displayReps ? `, ${displayReps} reps` : ''}${displayRpe ? `, ${displayRpe} RPE` : ''}`}
+      data-next={isNext && !set.completed ? true : undefined}>
+      <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
+      <span>{displayWeight || '—'}</span><span>{displayReps || '—'}</span><span>{displayRpe || '—'}</span>
+      <span className="studio-set-state">{saveError ? 'Retry' : hasDraft.current ? 'Draft' : set.completed ? <Check size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}</span>
+      {isNext && <span className="sr-only">Next set</span>}
       {performance !== 'unknown' && <span className="sr-only">{performance} previous workout</span>}
     </button>
-    {composer && createPortal(
-      <section className="material-glass studio-workout-dock" aria-label={`Set ${setNumber} entry`} hidden={composerHidden}>
-        <div className="studio-composer-label">
-          <span className="t-label">{set.completed ? 'Edit' : 'Set'} {String(setNumber).padStart(2, '0')}</span>
-          <span className="t-caption" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Previously saved' : 'Ready to log'}</span>
-          {set.completed && <button type="button" aria-label="Cancel set edit" disabled={saving} onClick={() => {
+    <form ref={formRef} className="studio-set-editor" aria-label={`Set ${setNumber} entry${exerciseName ? ` for ${exerciseName}` : ''}`} hidden={!editing}
+      onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
+      <div className="studio-set-entry" data-workout-set-entry>
+        <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
+        <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={previousTarget?.weight?.toString() ?? '0'} disabled={saving} inputMode="decimal" min={0} step="any" required />
+        <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={1} step={1} required />
+        <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={previousTarget?.rpe?.toString() ?? '—'} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
+        <button type="submit" className="studio-save-set material-button-primary" disabled={!validNumbers || saving} aria-busy={saving}
+          aria-label={saving ? `Saving ${setLabel}` : saveError ? `Retry saving ${setLabel}` : set.completed ? `Save changes to ${setLabel}` : `Save ${setLabel}`}>
+          {saving ? <Loader2 size={18} className="animate-spin" aria-hidden /> : saveError ? <span>Retry</span> : <Check size={20} aria-hidden />}
+        </button>
+      </div>
+      {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
+      <div className="studio-set-editor-foot">
+        {autofillValues ? <button type="button" disabled={saving} onClick={() => {
+          tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
+        }}><RotateCcw size={13} />{autofillValues.source === 'current_workout' ? 'Use last set' : 'Use last workout'}</button> :
+          <span>{formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
+        <div>
+          {set.completed && <button type="button" disabled={saving} onClick={() => {
             hasDraft.current = false;
             setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
-            setSaveError(null); onCancel?.();
-          }}><X size={17} /></button>}
+            setSaveError(null); releaseEditorFocus(); onHide?.();
+          }}>Cancel</button>}
+          <button type="button" onClick={() => { tapHaptic(); releaseEditorFocus(); onHide?.(); }}>Hide <ChevronUp size={13} /></button>
         </div>
-        <p className="studio-composer-movement">{exerciseName}</p>
-        <form onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
-          <div className="studio-set-entry">
-            <SetInput label="Weight" unit="lb" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={previousTarget?.weight?.toString() ?? '0'} disabled={saving} inputMode="decimal" min={0} step="any" />
-            <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={1} step={1} />
-            <SetInput label="Effort" unit="RPE" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={previousTarget?.rpe?.toString() ?? '—'} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
-          </div>
-          {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
-          <button type="submit" className="studio-save-set" disabled={!validNumbers || saving} aria-busy={saving}>
-            <span>{saving ? 'Saving…' : saveError ? 'Retry' : set.completed ? 'Save changes' : 'Save set'}</span><Check size={16} />
-          </button>
-        </form>
-        <div className="studio-composer-foot">
-          {autofillValues ? <button type="button" disabled={saving} onClick={() => {
-            tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
-          }}><RotateCcw size={13} />{autofillValues.source === 'current_workout' ? 'Repeat last set' : 'Use last workout'}</button> :
-            <span>{formattedTarget ? `Last ${formattedTarget}` : 'Effort is optional'}</span>}
-          {onStartRest && <button type="button" disabled={saving} onClick={onStartRest}><Timer size={13} /> Rest</button>}
-        </div>
-      </section>, document.body
-    )}
+      </div>
+      <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
+    </form>
   </>;
 }
 
-function SetInput({ label, unit, value, onChange, placeholder, disabled, inputMode, min, max, step }: {
-  label: string; unit?: string; value: string; onChange: (value: string) => void; placeholder: string;
-  disabled: boolean; inputMode: 'decimal' | 'numeric'; min: number; max?: number; step: string | number;
+function SetInput({ label, value, onChange, placeholder, disabled, inputMode, min, max, step, required }: {
+  label: string; value: string; onChange: (value: string) => void; placeholder: string;
+  disabled: boolean; inputMode: 'decimal' | 'numeric'; min: number; max?: number; step: string | number; required?: boolean;
 }) {
-  return <label className="studio-set-field"><span className="t-label">{label}</span><span className="studio-set-value">
-    <input type="number" aria-label={label} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder} disabled={disabled} min={min} max={max} step={step} />
-    {unit && <small>{unit}</small>}
-  </span></label>;
+  return <input className="studio-set-input material-control" type="number" aria-label={label} inputMode={inputMode}
+    value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
+    disabled={disabled} min={min} max={max} step={step} required={required} />;
+}
+
+export function WorkoutSetHeadings() {
+  return <div className="studio-set-headings" aria-hidden="true"><span>Set</span><span>lb</span><span>Reps</span><span>RPE</span><span /></div>;
 }

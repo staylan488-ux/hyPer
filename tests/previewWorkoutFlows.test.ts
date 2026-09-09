@@ -129,6 +129,23 @@ describe('preview uses real program and workout store paths', () => {
     expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].exercise_id).toBe('ex_row');
   });
 
+  it('persists movement order without changing sets, targets or the source program', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const plan = await useAppStore.getState().ensureWorkoutDayPlan(workout.id);
+    const sets = structuredClone(previewTables.sets);
+    const program = structuredClone(previewTables.split_exercises);
+    const ids = plan!.items.map((item) => item.exercise_id).reverse();
+    await useAppStore.getState().reorderWorkoutExercises(workout.id, ids);
+    const refreshed = await useAppStore.getState().fetchWorkoutDayPlanByWorkoutId(workout.id);
+    expect(refreshed!.items.map((item) => item.exercise_id)).toEqual(ids);
+    for (const item of refreshed!.items) {
+      expect(item).toEqual({ ...plan!.items.find((entry) => entry.exercise_id === item.exercise_id), order: item.order });
+    }
+    expect(previewTables.sets).toEqual(sets);
+    expect(previewTables.split_exercises).toEqual(program);
+  });
+
   it('deleting a program cascades its days and preserves workouts with an unlinked day', async () => {
     await useAppStore.getState().deleteSplit('split1');
     expect(useAppStore.getState().splits).toHaveLength(0);
