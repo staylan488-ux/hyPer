@@ -33,7 +33,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       <motion.div
         ref={ref}
         className={`p-5 ${variants[variant]} ${className}`}
-        transition={springs.smooth}
+        transition={springs.settle}
         whileTap={props.onClick ? { scale: 0.995 } : undefined}
         {...props}
       >

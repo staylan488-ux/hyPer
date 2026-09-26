@@ -39,7 +39,7 @@ export function BottomNav() {
       aria-label="Main navigation"
       className="bottom-nav"
       initial={false}
-      transition={springs.smooth}
+      transition={springs.settle}
     >
       <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4">
         {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
@@ -59,13 +59,13 @@ export function BottomNav() {
                 <motion.span
                   layoutId="material-nav-selection"
                   className="material-nav-selection pointer-events-none absolute inset-x-1 inset-y-1.5 rounded-[16px]"
-                  transition={springs.snappy}
+                  transition={springs.tactile}
                 />
               )}
               <motion.span
                 whileTap={{ scale: 0.9 }}
                 animate={{ scale: isActive ? 1.04 : 1 }}
-                transition={springs.snappy}
+                transition={springs.tactile}
                 className="relative flex flex-col items-center gap-1.5"
               >
                 <Icon

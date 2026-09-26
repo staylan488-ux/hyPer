@@ -127,7 +127,7 @@ function ExerciseRow({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
-      transition={springs.smooth}
+      transition={springs.settle}
       className={`relative border-t border-[var(--color-border)] py-3 space-y-3 ${
         exercise.superset_group_id ? 'material-surface px-3' : ''
       }`}
@@ -359,7 +359,7 @@ function DayCard({
       initial="hidden"
       animate="visible"
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.2 } }}
-      transition={springs.smooth}
+      transition={springs.settle}
     >
       <Card variant="slab" animated={false} className="material-surface space-y-5">
         {/* ── Day header ── */}
@@ -526,7 +526,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.smooth, delay: 0.05 }}
+        transition={{ ...springs.settle, delay: 0.05 }}
         className="space-y-4"
       >
         <p className="t-label pb-3 border-b border-[var(--color-border)]">

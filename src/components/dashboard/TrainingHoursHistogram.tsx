@@ -1,11 +1,19 @@
+import { format, parseISO } from 'date-fns';
+import { BarChart, type BarDatum } from '@/components/shared/charts';
 import type { TrainingHoursPoint } from '@/lib/workoutSessions';
 
 interface TrainingHoursHistogramProps {
   points: TrainingHoursPoint[];
 }
 
+function formatMinutes(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
 export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) {
-  const maxMinutes = Math.max(...points.map((point) => point.totalMinutes), 60);
   const hasTraining = points.some((point) => point.totalMinutes > 0);
   const peakMinutes = Math.max(...points.map((point) => point.totalMinutes), 0);
 
@@ -18,40 +26,49 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
     );
   }
 
+  const totalMinutes = points.reduce((sum, point) => sum + point.totalMinutes, 0);
+  const data: BarDatum[] = points.map((point) => {
+    const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
+    const week = format(parseISO(point.weekStart), 'MMM d');
+    return {
+      key: point.weekStart,
+      label: point.label,
+      value: point.totalMinutes,
+      emphasis: isPeak,
+      caption: (
+        <>
+          {point.totalHours > 0 ? point.totalHours : '0'}
+          <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
+        </>
+      ),
+      ariaLabel: `Week of ${week}: ${formatMinutes(point.totalMinutes)}${isPeak ? ', peak week' : ''}`,
+      readout: (
+        <span className="flex justify-between gap-3">
+          <span>Week of {week}</span>
+          <span>
+            {formatMinutes(point.totalMinutes)}
+            {isPeak && <span className="text-[var(--color-accent)]"> · peak</span>}
+          </span>
+        </span>
+      ),
+    };
+  });
+
   return (
     <div className="space-y-4">
-      <div className="h-40 flex items-end gap-px border-b border-[var(--color-border-strong)]">
-        {points.map((point) => {
-          const height = Math.max(4, Math.round((point.totalMinutes / maxMinutes) * 100));
-          const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
-
-          return (
-            <div key={point.weekStart} className="flex-1 flex flex-col items-center justify-end gap-2 h-full">
-              <span
-                className={`t-data tabular-nums ${
-                  isPeak ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
-                }`}
-              >
-                {point.totalHours > 0 ? point.totalHours : '0'}
-                <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
-              </span>
-              <div className="w-full h-24 flex items-end">
-                <div
-                  className="w-full"
-                  style={{ backgroundColor: isPeak ? 'var(--color-accent)' : 'var(--color-text)', height: `${height}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex items-end gap-px">
-        {points.map((point) => (
-          <span key={point.weekStart} className="flex-1 text-center t-caption">
-            {point.label}
+      <BarChart
+        data={data}
+        height={144}
+        max={Math.max(peakMinutes, 60)}
+        label="Completed session time per week, last 8 weeks"
+        reveal="coaching-training-hours"
+        summary={
+          <span className="flex justify-between gap-3">
+            <span className="text-[var(--color-text-dim)]">8-week total</span>
+            <span>{formatMinutes(totalMinutes)}</span>
           </span>
-        ))}
-      </div>
+        }
+      />
       <p className="t-label-sm pt-2 border-t border-[var(--color-border)]">
         Completed session time · last 8 weeks
       </p>

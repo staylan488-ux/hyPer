@@ -118,7 +118,7 @@ export function NutritionGroupLedger({
           height: deletedId === log.id ? 0 : 'auto',
         }}
         exit={{ opacity: 0, x: 60, height: 0 }}
-        transition={{ ...springs.smooth, delay: deletedId === log.id ? 0 : Math.min(index * 0.025, 0.2) }}
+        transition={{ ...springs.settle, delay: deletedId === log.id ? 0 : Math.min(index * 0.025, 0.2) }}
       >
         <button
           type="button"

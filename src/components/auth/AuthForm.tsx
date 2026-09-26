@@ -126,7 +126,7 @@ export function AuthForm() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={springs.smooth}
+              transition={springs.settle}
               className="mb-7"
             >
               <p className="t-label-sm mb-2">{isLogin ? 'Sign in' : 'Create account'}</p>
@@ -141,7 +141,7 @@ export function AuthForm() {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={springs.smooth}
+                  transition={springs.settle}
                   className="overflow-hidden"
                 >
                   <Input
@@ -183,7 +183,7 @@ export function AuthForm() {
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  transition={springs.smooth}
+                  transition={springs.settle}
                 >
                   <p className="t-caption text-[var(--color-text)]">{signupSuccess}</p>
                   <p className="mt-2 t-caption">Verification emails can land in spam, junk, or promotions.</p>
@@ -208,7 +208,7 @@ export function AuthForm() {
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={springs.smooth}
+                  transition={springs.settle}
                 >
                   {error}
                 </motion.p>
@@ -221,7 +221,7 @@ export function AuthForm() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  transition={springs.smooth}
+                  transition={springs.settle}
                 >
                   <button
                     type="button"

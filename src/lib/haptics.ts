@@ -74,3 +74,51 @@ export function completionHaptic(): void {
     // Unsupported or denied — haptics are garnish.
   }
 }
+
+// ── Selection detents ────────────────────────────────────────────────────────
+// Scrubbing a chart ticks once per datum, like a picker wheel. Natively this
+// is UISelectionFeedbackGenerator (lighter than an impact, prepared for low
+// latency); on the web it falls back to the light tick where a gesture allows.
+
+let selectionActive = false;
+
+/** Begin a scrub gesture: prepares the selection generator. */
+export function selectionHapticStart(): void {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      selectionActive = true;
+      void Haptics.selectionStart().catch(() => {});
+    }
+  } catch {
+    // garnish
+  }
+}
+
+/** One detent: the scrubbed datum changed. */
+export function selectionHaptic(): void {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      if (!selectionActive) {
+        selectionActive = true;
+        void Haptics.selectionStart().catch(() => {});
+      }
+      void Haptics.selectionChanged().catch(() => {});
+      return;
+    }
+    if (!isIOS && 'vibrate' in navigator) navigator.vibrate(4);
+  } catch {
+    // garnish
+  }
+}
+
+/** End the scrub gesture and release the generator. */
+export function selectionHapticEnd(): void {
+  try {
+    if (Capacitor.isNativePlatform() && selectionActive) {
+      selectionActive = false;
+      void Haptics.selectionEnd().catch(() => {});
+    }
+  } catch {
+    // garnish
+  }
+}

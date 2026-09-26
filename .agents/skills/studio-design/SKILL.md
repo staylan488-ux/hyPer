@@ -27,6 +27,7 @@ tokens; an already approved direction does not need another design exploration.
 - Content stays editorial, separated by neutral rules and spacing. Reuse the
   shared diffuse material classes; do not add bright rims, inset bevels, colored
   edges or independent backdrop filters to nested cards and controls.
+- Page titles use `PageTitle`, which condenses into the scroll-edge band.
 - Primary actions use the shared fill (dark: #303030 with #EAEAEA text);
   secondary actions use quiet filled surfaces;
   contextual row actions stay unboxed. Meaningful touch targets are at least 44px.
@@ -44,12 +45,27 @@ tokens; an already approved direction does not need another design exploration.
 
 ## Motion and mobile behavior
 
-- Routes appear immediately and restore their scroll position. Do not transform
-  the route ancestor: that captures viewport-fixed workout/native overlays.
-- Use restrained local state transitions and the shared reduced-motion policy.
-  The approved once-per-session brand intro composes P into hyPer and lands on
-  the real masthead. Keep its skip/cleanup behavior and reduced-motion bypass.
-  Avoid moving grain/light and repeated route entrances.
+The approved Kinetic direction (2026-09-26) keeps Studio's type, color and
+layout and makes motion, data and 3D the expressive layer.
+
+- Routes appear immediately and restore their scroll position. Never transform
+  the route ancestor or add route transitions: that captures viewport-fixed
+  workout/native overlays. Fixed layers (scroll-edge band, FX) live inside the
+  untransformed route content or portal to `body`.
+- Use the named springs in `src/lib/animations.ts`: `tactile` for contact,
+  `settle` for state, `lift` (the only visible overshoot) for celebrations,
+  `heavy` for large objects. Move with transform/opacity, never width/left.
+- Data draws itself once per session per metric (`reveal` keys via
+  `useFirstReveal`), not on every tab visit. Charts are custom SVG/div from
+  `src/components/shared/charts/`; scrubbing gives one selection haptic per
+  datum and leaves vertical scrolling to the page.
+- Celebrations, particles, 3D scenes and motion-reactive light are allowed for
+  meaningful moments. They must never delay a save, focus or navigation; load
+  heavy code lazily; pause when hidden; and fall back to 2D without WebGL.
+- `useMotionPolicy` is the shared policy: reduced motion skips decorative
+  motion entirely (final state, no slow-motion); reduced transparency or
+  increased contrast removes moving light and blur. Keep the brand intro's
+  skip/cleanup behavior and reduced-motion bypass.
 - Preserve safe areas, visible-viewport keyboard behavior, nested sheet focus,
   and background isolation. Inspect changed UI in Paper/Ink at phone widths.
 
@@ -59,7 +75,9 @@ tokens; an already approved direction does not need another design exploration.
 - [Diffuse materials](../../../src/styles/materials.css),
   [approved refinement](../../../docs/plans/2026-09-04-luminous-materials.md).
 - [Shared controls and sheets](../../../src/components/shared/),
-  [motion primitives](../../../src/lib/animations.ts).
+  [motion primitives](../../../src/lib/animations.ts),
+  [motion policy](../../../src/lib/motionPolicy.ts),
+  [Kinetic surfaces](../../../src/styles/kinetic.css).
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
   `/preview?previewSetSave=fail` exercises save failure and Retry;
   `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.

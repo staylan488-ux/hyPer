@@ -343,7 +343,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={springs.smooth}
+                transition={springs.settle}
                 className="overflow-hidden"
               >
                 <div className="material-inset rounded-[11px] overflow-hidden flex items-stretch gap-px mb-2">

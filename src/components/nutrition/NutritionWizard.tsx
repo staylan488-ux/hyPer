@@ -344,7 +344,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition calculator</p>
@@ -391,7 +391,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body measurements</p>
@@ -464,7 +464,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Body composition</p>
@@ -517,7 +517,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Daily activity</p>
@@ -542,7 +542,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Nutrition goal</p>
@@ -616,7 +616,7 @@ export function NutritionWizard({
           className="space-y-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div className="pt-1 border-t border-[var(--color-border)]">
             <p className="t-label mt-5 mb-3">Suggested daily targets</p>

@@ -749,7 +749,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -16 }}
-            transition={springs.smooth}
+            transition={springs.settle}
           >
             <p className="t-label mb-3">Question {guidedStage + 1}</p>
             <h3 className="t-title mb-2">{stage.question}</h3>

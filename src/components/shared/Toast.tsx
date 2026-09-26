@@ -21,7 +21,7 @@ export function Toast({ show, message, tone = 'sage' }: ToastProps) {
           initial={{ opacity: 0, y: -16, x: '-50%' }}
           animate={{ opacity: 1, y: 0, x: '-50%' }}
           exit={{ opacity: 0, y: -12, x: '-50%' }}
-          transition={springs.smooth}
+          transition={springs.settle}
         >
           <div
             className="material-toast flex items-center gap-2.5 px-4 py-3"
