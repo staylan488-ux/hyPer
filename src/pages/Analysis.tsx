@@ -10,6 +10,7 @@ import { getVolumeRecommendation } from '@/lib/splitTemplates';
 import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
+import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import { supabase } from '@/lib/supabase';
 import { springs } from '@/lib/animations';
 
@@ -133,6 +134,18 @@ export function Analysis() {
           }
         />
       ) : (
+        <>
+        <section className="mb-8" aria-label="This week's volume by muscle">
+          <VolumeMaquette
+            volume={weeklyVolume}
+            onSelectMuscle={(muscle) => {
+              if (!muscle) return;
+              const rows = new Set(weeklyVolume.map((entry) => entry.muscle_group));
+              const target = rows.has(muscle) ? muscle : ['front_delts', 'side_delts', 'rear_delts'].includes(muscle) && rows.has('shoulders') ? 'shoulders' : null;
+              if (target) setExpandedMuscle(target);
+            }}
+          />
+        </section>
         <div className="mb-12 border-t border-[var(--color-border)]">
           {coached.map(({ mv, call }) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
@@ -225,6 +238,7 @@ export function Analysis() {
             );
           })}
         </div>
+        </>
       )}
 
       {/* Training hours */}

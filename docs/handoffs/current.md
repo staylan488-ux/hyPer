@@ -15,15 +15,26 @@ and production actions are not authorized.
   beat-last chip, the movement reveal, rest bar motion, the celebratory
   completion sheet, once-a-day macro seals, the body-portalled FX canvas,
   line-art empty states and the Banked stamp.
-- Next: phase 3 (lazy three.js volume maquette, 3D session token,
-  motion-reactive light), then phase 4 (native glass surfaces). **Wait for
-  the user's review of the phase 2 preview before phase 3.**
+- The user reviewed the phase 2 preview ("Looks good") on 2026-09-26.
+- Phase 3 (`feat/kinetic-3d`, stacked on phase 2): three.js in a lazy chunk.
+  - A volume maquette (porcelain/obsidian mannequin with 14 shaded muscle
+    regions) on Coaching, plus a still figurine on Today's insight.
+  - A lacquer-enamel session token in the completion sheet.
+  - Motion light on floating glass and the token (deviceorientation where
+    it needs no prompt, otherwise scroll).
+  - Flat fallbacks without WebGL.
+- Next: phase 4 (native glass: rest dock, tab bar polish, glass toasts,
+  CoreMotion light via `pushMotionLight`). **Wait for the user's review of the
+  phase 3 preview first.**
 
-Verification so far: tests, lint and build pass (1063 tests). Browser
+Verification so far: tests, lint and build pass (1074 tests). Browser
 preview at 390×844 covered the charts, scrub, scroll-edge band, drum wheels,
 set save and beat chip, rest in/out, completion sheet, Banked stamp, protein
 seal and bursts in Black, plus Ivory spot checks. The initial JS bundle is up
-about 12.5 KB gzipped over the 384 KB baseline. Physical-device haptics, frame
+about 18 KB gzipped over the 384 KB baseline. three.js ships in its own
+lazy 133 KB-gzip chunk. The hidden browser pane never fires
+IntersectionObserver, so the 3D scenes were rendered with a manual harness
+there. On devices they load as they approach the viewport. Physical-device haptics, frame
 pacing and native iOS have not been exercised.
 
 Phone preview: the existing tailnet-only Tailscale Serve port 8444 proxies the

@@ -29,6 +29,7 @@ import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
 import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
 import { useAppViewport } from '@/hooks/useAppViewport';
+import { useAmbientLight } from '@/hooks/useAmbientLight';
 import { bindRouteScroll } from '@/lib/routeScroll';
 
 function BootSplash() {
@@ -96,6 +97,7 @@ function AnimatedOutlet() {
 function PrivateLayout() {
   const { user, initialized } = useAuthStore();
   useAppViewport();
+  useAmbientLight();
 
   if (!initialized) {
     return <BootSplash />;
