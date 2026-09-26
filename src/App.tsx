@@ -11,6 +11,7 @@ import {
 import { motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { BottomNav } from '@/components/shared';
+import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { Dashboard } from '@/pages/Dashboard';
 import { Workout } from '@/pages/Workout';
@@ -110,6 +111,7 @@ function PrivateLayout() {
         <AnimatedOutlet />
       </main>
       <BottomNav />
+      <FxLayer />
     </div>
   );
 }

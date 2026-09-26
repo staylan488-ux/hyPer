@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, ChartNoAxesColumn, ChevronDown } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
@@ -121,7 +121,7 @@ export function Analysis() {
       {/* Per-muscle calls */}
       {weeklyVolume.length === 0 ? (
         <EmptyState
-          icon={ChartNoAxesColumn}
+          art="chart"
           title="No training data this week"
           body="Log a session and hyPer starts coaching your weekly volume against research landmarks."
           action={

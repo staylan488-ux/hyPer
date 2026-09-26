@@ -24,7 +24,7 @@ import {
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
+import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -37,7 +37,8 @@ import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
-import { tapHaptic } from '@/lib/haptics';
+import { completionHaptic, tapHaptic } from '@/lib/haptics';
+import { emitBurstFrom } from '@/lib/fx';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
@@ -48,7 +49,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
-import { formatSetPerformanceTarget } from '@/lib/workoutProgress';
+import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
 function normalizeIndex(value: number, size: number): number {
@@ -94,6 +95,11 @@ type CompletionSummary = {
   completedSets: number;
   totalSets: number;
   duration: string;
+  /** Completed weight × reps, lb. */
+  tonnage: number;
+  /** Sets that beat the same set last workout. */
+  gains: Array<{ name: string; setNumber: number; gain: string }>;
+  completedAt: number;
 };
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
@@ -985,11 +991,19 @@ export function Workout() {
   // ── End exercise ordering ──
 
   const captureCompletionSummary = () => {
+    const sessionSets = currentWorkout?.sets ?? [];
     setCompletionSummary({
       title: currentSessionTitle,
       completedSets,
       totalSets,
       duration: sessionDurationLabel,
+      tonnage: sessionTonnage(sessionSets),
+      gains: collectSessionGains(sessionSets, previousWorkoutSetsByExercise).map((gain) => ({
+        name: workoutExerciseMap.get(gain.exerciseId)?.name ?? 'Movement',
+        setNumber: gain.setNumber,
+        gain: gain.gain,
+      })),
+      completedAt: Date.now(),
     });
   };
 
@@ -1080,7 +1094,7 @@ export function Workout() {
           <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
         </header>
         <EmptyState
-          icon={Dumbbell}
+          art="program"
           title="No program yet"
           body="A program turns sessions into a plan: days, exercises, and weekly volume that adds up. The guided builder takes two minutes."
           action={
@@ -1294,7 +1308,10 @@ export function Workout() {
                   <span className="block w-2 h-2 bg-[var(--color-text)]" aria-hidden />
                   <span className="t-label">Trained today</span>
                 </div>
-                <p className="t-title text-[var(--color-text)]">The work is banked.</p>
+                <div className="flex items-start justify-between gap-4">
+                  <p className="t-title text-[var(--color-text)]">The work is banked.</p>
+                  <BankedStamp date={format(new Date(), 'MMM d')} className="mt-1 shrink-0" />
+                </div>
                 <p className="t-caption mt-2">Rest, or pick a different day below.</p>
               </div>
             ) : todayPlannedDay ? (
@@ -1530,7 +1547,7 @@ export function Workout() {
 
           {activeFlexibleItems.length === 0 ? (
             <EmptyState
-              icon={Dumbbell}
+              art="barbell"
               title="Nothing on the bar yet"
               body="Add your first movement and the session starts counting."
               action={
@@ -1649,11 +1666,10 @@ export function Workout() {
                   <div>
                     <WorkoutSetHeadings />
                     {sets.map((set, idx) => (
-                      <motion.div
+                      <div
                         key={set.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.04, ...springs.settle }}
+                        className="studio-set-slot"
+                        style={{ '--i': Math.min(idx, 10) } as React.CSSProperties}
                       >
                         <WorkoutSetRow
                           set={set}
@@ -1673,7 +1689,7 @@ export function Workout() {
                           onBeforeComplete={validateSupersetOrderBeforeLog}
                           onComplete={handleSetLogged}
                         />
-                      </motion.div>
+                      </div>
                     ))}
                   </div>
 
@@ -1787,11 +1803,10 @@ export function Workout() {
                 <div>
                   <WorkoutSetHeadings />
                   {sets.map((set, idx) => (
-                    <motion.div
+                    <div
                       key={set.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.04, ...springs.settle }}
+                      className="studio-set-slot"
+                      style={{ '--i': Math.min(idx, 10) } as React.CSSProperties}
                     >
                       <WorkoutSetRow
                         set={set}
@@ -1811,7 +1826,7 @@ export function Workout() {
                         onBeforeComplete={validateSupersetOrderBeforeLog}
                         onComplete={handleSetLogged}
                       />
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
 
@@ -1972,7 +1987,18 @@ function ExerciseCard({
     ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
     : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
   const headingRef = useRef<HTMLDivElement>(null);
+  const revealRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const reveal = revealRef.current;
+    if (!reveal) return;
+    // Clip only while growing; once open, focus rings and floating marks may
+    // overhang the movement.
+    reveal.dataset.settled = 'false';
+    if (!isActive) return;
+    const timer = window.setTimeout(() => { reveal.dataset.settled = 'true'; }, 420);
+    return () => window.clearTimeout(timer);
+  }, [isActive]);
   const optionsRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!isActive || !headingRef.current) return;
@@ -2023,8 +2049,12 @@ function ExerciseCard({
       </div>
       {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} />Superset {supersetLabel}</p>}
       {notePreview && <p className="studio-movement-note-preview">{notePreview}</p>}
-      {/* Keep every draft mounted while the user browses other movements. */}
-      <div id={contentId} hidden={!isActive} className="studio-movement-content">
+      {/* Keep every draft mounted while the user browses other movements. The
+          reveal grows open (0fr → 1fr) and closes instantly, so a movement
+          closing elsewhere never shifts the one being opened mid-scroll. */}
+      <div ref={revealRef} className="studio-movement-reveal" data-open={isActive ? 'true' : 'false'} inert={!isActive} aria-hidden={!isActive || undefined}>
+      <div className="studio-movement-reveal-inner">
+      <div id={contentId} className="studio-movement-content">
         {previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
         {children}
         <button type="button" className="studio-collapse-movement" onClick={() => {
@@ -2038,6 +2068,8 @@ function ExerciseCard({
             if (top < 0) scroller.scrollTop += top - 12;
           });
         }}>All movements <ChevronUp size={14} aria-hidden /></button>
+      </div>
+      </div>
       </div>
     </section>
   );
@@ -2115,33 +2147,96 @@ function MovementNote({
 }
 
 function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | null; onClose: () => void }) {
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const celebratedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!summary || celebratedAt.current === summary.completedAt) return;
+    celebratedAt.current = summary.completedAt;
+    completionHaptic();
+    // Let the sheet land before the ink flies.
+    const timer = window.setTimeout(() => {
+      emitBurstFrom(titleRef.current, { palette: 'mixed', count: 96, power: 1.45, spread: 80, anchor: 'top' });
+    }, 380);
+    return () => window.clearTimeout(timer);
+  }, [summary]);
+
   return (
     <Modal isOpen={summary !== null} onClose={onClose}>
       {summary && (
         <div className="pt-1 pb-2">
           <div className="flex items-center gap-2 mb-3">
             <motion.span
-              className="block w-2.5 h-2.5 bg-[var(--color-text)]"
-              initial={{ scale: 0 }}
-              animate={{ scale: [0, 1.15, 1] }}
-              transition={{ duration: 0.45 }}
+              className="block w-2.5 h-2.5 bg-[var(--color-accent)]"
+              initial={{ scale: 0, rotate: -45 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ ...springs.lift, delay: 0.15 }}
               aria-hidden
             />
             <span className="t-label">Session complete</span>
           </div>
-          <p className="t-title text-[var(--color-text)] mb-1.5">Session banked.</p>
+          <motion.p
+            ref={titleRef}
+            className="t-title text-[var(--color-text)] mb-1.5"
+            initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ ...springs.heavy, delay: 0.1 }}
+          >
+            Session banked.
+          </motion.p>
           <p className="t-caption mb-6">{summary.title}</p>
-          <TickStrip total={Math.min(summary.totalSets, 30)} filled={Math.min(summary.completedSets, 30)} tone="sage" className="mb-6" />
-          <div className="grid grid-cols-2 border-t border-[var(--color-border)]">
-            <div className="py-4 pr-4 border-r border-[var(--color-border)]">
-              <p className="number-medium text-[var(--color-text)]">{summary.completedSets}<span className="text-[var(--color-muted)]">/{summary.totalSets}</span></p>
+          <TickStrip
+            total={Math.min(summary.totalSets, 30)}
+            filled={Math.min(summary.completedSets, 30)}
+            tone="sage"
+            reveal={`banked-${summary.completedAt}`}
+            className="mb-6"
+          />
+          <div className="grid grid-cols-3 border-t border-[var(--color-border)]">
+            <div className="py-4 pr-3 border-r border-[var(--color-border)]">
+              <p className="number-medium text-[var(--color-text)]">
+                <CountUp value={summary.completedSets} duration={0.8} delay={0.25} />
+                <span className="text-[var(--color-muted)]">/{summary.totalSets}</span>
+              </p>
               <p className="t-label-sm mt-1">sets</p>
             </div>
-            <div className="py-4 pl-4">
+            <div className="py-4 px-3 border-r border-[var(--color-border)]">
+              <p className="number-medium text-[var(--color-text)]">
+                {summary.tonnage > 0 ? <CountUp value={summary.tonnage} duration={1.3} delay={0.35} /> : '—'}
+              </p>
+              <p className="t-label-sm mt-1">lb moved</p>
+            </div>
+            <div className="py-4 pl-3">
               <p className="number-medium text-[var(--color-text)]">{summary.duration}</p>
               <p className="t-label-sm mt-1">duration</p>
             </div>
           </div>
+          {summary.gains.length > 0 && (
+            <div className="border-t border-[var(--color-border)] pt-4">
+              <p className="t-label-sm mb-2">
+                Beat last workout · {summary.gains.length} {summary.gains.length === 1 ? 'set' : 'sets'}
+              </p>
+              <ul>
+                {summary.gains.slice(0, 5).map((gain, index) => (
+                  <motion.li
+                    key={`${gain.name}-${gain.setNumber}`}
+                    className="flex items-baseline justify-between gap-3 py-1.5 t-body"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ ...springs.settle, delay: 0.55 + index * 0.07 }}
+                  >
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {gain.name} <span className="text-[var(--color-text-dim)]">· set {gain.setNumber}</span>
+                    </span>
+                    <span className="shrink-0 t-data-sm text-[var(--color-accent)]">{gain.gain}</span>
+                  </motion.li>
+                ))}
+              </ul>
+              {summary.gains.length > 5 && (
+                <p className="t-caption mt-1">and {summary.gains.length - 5} more</p>
+              )}
+            </div>
+          )}
           <Button size="lg" className="w-full mt-6" onClick={onClose}>
             Done
           </Button>

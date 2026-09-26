@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
-import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle } from '@/components/shared';
+import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
+import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
+import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
@@ -425,6 +426,16 @@ export function Nutrition() {
     { label: 'Fat', current: dayTotals.fat, target: targetFat },
   ];
 
+  const liveDay = isToday(selectedDate);
+  const calorieSeal = useTargetSeal({ macro: 'calories', current: dayTotals.calories, target: targetKcal, dayKey: selectedDateKey, live: liveDay && !loading });
+  const proteinSeal = useTargetSeal({
+    macro: 'protein',
+    current: dayTotals.protein,
+    target: macroFigures.find((macro) => macro.label === 'Protein')?.target ?? 0,
+    dayKey: selectedDateKey,
+    live: liveDay && !loading,
+  });
+
   return (
     <Screen>
       <Toast show={showSuccess} message="Entry saved" />
@@ -462,7 +473,10 @@ export function Nutrition() {
                 <span className="t-data-sm text-[var(--color-text-dim)]">
                   / {Math.round(targetKcal).toLocaleString()}
                 </span>
-                <span className="t-label-sm block mt-1">Daily target</span>
+                <span className="t-label-sm mt-1 flex items-center justify-end gap-1.5">
+                  <SealMark show={calorieSeal.met} label="Calorie target met" anchorRef={calorieSeal.anchorRef} />
+                  {calorieSeal.met ? 'On target' : 'Daily target'}
+                </span>
               </div>
             </div>
             <RailStrip
@@ -517,7 +531,12 @@ export function Nutrition() {
               return (
                 <div key={macro.label}>
                   <div className="flex items-baseline justify-between gap-3 mb-2">
-                    <span className="t-body">{macro.label}</span>
+                    <span className="t-body flex items-center gap-2">
+                      {macro.label}
+                      {macro.label === 'Protein' && (
+                        <SealMark show={proteinSeal.met} label="Protein target met" anchorRef={proteinSeal.anchorRef} />
+                      )}
+                    </span>
                     <span className="t-data-sm text-[var(--color-text)]">
                       {Math.round(macro.current)} <span className="text-[var(--color-text-dim)]">/ {Math.round(macro.target)} g</span>
                     </span>
@@ -641,7 +660,7 @@ export function Nutrition() {
           </div>
         ) : selectedDayLogs.length === 0 && selectedDayGroups.length === 0 ? (
           <EmptyState
-            icon={UtensilsCrossed}
+            art="plate"
             title="Nothing logged yet"
             body={isToday(selectedDate) ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
             action={

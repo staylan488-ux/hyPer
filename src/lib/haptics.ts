@@ -122,3 +122,20 @@ export function selectionHapticEnd(): void {
     // garnish
   }
 }
+
+/**
+ * A celebratory success: a set that beat last workout, a target met. Native
+ * success notification; a short double tick elsewhere. Unlike tapHaptic it
+ * may fire after an await (no gesture needed natively).
+ */
+export function celebrationHaptic(): void {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      void Haptics.notification({ type: NotificationType.Success }).catch(() => {});
+      return;
+    }
+    if (!isIOS && 'vibrate' in navigator) navigator.vibrate([12, 60, 18]);
+  } catch {
+    // garnish
+  }
+}
