@@ -169,6 +169,11 @@ export async function requestCoachRecommendation(input: {
       'Content-Type': 'application/json',
       'X-Idempotency-Key': idempotencyKey,
     },
+  }).catch((error: unknown) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('The coach kept running past every retry. The worker may be down - check Settings.');
+    }
+    throw error;
   });
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!response.ok) {
