@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { User, Session } from '@supabase/supabase-js';
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
+import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { supabase } from '@/lib/supabase';
 
 const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
@@ -96,6 +97,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (!error && data.user && !data.user.email_confirmed_at) {
       await supabase.auth.signOut();
+      invalidateExerciseLibrary();
       set({ loading: false, user: null, session: null, profile: null });
       return { error: new Error('Please verify your email before signing in.') };
     }
@@ -190,6 +192,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
+    invalidateExerciseLibrary();
     set({ user: null, session: null, profile: null });
   },
 }));
