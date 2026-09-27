@@ -54,7 +54,6 @@ export function Dashboard() {
     fetchMacroTarget,
     fetchNutritionProfile,
     refreshAdaptiveTargets,
-    fetchVolumeLandmarks,
     calculateWeeklyVolume,
     fetchSplits,
     fetchCurrentWorkout,
@@ -152,7 +151,6 @@ export function Dashboard() {
       await Promise.all([
         fetchSplits(),
         fetchMacroTarget(),
-        fetchVolumeLandmarks(),
         calculateWeeklyVolume(),
         fetchCurrentWorkout(),
         fetchWorkoutMode(),
@@ -167,7 +165,7 @@ export function Dashboard() {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchVolumeLandmarks, fetchWorkoutMode, refreshAdaptiveTargets]);
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchWorkoutMode, refreshAdaptiveTargets]);
 
   const hero = useMemo<HeroState>(() => {
     if (loading) return { kind: 'loading' };

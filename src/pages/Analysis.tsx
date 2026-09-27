@@ -43,7 +43,7 @@ function buildCoachingCall(mv: MuscleVolume): CoachingCall {
 }
 
 export function Analysis() {
-  const { weeklyVolume, fetchVolumeLandmarks, calculateWeeklyVolume } = useAppStore();
+  const { weeklyVolume, calculateWeeklyVolume } = useAppStore();
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
   const [trainingHours, setTrainingHours] = useState<TrainingHoursPoint[]>([]);
@@ -88,10 +88,9 @@ export function Analysis() {
   }, []);
 
   useEffect(() => {
-    fetchVolumeLandmarks();
     calculateWeeklyVolume();
     void fetchTrainingHours();
-  }, [calculateWeeklyVolume, fetchTrainingHours, fetchVolumeLandmarks]);
+  }, [calculateWeeklyVolume, fetchTrainingHours]);
 
   const coached = useMemo(
     () =>

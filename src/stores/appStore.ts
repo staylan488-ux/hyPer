@@ -11,6 +11,7 @@ import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
 import { saveWorkoutSet } from '@/lib/saveWorkoutSet';
+import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
   isNewPhase,
@@ -2867,69 +2868,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
 
     // Get all completed sets from this week, regardless of whether
-    // the parent workout was explicitly marked complete.
-    const { data: workouts } = await supabase
-      .from('workouts')
-      .select(`
-        *,
-        sets!inner (
-          exercise_id,
-          completed,
-          exercise:exercises (muscle_group, muscle_group_secondary)
-        )
-      `)
-      .eq('user_id', user.id)
-      .eq('sets.completed', true)
-      .gte('date', weekStart)
-      .lte('date', weekEnd);
+    // the parent workout was explicitly marked complete. Landmarks load
+    // alongside so statuses are never graded against a missing or stale list.
+    const [{ data: workouts }, { data: freshLandmarks }] = await Promise.all([
+      supabase
+        .from('workouts')
+        .select(`
+          *,
+          sets!inner (
+            exercise_id,
+            completed,
+            exercise:exercises (muscle_group, muscle_group_secondary)
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('sets.completed', true)
+        .gte('date', weekStart)
+        .lte('date', weekEnd),
+      Promise.resolve(
+        supabase
+          .from('volume_landmarks')
+          .select('*')
+          .eq('user_id', user.id)
+      ).catch(() => ({ data: null })),
+    ]);
 
     if (!workouts) return;
 
-    // Calculate volume per muscle group
-    const volumeMap = new Map<MuscleGroup, number>();
-    
-    type CompletedSetRow = {
-      exercise: {
-        muscle_group: MuscleGroup;
-        muscle_group_secondary: MuscleGroup | null;
-      };
-      completed: boolean;
-    };
+    // If the landmarks query failed, keep grading against the stored list.
+    const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
+    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
 
-    for (const workout of workouts) {
-      const workoutSets = workout.sets as CompletedSetRow[];
-
-      for (const set of workoutSets) {
-        if (!set.completed || !set.exercise) continue;
-
-        const primaryMuscle = set.exercise.muscle_group;
-        const secondaryMuscle = set.exercise.muscle_group_secondary;
-
-        volumeMap.set(primaryMuscle, (volumeMap.get(primaryMuscle) ?? 0) + 1);
-        if (secondaryMuscle) {
-          volumeMap.set(secondaryMuscle, (volumeMap.get(secondaryMuscle) ?? 0) + 0.5);
-        }
-      }
-    }
-
-    const { volumeLandmarks } = get();
-    const weeklyVolume: MuscleVolume[] = [];
-
-    for (const [muscle_group, weekly_sets] of volumeMap) {
-      const landmark = volumeLandmarks.find(l => l.muscle_group === muscle_group);
-      
-      let status: MuscleVolume['status'] = 'below_mev';
-      if (landmark) {
-        if (weekly_sets < landmark.mev) status = 'below_mev';
-        else if (weekly_sets < landmark.mav_low) status = 'mev_mav';
-        else if (weekly_sets <= landmark.mav_high) status = 'mav';
-        else if (weekly_sets < landmark.mrv) status = 'approaching_mrv';
-        else status = 'above_mrv';
-      }
-
-      weeklyVolume.push({ muscle_group, weekly_sets, landmark, status });
-    }
-
-    set({ weeklyVolume });
+    set({ volumeLandmarks, weeklyVolume });
   },
 }));
