@@ -144,10 +144,6 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
-.material-page-actions {
-  margin-inline: max(17px, var(--app-safe-left));
-  border-radius: var(--radius-sheet);
-}
 .material-toast {
   background-color: var(--material-glass);
   color: var(--color-text);

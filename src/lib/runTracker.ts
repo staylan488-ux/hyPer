@@ -846,12 +846,6 @@ export function isWarmingUp(state: TrackerState): boolean {
   return !state.hasGpsLock || state.warmupCount < state.config.warmupSamples;
 }
 
-export function gpsAccuracyMeters(state: TrackerState): number | null {
-  return state.lastAccuracyM != null && Number.isFinite(state.lastAccuracyM)
-    ? Math.round(state.lastAccuracyM)
-    : null;
-}
-
 const PACE_MILE_M = 1609.344;
 
 // a device speed older than this no longer describes "now" (callback gap,
