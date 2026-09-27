@@ -178,3 +178,35 @@ export function createInflightJobs() {
     },
   };
 }
+
+/**
+ * Runs one analysis per idempotency key, waiting for a job slot INSIDE the
+ * shared computation and remembering a real failure for the next attempt.
+ *
+ * The slot is taken after the key is registered on purpose. Taken before, a
+ * request waiting in the queue was invisible: the client's retry (every 120 s)
+ * missed the inflight check, parsed the whole body again, took a second queue
+ * place, and once the original finished ran the same multi-minute analysis a
+ * second time. Now a retry attaches to the queued job like it would to a
+ * running one.
+ *
+ * A full queue (or shutdown) is not the request's answer - it stays a
+ * retryable 429 rather than being remembered as a failure.
+ */
+export async function runGatedJob({ key, compute, gate, inflight, failures }) {
+  try {
+    return await inflight.run(key, async () => {
+      const release = await gate.acquire();
+      try {
+        return await compute();
+      } finally {
+        release();
+      }
+    });
+  } catch (error) {
+    if (key && !(error instanceof WorkerBusyError)) {
+      failures.set(key, error instanceof Error ? error.message : String(error));
+    }
+    throw error;
+  }
+}
