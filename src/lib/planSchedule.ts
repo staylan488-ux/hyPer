@@ -91,19 +91,39 @@ function normalizeParsed(parsed: PlanSchedule): PlanSchedule | null {
 
 // ── Local cache helpers ──
 
-function loadLocalCache(userId: string, splitId: string): PlanSchedule | null {
+/** Stored alongside a schedule whose cloud save failed; never passed to the UI. */
+type LocalEntry = { schedule: PlanSchedule; pendingSync: boolean };
+
+function loadLocalEntry(userId: string, splitId: string): LocalEntry | null {
   const raw = globalThis.localStorage?.getItem(keyFor(userId, splitId));
   if (!raw) return null;
 
   try {
-    return normalizeParsed(JSON.parse(raw) as PlanSchedule);
+    const { pendingSync, ...parsed } = JSON.parse(raw) as PlanSchedule & { pendingSync?: boolean };
+    const schedule = normalizeParsed(parsed);
+    return schedule ? { schedule, pendingSync: pendingSync === true } : null;
   } catch {
     return null;
   }
 }
 
-function saveLocalCache(userId: string, schedule: PlanSchedule): void {
-  globalThis.localStorage?.setItem(keyFor(userId, schedule.splitId), JSON.stringify(schedule));
+function loadLocalCache(userId: string, splitId: string): PlanSchedule | null {
+  return loadLocalEntry(userId, splitId)?.schedule ?? null;
+}
+
+function saveLocalCache(userId: string, schedule: PlanSchedule, pendingSync = false): void {
+  const entry = pendingSync ? { ...schedule, pendingSync: true } : schedule;
+  globalThis.localStorage?.setItem(keyFor(userId, schedule.splitId), JSON.stringify(entry));
+}
+
+/**
+ * Flag or clear a failed cloud save, but only while the cached copy is still
+ * the one that was sent; a newer local edit keeps its own state.
+ */
+function setPendingSync(userId: string, sent: PlanSchedule, pendingSync: boolean): void {
+  const current = loadLocalEntry(userId, sent.splitId);
+  if (!current || current.schedule.updatedAt !== sent.updatedAt || current.pendingSync === pendingSync) return;
+  saveLocalCache(userId, current.schedule, pendingSync);
 }
 
 // ── DB helpers ──
@@ -145,9 +165,13 @@ async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule
   }
 }
 
-async function saveToDB(userId: string, schedule: PlanSchedule): Promise<void> {
+/** 'rejected' is an error a retry cannot fix (deleted program, invalid row). */
+type SaveOutcome = 'saved' | 'failed' | 'rejected';
+const PERMANENT_SAVE_ERRORS = new Set(['23503', '23514']);
+
+async function saveToDB(userId: string, schedule: PlanSchedule): Promise<SaveOutcome> {
   try {
-    await supabase
+    const { error } = await supabase
       .from('plan_schedules')
       .upsert({
         user_id: userId,
@@ -162,8 +186,15 @@ async function saveToDB(userId: string, schedule: PlanSchedule): Promise<void> {
       }, {
         onConflict: 'user_id,split_id',
       });
+    if (!error) return 'saved';
+    if (PERMANENT_SAVE_ERRORS.has((error as { code?: string }).code ?? '')) {
+      if (import.meta.env.DEV) console.warn('Plan schedule cannot be saved to the cloud', error);
+      return 'rejected';
+    }
+    return 'failed';
   } catch {
-    // Silently fail — localStorage still has the data
+    // localStorage still has the data; the next background sync retries.
+    return 'failed';
   }
 }
 
@@ -193,13 +224,20 @@ export async function loadPlanScheduleAsync(userId: string, splitId: string): Pr
 }
 
 /**
- * Save plan schedule to both localStorage (instant) and DB (async).
+ * Save plan schedule to both localStorage (instant) and DB (async). A failed
+ * cloud save is flagged locally and retried by the next loadWithBackgroundSync.
  */
 export function savePlanSchedule(userId: string, schedule: PlanSchedule): PlanSchedule {
   const stamped = { ...schedule, updatedAt: new Date().toISOString() };
   saveLocalCache(userId, stamped);
-  void saveToDB(userId, stamped);
+  void saveToDB(userId, stamped).then((outcome) => {
+    if (outcome === 'failed') setPendingSync(userId, stamped, true);
+  });
   return stamped;
+}
+
+function timeOf(schedule: PlanSchedule): number {
+  return schedule.updatedAt ? new Date(schedule.updatedAt).getTime() : 0;
 }
 
 /**
@@ -218,11 +256,23 @@ export function loadWithBackgroundSync(
   const cached = loadLocalCache(userId, splitId);
   let cancelled = false;
 
-  const done = loadFromDB(userId, splitId).then((remote) => {
-    if (cancelled || !remote) return;
+  const done = loadFromDB(userId, splitId).then(async (remote) => {
+    if (cancelled) return;
 
     // A schedule may have been edited while this request was in flight.
-    const currentCache = loadLocalCache(userId, splitId);
+    const current = loadLocalEntry(userId, splitId);
+    const currentCache = current?.schedule ?? null;
+
+    // Re-send a schedule whose earlier cloud save failed, keeping its original
+    // updatedAt, unless the cloud already holds a strictly newer copy. A null
+    // remote may also be a read error; the retry then fails and stays pending.
+    if (current?.pendingSync && (!remote || timeOf(current.schedule) >= timeOf(remote))) {
+      const outcome = await saveToDB(userId, current.schedule);
+      if (outcome !== 'failed') setPendingSync(userId, current.schedule, false);
+      return;
+    }
+
+    if (!remote) return;
     if (!currentCache) {
       saveLocalCache(userId, remote);
       onRemoteUpdate(remote);
@@ -230,10 +280,7 @@ export function loadWithBackgroundSync(
     }
 
     // Compare timestamps — only update if remote is strictly newer
-    const localTime = currentCache.updatedAt ? new Date(currentCache.updatedAt).getTime() : 0;
-    const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-
-    if (remoteTime > localTime) {
+    if (timeOf(remote) > timeOf(currentCache)) {
       saveLocalCache(userId, remote);
       onRemoteUpdate(remote);
     }

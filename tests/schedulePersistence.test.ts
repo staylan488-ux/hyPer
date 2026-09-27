@@ -9,6 +9,9 @@ const database = vi.hoisted(() => {
     failure: null as Error | null,
     failAtOffset: 0,
     ranges: [] as { table: string; from: number; to: number }[],
+    upsertFailures: [] as { message: string; code?: string }[],
+    upsertGate: null as Promise<void> | null,
+    upserts: 0,
   };
 
   class Query implements PromiseLike<Result> {
@@ -46,6 +49,10 @@ const database = vi.hoisted(() => {
       return { ...result, data: result.data?.[0] ?? null };
     }
     async upsert(row: Row) {
+      state.upserts++;
+      const failure = state.upsertFailures.shift();
+      if (state.upsertGate) await state.upsertGate;
+      if (failure) return { data: null, error: failure };
       const anchor = row.anchor_day;
       if (typeof anchor === 'number' && (anchor < 0 || anchor > 6)) {
         return { data: null, error: new Error('anchor_day must be between 0 and 6') };
@@ -73,6 +80,7 @@ import {
   loadPlanSchedule,
   loadPlanScheduleAsync,
   loadScheduleWorkouts,
+  loadWithBackgroundSync,
   plannedDayForDate,
   savePlanSchedule,
   type PlanSchedule,
@@ -98,6 +106,9 @@ describe('schedule persistence and completion loading', () => {
     database.state.failure = null;
     database.state.failAtOffset = 0;
     database.state.ranges = [];
+    database.state.upsertFailures = [];
+    database.state.upsertGate = null;
+    database.state.upserts = 0;
     database.from.mockClear();
     const cache = new Map<string, string>();
     vi.stubGlobal('localStorage', {
@@ -206,5 +217,136 @@ describe('schedule persistence and completion loading', () => {
     const history = await loadScheduleWorkouts('user', days, restored!);
     expect(history.map((row) => row.id)).toEqual(['completed-last']);
     expect(plannedDayForDate(new Date(2026, 8, 3), days, restored!, 0, history)?.day_name).toBe('Day 1');
+  });
+});
+
+describe('plan schedule cloud save retry', () => {
+  const CACHE_KEY = 'plan-schedule:user:split';
+  const rawCache = () => JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null');
+  const flush = async () => {
+    for (let index = 0; index < 10; index++) await Promise.resolve();
+  };
+
+  beforeEach(() => {
+    database.state.tables = {};
+    database.state.upsertFailures = [];
+    database.state.upsertGate = null;
+    database.state.upserts = 0;
+    const cache = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => cache.get(key) ?? null,
+      setItem: (key: string, value: string) => cache.set(key, value),
+      clear: () => cache.clear(),
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-31T08:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('flags a failed save and re-sends it with its original time on the next load', async () => {
+    database.state.upsertFailures = [{ message: 'network unavailable' }];
+    const saved = savePlanSchedule('user', schedule);
+    await flush();
+    expect(rawCache()).toMatchObject({ pendingSync: true, updatedAt: saved.updatedAt });
+    expect(database.state.tables.plan_schedules).toBeUndefined();
+    // The flag never reaches the UI.
+    expect(loadPlanSchedule('user', 'split')).toEqual(saved);
+
+    vi.setSystemTime(new Date('2026-09-02T08:00:00Z'));
+    const onRemoteUpdate = vi.fn();
+    const sync = loadWithBackgroundSync('user', 'split', onRemoteUpdate);
+    expect(sync.cached).toEqual(saved);
+    await sync.done;
+
+    expect(database.state.tables.plan_schedules).toHaveLength(1);
+    expect(database.state.tables.plan_schedules[0]).toMatchObject({
+      split_id: 'split', start_date: saved.startDate, updated_at: saved.updatedAt,
+    });
+    expect(rawCache().pendingSync).toBeUndefined();
+    expect(onRemoteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the flag while retries keep failing', async () => {
+    database.state.upsertFailures = [{ message: 'offline' }, { message: 'still offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    expect(database.state.upserts).toBe(2);
+    expect(rawCache().pendingSync).toBe(true);
+  });
+
+  it('lets a strictly newer cloud copy win without re-sending the pending one', async () => {
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    database.state.tables.plan_schedules = [{
+      user_id: 'user', split_id: 'split', start_date: '2026-09-07', mode: 'fixed',
+      weekdays: [1, 3, 5], anchor_day: 1, updated_at: '2026-09-01T08:00:00.000Z',
+    }];
+    const upsertsBefore = database.state.upserts;
+    const onRemoteUpdate = vi.fn();
+
+    await loadWithBackgroundSync('user', 'split', onRemoteUpdate).done;
+
+    expect(database.state.upserts).toBe(upsertsBefore);
+    expect(onRemoteUpdate).toHaveBeenCalledTimes(1);
+    expect(onRemoteUpdate.mock.calls[0][0]).toMatchObject({ startDate: '2026-09-07', weekdays: [1, 3, 5] });
+    expect(onRemoteUpdate.mock.calls[0][0]).not.toHaveProperty('pendingSync');
+    expect(rawCache()).toMatchObject({ startDate: '2026-09-07' });
+    expect(rawCache().pendingSync).toBeUndefined();
+  });
+
+  it('does not flag a newer local edit made while a failing save was in flight', async () => {
+    let release!: () => void;
+    database.state.upsertGate = new Promise<void>((resolve) => { release = resolve; });
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    vi.setSystemTime(new Date('2026-08-31T09:00:00Z'));
+    const edited = savePlanSchedule('user', { ...schedule, weekdays: [1, 3, 5] });
+
+    release();
+    await flush();
+
+    expect(rawCache()).toEqual(edited);
+    expect(rawCache().pendingSync).toBeUndefined();
+  });
+
+  it('stops retrying a save the database can never accept', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    database.state.upsertFailures = [{ message: 'offline' }, { message: 'program deleted', code: '23503' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    expect(rawCache().pendingSync).toBe(true);
+
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    expect(rawCache().pendingSync).toBeUndefined();
+
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    expect(database.state.upserts).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('does not flag a first save the database rejects permanently', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    database.state.upsertFailures = [{ message: 'check failed', code: '23514' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    expect(rawCache().pendingSync).toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it('finds a schedule saved only in the cloud, so activating that plan does not prompt for a start', async () => {
+    database.state.tables.plan_schedules = [{
+      user_id: 'user', split_id: 'split', start_date: '2026-08-31', mode: 'fixed',
+      weekdays: [1, 2, 4, 5], anchor_day: 1, updated_at: '2026-08-30T08:00:00.000Z',
+    }];
+    expect(loadPlanSchedule('user', 'split')).toBeNull();
+    expect(await loadPlanScheduleAsync('user', 'split')).toMatchObject({ splitId: 'split', startDate: '2026-08-31' });
+    expect(await loadPlanScheduleAsync('user', 'other-split')).toBeNull();
   });
 });
