@@ -327,6 +327,7 @@ export function Dashboard() {
                 mavLow={insight.landmark.mav_low}
                 mavHigh={insight.landmark.mav_high}
                 mrv={insight.landmark.mrv}
+                reveal={`dash-volume-${insight.volume.muscle_group}`}
               />
             )}
           </Link>
@@ -500,6 +501,7 @@ function FuelRow({ label, current, target, unit }: { label: string; current: num
         notch={target / maxScale}
         tone={over ? 'berry' : 'chalk'}
         size="sm"
+        reveal={`dash-fuel-${label}`}
       />
       <span className="sr-only">{pct}% of target</span>
     </div>

@@ -70,7 +70,7 @@ export function SegmentedControl<T extends string>({
               <motion.span
                 layoutId={`segment-${groupId}`}
                 className="material-selected absolute inset-0 rounded-[var(--radius-control)]"
-                transition={springs.snappy}
+                transition={springs.tactile}
               />
             )}
           </button>

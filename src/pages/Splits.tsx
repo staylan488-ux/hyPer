@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, Input, Modal, Screen, SegmentedControl } from '@/components/shared';
+import { Button, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -245,7 +245,7 @@ export function Splits() {
         </div>
 
         <div className="mt-5 flex items-end justify-between gap-3">
-          <h1 className="t-title">Program</h1>
+          <PageTitle>Program</PageTitle>
           {workoutMode === 'split' && (
             <Button size="sm" onClick={() => setShowBuilder(true)}>
               <Plus className="w-4 h-4" strokeWidth={1.75} />
@@ -306,7 +306,7 @@ export function Splits() {
                       className="border-t border-[var(--color-border)]"
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
+                      transition={{ ...springs.settle, delay: Math.min(index * 0.05, 0.3) }}
                     >
                       <div className="flex items-center gap-3 py-4">
                         <button
@@ -321,7 +321,7 @@ export function Splits() {
                             <span className="t-heading block break-words">{template.label}</span>
                             <span className="t-caption">{visibleItems.length} {visibleItems.length === 1 ? 'exercise' : 'exercises'}</span>
                           </span>
-                          <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="self-center shrink-0">
+                          <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="self-center shrink-0">
                             <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                           </motion.span>
                         </button>
@@ -361,7 +361,7 @@ export function Splits() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={springs.smooth}
+                            transition={springs.settle}
                           >
                             <div className="pb-4 pl-10">
                               {visibleItems.length > 0 ? (
@@ -400,7 +400,7 @@ export function Splits() {
           )}
         </div>
       ) : splits.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
           <EmptyState
             icon={LayoutGrid}
             title="Build your first program"
@@ -424,7 +424,7 @@ export function Splits() {
                 className="border-t border-[var(--color-border)]"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ ...springs.smooth, delay: Math.min(index * 0.05, 0.3) }}
+                transition={{ ...springs.settle, delay: Math.min(index * 0.05, 0.3) }}
               >
                 {/* Program Header */}
                 <div className="flex items-start gap-3 py-4">
@@ -450,7 +450,7 @@ export function Splits() {
                         {split.days.length} {split.days.length === 1 ? 'day' : 'days'} · {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
                       </span>
                     </span>
-                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy} className="self-center shrink-0">
+                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="self-center shrink-0">
                       <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                     </motion.span>
                   </button>
@@ -513,7 +513,7 @@ export function Splits() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={springs.smooth}
+                      transition={springs.settle}
                     >
                       <ul className="pb-2 pl-10">
                         {split.days.map((day, dayIndex) => {
@@ -526,7 +526,7 @@ export function Splits() {
                               className="border-t border-[var(--color-border-soft)]"
                               initial={{ opacity: 0, x: -8 }}
                               animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: dayIndex * 0.04, ...springs.smooth }}
+                              transition={{ delay: dayIndex * 0.04, ...springs.settle }}
                             >
                               <button
                                 type="button"
@@ -542,7 +542,7 @@ export function Splits() {
                                     {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                                   </span>
                                 </span>
-                                <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.snappy} className="shrink-0">
+                                <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.tactile} className="shrink-0">
                                   <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                                 </motion.span>
                               </button>
@@ -554,7 +554,7 @@ export function Splits() {
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: 'auto', opacity: 1 }}
                                     exit={{ height: 0, opacity: 0 }}
-                                    transition={springs.smooth}
+                                    transition={springs.settle}
                                   >
                                     {exerciseCount > 0 ? (
                                       <ul className="pb-3 pl-8">
@@ -564,7 +564,7 @@ export function Splits() {
                                             className="flex items-baseline gap-3 py-2 border-t border-[var(--color-border-soft)]"
                                             initial={{ opacity: 0, y: 4 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: exIndex * 0.03, ...springs.smooth }}
+                                            transition={{ delay: exIndex * 0.03, ...springs.settle }}
                                           >
                                             <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">{exIndex + 1}</span>
                                             <p className="flex-1 min-w-0 t-body text-[var(--color-text)] break-words">

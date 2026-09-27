@@ -20,3 +20,4 @@ export { Toast } from './Toast';
 export { MacroBar } from './MacroBar';
 export { PaperAtmosphere } from './PaperAtmosphere';
 export { RollingNumber } from './RollingNumber';
+export { PageTitle } from './PageTitle';

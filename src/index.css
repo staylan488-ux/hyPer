@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/materials.css";
+@import "./styles/kinetic.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */

@@ -1,0 +1,72 @@
+/* ═════════════════════════════════════════════════════════════
+   KINETIC STUDIO — motion-era surfaces
+   Scroll-linked and data-driven layers that sit on the Studio materials.
+   ═════════════════════════════════════════════════════════════ */
+
+/* Scroll-edge band: the condensed page title rests in a soft, masked blur
+   that fades into the content below — no hard toolbar edge. Fixed inside the
+   (untransformed) route content, aligned with the scroll column. */
+.page-scroll-edge {
+  position: fixed;
+  top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-width: 32rem;
+  margin: 0 auto;
+  height: 76px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 13px;
+  cursor: pointer;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--material-foundation) 86%, transparent) 0%,
+    color-mix(in srgb, var(--material-foundation) 55%, transparent) 52%,
+    transparent 100%
+  );
+  -webkit-backdrop-filter: blur(14px) var(--material-optics);
+  backdrop-filter: blur(14px) var(--material-optics);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
+}
+.page-scroll-edge-title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  font-variation-settings: 'opsz' 24;
+  max-width: 70%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#root[inert] .page-scroll-edge {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .page-scroll-edge {
+    background: var(--material-foundation);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    height: 48px;
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
+/* Picker drums: rows turn on a cylinder behind the selection band; the
+   column fades into the well at both ends. */
+.wheel-drum {
+  perspective: 520px;
+  perspective-origin: 50% 50%;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 84%, transparent 100%);
+}
+.wheel-drum [data-wheel-row] { will-change: transform, opacity; }

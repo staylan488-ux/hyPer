@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Button, SegmentedControl, SelectSheet } from '@/components/shared';
+import { LapPaceChart } from '@/components/shared/charts';
 import { useAppStore } from '@/stores/appStore';
 import { useRunTracker, createSimulatedSource, type PositionSource } from '@/hooks/useRunTracker';
 import {
@@ -298,7 +299,7 @@ export function RunTracker() {
         }));
 
     return (
-      <motion.div className="min-h-dvh px-6 pt-10 pb-10 max-w-lg mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springs.smooth}>
+      <motion.div className="min-h-dvh px-6 pt-10 pb-10 max-w-lg mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springs.settle}>
         <p className="t-label-sm">Run complete</p>
         <h1 className="t-display text-[2rem] mt-2">
           {RUN_MODE_LABELS[finishedRun.mode]}
@@ -323,6 +324,13 @@ export function RunTracker() {
 
         {splits.length > 1 && (
           <div className="mt-8 border-t border-[var(--color-border)] pt-3">
+            <LapPaceChart
+              className="mb-5"
+              laps={splits}
+              formatPace={formatRunPace}
+              formatDistance={(meters) => (meters == null ? null : formatMeters(meters))}
+              formatDuration={formatClockDuration}
+            />
             <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm pb-1">
               <span>#</span>
               <span>Time</span>
@@ -496,7 +504,7 @@ export function RunTracker() {
 
   /* ── pre-start config ── */
   return (
-    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] max-w-lg mx-auto flex flex-col overscroll-none" style={{ background: 'var(--material-foundation, var(--color-base))' }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] max-w-lg mx-auto flex flex-col overscroll-none" style={{ background: 'var(--material-foundation, var(--color-base))' }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
       <p className="t-label-sm">Field tracker</p>
       <h1 className="t-display text-[2rem] mt-2">Run</h1>
 

@@ -1,7 +1,8 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle } from '@/components/shared';
+import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
@@ -555,10 +556,21 @@ function ActivityLedgerRow({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={springs.smooth}
+            transition={springs.settle}
             className="overflow-hidden"
           >
             <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+              <LapPaceChart
+                className="mb-4"
+                laps={primarySegments.map((segment) => ({
+                  key: segment.id,
+                  durationS: segment.duration_seconds,
+                  distanceM: segment.distance_m,
+                }))}
+                formatPace={formatPace}
+                formatDistance={formatSegmentDistance}
+                formatDuration={formatClockDuration}
+              />
               <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm pb-1">
                 <span>#</span>
                 <span>Time</span>
@@ -1254,10 +1266,10 @@ export function History() {
           <span className="t-label-sm">Training ledger</span>
           <span className="t-label-sm">{format(new Date(), 'yyyy')}</span>
         </div>
-        <h1 className="t-title mt-5">History</h1>
+        <PageTitle className="mt-5">History</PageTitle>
       </header>
 
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
         <div className="mb-9">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--color-border)]">
             <motion.button
@@ -1355,7 +1367,7 @@ export function History() {
                     <motion.div
                       className="absolute inset-0 rounded-[11px] bg-[var(--color-text)]"
                       layoutId="history-day-selected"
-                      transition={springs.smooth}
+                      transition={springs.settle}
                     />
                   )}
                   {isTodayDate && !isSelected && (
@@ -1378,7 +1390,7 @@ export function History() {
                       className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      transition={springs.bouncy}
+                      transition={springs.lift}
                     >
                       {dayWorkouts.length > 0 && (
                         <span
@@ -1416,7 +1428,7 @@ export function History() {
           ))}
         </div>
       ) : (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.smooth}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
           <div className="flex items-center justify-between gap-4 mb-4 pt-8 border-t border-[var(--color-border)]">
             <div>
               <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
@@ -1506,7 +1518,7 @@ export function History() {
                   key={workout.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: workoutIndex * 0.06, ...springs.smooth }}
+                  transition={{ delay: workoutIndex * 0.06, ...springs.settle }}
                   className="border-t border-[var(--color-border)] first:border-t-0"
                 >
                   <div className="overflow-hidden">
@@ -1524,7 +1536,7 @@ export function History() {
                           <p className="t-caption mt-1.5">{subtitle}</p>
                         </div>
                       </div>
-                      <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
+                      <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.div>
                     </button>
@@ -1536,7 +1548,7 @@ export function History() {
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={springs.smooth}
+                          transition={springs.settle}
                         >
                           <WorkoutActivityPanel
                             workout={workout}
@@ -1599,7 +1611,7 @@ export function History() {
                                 className="mb-3"
                                 initial={{ opacity: 0, x: -8 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: exIndex * 0.04, ...springs.smooth }}
+                                transition={{ delay: exIndex * 0.04, ...springs.settle }}
                               >
                                 <div
                                   className="flex flex-wrap items-center justify-between gap-y-2 py-3 px-2 -mx-2"
@@ -1703,7 +1715,7 @@ export function History() {
                                       onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
                                       className="studio-row-action"
                                     >
-                                      <motion.span animate={{ rotate: isExerciseExpanded ? 180 : 0 }} transition={springs.snappy}>
+                                      <motion.span animate={{ rotate: isExerciseExpanded ? 180 : 0 }} transition={springs.tactile}>
                                         <ChevronDown className="w-3 h-3 text-[var(--color-muted)]" strokeWidth={1.5} />
                                       </motion.span>
                                     </button>
@@ -1717,7 +1729,7 @@ export function History() {
                                       initial={{ height: 0, opacity: 0 }}
                                       animate={{ height: 'auto', opacity: 1 }}
                                       exit={{ height: 0, opacity: 0 }}
-                                      transition={springs.smooth}
+                                      transition={springs.settle}
                                     >
                                       <div className="flex items-center justify-between gap-2 py-2.5 border-t border-[var(--color-border)]">
                                         <p className="t-label-sm">Target Sets</p>
@@ -1753,7 +1765,7 @@ export function History() {
                                           className="flex items-center justify-between py-2.5 border-t border-[var(--color-border)]"
                                           initial={{ opacity: 0, y: 4 }}
                                           animate={{ opacity: 1, y: 0 }}
-                                          transition={springs.smooth}
+                                          transition={springs.settle}
                                         >
                                           <div className="flex items-baseline gap-3">
                                             <span className="t-data-sm text-[var(--color-muted)] w-10">{set.set_number.toString().padStart(2, '0')}</span>
@@ -1890,7 +1902,7 @@ export function History() {
                       key={activity.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.smooth }}
+                      transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.settle }}
                     >
                       <ActivityLedgerRow
                         activity={activity}

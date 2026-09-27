@@ -2056,7 +2056,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 }}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.smooth }}
+                transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.settle }}
                 disabled={saving || loadingFoodId !== null}
               >
                 <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0 pt-1">

@@ -58,7 +58,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
         whileTap={isDisabled ? undefined : { scale: 0.985 }}
-        transition={springs.snappy}
+        transition={springs.tactile}
         onClick={(event) => {
           if (!isDisabled) tapHaptic();
           onClick?.(event);

@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, typ
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
-import { springs, backdrop } from '@/lib/animations';
+import { springs, backdrop, EASE_OUT_EXPO } from '@/lib/animations';
 
 interface ModalProps {
   isOpen: boolean;
@@ -130,7 +130,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
             initial={{ opacity: 0, y: 80 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
-            transition={springs.smooth}
+            transition={{ y: springs.settle, opacity: { duration: 0.2, ease: EASE_OUT_EXPO } }}
             onAnimationComplete={() => {
               // WebKit can leave the caret at stale coordinates if an input is
               // focused while its sheet is moving. Wait for the sheet to settle,

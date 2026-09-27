@@ -1,9 +1,15 @@
 import { motion } from 'motion/react';
+import { springs } from '@/lib/animations';
+import { useFirstReveal } from '@/lib/motionPolicy';
 
 /**
  * The Strip — FOLIO's calibration motif. Hairline ticks and rules that always
  * encode data: sets logged, macros filled, rest remaining, volume position.
- * Flat ink marks on a faint track — no glow, no gradient, no rounding.
+ * Flat ink marks on a faint track — no gradient, no rounding.
+ *
+ * Kinetic: every fill moves by transform (scaleX / translateX), never width or
+ * left. Pass `reveal` (a stable metric key) to draw the fill in from empty the
+ * first time that metric appears in this session; later visits render settled.
  */
 
 export type StripTone = 'amber' | 'sage' | 'chalk' | 'berry' | 'stone';
@@ -25,54 +31,61 @@ interface TickStripProps {
   size?: 'sm' | 'md' | 'lg';
   /** Mark the next unfilled tick — "this one is live" */
   live?: boolean;
+  /** Session-stable key: fill the ticks in sequence on first appearance. */
+  reveal?: string;
   className?: string;
 }
 
 /** Discrete tick segments: one per set / day / item. Thin ledger marks when dense. */
-export function TickStrip({ total, filled, tone = 'chalk', size = 'md', live = false, className = '' }: TickStripProps) {
+export function TickStrip({ total, filled, tone = 'chalk', size = 'md', live = false, reveal, className = '' }: TickStripProps) {
+  const firstReveal = useFirstReveal(reveal);
   const safeTotal = Math.max(0, Math.floor(total));
   if (safeTotal === 0) return null;
   const safeFilled = Math.min(safeTotal, Math.max(0, Math.floor(filled)));
   const dense = safeTotal > 12;
 
-  if (dense) {
-    return (
-      <div className={`flex items-center gap-[2px] ${className}`} role="img" aria-label={`${safeFilled} of ${safeTotal}`}>
-        {Array.from({ length: safeTotal }, (_, i) => {
-          const isFilled = i < safeFilled;
-          const isLive = live && i === safeFilled;
-          return (
-            <span
-              key={i}
-              className={`w-[2px] h-3 ${isLive ? 'animate-tick-live' : ''}`}
-              style={{ backgroundColor: isFilled || isLive ? TONE[tone] : EMPTY }}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  const dims = {
-    sm: 'w-3.5 h-[2px]',
-    md: 'w-5 h-[2px]',
-    lg: 'w-7 h-[3px]',
-  }[size];
+  const dims = dense
+    ? 'w-[2px] h-3'
+    : {
+        sm: 'w-3.5 h-[2px]',
+        md: 'w-5 h-[2px]',
+        lg: 'w-7 h-[3px]',
+      }[size];
+  // Dense strips stack vertical ledger marks, so their ink rises; horizontal
+  // ticks draw left to right.
+  const axis = dense ? 'scaleY' : 'scaleX';
+  const origin = dense ? '50% 100%' : '0% 50%';
+  // Keep the sequence brisk however long the strip is.
+  const step = Math.min(0.045, 0.5 / Math.max(1, safeFilled));
 
   return (
-    <div className={`flex items-center gap-1.5 ${className}`} role="img" aria-label={`${safeFilled} of ${safeTotal}`}>
+    <div
+      className={`flex items-center ${dense ? 'gap-[2px]' : 'gap-1.5'} ${className}`}
+      role="img"
+      aria-label={`${safeFilled} of ${safeTotal}`}
+    >
       {Array.from({ length: safeTotal }, (_, i) => {
         const isFilled = i < safeFilled;
         const isLive = live && i === safeFilled;
+        const inked = isFilled || isLive;
         return (
-          <motion.span
+          <span
             key={i}
-            initial={false}
-            animate={{ backgroundColor: isFilled || isLive ? TONE[tone] : EMPTY }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className={`${dims} ${isLive ? 'animate-tick-live' : ''}`}
-            style={{ backgroundColor: isFilled || isLive ? TONE[tone] : EMPTY }}
-          />
+            className={`relative block overflow-hidden ${dims} ${isLive ? 'animate-tick-live' : ''}`}
+            style={{ backgroundColor: EMPTY }}
+          >
+            <motion.span
+              className="absolute inset-0 block"
+              initial={firstReveal && inked ? { [axis]: 0 } : false}
+              animate={{ [axis]: inked ? 1 : 0 }}
+              transition={
+                firstReveal && inked
+                  ? { ...springs.settle, delay: 0.08 + i * step }
+                  : springs.settle
+              }
+              style={{ backgroundColor: TONE[tone], transformOrigin: origin }}
+            />
+          </span>
         );
       })}
     </div>
@@ -88,23 +101,30 @@ interface RailStripProps {
   size?: 'sm' | 'md' | 'lg';
   /** Tone once value exceeds 1 (default accent) */
   overTone?: StripTone;
+  /** Session-stable key: fill from empty the first time this rail appears. */
+  reveal?: string;
   className?: string;
 }
 
 /** Continuous rail with an optional target notch — macros, generic progress. */
-export function RailStrip({ value, tone = 'chalk', notch, size = 'md', overTone = 'berry', className = '' }: RailStripProps) {
+export function RailStrip({ value, tone = 'chalk', notch, size = 'md', overTone = 'berry', reveal, className = '' }: RailStripProps) {
+  const firstReveal = useFirstReveal(reveal);
   const heights = { sm: 'h-[2px]', md: 'h-[3px]', lg: 'h-1' };
-  const clamped = Math.max(0, Math.min(1, value));
+  const clamped = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   const over = value > 1.001;
 
   return (
     <div className={`relative ${heights[size]} overflow-visible ${className}`} style={{ backgroundColor: EMPTY }}>
       <motion.div
-        className="absolute inset-y-0 left-0"
-        initial={false}
-        animate={{ width: `${clamped * 100}%`, backgroundColor: over ? TONE[overTone] : TONE[tone] }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        style={{ backgroundColor: over ? TONE[overTone] : TONE[tone] }}
+        className="absolute inset-0"
+        initial={firstReveal ? { scaleX: 0 } : false}
+        animate={{ scaleX: clamped }}
+        transition={firstReveal ? { ...springs.heavy, bounce: 0, delay: 0.12 } : springs.settle}
+        style={{
+          backgroundColor: over ? TONE[overTone] : TONE[tone],
+          transformOrigin: '0% 50%',
+          transition: 'background-color 380ms var(--ease-out-quart)',
+        }}
       />
       {notch !== undefined && notch > 0 && notch <= 1 && (
         <span
@@ -126,13 +146,17 @@ interface VolumeRailProps {
   mavLow: number;
   mavHigh: number;
   mrv: number;
+  /** Session-stable key: slide the marker in from zero on first appearance. */
+  reveal?: string;
   className?: string;
 }
 
 /** Rail with research landmark notches and a position marker — volume coaching. */
-export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, className = '' }: VolumeRailProps) {
+export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, reveal, className = '' }: VolumeRailProps) {
+  const firstReveal = useFirstReveal(reveal);
   const scaleMax = Math.max(mrv * 1.12, current * 1.05, 1);
-  const pos = (v: number) => `${Math.min(100, (v / scaleMax) * 100)}%`;
+  const fraction = (v: number) => Math.min(1, Math.max(0, v / scaleMax));
+  const pos = (v: number) => `${fraction(v) * 100}%`;
 
   return (
     <div className={`relative h-5 ${className}`}>
@@ -155,19 +179,22 @@ export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, className = '' 
           style={{ left: pos(v), backgroundColor: 'color-mix(in srgb, var(--color-text) 32%, transparent)' }}
         />
       ))}
-      {/* current position marker */}
-      <motion.span
-        className="absolute top-1/2 w-[2px] h-5"
-        initial={false}
-        animate={{ left: pos(current) }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        style={{
-          translateY: '-50%',
-          translateX: '-50%',
-          backgroundColor:
-            current > mrv ? 'var(--color-accent)' : current < mev ? 'var(--color-text-dim)' : 'var(--color-text)',
-        }}
-      />
+      {/* current position marker: a full-width carrier translated by a share
+          of its own width, so the marker moves on the compositor */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        initial={firstReveal ? { x: '0%' } : false}
+        animate={{ x: pos(current) }}
+        transition={firstReveal ? { ...springs.heavy, delay: 0.1 } : springs.settle}
+      >
+        <span
+          className="absolute left-0 top-1/2 w-[2px] h-5 -translate-x-1/2 -translate-y-1/2"
+          style={{
+            backgroundColor:
+              current > mrv ? 'var(--color-accent)' : current < mev ? 'var(--color-text-dim)' : 'var(--color-text)',
+          }}
+        />
+      </motion.div>
     </div>
   );
 }

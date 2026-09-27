@@ -24,7 +24,7 @@ import {
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip } from '@/components/shared';
+import { Button, Card, Chip, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -1157,7 +1157,7 @@ export function Workout() {
                 <span className="t-label-sm">Flexible</span>
               </div>
             </div>
-            <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</h1>
+            <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</PageTitle>
           </header>
 
           <div className="py-5">
@@ -1245,7 +1245,7 @@ export function Workout() {
               )}
             </div>
           </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Today</h1>
+          <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Today</PageTitle>
         </header>
 
         {planSchedule && scheduleWorkoutsLoading ? (
@@ -1502,7 +1502,7 @@ export function Workout() {
           <span>{completedSets} / {totalSets} sets</span>
         </div>
         {totalSets > 0 && totalSets <= 40 ? (
-          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" />
+          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" reveal="session-sets" />
         ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
         <div className="studio-session-actions">
           <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
@@ -1653,7 +1653,7 @@ export function Workout() {
                         key={set.id}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.04, ...springs.smooth }}
+                        transition={{ delay: idx * 0.04, ...springs.settle }}
                       >
                         <WorkoutSetRow
                           set={set}
@@ -1791,7 +1791,7 @@ export function Workout() {
                       key={set.id}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.04, ...springs.smooth }}
+                      transition={{ delay: idx * 0.04, ...springs.settle }}
                     >
                       <WorkoutSetRow
                         set={set}

@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, ChartNoAxesColumn, ChevronDown } from 'lucide-reac
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
-import { EmptyState, Screen, VolumeRail } from '@/components/shared';
+import { EmptyState, Screen, VolumeRail, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/splitTemplates';
@@ -115,7 +115,7 @@ export function Analysis() {
           <span className="t-label-sm">Progress</span>
           <span className="t-label-sm">Week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</span>
         </div>
-        <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-border)]">Coaching</h1>
+        <PageTitle className="mt-3 pt-5 border-t border-[var(--color-border)]">Coaching</PageTitle>
       </header>
 
       {/* Per-muscle calls */}
@@ -158,7 +158,7 @@ export function Analysis() {
                       <span className={`t-label-sm ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-dim)]'}`}>
                         {call.chip}
                       </span>
-                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.snappy}>
+                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.span>
                     </span>
@@ -181,6 +181,7 @@ export function Analysis() {
                       mavLow={mv.landmark.mav_low}
                       mavHigh={mv.landmark.mav_high}
                       mrv={mv.landmark.mrv}
+                      reveal={`coaching-volume-${mv.muscle_group}`}
                     />
                   ) : (
                     <span className="t-caption">No landmarks set</span>
@@ -194,7 +195,7 @@ export function Analysis() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={springs.smooth}
+                      transition={springs.settle}
                     >
                       <div className="pb-5 pt-1">
                         <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 mb-4">
@@ -266,7 +267,7 @@ export function Analysis() {
             <BookOpen className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
             <span className="t-label">What the landmarks mean</span>
           </span>
-          <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.snappy}>
+          <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
             <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
           </motion.span>
         </button>
@@ -277,7 +278,7 @@ export function Analysis() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={springs.smooth}
+              transition={springs.settle}
             >
               <div className="mt-5">
                 {[

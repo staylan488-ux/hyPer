@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus, UtensilsCrossed } from 'lucide-react';
-import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast } from '@/components/shared';
+import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
@@ -435,7 +435,7 @@ export function Nutrition() {
           <span className="t-label-sm">{isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE')}</span>
           <span className="t-label-sm">{format(selectedDate, 'MMM d')}</span>
         </div>
-        <h1 className="t-title mt-5">Fuel</h1>
+        <PageTitle className="mt-5">Fuel</PageTitle>
       </header>
 
       {/* ── Energy hero — the day's calories, big ── */}
@@ -471,6 +471,7 @@ export function Nutrition() {
               tone={dayTotals.calories > targetKcal ? 'berry' : 'chalk'}
               size="md"
               className="mt-6"
+              reveal="fuel-energy"
             />
           </>
         )}
@@ -526,6 +527,7 @@ export function Nutrition() {
                     notch={macro.target / max}
                     tone={over ? 'berry' : 'chalk'}
                     size="sm"
+                    reveal={`fuel-macro-${macro.label}`}
                   />
                 </div>
               );

@@ -8,7 +8,7 @@ import {
   useLocation,
   useOutlet,
 } from 'react-router-dom';
-import { MotionConfig, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
 import { BottomNav } from '@/components/shared';
 import { AuthForm } from '@/components/auth/AuthForm';
@@ -37,7 +37,7 @@ function BootSplash() {
         className="w-full max-w-sm text-center"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={springs.smooth}
+        transition={springs.settle}
       >
         <p className="t-label-sm mb-6">A field journal</p>
         <h1 className="[font-family:var(--font-display)] text-[3.5rem] leading-none font-light tracking-[-0.04em] text-[var(--color-text)]">
@@ -158,11 +158,8 @@ function App() {
     return initializeTheme();
   }, [initializeTheme]);
 
-  return (
-    <MotionConfig reducedMotion="user">
-      <RouterProvider router={router} />
-    </MotionConfig>
-  );
+  // MotionConfig reducedMotion="user" wraps <App /> once in main.tsx.
+  return <RouterProvider router={router} />;
 }
 
 export default App;

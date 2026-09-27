@@ -21,7 +21,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Chip } from './Chip';
 import { tapHaptic } from '@/lib/haptics';
-import { createWheelSelection } from '@/lib/wheelSelection';
+import { createWheelSelection, drumFace } from '@/lib/wheelSelection';
 
 /* ───────────────────────── DateField ───────────────────────── */
 
@@ -179,18 +179,40 @@ function WheelColumn({
     onChangeRef.current(next);
   }));
 
+  const drumFrame = useRef(0);
+
+  // Shape rows onto a drum from the live scroll offset. Written straight to
+  // style so scrolling never re-renders React.
+  const shapeDrum = () => {
+    drumFrame.current = 0;
+    const el = ref.current;
+    if (!el) return;
+    const rows = el.querySelectorAll<HTMLElement>('[data-wheel-row]');
+    rows.forEach((row, i) => {
+      const { angle, opacity, shift } = drumFace((i * ITEM_H - el.scrollTop) / ITEM_H, ITEM_H);
+      row.style.transform = `translateY(${shift}px) rotateX(${angle}deg)`;
+      row.style.opacity = String(opacity);
+    });
+  };
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.scrollTop = index * ITEM_H;
+    shapeDrum();
     // Only re-center when the column identity changes, not on every parent re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (drumFrame.current) cancelAnimationFrame(drumFrame.current);
   }, []);
 
   const handleScroll = () => {
     const el = ref.current;
     if (!el) return;
     selection.scroll(Math.min(items.length - 1, Math.max(0, Math.round(el.scrollTop / ITEM_H))));
+    if (!drumFrame.current) drumFrame.current = requestAnimationFrame(shapeDrum);
   };
 
   return (
@@ -204,7 +226,7 @@ function WheelColumn({
         if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) selection.beginGesture();
       }}
       aria-label={ariaLabel}
-      className="h-[220px] overflow-y-auto snap-y snap-mandatory no-scrollbar flex-1"
+      className="wheel-drum h-[220px] overflow-y-auto snap-y snap-mandatory no-scrollbar flex-1"
       style={{ scrollPaddingBlock: ITEM_H * 2 }}
     >
       <div style={{ height: ITEM_H * 2 }} />
@@ -217,10 +239,11 @@ function WheelColumn({
             const el = ref.current;
             if (el) el.scrollTo({ top: i * ITEM_H, behavior: 'instant' });
           }}
+          data-wheel-row
           className={`snap-center w-full flex items-center justify-center t-data transition-colors ${
             i === index ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
           }`}
-          style={{ height: ITEM_H }}
+          style={{ height: ITEM_H, backfaceVisibility: 'hidden' }}
         >
           {item}
         </button>

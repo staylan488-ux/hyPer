@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } fr
 import { ArrowLeft, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle } from '@/components/shared';
+import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageTitle } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -51,6 +51,7 @@ import {
   type WeightUnit,
 } from '@/lib/weightDisplayCore';
 import { buildWeightTrend } from '@/lib/weightTrend';
+import { WeightTrendChart } from '@/components/shared/charts';
 import { lbsToKg } from '@/lib/nutritionCalculator';
 import { NATIVE_AUTH_CALLBACK_SCHEME, NativeAuth, isNativeIOS } from '@/lib/nativeBridge';
 
@@ -214,6 +215,11 @@ export function Settings() {
 
   // A smoothed rate of change, not a diff against yesterday's water weight.
   const weightTrend = useMemo(() => buildWeightTrend(bodyWeightHistory), [bodyWeightHistory]);
+  const weightToUnit = useCallback((kilograms: number) => kgToUnit(kilograms, weightUnit), [weightUnit]);
+  const weeklyWeightChange =
+    weightTrend.kgPerWeek !== null
+      ? `${weightTrend.kgPerWeek > 0 ? '+' : '−'}${Math.abs(kgToUnit(weightTrend.kgPerWeek, weightUnit)).toFixed(2)} ${weightUnit}/wk`
+      : null;
 
   const handleToggleWeightUnit = () => {
     const next: WeightUnit = weightUnit === 'lb' ? 'kg' : 'lb';
@@ -1019,9 +1025,9 @@ export function Settings() {
           </button>
         )}
         <div className="flex items-center justify-between gap-3">
-          <h1 ref={pageHeading} tabIndex={-1} className="t-title outline-none">
+          <PageTitle ref={pageHeading} tabIndex={-1} className="outline-none" compactTitle={titles[page] || 'You'}>
             {titles[page] || 'You'}
-          </h1>
+          </PageTitle>
           <button type="button" className="you-text-action flex items-center justify-center gap-2 px-2 shrink-0"
             aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
             <Search size={20} aria-hidden="true" /><span>Search</span>
@@ -1065,6 +1071,24 @@ export function Settings() {
                 Details
               </button>
             </div>
+            {weightTrend.fittedDayCount >= 2 && (
+              <WeightTrendChart
+                className="mt-3"
+                compact
+                days={30}
+                height={52}
+                points={weightTrend.points}
+                toUnit={weightToUnit}
+                unit={weightUnit}
+                reveal="you-weight-spark"
+                summary={
+                  <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
+                    <span>30-day trend</span>
+                    {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
+                  </span>
+                }
+              />
+            )}
             <Button className="mt-4 w-full" onClick={() => setWeighInOpen(true)}>
               Log weight
             </Button>
@@ -1868,6 +1892,23 @@ export function Settings() {
                       smoothed over {weightTrend.observedDayCount} weigh-in
                       {weightTrend.observedDayCount === 1 ? '' : 's'}
                     </p>
+                  )}
+                  {weightTrend.fittedDayCount >= 2 && (
+                    <WeightTrendChart
+                      className="mt-5"
+                      days={90}
+                      height={168}
+                      points={weightTrend.points}
+                      toUnit={weightToUnit}
+                      unit={weightUnit}
+                      reveal="you-weight-trend"
+                      summary={
+                        <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
+                          <span>Drag to read any day</span>
+                          {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
+                        </span>
+                      }
+                    />
                   )}
                   {bodyWeightHistory.length > 1 && (
                     <ul className="mt-4 border-t border-[var(--color-border)]">
