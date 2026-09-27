@@ -261,6 +261,7 @@ describe('plan schedule cloud save retry', () => {
     const sync = loadWithBackgroundSync('user', 'split', onRemoteUpdate);
     expect(sync.cached).toEqual(saved);
     await sync.done;
+    await flush();
 
     expect(database.state.tables.plan_schedules).toHaveLength(1);
     expect(database.state.tables.plan_schedules[0]).toMatchObject({
@@ -275,8 +276,26 @@ describe('plan schedule cloud save retry', () => {
     savePlanSchedule('user', schedule);
     await flush();
     await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    await flush();
     expect(database.state.upserts).toBe(2);
     expect(rawCache().pendingSync).toBe(true);
+  });
+
+  it('settles done after the read without waiting for the retry save', async () => {
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    let release!: () => void;
+    database.state.upsertGate = new Promise<void>((resolve) => { release = resolve; });
+
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    expect(database.state.upserts).toBe(2);
+    expect(rawCache().pendingSync).toBe(true);
+
+    release();
+    await flush();
+    expect(rawCache().pendingSync).toBeUndefined();
+    expect(database.state.tables.plan_schedules).toHaveLength(1);
   });
 
   it('lets a strictly newer cloud copy win without re-sending the pending one', async () => {
@@ -323,9 +342,11 @@ describe('plan schedule cloud save retry', () => {
     expect(rawCache().pendingSync).toBe(true);
 
     await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    await flush();
     expect(rawCache().pendingSync).toBeUndefined();
 
     await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    await flush();
     expect(database.state.upserts).toBe(2);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();

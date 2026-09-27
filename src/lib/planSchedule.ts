@@ -256,7 +256,7 @@ export function loadWithBackgroundSync(
   const cached = loadLocalCache(userId, splitId);
   let cancelled = false;
 
-  const done = loadFromDB(userId, splitId).then(async (remote) => {
+  const done = loadFromDB(userId, splitId).then((remote) => {
     if (cancelled) return;
 
     // A schedule may have been edited while this request was in flight.
@@ -266,9 +266,12 @@ export function loadWithBackgroundSync(
     // Re-send a schedule whose earlier cloud save failed, keeping its original
     // updatedAt, unless the cloud already holds a strictly newer copy. A null
     // remote may also be a read error; the retry then fails and stays pending.
+    // The retry never changes what is shown, so done does not wait for it.
     if (current?.pendingSync && (!remote || timeOf(current.schedule) >= timeOf(remote))) {
-      const outcome = await saveToDB(userId, current.schedule);
-      if (outcome !== 'failed') setPendingSync(userId, current.schedule, false);
+      const pending = current.schedule;
+      void saveToDB(userId, pending).then((outcome) => {
+        if (outcome !== 'failed') setPendingSync(userId, pending, false);
+      });
       return;
     }
 
