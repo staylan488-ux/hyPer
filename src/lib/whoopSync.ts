@@ -126,7 +126,11 @@ export async function runWhoopSync(
   for (const relink of plan.relinks) {
     await ports.data.linkSegmentsToSession(relink.segmentIds, relink.sessionId);
   }
-  for (const sessionId of plan.deletes) {
+  // Nothing ever deletes activity_segments, so an empty segment window beside
+  // auto-grouped WHOOP sessions can only mean a failed or empty read, never a
+  // real WHOOP change. Deleting on that evidence would drop real activities.
+  const deletes = segments.length > 0 ? plan.deletes : [];
+  for (const sessionId of deletes) {
     await ports.data.deleteSession(sessionId);
   }
 
@@ -134,7 +138,7 @@ export async function runWhoopSync(
     fetched: records.length,
     created: plan.creates.length,
     updated: plan.updates.length,
-    deleted: plan.deletes.length,
+    deleted: deletes.length,
     skippedUserEdited: plan.skippedUserEdited,
   };
 }
