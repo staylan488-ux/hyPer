@@ -179,9 +179,6 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
   };
   paint();
 
-  // Environment reflections give porcelain and obsidian their sheen.
-  let pmrem: PMREMGenerator | null = null;
-
   // ── Pose state ────────────────────────────────────────────────────────
   const yaw = { value: options.intro && !options.still ? REST_ANGLE - Math.PI * 1.35 : REST_ANGLE, velocity: 0 };
   const pitch = { value: 0, velocity: 0 };
@@ -244,8 +241,13 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
     },
   });
 
-  pmrem = new PMREMGenerator(host.renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // Environment reflections give porcelain and obsidian their sheen. Only the
+  // baked texture is kept; the generator's scratch target and the room go now.
+  const pmrem = new PMREMGenerator(host.renderer);
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04).texture;
+  pmrem.dispose();
+  room.dispose();
   scene.environment = environment;
   scene.environmentIntensity = options.dark ? 0.5 : 0.35;
 
@@ -369,7 +371,6 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
       shadowMaterial.dispose();
       shadow.geometry.dispose();
       environment.dispose();
-      pmrem?.dispose();
     },
   };
 

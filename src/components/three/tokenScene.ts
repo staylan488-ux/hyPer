@@ -206,8 +206,12 @@ export function createToken(canvas: HTMLCanvasElement, options: TokenOptions) {
     },
   });
 
+  // Only the baked texture is kept; the generator's scratch target and the room go now.
   const pmrem = new PMREMGenerator(host.renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04).texture;
+  pmrem.dispose();
+  room.dispose();
   scene.environment = environment;
   scene.environmentIntensity = options.dark ? 0.8 : 0.7;
 
@@ -263,7 +267,6 @@ export function createToken(canvas: HTMLCanvasElement, options: TokenOptions) {
       colorMap.dispose();
       bumpMap.dispose();
       environment.dispose();
-      pmrem.dispose();
     },
   };
 }
