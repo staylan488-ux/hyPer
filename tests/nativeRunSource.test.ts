@@ -611,3 +611,74 @@ describe('createNativeRunSource drain loop termination', () => {
     expect(controls.map((control) => control.sequence)).toEqual(range(1, 103));
   });
 });
+
+describe('createNativeRunSource live cursor', () => {
+  it('asks a resync only for samples after those the listener delivered', async () => {
+    const source = createNativeRunSource('run-a', true);
+    const { delivered } = startSource(source);
+    await settle();
+    fake.NativeRun.drainSamples.mockClear();
+
+    for (const seq of range(1, 40)) {
+      fake.state.samples.push(nativeSample(seq));
+      fake.emit('locationSample', nativeSample(seq));
+    }
+    source.resync();
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([40]);
+    expect(delivered.map(seqOf)).toEqual(range(1, 40));
+  });
+
+  it('holds the cursor at a gap so the next drain recovers the missing sample', async () => {
+    const source = createNativeRunSource('run-a', true);
+    const { delivered } = startSource(source);
+    await settle();
+    fake.NativeRun.drainSamples.mockClear();
+
+    fake.state.samples = range(1, 4).map((seq) => nativeSample(seq));
+    fake.emit('locationSample', nativeSample(1));
+    fake.emit('locationSample', nativeSample(2));
+    // 3 was recorded while the WebView was not listening
+    fake.emit('locationSample', nativeSample(4));
+    source.resync();
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2]);
+    expect(delivered.map(seqOf).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+
+    // with the gap filled the cursor moves past 4
+    source.resync();
+    await settle();
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2, 4]);
+  });
+
+  it('continues paging from the last full page and then resyncs from the end', async () => {
+    fake.state.samples = range(1, 1_500).map((seq) => nativeSample(seq));
+    const source = createNativeRunSource('run-a', true);
+    const { delivered } = startSource(source);
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([0, 1_000, 1_500]);
+    expect(delivered).toHaveLength(1_500);
+    expect(new Set(delivered.map(seqOf)).size).toBe(1_500);
+
+    source.resync();
+    await settle();
+    expect(afterSequences(fake.NativeRun.drainSamples).at(-1)).toBe(1_500);
+  });
+
+  it('starts a fresh source (resume after a tab switch) from its own cursor', async () => {
+    fake.state.samples = range(1, 5).map((seq) => nativeSample(seq));
+    const first = createNativeRunSource('run-a', true);
+    startSource(first);
+    await settle();
+    first.detach();
+    fake.NativeRun.drainSamples.mockClear();
+
+    startSource(createNativeRunSource('run-a', true));
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(0);
+  });
+});

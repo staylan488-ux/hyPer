@@ -49,6 +49,13 @@ export function createNativeRunSource(
   const deliveredControls = new Set<number>();
   const listenerHandles: Array<{ remove: () => Promise<void> }> = [];
 
+  // Move the sample cursor over samples the live listener already delivered,
+  // but only through an unbroken run of sequences: a gap (a sample the
+  // listener never saw) holds the cursor so the next drain still recovers it.
+  const advanceCursor = () => {
+    while (deliveredSequences.has(recoveryCursor + 1)) recoveryCursor += 1;
+  };
+
   const cleanupListeners = async () => {
     const handles = listenerHandles.splice(0, listenerHandles.length);
     await Promise.all(handles.map((handle) => handle.remove().catch(() => undefined)));
@@ -90,6 +97,7 @@ export function createNativeRunSource(
         controlHandler?.(event.control);
       }
     }
+    advanceCursor();
   };
 
   return {
@@ -121,6 +129,7 @@ export function createNativeRunSource(
           listenerHandles.push(await NativeRun.addListener('locationSample', (sample) => {
             if (stopped || deliveredSequences.has(sample.sequence)) return;
             deliveredSequences.add(sample.sequence);
+            advanceCursor();
             sampleHandler?.(toGpsSample(sample));
           }));
           listenerHandles.push(await NativeRun.addListener('locationError', (event) => {
