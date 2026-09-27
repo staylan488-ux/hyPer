@@ -84,6 +84,32 @@ type CompletionSummary = {
   completedAt: number;
 };
 
+function formatSessionDuration(createdAt: string | null, now: number): string {
+  return createdAt
+    ? formatWorkoutDuration(Math.max(0, now - new Date(createdAt).getTime()))
+    : '—';
+}
+
+/**
+ * Ticks on its own so the whole session page doesn't re-render every second.
+ * Render with `key={createdAt}` so a new session starts from a fresh clock.
+ */
+function SessionClock({ createdAt }: { createdAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  return <>{formatSessionDuration(createdAt, now)}</>;
+}
+
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
   const map = new Map<string, SupersetFlow>();
 
@@ -145,7 +171,6 @@ export function Workout() {
   const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
-  const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
@@ -213,19 +238,6 @@ export function Workout() {
     setShowSessionDetails(false);
     setRestTimerSeed(0);
   }, [currentWorkoutId]);
-
-  useEffect(() => {
-    if (!currentWorkoutCreatedAt) return;
-
-    setSessionElapsedNow(Date.now());
-    const intervalId = window.setInterval(() => {
-      setSessionElapsedNow(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [currentWorkoutCreatedAt]);
 
   useEffect(() => {
     if (!currentWorkoutId) {
@@ -710,7 +722,7 @@ export function Workout() {
   // Progression drives the resume cue; expansion is an independent user choice.
   const resolvedActiveExerciseId = activeExerciseId && focusOrder.includes(activeExerciseId)
     ? activeExerciseId
-    : nextWorkoutSet(orderedSets, focusOrder, undefined, undefined, supersetFlowMap)?.exercise_id ?? focusOrder[0] ?? null;
+    : nextMovementId ?? focusOrder[0] ?? null;
   const editorSet = expandedWorkoutSet(orderedSets, expansion);
   const selectMovement = (exerciseId: string) => {
     tapHaptic();
@@ -864,9 +876,6 @@ export function Workout() {
   const currentSessionTitle = currentWorkout?.split_day_id === null
     ? currentWorkoutDayPlan?.day_label || 'Flexible Session'
     : splitDay?.day_name || 'Session';
-  const sessionDurationLabel = currentWorkoutCreatedAt
-    ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
-    : '—';
 
   // Mirror the live session onto the lock screen / Dynamic Island (native
   // only): exercise + set on top, sets-and-tonnage ledger line underneath.
@@ -911,7 +920,7 @@ export function Workout() {
       title: currentSessionTitle,
       completedSets,
       totalSets,
-      duration: sessionDurationLabel,
+      duration: formatSessionDuration(currentWorkoutCreatedAt, Date.now()),
       tonnage: sessionTonnage(sessionSets),
       gains: collectSessionGains(sessionSets, previousWorkoutSetsByExercise).map((gain) => ({
         name: workoutExerciseMap.get(gain.exerciseId)?.name ?? 'Movement',
@@ -1426,7 +1435,7 @@ export function Workout() {
       <header className="studio-session-header">
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
-          <span>{sessionDurationLabel}</span>
+          <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
           <Button variant="ghost" size="sm" onClick={handleCompleteWorkout}>Finish</Button>
         </div>
         <div className="studio-session-summary">
