@@ -50,6 +50,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { exerciseIdsFromKey, previousTargetExerciseKey } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
@@ -206,6 +207,11 @@ export function Workout() {
   const currentWorkoutDate = currentWorkout?.date || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
   const currentWorkoutCreatedAt = currentWorkout?.created_at || null;
+  const currentWorkoutCompleted = currentWorkout?.completed ?? false;
+  const currentWorkoutSets = currentWorkout?.sets;
+  // Sorted unique exercise ids: logging or editing sets keeps this stable, so
+  // the "last time" lookup only refetches when a movement is added or swapped.
+  const previousTargetExerciseIdsKey = useMemo(() => previousTargetExerciseKey(currentWorkoutSets ?? []), [currentWorkoutSets]);
 
   useEffect(() => {
     movementNotesRef.current = movementNotes;
@@ -362,6 +368,8 @@ export function Workout() {
     return () => { cancel(); };
   }, [userId, activeSplit]);
 
+  // Keyed on session identity/completion, not the workout object that every
+  // set log replaces; starting or finishing a session still refreshes.
   useEffect(() => {
     if (!userId || !activeSplit || !planSchedule) {
       setWeekWorkouts([]);
@@ -374,23 +382,24 @@ export function Workout() {
       const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
       const weekEnd = addDays(weekStart, 6);
 
-      const { data: workouts } = await supabase
-        .from('workouts')
-        .select('id, date, split_day_id, completed')
-        .eq('user_id', userId)
-        .gte('date', format(weekStart, 'yyyy-MM-dd'))
-        .lte('date', format(weekEnd, 'yyyy-MM-dd'))
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false });
-
-      const { data: lastCompleted } = await supabase
-        .from('workouts')
-        .select('date, split_day_id')
-        .eq('user_id', userId)
-        .eq('completed', true)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [{ data: workouts }, { data: lastCompleted }] = await Promise.all([
+        supabase
+          .from('workouts')
+          .select('id, date, split_day_id, completed')
+          .eq('user_id', userId)
+          .gte('date', format(weekStart, 'yyyy-MM-dd'))
+          .lte('date', format(weekEnd, 'yyyy-MM-dd'))
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
+        supabase
+          .from('workouts')
+          .select('date, split_day_id')
+          .eq('user_id', userId)
+          .eq('completed', true)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
       if (cancelled) return;
       setWeekWorkouts((workouts || []) as Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]);
@@ -401,7 +410,7 @@ export function Workout() {
     return () => {
       cancelled = true;
     };
-  }, [userId, activeSplit, planSchedule, weekCursor, currentWorkout]);
+  }, [userId, activeSplit, planSchedule, weekCursor, currentWorkoutId, currentWorkoutCompleted]);
 
   useEffect(() => {
     if (!currentWorkoutId) {
@@ -427,12 +436,12 @@ export function Workout() {
   }, [currentWorkoutId, currentWorkoutNotes]);
 
   useEffect(() => {
-    if (!userId || !currentWorkoutId || !currentWorkoutDate || !currentWorkout) {
+    if (!userId || !currentWorkoutId || !currentWorkoutDate || !previousTargetExerciseIdsKey) {
       setPreviousWorkoutSetsByExercise({});
       return;
     }
 
-    const exerciseIds = Array.from(new Set(currentWorkout.sets.map((set) => set.exercise_id)));
+    const exerciseIds = exerciseIdsFromKey(previousTargetExerciseIdsKey);
 
     if (exerciseIds.length === 0) {
       setPreviousWorkoutSetsByExercise({});
@@ -527,7 +536,7 @@ export function Workout() {
     return () => {
       cancelled = true;
     };
-  }, [userId, currentWorkoutId, currentWorkoutDate, currentWorkout]);
+  }, [userId, currentWorkoutId, currentWorkoutDate, previousTargetExerciseIdsKey]);
 
   const persistMovementNotes = useCallback(async (exerciseId: string) => {
     if (!currentWorkoutId || !userId) return;
