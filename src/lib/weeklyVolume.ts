@@ -1,4 +1,5 @@
 import type { MuscleGroup, MuscleVolume, VolumeLandmark } from '@/types';
+import { classifyVolume } from '@/lib/volumeStatus';
 
 export type CompletedSetRow = {
   exercise: {
@@ -41,14 +42,9 @@ export function computeWeeklyVolume(
   for (const [muscle_group, weekly_sets] of volumeMap) {
     const landmark = volumeLandmarks.find(l => l.muscle_group === muscle_group);
 
+    // A muscle without landmarks stays 'below_mev'.
     let status: MuscleVolume['status'] = 'below_mev';
-    if (landmark) {
-      if (weekly_sets < landmark.mev) status = 'below_mev';
-      else if (weekly_sets < landmark.mav_low) status = 'mev_mav';
-      else if (weekly_sets <= landmark.mav_high) status = 'mav';
-      else if (weekly_sets < landmark.mrv) status = 'approaching_mrv';
-      else status = 'above_mrv';
-    }
+    if (landmark) status = classifyVolume(weekly_sets, landmark);
 
     weeklyVolume.push({ muscle_group, weekly_sets, landmark, status });
   }

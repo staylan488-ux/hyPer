@@ -6,7 +6,7 @@ import { format, startOfWeek, subWeeks } from 'date-fns';
 import { EmptyState, Screen, VolumeRail, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
-import { getVolumeRecommendation } from '@/lib/splitTemplates';
+import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
