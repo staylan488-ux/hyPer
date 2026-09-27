@@ -18,8 +18,8 @@ and anon/publishable key in production build-time variables; `.env` is one input
 mechanism. Dev `/preview` uses fixtures.
 
 Photo analysis currently uses [photoAnalysis.ts](../../../../src/lib/photoAnalysis.ts)
-and [the private worker](../../../../scripts/photo-food-worker.mjs), not the legacy
-`process-food-photo` edge function. The worker URL comes from saved Settings or
+and [the private worker](../../../../scripts/photo-food-worker.mjs); hosted analysis
+is the `analyze-food-trial` edge function. The worker URL comes from saved Settings or
 `VITE_PHOTO_WORKER_URL`; dev also supports localhost. Production can launch without
 a worker URL and request configuration when analysis is used. No particular host
 or tailnet is a universal build prerequisite. Inspect the configured endpoint
