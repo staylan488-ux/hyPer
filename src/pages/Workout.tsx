@@ -31,6 +31,7 @@ import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
+import { SessionToken } from '@/components/workout/SessionToken';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
@@ -2165,6 +2166,16 @@ function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | nu
     <Modal isOpen={summary !== null} onClose={onClose}>
       {summary && (
         <div className="pt-1 pb-2">
+          <SessionToken
+            className="h-[190px] -mt-2 mb-3"
+            face={{
+              title: summary.title,
+              dateLabel: format(summary.completedAt, 'EEEE, MMM d'),
+              completedSets: summary.completedSets,
+              totalSets: summary.totalSets,
+              figure: summary.tonnage > 0 ? `${Math.round(summary.tonnage).toLocaleString('en-US')} lb` : summary.duration,
+            }}
+          />
           <div className="flex items-center gap-2 mb-3">
             <motion.span
               className="block w-2.5 h-2.5 bg-[var(--color-accent)]"

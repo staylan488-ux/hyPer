@@ -10,6 +10,7 @@ import {
 import { format, startOfDay } from 'date-fns';
 import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
+import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import type { SealMacro } from '@/lib/targetSeal';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
@@ -320,8 +321,18 @@ export function Dashboard() {
               <span className="t-label">This week</span>
               <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
             </div>
-            <p className="t-heading mb-2">{insight.headline}</p>
-            <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="t-heading mb-2">{insight.headline}</p>
+                <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
+              </div>
+              <VolumeMaquette
+                variant="compact"
+                volume={weeklyVolume}
+                focus={insight.volume.muscle_group}
+                className="w-[76px] h-[132px] shrink-0 -mt-3 -mr-1"
+              />
+            </div>
             {insight.landmark && (
               <VolumeRail
                 current={insight.volume.weekly_sets}

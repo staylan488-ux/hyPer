@@ -78,6 +78,12 @@ layout and makes motion, data and 3D the expressive layer.
   [motion primitives](../../../src/lib/animations.ts),
   [motion policy](../../../src/lib/motionPolicy.ts),
   [Kinetic surfaces](../../../src/styles/kinetic.css).
+- 3D scenes live in [src/components/three](../../../src/components/three/) and
+  load only through dynamic `import()`; they share the
+  [renderer host](../../../src/lib/three/host.ts) and the
+  [motion light](../../../src/lib/motionLight.ts). The
+  [volume maquette geometry](../../../src/lib/maquette.ts) drives both the 3D
+  figure and its flat fallback.
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
   `/preview?previewSetSave=fail` exercises save failure and Retry;
   `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.
