@@ -2446,6 +2446,28 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     expect(db.writes().filter((q) => q.action !== 'upsert')).toEqual([]);
   });
 
+  it('shares one run between overlapping syncs, then starts fresh once it settles', async () => {
+    installWhoopDb({ segments: [] });
+    let releaseBatch!: (value: { records: never[]; nextToken: null }) => void;
+    whoopClientMock.fetchWhoopBatchRemote.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseBatch = resolve; }),
+    );
+
+    // e.g. the foreground auto-sync is mid-flight when the user taps Sync
+    const automatic = useAppStore.getState().syncWhoop();
+    const manual = useAppStore.getState().syncWhoop();
+    await vi.waitFor(() => expect(whoopClientMock.fetchWhoopBatchRemote).toHaveBeenCalled());
+    releaseBatch({ records: [], nextToken: null });
+
+    const [first, second] = await Promise.all([automatic, manual]);
+    expect(first).not.toBeNull();
+    expect(second).toBe(first);
+    expect(whoopClientMock.fetchWhoopBatchRemote).toHaveBeenCalledOnce();
+
+    await useAppStore.getState().syncWhoop();
+    expect(whoopClientMock.fetchWhoopBatchRemote).toHaveBeenCalledTimes(2);
+  });
+
   it('aborts instead of widening the window when the watermark read fails', async () => {
     const db = installWhoopDb({ fail: 'watermark' });
 
