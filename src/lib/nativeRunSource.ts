@@ -62,6 +62,8 @@ export function createNativeRunSource(
       | { kind: 'control'; timestampMs: number; control: NativeRunControl }
     > = [];
     while (true) {
+      const previousSampleCursor = recoveryCursor;
+      const previousControlCursor = controlCursor;
       const [sampleBatch, controlBatch] = await Promise.all([
         NativeRun.drainSamples({ afterSequence: recoveryCursor }),
         NativeRun.drainControls({ afterSequence: controlCursor }),
@@ -73,6 +75,9 @@ export function createNativeRunSource(
       recoveryCursor = Math.max(recoveryCursor, sampleBatch.lastSequence);
       controlCursor = Math.max(controlCursor, controlBatch.lastSequence);
       if (!sampleBatch.hasMore && !controlBatch.hasMore) break;
+      // A native layer that keeps reporting more without advancing (e.g. a
+      // sequence assigned but never written) must not spin this loop forever.
+      if (recoveryCursor === previousSampleCursor && controlCursor === previousControlCursor) break;
     }
 
     pendingEvents.sort((a, b) => a.timestampMs - b.timestampMs);

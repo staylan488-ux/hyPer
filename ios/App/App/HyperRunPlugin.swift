@@ -246,7 +246,10 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve([
                     "samples": samples.map(\.bridgeValue),
                     "lastSequence": lastReturnedSequence,
-                    "hasMore": lastReturnedSequence < self.sequence,
+                    // Only a full page can have more. Comparing with the
+                    // in-memory `sequence` reports more forever once a failed
+                    // append leaves a sequence that was never written.
+                    "hasMore": samples.count == 1_000,
                 ])
             } catch {
                 call.reject("Unable to recover native run samples.", "PERSISTENCE_FAILED", error)

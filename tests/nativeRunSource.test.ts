@@ -61,7 +61,8 @@ const fake = vi.hoisted(() => {
       return {
         samples: page,
         lastSequence: page.at(-1)?.sequence ?? afterSequence,
-        hasMore: page.length < pending.length,
+        // HyperRunPlugin reports more only for a full page
+        hasMore: page.length === state.samplePageSize,
       };
     }),
     drainControls: vi.fn(async ({ afterSequence }: { afterSequence: number }): Promise<ControlBatch> => {
@@ -567,5 +568,46 @@ describe('createNativeRunSource resume cursors', () => {
 
     expect(onNativeReset).not.toHaveBeenCalled();
     expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(50);
+  });
+});
+
+describe('createNativeRunSource drain loop termination', () => {
+  it('pages a full native page and then the remainder', async () => {
+    fake.state.samples = range(1, 1_005).map((seq) => nativeSample(seq));
+
+    const { delivered } = startSource(createNativeRunSource('run-a', true));
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples).slice(0, 2)).toEqual([0, 1_000]);
+    expect(delivered).toHaveLength(1_005);
+    expect(new Set(delivered.map(seqOf)).size).toBe(1_005);
+    const times = delivered.map((sample) => sample.t);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it('stops draining when native keeps reporting more without advancing', async () => {
+    const source = createNativeRunSource('run-a', true);
+    startSource(source);
+    await settle();
+    fake.NativeRun.drainSamples.mockClear();
+
+    // e.g. an older native build whose in-memory sequence ran ahead of the file
+    for (let index = 0; index < 50; index += 1) {
+      fake.state.sampleScript.push((afterSequence) => ({ samples: [], lastSequence: afterSequence, hasMore: true }));
+    }
+    source.resync();
+    await settle();
+
+    expect(fake.NativeRun.drainSamples.mock.calls.length).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps paging controls while samples are idle', async () => {
+    fake.state.controls = range(1, 103).map((seq) => nativeControl(seq, T0 + seq * 1_000));
+
+    const { controls } = startSource(createNativeRunSource('run-a', true));
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainControls).slice(0, 2)).toEqual([0, 100]);
+    expect(controls.map((control) => control.sequence)).toEqual(range(1, 103));
   });
 });
