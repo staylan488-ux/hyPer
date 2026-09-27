@@ -7,12 +7,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   RUN_TRACKER_STORAGE_KEY,
   RUN_TRACKER_TRACE_STORAGE_KEY,
-  advanceTracker,
+  advanceRecordedSample,
   createTracker,
   defaultTrackerConfig,
   finishTracker,
   isPaused,
   manualSplit,
+  nativeResumePoint,
   toggleRest,
   pauseTracker,
   restoreTracker,
@@ -22,6 +23,7 @@ import {
   serializeFinishedRun,
   serializeTracker,
   serializeTrackerTrace,
+  withNativeControlSeq,
   type FinishedRun,
   type GpsSample,
   type GpsTracePoint,
@@ -32,7 +34,7 @@ import {
 import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrackerCues';
 import { createDeviceMotionDetector } from '@/lib/deviceMotion';
 import { isNativeIOS, NativeRun, type NativeRunControl } from '@/lib/nativeBridge';
-import { createNativeRunSource } from '@/lib/nativeRunSource';
+import { createNativeRunSource, type NativeRunCursors } from '@/lib/nativeRunSource';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 
 export interface PositionSource {
@@ -132,9 +134,14 @@ export function createGeolocationSource(): PositionSource {
   };
 }
 
-function createDefaultPositionSource(runId: string, resume: boolean): PositionSource {
+function createDefaultPositionSource(
+  runId: string,
+  resume: boolean,
+  cursors?: NativeRunCursors,
+  onNativeReset?: () => void,
+): PositionSource {
   return isNativeIOS()
-    ? createNativeRunSource(runId, resume)
+    ? createNativeRunSource(runId, resume, cursors, onNativeReset)
     : createGeolocationSource();
 }
 
@@ -231,6 +238,9 @@ export function useRunTracker(): UseRunTracker {
   const lastSnapshotRef = useRef(0);
   const traceRef = useRef<GpsTracePoint[]>(initialTrace);
   const lastTraceSnapshotRef = useRef(0);
+  // Native resume from a snapshot without cursors: samples at or before this
+  // time were already counted, so the full re-drain must skip them.
+  const replayCutoffMsRef = useRef<number | null>(null);
 
   const applyEvents = useCallback((events: TrackerEvent[]) => {
     for (const event of events) {
@@ -300,7 +310,11 @@ export function useRunTracker(): UseRunTracker {
         (sample) => {
           const current = stateRef.current;
           if (!current || current.status !== 'running') return;
-          const { state: next, events, observation } = advanceTracker(current, sample);
+          const { state: next, events, observation } = advanceRecordedSample(
+            current,
+            sample,
+            replayCutoffMsRef.current,
+          );
           if (observation) {
             traceRef.current.push(observation);
             if (traceRef.current.length > MAX_IN_MEMORY_TRACE_POINTS) {
@@ -329,7 +343,7 @@ export function useRunTracker(): UseRunTracker {
                   events: [],
                 }
               : toggleRest(current, control.timestampMs);
-          commit(result.state, control.timestampMs);
+          commit(withNativeControlSeq(result.state, control.sequence), control.timestampMs);
           applyEvents(result.events);
         },
       );
@@ -344,6 +358,7 @@ export function useRunTracker(): UseRunTracker {
       const activeSource = source ?? createDefaultPositionSource(tracker.runId, false);
       setFinishedRun(null);
       traceRef.current = [];
+      replayCutoffMsRef.current = null;
       stateRef.current = tracker;
       setState(tracker);
       setResumable(false);
@@ -374,9 +389,21 @@ export function useRunTracker(): UseRunTracker {
       stateRef.current = restored;
       setState(restored);
       setResumable(false);
-      attachSource(source ?? createDefaultPositionSource(restored.runId, true));
+      const resumePoint = nativeResumePoint(restored);
+      replayCutoffMsRef.current = source || !isNativeIOS() ? null : resumePoint.replayCutoffMs;
+      const onNativeReset = () => {
+        // A fresh native file restarts at sequence 1; the saved cursors no
+        // longer apply. Anything it records is newer than this snapshot, so
+        // the time cutoff only guards against an unexpected full replay.
+        replayCutoffMsRef.current = restored.lastSampleMs;
+        const current = stateRef.current;
+        if (current?.runId === restored.runId && current.status === 'running') {
+          commit({ ...current, nativeSampleSeq: 0, nativeControlSeq: 0 });
+        }
+      };
+      attachSource(source ?? createDefaultPositionSource(restored.runId, true, resumePoint.cursors, onNativeReset));
     },
-    [attachSource],
+    [attachSource, commit],
   );
 
   const split = useCallback(() => {
@@ -494,6 +521,18 @@ export function useRunTracker(): UseRunTracker {
       const current = stateRef.current;
       const source = sourceRef.current;
       if (source?.detach && current && current.status !== 'finished') {
+        // Snapshot exactly what was applied, so the resume cursors and the
+        // restored distance match and no sample is counted twice.
+        const now = source.getNowMs();
+        try {
+          localStorage.setItem(RUN_TRACKER_STORAGE_KEY, serializeTracker(current, now));
+          localStorage.setItem(
+            RUN_TRACKER_TRACE_STORAGE_KEY,
+            serializeTrackerTrace(current.runId, now, traceRef.current),
+          );
+        } catch {
+          // storage full/blocked — a resume falls back to the last snapshot
+        }
         source.detach();
         sourceRef.current = null;
       } else {

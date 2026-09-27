@@ -22,13 +22,27 @@ function toGpsSample(sample: NativeRunSample): GpsSample {
     speedMps: sample.speedMps,
     speedAccuracyMps: sample.speedAccuracyMps,
     motionDetected: sample.motion === 'unknown' ? undefined : sample.motion === 'moving',
+    nativeSeq: sample.sequence,
   };
 }
 
-export function createNativeRunSource(runId: string, resume: boolean): NativePositionSource {
+export interface NativeRunCursors {
+  sample: number;
+  control: number;
+}
+
+// `cursors` are the last sample/control sequences the resumed state already
+// applied. `onNativeReset` fires when the recorder started a fresh file
+// instead of resuming, so the caller's saved cursors no longer apply.
+export function createNativeRunSource(
+  runId: string,
+  resume: boolean,
+  cursors?: NativeRunCursors,
+  onNativeReset?: () => void,
+): NativePositionSource {
   let stopped = false;
-  let recoveryCursor = 0;
-  let controlCursor = 0;
+  let recoveryCursor = Math.max(0, cursors?.sample ?? 0);
+  let controlCursor = Math.max(0, cursors?.control ?? 0);
   let sampleHandler: ((sample: GpsSample) => void) | null = null;
   let controlHandler: ((control: NativeRunControl) => void) | null = null;
   const deliveredSequences = new Set<number>();
@@ -85,7 +99,14 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
             throw new Error('Location permission denied. Allow Precise Location to track runs.');
           }
 
-          await NativeRun.startRecording({ runId, resume });
+          const recording = await NativeRun.startRecording({ runId, resume });
+          if (recording.lastSequence < recoveryCursor) {
+            // The native store was reset (new file, sequences from 1). Keeping
+            // the saved cursors would silently drop every new sample.
+            recoveryCursor = 0;
+            controlCursor = 0;
+            if (!stopped) onNativeReset?.();
+          }
 
           // Recover anything recorded while the WebView was suspended before
           // subscribing, then drain once more to close the subscription race.

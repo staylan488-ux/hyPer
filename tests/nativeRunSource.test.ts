@@ -2,10 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NativeRunControl, NativeRunSample } from '@/lib/nativeBridge';
 import { createNativeRunSource } from '@/lib/nativeRunSource';
 import {
+  advanceRecordedSample,
   advanceTracker,
   createTracker,
   defaultTrackerConfig,
+  isPaused,
+  nativeResumePoint,
+  pauseTracker,
+  restoreTracker,
+  serializeTracker,
   type GpsSample,
+  type TrackerEvent,
   type TrackerState,
 } from '@/lib/runTracker';
 import { buildScenarioSamples } from '@/lib/gpsScenarios';
@@ -374,5 +381,191 @@ describe('out-of-order delivery into the engine', () => {
     // is covered as a straight chord, not dropped
     expect(outOfOrder.state.totalDistanceM).toBeCloseTo(inOrder.state.totalDistanceM, 0);
     expect(outOfOrder.state.totalDistanceM).toBeGreaterThan(0);
+  });
+});
+
+describe('resuming a native run from a snapshot', () => {
+  // A 600 s run at 3 m/s recorded natively: sequence n is scenario sample n-1.
+  function recordedRun(mode: 'free' | 'intervals' = 'intervals') {
+    const gps = buildScenarioSamples([{ speedMps: 3, durationS: 600 }]).map((sample) => ({
+      ...sample,
+      t: T0 + sample.t,
+    }));
+    const native = gps.map((sample, index): NativeRunSample => ({
+      ...nativeSample(index + 1, sample.t),
+      latitude: sample.lat,
+      longitude: sample.lon,
+      horizontalAccuracyM: sample.accuracyM,
+      speedMps: sample.speedMps,
+    }));
+    const config = defaultTrackerConfig(mode, mode === 'intervals' ? 400 : null);
+    return { native, tracker: createTracker(config, T0, 'run-resume') };
+  }
+
+  const asGps = (sample: NativeRunSample): GpsSample => ({
+    t: sample.timestampMs,
+    lat: sample.latitude,
+    lon: sample.longitude,
+    accuracyM: sample.horizontalAccuracyM,
+    speedMps: sample.speedMps,
+    speedAccuracyMps: sample.speedAccuracyMps,
+    motionDetected: true,
+    nativeSeq: sample.sequence,
+  });
+
+  function applySamples(state: TrackerState, samples: NativeRunSample[]) {
+    const events: TrackerEvent[] = [];
+    let current = state;
+    for (const sample of samples) {
+      const result = advanceRecordedSample(current, asGps(sample));
+      current = result.state;
+      events.push(...result.events);
+    }
+    return { state: current, events };
+  }
+
+  // Resume through the real source, the way useRunTracker.resume wires it.
+  async function resumeThroughSource(restored: TrackerState, native: NativeRunSample[]) {
+    fake.state.samples = native;
+    const { cursors, replayCutoffMs } = nativeResumePoint(restored);
+    const source = createNativeRunSource(restored.runId, true, cursors);
+    let current = restored;
+    const events: TrackerEvent[] = [];
+    source.start((sample) => {
+      const result = advanceRecordedSample(current, sample, replayCutoffMs);
+      current = result.state;
+      events.push(...result.events);
+    }, () => undefined);
+    await settle();
+    return { state: current, events, cursors };
+  }
+
+  const lapEvents = (events: TrackerEvent[]) => events.filter((event) => event.type === 'lap_completed').length;
+
+  it('replays only samples after the saved cursor', async () => {
+    const { native, tracker } = recordedRun();
+    const uninterrupted = applySamples(tracker, native);
+
+    const beforeCrash = applySamples(tracker, native.slice(0, 300));
+    expect(beforeCrash.state.nativeSampleSeq).toBe(300);
+    const restored = restoreTracker(serializeTracker(beforeCrash.state, native[299].timestampMs), native[299].timestampMs + 1)!;
+    const resumed = await resumeThroughSource(restored, native);
+
+    expect(resumed.cursors.sample).toBe(300);
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(300);
+    // restore re-anchors lastPoint, so at most one GPS step is not counted
+    expect(uninterrupted.state.totalDistanceM - resumed.state.totalDistanceM).toBeGreaterThanOrEqual(0);
+    expect(uninterrupted.state.totalDistanceM - resumed.state.totalDistanceM).toBeLessThan(3.5);
+    expect(resumed.state.laps).toHaveLength(uninterrupted.state.laps.length);
+    expect(lapEvents(beforeCrash.events) + lapEvents(resumed.events)).toBe(lapEvents(uninterrupted.events));
+    expect(resumed.state.nativeSampleSeq).toBe(native.length);
+  });
+
+  it('falls back to the last sample time for a snapshot without cursors', async () => {
+    const { native, tracker } = recordedRun();
+    const uninterrupted = applySamples(tracker, native);
+
+    const beforeCrash = applySamples(tracker, native.slice(0, 300));
+    const snapshot = JSON.parse(serializeTracker(beforeCrash.state, native[299].timestampMs)) as {
+      state: Partial<TrackerState>;
+    };
+    delete snapshot.state.nativeSampleSeq;
+    delete snapshot.state.nativeControlSeq;
+    const restored = restoreTracker(JSON.stringify(snapshot), native[299].timestampMs + 1)!;
+    const resumed = await resumeThroughSource(restored, native);
+
+    expect(resumed.cursors).toEqual({ sample: 0, control: 0 });
+    expect(nativeResumePoint(restored).replayCutoffMs).toBe(native[299].timestampMs);
+    expect(uninterrupted.state.totalDistanceM - resumed.state.totalDistanceM).toBeGreaterThanOrEqual(0);
+    expect(uninterrupted.state.totalDistanceM - resumed.state.totalDistanceM).toBeLessThan(3.5);
+    expect(lapEvents(beforeCrash.events) + lapEvents(resumed.events)).toBe(lapEvents(uninterrupted.events));
+  });
+
+  it('does not bank samples from a paused stretch after a crash while paused', async () => {
+    const { native, tracker } = recordedRun('free');
+    const running = applySamples(tracker, native.slice(0, 200));
+    const pausedAt = native[199].timestampMs + 500;
+    const paused = applySamples(pauseTracker(running.state, pausedAt), native.slice(200, 260));
+    // paused samples still move the cursor
+    expect(paused.state.nativeSampleSeq).toBe(260);
+    expect(paused.state.totalDistanceM).toBe(running.state.totalDistanceM);
+
+    const savedAt = native[259].timestampMs;
+    const restored = restoreTracker(serializeTracker(paused.state, savedAt), savedAt + 1)!;
+    expect(isPaused(restored)).toBe(false);
+    const resumed = await resumeThroughSource(restored, native);
+
+    // only what was recorded after the snapshot counts; the paused stretch
+    // (about 180 m) must not come back once restore un-pauses the run
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(260);
+    const reference = applySamples(
+      restoreTracker(serializeTracker(paused.state, savedAt), savedAt + 1)!,
+      native.slice(260),
+    );
+    expect(resumed.state.totalDistanceM).toBeCloseTo(reference.state.totalDistanceM, 6);
+    const replayedFromPause = applySamples(restored, native.slice(200));
+    expect(replayedFromPause.state.totalDistanceM - resumed.state.totalDistanceM).toBeGreaterThan(150);
+  });
+
+  it('keeps the native sequence out of the diagnostic trace', () => {
+    const { native, tracker } = recordedRun();
+    const result = advanceRecordedSample(tracker, asGps(native[0]));
+    expect(result.observation).toBeDefined();
+    expect(result.observation).not.toHaveProperty('nativeSeq');
+    expect(result.state.nativeSampleSeq).toBe(1);
+  });
+
+  it('matches advanceTracker exactly for sources without a native sequence', () => {
+    const { native, tracker } = recordedRun();
+    const sample = { ...asGps(native[0]), nativeSeq: undefined };
+    const recorded = advanceRecordedSample(tracker, sample);
+    const plain = advanceTracker(tracker, sample);
+    expect(recorded.state).toEqual(plain.state);
+    expect(recorded.state.nativeSampleSeq).toBeNull();
+  });
+});
+
+describe('createNativeRunSource resume cursors', () => {
+  it('starts both drains from the saved cursors', async () => {
+    fake.state.samples = range(1, 12).map((seq) => nativeSample(seq));
+    fake.state.controls = [
+      nativeControl(1, T0 + 2_500, 'split'),
+      nativeControl(2, T0 + 5_500, 'rest'),
+      nativeControl(3, T0 + 11_500, 'split'),
+    ];
+
+    const { delivered, controls } = startSource(createNativeRunSource('run-a', true, { sample: 10, control: 2 }));
+    await settle();
+
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(10);
+    expect(afterSequences(fake.NativeRun.drainControls)[0]).toBe(2);
+    expect(delivered.map(seqOf)).toEqual([11, 12]);
+    // split and rest applied before the snapshot are not re-applied
+    expect(controls.map((control) => control.sequence)).toEqual([3]);
+  });
+
+  it('drops both cursors to 0 when the native store was reset', async () => {
+    // a fresh native file: three new samples and no controls
+    fake.state.samples = range(1, 3).map((seq) => nativeSample(seq));
+    const onNativeReset = vi.fn();
+
+    const { delivered } = startSource(createNativeRunSource('run-a', true, { sample: 50, control: 4 }, onNativeReset));
+    await settle();
+
+    expect(onNativeReset).toHaveBeenCalledTimes(1);
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(0);
+    expect(afterSequences(fake.NativeRun.drainControls)[0]).toBe(0);
+    expect(delivered.map(seqOf)).toEqual([1, 2, 3]);
+  });
+
+  it('keeps the cursors when native resumed the same file', async () => {
+    fake.state.samples = range(1, 50).map((seq) => nativeSample(seq));
+    const onNativeReset = vi.fn();
+
+    startSource(createNativeRunSource('run-a', true, { sample: 50, control: 0 }, onNativeReset));
+    await settle();
+
+    expect(onNativeReset).not.toHaveBeenCalled();
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(50);
   });
 });
