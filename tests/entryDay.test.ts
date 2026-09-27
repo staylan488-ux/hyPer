@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { isLateNightEntry, planEntryDayMove, shiftDayKey } from '@/lib/entryDay';
 
@@ -46,6 +46,46 @@ describe('planEntryDayMove', () => {
 
   it('moves forward too', () => {
     expect(planEntryDayMove({ date: '2026-07-31' }, 1)!.date).toBe('2026-08-01');
+  });
+
+  describe('across a DST change', () => {
+    let savedTz: string | undefined;
+
+    beforeEach(() => {
+      savedTz = process.env.TZ;
+      process.env.TZ = 'America/Los_Angeles';
+    });
+
+    afterEach(() => {
+      if (savedTz === undefined) delete process.env.TZ;
+      else process.env.TZ = savedTz;
+    });
+
+    it('keeps the clock time when moving back over spring-forward', () => {
+      // Mon Mar 9 2026 00:30 PDT; Sun Mar 8 is only 23 hours long
+      const patch = planEntryDayMove(
+        { date: '2026-03-09', logged_at: new Date(2026, 2, 9, 0, 30).toISOString() },
+        -1,
+      )!;
+      expect(patch.date).toBe('2026-03-08');
+      const moved = new Date(patch.logged_at!);
+      expect(moved.getDate()).toBe(8);
+      expect(moved.getHours()).toBe(0);
+      expect(moved.getMinutes()).toBe(30);
+    });
+
+    it('keeps the clock time when moving back over fall-back', () => {
+      // Mon Nov 2 2026 00:30 PST; Sun Nov 1 is 25 hours long
+      const patch = planEntryDayMove(
+        { date: '2026-11-02', logged_at: new Date(2026, 10, 2, 0, 30).toISOString() },
+        -1,
+      )!;
+      expect(patch.date).toBe('2026-11-01');
+      const moved = new Date(patch.logged_at!);
+      expect(moved.getDate()).toBe(1);
+      expect(moved.getHours()).toBe(0);
+      expect(moved.getMinutes()).toBe(30);
+    });
   });
 });
 

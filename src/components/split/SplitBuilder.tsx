@@ -5,6 +5,7 @@ import { Button, Chip, Input, SelectSheet, TickStrip } from '@/components/shared
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { splitTemplates } from '@/lib/splitTemplates';
+import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { springs } from '@/lib/animations';
 import {
   buildGuidedTemplate,
@@ -595,6 +596,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
         const createdId = data.id as string;
         normalizedToId.set(normalizedName, createdId);
+        // the picker's cached library does not have it yet
+        invalidateExerciseLibrary();
         return createdId;
       };
 

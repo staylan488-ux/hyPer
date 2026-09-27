@@ -1458,15 +1458,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteWorkout: async (workoutId: string) => {
-    // First delete all sets for this workout
-    await supabase.from('sets').delete().eq('workout_id', workoutId);
-    
-    // Then delete the workout
-    const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
-    
+    // One statement: sets and the day plan go with it via ON DELETE CASCADE,
+    // so a failure part-way can no longer leave a workout with its sets wiped.
+    let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+
+    // Foreign-key violation means a database without the cascade. Nothing was
+    // deleted, so fall back to removing the sets first, stopping if that fails.
+    if (error?.code === '23503') {
+      const { error: setsError } = await supabase.from('sets').delete().eq('workout_id', workoutId);
+      if (setsError) {
+        console.error('Error deleting workout sets:', setsError);
+        throw setsError;
+      }
+      ({ error } = await supabase.from('workouts').delete().eq('id', workoutId));
+    }
+
     if (error) {
       console.error('Error deleting workout:', error);
       throw error;
+    }
+
+    // A deleted in-progress workout must not stay on the Workout tab.
+    if (get().currentWorkout?.id === workoutId) {
+      set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
   },
 

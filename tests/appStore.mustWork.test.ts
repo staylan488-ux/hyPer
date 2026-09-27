@@ -1141,9 +1141,43 @@ describe('must-work store contracts', () => {
     expect(fetchSplitsSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes workout sets before deleting the workout', async () => {
-    const setsChain = createChain();
+  it('deletes a workout in one request and lets the database cascade its sets', async () => {
     const workoutsChain = createChain();
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('sets');
+    expect(workoutsChain.delete).toHaveBeenCalledTimes(1);
+    expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-42');
+  });
+
+  it('rejects when the workout delete fails and leaves the sets alone', async () => {
+    const failure = { code: '42501', message: 'permission denied' };
+    const workoutsChain = createChain();
+    Object.assign(workoutsChain, { error: failure });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(useAppStore.getState().deleteWorkout('workout-42')).rejects.toBe(failure);
+
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('sets');
+    consoleError.mockRestore();
+  });
+
+  it('falls back to deleting sets first when the database has no cascade', async () => {
+    const workoutsChain = createChain();
+    const setsChain = createChain();
+    const results = [{ error: { code: '23503', message: 'foreign key violation' } }, { error: null }];
+    workoutsChain.eq.mockImplementation(() => results.shift());
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
@@ -1155,8 +1189,33 @@ describe('must-work store contracts', () => {
 
     expect(setsChain.delete).toHaveBeenCalledTimes(1);
     expect(setsChain.eq).toHaveBeenCalledWith('workout_id', 'workout-42');
-    expect(workoutsChain.delete).toHaveBeenCalledTimes(1);
-    expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-42');
+    expect(workoutsChain.delete).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the current workout when the deleted workout is the active one', async () => {
+    supabaseMock.from.mockImplementation(() => createChain());
+    const active = { ...makeWorkoutWithSet({} as WorkoutSet), id: 'workout-42' };
+    useAppStore.setState({
+      currentWorkout: active,
+      currentWorkoutDayPlan: { workout_id: 'workout-42' } as never,
+    });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+
+  it('leaves the current workout alone when deleting a different one', async () => {
+    supabaseMock.from.mockImplementation(() => createChain());
+    const active = makeWorkoutWithSet({} as WorkoutSet);
+    const plan = { workout_id: active.id } as never;
+    useAppStore.setState({ currentWorkout: active, currentWorkoutDayPlan: plan });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(useAppStore.getState().currentWorkout).toBe(active);
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
   });
 
   it('upserts macro targets by user_id and stores saved target', async () => {
