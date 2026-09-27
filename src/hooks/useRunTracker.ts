@@ -138,7 +138,7 @@ function createDefaultPositionSource(
   runId: string,
   resume: boolean,
   cursors?: NativeRunCursors,
-  onNativeReset?: () => void,
+  onNativeReset?: (cursors: NativeRunCursors) => void,
 ): PositionSource {
   return isNativeIOS()
     ? createNativeRunSource(runId, resume, cursors, onNativeReset)
@@ -391,14 +391,15 @@ export function useRunTracker(): UseRunTracker {
       setResumable(false);
       const resumePoint = nativeResumePoint(restored);
       replayCutoffMsRef.current = source || !isNativeIOS() ? null : resumePoint.replayCutoffMs;
-      const onNativeReset = () => {
-        // A fresh native file restarts at sequence 1; the saved cursors no
-        // longer apply. Anything it records is newer than this snapshot, so
-        // the time cutoff only guards against an unexpected full replay.
+      const onNativeReset = (cursors: NativeRunCursors) => {
+        // The recorder's sequence is behind the saved cursors (a fresh file,
+        // or a sequence that fell back after a failed write), so its numbers
+        // repeat ones this snapshot already applied. Filter those by time:
+        // anything genuinely new is later than the snapshot's last sample.
         replayCutoffMsRef.current = restored.lastSampleMs;
         const current = stateRef.current;
         if (current?.runId === restored.runId && current.status === 'running') {
-          commit({ ...current, nativeSampleSeq: 0, nativeControlSeq: 0 });
+          commit({ ...current, nativeSampleSeq: cursors.sample, nativeControlSeq: cursors.control });
         }
       };
       attachSource(source ?? createDefaultPositionSource(restored.runId, true, resumePoint.cursors, onNativeReset));

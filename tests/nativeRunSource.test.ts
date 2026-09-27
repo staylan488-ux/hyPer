@@ -546,17 +546,46 @@ describe('createNativeRunSource resume cursors', () => {
   });
 
   it('drops both cursors to 0 when the native store was reset', async () => {
-    // a fresh native file: three new samples and no controls
-    fake.state.samples = range(1, 3).map((seq) => nativeSample(seq));
+    // HyperRunPlugin resolves a reset with lastSequence 0; the fresh file then
+    // records three new samples and no controls before the first drain
+    fake.NativeRun.startRecording.mockImplementationOnce(async () => {
+      fake.state.samples = range(1, 3).map((seq) => nativeSample(seq));
+      return { recording: true, lastSequence: 0 };
+    });
     const onNativeReset = vi.fn();
 
     const { delivered } = startSource(createNativeRunSource('run-a', true, { sample: 50, control: 4 }, onNativeReset));
     await settle();
 
     expect(onNativeReset).toHaveBeenCalledTimes(1);
+    expect(onNativeReset).toHaveBeenCalledWith({ sample: 0, control: 0 });
     expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(0);
     expect(afterSequences(fake.NativeRun.drainControls)[0]).toBe(0);
     expect(delivered.map(seqOf)).toEqual([1, 2, 3]);
+  });
+
+  it('follows a same-file sequence that fell behind without replaying controls', async () => {
+    // JS applied samples 1-50 live, but native saved only 40 (a failed write);
+    // the resumed recorder numbers new samples from 41 again
+    fake.state.samples = [
+      ...range(1, 40).map((seq) => nativeSample(seq)),
+      nativeSample(41, T0 + 60_000),
+      nativeSample(42, T0 + 61_000),
+    ];
+    fake.state.controls = [nativeControl(1, T0 + 2_500, 'split'), nativeControl(2, T0 + 5_500, 'rest')];
+    fake.NativeRun.startRecording.mockResolvedValueOnce({ recording: true, lastSequence: 40 });
+    const onNativeReset = vi.fn();
+
+    const { delivered, controls } = startSource(
+      createNativeRunSource('run-a', true, { sample: 50, control: 2 }, onNativeReset),
+    );
+    await settle();
+
+    expect(onNativeReset).toHaveBeenCalledWith({ sample: 40, control: 2 });
+    expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(40);
+    expect(afterSequences(fake.NativeRun.drainControls)[0]).toBe(2);
+    expect(delivered.map((sample) => sample.nativeSeq)).toEqual([41, 42]);
+    expect(controls).toEqual([]);
   });
 
   it('keeps the cursors when native resumed the same file', async () => {
