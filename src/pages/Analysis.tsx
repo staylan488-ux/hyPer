@@ -6,7 +6,7 @@ import { format, startOfWeek, subWeeks } from 'date-fns';
 import { EmptyState, Screen, VolumeRail, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
-import { getVolumeRecommendation } from '@/lib/splitTemplates';
+import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
@@ -43,7 +43,7 @@ function buildCoachingCall(mv: MuscleVolume): CoachingCall {
 }
 
 export function Analysis() {
-  const { weeklyVolume, fetchVolumeLandmarks, calculateWeeklyVolume } = useAppStore();
+  const { weeklyVolume, calculateWeeklyVolume } = useAppStore();
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
   const [trainingHours, setTrainingHours] = useState<TrainingHoursPoint[]>([]);
@@ -88,10 +88,9 @@ export function Analysis() {
   }, []);
 
   useEffect(() => {
-    fetchVolumeLandmarks();
     calculateWeeklyVolume();
     void fetchTrainingHours();
-  }, [calculateWeeklyVolume, fetchTrainingHours, fetchVolumeLandmarks]);
+  }, [calculateWeeklyVolume, fetchTrainingHours]);
 
   const coached = useMemo(
     () =>
