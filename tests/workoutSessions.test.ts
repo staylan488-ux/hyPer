@@ -120,10 +120,11 @@ describe('workoutSessions helpers', () => {
       {
         date: '2026-03-16',
         completed: true,
-        created_at: '2026-03-15T23:30:00.000Z',
-        completed_at: '2026-03-16T01:00:00.000Z',
+        // Local wall-clock times: late Sunday into Monday in any time zone.
+        created_at: new Date(2026, 2, 15, 23, 30).toISOString(),
+        completed_at: new Date(2026, 2, 16, 1, 0).toISOString(),
       },
-    ], new Date('2026-03-16T12:00:00.000Z'));
+    ], new Date(2026, 2, 16, 12, 0));
 
     expect(points.at(-2)).toMatchObject({
       weekStart: '2026-03-09',
