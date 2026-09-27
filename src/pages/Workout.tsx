@@ -50,7 +50,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
-import { exerciseIdsFromKey, previousTargetExerciseKey } from '@/lib/previousSetTargets';
+import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
@@ -64,32 +64,12 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
-function normalizeOptionalMetric(value: number | string | null | undefined): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseFloat(value.trim());
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
 type SupersetRole = 'A' | 'B';
 
 type SupersetFlow = {
   groupId: string;
   role: SupersetRole;
   partnerExerciseId: string;
-};
-
-type PreviousWorkoutSummary = { id: string };
-type PreviousSetSummary = {
-  workout_id: string;
-  exercise_id: string;
-  set_number: number | string;
-  weight: number | string | null;
-  reps: number | string | null;
-  rpe: number | string | null;
-  completed: boolean;
 };
 
 type CompletionSummary = {
@@ -450,88 +430,14 @@ export function Workout() {
 
     let cancelled = false;
 
-    const fetchPreviousWorkoutTargets = async () => {
-      const { data: completedWorkouts, error: workoutsError } = await supabase
-        .from('workouts')
-        .select('id')
-        .eq('user_id', userId)
-        .lte('date', currentWorkoutDate)
-        .neq('id', currentWorkoutId)
-        .order('date', { ascending: false })
-        .limit(30);
-
-      if (workoutsError) {
-        console.error('Error loading previous workouts for target-to-beat:', workoutsError);
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const workoutIds = (completedWorkouts || []).map((workout) => (workout as PreviousWorkoutSummary).id);
-
-      if (workoutIds.length === 0) {
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const { data: previousSets, error: previousSetsError } = await supabase
-        .from('sets')
-        .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
-        .in('workout_id', workoutIds)
-        .in('exercise_id', exerciseIds)
-        .eq('completed', true);
-
-      if (previousSetsError) {
-        console.error('Error loading previous sets for target-to-beat:', previousSetsError);
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const workoutRank = new Map(workoutIds.map((id, index) => [id, index]));
-      const bestByExerciseAndSet = new Map<string, PreviousSetSummary>();
-
-      for (const rawSet of previousSets || []) {
-        const set = rawSet as PreviousSetSummary;
-        const key = `${set.exercise_id}:${set.set_number}`;
-        const currentBest = bestByExerciseAndSet.get(key);
-
-        if (!currentBest) {
-          bestByExerciseAndSet.set(key, set);
-          continue;
-        }
-
-        const currentRank = workoutRank.get(set.workout_id) ?? Number.MAX_SAFE_INTEGER;
-        const bestRank = workoutRank.get(currentBest.workout_id) ?? Number.MAX_SAFE_INTEGER;
-
-        if (currentRank < bestRank) {
-          bestByExerciseAndSet.set(key, set);
-        }
-      }
-
-      const groupedTargets: PreviousWorkoutSetMap = {};
-
-      for (const set of bestByExerciseAndSet.values()) {
-        const parsedSetNumber = typeof set.set_number === 'number'
-          ? set.set_number
-          : Number.parseInt(String(set.set_number), 10);
-
-        if (!Number.isFinite(parsedSetNumber)) continue;
-
-        if (!groupedTargets[set.exercise_id]) {
-          groupedTargets[set.exercise_id] = {};
-        }
-
-        groupedTargets[set.exercise_id][parsedSetNumber] = {
-          weight: normalizeOptionalMetric(set.weight),
-          reps: normalizeOptionalMetric(set.reps),
-          rpe: normalizeOptionalMetric(set.rpe),
-        };
-      }
-
-      if (cancelled) return;
-      setPreviousWorkoutSetsByExercise(groupedTargets);
-    };
-
-    void fetchPreviousWorkoutTargets();
+    void fetchPreviousSetTargets({
+      userId,
+      workoutId: currentWorkoutId,
+      date: currentWorkoutDate,
+      exerciseIds,
+    }).then((targets) => {
+      if (!cancelled) setPreviousWorkoutSetsByExercise(targets);
+    });
 
     return () => {
       cancelled = true;
@@ -973,9 +879,8 @@ export function Workout() {
 
     const activeName = resolvedActiveExerciseId ? workoutExerciseMap.get(resolvedActiveExerciseId)?.name : undefined;
     const nextSetNumber = orderedSets.find((set) => set.exercise_id === resolvedActiveExerciseId && !set.completed)?.set_number ?? null;
-    const tonnage = currentWorkout.sets
-      .filter((set) => set.completed)
-      .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
+    // Same rule as the completion sheet's tonnage.
+    const tonnage = sessionTonnage(currentWorkout.sets);
 
     const detailLine = [
       activeName && nextSetNumber ? `set ${nextSetNumber}` : null,

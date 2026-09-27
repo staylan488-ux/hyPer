@@ -22,7 +22,7 @@ const WEIGHT_TOLERANCE = 0.01;
 const REP_TOLERANCE = 0.01;
 const E1RM_TOLERANCE = 0.25;
 
-function toFiniteNumber(value: unknown): number | null {
+export function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
     const parsed = Number.parseFloat(value.trim());
