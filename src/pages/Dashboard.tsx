@@ -8,7 +8,9 @@ import {
   Plus,
 } from 'lucide-react';
 import { format, startOfDay } from 'date-fns';
-import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail } from '@/components/shared';
+import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
+import { useTargetSeal } from '@/hooks/useTargetSeal';
+import type { SealMacro } from '@/lib/targetSeal';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
@@ -261,8 +263,8 @@ export function Dashboard() {
               </div>
             </div>
             <div className="space-y-4">
-              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" />
-              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" />
+              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" />
+              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" />
             </div>
           </>
         ) : (
@@ -386,7 +388,10 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
   if (hero.kind === 'done') {
     return (
       <div>
-        <HeroEyebrow>Trained today</HeroEyebrow>
+        <div className="flex items-start justify-between gap-4">
+          <HeroEyebrow>Trained today</HeroEyebrow>
+          <BankedStamp date={format(new Date(), 'MMM d')} className="-mt-1 mr-1" />
+        </div>
         <p className="t-title mb-6">The work is banked.</p>
         <Link to="/history">
           <Button variant="secondary" size="lg" className="w-full">Review session</Button>
@@ -482,15 +487,19 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-function FuelRow({ label, current, target, unit }: { label: string; current: number; target: number; unit: string }) {
+function FuelRow({ label, current, target, unit, seal }: { label: string; current: number; target: number; unit: string; seal: SealMacro }) {
   const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
+  const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey: format(new Date(), 'yyyy-MM-dd'), live: true });
   const over = target > 0 && current > target;
   const maxScale = Math.max(target * 1.18, current);
 
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
-        <span className="t-label-sm">{label}</span>
+        <span className="t-label-sm flex items-center gap-2">
+          {label}
+          <SealMark show={met} label={`${label} target met`} anchorRef={anchorRef} />
+        </span>
         <span className="flex items-baseline gap-1.5">
           <span className="number-medium text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
           <span className="t-data-sm text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>

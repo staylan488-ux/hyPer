@@ -1,8 +1,11 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, ChevronUp, Loader2, RotateCcw } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowUp, Check, ChevronRight, ChevronUp, Loader2, RotateCcw } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useAppStore } from '@/stores/appStore';
-import { tapHaptic } from '@/lib/haptics';
-import { compareSetPerformance, formatSetPerformanceTarget } from '@/lib/workoutProgress';
+import { celebrationHaptic, tapHaptic } from '@/lib/haptics';
+import { emitBurstFrom } from '@/lib/fx';
+import { springs } from '@/lib/animations';
+import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 
@@ -35,11 +38,19 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const rowRef = useRef<HTMLButtonElement>(null);
   const focusOnOpen = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The ink stamp after a confirmed save; `gain` when it beat last workout.
+  const [stamp, setStamp] = useState<{ key: number; gain: string | null } | null>(null);
   const formattedTarget = previousTarget ? formatSetPerformanceTarget(previousTarget) : '';
   const performance = set.completed && previousTarget ? compareSetPerformance(set, previousTarget) : 'unknown';
   const validNumbers = weight.trim() !== '' && Number.isFinite(Number(weight)) && Number(weight) >= 0 &&
     reps.trim() !== '' && Number.isInteger(Number(reps)) && Number(reps) > 0 &&
     (rpe.trim() === '' || (Number.isFinite(Number(rpe)) && Number(rpe) >= 1 && Number(rpe) <= 10));
+
+  useEffect(() => {
+    if (!stamp) return;
+    const timer = window.setTimeout(() => setStamp(null), stamp.gain ? 2600 : 1200);
+    return () => window.clearTimeout(timer);
+  }, [stamp]);
 
   useLayoutEffect(() => {
     if (!editing || !focusOnOpen.current) return;
@@ -86,7 +97,19 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       await logSet(originalSet.exercise_id, originalSet.set_number, Number(weight), Number(reps), rpe ? Number(rpe) : undefined);
       hasDraft.current = false;
       releaseEditorFocus();
+      const gain = !originalSet.completed && previousTarget
+        ? describeSetGain({ weight: Number(weight), reps: Number(reps) }, previousTarget)
+        : null;
+      setStamp({ key: Date.now(), gain });
       onComplete?.(originalSet);
+      if (gain) {
+        celebrationHaptic();
+        // The editor has handed over to the ledger row; burst from its mark.
+        requestAnimationFrame(() => emitBurstFrom(
+          rowRef.current?.querySelector('.studio-set-state'),
+          { palette: 'lacquer', count: 30, power: 0.75, spread: 70 },
+        ));
+      }
     } catch (error) {
       console.error('Failed to log set:', error);
       setSaveError('Couldn’t confirm this set was saved. Your numbers are still here. Check your connection and tap Retry.');
@@ -113,12 +136,31 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const setLabel = `set ${setNumber}${exerciseName ? ` of ${exerciseName}` : ''}`;
 
   return <>
-    <button ref={rowRef} type="button" className="studio-set-ledger" hidden={editing} onClick={chooseSet}
+    <button ref={rowRef} type="button" className={`studio-set-ledger${stamp ? ' is-stamped' : ''}`} hidden={editing} onClick={chooseSet}
       aria-label={`${set.completed ? 'Edit' : 'Enter'} ${setLabel}${hasDraft.current ? ', draft' : ''}${displayWeight ? `, ${displayWeight} pounds` : ''}${displayReps ? `, ${displayReps} reps` : ''}${displayRpe ? `, ${displayRpe} RPE` : ''}`}
       data-next={isNext && !set.completed ? true : undefined}>
       <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
       <span>{displayWeight || '—'}</span><span>{displayReps || '—'}</span><span>{displayRpe || '—'}</span>
-      <span className="studio-set-state">{saveError ? 'Retry' : hasDraft.current ? 'Draft' : set.completed ? <Check size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}</span>
+      <span className="studio-set-state">{saveError ? 'Retry' : hasDraft.current ? 'Draft' : set.completed ? <>
+        <InkCheck key={stamp?.key ?? 'settled'} />
+        {performance === 'beat' && <ArrowUp size={12} strokeWidth={2.25} className="studio-set-beat" aria-hidden />}
+      </> : <ChevronRight size={16} aria-hidden />}</span>
+      <AnimatePresence>
+        {stamp?.gain && (
+          <motion.span
+            key={stamp.key}
+            className="studio-set-gain"
+            aria-hidden
+            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, transition: { duration: 0.28 } }}
+            transition={springs.lift}
+          >
+            {stamp.gain}
+          </motion.span>
+        )}
+      </AnimatePresence>
+      {stamp?.gain && <span className="sr-only" role="status">Beat last workout, {stamp.gain}</span>}
       {isNext && <span className="sr-only">Next set</span>}
       {performance !== 'unknown' && <span className="sr-only">{performance} previous workout</span>}
     </button>
@@ -152,6 +194,15 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
     </form>
   </>;
+}
+
+/** A check drawn in ink: its stroke plays in whenever it remounts after a save. */
+function InkCheck() {
+  return (
+    <svg className="studio-ink-check" width={16} height={16} viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 12.5l4.6 4.6L19.2 7.4" pathLength={1} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function SetInput({ label, value, onChange, placeholder, disabled, inputMode, min, max, step, required }: {

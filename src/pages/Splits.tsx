@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3, LayoutGrid } from 'lucide-react';
+import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
@@ -278,7 +278,7 @@ export function Splits() {
         <div>
           {flexTemplates.length === 0 ? (
             <EmptyState
-              icon={LayoutGrid}
+              art="program"
               title="No quick-start templates yet"
               body="Finish a flexible session and hyPer offers to save it — one tap to repeat it next time."
               action={<Button onClick={() => navigate('/train')}>Start a flexible session</Button>}
@@ -402,7 +402,7 @@ export function Splits() {
       ) : splits.length === 0 ? (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
           <EmptyState
-            icon={LayoutGrid}
+            art="program"
             title="Build your first program"
             body="Five questions and the guided builder assembles an evidence-based split around your week — editable down to every set."
             action={

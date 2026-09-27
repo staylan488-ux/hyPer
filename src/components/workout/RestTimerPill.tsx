@@ -4,6 +4,7 @@ import { Pause, Play, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
+import { readMotionPolicy } from '@/lib/motionPolicy';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
 import { syncWorkoutActivityRest } from '@/lib/liveActivity';
@@ -70,6 +71,11 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const [customError, setCustomError] = useState(false);
   const completionHandledRef = useRef(false);
   const barRef = useRef<HTMLElement>(null);
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current);
+  }, []);
 
   const isRunning = session?.status === 'running';
 
@@ -236,10 +242,17 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   };
 
   const handleDismiss = () => {
+    if (leaving) return;
     tapHaptic();
     clearRestTimerSession();
     setExpanded(false);
-    onDismiss();
+    // The session is already cleared; the bar only finishes sliding away.
+    if (readMotionPolicy().reducedMotion) {
+      onDismiss();
+      return;
+    }
+    setLeaving(true);
+    leaveTimerRef.current = window.setTimeout(onDismiss, 240);
   };
 
   const tone = isWarning ? 'var(--color-accent)' : 'var(--color-text)';
@@ -247,7 +260,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   return (
     <>
-      {createPortal(<section ref={barRef} className="material-glass studio-rest-bar" aria-label="Rest timer">
+      {createPortal(<section ref={barRef} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
         <button type="button" className="studio-rest-summary" onClick={() => setExpanded(true)}
           aria-label={`Open rest timer options, ${statusLabel.toLowerCase()}, ${formatTime(timeLeft)}${nextUpLabel ? `, next ${nextUpLabel}` : ''}`}
           aria-haspopup="dialog" aria-expanded={expanded}>
@@ -259,7 +272,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button>}
         <button type="button" className="studio-rest-dismiss" onClick={handleDismiss}
           aria-label={isComplete ? 'Continue training' : 'Skip rest'}>{isComplete ? 'Continue' : 'Skip'}</button>
-        <div className="studio-rest-bar-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft} aria-valuetext={`${formatTime(timeLeft)} remaining`}><span style={{ width: `${Math.max(0, remainingRatio) * 100}%` }} /></div>
+        <div className="studio-rest-bar-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft} aria-valuetext={`${formatTime(timeLeft)} remaining`}><span style={{ transform: `scaleX(${isComplete ? 1 : Math.max(0, Math.min(1, remainingRatio))})` }} /></div>
       </section>, document.body)}
 
       <Modal isOpen={expanded} onClose={() => { setExpanded(false); setCustomOpen(false); }} title="Rest timer">
