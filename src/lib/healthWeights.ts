@@ -91,32 +91,65 @@ export async function recordManualBodyWeight(
   return data as BodyWeightMeasurement;
 }
 
+/** The native reader returns at most this many samples, oldest first. */
+const HEALTH_WEIGHT_PAGE_SIZE = 500;
+/** Catch-up bound per sync (10,000 samples); a later trigger continues from the cursor. */
+const HEALTH_WEIGHT_MAX_PASSES = 20;
+
+/** Only move the cursor forward, so an overlapping slower sync cannot rewind it. */
+function advanceCursor(userId: string, candidate: string): void {
+  const stored = localStorage.getItem(cursorKey(userId));
+  const storedTime = stored ? Date.parse(stored) : Number.NaN;
+  if (Number.isFinite(storedTime) && Date.parse(candidate) <= storedTime) return;
+  localStorage.setItem(cursorKey(userId), candidate);
+}
+
 export async function syncNativeBodyWeights(userId: string): Promise<HealthWeightSyncResult> {
   if (!isNativeIOS()) return { imported: 0, latest: await getLatestBodyWeight(userId) };
 
   const previousCursor = localStorage.getItem(cursorKey(userId));
-  const since = previousCursor
+  let since = previousCursor
     ? new Date(Math.max(0, Date.parse(previousCursor) - 24 * 60 * 60 * 1_000)).toISOString()
     : undefined;
-  const { samples } = await NativeHealth.readWeightSamples({ since, limit: 500 });
-  const rows = samples
-    .map((sample) => normalizeNativeWeightSample(userId, sample))
-    .filter((sample): sample is NonNullable<typeof sample> => sample != null);
+  const importedIds = new Set<string>();
+  let previousNewest: number | undefined;
 
-  if (rows.length > 0) {
-    const { error } = await supabase
-      .from('body_weight_measurements')
-      .upsert(rows, { onConflict: 'user_id,source,external_id' });
-    if (error) throw new Error(error.message);
+  // Samples come back oldest first, so a large backlog is read page by page.
+  // Pages overlap at their boundary second; the upsert absorbs the repeat.
+  for (let pass = 0; pass < HEALTH_WEIGHT_MAX_PASSES; pass++) {
+    const { samples } = await NativeHealth.readWeightSamples({ since, limit: HEALTH_WEIGHT_PAGE_SIZE });
+    const rows = samples
+      .map((sample) => normalizeNativeWeightSample(userId, sample))
+      .filter((sample): sample is NonNullable<typeof sample> => sample != null);
 
-    const latestTimestamp = rows.reduce(
-      (latest, row) => row.measured_at > latest ? row.measured_at : latest,
-      rows[0].measured_at,
-    );
-    localStorage.setItem(cursorKey(userId), latestTimestamp);
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from('body_weight_measurements')
+        .upsert(rows, { onConflict: 'user_id,source,external_id' });
+      if (error) throw new Error(error.message);
+
+      rows.forEach((row) => importedIds.add(row.external_id));
+      const latestTimestamp = rows.reduce(
+        (latest, row) => row.measured_at > latest ? row.measured_at : latest,
+        rows[0].measured_at,
+      );
+      advanceCursor(userId, latestTimestamp);
+    }
+
+    // A short raw page is the end of the backlog (normalization may drop rows
+    // from a full page, so the raw count decides).
+    if (samples.length < HEALTH_WEIGHT_PAGE_SIZE) break;
+    const newest = samples.reduce((latest, sample) => {
+      const time = Date.parse(sample.measuredAt);
+      return Number.isFinite(time) && time > latest ? time : latest;
+    }, Number.NEGATIVE_INFINITY);
+    // Stop when a page cannot move forward, e.g. 500+ samples in one second.
+    if (!Number.isFinite(newest) || (previousNewest !== undefined && newest <= previousNewest)) break;
+    previousNewest = newest;
+    since = new Date(newest).toISOString();
   }
 
-  return { imported: rows.length, latest: await getLatestBodyWeight(userId) };
+  return { imported: importedIds.size, latest: await getLatestBodyWeight(userId) };
 }
 
 export async function enableNativeBodyWeightSync(userId: string): Promise<HealthWeightSyncResult> {
