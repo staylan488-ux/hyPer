@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
+import { createKeyedSingleFlight } from '@/lib/singleFlight';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { planActivityMerge } from '@/lib/mergeActivities';
@@ -259,6 +260,9 @@ interface AppState {
   updateVolumeLandmark: (muscleGroup: MuscleGroup, updates: Partial<VolumeLandmark>) => Promise<void>;
   calculateWeeklyVolume: () => Promise<void>;
 }
+
+// in-flight WHOOP sync per user id (see syncWhoop)
+const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 
 export const useAppStore = create<AppState>((set, get) => ({
   activeSplit: null,
@@ -1790,108 +1794,114 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    // preview drives the identical pipeline from fixture batches; production
-    // fetches raw pages through the whoop-sync Edge Function
-    const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
+    // One run per user at a time: a manual Sync tap during the automatic
+    // launch/foreground sync joins that run instead of racing it into
+    // duplicate sessions. Registered with no await after getUser, so the first
+    // caller to resume claims the key and later callers see it.
+    return whoopSyncFlight.run(user.id, async () => {
+      // preview drives the identical pipeline from fixture batches; production
+      // fetches raw pages through the whoop-sync Edge Function
+      const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
 
-    // Every port below throws on a failed read or write rather than returning
-    // []: an empty read looks like "WHOOP has nothing here", and reconciling
-    // against it deletes, duplicates or un-dismisses activities. A throw aborts
-    // the run before any destructive step and surfaces as "Sync unavailable".
-    try {
-      // watermark: newest whoop segment already imported. A failed read must
-      // not fall back to the 30-day first-sync window
-      const { data: latest, error: latestError } = await supabase
-        .from('activity_segments')
-        .select('started_at')
-        .eq('user_id', user.id)
-        .eq('source', 'whoop')
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (latestError) throw latestError;
+      // Every port below throws on a failed read or write rather than returning
+      // []: an empty read looks like "WHOOP has nothing here", and reconciling
+      // against it deletes, duplicates or un-dismisses activities. A throw aborts
+      // the run before any destructive step and surfaces as "Sync unavailable".
+      try {
+        // watermark: newest whoop segment already imported. A failed read must
+        // not fall back to the 30-day first-sync window
+        const { data: latest, error: latestError } = await supabase
+          .from('activity_segments')
+          .select('started_at')
+          .eq('user_id', user.id)
+          .eq('source', 'whoop')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestError) throw latestError;
 
-      const result = await runWhoopSync(
-        {
-          fetchBatch,
-          data: {
-            // the shared action returns [] on error (saveTrackedRun relies on
-            // that), so only this port turns a short result into a failure
-            upsertSegments: async (inputs) => {
-              const rows = await get().upsertActivitySegments(inputs);
-              if (inputs.length > 0 && rows.length === 0) throw new Error('WHOOP segment upsert failed');
-              return rows;
-            },
-            fetchWhoopSegmentsInWindow: async (fromIso, toIso) => {
-              const { data, error } = await supabase
-                .from('activity_segments')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('source', 'whoop')
-                .gte('started_at', fromIso)
-                .lte('started_at', toIso)
-                .order('started_at', { ascending: true });
-              if (error) {
-                console.error('Error fetching whoop segments:', error);
-                throw error;
-              }
-              return (data || []) as ActivitySegment[];
-            },
-            fetchSessionsInWindow: async (fromIso, toIso) => {
-              // deliberately includes dismissed + user-edited rows (tombstones
-              // must hold) and ALL sources (whoop metrics enrich GPS or
-              // manual sessions covering the same time window)
-              const { data, error } = await supabase
-                .from('activity_sessions')
-                .select('*')
-                .eq('user_id', user.id)
-                .gte('started_at', fromIso)
-                .lte('started_at', toIso);
-              if (error) {
-                console.error('Error fetching sessions in window:', error);
-                throw error;
-              }
-              return (data || []) as ActivitySession[];
-            },
-            fetchSessionsByIds: async (ids) => {
-              if (ids.length === 0) return [];
-              const { data, error } = await supabase
-                .from('activity_sessions')
-                .select('*')
-                .eq('user_id', user.id)
-                .in('id', ids);
-              if (error) {
-                console.error('Error fetching sessions by ids:', error);
-                throw error;
-              }
-              return (data || []) as ActivitySession[];
-            },
-            createSession: (input) => get().createActivitySession(input),
-            updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
-            deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
-            linkSegmentsToSession: async (segmentIds, sessionId) => {
-              const { error } = await supabase
-                .from('activity_segments')
-                .update({ session_id: sessionId, updated_at: new Date().toISOString() })
-                .eq('user_id', user.id)
-                .in('id', segmentIds);
-              if (error) {
-                console.error('Error linking segments to session:', error);
-                throw error;
-              }
+        const result = await runWhoopSync(
+          {
+            fetchBatch,
+            data: {
+              // the shared action returns [] on error (saveTrackedRun relies on
+              // that), so only this port turns a short result into a failure
+              upsertSegments: async (inputs) => {
+                const rows = await get().upsertActivitySegments(inputs);
+                if (inputs.length > 0 && rows.length === 0) throw new Error('WHOOP segment upsert failed');
+                return rows;
+              },
+              fetchWhoopSegmentsInWindow: async (fromIso, toIso) => {
+                const { data, error } = await supabase
+                  .from('activity_segments')
+                  .select('*')
+                  .eq('user_id', user.id)
+                  .eq('source', 'whoop')
+                  .gte('started_at', fromIso)
+                  .lte('started_at', toIso)
+                  .order('started_at', { ascending: true });
+                if (error) {
+                  console.error('Error fetching whoop segments:', error);
+                  throw error;
+                }
+                return (data || []) as ActivitySegment[];
+              },
+              fetchSessionsInWindow: async (fromIso, toIso) => {
+                // deliberately includes dismissed + user-edited rows (tombstones
+                // must hold) and ALL sources (whoop metrics enrich GPS or
+                // manual sessions covering the same time window)
+                const { data, error } = await supabase
+                  .from('activity_sessions')
+                  .select('*')
+                  .eq('user_id', user.id)
+                  .gte('started_at', fromIso)
+                  .lte('started_at', toIso);
+                if (error) {
+                  console.error('Error fetching sessions in window:', error);
+                  throw error;
+                }
+                return (data || []) as ActivitySession[];
+              },
+              fetchSessionsByIds: async (ids) => {
+                if (ids.length === 0) return [];
+                const { data, error } = await supabase
+                  .from('activity_sessions')
+                  .select('*')
+                  .eq('user_id', user.id)
+                  .in('id', ids);
+                if (error) {
+                  console.error('Error fetching sessions by ids:', error);
+                  throw error;
+                }
+                return (data || []) as ActivitySession[];
+              },
+              createSession: (input) => get().createActivitySession(input),
+              updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
+              deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
+              linkSegmentsToSession: async (segmentIds, sessionId) => {
+                const { error } = await supabase
+                  .from('activity_segments')
+                  .update({ session_id: sessionId, updated_at: new Date().toISOString() })
+                  .eq('user_id', user.id)
+                  .in('id', segmentIds);
+                if (error) {
+                  console.error('Error linking segments to session:', error);
+                  throw error;
+                }
+              },
             },
           },
-        },
-        { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
-      );
+          { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
+        );
 
-      // whoop-sync stamps last_synced_at server-side; refresh the status row
-      if (!isPreviewActive()) void get().fetchWhoopConnection();
-      return result;
-    } catch (error) {
-      console.error('Error running whoop sync:', error);
-      return null;
-    }
+        // whoop-sync stamps last_synced_at server-side; refresh the status row
+        if (!isPreviewActive()) void get().fetchWhoopConnection();
+        return result;
+      } catch (error) {
+        console.error('Error running whoop sync:', error);
+        return null;
+      }
+    });
   },
 
   findWhoopForWorkout: async (workout) => {
