@@ -26,6 +26,17 @@ export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(buildStamp),
   },
+  build: {
+    rollupOptions: {
+      // src/preview is DEV-only. Its fixture modules build sample data at top
+      // level, which Rollup would otherwise keep as side effects in the
+      // production bundle. flag.ts stays side-effectful: it latches the flag.
+      treeshake: {
+        moduleSideEffects: (id, external) =>
+          external || !/[\\/]src[\\/]preview[\\/](?!flag\.ts)/.test(id),
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
