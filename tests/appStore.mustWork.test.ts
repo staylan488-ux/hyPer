@@ -2375,6 +2375,28 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     const linked = db.writes().filter((q) => q.table === 'activity_segments' && q.action === 'update');
     expect(linked).toHaveLength(1);
     expect(linked[0].payload).toMatchObject({ session_id: 'created-session' });
+    // one lookup for the sync and one for the status refresh, none per write
+    expect(supabaseMock.auth.getUser).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a sync with a failed segment link instead of calling it unavailable', async () => {
+    const db = installRecordingSupabase((query) => {
+      const kind = whoopReadKind(query);
+      if (kind === 'watermark') return { data: null, error: null };
+      if (kind === 'segmentsWindow') return { data: [makeWhoopSegment({ id: 'seg-new' })], error: null };
+      if (query.table === 'activity_sessions' && query.action === 'insert') {
+        return { data: { ...(query.payload as object), id: 'created-session' }, error: null };
+      }
+      if (query.table === 'activity_segments' && query.action === 'update') {
+        return { data: null, error: { message: 'timeout' } };
+      }
+      return undefined;
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toMatchObject({ created: 0, deleted: 0 });
+    expect(db.writes().filter((q) => q.table === 'activity_sessions')).toHaveLength(1);
   });
 
   it('aborts without deleting sessions when the segment window read fails', async () => {

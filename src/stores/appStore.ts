@@ -253,6 +253,31 @@ interface AppState {
   calculateWeeklyVolume: () => Promise<void>;
 }
 
+// activity_sessions insert row, shared by createActivitySession and the WHOOP
+// sync's create port so both write the same column defaults
+function activitySessionInsertRow(userId: string, input: ActivitySessionInput) {
+  return {
+    user_id: userId,
+    activity_type: input.activity_type,
+    custom_type: input.custom_type ?? null,
+    title: input.title ?? null,
+    date: input.date,
+    started_at: input.started_at ?? null,
+    ended_at: input.ended_at ?? null,
+    duration_seconds: input.duration_seconds ?? null,
+    source: input.source ?? 'manual',
+    notes: input.notes ?? null,
+    strain: input.strain ?? null,
+    avg_hr: input.avg_hr ?? null,
+    max_hr: input.max_hr ?? null,
+    energy_kcal: input.energy_kcal ?? null,
+    distance_m: input.distance_m ?? null,
+    auto_grouped: input.auto_grouped ?? false,
+    user_edited: input.user_edited ?? false,
+    dismissed_at: input.dismissed_at ?? null,
+  };
+}
+
 // in-flight WHOOP sync per user id (see syncWhoop)
 const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 
@@ -1519,26 +1544,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { data, error } = await supabase
       .from('activity_sessions')
-      .insert({
-        user_id: user.id,
-        activity_type: input.activity_type,
-        custom_type: input.custom_type ?? null,
-        title: input.title ?? null,
-        date: input.date,
-        started_at: input.started_at ?? null,
-        ended_at: input.ended_at ?? null,
-        duration_seconds: input.duration_seconds ?? null,
-        source: input.source ?? 'manual',
-        notes: input.notes ?? null,
-        strain: input.strain ?? null,
-        avg_hr: input.avg_hr ?? null,
-        max_hr: input.max_hr ?? null,
-        energy_kcal: input.energy_kcal ?? null,
-        distance_m: input.distance_m ?? null,
-        auto_grouped: input.auto_grouped ?? false,
-        user_edited: input.user_edited ?? false,
-        dismissed_at: input.dismissed_at ?? null,
-      })
+      .insert(activitySessionInsertRow(user.id, input))
       .select()
       .single();
 
@@ -1847,9 +1853,49 @@ export const useAppStore = create<AppState>((set, get) => ({
                 }
                 return (data || []) as ActivitySession[];
               },
-              createSession: (input) => get().createActivitySession(input),
-              updateSession: (sessionId, patch) => get().updateActivitySession(sessionId, patch),
-              deleteSession: (sessionId) => get().deleteActivitySession(sessionId),
+              // create/update/delete mirror createActivitySession,
+              // updateActivitySession and deleteActivitySession but reuse the
+              // user resolved above instead of a getUser round trip per item
+              createSession: async (input) => {
+                const { data, error } = await supabase
+                  .from('activity_sessions')
+                  .insert(activitySessionInsertRow(user.id, input))
+                  .select()
+                  .single();
+                if (error || !data) {
+                  if (error) console.error('Error creating activity session:', error);
+                  return null;
+                }
+                return data as ActivitySession;
+              },
+              updateSession: async (sessionId, patch) => {
+                const { data, error } = await supabase
+                  .from('activity_sessions')
+                  .update({ ...patch, updated_at: new Date().toISOString() })
+                  .eq('id', sessionId)
+                  .eq('user_id', user.id)
+                  .select()
+                  .single();
+                if (error || !data) {
+                  if (error) console.error('Error updating activity session:', error);
+                  return null;
+                }
+                return data as ActivitySession;
+              },
+              deleteSession: async (sessionId) => {
+                const { error } = await supabase
+                  .from('activity_sessions')
+                  .delete()
+                  .eq('id', sessionId)
+                  .eq('user_id', user.id);
+                if (error) {
+                  console.error('Error deleting activity session:', error);
+                  throw error;
+                }
+              },
+              // a failed link is logged and reported, not thrown: aborting the
+              // whole sync as "unavailable" is worse than an unlinked session,
+              // which the next sync deletes and recreates
               linkSegmentsToSession: async (segmentIds, sessionId) => {
                 const { error } = await supabase
                   .from('activity_segments')
@@ -1858,8 +1904,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                   .in('id', segmentIds);
                 if (error) {
                   console.error('Error linking segments to session:', error);
-                  throw error;
+                  return false;
                 }
+                return true;
               },
             },
           },
