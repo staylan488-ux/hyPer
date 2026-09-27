@@ -82,7 +82,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
     private var recording = false
     private var motion = "unknown"
     private var pendingPermissionCall: CAPPluginCall?
-    // Where the last drainSamples page ended in the trace file, so the next
+    // Where the last drainSamples scan ended in the trace file, so the next
     // drain reads only what was appended since instead of re-decoding the
     // whole run. Cleared whenever the file is reset, discarded or resumed.
     private var drainResumePoint: (runID: String, sequence: Int, offset: UInt64)?
@@ -239,6 +239,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                 // at or before it. The first drain after a launch or resume, or
                 // an older cursor, reads the whole file as before.
                 var baseOffset: UInt64 = 0
+                var scannedSequence = 0
                 let data: Data
                 if let point = self.drainResumePoint, point.runID == runID, afterSequence >= point.sequence {
                     let handle = try FileHandle(forReadingFrom: fileURL)
@@ -246,19 +247,29 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                     try handle.seek(toOffset: point.offset)
                     data = try handle.readToEnd() ?? Data()
                     baseOffset = point.offset
+                    scannedSequence = point.sequence
                 } else {
                     data = try Data(contentsOf: fileURL)
                 }
 
                 var samples: [PersistedRunSample] = []
-                var resumeSequence: Int?
-                var resumeOffset: UInt64?
+                // Every line before `scannedOffset` has a sequence at or below
+                // `scannedSequence`. That includes lines skipped here as
+                // already delivered or corrupt, which a full read would skip
+                // again, so the point also moves when the live listener
+                // delivered everything and this page comes back empty.
+                var scannedOffset: UInt64?
                 var lineStart = data.startIndex
                 while lineStart < data.endIndex, samples.count < 1_000 {
                     let newline = data[lineStart...].firstIndex(of: 0x0A)
                     let lineEnd = newline ?? data.endIndex
                     let nextStart = newline.map { data.index(after: $0) } ?? data.endIndex
                     defer { lineStart = nextStart }
+                    // append() writes each line with its newline in one write,
+                    // so only resume past lines that are complete.
+                    if newline != nil {
+                        scannedOffset = baseOffset + UInt64(data.distance(from: data.startIndex, to: nextStart))
+                    }
                     // Skip a truncated/corrupt line (app killed mid-append)
                     // instead of failing the whole recovery — a single bad line
                     // must not brick resume for the entire run.
@@ -267,19 +278,16 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                         let sample = try? self.decoder.decode(
                             PersistedRunSample.self,
                             from: Data(data[lineStart..<lineEnd])
-                        ),
-                        sample.sequence > afterSequence
+                        )
                     else { continue }
-                    samples.append(sample)
-                    // append() writes each line with its newline in one write,
-                    // so only resume past lines that are complete.
                     if newline != nil {
-                        resumeSequence = sample.sequence
-                        resumeOffset = baseOffset + UInt64(data.distance(from: data.startIndex, to: nextStart))
+                        scannedSequence = max(scannedSequence, sample.sequence)
                     }
+                    guard sample.sequence > afterSequence else { continue }
+                    samples.append(sample)
                 }
-                if let resumeSequence, let resumeOffset {
-                    self.drainResumePoint = (runID, resumeSequence, resumeOffset)
+                if let scannedOffset {
+                    self.drainResumePoint = (runID, scannedSequence, scannedOffset)
                 }
                 let lastReturnedSequence = samples.last?.sequence ?? afterSequence
                 call.resolve([
