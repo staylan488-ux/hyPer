@@ -1,3 +1,8 @@
+-- Reference snapshot of the public schema, rebuilt from supabase/migrations
+-- through 20260802120000 on 2026-09-26 (not checked against a production dump).
+-- The migrations are the source of truth. This file is for reading: it is not
+-- meant to be replayed on top of the migrations or against production.
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -64,6 +69,8 @@ CREATE TABLE IF NOT EXISTS split_exercises (
   target_reps_max INTEGER NOT NULL DEFAULT 12,
   exercise_order INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
+  -- exercises sharing a group id are performed as a superset
+  superset_group_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -76,7 +83,13 @@ CREATE TABLE IF NOT EXISTS workouts (
   notes TEXT,
   completed BOOLEAN DEFAULT false,
   completed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- WHOOP physiology attached to a lifting workout; whoop_session_id is added
+  -- after activity_sessions below
+  strain NUMERIC,
+  avg_hr SMALLINT,
+  max_hr SMALLINT,
+  energy_kcal NUMERIC
 );
 
 -- Sets (individual sets within workouts)
@@ -139,6 +152,11 @@ CREATE TABLE IF NOT EXISTS activity_sessions (
   CHECK (ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at)
 );
 
+-- The WHOOP record a workout's stats came from, so the attachment can be
+-- undone. SET NULL: deleting the WHOOP activity must not delete the workout.
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS whoop_session_id UUID
+  REFERENCES activity_sessions(id) ON DELETE SET NULL;
+
 -- Raw imported/recorded child records of activity_sessions (one row per WHOOP
 -- workout record or GPS lap/sprint rep). UNIQUE (user_id, source, external_id)
 -- makes re-imports idempotent.
@@ -200,6 +218,8 @@ CREATE TABLE IF NOT EXISTS foods (
   fdc_id TEXT,
   external_source TEXT,
   external_id TEXT,
+  -- a meal logged as one item keeps the model's description of the plate
+  description TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -307,26 +327,28 @@ CREATE TABLE IF NOT EXISTS volume_landmarks (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_splits_user_id ON splits(user_id);
-CREATE INDEX idx_split_days_split_id ON split_days(split_id);
-CREATE INDEX idx_split_exercises_day_id ON split_exercises(split_day_id);
-CREATE INDEX idx_workouts_user_id ON workouts(user_id);
-CREATE INDEX idx_workouts_date ON workouts(date);
-CREATE INDEX idx_sets_workout_id ON sets(workout_id);
-CREATE INDEX idx_sets_exercise_id ON sets(exercise_id);
-CREATE INDEX idx_body_weight_measurements_user_time ON body_weight_measurements(user_id, measured_at DESC);
-CREATE INDEX idx_activity_sessions_user_date ON activity_sessions(user_id, date);
-CREATE INDEX idx_activity_sessions_user_started_at ON activity_sessions(user_id, started_at);
-CREATE INDEX idx_activity_segments_user_started_at ON activity_segments(user_id, started_at);
-CREATE INDEX idx_activity_segments_session ON activity_segments(session_id);
-CREATE INDEX idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
-CREATE INDEX idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
-CREATE INDEX idx_nutrition_groups_user_date ON nutrition_groups(user_id, date, sort_order);
-CREATE UNIQUE INDEX idx_nutrition_groups_named_label ON nutrition_groups(user_id, date, label) WHERE label IS NOT NULL;
-CREATE INDEX idx_nutrition_logs_group ON nutrition_logs(group_id, sort_order);
-CREATE UNIQUE INDEX idx_nutrition_logs_external_identity ON nutrition_logs(user_id, source, external_id) WHERE external_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_foods_external_identity ON foods(user_id, external_source, external_id) WHERE user_id IS NOT NULL AND external_source IS NOT NULL AND external_id IS NOT NULL;
-CREATE INDEX idx_foods_user_id ON foods(user_id);
+CREATE INDEX IF NOT EXISTS idx_splits_user_id ON splits(user_id);
+CREATE INDEX IF NOT EXISTS idx_split_days_split_id ON split_days(split_id);
+CREATE INDEX IF NOT EXISTS idx_split_exercises_day_id ON split_exercises(split_day_id);
+CREATE INDEX IF NOT EXISTS idx_split_exercises_superset_group_id ON split_exercises(superset_group_id);
+CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
+CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
+CREATE INDEX IF NOT EXISTS idx_workouts_whoop_session ON workouts(whoop_session_id) WHERE whoop_session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sets_workout_id ON sets(workout_id);
+CREATE INDEX IF NOT EXISTS idx_sets_exercise_id ON sets(exercise_id);
+CREATE INDEX IF NOT EXISTS idx_body_weight_measurements_user_time ON body_weight_measurements(user_id, measured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_sessions_user_date ON activity_sessions(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_activity_sessions_user_started_at ON activity_sessions(user_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_activity_segments_user_started_at ON activity_segments(user_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_activity_segments_session ON activity_segments(session_id);
+CREATE INDEX IF NOT EXISTS idx_nutrition_logs_user_date ON nutrition_logs(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_nutrition_logs_user_logged_at ON nutrition_logs(user_id, logged_at);
+CREATE INDEX IF NOT EXISTS idx_nutrition_groups_user_date ON nutrition_groups(user_id, date, sort_order);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nutrition_groups_named_label ON nutrition_groups(user_id, date, label) WHERE label IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nutrition_logs_group ON nutrition_logs(group_id, sort_order);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nutrition_logs_external_identity ON nutrition_logs(user_id, source, external_id) WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_foods_external_identity ON foods(user_id, external_source, external_id) WHERE user_id IS NOT NULL AND external_source IS NOT NULL AND external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_foods_user_id ON foods(user_id);
 
 -- Plan Schedules (training start-date & weekday mapping, synced across devices)
 CREATE TABLE IF NOT EXISTS plan_schedules (
@@ -340,6 +362,47 @@ CREATE TABLE IF NOT EXISTS plan_schedules (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id, split_id)
+);
+
+-- Flexible programming: the user's workout mode, the ad-hoc plan for a
+-- flexible workout, and reusable flexible day templates
+CREATE TABLE IF NOT EXISTS program_preferences (
+  user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  workout_mode TEXT NOT NULL DEFAULT 'split' CHECK (workout_mode IN ('split', 'flexible')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS workout_day_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workout_id UUID NOT NULL UNIQUE REFERENCES workouts(id) ON DELETE CASCADE,
+  day_label TEXT NOT NULL,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS flex_day_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_flex_day_templates_user_id ON flex_day_templates(user_id);
+
+-- Per-movement rest timer preferences (last-used is MAX(updated_at))
+CREATE TABLE IF NOT EXISTS exercise_rest_preferences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  rest_seconds INTEGER NOT NULL CHECK (rest_seconds BETWEEN 5 AND 3600),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, exercise_id)
 );
 
 -- RLS Policies
@@ -364,6 +427,10 @@ ALTER TABLE macro_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volume_landmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plan_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE program_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workout_day_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flex_day_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exercise_rest_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
@@ -491,6 +558,38 @@ CREATE POLICY "Users can insert own plan schedules" ON plan_schedules FOR INSERT
 CREATE POLICY "Users can update own plan schedules" ON plan_schedules FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own plan schedules" ON plan_schedules FOR DELETE USING (auth.uid() = user_id);
 
+-- Program preferences policies
+CREATE POLICY "Users can view own program preferences" ON program_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own program preferences" ON program_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own program preferences" ON program_preferences FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own program preferences" ON program_preferences FOR DELETE USING (auth.uid() = user_id);
+
+-- Workout day plans policies (owned through the workout)
+CREATE POLICY "Users can view own workout day plans" ON workout_day_plans FOR SELECT USING (
+  EXISTS (SELECT 1 FROM workouts WHERE workouts.id = workout_day_plans.workout_id AND workouts.user_id = auth.uid())
+);
+CREATE POLICY "Users can insert own workout day plans" ON workout_day_plans FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM workouts WHERE workouts.id = workout_day_plans.workout_id AND workouts.user_id = auth.uid())
+);
+CREATE POLICY "Users can update own workout day plans" ON workout_day_plans FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM workouts WHERE workouts.id = workout_day_plans.workout_id AND workouts.user_id = auth.uid())
+);
+CREATE POLICY "Users can delete own workout day plans" ON workout_day_plans FOR DELETE USING (
+  EXISTS (SELECT 1 FROM workouts WHERE workouts.id = workout_day_plans.workout_id AND workouts.user_id = auth.uid())
+);
+
+-- Flex day templates policies
+CREATE POLICY "Users can view own flex day templates" ON flex_day_templates FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own flex day templates" ON flex_day_templates FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own flex day templates" ON flex_day_templates FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own flex day templates" ON flex_day_templates FOR DELETE USING (auth.uid() = user_id);
+
+-- Rest preferences policies
+CREATE POLICY "Users can view own rest preferences" ON exercise_rest_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own rest preferences" ON exercise_rest_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own rest preferences" ON exercise_rest_preferences FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own rest preferences" ON exercise_rest_preferences FOR DELETE USING (auth.uid() = user_id);
+
 -- Function to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -510,6 +609,126 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Atomic save of a whole split (name, days, exercises) in one transaction.
+-- The client sends the full desired state; the function reconciles via
+-- upsert + delete. Current definition from 20260221130000 (supersets), with
+-- the search_path set by 20260401151500.
+CREATE OR REPLACE FUNCTION public.save_split_snapshot(
+  p_split_id UUID,
+  p_name TEXT,
+  p_description TEXT,
+  p_days_per_week INTEGER,
+  p_days JSONB
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_day JSONB;
+  v_exercise JSONB;
+  v_day_id UUID;
+  v_exercise_id UUID;
+  v_kept_day_ids UUID[] := '{}';
+  v_kept_exercise_ids UUID[] := '{}';
+  v_day_kept_exercise_ids UUID[];
+BEGIN
+  SELECT user_id INTO v_user_id
+  FROM splits
+  WHERE id = p_split_id;
+
+  IF v_user_id IS NULL OR v_user_id != auth.uid() THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
+  UPDATE splits
+  SET name = p_name,
+      description = p_description,
+      days_per_week = p_days_per_week
+  WHERE id = p_split_id;
+
+  FOR v_day IN SELECT * FROM jsonb_array_elements(p_days)
+  LOOP
+    v_day_kept_exercise_ids := '{}';
+
+    IF v_day->>'id' IS NOT NULL AND (v_day->>'id')::UUID IN (
+      SELECT id FROM split_days WHERE split_id = p_split_id
+    ) THEN
+      v_day_id := (v_day->>'id')::UUID;
+      UPDATE split_days
+      SET day_name = v_day->>'day_name',
+          day_order = (v_day->>'day_order')::INTEGER
+      WHERE id = v_day_id AND split_id = p_split_id;
+    ELSE
+      INSERT INTO split_days (split_id, day_name, day_order)
+      VALUES (p_split_id, v_day->>'day_name', (v_day->>'day_order')::INTEGER)
+      RETURNING id INTO v_day_id;
+    END IF;
+
+    v_kept_day_ids := array_append(v_kept_day_ids, v_day_id);
+
+    FOR v_exercise IN SELECT * FROM jsonb_array_elements(v_day->'exercises')
+    LOOP
+      IF v_exercise->>'id' IS NOT NULL AND (v_exercise->>'id')::UUID IN (
+        SELECT id FROM split_exercises WHERE split_day_id = v_day_id
+      ) THEN
+        v_exercise_id := (v_exercise->>'id')::UUID;
+        UPDATE split_exercises
+        SET exercise_id = (v_exercise->>'exercise_id')::UUID,
+            target_sets = (v_exercise->>'target_sets')::INTEGER,
+            target_reps_min = (v_exercise->>'target_reps_min')::INTEGER,
+            target_reps_max = (v_exercise->>'target_reps_max')::INTEGER,
+            exercise_order = (v_exercise->>'exercise_order')::INTEGER,
+            notes = v_exercise->>'notes',
+            superset_group_id = CASE
+              WHEN COALESCE(v_exercise->>'superset_group_id', '') = '' THEN NULL
+              ELSE (v_exercise->>'superset_group_id')::UUID
+            END
+        WHERE id = v_exercise_id;
+      ELSE
+        INSERT INTO split_exercises (
+          split_day_id,
+          exercise_id,
+          target_sets,
+          target_reps_min,
+          target_reps_max,
+          exercise_order,
+          notes,
+          superset_group_id
+        )
+        VALUES (
+          v_day_id,
+          (v_exercise->>'exercise_id')::UUID,
+          (v_exercise->>'target_sets')::INTEGER,
+          (v_exercise->>'target_reps_min')::INTEGER,
+          (v_exercise->>'target_reps_max')::INTEGER,
+          (v_exercise->>'exercise_order')::INTEGER,
+          v_exercise->>'notes',
+          CASE
+            WHEN COALESCE(v_exercise->>'superset_group_id', '') = '' THEN NULL
+            ELSE (v_exercise->>'superset_group_id')::UUID
+          END
+        )
+        RETURNING id INTO v_exercise_id;
+      END IF;
+
+      v_kept_exercise_ids := array_append(v_kept_exercise_ids, v_exercise_id);
+      v_day_kept_exercise_ids := array_append(v_day_kept_exercise_ids, v_exercise_id);
+    END LOOP;
+
+    DELETE FROM split_exercises
+    WHERE split_day_id = v_day_id
+      AND id != ALL(v_day_kept_exercise_ids);
+  END LOOP;
+
+  DELETE FROM split_days
+  WHERE split_id = p_split_id
+    AND id != ALL(v_kept_day_ids);
+END;
+$$;
 
 -- Default exercises (seed data)
 INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is_compound) VALUES
