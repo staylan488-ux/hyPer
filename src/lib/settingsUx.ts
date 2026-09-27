@@ -35,3 +35,14 @@ export function targetModeLabel(
   if (!enabled) return 'Calculated · automatic updates off';
   return source === 'adaptive' ? 'Adaptive' : 'Calculated · can adapt';
 }
+
+/** Cached targets stay visible while a refresh runs; editing still waits for 'ready'. */
+export function targetSummaryLabel(
+  loadState: 'loading' | 'ready' | 'error',
+  cachedCalories: number | null,
+  modeLabel: string,
+): string {
+  if (loadState === 'error') return 'Could not load targets';
+  if (cachedCalories !== null) return `${cachedCalories.toLocaleString()} kcal · ${modeLabel}`;
+  return loadState === 'loading' ? 'Loading targets…' : 'Starting defaults · not saved';
+}
