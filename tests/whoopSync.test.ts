@@ -549,3 +549,174 @@ describe('runWhoopSync when a port fails', () => {
     expect(data.sessions.map((s) => s.id)).toEqual(['auto-whoop']);
   });
 });
+
+// one standalone WHOOP activity every 3 hours from T0, far enough apart to never
+// cluster; slots 0-7 fall before NOW
+function soloRecord(slot: number): WhoopWorkoutRecord {
+  return {
+    ...tennisRecord,
+    id: `wf-solo-${slot}`,
+    start: isoAt(slot * 3 * 3600),
+    end: isoAt(slot * 3 * 3600 + 45 * 60),
+  };
+}
+
+describe('runWhoopSync apply phase', () => {
+  it('counts only sessions that were actually created and recreates the rest next sync', async () => {
+    const data = new FakeData();
+    const laps = [1, 2, 3].map((n) => lapRecord(n));
+    const healthy = data.ports();
+    const ports = withData(makePorts(data, [[...laps, tennisRecord]]), {
+      createSession: async (input) => (input.activity_type === 'tennis' ? null : healthy.createSession(input)),
+    });
+
+    const first = await runWhoopSync(ports, {});
+
+    expect(first.created).toBe(1);
+    expect(data.sessions.map((s) => s.activity_type)).toEqual(['interval_run']);
+
+    const second = await runWhoopSync(makePorts(data, [[...laps, tennisRecord]]), {});
+
+    expect(second.created).toBe(1);
+    expect(data.sessions.map((s) => s.activity_type).sort()).toEqual(['interval_run', 'tennis']);
+    expect(data.segments.every((s) => s.session_id != null)).toBe(true);
+  });
+
+  it('applies many creates with at most four writes in flight and links each to its own session', async () => {
+    const data = new FakeData();
+    const healthy = data.ports();
+    let inFlight = 0;
+    let peak = 0;
+    const track = async <T>(write: () => Promise<T>): Promise<T> => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      try {
+        return await write();
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    const records = [0, 1, 2, 3, 4, 5, 6, 7].map(soloRecord);
+    const ports = withData(makePorts(data, [records]), {
+      createSession: (input) => track(() => healthy.createSession(input)),
+    });
+
+    const result = await runWhoopSync(ports, {});
+
+    expect(result.created).toBe(8);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(data.sessions).toHaveLength(8);
+    for (const record of records) {
+      const segment = data.segments.find((s) => s.external_id === record.id);
+      const session = data.sessions.find((s) => s.id === segment?.session_id);
+      expect(session?.started_at).toBe(record.start);
+    }
+    expect(new Set(data.segments.map((s) => s.session_id)).size).toBe(8);
+  });
+
+  it('starts no new write after one fails and finishes in-flight ones before rejecting', async () => {
+    const data = new FakeData();
+    const healthy = data.ports();
+    let started = 0;
+    let settled = 0;
+    const records = [0, 1, 2, 3, 4, 5, 6, 7].map(soloRecord);
+    const ports = withData(makePorts(data, [records]), {
+      createSession: async (input) => {
+        started += 1;
+        const call = started;
+        await new Promise((resolve) => setTimeout(resolve, call === 1 ? 0 : 5));
+        settled += 1;
+        if (call === 1) throw new Error('insert failed');
+        return healthy.createSession(input);
+      },
+    });
+
+    await expect(runWhoopSync(ports, {})).rejects.toThrow('insert failed');
+    const startedAtRejection = started;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(startedAtRejection).toBeLessThanOrEqual(4);
+    expect(started).toBe(startedAtRejection);
+    expect(settled).toBe(started);
+  });
+
+  it('still rejects when a delete fails', async () => {
+    const data = new FakeData();
+    const laps = [1, 2, 3].map((n) => lapRecord(n));
+    await runWhoopSync(makePorts(data, [laps]), {});
+    data.sessions.push(sessionFixture({ id: 'stale-auto', started_at: isoAt(6 * 3600), ended_at: isoAt(7 * 3600) }));
+
+    const ports = withData(makePorts(data, [laps]), {
+      deleteSession: () => Promise.reject(new Error('delete failed')),
+    });
+
+    await expect(runWhoopSync(ports, {})).rejects.toThrow('delete failed');
+    expect(data.sessions.map((s) => s.id)).toContain('stale-auto');
+  });
+
+  it('runs every delete after all creates, updates and links', async () => {
+    const data = new FakeData();
+    const laps = [1, 2, 3].map((n) => lapRecord(n));
+    await runWhoopSync(makePorts(data, [laps]), {});
+    data.sessions.push(
+      sessionFixture({ id: 'stale-a', started_at: isoAt(8 * 3600), ended_at: isoAt(9 * 3600) }),
+      sessionFixture({ id: 'stale-b', started_at: isoAt(10 * 3600), ended_at: isoAt(11 * 3600) }),
+    );
+
+    const healthy = data.ports();
+    const calls: string[] = [];
+    const ports = withData(makePorts(data, [[...laps, lapRecord(4), soloRecord(1), soloRecord(2)]]), {
+      createSession: async (input) => {
+        calls.push('create');
+        return healthy.createSession(input);
+      },
+      updateSession: async (id, patch) => {
+        calls.push('update');
+        return healthy.updateSession(id, patch);
+      },
+      linkSegmentsToSession: async (ids, sessionId) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        calls.push('link');
+        return healthy.linkSegmentsToSession(ids, sessionId);
+      },
+      deleteSession: async (id) => {
+        calls.push('delete');
+        return healthy.deleteSession(id);
+      },
+    });
+
+    const result = await runWhoopSync(ports, {});
+
+    expect(result).toMatchObject({ created: 2, updated: 1, deleted: 2 });
+    const firstDelete = calls.indexOf('delete');
+    expect(firstDelete).toBeGreaterThan(calls.lastIndexOf('link'));
+    expect(firstDelete).toBeGreaterThan(calls.lastIndexOf('update'));
+    expect(firstDelete).toBeGreaterThan(calls.lastIndexOf('create'));
+    expect(calls.lastIndexOf('create')).toBeLessThan(calls.indexOf('update'));
+    expect(data.sessions.map((s) => s.id)).not.toContain('stale-a');
+  });
+
+  it('leaves a failed link out of the count without failing the sync, and repairs it next time', async () => {
+    const data = new FakeData();
+    const healthy = data.ports();
+    const flaky = withData(makePorts(data, [[soloRecord(0), soloRecord(1)]]), {
+      linkSegmentsToSession: async (ids, sessionId) => {
+        if (ids.some((id) => data.segments.find((s) => s.id === id)?.external_id === 'wf-solo-1')) return false;
+        return healthy.linkSegmentsToSession(ids, sessionId);
+      },
+    });
+
+    const first = await runWhoopSync(flaky, {});
+
+    expect(first.created).toBe(1);
+    expect(data.sessions).toHaveLength(2); // one inserted but unlinked
+
+    const second = await runWhoopSync(makePorts(data, [[soloRecord(0), soloRecord(1)]]), {});
+
+    expect(second).toMatchObject({ created: 1, deleted: 1 });
+    expect(data.sessions).toHaveLength(2);
+    expect(data.segments.every((s) => s.session_id != null)).toBe(true);
+  });
+});
