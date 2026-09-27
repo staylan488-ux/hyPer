@@ -1,55 +1,40 @@
-# Current work snapshot — Kinetic beautification pass
+# Current work snapshot — optimization pass
 
-Recorded 2026-09-26 (Pacific). The user approved the **Kinetic / 3D-heavy**
-direction in chat: keep Studio type, color and layout; make motion, data and
-3D the expressive layer, and add native liquid glass (rest dock, tab bar
-polish, glass toasts). The approved plan has four phases with one PR each,
-and two phone-preview checkpoints (after phases 2 and 3). Merging, TestFlight
-and production actions are not authorized.
+Recorded 2026-09-26 (Pacific). The owner asked for a thorough optimization review that loses no quality or feature usability. The read-only multi-agent review is recorded in [the optimization review](../audits/2026-09-26-optimization-review.md): 98 confirmed findings, each with a safety guard.
 
-- Phase 1 (`feat/kinetic-motion-foundation`, PR #124): real springs, the motion
-  policy, once-per-session reveals, transform-based rails, scrubbable charts
-  (weight trend, training hours, weekly nutrition, lap pace), condensing
-  titles, drum time wheels. The Studio skill records the direction.
-- Phase 2 (`feat/kinetic-moments`, stacked on phase 1): set-save stamp and
-  beat-last chip, the movement reveal, rest bar motion, the celebratory
-  completion sheet, once-a-day macro seals, the body-portalled FX canvas,
-  line-art empty states and the Banked stamp.
-- The user reviewed the phase 2 preview ("Looks good") on 2026-09-26.
-- Phase 3 (`feat/kinetic-3d`, stacked on phase 2): three.js in a lazy chunk.
-  - A volume maquette (porcelain/obsidian mannequin with 14 shaded muscle
-    regions) on Coaching, plus a still figurine on Today's insight.
-  - A lacquer-enamel session token in the completion sheet.
-  - Motion light on floating glass and the token (deviceorientation where
-    it needs no prompt, otherwise scroll).
-  - Flat fallbacks without WebGL.
-- The user approved phase 3 ("Go for it") on 2026-09-26.
-- Phase 4 (`feat/kinetic-native-glass`, stacked on phase 3):
-  - A SwiftUI iOS 26 glass rest dock: rolling Fraunces countdown, a progress
-    ring around the pause control, Skip/Continue morphing via
-    GlassEffectContainer.
-  - Native glass toasts.
-  - Tab bar polish: Geist, 22pt radius, animated materialise/dematerialise.
-  - A CoreMotion attitude stream feeding the motion light.
-  - Fonts: the user approved downloading Geist Medium and Fraunces 72pt
-    Light (OFL) from Google Fonts into `public/fonts/native`.
-  - Verified in the iOS 26.5 simulator via `/preview/glass` in light and dark
-    (running, warning, completed, toast, tab bar).
-  - Physical-device feel, VoiceOver and real workout flows on device are
-    not yet exercised.
+The owner said "go" for Batch A plus the two data-loss packages. Each was implemented in its own worktree lane, independently reviewed and fixed, then integrated:
+- `opt/batch-a` (Batch A):
+  - the safety net (A1);
+  - cleanup (A2);
+  - the small fixes (A3), except the ones waiting on a decision.
+- `opt/whoop-sync` (B-1, G1/G4/G13/G14). It conflicts with Batch A only in `tests/appStore.mustWork.test.ts`, where tests are appended.
+- `opt/run-tracking` (B-2, F72/F8/F9/F57/F10/F56). It merges cleanly with Batch A.
 
-Verification so far: tests, lint and build pass (1074 tests). Browser
-preview at 390×844 covered the charts, scrub, scroll-edge band, drum wheels,
-set save and beat chip, rest in/out, completion sheet, Banked stamp, protein
-seal and bursts in Black, plus Ivory spot checks. The initial JS bundle is up
-about 18 KB gzipped over the 384 KB baseline. three.js ships in its own
-lazy 133 KB-gzip chunk. The hidden browser pane never fires
-IntersectionObserver, so the 3D scenes were rendered with a manual harness
-there. On devices they load as they approach the viewport. Physical-device haptics, frame
-pacing and native iOS have not been exercised.
+The combined state of all three passed:
+- 1247 tests;
+- lint, including the new test type-check;
+- the web build;
+- the iOS simulator build.
 
-Phone preview: the existing tailnet-only Tailscale Serve port 8444 proxies the
-dev server on 127.0.0.1:5191, which serves this checkout. Append `/preview`.
+A preview click-through covered Today, set save and rest, finish, food logging with time, History, Coaching, Program, Run, You and Saved meals, in Ivory and Black, with no console errors. Fonts are now self-hosted, with no Google requests.
+
+Held for owner decisions:
+- F24 (Monday training week);
+- F81 (21- or 30-day weight rate);
+- F110 (delete or restore the Cronometer importer);
+- F53 (offline cold start with an expired login, an auth-flow change).
+
+Production steps, none done:
+- F66 step B (delete the deployed process-food-photo function and its secrets);
+- F64 tier 2 (baseline migration and repair);
+- F103 (deploy analyze-food-trial);
+- C-6 (per-account USDA cache migration).
+
+Next: Batch B packages B-3 to B-14 and Batch C, per the plan. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
+
+# Previous work snapshot — Kinetic beautification pass
+
+Recorded 2026-09-26 (Pacific). All four Kinetic phases shipped as PRs #124–#127 (merged): motion foundation and charts, workout and nutrition moments, lazy three.js maquette and session token, and native iOS 26 glass surfaces. Physical-device feel (glass, haptics, motion light, VoiceOver) is still for the owner to check on TestFlight.
 
 # Previous work snapshot — adaptive scheduling setting
 
