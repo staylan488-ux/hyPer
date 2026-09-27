@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:net';
 import path from 'node:path';
 
 /**
@@ -13,13 +14,26 @@ import path from 'node:path';
  * every request. Nothing in the suite noticed, because nothing ever started it.
  */
 const WORKER = path.resolve(__dirname, '../scripts/photo-food-worker.mjs');
-const PORT = 8799;
+
+// A fresh port per run, so overlapping runs (parallel worktrees, agents, the
+// ship bot) never collide on a fixed one.
+async function getFreePort(): Promise<number> {
+  const server = createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  await new Promise((resolve) => server.close(resolve));
+  if (!port) throw new Error('could not reserve a free port');
+  return port;
+}
 
 async function bootWorker() {
+  const port = await getFreePort();
   const child = spawn(process.execPath, [WORKER], {
     env: {
       ...process.env,
-      PHOTO_WORKER_PORT: String(PORT),
+      PHOTO_WORKER_PORT: String(port),
       PHOTO_WORKER_HOST: '127.0.0.1',
       NODE_ENV: 'test',
       SUPABASE_URL: 'https://example.supabase.co',
@@ -27,16 +41,25 @@ async function bootWorker() {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let stdout = '';
   let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += String(chunk); });
   child.stderr.on('data', (chunk) => { stderr += String(chunk); });
+  // Only this child's own listen line proves it holds the port; otherwise a
+  // fetch could be answered by some other process that got there first.
+  const listening = `listening on http://127.0.0.1:${port}`;
 
   const started = Date.now();
   while (Date.now() - started < 20_000) {
-    if (child.exitCode != null) {
-      throw new Error(`worker exited early (code ${child.exitCode}):\n${stderr}`);
+    if (child.exitCode != null || child.signalCode != null) {
+      throw new Error(`worker exited early (code ${child.exitCode ?? child.signalCode}):\n${stderr}`);
+    }
+    if (!stdout.includes(listening)) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
     }
     try {
-      const response = await fetch(`http://127.0.0.1:${PORT}/health`, {
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
         signal: AbortSignal.timeout(2_000),
       });
       return { child, response, stderr: () => stderr };

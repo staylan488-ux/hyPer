@@ -324,9 +324,9 @@ describe('planSchedule', () => {
 
   describe('plannedDayForDate', () => {
     const mockSplitDays: SplitDay[] = [
-      { day_id: '1', day_name: 'Day A', exercises: [] },
-      { day_id: '2', day_name: 'Day B', exercises: [] },
-      { day_id: '3', day_name: 'Day C', exercises: [] },
+      { id: 'day-1', split_id: 'test', day_name: 'Day A', day_order: 0, exercises: [] },
+      { id: 'day-2', split_id: 'test', day_name: 'Day B', day_order: 1, exercises: [] },
+      { id: 'day-3', split_id: 'test', day_name: 'Day C', day_order: 2, exercises: [] },
     ];
 
     it('returns null for empty splitDays', () => {
@@ -372,8 +372,8 @@ describe('planSchedule', () => {
           weekdays: [1, 2, 3, 4, 5, 6],
         };
         const twoDays: SplitDay[] = [
-          { day_id: '1', day_name: 'Upper', exercises: [] },
-          { day_id: '2', day_name: 'Lower', exercises: [] },
+          { id: 'day-1', split_id: 'test', day_name: 'Upper', day_order: 0, exercises: [] },
+          { id: 'day-2', split_id: 'test', day_name: 'Lower', day_order: 1, exercises: [] },
         ];
         expect(plannedDayForDate(localDate('2024-01-01'), twoDays, schedule, 0)?.day_name).toBe('Upper');
         expect(plannedDayForDate(localDate('2024-01-02'), twoDays, schedule, 0)?.day_name).toBe('Lower');
@@ -436,8 +436,8 @@ describe('planSchedule', () => {
           weekdays: [],
         };
         const twoDays: SplitDay[] = [
-          { day_id: '1', day_name: 'Upper', exercises: [] },
-          { day_id: '2', day_name: 'Lower', exercises: [] },
+          { id: 'day-1', split_id: 'test', day_name: 'Upper', day_order: 0, exercises: [] },
+          { id: 'day-2', split_id: 'test', day_name: 'Lower', day_order: 1, exercises: [] },
         ];
         const date = localDate('2024-01-15');
 

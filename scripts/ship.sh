@@ -28,8 +28,16 @@ git reset --hard origin/main
 # gitignored so it survives reset --hard, but seed/refresh it from the stash.
 [ -f "$ENV_SEED" ] && cp "$ENV_SEED" "$BUILD_REPO/.env"
 
+echo "==> Installing locked dependencies"
+npm ci --no-audit --no-fund
+
+# Gate: a failing test or lint error stops the ship before anything reaches
+# TestFlight (set -e). eslint only, so a docs/instruction slip can't block it.
+echo "==> Running tests and lint (ship aborts on failure)"
+npm run test
+npx eslint .
+
 echo "==> Building web app"
-npm install --no-audit --no-fund
 npm run build
 
 echo "==> Syncing to iOS"

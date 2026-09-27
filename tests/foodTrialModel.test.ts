@@ -27,7 +27,7 @@ describe('Gemini + independent web food pipeline', () => {
     expect(body.store).toBe(false);
     expect(body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: 'MEDIUM' }, maxOutputTokens: 8192, responseFormat: { text: { mimeType: 'APPLICATION_JSON' } } });
     expect(body.generationConfig).not.toHaveProperty('temperature');
-    expect(body.generationConfig.responseFormat.text.schema.properties.clarification).toMatchObject({ type: 'null' });
+    expect(body.generationConfig.responseFormat.text.schema).toMatchObject({ properties: { clarification: { type: 'null' } } });
   });
   it('uses a simpler final wire grammar while enforcing bounds locally', () => {
     const schema = JSON.stringify(buildMealRequest(input).generationConfig.responseFormat.text.schema);

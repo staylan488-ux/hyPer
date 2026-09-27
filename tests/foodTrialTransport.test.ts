@@ -2,9 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.mock('@/preview/flag', () => ({ isPreviewActive: () => false, isAppSandboxActive: () => false }));
 import { interpretFoodServing, analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult } from '@/lib/foodTrial';
 afterEach(() => vi.unstubAllGlobals());
+// Typed like fetch so tests can read the request URL and body they sent.
+type FetchStub = (url: string, init: { body: string }) => Promise<Response>;
 describe('hosted food trial transport', () => {
   it('uses the hosted endpoint for text-only without worker settings and leaves review unconfirmed', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult)));
+    const fetcher = vi.fn<FetchStub>(async () => new Response(JSON.stringify(previewFoodTrialResult)));
     vi.stubGlobal('fetch', fetcher);
     const result = await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -48,7 +50,7 @@ describe('hosted food trial transport', () => {
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('clarification details');
   });
   it('marks an answered or skipped clarification as consumed for the hosted model', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult)));
+    const fetcher = vi.fn<FetchStub>(async () => new Response(JSON.stringify(previewFoodTrialResult)));
     vi.stubGlobal('fetch', fetcher);
     const hint = 'Lunch\nQuestion: What is the main food?\nAnswer: Chicken';
     const result = await analyzeFoodTrial({ images: [], hint, accessToken: 'user-token', clarificationUsed: true });
@@ -66,7 +68,7 @@ describe('hosted food trial transport', () => {
     await expect(analyzeFoodTrial({ images: [], hint: 'Unknown lunch', accessToken: 'user-token', clarificationUsed: true })).rejects.toThrow('No food could be identified');
   });
   it('rejects empty inputs before network and sends photos plus hint', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(previewFoodTrialResult)));
+    const fetcher = vi.fn<FetchStub>(async () => new Response(JSON.stringify(previewFoodTrialResult)));
     vi.stubGlobal('fetch', fetcher);
     await expect(analyzeFoodTrial({ images: [], hint: '', accessToken: 'user-token' })).rejects.toThrow('description');
     expect(fetcher).not.toHaveBeenCalled();
@@ -80,7 +82,7 @@ describe('hosted food trial transport', () => {
     saveFoodAnalysisMode('gemini');
     expect(getFoodAnalysisMode()).toBe('gemini');
     expect(stored.get('hyper.photo-worker.provider')).toBe('anthropic');
-    const fetcher = vi.fn(async () => new Response('{}'));
+    const fetcher = vi.fn<FetchStub>(async () => new Response('{}'));
     vi.stubGlobal('fetch', fetcher);
     await getFoodTrialStatus('token');
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ action: 'status' });
@@ -91,7 +93,7 @@ describe('hosted food trial transport', () => {
 describe('serving interpretation transport', () => {
   const food = { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' };
   it('sends only serving context and recomputes a returned multiplier', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ provider: 'gemini', model: previewFoodTrialResult.model,
+    const fetcher = vi.fn<FetchStub>(async () => new Response(JSON.stringify({ provider: 'gemini', model: previewFoodTrialResult.model,
       interpretation: { status: 'resolved', quantity: 6, optionId: 'defined', servings: 999, calories: 999 } })));
     vi.stubGlobal('fetch', fetcher);
     const result = await interpretFoodServing({ ...food, calories: 250 } as typeof food, 'I ate 6 pieces', 'token');
