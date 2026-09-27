@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActivitySegment, ActivitySession, Workout, WorkoutSet } from '@/types';
 import type { FinishedRun } from '@/lib/runTracker';
@@ -12,6 +12,16 @@ const supabaseMock = vi.hoisted(() => ({
 
 vi.mock('@/lib/supabase', () => ({
   supabase: supabaseMock,
+}));
+
+const whoopClientMock = vi.hoisted(() => ({
+  fetchWhoopBatchRemote: vi.fn(),
+}));
+
+vi.mock('@/lib/whoopClient', () => ({
+  fetchWhoopBatchRemote: whoopClientMock.fetchWhoopBatchRemote,
+  startWhoopConnect: vi.fn(),
+  disconnectWhoopRemote: vi.fn(),
 }));
 
 import { useAppStore } from '@/stores/appStore';
@@ -1624,5 +1634,354 @@ describe('session-only exercise substitution', () => {
     useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [original, { ...original, exercise_id: replacement.id }] } });
     await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('already in');
     expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+});
+
+// A table-aware Supabase stand-in for the WHOOP paths: every awaited query is
+// recorded and answered by `respond`, so a test can fail one specific read and
+// then assert that no destructive write followed it.
+type RecordedQuery = {
+  table: string;
+  action: 'select' | 'insert' | 'update' | 'upsert' | 'delete';
+  payload: unknown;
+  filters: Array<[string, string, unknown]>;
+  single: boolean;
+};
+type QueryResult = { data: unknown; error: { message: string } | null };
+
+function installRecordingSupabase(respond: (query: RecordedQuery) => QueryResult | undefined) {
+  const queries: RecordedQuery[] = [];
+  supabaseMock.from.mockImplementation((table: string) => {
+    const query: RecordedQuery = { table, action: 'select', payload: undefined, filters: [], single: false };
+    const run = () => {
+      queries.push(query);
+      return Promise.resolve(respond(query) ?? { data: null, error: null });
+    };
+    const builder: Record<string, unknown> = {};
+    const write = (action: RecordedQuery['action']) => (payload?: unknown) => {
+      query.action = action;
+      query.payload = payload;
+      return builder;
+    };
+    builder.insert = write('insert');
+    builder.update = write('update');
+    builder.upsert = write('upsert');
+    builder.delete = write('delete');
+    builder.select = () => builder;
+    for (const op of ['eq', 'neq', 'in', 'is', 'gte', 'lte', 'order', 'limit', 'abortSignal']) {
+      builder[op] = (column: string, value?: unknown) => {
+        query.filters.push([op, column, value]);
+        return builder;
+      };
+    }
+    builder.single = () => {
+      query.single = true;
+      return run();
+    };
+    builder.maybeSingle = builder.single;
+    builder.then = (onFulfilled: (value: QueryResult) => unknown, onRejected?: (reason: unknown) => unknown) =>
+      run().then(onFulfilled, onRejected);
+    return builder;
+  });
+  return {
+    queries,
+    writes: () => queries.filter((query) => query.action !== 'select'),
+  };
+}
+
+function hasFilter(query: RecordedQuery, op: string, column: string): boolean {
+  return query.filters.some(([filterOp, filterColumn]) => filterOp === op && filterColumn === column);
+}
+
+type WhoopRead = 'watermark' | 'segmentsWindow' | 'sessionsWindow' | 'sessionsByIds' | 'upsert';
+
+function whoopReadKind(query: RecordedQuery): WhoopRead | null {
+  if (query.table === 'activity_segments' && query.action === 'upsert') return 'upsert';
+  if (query.action !== 'select') return null;
+  if (query.table === 'activity_segments' && query.single) return 'watermark';
+  if (query.table === 'activity_segments' && hasFilter(query, 'gte', 'started_at')) return 'segmentsWindow';
+  if (query.table === 'activity_sessions' && hasFilter(query, 'gte', 'started_at')) return 'sessionsWindow';
+  if (query.table === 'activity_sessions' && hasFilter(query, 'in', 'id')) return 'sessionsByIds';
+  return null;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function makeActivitySession(overrides: Partial<ActivitySession> & { id: string }): ActivitySession {
+  const startedAt = new Date(Date.now() - 3 * HOUR_MS).toISOString();
+  return {
+    user_id: 'user-1',
+    activity_type: 'run',
+    custom_type: null,
+    title: null,
+    date: startedAt.slice(0, 10),
+    started_at: startedAt,
+    ended_at: new Date(Date.parse(startedAt) + 30 * 60 * 1000).toISOString(),
+    duration_seconds: 1800,
+    source: 'whoop',
+    notes: null,
+    strain: 10,
+    avg_hr: 150,
+    max_hr: 180,
+    energy_kcal: 400,
+    distance_m: null,
+    auto_grouped: true,
+    user_edited: false,
+    dismissed_at: null,
+    created_at: startedAt,
+    updated_at: startedAt,
+    ...overrides,
+  };
+}
+
+function makeWhoopSegment(overrides: Partial<ActivitySegment> & { id: string }): ActivitySegment {
+  const startedAt = new Date(Date.now() - 3 * HOUR_MS).toISOString();
+  return {
+    user_id: 'user-1',
+    session_id: null,
+    source: 'whoop',
+    external_id: `wf-${overrides.id}`,
+    sport: 'running',
+    started_at: startedAt,
+    ended_at: new Date(Date.parse(startedAt) + 30 * 60 * 1000).toISOString(),
+    duration_seconds: 1800,
+    strain: 10,
+    avg_hr: 150,
+    max_hr: 180,
+    energy_kcal: 400,
+    distance_m: null,
+    raw: null,
+    created_at: startedAt,
+    updated_at: startedAt,
+    ...overrides,
+  };
+}
+
+describe('WHOOP sync never treats a failed read as "no data"', () => {
+  const readFailure = { data: null, error: { message: 'network request failed' } };
+
+  function installWhoopDb(opts: {
+    fail?: WhoopRead;
+    segments?: ActivitySegment[];
+    sessions?: ActivitySession[];
+    byIds?: ActivitySession[];
+  }) {
+    const watermark = { started_at: new Date(Date.now() - 24 * HOUR_MS).toISOString() };
+    return installRecordingSupabase((query) => {
+      const kind = whoopReadKind(query);
+      if (kind && kind === opts.fail) return readFailure;
+      switch (kind) {
+        case 'watermark': return { data: watermark, error: null };
+        case 'segmentsWindow': return { data: opts.segments ?? [], error: null };
+        case 'sessionsWindow': return { data: opts.sessions ?? [], error: null };
+        case 'sessionsByIds': return { data: opts.byIds ?? [], error: null };
+        case 'upsert': {
+          const rows = query.payload as Array<Record<string, unknown>>;
+          return { data: rows.map((row, i) => ({ id: `upserted-${i}`, session_id: null, ...row })), error: null };
+        }
+        default: break;
+      }
+      if (query.table === 'activity_sessions' && query.action === 'insert') {
+        return { data: { ...(query.payload as object), id: 'created-session' }, error: null };
+      }
+      return undefined;
+    });
+  }
+
+  beforeEach(() => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    whoopClientMock.fetchWhoopBatchRemote.mockReset();
+    whoopClientMock.fetchWhoopBatchRemote.mockResolvedValue({ records: [], nextToken: null });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('imports a new WHOOP workout on a healthy sync', async () => {
+    const db = installWhoopDb({ segments: [makeWhoopSegment({ id: 'seg-new' })] });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toMatchObject({ created: 1, deleted: 0 });
+    const inserted = db.writes().filter((q) => q.table === 'activity_sessions' && q.action === 'insert');
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].payload).toMatchObject({ user_id: 'user-1', source: 'whoop', auto_grouped: true });
+    const linked = db.writes().filter((q) => q.table === 'activity_segments' && q.action === 'update');
+    expect(linked).toHaveLength(1);
+    expect(linked[0].payload).toMatchObject({ session_id: 'created-session' });
+  });
+
+  it('aborts without deleting sessions when the segment window read fails', async () => {
+    const db = installWhoopDb({
+      fail: 'segmentsWindow',
+      sessions: [makeActivitySession({ id: 'auto-whoop' })],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('aborts without creating or relinking when the session window read fails', async () => {
+    const db = installWhoopDb({
+      fail: 'sessionsWindow',
+      segments: [
+        // enriched GPS host and a dismissed tombstone, hours apart
+        makeWhoopSegment({ id: 'seg-gps', session_id: 'gps-host' }),
+        makeWhoopSegment({
+          id: 'seg-dismissed',
+          session_id: 'dismissed-whoop',
+          started_at: new Date(Date.now() - 8 * HOUR_MS).toISOString(),
+          ended_at: new Date(Date.now() - 7.5 * HOUR_MS).toISOString(),
+        }),
+      ],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('aborts without touching a straddling host when its by-id read fails', async () => {
+    const db = installWhoopDb({
+      fail: 'sessionsByIds',
+      segments: [makeWhoopSegment({ id: 'seg-host', session_id: 'host-before-window' })],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('aborts before reconciling when the segment upsert fails', async () => {
+    whoopClientMock.fetchWhoopBatchRemote.mockResolvedValue({
+      records: [{
+        id: 'wf-new',
+        sport_name: 'running',
+        start: new Date(Date.now() - 2 * HOUR_MS).toISOString(),
+        end: new Date(Date.now() - 1.5 * HOUR_MS).toISOString(),
+        timezone_offset: '+00:00',
+        score_state: 'SCORED',
+        score: { strain: 9, average_heart_rate: 150, max_heart_rate: 175, kilojoule: 1500 },
+      }],
+      nextToken: null,
+    });
+    const db = installWhoopDb({
+      fail: 'upsert',
+      sessions: [makeActivitySession({ id: 'auto-whoop' })],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes().filter((q) => q.action !== 'upsert')).toEqual([]);
+  });
+
+  it('aborts instead of widening the window when the watermark read fails', async () => {
+    const db = installWhoopDb({ fail: 'watermark' });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(whoopClientMock.fetchWhoopBatchRemote).not.toHaveBeenCalled();
+    expect(db.writes()).toEqual([]);
+  });
+});
+
+describe('saveTrackedRun WHOOP absorb failures', () => {
+  const run: FinishedRun = {
+    runId: 'absorb-run',
+    mode: 'free',
+    startedAtMs: Date.parse('2026-07-12T14:00:00.000Z'),
+    endedAtMs: Date.parse('2026-07-12T14:30:00.000Z'),
+    totalDistanceM: 5000,
+    elapsedS: 1800,
+    laps: [],
+    reps: [],
+  };
+  const gpsSession = makeActivitySession({
+    id: 'new-gps-session',
+    source: 'gps',
+    auto_grouped: false,
+    started_at: '2026-07-12T14:00:00.000Z',
+    ended_at: '2026-07-12T14:30:00.000Z',
+    strain: null,
+    avg_hr: null,
+    max_hr: null,
+    energy_kcal: null,
+  });
+  const whoopCopy = makeActivitySession({
+    id: 'whoop-copy',
+    started_at: '2026-07-12T14:01:00.000Z',
+    ended_at: '2026-07-12T14:29:00.000Z',
+  });
+  const gpsSegment = makeWhoopSegment({ id: 'gps-seg', source: 'gps', external_id: 'gps:absorb-run:1' });
+
+  beforeEach(() => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    useAppStore.setState({
+      createActivitySession: vi.fn().mockResolvedValue(gpsSession),
+      upsertActivitySegments: vi.fn().mockResolvedValue([gpsSegment]),
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const isAbsorbWindowRead = (q: RecordedQuery) =>
+    q.table === 'activity_sessions' && q.action === 'select' && hasFilter(q, 'gte', 'started_at');
+  const isAbsorbRelink = (q: RecordedQuery) =>
+    q.table === 'activity_segments' && q.action === 'update' && hasFilter(q, 'eq', 'session_id');
+
+  it('keeps the saved run and skips the absorb when the window read fails', async () => {
+    const db = installRecordingSupabase((q) => {
+      if (isAbsorbWindowRead(q)) return { data: null, error: { message: 'timeout' } };
+      return undefined;
+    });
+
+    const saved = await useAppStore.getState().saveTrackedRun(run);
+
+    expect(saved).toEqual(gpsSession);
+    expect(db.writes().filter(isAbsorbRelink)).toEqual([]);
+    expect(db.writes().filter((q) => q.table === 'activity_sessions')).toEqual([]);
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it('never deletes the WHOOP copy when moving its segments fails', async () => {
+    const db = installRecordingSupabase((q) => {
+      if (isAbsorbWindowRead(q)) return { data: [gpsSession, whoopCopy], error: null };
+      if (isAbsorbRelink(q)) return { data: null, error: { message: 'timeout' } };
+      return undefined;
+    });
+
+    const saved = await useAppStore.getState().saveTrackedRun(run);
+
+    expect(saved).toEqual(gpsSession);
+    expect(db.writes().filter(isAbsorbRelink)).toHaveLength(1);
+    expect(db.writes().filter((q) => q.table === 'activity_sessions')).toEqual([]);
+  });
+
+  it('absorbs the WHOOP copy when every step succeeds', async () => {
+    const db = installRecordingSupabase((q) => {
+      if (isAbsorbWindowRead(q)) return { data: [gpsSession, whoopCopy], error: null };
+      if (q.table === 'activity_sessions' && q.action === 'update') {
+        return { data: { ...gpsSession, ...(q.payload as object) }, error: null };
+      }
+      return undefined;
+    });
+
+    const saved = await useAppStore.getState().saveTrackedRun(run);
+
+    expect(saved).toMatchObject({ id: gpsSession.id, strain: whoopCopy.strain });
+    const deletes = db.writes().filter((q) => q.table === 'activity_sessions' && q.action === 'delete');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].filters).toContainEqual(['eq', 'id', whoopCopy.id]);
   });
 });

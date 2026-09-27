@@ -1794,22 +1794,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     // fetches raw pages through the whoop-sync Edge Function
     const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
 
-    // watermark: newest whoop segment already imported
-    const { data: latest } = await supabase
-      .from('activity_segments')
-      .select('started_at')
-      .eq('user_id', user.id)
-      .eq('source', 'whoop')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
+    // Every port below throws on a failed read or write rather than returning
+    // []: an empty read looks like "WHOOP has nothing here", and reconciling
+    // against it deletes, duplicates or un-dismisses activities. A throw aborts
+    // the run before any destructive step and surfaces as "Sync unavailable".
     try {
+      // watermark: newest whoop segment already imported. A failed read must
+      // not fall back to the 30-day first-sync window
+      const { data: latest, error: latestError } = await supabase
+        .from('activity_segments')
+        .select('started_at')
+        .eq('user_id', user.id)
+        .eq('source', 'whoop')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestError) throw latestError;
+
       const result = await runWhoopSync(
         {
           fetchBatch,
           data: {
-            upsertSegments: (inputs) => get().upsertActivitySegments(inputs),
+            // the shared action returns [] on error (saveTrackedRun relies on
+            // that), so only this port turns a short result into a failure
+            upsertSegments: async (inputs) => {
+              const rows = await get().upsertActivitySegments(inputs);
+              if (inputs.length > 0 && rows.length === 0) throw new Error('WHOOP segment upsert failed');
+              return rows;
+            },
             fetchWhoopSegmentsInWindow: async (fromIso, toIso) => {
               const { data, error } = await supabase
                 .from('activity_segments')
@@ -1821,7 +1833,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 .order('started_at', { ascending: true });
               if (error) {
                 console.error('Error fetching whoop segments:', error);
-                return [];
+                throw error;
               }
               return (data || []) as ActivitySegment[];
             },
@@ -1837,7 +1849,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 .lte('started_at', toIso);
               if (error) {
                 console.error('Error fetching sessions in window:', error);
-                return [];
+                throw error;
               }
               return (data || []) as ActivitySession[];
             },
@@ -1850,7 +1862,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 .in('id', ids);
               if (error) {
                 console.error('Error fetching sessions by ids:', error);
-                return [];
+                throw error;
               }
               return (data || []) as ActivitySession[];
             },
@@ -1863,7 +1875,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                 .update({ session_id: sessionId, updated_at: new Date().toISOString() })
                 .eq('user_id', user.id)
                 .in('id', segmentIds);
-              if (error) console.error('Error linking segments to session:', error);
+              if (error) {
+                console.error('Error linking segments to session:', error);
+                throw error;
+              }
             },
           },
         },
@@ -2022,13 +2037,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // cross-source merge: if WHOOP already auto-imported this same run, absorb
     // it — its segments and strain/HR/kcal move onto the recording we just made
+    // The run itself is already saved, so a failure here logs and skips the
+    // merge instead of throwing: the WHOOP copy stays as a separate activity.
     if (session.started_at && session.ended_at) {
-      const { data: windowSessions } = await supabase
+      const { data: windowSessions, error: windowError } = await supabase
         .from('activity_sessions')
         .select('*')
         .eq('user_id', user.id)
         .gte('started_at', new Date(Date.parse(session.started_at) - 6 * 60 * 60 * 1000).toISOString())
         .lte('started_at', session.ended_at);
+      if (windowError) {
+        console.error('Error checking for a WHOOP copy of the run:', windowError);
+        return session;
+      }
 
       const absorbable = findAbsorbableWhoopSession(
         session.started_at,
@@ -2037,11 +2058,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
 
       if (absorbable) {
-        await supabase
+        const { error: absorbError } = await supabase
           .from('activity_segments')
           .update({ session_id: session.id, updated_at: new Date().toISOString() })
           .eq('user_id', user.id)
           .eq('session_id', absorbable.id);
+        // deleting the copy with its segments still attached would unlink them
+        // (ON DELETE SET NULL) and the next WHOOP sync would recreate it
+        if (absorbError) {
+          console.error('Error moving WHOOP segments onto the run:', absorbError);
+          return session;
+        }
 
         const enriched = await get().updateActivitySession(session.id, {
           strain: absorbable.strain,

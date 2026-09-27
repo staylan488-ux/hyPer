@@ -384,4 +384,168 @@ describe('runWhoopSync', () => {
     expect(data.sessions[0].id).toBe('host-gps');
     expect(data.segments.find((s) => s.external_id === 'wf-lap-1')?.session_id).toBe('host-gps');
   });
+
+});
+
+function sessionFixture(overrides: Partial<ActivitySession> & { id: string }): ActivitySession {
+  return {
+    user_id: 'user-1',
+    activity_type: 'run',
+    custom_type: null,
+    title: null,
+    date: '2026-07-07',
+    started_at: isoAt(0),
+    ended_at: isoAt(30 * 60),
+    duration_seconds: 30 * 60,
+    source: 'whoop',
+    notes: null,
+    strain: null,
+    avg_hr: null,
+    max_hr: null,
+    energy_kcal: null,
+    distance_m: null,
+    auto_grouped: true,
+    user_edited: false,
+    dismissed_at: null,
+    created_at: NOW.toISOString(),
+    updated_at: NOW.toISOString(),
+    ...overrides,
+  };
+}
+
+function segmentFixture(overrides: Partial<ActivitySegment> & { id: string }): ActivitySegment {
+  return {
+    user_id: 'user-1',
+    session_id: null,
+    source: 'whoop',
+    external_id: `wf-${overrides.id}`,
+    sport: 'running',
+    started_at: isoAt(0),
+    ended_at: isoAt(30 * 60),
+    duration_seconds: 30 * 60,
+    strain: 8,
+    avg_hr: 150,
+    max_hr: 175,
+    energy_kcal: 300,
+    distance_m: null,
+    raw: null,
+    created_at: isoAt(0),
+    updated_at: isoAt(0),
+    ...overrides,
+  };
+}
+
+function withData(
+  ports: WhoopSyncPorts,
+  overrides: Partial<WhoopSyncPorts['data']>,
+): WhoopSyncPorts {
+  return { ...ports, data: { ...ports.data, ...overrides } };
+}
+
+const readError = () => Promise.reject(new Error('network request failed'));
+
+function linkSnapshot(data: FakeData) {
+  return data.segments.map((s) => [s.id, s.session_id]);
+}
+
+describe('runWhoopSync when a port fails', () => {
+  it('rejects without deleting anything when the segment window read fails', async () => {
+    const data = new FakeData();
+    await runWhoopSync(makePorts(data, [[1, 2, 3].map((n) => lapRecord(n))]), {});
+    const sessionsBefore = structuredClone(data.sessions);
+    const linksBefore = linkSnapshot(data);
+
+    const ports = withData(makePorts(data, [[]]), { fetchWhoopSegmentsInWindow: readError });
+
+    await expect(runWhoopSync(ports, {})).rejects.toThrow('network request failed');
+    expect(data.sessions).toEqual(sessionsBefore);
+    expect(linkSnapshot(data)).toEqual(linksBefore);
+  });
+
+  it('rejects without creating or relinking when the session window read fails', async () => {
+    const data = new FakeData();
+    // a GPS run WHOOP already enriched, and a dismissed WHOOP tombstone
+    data.sessions.push(
+      sessionFixture({ id: 'gps-host', source: 'gps', auto_grouped: false, strain: 8 }),
+      sessionFixture({
+        id: 'dismissed',
+        started_at: isoAt(5 * 3600),
+        ended_at: isoAt(5 * 3600 + 1800),
+        dismissed_at: NOW.toISOString(),
+      }),
+    );
+    data.segments.push(
+      segmentFixture({ id: 'seg-gps', session_id: 'gps-host' }),
+      segmentFixture({
+        id: 'seg-dismissed',
+        session_id: 'dismissed',
+        started_at: isoAt(5 * 3600),
+        ended_at: isoAt(5 * 3600 + 1800),
+      }),
+    );
+    const sessionsBefore = structuredClone(data.sessions);
+
+    const ports = withData(makePorts(data, [[]]), { fetchSessionsInWindow: readError });
+
+    await expect(runWhoopSync(ports, {})).rejects.toThrow('network request failed');
+    expect(data.sessions).toEqual(sessionsBefore);
+    expect(data.segments.find((s) => s.id === 'seg-gps')?.session_id).toBe('gps-host');
+    expect(data.segments.find((s) => s.id === 'seg-dismissed')?.session_id).toBe('dismissed');
+  });
+
+  it('rejects and leaves a straddling host its segments when the by-id read fails', async () => {
+    const data = new FakeData();
+    data.sessions.push(sessionFixture({
+      id: 'host-gps',
+      source: 'gps',
+      auto_grouped: false,
+      started_at: '2026-07-07T12:30:00.000Z',
+      ended_at: '2026-07-07T14:10:00.000Z',
+    }));
+    data.segments.push(segmentFixture({ id: 'seg-host', session_id: 'host-gps', ended_at: isoAt(130) }));
+
+    const ports = withData(makePorts(data, [[]]), { fetchSessionsByIds: readError });
+
+    await expect(runWhoopSync(ports, { sinceIso: '2026-07-14T13:00:00.000Z' }))
+      .rejects.toThrow('network request failed');
+    expect(data.sessions.map((s) => s.id)).toEqual(['host-gps']);
+    expect(data.segments.find((s) => s.id === 'seg-host')?.session_id).toBe('host-gps');
+  });
+
+  it('converges on the next healthy sync after a link fails mid-apply', async () => {
+    const data = new FakeData();
+    const laps = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => lapRecord(n));
+    const healthy = data.ports();
+    let linkCalls = 0;
+    const flaky = withData(makePorts(data, [[...laps, tennisRecord]]), {
+      linkSegmentsToSession: async (segmentIds, sessionId) => {
+        linkCalls += 1;
+        if (linkCalls === 2) throw new Error('link failed');
+        await healthy.linkSegmentsToSession(segmentIds, sessionId);
+      },
+    });
+
+    await expect(runWhoopSync(flaky, {})).rejects.toThrow('link failed');
+
+    await runWhoopSync(makePorts(data, [[...laps, tennisRecord]]), {});
+
+    expect(data.sessions.map((s) => s.activity_type).sort()).toEqual(['interval_run', 'tennis']);
+    for (const session of data.sessions) {
+      expect(data.segments.some((s) => s.session_id === session.id)).toBe(true);
+    }
+    expect(data.segments.every((s) => s.session_id != null)).toBe(true);
+    const interval = data.sessions.find((s) => s.activity_type === 'interval_run');
+    expect(data.segments.filter((s) => s.session_id === interval?.id)).toHaveLength(8);
+  });
+
+  it('never deletes sessions when the segment window comes back empty', async () => {
+    const data = new FakeData();
+    data.sessions.push(sessionFixture({ id: 'auto-whoop' }));
+    const ports = withData(makePorts(data, [[]]), { fetchWhoopSegmentsInWindow: async () => [] });
+
+    const result = await runWhoopSync(ports, {});
+
+    expect(result.deleted).toBe(0);
+    expect(data.sessions.map((s) => s.id)).toEqual(['auto-whoop']);
+  });
 });
