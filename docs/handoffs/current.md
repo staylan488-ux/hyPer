@@ -23,9 +23,20 @@ and production actions are not authorized.
   - Motion light on floating glass and the token (deviceorientation where
     it needs no prompt, otherwise scroll).
   - Flat fallbacks without WebGL.
-- Next: phase 4 (native glass: rest dock, tab bar polish, glass toasts,
-  CoreMotion light via `pushMotionLight`). **Wait for the user's review of the
-  phase 3 preview first.**
+- The user approved phase 3 ("Go for it") on 2026-09-26.
+- Phase 4 (`feat/kinetic-native-glass`, stacked on phase 3):
+  - A SwiftUI iOS 26 glass rest dock: rolling Fraunces countdown, a progress
+    ring around the pause control, Skip/Continue morphing via
+    GlassEffectContainer.
+  - Native glass toasts.
+  - Tab bar polish: Geist, 22pt radius, animated materialise/dematerialise.
+  - A CoreMotion attitude stream feeding the motion light.
+  - Fonts: the user approved downloading Geist Medium and Fraunces 72pt
+    Light (OFL) from Google Fonts into `public/fonts/native`.
+  - Verified in the iOS 26.5 simulator via `/preview/glass` in light and dark
+    (running, warning, completed, toast, tab bar).
+  - Physical-device feel, VoiceOver and real workout flows on device are
+    not yet exercised.
 
 Verification so far: tests, lint and build pass (1074 tests). Browser
 preview at 390×844 covered the charts, scrub, scroll-edge band, drum wheels,

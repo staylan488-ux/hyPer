@@ -20,6 +20,7 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
     private var newestRevision = -1
     private var visibilityGeneration = 0
     private var dock: UIView?
+    private var dockShown = false
     private var buttons: [String: UIButton] = [:]
     private var desiredVisible = false
     private var keyboardVisible = false
@@ -121,12 +122,18 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @available(iOS 26.0, *)
-    private func createDock(in host: UIViewController) {
+    private func makeGlass() -> UIGlassEffect {
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
-        let glass = UIVisualEffectView(effect: effect)
+        return effect
+    }
+
+    @available(iOS 26.0, *)
+    private func createDock(in host: UIViewController) {
+        let glass = UIVisualEffectView(effect: makeGlass())
         glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.cornerConfiguration = .capsule(maximumRadius: 26)
+        // Matches the web navigation's --radius-nav (22px).
+        glass.cornerConfiguration = .capsule(maximumRadius: 22)
         glass.clipsToBounds = true
         glass.isHidden = true
         glass.accessibilityIdentifier = "hyper-native-glass-navigation"
@@ -189,7 +196,7 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
             // a second effect layer or any hand-painted glass approximation.
             configuration.background.backgroundColor = active ? UIColor.label.withAlphaComponent(0.08) : .clear
             configuration.background.cornerRadius = 20
-            let font = UIFont(name: "Geist-Medium", size: 11) ?? UIFont.systemFont(ofSize: 11, weight: .medium)
+            let font = HyperFonts.sans(11)
             configuration.attributedTitle = AttributedString(NSAttributedString(
                 string: tab.title,
                 attributes: [.font: font, .kern: 1.1]
@@ -226,7 +233,8 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
         for name in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.appInactive = true
-                self?.dock?.isHidden = true
+                // Immediate: the app switcher snapshot must not catch a half-faded bar.
+                self?.refreshVisibility(animated: false)
             })
         }
         observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -255,11 +263,50 @@ final class HyperGlassNavigationPlugin: CAPPlugin, CAPBridgedPlugin {
         return true
     }
 
-    private func refreshVisibility() {
+    private func refreshVisibility(animated: Bool = true) {
         // UIKit presents native controllers above this host overlay. They cover
         // the dock naturally; the tap guard also refuses navigation underneath
         // a presentation. Web sheets use the bridge's explicit visible state.
-        dock?.isHidden = !canShowDock()
+        guard let glass = dock as? UIVisualEffectView else { return }
+        let show = canShowDock()
+        let animate = animated && !UIAccessibility.isReduceMotionEnabled && glass.window != nil
+        guard show != dockShown || (!animate && glass.isHidden == show) else { return }
+        dockShown = show
+        guard #available(iOS 26.0, *) else {
+            glass.isHidden = !show
+            return
+        }
+        if show {
+            glass.isHidden = false
+            guard animate else {
+                glass.effect = makeGlass()
+                glass.contentView.alpha = 1
+                glass.transform = .identity
+                return
+            }
+            // Setting the effect inside an animation materialises the glass.
+            glass.effect = nil
+            glass.contentView.alpha = 0
+            glass.transform = CGAffineTransform(translationX: 0, y: 10).scaledBy(x: 0.96, y: 0.96)
+            UIView.animate(withDuration: 0.46, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                glass.effect = self.makeGlass()
+                glass.contentView.alpha = 1
+                glass.transform = .identity
+            }
+        } else {
+            guard animate else {
+                glass.isHidden = true
+                return
+            }
+            UIView.animate(withDuration: 0.24, delay: 0, options: [.beginFromCurrentState, .curveEaseIn]) {
+                glass.effect = nil
+                glass.contentView.alpha = 0
+                glass.transform = CGAffineTransform(translationX: 0, y: 8).scaledBy(x: 0.97, y: 0.97)
+            } completion: { _ in
+                // A show that arrived mid-fade owns the view now.
+                if !self.dockShown { glass.isHidden = true }
+            }
+        }
     }
 
     deinit {

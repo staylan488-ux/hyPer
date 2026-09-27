@@ -34,7 +34,9 @@ tokens; an already approved direction does not need another design exploration.
 - Use the dedicated radius tokens: controls 11px, sheets 20px, navigation 22px.
   Ordinary content containers retain square corners.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
-  web fallback elsewhere. Workouts open as a movement list; tapping a movement
+  web fallback elsewhere. On iOS 26 the rest bar and status toasts are also
+  native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
+  the web keeps all timer, save and preference behavior. Workouts open as a movement list; tapping a movement
   expands its details and inline set entry in place, with an explicit collapse.
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
