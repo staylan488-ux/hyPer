@@ -520,12 +520,25 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc private func handleRunControl(_ notification: Notification) {
         guard
-            recording,
             let action = notification.userInfo?["action"] as? String,
             RunControlAction(rawValue: action) != nil
         else { return }
         let timestampMs = notification.userInfo?["timestampMs"] as? Double
             ?? Date().timeIntervalSince1970 * 1_000
+        // The observer runs on the posting thread. Controls touch `recording`,
+        // the control sequence and UIKit/CoreLocation teardown, which are all
+        // serialized on main, so hop there if a poster was not already on it.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyRunControl(action: action, timestampMs: timestampMs)
+            }
+            return
+        }
+        applyRunControl(action: action, timestampMs: timestampMs)
+    }
+
+    private func applyRunControl(action: String, timestampMs: Double) {
+        guard recording else { return }
         let defaults = UserDefaults.standard
         let controlSequence = defaults.integer(forKey: DefaultsKey.controlSequence) + 1
         defaults.set(controlSequence, forKey: DefaultsKey.controlSequence)

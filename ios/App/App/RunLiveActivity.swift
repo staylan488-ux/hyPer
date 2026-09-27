@@ -63,11 +63,13 @@ struct RunControlIntent: LiveActivityIntent {
             }
         }
 
-        NotificationCenter.default.post(
-            name: .hyperRunControl,
-            object: nil,
-            userInfo: ["action": control.rawValue, "timestampMs": now.timeIntervalSince1970 * 1_000]
-        )
+        // perform() runs off the main actor. Deliver on main so the plugin's
+        // observer runs serialized with the location delegate, and still
+        // before this intent updates or ends the activity.
+        let userInfo: [String: Any] = ["action": control.rawValue, "timestampMs": now.timeIntervalSince1970 * 1_000]
+        await MainActor.run {
+            NotificationCenter.default.post(name: .hyperRunControl, object: nil, userInfo: userInfo)
+        }
 
         for activity in Activity<RunActivityAttributes>.activities {
             var state = activity.content.state
