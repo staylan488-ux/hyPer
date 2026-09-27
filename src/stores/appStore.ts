@@ -56,10 +56,7 @@ import type {
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   CLEARED_WHOOP_STATS,
-  searchWhoopForWorkout,
   whoopStatsFor,
-  workoutTimeWindow,
-  type WhoopSearchResult,
 } from '@/lib/workoutWhoop';
 
 const WORKOUT_MODE_STORAGE_KEY = 'program:workout-mode';
@@ -165,7 +162,6 @@ interface AppState {
   nutritionProfile: NutritionProfile | null;
   volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
-  loading: boolean;
 
   // Split actions
   fetchSplits: () => Promise<void>;
@@ -220,8 +216,6 @@ interface AppState {
   disconnectWhoop: () => Promise<void>;
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
 
-  /** The WHOOP record that covers a lifting workout, if one is unclaimed. */
-  findWhoopForWorkout: (workout: Workout) => Promise<WhoopSearchResult>;
   /** Copy a WHOOP record's physiology onto a workout and tombstone the record. */
   attachWhoopToWorkout: (workout: Workout, session: ActivitySession) => Promise<Workout | null>;
   /** Undo that: clear the stats and return the WHOOP record to the activity list. */
@@ -237,7 +231,6 @@ interface AppState {
   clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
   removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
-  reorderFlexibleExercises: (exerciseIds: string[]) => Promise<void>;
   fetchFlexTemplates: () => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
   renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
@@ -256,7 +249,6 @@ interface AppState {
 
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
-  updateVolumeLandmark: (muscleGroup: MuscleGroup, updates: Partial<VolumeLandmark>) => Promise<void>;
   calculateWeeklyVolume: () => Promise<void>;
 }
 
@@ -271,7 +263,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   nutritionProfile: null,
   volumeLandmarks: [],
   weeklyVolume: [],
-  loading: false,
   whoopConnection: null,
 
   fetchSplits: async () => {
@@ -1295,43 +1286,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  reorderFlexibleExercises: async (exerciseIds) => {
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
-
-    const orderedMap = new Map(exerciseIds.map((id, index) => [id, index]));
-
-    const nextItems = [...currentWorkoutDayPlan.items]
-      .sort((a, b) => {
-        const orderA = orderedMap.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-        const orderB = orderedMap.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-        if (orderA !== orderB) return orderA - orderB;
-        return a.order - b.order;
-      })
-      .map((item, index) => ({ ...item, order: index }));
-
-    const { data: updatedPlan, error: planError } = await supabase
-      .from('workout_day_plans')
-      .update({ items: nextItems })
-      .eq('id', currentWorkoutDayPlan.id)
-      .select('id, workout_id, day_label, items')
-      .single();
-
-    if (planError || !updatedPlan) {
-      if (planError) console.error('Error reordering flexible exercises:', planError);
-      return;
-    }
-
-    set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
-    });
-  },
-
   saveFlexibleTemplateFromCurrentWorkout: async () => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
     const { data: { user } } = await supabase.auth.getUser();
@@ -1877,30 +1831,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error running whoop sync:', error);
       return null;
     }
-  },
-
-  findWhoopForWorkout: async (workout) => {
-    const empty = { match: null, reason: 'no_whoop_activities' as const, whoopCount: 0, bestRatio: 0 };
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return empty;
-
-    const window = workoutTimeWindow(workout);
-    if (!window) return { match: null, reason: 'no_window' as const, whoopCount: 0, bestRatio: 0 };
-
-    // a generous fetch window; findWhoopMatchForWorkout does the real filtering
-    const { data, error } = await supabase
-      .from('activity_sessions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('source', 'whoop')
-      .gte('started_at', new Date(window.startMs - 12 * 60 * 60 * 1000).toISOString())
-      .lte('started_at', new Date(window.endMs + 12 * 60 * 60 * 1000).toISOString());
-
-    if (error) {
-      console.error('Error looking for a WHOOP record for this workout:', error);
-      return empty;
-    }
-    return searchWhoopForWorkout(workout, (data || []) as ActivitySession[]);
   },
 
   attachWhoopToWorkout: async (workout, session) => {
@@ -2841,22 +2771,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data) {
       set({ volumeLandmarks: data });
     }
-  },
-
-  updateVolumeLandmark: async (muscleGroup, updates) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from('volume_landmarks')
-      .upsert({
-        user_id: user.id,
-        muscle_group: muscleGroup,
-        ...updates,
-      });
-
-    await get().fetchVolumeLandmarks();
-    await get().calculateWeeklyVolume();
   },
 
   calculateWeeklyVolume: async () => {
