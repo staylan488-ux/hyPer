@@ -71,6 +71,9 @@ export function FxLayer() {
         last = 0;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         canvas.style.visibility = 'hidden';
+        // Release the full-screen backing store; the next burst refits it.
+        canvas.width = 0;
+        canvas.height = 0;
       }
     };
 
@@ -90,11 +93,15 @@ export function FxLayer() {
       if (document.visibilityState !== 'hidden') return;
       particles = [];
     };
-    window.addEventListener('resize', fit);
+    // A hidden canvas is refitted when the next burst starts.
+    const onResize = () => {
+      if (canvasRef.current?.style.visibility === 'visible') fit();
+    };
+    window.addEventListener('resize', onResize);
     document.addEventListener('visibilitychange', onHidden);
     return () => {
       unsubscribe();
-      window.removeEventListener('resize', fit);
+      window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onHidden);
       if (frame) cancelAnimationFrame(frame);
     };
