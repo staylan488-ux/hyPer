@@ -21,7 +21,7 @@ import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
 import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
-import { shouldBlockSettingsExit, targetModeLabel } from '@/lib/settingsUx';
+import { shouldBlockSettingsExit, targetModeLabel, targetSummaryLabel } from '@/lib/settingsUx';
 import { getNutritionProfile } from '@/lib/nutritionProfile';
 import { isPreviewActive, isAppSandboxActive } from '@/preview/flag';
 import '@/components/settings/settings.css';
@@ -487,10 +487,7 @@ export function Settings() {
   const fetchSavedMeals = useCallback(async () => {
     setLoadingSavedMeals(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      if (!user?.id) {
         setSavedMeals([]);
         return;
       }
@@ -534,7 +531,7 @@ export function Settings() {
     } finally {
       setLoadingSavedMeals(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchSavedMeals();
@@ -548,10 +545,12 @@ export function Settings() {
   }, [loadingSavedMeals, savedMeals.length, mealManagerError]);
 
   const openManageMeals = async () => {
+    // The mount fetch already loaded (or is loading) this list; reload only after an error.
+    const hadError = mealManagerError !== null;
     go('/settings/meals');
     setEditingMealId(null);
     clearMealManagerFeedback();
-    await fetchSavedMeals();
+    if (hadError) await fetchSavedMeals();
   };
 
   const beginEditingMeal = (meal: SavedMeal, replacing = false) => {
@@ -638,10 +637,7 @@ export function Settings() {
 
     setSavingMealEdit(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      if (!user?.id) {
         setMealManagerError('Please sign in again to save meal edits.');
         return;
       }
@@ -678,10 +674,7 @@ export function Settings() {
       return;
 
     clearMealManagerFeedback();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    if (!user?.id) {
       setMealManagerError('Please sign in again to manage meals.');
       return;
     }
@@ -985,14 +978,11 @@ export function Settings() {
       : latestBodyWeight
         ? `${formatWeight(latestBodyWeight.kilograms, weightUnit)} ${weightUnit}`
         : 'No weigh-ins yet';
-  const targetSummary =
-    targetLoadState === 'loading'
-      ? 'Loading targets…'
-      : targetLoadState === 'error'
-        ? 'Could not load targets'
-        : macroTarget
-          ? `${baseMacros.calories.toLocaleString()} kcal · ${modeLabel}`
-          : 'Starting defaults · not saved';
+  const targetSummary = targetSummaryLabel(
+    targetLoadState,
+    macroTarget ? baseMacros.calories : null,
+    modeLabel,
+  );
   const feedback = (
     <div aria-live="polite">
       {healthWeightMessage && <p className="t-body mt-3">{healthWeightMessage}</p>}
@@ -1208,7 +1198,7 @@ export function Settings() {
       {page === 'targets' && (
         <>
           <p className="t-body mb-4">
-            {targetLoadState === 'loading'
+            {targetLoadState === 'loading' && !macroTarget
               ? 'Loading targets…'
               : macroTarget
                 ? `Saved targets · ${modeLabel}`
@@ -1334,7 +1324,7 @@ export function Settings() {
           {targetLoadState !== 'ready' && (
             <p role="status" className="t-body">
               {targetLoadState === 'loading'
-                ? 'Loading targets…'
+                ? targetSummary
                 : 'Targets could not be loaded. Return to Nutrition targets to retry.'}
             </p>
           )}
