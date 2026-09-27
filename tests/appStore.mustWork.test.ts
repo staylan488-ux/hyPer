@@ -16,6 +16,8 @@ vi.mock('@/lib/supabase', () => ({
 
 import { useAppStore } from '@/stores/appStore';
 
+const realFetchSplits = useAppStore.getState().fetchSplits;
+
 const defaultActivityActions = {
   createActivitySession: useAppStore.getState().createActivitySession,
   upsertActivitySegments: useAppStore.getState().upsertActivitySegments,
@@ -1909,5 +1911,99 @@ describe('set-count edits never delete finished sets and superset partners follo
     expect(plan.written()?.map((row) => [row.exercise_id, row.superset_group_id])).toEqual([
       ['ex-a', null], ['ex-b', null], ['ex-c', 'group-2'], ['ex-d', 'group-2'], ['ex-e', null],
     ]);
+  });
+});
+
+describe('fetchSplits reference stability', () => {
+  type SplitRow = {
+    id: string;
+    name: string;
+    is_active: boolean;
+    days: Array<{ id: string; day_name: string; day_order: number; exercises: Array<{ id: string; exercise_id: string; exercise_order: number }> }>;
+  };
+
+  const baseSplits = (): SplitRow[] => [
+    {
+      id: 'split-a',
+      name: 'Upper / Lower',
+      is_active: true,
+      days: [
+        {
+          id: 'day-2', day_name: 'Lower', day_order: 1, exercises: [
+            { id: 'se-3', exercise_id: 'squat', exercise_order: 0 },
+          ],
+        },
+        {
+          id: 'day-1', day_name: 'Upper', day_order: 0, exercises: [
+            { id: 'se-2', exercise_id: 'row', exercise_order: 1 },
+            { id: 'se-1', exercise_id: 'bench', exercise_order: 0 },
+          ],
+        },
+      ],
+    },
+    { id: 'split-b', name: 'Full body', is_active: false, days: [] },
+  ];
+
+  let payload: SplitRow[] = [];
+
+  beforeEach(() => {
+    payload = baseSplits();
+    useAppStore.setState({ fetchSplits: realFetchSplits, splits: [], activeSplit: null });
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table !== 'splits') throw new Error(`Unexpected table: ${table}`);
+      // Every response is freshly parsed, like a real network round trip.
+      const response = { data: structuredClone(payload), error: null };
+      const query = {
+        select: () => query,
+        eq: () => query,
+        order: () => query,
+        then: (resolve: (value: typeof response) => unknown) => Promise.resolve(response).then(resolve),
+      };
+      return query;
+    });
+  });
+
+  async function refetch() {
+    await useAppStore.getState().fetchSplits();
+    const { splits, activeSplit } = useAppStore.getState();
+    return { splits, activeSplit };
+  }
+
+  it('keeps the same splits and activeSplit references for an identical payload', async () => {
+    const first = await refetch();
+    expect(first.activeSplit?.id).toBe('split-a');
+    expect(first.activeSplit?.days.map((day) => day.id)).toEqual(['day-1', 'day-2']);
+    expect(first.activeSplit?.days[0].exercises.map((exercise) => exercise.exercise_id)).toEqual(['bench', 'row']);
+
+    const second = await refetch();
+    expect(second.splits).toBe(first.splits);
+    expect(second.activeSplit).toBe(first.activeSplit);
+  });
+
+  it.each([
+    ['renaming a day', (splits: SplitRow[]) => { splits[0].days[1].day_name = 'Upper (heavy)'; }],
+    ['adding a day', (splits: SplitRow[]) => { splits[0].days.push({ id: 'day-3', day_name: 'Arms', day_order: 2, exercises: [] }); }],
+    ['removing a day', (splits: SplitRow[]) => { splits[0].days.splice(0, 1); }],
+    ['reordering exercises', (splits: SplitRow[]) => {
+      splits[0].days[1].exercises[0].exercise_order = 0;
+      splits[0].days[1].exercises[1].exercise_order = 1;
+    }],
+    ['switching the active split', (splits: SplitRow[]) => { splits[0].is_active = false; splits[1].is_active = true; }],
+    ['deleting a split', (splits: SplitRow[]) => { splits.splice(1, 1); }],
+  ])('publishes new references after %s', async (_label, edit) => {
+    const first = await refetch();
+    edit(payload);
+    const second = await refetch();
+
+    expect(second.splits).not.toBe(first.splits);
+    expect(second.activeSplit).not.toBe(first.activeSplit);
+    expect(second.splits).toEqual(payload.map((split) => ({
+      ...split,
+      days: [...split.days]
+        .map((day) => ({ ...day, exercises: [...day.exercises].sort((a, b) => a.exercise_order - b.exercise_order) }))
+        .sort((a, b) => a.day_order - b.day_order),
+    })));
+    expect(second.activeSplit?.id).toBe(payload.find((split) => split.is_active)?.id);
   });
 });

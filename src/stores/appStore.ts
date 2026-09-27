@@ -294,7 +294,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           }))
           .sort((a: SplitDay, b: SplitDay) => a.day_order - b.day_order),
       }));
-      
+
+      // Unchanged content keeps the existing references, so effects keyed on
+      // activeSplit (schedule, plan, calendar) don't refetch on every visit.
+      if (JSON.stringify(get().splits) === JSON.stringify(formattedSplits)) return;
+
       const active = formattedSplits.find((s: Split) => s.is_active);
       set({ 
         splits: formattedSplits, 

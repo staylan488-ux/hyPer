@@ -50,6 +50,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
@@ -63,32 +64,12 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
-function normalizeOptionalMetric(value: number | string | null | undefined): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseFloat(value.trim());
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
 type SupersetRole = 'A' | 'B';
 
 type SupersetFlow = {
   groupId: string;
   role: SupersetRole;
   partnerExerciseId: string;
-};
-
-type PreviousWorkoutSummary = { id: string };
-type PreviousSetSummary = {
-  workout_id: string;
-  exercise_id: string;
-  set_number: number | string;
-  weight: number | string | null;
-  reps: number | string | null;
-  rpe: number | string | null;
-  completed: boolean;
 };
 
 type CompletionSummary = {
@@ -102,6 +83,32 @@ type CompletionSummary = {
   gains: Array<{ name: string; setNumber: number; gain: string }>;
   completedAt: number;
 };
+
+function formatSessionDuration(createdAt: string | null, now: number): string {
+  return createdAt
+    ? formatWorkoutDuration(Math.max(0, now - new Date(createdAt).getTime()))
+    : '—';
+}
+
+/**
+ * Ticks on its own so the whole session page doesn't re-render every second.
+ * Render with `key={createdAt}` so a new session starts from a fresh clock.
+ */
+function SessionClock({ createdAt }: { createdAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  return <>{formatSessionDuration(createdAt, now)}</>;
+}
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
   const map = new Map<string, SupersetFlow>();
@@ -164,7 +171,6 @@ export function Workout() {
   const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
-  const [sessionElapsedNow, setSessionElapsedNow] = useState(() => Date.now());
   const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
   const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
@@ -177,12 +183,15 @@ export function Workout() {
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
   const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
+  const [previousTargetsRetryNonce, setPreviousTargetsRetryNonce] = useState(0);
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
   const planScheduleRequestRef = useRef(0);
+  const previousTargetsFailedRef = useRef(false);
+  const previousTargetsContextRef = useRef<string | null>(null);
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
@@ -206,6 +215,12 @@ export function Workout() {
   const currentWorkoutDate = currentWorkout?.date || null;
   const currentWorkoutNotes = currentWorkout?.notes || null;
   const currentWorkoutCreatedAt = currentWorkout?.created_at || null;
+  const currentWorkoutCompleted = currentWorkout?.completed ?? false;
+  const currentWorkoutSets = currentWorkout?.sets;
+  // Sorted unique exercise ids: logging or editing sets keeps this stable, so
+  // the "last time" lookup only refetches when a movement is added or swapped.
+  const previousTargetExerciseIdsKey = useMemo(() => previousTargetExerciseKey(currentWorkoutSets ?? []), [currentWorkoutSets]);
+  const previousTargetsRetrySignal = useMemo(() => previousTargetRetrySignal(currentWorkoutSets ?? []), [currentWorkoutSets]);
 
   useEffect(() => {
     movementNotesRef.current = movementNotes;
@@ -227,19 +242,6 @@ export function Workout() {
     setShowSessionDetails(false);
     setRestTimerSeed(0);
   }, [currentWorkoutId]);
-
-  useEffect(() => {
-    if (!currentWorkoutCreatedAt) return;
-
-    setSessionElapsedNow(Date.now());
-    const intervalId = window.setInterval(() => {
-      setSessionElapsedNow(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [currentWorkoutCreatedAt]);
 
   useEffect(() => {
     if (!currentWorkoutId) {
@@ -362,6 +364,8 @@ export function Workout() {
     return () => { cancel(); };
   }, [userId, activeSplit]);
 
+  // Keyed on session identity/completion, not the workout object that every
+  // set log replaces; starting or finishing a session still refreshes.
   useEffect(() => {
     if (!userId || !activeSplit || !planSchedule) {
       setWeekWorkouts([]);
@@ -374,23 +378,24 @@ export function Workout() {
       const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
       const weekEnd = addDays(weekStart, 6);
 
-      const { data: workouts } = await supabase
-        .from('workouts')
-        .select('id, date, split_day_id, completed')
-        .eq('user_id', userId)
-        .gte('date', format(weekStart, 'yyyy-MM-dd'))
-        .lte('date', format(weekEnd, 'yyyy-MM-dd'))
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false });
-
-      const { data: lastCompleted } = await supabase
-        .from('workouts')
-        .select('date, split_day_id')
-        .eq('user_id', userId)
-        .eq('completed', true)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [{ data: workouts }, { data: lastCompleted }] = await Promise.all([
+        supabase
+          .from('workouts')
+          .select('id, date, split_day_id, completed')
+          .eq('user_id', userId)
+          .gte('date', format(weekStart, 'yyyy-MM-dd'))
+          .lte('date', format(weekEnd, 'yyyy-MM-dd'))
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
+        supabase
+          .from('workouts')
+          .select('date, split_day_id')
+          .eq('user_id', userId)
+          .eq('completed', true)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
       if (cancelled) return;
       setWeekWorkouts((workouts || []) as Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]);
@@ -401,7 +406,7 @@ export function Workout() {
     return () => {
       cancelled = true;
     };
-  }, [userId, activeSplit, planSchedule, weekCursor, currentWorkout]);
+  }, [userId, activeSplit, planSchedule, weekCursor, currentWorkoutId, currentWorkoutCompleted]);
 
   useEffect(() => {
     if (!currentWorkoutId) {
@@ -427,107 +432,58 @@ export function Workout() {
   }, [currentWorkoutId, currentWorkoutNotes]);
 
   useEffect(() => {
-    if (!userId || !currentWorkoutId || !currentWorkoutDate || !currentWorkout) {
+    previousTargetsFailedRef.current = false;
+
+    if (!userId || !currentWorkoutId || !currentWorkoutDate || !previousTargetExerciseIdsKey) {
+      previousTargetsContextRef.current = null;
       setPreviousWorkoutSetsByExercise({});
       return;
     }
 
-    const exerciseIds = Array.from(new Set(currentWorkout.sets.map((set) => set.exercise_id)));
+    const exerciseIds = exerciseIdsFromKey(previousTargetExerciseIdsKey);
 
     if (exerciseIds.length === 0) {
+      previousTargetsContextRef.current = null;
       setPreviousWorkoutSetsByExercise({});
       return;
     }
 
+    const context = `${userId}:${currentWorkoutId}:${currentWorkoutDate}`;
     let cancelled = false;
 
-    const fetchPreviousWorkoutTargets = async () => {
-      const { data: completedWorkouts, error: workoutsError } = await supabase
-        .from('workouts')
-        .select('id')
-        .eq('user_id', userId)
-        .lte('date', currentWorkoutDate)
-        .neq('id', currentWorkoutId)
-        .order('date', { ascending: false })
-        .limit(30);
-
-      if (workoutsError) {
-        console.error('Error loading previous workouts for target-to-beat:', workoutsError);
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const workoutIds = (completedWorkouts || []).map((workout) => (workout as PreviousWorkoutSummary).id);
-
-      if (workoutIds.length === 0) {
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const { data: previousSets, error: previousSetsError } = await supabase
-        .from('sets')
-        .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
-        .in('workout_id', workoutIds)
-        .in('exercise_id', exerciseIds)
-        .eq('completed', true);
-
-      if (previousSetsError) {
-        console.error('Error loading previous sets for target-to-beat:', previousSetsError);
-        if (!cancelled) setPreviousWorkoutSetsByExercise({});
-        return;
-      }
-
-      const workoutRank = new Map(workoutIds.map((id, index) => [id, index]));
-      const bestByExerciseAndSet = new Map<string, PreviousSetSummary>();
-
-      for (const rawSet of previousSets || []) {
-        const set = rawSet as PreviousSetSummary;
-        const key = `${set.exercise_id}:${set.set_number}`;
-        const currentBest = bestByExerciseAndSet.get(key);
-
-        if (!currentBest) {
-          bestByExerciseAndSet.set(key, set);
-          continue;
-        }
-
-        const currentRank = workoutRank.get(set.workout_id) ?? Number.MAX_SAFE_INTEGER;
-        const bestRank = workoutRank.get(currentBest.workout_id) ?? Number.MAX_SAFE_INTEGER;
-
-        if (currentRank < bestRank) {
-          bestByExerciseAndSet.set(key, set);
-        }
-      }
-
-      const groupedTargets: PreviousWorkoutSetMap = {};
-
-      for (const set of bestByExerciseAndSet.values()) {
-        const parsedSetNumber = typeof set.set_number === 'number'
-          ? set.set_number
-          : Number.parseInt(String(set.set_number), 10);
-
-        if (!Number.isFinite(parsedSetNumber)) continue;
-
-        if (!groupedTargets[set.exercise_id]) {
-          groupedTargets[set.exercise_id] = {};
-        }
-
-        groupedTargets[set.exercise_id][parsedSetNumber] = {
-          weight: normalizeOptionalMetric(set.weight),
-          reps: normalizeOptionalMetric(set.reps),
-          rpe: normalizeOptionalMetric(set.rpe),
-        };
-      }
-
+    void fetchPreviousSetTargets({
+      userId,
+      workoutId: currentWorkoutId,
+      date: currentWorkoutDate,
+      exerciseIds,
+    }).then((targets) => {
       if (cancelled) return;
-      setPreviousWorkoutSetsByExercise(groupedTargets);
-    };
 
-    void fetchPreviousWorkoutTargets();
+      if (targets) {
+        previousTargetsContextRef.current = context;
+        setPreviousWorkoutSetsByExercise(targets);
+        return;
+      }
+
+      // Failed lookup: keep this workout's existing targets (they are still
+      // right for its other movements) and retry on the next set log.
+      previousTargetsFailedRef.current = true;
+      if (previousTargetsContextRef.current !== context) {
+        previousTargetsContextRef.current = null;
+        setPreviousWorkoutSetsByExercise({});
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [userId, currentWorkoutId, currentWorkoutDate, currentWorkout]);
+  }, [userId, currentWorkoutId, currentWorkoutDate, previousTargetExerciseIdsKey, previousTargetsRetryNonce]);
+
+  // Declared after the lookup so a movement change, which already refetches,
+  // does not also trigger a retry in the same commit.
+  useEffect(() => {
+    if (previousTargetsFailedRef.current) setPreviousTargetsRetryNonce((nonce) => nonce + 1);
+  }, [previousTargetsRetrySignal]);
 
   const persistMovementNotes = useCallback(async (exerciseId: string) => {
     if (!currentWorkoutId || !userId) return;
@@ -795,7 +751,7 @@ export function Workout() {
   // Progression drives the resume cue; expansion is an independent user choice.
   const resolvedActiveExerciseId = activeExerciseId && focusOrder.includes(activeExerciseId)
     ? activeExerciseId
-    : nextWorkoutSet(orderedSets, focusOrder, undefined, undefined, supersetFlowMap)?.exercise_id ?? focusOrder[0] ?? null;
+    : nextMovementId ?? focusOrder[0] ?? null;
   const editorSet = expandedWorkoutSet(orderedSets, expansion);
   const selectMovement = (exerciseId: string) => {
     tapHaptic();
@@ -949,9 +905,6 @@ export function Workout() {
   const currentSessionTitle = currentWorkout?.split_day_id === null
     ? currentWorkoutDayPlan?.day_label || 'Flexible Session'
     : splitDay?.day_name || 'Session';
-  const sessionDurationLabel = currentWorkoutCreatedAt
-    ? formatWorkoutDuration(Math.max(0, sessionElapsedNow - new Date(currentWorkoutCreatedAt).getTime()))
-    : '—';
 
   // Mirror the live session onto the lock screen / Dynamic Island (native
   // only): exercise + set on top, sets-and-tonnage ledger line underneath.
@@ -964,9 +917,8 @@ export function Workout() {
 
     const activeName = resolvedActiveExerciseId ? workoutExerciseMap.get(resolvedActiveExerciseId)?.name : undefined;
     const nextSetNumber = orderedSets.find((set) => set.exercise_id === resolvedActiveExerciseId && !set.completed)?.set_number ?? null;
-    const tonnage = currentWorkout.sets
-      .filter((set) => set.completed)
-      .reduce((sum, set) => sum + (set.weight ?? 0) * (set.reps ?? 0), 0);
+    // Same rule as the completion sheet's tonnage.
+    const tonnage = sessionTonnage(currentWorkout.sets);
 
     const detailLine = [
       activeName && nextSetNumber ? `set ${nextSetNumber}` : null,
@@ -997,7 +949,7 @@ export function Workout() {
       title: currentSessionTitle,
       completedSets,
       totalSets,
-      duration: sessionDurationLabel,
+      duration: formatSessionDuration(currentWorkoutCreatedAt, Date.now()),
       tonnage: sessionTonnage(sessionSets),
       gains: collectSessionGains(sessionSets, previousWorkoutSetsByExercise).map((gain) => ({
         name: workoutExerciseMap.get(gain.exerciseId)?.name ?? 'Movement',
@@ -1512,7 +1464,7 @@ export function Workout() {
       <header className="studio-session-header">
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
-          <span>{sessionDurationLabel}</span>
+          <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
           <Button variant="ghost" size="sm" onClick={handleCompleteWorkout}>Finish</Button>
         </div>
         <div className="studio-session-summary">
