@@ -2,8 +2,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock supabase before importing the lib (it imports supabase).
 const supabaseMock = vi.hoisted(() => {
+  type SelectResult = { data: unknown[] | null; error: { message: string } | null };
   const okSelect = () => ({
-    eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    eq: vi.fn(() => Promise.resolve<SelectResult>({ data: [], error: null })),
   });
   return {
     from: vi.fn(() => ({

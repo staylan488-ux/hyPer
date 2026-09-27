@@ -15,7 +15,7 @@ const draft: MealDraft = {
   ingredients: [createMealIngredient({
     id: 'milk', user_id: null, name: 'Milk', calories: 120, protein: 8, carbs: 12, fat: 5,
     serving_size: 240, serving_unit: 'ml', source: 'open_food_facts', fdc_id: null,
-  }, 1.5, 'milk')],
+  }, 1.5, '00000000-0000-4000-8000-000000000003')],
 };
 
 beforeEach(() => {

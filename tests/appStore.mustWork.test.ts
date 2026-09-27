@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ActivitySegment, ActivitySession, Workout, WorkoutSet } from '@/types';
+import type { ActivitySegment, ActivitySession, Exercise, Workout, WorkoutSet } from '@/types';
 import type { FinishedRun } from '@/lib/runTracker';
 
 const supabaseMock = vi.hoisted(() => ({
@@ -914,7 +914,7 @@ describe('must-work store contracts', () => {
       updateWorkoutDayPlanItems: updatePlanSpy,
     });
 
-    const exercise = {
+    const exercise: Exercise = {
       id: 'exercise-9',
       name: 'Ring Pull-Up',
       muscle_group: 'back',
@@ -1490,6 +1490,7 @@ describe('must-work store contracts', () => {
       id: 'existing-gps-session',
       user_id: 'user-1',
       activity_type: 'run',
+      custom_type: null,
       title: null,
       date: '2026-07-12',
       started_at: '2026-07-12T14:00:00.000Z',

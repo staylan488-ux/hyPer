@@ -108,13 +108,13 @@ describe('merging a WHOOP record into your own recording', () => {
   // A run recorded in hyPer AND picked up by WHOOP is ONE event seen twice.
   // Summing would report double the time and double the distance.
   const gpsRun = () => session({
-    id: 'gps', source: 'manual', activity_type: 'running',
+    id: 'gps', source: 'manual', activity_type: 'run',
     started_at: '2026-07-08T14:00:00.000Z', ended_at: '2026-07-08T14:40:00.000Z',
     duration_seconds: 2400, distance_m: 8000,
     strain: null, avg_hr: null, max_hr: null, energy_kcal: null,
   });
   const whoopRun = () => session({
-    id: 'whoop', source: 'whoop', activity_type: 'running',
+    id: 'whoop', source: 'whoop', activity_type: 'run',
     started_at: '2026-07-08T14:01:00.000Z', ended_at: '2026-07-08T14:39:00.000Z',
     duration_seconds: 2280, distance_m: 7600,
     strain: 12.4, avg_hr: 158, max_hr: 179, energy_kcal: 640,
