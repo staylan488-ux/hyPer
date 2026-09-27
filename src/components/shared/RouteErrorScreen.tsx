@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useRouteError } from 'react-router-dom';
 import { Button } from './Button';
-import { Screen, TopBar } from './Screen';
+import { Screen } from './Screen';
 
 /**
  * Shown in place of a page that threw while rendering. It sits inside the app
@@ -17,11 +17,11 @@ export function RouteErrorScreen() {
 
   return (
     <Screen>
-      <TopBar
-        eyebrow="Something went wrong"
-        title="This page couldn't load"
-        subtitle="Try loading it again, or head back to Today."
-      />
+      <header className="mb-7">
+        <p className="t-label-sm mb-2">Something went wrong</p>
+        <h1 className="t-title">This page couldn't load</h1>
+        <p className="t-caption mt-3">Try loading it again, or head back to Today.</p>
+      </header>
       <div className="flex flex-col gap-3">
         {/* A full load of a known-good page avoids looping on the broken route. */}
         <Button onClick={() => window.location.assign('/')}>Go to Today</Button>

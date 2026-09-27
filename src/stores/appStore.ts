@@ -42,7 +42,6 @@ import type {
   MacroTarget,
   VolumeLandmark,
   MuscleVolume,
-  MuscleGroup,
   WorkoutMode,
   WorkoutDayPlan,
   FlexDayTemplate,

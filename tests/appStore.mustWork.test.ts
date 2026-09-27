@@ -108,7 +108,6 @@ beforeEach(() => {
     macroTarget: null,
     volumeLandmarks: [],
     weeklyVolume: [],
-    loading: false,
     ...defaultActivityActions,
   });
 });
