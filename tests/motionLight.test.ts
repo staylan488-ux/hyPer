@@ -1,5 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { lightFromOrientation, lightFromScroll, subscribeMotionLight } from '../src/lib/motionLight';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  lightFromOrientation,
+  lightFromScroll,
+  resetMotionLight,
+  subscribeMotionLight,
+} from '../src/lib/motionLight';
+import { resetWebGLProbe } from '../src/lib/motionPolicy';
+
+vi.mock('../src/lib/nativeGlassSurfaces', () => ({ startNativeMotion: async () => null }));
+
+/** Minimal browser globals whose Reduce Motion setting can be flipped. */
+function stubBrowser() {
+  const settings = { reducedMotion: false };
+  const scrollListeners = new Set<unknown>();
+  vi.stubGlobal('window', {
+    matchMedia: (query: string) => ({
+      matches: query.includes('prefers-reduced-motion') && settings.reducedMotion,
+    }),
+  });
+  vi.stubGlobal('document', {
+    addEventListener: (_type: string, handler: unknown) => scrollListeners.add(handler),
+    removeEventListener: (_type: string, handler: unknown) => scrollListeners.delete(handler),
+  });
+  resetWebGLProbe(false);
+  return { settings, scrollListeners };
+}
 
 describe('motion light', () => {
   it('centres on the resting grip and follows tilt', () => {
@@ -29,5 +54,47 @@ describe('motion light', () => {
     const stop = subscribeMotionLight((light) => received.push(light));
     stop();
     expect(received).toEqual([]);
+  });
+
+  describe('with browser globals', () => {
+    afterEach(() => {
+      resetMotionLight();
+      resetWebGLProbe();
+      vi.unstubAllGlobals();
+    });
+
+    it('registers nothing while Reduce Motion is on', () => {
+      const { settings, scrollListeners } = stubBrowser();
+      settings.reducedMotion = true;
+      const received: unknown[] = [];
+      const stop = subscribeMotionLight((light) => received.push(light));
+      expect(received).toEqual([]);
+      expect(scrollListeners.size).toBe(0);
+      stop();
+    });
+
+    it('stops and restarts its sources as Reduce Motion is toggled mid-session', () => {
+      const { settings, scrollListeners } = stubBrowser();
+      const listener = vi.fn();
+
+      // What useAmbientLight does: subscribe, and resubscribe on a policy change.
+      let stop = subscribeMotionLight(listener);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(scrollListeners.size).toBe(1);
+
+      settings.reducedMotion = true;
+      stop();
+      stop = subscribeMotionLight(listener);
+      expect(scrollListeners.size).toBe(0);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      settings.reducedMotion = false;
+      stop();
+      stop = subscribeMotionLight(listener);
+      expect(scrollListeners.size).toBe(1);
+      expect(listener).toHaveBeenCalledTimes(2);
+      stop();
+      expect(scrollListeners.size).toBe(0);
+    });
   });
 });

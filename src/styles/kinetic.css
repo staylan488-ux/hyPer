@@ -108,7 +108,8 @@
 
 /* Motion light: floating glass carries one broad, diffuse sheen whose centre
    follows the phone's tilt (or the scroll). Never a narrow band or a rim; it
-   stays off until the light is live and under reduced transparency. */
+   stays off until the light is live, and under reduced motion or reduced
+   transparency (instantly, before the JS subscription reacts). */
 :root { --light-sheen: .26; }
 .dark { --light-sheen: .075; }
 .material-glass, .bottom-nav, .studio-sheet, .material-toast {
@@ -120,7 +121,7 @@
     ),
     var(--material-wash);
 }
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+@media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .material-glass, .bottom-nav, .studio-sheet, .material-toast { --light-on: 0 !important; }
 }
 
