@@ -764,7 +764,7 @@ export const beardsleyEvidenceSnapshot: EvidenceSnapshot = {
       "long_length_bias": false,
       "substitutions": [
         "Machine Shoulder Press",
-        "Dumbbell Shoulder Press"
+        "Overhead Dumbbell Press"
       ]
     },
     {
