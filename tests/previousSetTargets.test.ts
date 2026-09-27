@@ -39,6 +39,7 @@ import {
   exerciseIdsFromKey,
   fetchPreviousSetTargets,
   previousTargetExerciseKey,
+  previousTargetRetrySignal,
 } from '@/lib/previousSetTargets';
 import type { PreviousSetSummary } from '@/lib/workoutProgress';
 
@@ -75,6 +76,22 @@ describe('previousTargetExerciseKey', () => {
   it('is empty for a session with no sets', () => {
     expect(previousTargetExerciseKey([])).toBe('');
     expect(exerciseIdsFromKey('')).toEqual([]);
+  });
+});
+
+describe('previousTargetRetrySignal', () => {
+  const sets = (...completed: boolean[]) => completed.map((flag) => ({ completed: flag }));
+
+  it('changes when a set is logged, added or removed', () => {
+    const base = previousTargetRetrySignal(sets(true, false));
+    expect(previousTargetRetrySignal(sets(true, true))).not.toBe(base);
+    expect(previousTargetRetrySignal(sets(true, false, false))).not.toBe(base);
+    expect(previousTargetRetrySignal(sets(true))).not.toBe(base);
+  });
+
+  it('stays the same when nothing about set count or completion changed', () => {
+    expect(previousTargetRetrySignal(sets(true, false))).toBe(previousTargetRetrySignal(sets(false, true)));
+    expect(previousTargetRetrySignal([])).toBe('0:0');
   });
 });
 
@@ -182,15 +199,21 @@ describe('fetchPreviousSetTargets', () => {
     expect(database.state.calls.map((call) => call.table)).toEqual(['workouts']);
   });
 
-  it('logs and returns an empty map on query errors', async () => {
+  it('reports no history as an empty map, not a failure', async () => {
+    database.state.results.workouts = { data: [{ id: 'w1' }], error: null };
+    database.state.results.sets = { data: [], error: null };
+    await expect(fetchPreviousSetTargets(params)).resolves.toEqual({});
+  });
+
+  it('logs and reports a failure as null on query errors', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     database.state.results.workouts = { data: null, error: { message: 'offline' } };
-    await expect(fetchPreviousSetTargets(params)).resolves.toEqual({});
+    await expect(fetchPreviousSetTargets(params)).resolves.toBeNull();
     expect(consoleError).toHaveBeenCalledWith('Error loading previous workouts for target-to-beat:', { message: 'offline' });
 
     database.state.results.workouts = { data: [{ id: 'w1' }], error: null };
     database.state.results.sets = { data: null, error: { message: 'timeout' } };
-    await expect(fetchPreviousSetTargets(params)).resolves.toEqual({});
+    await expect(fetchPreviousSetTargets(params)).resolves.toBeNull();
     expect(consoleError).toHaveBeenCalledWith('Error loading previous sets for target-to-beat:', { message: 'timeout' });
     consoleError.mockRestore();
   });

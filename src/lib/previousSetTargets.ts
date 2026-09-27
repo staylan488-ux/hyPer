@@ -17,6 +17,18 @@ export function exerciseIdsFromKey(key: string): string[] {
 }
 
 /**
+ * Changes when a set is added, removed, completed or un-completed. Train uses
+ * it to retry a failed "last time" lookup on the next set log.
+ */
+export function previousTargetRetrySignal(sets: ReadonlyArray<Pick<WorkoutSet, 'completed'>>): string {
+  let completed = 0;
+  for (const set of sets) {
+    if (set.completed) completed += 1;
+  }
+  return `${sets.length}:${completed}`;
+}
+
+/**
  * Keeps, for each exercise and set number, the set from the most recent
  * workout (lowest index in `workoutIds`, which is ordered newest first).
  */
@@ -66,14 +78,15 @@ export function buildPreviousSetTargets(workoutIds: string[], previousSets: Prev
 
 /**
  * "Target to beat" for each set: completed sets from the last 30 workouts on
- * or before `date`, excluding the current one. Returns `{}` on any error.
+ * or before `date`, excluding the current one. Returns `null` on a query
+ * error so the caller can tell a failure apart from "no history" (`{}`).
  */
 export async function fetchPreviousSetTargets({ userId, workoutId, date, exerciseIds }: {
   userId: string;
   workoutId: string;
   date: string;
   exerciseIds: string[];
-}): Promise<PreviousWorkoutSetMap> {
+}): Promise<PreviousWorkoutSetMap | null> {
   const { data: completedWorkouts, error: workoutsError } = await supabase
     .from('workouts')
     .select('id')
@@ -85,7 +98,7 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, exercis
 
   if (workoutsError) {
     console.error('Error loading previous workouts for target-to-beat:', workoutsError);
-    return {};
+    return null;
   }
 
   const workoutIds = (completedWorkouts || []).map((workout) => (workout as PreviousWorkoutSummary).id);
@@ -101,7 +114,7 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, exercis
 
   if (previousSetsError) {
     console.error('Error loading previous sets for target-to-beat:', previousSetsError);
-    return {};
+    return null;
   }
 
   return buildPreviousSetTargets(workoutIds, (previousSets || []) as PreviousSetSummary[]);

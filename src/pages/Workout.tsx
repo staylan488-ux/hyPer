@@ -50,7 +50,7 @@ import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
-import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey } from '@/lib/previousSetTargets';
+import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
 
@@ -183,12 +183,15 @@ export function Workout() {
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
   const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
+  const [previousTargetsRetryNonce, setPreviousTargetsRetryNonce] = useState(0);
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
   const planScheduleRequestRef = useRef(0);
+  const previousTargetsFailedRef = useRef(false);
+  const previousTargetsContextRef = useRef<string | null>(null);
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
@@ -217,6 +220,7 @@ export function Workout() {
   // Sorted unique exercise ids: logging or editing sets keeps this stable, so
   // the "last time" lookup only refetches when a movement is added or swapped.
   const previousTargetExerciseIdsKey = useMemo(() => previousTargetExerciseKey(currentWorkoutSets ?? []), [currentWorkoutSets]);
+  const previousTargetsRetrySignal = useMemo(() => previousTargetRetrySignal(currentWorkoutSets ?? []), [currentWorkoutSets]);
 
   useEffect(() => {
     movementNotesRef.current = movementNotes;
@@ -428,7 +432,10 @@ export function Workout() {
   }, [currentWorkoutId, currentWorkoutNotes]);
 
   useEffect(() => {
+    previousTargetsFailedRef.current = false;
+
     if (!userId || !currentWorkoutId || !currentWorkoutDate || !previousTargetExerciseIdsKey) {
+      previousTargetsContextRef.current = null;
       setPreviousWorkoutSetsByExercise({});
       return;
     }
@@ -436,10 +443,12 @@ export function Workout() {
     const exerciseIds = exerciseIdsFromKey(previousTargetExerciseIdsKey);
 
     if (exerciseIds.length === 0) {
+      previousTargetsContextRef.current = null;
       setPreviousWorkoutSetsByExercise({});
       return;
     }
 
+    const context = `${userId}:${currentWorkoutId}:${currentWorkoutDate}`;
     let cancelled = false;
 
     void fetchPreviousSetTargets({
@@ -448,13 +457,33 @@ export function Workout() {
       date: currentWorkoutDate,
       exerciseIds,
     }).then((targets) => {
-      if (!cancelled) setPreviousWorkoutSetsByExercise(targets);
+      if (cancelled) return;
+
+      if (targets) {
+        previousTargetsContextRef.current = context;
+        setPreviousWorkoutSetsByExercise(targets);
+        return;
+      }
+
+      // Failed lookup: keep this workout's existing targets (they are still
+      // right for its other movements) and retry on the next set log.
+      previousTargetsFailedRef.current = true;
+      if (previousTargetsContextRef.current !== context) {
+        previousTargetsContextRef.current = null;
+        setPreviousWorkoutSetsByExercise({});
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [userId, currentWorkoutId, currentWorkoutDate, previousTargetExerciseIdsKey]);
+  }, [userId, currentWorkoutId, currentWorkoutDate, previousTargetExerciseIdsKey, previousTargetsRetryNonce]);
+
+  // Declared after the lookup so a movement change, which already refetches,
+  // does not also trigger a retry in the same commit.
+  useEffect(() => {
+    if (previousTargetsFailedRef.current) setPreviousTargetsRetryNonce((nonce) => nonce + 1);
+  }, [previousTargetsRetrySignal]);
 
   const persistMovementNotes = useCallback(async (exerciseId: string) => {
     if (!currentWorkoutId || !userId) return;
