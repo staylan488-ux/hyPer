@@ -155,7 +155,9 @@ struct RestDockView: View {
                                 .trim(from: 0, to: fraction)
                                 .stroke(warning ? model.accent : Color.primary.opacity(0.7), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
-                                .animation(reduceMotion ? nil : .linear(duration: 0.25), value: fraction)
+                                // Steps with the 4 Hz timeline; glides only when the rest is re-timed.
+                                .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: model.endsAt)
+                                .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: model.total)
                             Image(systemName: paused ? "play.fill" : "pause.fill")
                                 .font(.system(size: 17, weight: .semibold))
                                 .contentTransition(.symbolEffect(.replace))
