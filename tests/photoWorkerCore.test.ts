@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { WorkerBusyError, createInflightJobs, createJobGate, createProviderHealth, createTTLCache, isCredentialFailure, normalizeIdempotencyKey, parseCSVSet, userIsAllowed } from '../scripts/photo-food-worker-core.mjs';
+import { WorkerBusyError, createInflightJobs, createJobGate, createProviderHealth, createTTLCache, isCredentialFailure, normalizeIdempotencyKey, parseCSVSet, runGatedJob, userIsAllowed } from '../scripts/photo-food-worker-core.mjs';
 
 describe('photo worker safety boundaries', () => {
   it('requires an explicit matching user in production mode', () => {
@@ -170,5 +170,66 @@ describe('createInflightJobs', () => {
     ]);
     expect(a).toBe('a');
     expect(b).toBe('b');
+  });
+});
+
+describe('runGatedJob', () => {
+  const setup = (gateOptions = { maxConcurrent: 1, maxQueued: 4 }) => {
+    const gate = createJobGate(gateOptions);
+    const inflight = createInflightJobs();
+    const failures = createTTLCache({ ttlMs: 90_000 });
+    const run = (key: string | null, compute: () => Promise<unknown>) =>
+      runGatedJob({ key, compute, gate, inflight, failures });
+    return { gate, inflight, failures, run };
+  };
+
+  it('attaches a retry to a job that is still QUEUED, so it runs once', async () => {
+    const { gate, run } = setup();
+    // another long job holds the only slot
+    const releaseOther = await gate.acquire();
+    const compute = vi.fn(async () => ({ items: ['rice'] }));
+
+    const original = run('user:/analyze:key-1', compute);
+    await Promise.resolve();
+    const retry = run('user:/analyze:key-1', compute);
+    await Promise.resolve();
+    // one queue place, not two
+    expect(gate.stats().queued).toBe(1);
+
+    releaseOther();
+    const [first, second] = await Promise.all([original, retry]);
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+    expect(gate.stats().active).toBe(0);
+  });
+
+  it('keeps a full queue a retryable busy answer, never a remembered failure', async () => {
+    const { gate, failures, run } = setup({ maxConcurrent: 1, maxQueued: 0 });
+    const releaseOther = await gate.acquire();
+    const compute = vi.fn(async () => 'never');
+
+    await expect(run('user:/describe:key-2', compute)).rejects.toBeInstanceOf(WorkerBusyError);
+    expect(compute).not.toHaveBeenCalled();
+    expect(failures.get('user:/describe:key-2')).toBeUndefined();
+
+    // and the next try, once the slot frees, runs for real
+    releaseOther();
+    await expect(run('user:/describe:key-2', compute)).resolves.toBe('never');
+  });
+
+  it('remembers a real failure and still releases the slot', async () => {
+    const { gate, failures, run } = setup();
+    await expect(run('user:/coach:key-3', async () => { throw new Error('model timed out after 480s'); }))
+      .rejects.toThrow('timed out');
+    expect(failures.get('user:/coach:key-3')).toBe('model timed out after 480s');
+    expect(gate.stats().active).toBe(0);
+  });
+
+  it('still takes a slot for a keyless request', async () => {
+    const { gate, run } = setup();
+    let activeDuringRun = -1;
+    await run(null, async () => { activeDuringRun = gate.stats().active; });
+    expect(activeDuringRun).toBe(1);
+    expect(gate.stats().active).toBe(0);
   });
 });

@@ -14,6 +14,7 @@ import {
   isCredentialFailure,
   normalizeIdempotencyKey,
   parseCSVSet,
+  runGatedJob,
   userIsAllowed,
 } from './photo-food-worker-core.mjs';
 
@@ -69,17 +70,18 @@ const inflightAnalyses = createInflightJobs();
 // stares at a spinner until their budget expires with a generic message.
 const failureCache = createTTLCache({ ttlMs: 90_000, maxEntries: 50 });
 
-/** Runs the shared analysis and memoizes a failure for the next attempt. */
-async function runMemoized(cacheKey, compute) {
-  try {
-    return await inflightAnalyses.run(cacheKey, compute);
-  } catch (error) {
-    if (cacheKey) {
-      const message = error instanceof Error ? error.message : String(error);
-      failureCache.set(cacheKey, message);
-    }
-    throw error;
-  }
+/**
+ * Runs the shared analysis in a job slot and memoizes a failure for the next
+ * attempt. The slot is taken inside, so a queued job is already attachable.
+ */
+function runMemoized(cacheKey, compute) {
+  return runGatedJob({
+    key: cacheKey,
+    compute,
+    gate: jobGate,
+    inflight: inflightAnalyses,
+    failures: failureCache,
+  });
 }
 const BUNDLED_CODEX_PATH = '/Applications/ChatGPT.app/Contents/Resources/codex';
 const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
@@ -523,7 +525,6 @@ const server = createServer(async (request, response) => {
   }
 
   let jobDir;
-  let releaseJobSlot;
   try {
     const authentication = await authenticate(request);
     if (authentication.status === 'unauthorized') {
@@ -567,8 +568,6 @@ const server = createServer(async (request, response) => {
       const loginCommand = provider === 'anthropic' ? 'claude /login' : 'codex login';
       return sendJson(response, 503, { error: `${provider} is installed but not authenticated. Run ${loginCommand} on this Mac.` }, origin);
     }
-
-    releaseJobSlot = await jobGate.acquire();
 
     if (request.url === '/coach') {
       const goals = typeof body.goals === 'string' ? body.goals.trim() : '';
@@ -698,7 +697,6 @@ const server = createServer(async (request, response) => {
       requestId,
     }, origin);
   } finally {
-    releaseJobSlot?.();
     if (jobDir) await rm(jobDir, { recursive: true, force: true }).catch(() => {});
   }
 });
