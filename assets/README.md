@@ -11,15 +11,20 @@ outlined, so export does not depend on installed fonts or a network request.
 - The background is opaque and square. iOS supplies the corner mask and system
   appearance effects; none are baked into the artwork.
 
-Regenerate the master PNG and the iOS app icon from the repository root:
+Regenerate the master PNG, the iOS app icon and the web/PWA icons from the
+repository root:
 
 ```sh
 node scripts/generate-app-icon.mjs
 ```
 
 The script uses Sharp from the existing `@capacitor/assets` toolchain and leaves
-the splash screens unchanged. Both PNGs are native 1024 × 1024 opaque RGB exports.
-The existing Xcode asset catalog points to `AppIcon-512@2x.png`.
+the splash screens unchanged. The master PNG and the iOS app icon are native
+1024 × 1024 opaque RGB exports; the existing Xcode asset catalog points to
+`AppIcon-512@2x.png`. The web build also gets opaque `public/apple-touch-icon.png`
+(180), `public/pwa-192x192.png` and `public/pwa-512x512.png`. The web favicon,
+`public/favicon.svg`, is a plain copy of `icon.svg`; refresh it when the master
+changes.
 
 The outline derives from [Fraunces in Google Fonts](https://github.com/google/fonts/tree/main/ofl/fraunces),
 licensed under the SIL Open Font License; see `Fraunces-OFL.txt`.
