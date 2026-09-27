@@ -1,4 +1,5 @@
 import { readMotionPolicy } from '@/lib/motionPolicy';
+import { startNativeMotion } from '@/lib/nativeGlassSurfaces';
 
 /**
  * Motion-reactive light: a soft light direction that follows how the phone is
@@ -6,7 +7,7 @@ import { readMotionPolicy } from '@/lib/motionPolicy';
  * responds to tilt.
  *
  * Sources, best first:
- *  1. A native attitude stream (`pushMotionLight`, fed by the iOS bridge).
+ *  1. The native CoreMotion attitude stream (iOS glass surfaces bridge).
  *  2. `deviceorientation`, where the browser offers it without a permission
  *     prompt (never prompts).
  *  3. The page's scroll position, as a gentle stand-in.
@@ -98,7 +99,22 @@ export function subscribeMotionLight(listener: Listener): () => void {
   if (policy.reducedMotion || policy.reducedTransparency || typeof document === 'undefined') return () => {};
   listeners.add(listener);
   listener(current);
-  if (!stopSource) stopSource = startBrowserSource();
+  if (!stopSource) {
+    const stopBrowser = startBrowserSource();
+    // The native attitude stream (iOS) outranks browser sources once it runs.
+    let stopNative: (() => void) | null = null;
+    let cancelled = false;
+    void startNativeMotion((light) => pushMotionLight(light)).then((stop) => {
+      if (cancelled) stop?.();
+      else stopNative = stop;
+    });
+    stopSource = () => {
+      cancelled = true;
+      stopBrowser();
+      stopNative?.();
+      if (nativeActive) pushMotionLight(null);
+    };
+  }
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0) {
@@ -112,6 +128,8 @@ export function subscribeMotionLight(listener: Listener): () => void {
 
 /** Native bridge entry point: an attitude-derived light, already in −1…1. */
 export function pushMotionLight(light: MotionLight | null) {
+  // Late samples after every subscriber left must not wake the light.
+  if (light !== null && !stopSource) return;
   nativeActive = light !== null;
   if (light) setTarget({ x: clamp(light.x), y: clamp(light.y) });
 }

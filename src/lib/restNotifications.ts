@@ -23,7 +23,9 @@ async function ensurePermission(): Promise<boolean> {
  *  only if the app is backgrounded/locked when the timer lapses — in the
  *  foreground the in-app chime and haptic already cover it. */
 export async function scheduleRestEndNotification(endsAtIso: string, nextUpLabel?: string | null): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  // DEV preview fixtures run in the native shell too; never prompt for or
+  // schedule real notifications on their behalf.
+  if (!Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.__HYPER_PREVIEW__)) return;
 
   const endsAt = new Date(endsAtIso);
   if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= Date.now()) return;

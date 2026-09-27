@@ -102,5 +102,6 @@ class HyperViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(HyperHealthPlugin())
         bridge?.registerPluginInstance(HyperBarcodePlugin())
         bridge?.registerPluginInstance(HyperGlassNavigationPlugin())
+        bridge?.registerPluginInstance(HyperGlassSurfacesPlugin())
     }
 }

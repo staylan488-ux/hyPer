@@ -1,0 +1,8 @@
+Fonts bundled for hyPer's native iOS glass surfaces (tab bar, rest dock, toasts).
+
+Geist-Medium.ttf    Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
+Fraunces-Light.ttf  Copyright 2020 The Fraunces Project Authors (https://github.com/undercasetype/Fraunces)
+
+Both are licensed under the SIL Open Font License, Version 1.1:
+https://openfontlicense.org
+Source: Google Fonts (fonts.gstatic.com), static instances.

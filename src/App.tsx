@@ -25,11 +25,14 @@ import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
 import { IntroPreview } from '@/preview/IntroPreview'; // DEV-ONLY
+import { GlassPreview } from '@/preview/GlassPreview'; // DEV-ONLY
 import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
 import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
 import { useAppViewport } from '@/hooks/useAppViewport';
 import { useAmbientLight } from '@/hooks/useAmbientLight';
+import { NativeGlassSurfaces, probeGlassSurfaces } from '@/lib/nativeGlassSurfaces';
+import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
 
 function BootSplash() {
@@ -126,6 +129,7 @@ const router = createBrowserRouter(
       )}
       {import.meta.env.DEV && <Route path="/preview" element={<PreviewGallery />} />}
       {import.meta.env.DEV && <Route path="/preview/intro" element={<IntroPreview />} />}
+      {import.meta.env.DEV && <Route path="/preview/glass" element={<GlassPreview />} />}
       {import.meta.env.DEV && <Route path="/preview/sign-in" element={<AuthForm />} />}
       {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
       <Route element={<PrivateLayout />}>
@@ -157,6 +161,12 @@ function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Learn early whether native glass surfaces exist, so the first rest bar
+  // or toast never flashes its web fallback.
+  useEffect(() => {
+    if (isNativeIOS()) void probeGlassSurfaces(NativeGlassSurfaces);
+  }, []);
 
   useEffect(() => {
     return initializeTheme();

@@ -25,6 +25,15 @@ keep unrelated generated churn and existing user changes out of the task.
   contains `HyperViewController` plugin registration. `WorkoutActivityAttributes`
   must match its mirror in
   [HyperWidgetsLiveActivity.swift](../../../../ios/App/HyperWidgets/HyperWidgetsLiveActivity.swift).
+- Native glass surfaces: [HyperGlassNavigationPlugin.swift](../../../../ios/App/App/HyperGlassNavigationPlugin.swift)
+  (tab bar) and [HyperGlassSurfacesPlugin.swift](../../../../ios/App/App/HyperGlassSurfacesPlugin.swift)
+  (rest dock, toasts, CoreMotion light) are app-local files listed explicitly
+  in `project.pbxproj`. Their Geist/Fraunces faces load at runtime from the web
+  bundle's `public/fonts/native`, so run a web build and `npx cap copy ios`
+  before judging native typography. To see them with fixtures, temporarily add
+  `"url": "http://localhost:<dev port>/preview/glass"` to the untracked
+  `ios/App/App/capacitor.config.json`, build to the simulator, then restore it
+  with `npx cap copy ios`.
 - Native OAuth implementation lives in [nativeAuth.ts](../../../../src/lib/nativeAuth.ts)
   and [HyperAuthPlugin.swift](../../../../ios/App/App/HyperAuthPlugin.swift).
   When auth changes are explicitly requested, validate the native callback flow

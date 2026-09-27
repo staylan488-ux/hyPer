@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { readMotionPolicy } from '@/lib/motionPolicy';
+import { useNativeRestDock } from '@/hooks/useNativeGlassSurfaces';
+import { useThemeStore } from '@/stores/themeStore';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
 import { syncWorkoutActivityRest } from '@/lib/liveActivity';
@@ -70,8 +72,12 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const [customDraft, setCustomDraft] = useState('');
   const [customError, setCustomError] = useState(false);
   const completionHandledRef = useRef(false);
-  const barRef = useRef<HTMLElement>(null);
+  // Callback ref: the measured element changes when native glass takes over.
+  const [bar, setBar] = useState<HTMLElement | null>(null);
   const [leaving, setLeaving] = useState(false);
+  // Native taps are not flushed like DOM clicks, so a Pause arriving right
+  // after Skip must see the dismissal synchronously.
+  const leavingRef = useRef(false);
   const leaveTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
     if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current);
@@ -80,7 +86,6 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const isRunning = session?.status === 'running';
 
   useLayoutEffect(() => {
-    const bar = barRef.current;
     if (!bar) return;
     const root = document.documentElement;
     const measure = () => root.style.setProperty('--workout-rest-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
@@ -93,7 +98,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       window.removeEventListener('resize', measure);
       root.style.removeProperty('--workout-rest-height');
     };
-  }, [nextUpLabel, isRunning]);
+  }, [bar, nextUpLabel, isRunning]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -231,9 +236,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     handleSetTime(parsed);
   };
 
-  const handleToggleRunning = () => {
-    if (!session) return;
-    tapHaptic();
+  const handleToggleRunning = (haptic = true) => {
+    if (!session || leavingRef.current) return;
+    if (haptic) tapHaptic();
 
     const nextSession = session.status === 'running' ? pauseRestTimerSession(session) : resumeRestTimerSession(session);
 
@@ -241,9 +246,10 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     setSession(nextSession);
   };
 
-  const handleDismiss = () => {
-    if (leaving) return;
-    tapHaptic();
+  const handleDismiss = (haptic = true) => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    if (haptic) tapHaptic();
     clearRestTimerSession();
     setExpanded(false);
     // The session is already cleared; the bar only finishes sliding away.
@@ -258,9 +264,39 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const tone = isWarning ? 'var(--color-accent)' : 'var(--color-text)';
   const statusLabel = isComplete ? 'Rest complete' : isRunning ? 'Rest' : 'Paused';
 
+  // iOS 26: the bar is native glass. Native taps already gave their haptic.
+  const theme = useThemeStore((state) => state.theme);
+  const accent = useMemo(
+    () => (typeof document === 'undefined' ? '#A8352A' : getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#A8352A'),
+    // The accent token follows the theme.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme],
+  );
+  const endsAtMs = session && isRunning ? Date.parse(session.endsAt) : null;
+  const nativeDock = useNativeRestDock(
+    {
+      visible: !leaving,
+      theme,
+      status: isComplete ? 'completed' : isRunning ? 'running' : 'paused',
+      endsAtMs: endsAtMs !== null && Number.isFinite(endsAtMs) ? endsAtMs : null,
+      remainingMs: timeLeft * 1000,
+      totalMs: seconds * 1000,
+      nextLabel: nextUpLabel,
+      accent,
+    },
+    (action) => {
+      if (action === 'open') setExpanded(true);
+      else if (action === 'toggle') handleToggleRunning(false);
+      else handleDismiss(false);
+    },
+  );
+
   return (
     <>
-      {createPortal(<section ref={barRef} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
+      {/* With the native dock, an invisible anchor holds its place so page
+          padding and drag auto-scroll still know where the dock sits. */}
+      {nativeDock && createPortal(<div ref={setBar} className="studio-rest-bar studio-rest-bar-anchor" aria-hidden />, document.body)}
+      {!nativeDock && createPortal(<section ref={setBar} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
         <button type="button" className="studio-rest-summary" onClick={() => setExpanded(true)}
           aria-label={`Open rest timer options, ${statusLabel.toLowerCase()}, ${formatTime(timeLeft)}${nextUpLabel ? `, next ${nextUpLabel}` : ''}`}
           aria-haspopup="dialog" aria-expanded={expanded}>
@@ -268,9 +304,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <span className="studio-rest-status">{statusLabel}</span>
           <span className="studio-rest-context">{nextUpLabel ? `Next · ${nextUpLabel}` : isComplete ? 'Ready when you are' : 'Tap timer for options'}</span>
         </button>
-        {!isComplete && <button type="button" className="material-control studio-rest-pause" onClick={handleToggleRunning}
+        {!isComplete && <button type="button" className="material-control studio-rest-pause" onClick={() => handleToggleRunning()}
           aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button>}
-        <button type="button" className="studio-rest-dismiss" onClick={handleDismiss}
+        <button type="button" className="studio-rest-dismiss" onClick={() => handleDismiss()}
           aria-label={isComplete ? 'Continue training' : 'Skip rest'}>{isComplete ? 'Continue' : 'Skip'}</button>
         <div className="studio-rest-bar-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft} aria-valuetext={`${formatTime(timeLeft)} remaining`}><span style={{ transform: `scaleX(${isComplete ? 1 : Math.max(0, Math.min(1, remainingRatio))})` }} /></div>
       </section>, document.body)}
@@ -299,7 +335,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <div className="flex justify-center gap-2.5 mb-6">
             <button
               type="button"
-              onClick={handleToggleRunning}
+              onClick={() => handleToggleRunning()}
               disabled={isComplete}
               className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] material-control text-[var(--color-text)] disabled:opacity-40"
               aria-label={isRunning ? 'Pause' : 'Resume'}
@@ -393,7 +429,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
           <button
             type="button"
-            onClick={handleDismiss}
+            onClick={() => handleDismiss()}
             className="pressable w-full min-h-12 rounded-[11px] material-control t-label text-[var(--color-text)] hover:bg-[var(--button-primary-hover)] hover:text-[var(--button-primary-fg)] transition-colors"
           >
             Done resting

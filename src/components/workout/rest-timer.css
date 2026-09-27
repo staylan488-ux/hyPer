@@ -113,3 +113,13 @@ html[data-keyboard-open="true"] .studio-rest-bar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .studio-rest-bar, .studio-rest-bar *, .studio-rest-bar-progress > span { transition: none !important; animation: none !important; }
 }
+
+/* Invisible stand-in for the native glass dock (same slot, 64pt tall). */
+.studio-rest-bar.studio-rest-bar-anchor {
+  min-height: 64px;
+  padding: 0;
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow: none;
+  animation: none;
+}

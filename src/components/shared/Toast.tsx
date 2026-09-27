@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, AlertCircle } from 'lucide-react';
 import { springs } from '@/lib/animations';
+import { useNativeToast } from '@/hooks/useNativeGlassSurfaces';
+import { useThemeStore } from '@/stores/themeStore';
 
 interface ToastProps {
   show: boolean;
@@ -11,6 +13,10 @@ interface ToastProps {
 /** Compact feedback in the same material as the app's foreground controls. */
 export function Toast({ show, message, tone = 'sage' }: ToastProps) {
   const Icon = tone === 'sage' ? Check : AlertCircle;
+  const theme = useThemeStore((state) => state.theme);
+  // iOS 26: a native glass pill, announced to VoiceOver natively.
+  const native = useNativeToast({ visible: show, message, theme });
+  if (native) return null;
 
   return (
     <AnimatePresence>
