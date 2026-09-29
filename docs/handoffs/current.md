@@ -101,7 +101,7 @@ devices. No local cache is used as a substitute for a successful account save.
 Next: check the GitHub PR for `codex/adaptive-scheduling-toggle`. PR creation
 and merge are authorized for this setting; native device validation remains pending.
 
-## Photo worker models + VM re-login (2026-09-29, awaiting user VM step)
+## Photo worker models + VM re-login (2026-09-29, DEPLOYED)
 
 User asked: re-login Codex and Claude on the VM; AI food logging (photo +
 describe) on gpt-6-sol and claude-sonnet-5-5. Merged in PR #131 (b414477f).
@@ -131,6 +131,8 @@ describe) on gpt-6-sol and claude-sonnet-5-5. Merged in PR #131 (b414477f).
 - Risk (recorded earlier in the root handoff): the worker serves other app
   users through personal ChatGPT/Claude subscription logins.
 
-Next: user runs `sudo bash /home/aross/worker-models-relogin.sh` on the VM,
-then confirm `/health` shows gpt-6-sol / claude-sonnet-5-5 / coach opus-5.
-Rollback: restore `/etc/hyper/photo-worker.env.bak.<ts>` and restart.
+Deployed 2026-09-29 20:46 UTC: the user ran the script; it only installs
+after all three real-call checks pass. Verified afterwards: service active,
+`/health` models gpt-6-sol / claude-sonnet-5-5 / coach claude-opus-5, efforts
+high / high / max, both providers authenticated, deployed worker md5 matches
+b414477f. Rollback: `/etc/hyper/photo-worker.env.bak.1790714545` + restart.
