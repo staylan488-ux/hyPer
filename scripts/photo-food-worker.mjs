@@ -31,7 +31,7 @@ const HOST = process.env.PHOTO_WORKER_HOST?.trim() || '127.0.0.1';
 // at 4.4M chars, so this has to clear ~9MB or a two-angle meal is rejected here
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 // 150s was tuned for smaller images and a lighter model; two 2576px photos
-// through Opus 5 at high effort can legitimately run longer, and a timeout here
+// through a frontier model at high effort can legitimately run longer, and a timeout here
 // throws away the whole analysis. The client allows 300s, so this stays under it.
 const configuredCommandTimeout = Number(process.env.PHOTO_WORKER_COMMAND_TIMEOUT_MS || 240_000);
 const COMMAND_TIMEOUT_MS = Number.isFinite(configuredCommandTimeout)
@@ -84,9 +84,14 @@ async function runMemoized(cacheKey, compute) {
 const BUNDLED_CODEX_PATH = '/Applications/ChatGPT.app/Contents/Resources/codex';
 const CODEX_COMMAND = process.env.PHOTO_WORKER_CODEX_COMMAND?.trim()
   || (process.platform === 'darwin' && existsSync(BUNDLED_CODEX_PATH) ? BUNDLED_CODEX_PATH : 'codex');
-const OPENAI_MODEL = process.env.PHOTO_WORKER_OPENAI_MODEL?.trim() || 'gpt-5.6-sol';
+// gpt-6-sol needs codex-cli >= 0.158 on a ChatGPT account; older clients get
+// "model is not supported when using Codex with a ChatGPT account"
+const OPENAI_MODEL = process.env.PHOTO_WORKER_OPENAI_MODEL?.trim() || 'gpt-6-sol';
 const OPENAI_EFFORT = process.env.PHOTO_WORKER_OPENAI_EFFORT?.trim() || 'high';
-const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL?.trim() || 'claude-opus-5';
+const ANTHROPIC_MODEL = process.env.PHOTO_WORKER_ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5';
+// the coach keeps its own model so moving food logging to a faster model
+// does not silently downgrade the targets recommendation
+const COACH_MODEL = process.env.PHOTO_WORKER_COACH_MODEL?.trim() || 'claude-opus-5';
 const ANTHROPIC_EFFORT = process.env.PHOTO_WORKER_ANTHROPIC_EFFORT?.trim() || 'high';
 // The coach runs at maximum effort. Targets are set a handful of times a year,
 // the answer shapes months of eating, and nobody is standing in a gym waiting
@@ -435,7 +440,7 @@ async function describeWithCodex(jobDir, prompt, schemaPath = DESCRIPTION_SCHEMA
   return JSON.parse(await readFile(outputPath, 'utf8'));
 }
 
-async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescriptionSchema, effort = ANTHROPIC_EFFORT, timeoutMs = RESEARCH_TIMEOUT_MS) {
+async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescriptionSchema, effort = ANTHROPIC_EFFORT, timeoutMs = RESEARCH_TIMEOUT_MS, model = ANTHROPIC_MODEL) {
   const args = [
     '--print', '--output-format', 'json', '--json-schema', schemaJson,
     // WebSearch and WebFetch require permission, and 'dontAsk' does not prompt,
@@ -446,7 +451,7 @@ async function describeWithClaude(jobDir, prompt, schemaJson = claudeDescription
     // writes. ('--safe-mode' disables customizations, not tools; it was never
     // the constraint here.)
     '--tools', 'WebSearch,WebFetch', '--permission-mode', 'bypassPermissions', '--no-session-persistence', '--safe-mode',
-    '--model', ANTHROPIC_MODEL, '--effort', effort, prompt,
+    '--model', model, '--effort', effort, prompt,
   ];
   const { stdout } = await runCommand('claude', args, { cwd: jobDir, timeoutMs });
   const outer = JSON.parse(stdout);
@@ -512,8 +517,8 @@ const server = createServer(async (request, response) => {
       ok: true,
       providers: installedProviders,
       authenticatedProviders: authenticatedProviders(),
-      models: { openai: OPENAI_MODEL, anthropic: ANTHROPIC_MODEL },
-      efforts: { openai: OPENAI_EFFORT, anthropic: ANTHROPIC_EFFORT },
+      models: { openai: OPENAI_MODEL, anthropic: ANTHROPIC_MODEL, coach: COACH_MODEL },
+      efforts: { openai: OPENAI_EFFORT, anthropic: ANTHROPIC_EFFORT, coach: COACH_EFFORT },
       queue: jobGate.stats(),
       allowlistConfigured: ALLOWED_USER_IDS.size > 0,
     }, origin);
@@ -590,12 +595,12 @@ const server = createServer(async (request, response) => {
           provider,
           (chosen, isFallback) => (chosen === 'anthropic'
             ? describeWithClaude(jobDir, prompt, claudeCoachSchema, COACH_EFFORT,
-              isFallback ? FALLBACK_RESEARCH_TIMEOUT_MS : RESEARCH_TIMEOUT_MS)
+              isFallback ? FALLBACK_RESEARCH_TIMEOUT_MS : RESEARCH_TIMEOUT_MS, COACH_MODEL)
             : describeWithCodex(jobDir, prompt, COACH_SCHEMA_PATH,
               isFallback ? FALLBACK_RESEARCH_TIMEOUT_MS : RESEARCH_TIMEOUT_MS)),
           requestId,
         );
-        const model = attempt.provider === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL;
+        const model = attempt.provider === 'anthropic' ? COACH_MODEL : OPENAI_MODEL;
         const body = { provider: attempt.provider, model, ...attempt.result };
         if (cacheKey) idempotencyCache.set(cacheKey, body);
         return body;

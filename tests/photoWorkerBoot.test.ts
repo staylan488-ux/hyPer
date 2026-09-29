@@ -24,6 +24,11 @@ async function bootWorker() {
       NODE_ENV: 'test',
       SUPABASE_URL: 'https://example.supabase.co',
       SUPABASE_ANON_KEY: 'test-key',
+      // empty = worker defaults, regardless of the developer's shell
+      PHOTO_WORKER_OPENAI_MODEL: '',
+      PHOTO_WORKER_ANTHROPIC_MODEL: '',
+      PHOTO_WORKER_COACH_MODEL: '',
+      PHOTO_WORKER_COACH_EFFORT: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -59,6 +64,23 @@ describe('the worker actually boots and answers', () => {
       expect(Array.isArray(body.providers)).toBe(true);
       expect(Array.isArray(body.authenticatedProviders)).toBe(true);
       expect(stderr()).not.toMatch(/ReferenceError|TypeError|is not defined|is not a function/);
+    } finally {
+      child.kill('SIGTERM');
+      await Promise.race([once(child, 'exit'), new Promise((r) => setTimeout(r, 3_000))]);
+    }
+  }, 30_000);
+
+  it('reports food-logging models separately from the coach model', async () => {
+    const { child, response } = await bootWorker();
+    try {
+      const body = await response.json() as {
+        models?: Record<string, string>;
+        efforts?: Record<string, string>;
+      };
+      // food logging moved to faster models; the coach must stay on its own
+      // model and effort rather than inheriting the food-logging choice
+      expect(body.models).toEqual({ openai: 'gpt-6-sol', anthropic: 'claude-sonnet-5-5', coach: 'claude-opus-5' });
+      expect(body.efforts?.coach).toBe('max');
     } finally {
       child.kill('SIGTERM');
       await Promise.race([once(child, 'exit'), new Promise((r) => setTimeout(r, 3_000))]);
