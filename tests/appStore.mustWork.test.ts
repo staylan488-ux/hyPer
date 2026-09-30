@@ -1109,6 +1109,7 @@ describe('must-work store contracts', () => {
     useAppStore.setState({ fetchSplits: fetchSplitsSpy });
 
     const splitsChain = createChain();
+    (splitsChain as unknown as { data: unknown }).data = [{ id: 'split-b' }];
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'splits') return splitsChain;
       throw new Error(`Unexpected table: ${table}`);
@@ -1119,6 +1120,7 @@ describe('must-work store contracts', () => {
     expect(result).toEqual({ ok: true });
     expect(splitsChain.update).toHaveBeenCalledTimes(2);
     expect(splitsChain.update).toHaveBeenNthCalledWith(1, { is_active: true });
+    expect(splitsChain.select).toHaveBeenCalledWith('id');
     expect(splitsChain.update).toHaveBeenNthCalledWith(2, { is_active: false });
     expect(splitsChain.eq).toHaveBeenNthCalledWith(1, 'id', 'split-b');
     expect(splitsChain.eq).toHaveBeenNthCalledWith(2, 'user_id', 'user-1');
@@ -1139,6 +1141,30 @@ describe('must-work store contracts', () => {
     });
 
     const result = await useAppStore.getState().setActiveSplit('split-b');
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBeTruthy();
+    expect(splitsChain.update).toHaveBeenCalledTimes(1);
+    expect(splitsChain.update).toHaveBeenCalledWith({ is_active: true });
+    expect(splitsChain.neq).not.toHaveBeenCalled();
+    expect(fetchSplitsSpy).not.toHaveBeenCalled();
+  });
+
+  it('never deactivates other splits when the target row no longer exists', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
+    useAppStore.setState({ fetchSplits: fetchSplitsSpy });
+
+    // PostgREST reports no error when an update matches zero rows, e.g. when the
+    // program was deleted on another device or is hidden by RLS.
+    const splitsChain = createChain();
+    (splitsChain as unknown as { data: unknown }).data = [];
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'splits') return splitsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await useAppStore.getState().setActiveSplit('split-gone');
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBeTruthy();

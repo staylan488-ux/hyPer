@@ -280,16 +280,19 @@ function activitySessionInsertRow(userId: string, input: ActivitySessionInput) {
 
 // Activates the target before deactivating the rest, so a failure part-way
 // leaves two active rows (the newest still wins) rather than none.
-// `activated` reports whether the first step took effect.
+// `activated` reports whether the first step took effect. An update that
+// matches no row (deleted elsewhere, or hidden by RLS) returns no error, so the
+// returned rows are checked before anything is deactivated.
 async function activateSplitRow(
   splitId: string,
   userId: string
 ): Promise<{ ok: boolean; activated: boolean; reason?: string }> {
-  const { error: activateError } = await supabase
+  const { data: activatedRows, error: activateError } = await supabase
     .from('splits')
     .update({ is_active: true })
-    .eq('id', splitId);
-  if (activateError) {
+    .eq('id', splitId)
+    .select('id');
+  if (activateError || !activatedRows?.length) {
     return { ok: false, activated: false, reason: 'Could not set the active program. Try again.' };
   }
 
