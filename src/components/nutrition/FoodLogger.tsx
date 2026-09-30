@@ -593,7 +593,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       const { data, error } = await listSavedMealRows<SavedMealRow>(
         userId,
         'id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, description',
-        120,
       );
 
       if (!isCurrent()) return;

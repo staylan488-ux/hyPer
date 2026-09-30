@@ -502,7 +502,6 @@ export function Settings() {
       const { data, error } = await listSavedMealRows<SavedMeal>(
         user.id,
         'id, user_id, name, calories, protein, carbs, fat, source, description, serving_size, serving_unit',
-        150,
       );
 
       if (error) {

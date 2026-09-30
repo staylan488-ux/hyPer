@@ -6,11 +6,14 @@ import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersi
 // one moves it to manual_entry, so past logs that point at it keep their food.
 export const SAVED_MEAL_SOURCES = ['saved_meal', 'custom'] as const;
 
+// Rows fetched before de-duplication; the food logger and Settings share it so
+// both screens list the same meals.
+export const SAVED_MEAL_FETCH_LIMIT = 150;
+
 /** The user's saved-meal rows, newest first, before any de-duplication. */
 export async function listSavedMealRows<Row extends { name?: string | null }>(
   userId: string,
   columns: string,
-  limit: number,
 ): Promise<{ data: Row[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('foods')
@@ -18,7 +21,7 @@ export async function listSavedMealRows<Row extends { name?: string | null }>(
     .eq('user_id', userId)
     .in('source', [...SAVED_MEAL_SOURCES])
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(SAVED_MEAL_FETCH_LIMIT);
   return { data: data as Row[] | null, error };
 }
 

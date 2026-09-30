@@ -29,6 +29,7 @@ vi.mock('@/lib/supabase', () => {
 
 import { insertOneServingFood, persistExternalFood } from '@/lib/foodPersistence';
 import {
+  SAVED_MEAL_FETCH_LIMIT,
   SAVED_MEAL_SOURCES,
   dedupeSavedMealsByName,
   insertSavedMeal,
@@ -46,11 +47,11 @@ beforeEach(() => {
 });
 
 describe('saved meal list', () => {
-  it('queries the user\'s saved and custom foods newest first with the caller\'s columns and limit', async () => {
+  it('queries the user\'s saved and custom foods newest first with the caller\'s columns', async () => {
     const rows = [{ id: 'a', name: 'Oats' }];
     mocks.results.push({ data: rows });
 
-    const result = await listSavedMealRows('user-a', 'id, name', 150);
+    const result = await listSavedMealRows('user-a', 'id, name');
 
     expect(result).toEqual({ data: rows, error: null });
     expect(mocks.chains).toEqual([[
@@ -62,12 +63,14 @@ describe('saved meal list', () => {
       ['limit', 150],
     ]]);
     expect(SAVED_MEAL_SOURCES).toEqual(['saved_meal', 'custom']);
+    // one limit for the logger and Settings, so both list the same meals
+    expect(SAVED_MEAL_FETCH_LIMIT).toBe(150);
   });
 
   it('passes a query error through', async () => {
     const error = { message: 'offline' };
     mocks.results.push({ error });
-    expect(await listSavedMealRows('user-a', 'id', 120)).toEqual({ data: null, error });
+    expect(await listSavedMealRows('user-a', 'id')).toEqual({ data: null, error });
   });
 
   it('keeps the newest row per normalized name and skips empty names', () => {
