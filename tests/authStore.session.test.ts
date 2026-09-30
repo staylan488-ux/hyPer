@@ -17,6 +17,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { useAuthStore } from '@/stores/authStore';
+import { initialAppData, useAppStore } from '@/stores/appStore';
 
 type Profile = {
   id: string;
@@ -349,5 +350,81 @@ describe('profile fetch dedupe across auth events', () => {
     callback('TOKEN_REFRESHED', { user: { id: 'user-1' } });
     await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('One'));
     expect(requested).toEqual(['user-1', 'user-1']);
+  });
+});
+
+describe('in-memory app data on account change', () => {
+  const accountData = {
+    currentWorkout: {
+      id: 'workout-1', user_id: 'user-1', split_day_id: null, date: '2026-09-30',
+      notes: null, completed: false, sets: [],
+    },
+    macroTarget: { id: 'target-1', user_id: 'user-1', calories: 2500, protein: 180, carbs: 250, fat: 80 },
+    splits: [{ id: 'split-1' }],
+    whoopConnection: { user_id: 'user-1' },
+  } as never;
+
+  async function signedInWithData() {
+    profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+      'user-2': async () => ({ data: { id: 'user-2', display_name: 'Two' }, error: null }),
+    });
+    const callback = await initializeWith({ user: { id: 'user-1' } });
+    useAppStore.setState(accountData);
+    return callback;
+  }
+
+  it('keeps the active workout and targets through refreshes and foreground sign-ins', async () => {
+    const callback = await signedInWithData();
+    callback('INITIAL_SESSION', { user: { id: 'user-1' } });
+    callback('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+    callback('SIGNED_IN', { user: { id: 'user-1' } });
+    callback('USER_UPDATED', { user: { id: 'user-1' } });
+
+    const state = useAppStore.getState();
+    expect(state.currentWorkout?.id).toBe('workout-1');
+    expect(state.macroTarget?.calories).toBe(2500);
+    expect(state.splits).toHaveLength(1);
+  });
+
+  it('resets the data fields when a different account signs in', async () => {
+    const callback = await signedInWithData();
+    callback('SIGNED_IN', { user: { id: 'user-2' } });
+
+    const state = useAppStore.getState();
+    for (const [key, value] of Object.entries(initialAppData)) {
+      expect(state[key as keyof typeof initialAppData]).toEqual(value);
+    }
+  });
+
+  it('resets the data fields when the session ends', async () => {
+    const callback = await signedInWithData();
+    callback('SIGNED_OUT', null);
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().macroTarget).toBeNull();
+  });
+
+  it('leaves the data alone when a session starts from signed out', async () => {
+    profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const callback = await initializeWith(null);
+    useAppStore.setState(accountData);
+    callback('INITIAL_SESSION', null);
+    callback('SIGNED_IN', { user: { id: 'user-1' } });
+
+    expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
+  });
+
+  it('resets the data fields on an explicit sign-out', async () => {
+    supabaseMock.auth.signOut.mockResolvedValue({ error: null });
+    useAuthStore.setState({ user: { id: 'user-1' } as never, session: {} as never });
+    useAppStore.setState(accountData);
+
+    await useAuthStore.getState().signOut();
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().whoopConnection).toBeNull();
   });
 });

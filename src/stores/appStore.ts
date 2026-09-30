@@ -281,11 +281,12 @@ function activitySessionInsertRow(userId: string, input: ActivitySessionInput) {
 // in-flight WHOOP sync per user id (see syncWhoop)
 const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 
-export const useAppStore = create<AppState>((set, get) => ({
+// per-account data, reset when a different account signs in. workoutMode is
+// a device preference that fetchWorkoutMode reloads, so it stays out.
+export const initialAppData = {
   activeSplit: null,
   splits: [],
   currentWorkout: null,
-  workoutMode: 'split',
   currentWorkoutDayPlan: null,
   flexTemplates: [],
   macroTarget: null,
@@ -293,6 +294,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   volumeLandmarks: [],
   weeklyVolume: [],
   whoopConnection: null,
+} satisfies Partial<AppState>;
+
+export const useAppStore = create<AppState>((set, get) => ({
+  ...initialAppData,
+  workoutMode: 'split',
 
   fetchSplits: async () => {
     const { data: { user } } = await supabase.auth.getUser();

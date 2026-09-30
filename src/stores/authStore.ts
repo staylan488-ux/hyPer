@@ -4,6 +4,7 @@ import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { supabase } from '@/lib/supabase';
+import { initialAppData, useAppStore } from '@/stores/appStore';
 
 const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
 
@@ -32,6 +33,12 @@ function isExistingAccountSignUpResponse(data: { user: User | null; session: Ses
 // (INITIAL_SESSION, TOKEN_REFRESHED, the SIGNED_IN on every foreground resume)
 // skip the refetch while it runs or once the profile is loaded
 let profileRequestFor: string | null = null;
+
+// clears the in-memory copy of the previous account's data; every set is
+// already saved, and each screen's fetch rebuilds the store for the new user
+function resetAppData() {
+  useAppStore.setState(initialAppData);
+}
 
 interface AuthState {
   user: User | null;
@@ -70,7 +77,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
+      // compare user ids, never event names: TOKEN_REFRESHED and the SIGNED_IN
+      // on every foreground resume keep the same id and the active workout
+      const prevId = get().user?.id;
       set({ session, user: session?.user ?? null });
+      if (prevId && prevId !== (session?.user?.id ?? null)) resetAppData();
 
       if (session?.user) {
         const userId = session.user.id;
@@ -113,6 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!error && data.user && !data.user.email_confirmed_at) {
       await supabase.auth.signOut();
       invalidateExerciseLibrary();
+      resetAppData();
       set({ loading: false, user: null, session: null, profile: null });
       return { error: new Error('Please verify your email before signing in.') };
     }
@@ -208,6 +220,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
+    resetAppData();
     set({ user: null, session: null, profile: null });
   },
 }));
