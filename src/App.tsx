@@ -9,6 +9,7 @@ import {
   useOutlet,
 } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { BottomNav, RouteErrorScreen } from '@/components/shared';
@@ -18,11 +19,6 @@ import { Button } from '@/components/shared/Button';
 import { Dashboard } from '@/pages/Dashboard';
 import { Workout } from '@/pages/Workout';
 import { Nutrition } from '@/pages/Nutrition';
-import { Splits } from '@/pages/Splits';
-import { Settings } from '@/pages/Settings';
-import { Analysis } from '@/pages/Analysis';
-import { History } from '@/pages/History';
-import { RunTracker } from '@/pages/RunTracker';
 import { useThemeStore } from '@/stores/themeStore';
 import { springs } from '@/lib/animations';
 import { PreviewGallery } from '@/preview/Preview'; // DEV-ONLY
@@ -142,6 +138,37 @@ function PrivateLayout() {
   );
 }
 
+/**
+ * Secondary screens load on first visit so launch evaluates less code. Route
+ * `lazy` keeps the current screen until the chunk arrives, with no Suspense
+ * inside the keyed route container. The three main tabs stay in the entry.
+ */
+const lazyPage = {
+  program: () => import('@/pages/Splits').then((m) => ({ Component: m.Splits })),
+  run: () => import('@/pages/RunTracker').then((m) => ({ Component: m.RunTracker })),
+  settings: () => import('@/pages/Settings').then((m) => ({ Component: m.Settings })),
+  analysis: () => import('@/pages/Analysis').then((m) => ({ Component: m.Analysis })),
+  history: () => import('@/pages/History').then((m) => ({ Component: m.History })),
+};
+
+/** Web only: fetch the lazy screens once launch has settled so a first visit
+ * over the network is still instant. Native reads chunks from local files. */
+function warmLazyPages() {
+  if (Capacitor.isNativePlatform()) return;
+  const warm = () => Object.values(lazyPage).forEach((load) => void load().catch(() => {}));
+  const timer = window.setTimeout(() => {
+    if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 5000 });
+    else warm();
+  }, 3000);
+  return () => window.clearTimeout(timer);
+}
+
+/** A cold deep link to a lazy page keeps the shell (splash, sign-in, nav)
+ * and leaves only the page area empty until its chunk loads. */
+function PageChunkPending() {
+  return null;
+}
+
 const router = createBrowserRouter(
   createRoutesFromElements(
     <>
@@ -156,18 +183,18 @@ const router = createBrowserRouter(
       <Route element={<PrivateLayout />}>
         {/* Pathless boundary: a page that throws renders the error screen inside
             the shell, so the bottom nav stays usable. */}
-        <Route errorElement={<RouteErrorScreen />}>
+        <Route errorElement={<RouteErrorScreen />} HydrateFallback={PageChunkPending}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/train" element={<Workout />} />
           <Route path="/nutrition" element={<Nutrition />} />
-          <Route path="/train/program" element={<Splits />} />
-          <Route path="/train/run" element={<RunTracker />} />
+          <Route path="/train/program" lazy={lazyPage.program} />
+          <Route path="/train/run" lazy={lazyPage.run} />
           <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
           <Route path="/workout" element={<Navigate to="/train" replace />} />
           <Route path="/splits" element={<Navigate to="/train/program" replace />} />
-          <Route path="/settings/*" element={<Settings />} />
-          <Route path="/analysis" element={<Analysis />} />
-          <Route path="/history" element={<History />} />
+          <Route path="/settings/*" lazy={lazyPage.settings} />
+          <Route path="/analysis" lazy={lazyPage.analysis} />
+          <Route path="/history" lazy={lazyPage.history} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
@@ -197,6 +224,7 @@ function App() {
     return initializeTheme();
   }, [initializeTheme]);
 
+  useEffect(() => warmLazyPages(), []);
   useEffect(() => watchRestTimerWorkoutEnd(useAppStore), []);
   useEffect(() => watchRestTimerSignOut(useAuthStore), []);
 
