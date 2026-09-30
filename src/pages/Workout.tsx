@@ -49,7 +49,7 @@ import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutof
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
@@ -375,7 +375,7 @@ export function Workout() {
 
     let cancelled = false;
     const fetchCalendarWorkouts = async () => {
-      const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
+      const weekStart = startOfWeek(weekCursor, TRAINING_WEEK);
       const weekEnd = addDays(weekStart, 6);
 
       const [{ data: workouts }, { data: lastCompleted }] = await Promise.all([
@@ -1065,7 +1065,7 @@ export function Workout() {
 
   const weekdayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-  const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
+  const weekStart = startOfWeek(weekCursor, TRAINING_WEEK);
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 
   const startDate = planSchedule ? parseISO(`${planSchedule.startDate}T00:00:00`) : null;

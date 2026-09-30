@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
+import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import type { MuscleGroup, VolumeLandmark } from '@/types';
 
 function landmark(muscle_group: MuscleGroup): VolumeLandmark {
@@ -63,5 +63,14 @@ describe('computeWeeklyVolume', () => {
       { sets: sets(4, 'biceps') },
     ];
     expect(computeWeeklyVolume(workouts, []).map((entry) => entry.muscle_group)).toEqual(['back', 'biceps', 'chest']);
+  });
+});
+
+describe('trainingWeekRange', () => {
+  it('runs Monday to Sunday, keeping Sunday in the week that ends that day', () => {
+    // Local-time dates so the machine's time zone cannot shift the day.
+    expect(trainingWeekRange(new Date(2026, 8, 27, 23, 59))).toEqual({ weekStart: '2026-09-21', weekEnd: '2026-09-27' });
+    expect(trainingWeekRange(new Date(2026, 8, 28, 0, 0))).toEqual({ weekStart: '2026-09-28', weekEnd: '2026-10-04' });
+    expect(trainingWeekRange(new Date(2026, 9, 3, 12))).toEqual({ weekStart: '2026-09-28', weekEnd: '2026-10-04' });
   });
 });

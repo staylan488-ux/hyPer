@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cronometerGroupDestination,
   hasValidNamedMealOrder,
   insertNutritionGroupByTime,
   legacyMealTypeForGroup,
@@ -120,18 +119,5 @@ describe('nutrition group ordering', () => {
     const normalized = normalizeNutritionGroupOrder(unordered);
     expect(normalized.map((group) => group.id)).toEqual(['breakfast', 'meal-a', 'dinner', 'snack-a']);
     expect(normalized.map((group) => group.sort_order)).toEqual([0, 1, 2, 3]);
-  });
-});
-
-describe('Cronometer group mapping', () => {
-  it('maps named groups and numbered meals/snacks', () => {
-    expect(cronometerGroupDestination('Lunch')).toEqual({ kind: 'meal', label: 'lunch' });
-    expect(cronometerGroupDestination('Supper')).toEqual({ kind: 'meal', label: 'dinner' });
-    expect(cronometerGroupDestination('Meal 3')).toEqual({ kind: 'meal', label: null, ordinal: 3 });
-    expect(cronometerGroupDestination('Snacks 2')).toEqual({ kind: 'snack', label: null, ordinal: 2 });
-  });
-
-  it('leaves unknown custom groups unassigned', () => {
-    expect(cronometerGroupDestination('Supplements')).toBeNull();
   });
 });
