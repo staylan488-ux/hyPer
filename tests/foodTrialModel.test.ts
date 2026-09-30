@@ -27,7 +27,7 @@ describe('Gemini + independent web food pipeline', () => {
     expect(body.store).toBe(false);
     expect(body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: 'MEDIUM' }, maxOutputTokens: 8192, responseFormat: { text: { mimeType: 'APPLICATION_JSON' } } });
     expect(body.generationConfig).not.toHaveProperty('temperature');
-    expect(body.generationConfig.responseFormat.text.schema.properties.clarification).toMatchObject({ type: 'null' });
+    expect(body.generationConfig.responseFormat.text.schema).toMatchObject({ properties: { clarification: { type: 'null' } } });
   });
   it('uses a simpler final wire grammar while enforcing bounds locally', () => {
     const schema = JSON.stringify(buildMealRequest(input).generationConfig.responseFormat.text.schema);
@@ -300,6 +300,60 @@ describe('Gemini + independent web food pipeline', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].evidence).toBe('estimate');
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  describe('two planned products', () => {
+    const chutney = { brand: 'Fixture', product: 'mango chutney', variant: '' };
+    const twoPlan = { products: [plan.products[0], chutney], clarification: null };
+    const chutneySource = { title: 'Retailer', url: 'https://example.org/chutney', description: 'Fixture mango chutney' };
+    const chutneyItem = { ...item, productIndex: 1, name: 'Fixture mango chutney', quantity: 1, unit: 'tbsp', basisQuantity: 1, calories: 40, protein: 0, carbs: 10, fat: 0,
+      evidence: 'estimate', notes: 'Estimated one tablespoon.', amountQuote: '', labelSupport: { ...labelSupport, origin: 'none' } };
+    const hint = 'six Fixture samosas with Fixture mango chutney';
+    const selectionSources = (fetcher: ReturnType<typeof vi.fn>) => {
+      const selection = JSON.parse(fetcher.mock.calls[3][1].body);
+      const data = selection.contents[0].parts.map((part: { text?: string }) => part.text ?? '').find((text: string) => text.startsWith('UNTRUSTED RESEARCH DATA'));
+      return JSON.parse(data.slice(data.indexOf('\n') + 1)).sources as { sourceIndex: number; url: string }[];
+    };
+
+    it('searches both products at once and keeps their order', async () => {
+      let resolveFirst!: (response: Response) => void;
+      const fetcher = vi.fn().mockResolvedValueOnce(json(envelope(twoPlan)))
+        .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveFirst = resolve; }))
+        .mockResolvedValueOnce(json({ results: [{ title: chutneySource.title, url: chutneySource.url, content: chutneySource.description }], usage: { credits: 1 } }))
+        .mockResolvedValueOnce(json(envelope({ sourceIndexes: [0], clarification: null })))
+        .mockResolvedValueOnce(json({ results: [{ url: source.url, raw_content: labelText }], usage: { credits: 0 } }))
+        .mockResolvedValueOnce(json(envelope(meal([item, chutneyItem]))));
+      vi.stubGlobal('fetch', fetcher);
+      const pending = analyzeMeal({ ...input, hint }, 'g', 't');
+      // the second search is sent while the first is still outstanding
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+      const searches = fetcher.mock.calls.slice(1, 3).map(([url, init]) => ({ url, query: JSON.parse(init.body).query }));
+      expect(searches).toEqual([
+        { url: 'https://api.tavily.com/search', query: 'Fixture samosas nutrition facts serving size' },
+        { url: 'https://api.tavily.com/search', query: 'Fixture mango chutney nutrition facts serving size' },
+      ]);
+      // the first search finishing LAST still lists its results first
+      resolveFirst(json({ results: [{ title: source.title, url: source.url, content: source.description }], usage: { credits: 1 } }));
+      const result = await pending;
+      expect(selectionSources(fetcher).map(s => [s.sourceIndex, s.url])).toEqual([[0, source.url], [1, chutneySource.url]]);
+      expect(result.usage.webResearch).toMatchObject({ searchRequests: 2, estimatedCredits: 2.4, reportedCredits: 2, knownReportedCredits: 2, complete: true });
+      expect(result.items.map(i => i.name)).toEqual(['Fixture samosas', 'Fixture mango chutney']);
+      expect(fetcher).toHaveBeenCalledTimes(6);
+    });
+
+    it('uses the other search when one fails, and still finalizes', async () => {
+      const fetcher = vi.fn().mockResolvedValueOnce(json(envelope(twoPlan)))
+        .mockResolvedValueOnce(json({ error: 'upstream' }, 500))
+        .mockResolvedValueOnce(json({ results: [{ title: chutneySource.title, url: chutneySource.url, content: chutneySource.description }], usage: { credits: 1 } }))
+        .mockResolvedValueOnce(json(envelope({ sourceIndexes: [], clarification: null })))
+        .mockResolvedValueOnce(json(envelope(meal([{ ...item, evidence: 'estimate', labelSupport: { ...labelSupport, origin: 'none' } }, chutneyItem]))));
+      vi.stubGlobal('fetch', fetcher);
+      const result = await analyzeMeal({ ...input, hint }, 'g', 't');
+      expect(selectionSources(fetcher).map(s => [s.sourceIndex, s.url])).toEqual([[0, chutneySource.url]]);
+      expect(result.usage.webResearch).toMatchObject({ searchRequests: 2, complete: false, reportedCredits: null });
+      expect(result.clarification).toBeNull();
+      expect(result.items).toHaveLength(2);
+      expect(fetcher).toHaveBeenCalledTimes(5);
+    });
   });
   it.each(['search', 'extract'])('continues to an estimate after empty %s results without retrying research', async stage => {
     const estimate = { ...item, evidence: 'estimate', notes: 'Estimated from the described product.', labelSupport: { ...labelSupport, origin: 'none' } };

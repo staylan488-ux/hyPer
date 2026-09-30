@@ -369,13 +369,6 @@ export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
   traps: 'Traps',
 };
 
-export const MEAL_TYPE_LABELS = {
-  breakfast: 'Breakfast',
-  lunch: 'Lunch',
-  dinner: 'Dinner',
-  snack: 'Snack',
-} as const;
-
 export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   bike_ride: 'Bike ride',
   climbing: 'Climbing',

@@ -18,29 +18,3 @@ export function Screen({ children, className = '', bare = false }: ScreenProps) 
     </div>
   );
 }
-
-interface TopBarProps {
-  /** Small caps eyebrow above the title */
-  eyebrow?: string;
-  title: ReactNode;
-  /** Right-aligned slot for actions */
-  action?: ReactNode;
-  /** Sub-line under the title */
-  subtitle?: ReactNode;
-  className?: string;
-}
-
-export function TopBar({ eyebrow, title, action, subtitle, className = '' }: TopBarProps) {
-  return (
-    <header className={`mb-7 ${className}`}>
-      <div className="flex items-end justify-between gap-3 pb-3">
-        <div className="min-w-0">
-          {eyebrow && <p className="t-label-sm mb-2">{eyebrow}</p>}
-          <h1 className="t-title">{title}</h1>
-        </div>
-        {action && <div className="shrink-0 pb-0.5">{action}</div>}
-      </div>
-      {subtitle && <div className="t-caption mt-3">{subtitle}</div>}
-    </header>
-  );
-}

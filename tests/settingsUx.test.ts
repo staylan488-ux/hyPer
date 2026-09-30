@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { shouldBlockSettingsExit, targetModeLabel, type SettingsDirtyState } from '@/lib/settingsUx';
+import {
+  shouldBlockSettingsExit,
+  targetModeLabel,
+  targetSummaryLabel,
+  type SettingsDirtyState,
+} from '@/lib/settingsUx';
 
 const clean: SettingsDirtyState = { name: false, targets: false, worker: false, meal: false, coach: false, weight: false };
 const dirtyWith = (...keys: (keyof SettingsDirtyState)[]): SettingsDirtyState => ({
@@ -83,5 +88,24 @@ describe('truthful nutrition target mode labels', () => {
   it.each(['calculated', 'adaptive'] as const)('does not promise automatic updates for %s without an enabled profile', (source) => {
     expect(targetModeLabel(source, false)).toBe('Calculated · automatic updates off');
     expect(targetModeLabel(source, undefined)).toBe('Calculated · automatic updates off');
+  });
+});
+
+describe('nutrition target summary while targets refresh', () => {
+  it('shows cached targets instead of a loading flash', () => {
+    expect(targetSummaryLabel('loading', 2400, 'Manual')).toBe(`${(2400).toLocaleString()} kcal · Manual`);
+  });
+
+  it('keeps the loading text when nothing is cached, since null may mean not loaded yet', () => {
+    expect(targetSummaryLabel('loading', null, 'Not set')).toBe('Loading targets…');
+  });
+
+  it('reports a failed load even when cached targets exist', () => {
+    expect(targetSummaryLabel('error', 2400, 'Manual')).toBe('Could not load targets');
+  });
+
+  it('distinguishes loaded targets from unsaved defaults', () => {
+    expect(targetSummaryLabel('ready', 2100, 'Adaptive')).toBe(`${(2100).toLocaleString()} kcal · Adaptive`);
+    expect(targetSummaryLabel('ready', null, 'Not set')).toBe('Starting defaults · not saved');
   });
 });

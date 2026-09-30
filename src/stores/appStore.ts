@@ -11,6 +11,7 @@ import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
 import { saveWorkoutSet } from '@/lib/saveWorkoutSet';
+import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
   isNewPhase,
@@ -41,7 +42,6 @@ import type {
   MacroTarget,
   VolumeLandmark,
   MuscleVolume,
-  MuscleGroup,
   WorkoutMode,
   WorkoutDayPlan,
   FlexDayTemplate,
@@ -56,10 +56,7 @@ import type {
 import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   CLEARED_WHOOP_STATS,
-  searchWhoopForWorkout,
   whoopStatsFor,
-  workoutTimeWindow,
-  type WhoopSearchResult,
 } from '@/lib/workoutWhoop';
 
 const WORKOUT_MODE_STORAGE_KEY = 'program:workout-mode';
@@ -165,7 +162,6 @@ interface AppState {
   nutritionProfile: NutritionProfile | null;
   volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
-  loading: boolean;
 
   // Split actions
   fetchSplits: () => Promise<void>;
@@ -220,8 +216,6 @@ interface AppState {
   disconnectWhoop: () => Promise<void>;
   saveTrackedRun: (run: FinishedRun) => Promise<ActivitySession | null>;
 
-  /** The WHOOP record that covers a lifting workout, if one is unclaimed. */
-  findWhoopForWorkout: (workout: Workout) => Promise<WhoopSearchResult>;
   /** Copy a WHOOP record's physiology onto a workout and tombstone the record. */
   attachWhoopToWorkout: (workout: Workout, session: ActivitySession) => Promise<Workout | null>;
   /** Undo that: clear the stats and return the WHOOP record to the activity list. */
@@ -237,7 +231,6 @@ interface AppState {
   clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
   removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
-  reorderFlexibleExercises: (exerciseIds: string[]) => Promise<void>;
   fetchFlexTemplates: () => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
   renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
@@ -256,7 +249,6 @@ interface AppState {
 
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
-  updateVolumeLandmark: (muscleGroup: MuscleGroup, updates: Partial<VolumeLandmark>) => Promise<void>;
   calculateWeeklyVolume: () => Promise<void>;
 }
 
@@ -271,7 +263,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   nutritionProfile: null,
   volumeLandmarks: [],
   weeklyVolume: [],
-  loading: false,
   whoopConnection: null,
 
   fetchSplits: async () => {
@@ -303,7 +294,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           }))
           .sort((a: SplitDay, b: SplitDay) => a.day_order - b.day_order),
       }));
-      
+
+      // Unchanged content keeps the existing references, so effects keyed on
+      // activeSplit (schedule, plan, calendar) don't refetch on every visit.
+      if (JSON.stringify(get().splits) === JSON.stringify(formattedSplits)) return;
+
       const active = formattedSplits.find((s: Split) => s.is_active);
       set({ 
         splits: formattedSplits, 
@@ -1295,43 +1290,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  reorderFlexibleExercises: async (exerciseIds) => {
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
-
-    const orderedMap = new Map(exerciseIds.map((id, index) => [id, index]));
-
-    const nextItems = [...currentWorkoutDayPlan.items]
-      .sort((a, b) => {
-        const orderA = orderedMap.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-        const orderB = orderedMap.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-        if (orderA !== orderB) return orderA - orderB;
-        return a.order - b.order;
-      })
-      .map((item, index) => ({ ...item, order: index }));
-
-    const { data: updatedPlan, error: planError } = await supabase
-      .from('workout_day_plans')
-      .update({ items: nextItems })
-      .eq('id', currentWorkoutDayPlan.id)
-      .select('id, workout_id, day_label, items')
-      .single();
-
-    if (planError || !updatedPlan) {
-      if (planError) console.error('Error reordering flexible exercises:', planError);
-      return;
-    }
-
-    set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
-    });
-  },
-
   saveFlexibleTemplateFromCurrentWorkout: async () => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
     const { data: { user } } = await supabase.auth.getUser();
@@ -1499,15 +1457,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteWorkout: async (workoutId: string) => {
-    // First delete all sets for this workout
-    await supabase.from('sets').delete().eq('workout_id', workoutId);
-    
-    // Then delete the workout
-    const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
-    
+    // One statement: sets and the day plan go with it via ON DELETE CASCADE,
+    // so a failure part-way can no longer leave a workout with its sets wiped.
+    let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+
+    // Foreign-key violation means a database without the cascade. Nothing was
+    // deleted, so fall back to removing the sets first, stopping if that fails.
+    if (error?.code === '23503') {
+      const { error: setsError } = await supabase.from('sets').delete().eq('workout_id', workoutId);
+      if (setsError) {
+        console.error('Error deleting workout sets:', setsError);
+        throw setsError;
+      }
+      ({ error } = await supabase.from('workouts').delete().eq('id', workoutId));
+    }
+
     if (error) {
       console.error('Error deleting workout:', error);
       throw error;
+    }
+
+    // A deleted in-progress workout must not stay on the Workout tab.
+    if (get().currentWorkout?.id === workoutId) {
+      set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
   },
 
@@ -1877,30 +1849,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error running whoop sync:', error);
       return null;
     }
-  },
-
-  findWhoopForWorkout: async (workout) => {
-    const empty = { match: null, reason: 'no_whoop_activities' as const, whoopCount: 0, bestRatio: 0 };
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return empty;
-
-    const window = workoutTimeWindow(workout);
-    if (!window) return { match: null, reason: 'no_window' as const, whoopCount: 0, bestRatio: 0 };
-
-    // a generous fetch window; findWhoopMatchForWorkout does the real filtering
-    const { data, error } = await supabase
-      .from('activity_sessions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('source', 'whoop')
-      .gte('started_at', new Date(window.startMs - 12 * 60 * 60 * 1000).toISOString())
-      .lte('started_at', new Date(window.endMs + 12 * 60 * 60 * 1000).toISOString());
-
-    if (error) {
-      console.error('Error looking for a WHOOP record for this workout:', error);
-      return empty;
-    }
-    return searchWhoopForWorkout(workout, (data || []) as ActivitySession[]);
   },
 
   attachWhoopToWorkout: async (workout, session) => {
@@ -2843,22 +2791,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  updateVolumeLandmark: async (muscleGroup, updates) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from('volume_landmarks')
-      .upsert({
-        user_id: user.id,
-        muscle_group: muscleGroup,
-        ...updates,
-      });
-
-    await get().fetchVolumeLandmarks();
-    await get().calculateWeeklyVolume();
-  },
-
   calculateWeeklyVolume: async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -2867,69 +2799,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
 
     // Get all completed sets from this week, regardless of whether
-    // the parent workout was explicitly marked complete.
-    const { data: workouts } = await supabase
-      .from('workouts')
-      .select(`
-        *,
-        sets!inner (
-          exercise_id,
-          completed,
-          exercise:exercises (muscle_group, muscle_group_secondary)
-        )
-      `)
-      .eq('user_id', user.id)
-      .eq('sets.completed', true)
-      .gte('date', weekStart)
-      .lte('date', weekEnd);
+    // the parent workout was explicitly marked complete. Landmarks load
+    // alongside so statuses are never graded against a missing or stale list.
+    const [{ data: workouts }, { data: freshLandmarks }] = await Promise.all([
+      supabase
+        .from('workouts')
+        .select(`
+          *,
+          sets!inner (
+            exercise_id,
+            completed,
+            exercise:exercises (muscle_group, muscle_group_secondary)
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('sets.completed', true)
+        .gte('date', weekStart)
+        .lte('date', weekEnd),
+      Promise.resolve(
+        supabase
+          .from('volume_landmarks')
+          .select('*')
+          .eq('user_id', user.id)
+      ).catch(() => ({ data: null })),
+    ]);
 
     if (!workouts) return;
 
-    // Calculate volume per muscle group
-    const volumeMap = new Map<MuscleGroup, number>();
-    
-    type CompletedSetRow = {
-      exercise: {
-        muscle_group: MuscleGroup;
-        muscle_group_secondary: MuscleGroup | null;
-      };
-      completed: boolean;
-    };
+    // If the landmarks query failed, keep grading against the stored list.
+    const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
+    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
 
-    for (const workout of workouts) {
-      const workoutSets = workout.sets as CompletedSetRow[];
-
-      for (const set of workoutSets) {
-        if (!set.completed || !set.exercise) continue;
-
-        const primaryMuscle = set.exercise.muscle_group;
-        const secondaryMuscle = set.exercise.muscle_group_secondary;
-
-        volumeMap.set(primaryMuscle, (volumeMap.get(primaryMuscle) ?? 0) + 1);
-        if (secondaryMuscle) {
-          volumeMap.set(secondaryMuscle, (volumeMap.get(secondaryMuscle) ?? 0) + 0.5);
-        }
-      }
-    }
-
-    const { volumeLandmarks } = get();
-    const weeklyVolume: MuscleVolume[] = [];
-
-    for (const [muscle_group, weekly_sets] of volumeMap) {
-      const landmark = volumeLandmarks.find(l => l.muscle_group === muscle_group);
-      
-      let status: MuscleVolume['status'] = 'below_mev';
-      if (landmark) {
-        if (weekly_sets < landmark.mev) status = 'below_mev';
-        else if (weekly_sets < landmark.mav_low) status = 'mev_mav';
-        else if (weekly_sets <= landmark.mav_high) status = 'mav';
-        else if (weekly_sets < landmark.mrv) status = 'approaching_mrv';
-        else status = 'above_mrv';
-      }
-
-      weeklyVolume.push({ muscle_group, weekly_sets, landmark, status });
-    }
-
-    set({ weeklyVolume });
+    set({ volumeLandmarks, weeklyVolume });
   },
 }));

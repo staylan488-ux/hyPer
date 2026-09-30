@@ -315,12 +315,12 @@ export async function analyzeMeal(input: MealInput, apiKey: string, tavilyKey: s
     const products: ProductQuery[] = plan.products.map(value => { productSearchQuery(value); return value as ProductQuery; });
     let evidence: ExtractedSource[] = [];
     if (products.length) {
-      const sources = [];
-      for (const product of products) {
-        // Research can fail without making the user supply a label. Its reserved
-        // usage remains accounted for; continue to the planned finalizer, no retry.
-        try { sources.push(...await research.search(product)); } catch { /* Finalizer estimates from available evidence. */ }
-      }
+      // Both searches are reserved and sent in product order, then awaited
+      // together; allSettled keeps input order for the sourceIndexes below.
+      // Research can fail without making the user supply a label. Its reserved
+      // usage remains accounted for; continue to the planned finalizer, no retry.
+      const settled = await Promise.allSettled(products.map(product => research.search(product)));
+      const sources = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []); // Finalizer estimates from available evidence.
       const unique = [...new Map(sources.map(s => [s.url, s])).values()];
       if (unique.length) {
         const selected = responseJson(await model(request(input, `Select up to TWO zero-based sourceIndexes from the supplied search results for useful nutrition evidence. Prefer exact manufacturer/restaurant pages, then credible retailers or supplementary databases. Reject unrelated variants; never treat a snippet as proof of a full label. If no useful page exists return empty indexes. Do not ask questions: unavailable or conflicting information will become a clearly marked estimate. Never invent an index.`, selectionSchema, { products, sources: unique.map((s, sourceIndex) => ({ sourceIndex, ...s })) }), 'selection'));

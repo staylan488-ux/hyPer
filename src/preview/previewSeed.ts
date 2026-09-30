@@ -41,7 +41,6 @@ export function maybeSeedPreview(): void {
     macroTarget: getYouPreviewState() === 'empty' ? null : previewMacroTarget,
     volumeLandmarks: previewLandmarks,
     weeklyVolume: previewWeeklyVolume,
-    loading: false,
     // Keep illustrative volume totals. Nutrition, workout and program reads
     // use the real store actions so saved edits survive route remounts.
     fetchVolumeLandmarks: noop,

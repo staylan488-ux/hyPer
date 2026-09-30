@@ -10,8 +10,6 @@
  * Pure — the caller supplies the entry; no clock reads, no I/O.
  */
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 export interface EntryDayPatch {
   date: string;
   logged_at: string | null;
@@ -53,9 +51,13 @@ export function planEntryDayMove(
   let nextLoggedAt: string | null = null;
   if (entry.logged_at) {
     const parsed = Date.parse(entry.logged_at);
-    nextLoggedAt = Number.isFinite(parsed)
-      ? new Date(parsed + days * MS_PER_DAY).toISOString()
-      : null;
+    if (Number.isFinite(parsed)) {
+      // calendar days in local time, not 24 h blocks, so the wall-clock time
+      // survives a DST change between the two days
+      const moved = new Date(parsed);
+      moved.setDate(moved.getDate() + days);
+      nextLoggedAt = moved.toISOString();
+    }
   }
 
   return { date: nextDate, logged_at: nextLoggedAt };

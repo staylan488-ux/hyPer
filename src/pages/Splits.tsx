@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { SplitBuilder } from '@/components/split/SplitBuilder';
 import { SplitEditor } from '@/components/split/SplitEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
-import { loadPlanSchedule } from '@/lib/planSchedule';
+import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
 
@@ -40,6 +40,16 @@ export function Splits() {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [showPlanStartPrompt, setShowPlanStartPrompt] = useState(false);
   const [promptSplit, setPromptSplit] = useState<{ id: string; name: string } | null>(null);
+  // The split most recently activated here; a slower schedule check for an
+  // earlier choice must not open its prompt.
+  const promptRequestRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [templateToDelete, setTemplateToDelete] = useState<FlexDayTemplate | null>(null);
   const [templateToRename, setTemplateToRename] = useState<FlexDayTemplate | null>(null);
@@ -212,10 +222,13 @@ export function Splits() {
     }
   };
 
-  const maybePromptPlanStart = (splitId: string, splitName: string) => {
+  const maybePromptPlanStart = async (splitId: string, splitName: string) => {
     if (!user) return;
+    promptRequestRef.current = splitId;
 
-    const hasSchedule = Boolean(loadPlanSchedule(user.id, splitId));
+    // Checks the cloud copy when this device has none (e.g. a fresh install).
+    const hasSchedule = Boolean(await loadPlanScheduleAsync(user.id, splitId));
+    if (!mountedRef.current || promptRequestRef.current !== splitId) return;
     const dismissedKey = `plan-start-prompt:dismissed:${user.id}:${splitId}`;
     const dismissed = globalThis.localStorage?.getItem(dismissedKey) === '1';
 
@@ -228,7 +241,7 @@ export function Splits() {
   const handleSelectSplit = async (splitId: string, splitName: string) => {
     await setActiveSplit(splitId);
     setShowMenu(null);
-    maybePromptPlanStart(splitId, splitName);
+    await maybePromptPlanStart(splitId, splitName);
   };
 
   return (
@@ -716,7 +729,7 @@ export function Splits() {
             void fetchSplits();
 
             if (createdSplit) {
-              maybePromptPlanStart(createdSplit.id, createdSplit.name);
+              void maybePromptPlanStart(createdSplit.id, createdSplit.name);
             }
           }}
         />

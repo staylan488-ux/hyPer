@@ -62,10 +62,9 @@ export interface MaquetteController {
 const REST_ANGLE = 0.42; // three-quarter view
 const TWO_PI = Math.PI * 2;
 
-const unitSphere = new SphereGeometry(1, 48, 32);
 const UP = new Vector3(0, 1, 0);
 
-function buildMesh(solid: Solid, material: MeshPhysicalMaterial): Mesh {
+function buildMesh(solid: Solid, material: MeshPhysicalMaterial, sphere: SphereGeometry): Mesh {
   if (solid.kind === 'lathe') {
     const points = solid.profile.map(([r, y]) => new Vector2(r, y));
     const mesh = new Mesh(new LatheGeometry(points, 72), material);
@@ -73,7 +72,7 @@ function buildMesh(solid: Solid, material: MeshPhysicalMaterial): Mesh {
     return mesh;
   }
   if (solid.kind === 'ellipsoid') {
-    const mesh = new Mesh(unitSphere, material);
+    const mesh = new Mesh(sphere, material);
     mesh.position.set(...solid.center);
     mesh.scale.set(...solid.radii);
     if (solid.roll) mesh.rotation.z = solid.roll;
@@ -136,8 +135,10 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
   const figure = new Group();
   scene.add(figure);
 
+  // Per-instance so disposing it detaches this maquette's renderer from the geometry.
+  const sphere = new SphereGeometry(1, 48, 32);
   let body = bodyMaterial(options.palette, options.dark);
-  const bodyMeshes = BODY_SOLIDS.map((solid) => buildMesh(solid, body));
+  const bodyMeshes = BODY_SOLIDS.map((solid) => buildMesh(solid, body, sphere));
   bodyMeshes.forEach((mesh) => figure.add(mesh));
 
   const muscleMaterials = new Map<MuscleGroup, MeshPhysicalMaterial>();
@@ -148,7 +149,7 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
       material = new MeshPhysicalMaterial({ roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.7 });
       muscleMaterials.set(part.muscle, material);
     }
-    const mesh = buildMesh(part.solid, material);
+    const mesh = buildMesh(part.solid, material, sphere);
     mesh.userData.muscle = part.muscle;
     muscleMeshes.push(mesh);
     figure.add(mesh);
@@ -177,9 +178,6 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
     }
   };
   paint();
-
-  // Environment reflections give porcelain and obsidian their sheen.
-  let pmrem: PMREMGenerator | null = null;
 
   // ── Pose state ────────────────────────────────────────────────────────
   const yaw = { value: options.intro && !options.still ? REST_ANGLE - Math.PI * 1.35 : REST_ANGLE, velocity: 0 };
@@ -243,8 +241,13 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
     },
   });
 
-  pmrem = new PMREMGenerator(host.renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // Environment reflections give porcelain and obsidian their sheen. Only the
+  // baked texture is kept; the generator's scratch target and the room go now.
+  const pmrem = new PMREMGenerator(host.renderer);
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04).texture;
+  pmrem.dispose();
+  room.dispose();
   scene.environment = environment;
   scene.environmentIntensity = options.dark ? 0.5 : 0.35;
 
@@ -363,13 +366,11 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
       host.dispose();
       body.dispose();
       muscleMaterials.forEach((material) => material.dispose());
-      bodyMeshes.forEach((mesh) => { if (mesh.geometry !== unitSphere) mesh.geometry.dispose(); });
-      muscleMeshes.forEach((mesh) => { if (mesh.geometry !== unitSphere) mesh.geometry.dispose(); });
+      new Set([...bodyMeshes, ...muscleMeshes].map((mesh) => mesh.geometry)).forEach((geometry) => geometry.dispose());
       shadowMaterial.map?.dispose();
       shadowMaterial.dispose();
       shadow.geometry.dispose();
       environment.dispose();
-      pmrem?.dispose();
     },
   };
 

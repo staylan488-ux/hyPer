@@ -45,8 +45,9 @@ keep unrelated generated churn and existing user changes out of the task.
 
 If this checkout contains `scripts/generate-app-icon.mjs` and
 `assets/README.md`, follow that README and run
-`node scripts/generate-app-icon.mjs` for a requested icon export. It writes only
-the master PNG and iOS app icon from the outlined SVG and preserves splash assets.
+`node scripts/generate-app-icon.mjs` for a requested icon export. It writes the
+master PNG, the iOS app icon and the web/PWA icons in `public/` from the outlined
+SVG and preserves splash assets.
 
 The exporter belongs to the refined-icon change and may be absent on an older
 checkout. If either file is absent, report that prerequisite clearly and resolve

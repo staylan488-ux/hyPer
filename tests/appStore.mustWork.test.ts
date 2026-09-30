@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ActivitySegment, ActivitySession, Workout, WorkoutSet } from '@/types';
+import type { ActivitySegment, ActivitySession, Exercise, FlexiblePlanItem, VolumeLandmark, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 import type { FinishedRun } from '@/lib/runTracker';
 
 const supabaseMock = vi.hoisted(() => ({
@@ -15,6 +15,8 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { useAppStore } from '@/stores/appStore';
+
+const realFetchSplits = useAppStore.getState().fetchSplits;
 
 const defaultActivityActions = {
   createActivitySession: useAppStore.getState().createActivitySession,
@@ -106,7 +108,6 @@ beforeEach(() => {
     macroTarget: null,
     volumeLandmarks: [],
     weeklyVolume: [],
-    loading: false,
     ...defaultActivityActions,
   });
 });
@@ -914,7 +915,7 @@ describe('must-work store contracts', () => {
       updateWorkoutDayPlanItems: updatePlanSpy,
     });
 
-    const exercise = {
+    const exercise: Exercise = {
       id: 'exercise-9',
       name: 'Ring Pull-Up',
       muscle_group: 'back',
@@ -1139,9 +1140,43 @@ describe('must-work store contracts', () => {
     expect(fetchSplitsSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes workout sets before deleting the workout', async () => {
-    const setsChain = createChain();
+  it('deletes a workout in one request and lets the database cascade its sets', async () => {
     const workoutsChain = createChain();
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('sets');
+    expect(workoutsChain.delete).toHaveBeenCalledTimes(1);
+    expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-42');
+  });
+
+  it('rejects when the workout delete fails and leaves the sets alone', async () => {
+    const failure = { code: '42501', message: 'permission denied' };
+    const workoutsChain = createChain();
+    Object.assign(workoutsChain, { error: failure });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(useAppStore.getState().deleteWorkout('workout-42')).rejects.toBe(failure);
+
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('sets');
+    consoleError.mockRestore();
+  });
+
+  it('falls back to deleting sets first when the database has no cascade', async () => {
+    const workoutsChain = createChain();
+    const setsChain = createChain();
+    const results = [{ error: { code: '23503', message: 'foreign key violation' } }, { error: null }];
+    workoutsChain.eq.mockImplementation(() => results.shift());
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
@@ -1153,8 +1188,33 @@ describe('must-work store contracts', () => {
 
     expect(setsChain.delete).toHaveBeenCalledTimes(1);
     expect(setsChain.eq).toHaveBeenCalledWith('workout_id', 'workout-42');
-    expect(workoutsChain.delete).toHaveBeenCalledTimes(1);
-    expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-42');
+    expect(workoutsChain.delete).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the current workout when the deleted workout is the active one', async () => {
+    supabaseMock.from.mockImplementation(() => createChain());
+    const active = { ...makeWorkoutWithSet({} as WorkoutSet), id: 'workout-42' };
+    useAppStore.setState({
+      currentWorkout: active,
+      currentWorkoutDayPlan: { workout_id: 'workout-42' } as never,
+    });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+
+  it('leaves the current workout alone when deleting a different one', async () => {
+    supabaseMock.from.mockImplementation(() => createChain());
+    const active = makeWorkoutWithSet({} as WorkoutSet);
+    const plan = { workout_id: active.id } as never;
+    useAppStore.setState({ currentWorkout: active, currentWorkoutDayPlan: plan });
+
+    await useAppStore.getState().deleteWorkout('workout-42');
+
+    expect(useAppStore.getState().currentWorkout).toBe(active);
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
   });
 
   it('upserts macro targets by user_id and stores saved target', async () => {
@@ -1236,8 +1296,13 @@ describe('must-work store contracts', () => {
       lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
     });
 
+    const landmarksChain = createChain({
+      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
+      if (table === 'volume_landmarks') return landmarksChain;
       throw new Error(`Unexpected table: ${table}`);
     });
 
@@ -1288,14 +1353,134 @@ describe('must-work store contracts', () => {
       lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
     });
 
+    const landmarksChain = createChain({
+      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
+      if (table === 'volume_landmarks') return landmarksChain;
       throw new Error(`Unexpected table: ${table}`);
     });
 
     await useAppStore.getState().calculateWeeklyVolume();
 
     expect(useAppStore.getState().weeklyVolume).toEqual([]);
+  });
+
+  describe('weekly volume landmarks', () => {
+    const chestLandmark: VolumeLandmark = {
+      id: 'lm-chest',
+      user_id: 'user-1',
+      muscle_group: 'chest',
+      mv: 4,
+      mev: 6,
+      mav_low: 10,
+      mav_high: 16,
+      mrv: 20,
+    };
+    const tricepsLandmark: VolumeLandmark = {
+      id: 'lm-triceps',
+      user_id: 'user-1',
+      muscle_group: 'triceps',
+      mv: 2,
+      mev: 4,
+      mav_low: 6,
+      mav_high: 12,
+      mrv: 16,
+    };
+
+    // 7 chest sets with triceps as the secondary: chest 7 (mev_mav), triceps 3.5 (below_mev).
+    const workouts = [
+      {
+        id: 'workout-1',
+        completed: true,
+        sets: Array.from({ length: 7 }, () => ({
+          completed: true,
+          exercise: { muscle_group: 'chest', muscle_group_secondary: 'triceps' },
+        })),
+      },
+    ];
+
+    function mockTables(landmarksResult: () => Promise<unknown>) {
+      const workoutsChain = createChain({
+        lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
+      });
+      const landmarksChain = createChain({
+        eq: vi.fn().mockImplementation(landmarksResult),
+      });
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') return workoutsChain;
+        if (table === 'volume_landmarks') return landmarksChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+      return { workoutsChain, landmarksChain };
+    }
+
+    beforeEach(() => {
+      supabaseMock.auth.getUser.mockResolvedValue({
+        data: { user: { id: 'user-1' } },
+      });
+    });
+
+    it('grades against landmarks that arrive after the workouts on a cold store', async () => {
+      const { landmarksChain } = mockTables(
+        () => new Promise((resolve) => {
+          setTimeout(() => resolve({ data: [chestLandmark, tricepsLandmark], error: null }), 5);
+        })
+      );
+
+      await useAppStore.getState().calculateWeeklyVolume();
+
+      const state = useAppStore.getState();
+      expect(supabaseMock.auth.getUser).toHaveBeenCalledTimes(1);
+      expect(landmarksChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
+      expect(state.volumeLandmarks).toEqual([chestLandmark, tricepsLandmark]);
+      expect(state.weeklyVolume).toEqual([
+        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
+        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: tricepsLandmark, status: 'below_mev' },
+      ]);
+    });
+
+    it('keeps the stored landmarks when the landmarks query fails', async () => {
+      useAppStore.setState({ volumeLandmarks: [chestLandmark] });
+      mockTables(() => Promise.resolve({ data: null, error: { message: 'offline' } }));
+
+      await useAppStore.getState().calculateWeeklyVolume();
+
+      const state = useAppStore.getState();
+      expect(state.volumeLandmarks).toEqual([chestLandmark]);
+      expect(state.weeklyVolume).toEqual([
+        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
+        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: undefined, status: 'below_mev' },
+      ]);
+    });
+
+    it('keeps the stored landmarks when the landmarks request rejects', async () => {
+      useAppStore.setState({ volumeLandmarks: [chestLandmark] });
+      mockTables(() => Promise.reject(new Error('network down')));
+
+      await useAppStore.getState().calculateWeeklyVolume();
+
+      const state = useAppStore.getState();
+      expect(state.volumeLandmarks).toEqual([chestLandmark]);
+      expect(state.weeklyVolume[0]).toEqual(
+        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' }
+      );
+    });
+
+    it('leaves the current weekly volume in place when the workouts query fails', async () => {
+      const previous = [{ muscle_group: 'chest' as const, weekly_sets: 4, status: 'below_mev' as const }];
+      useAppStore.setState({ volumeLandmarks: [chestLandmark], weeklyVolume: previous });
+      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [tricepsLandmark], error: null }));
+      workoutsChain.lte.mockResolvedValue({ data: null, error: { message: 'offline' } });
+
+      await useAppStore.getState().calculateWeeklyVolume();
+
+      const state = useAppStore.getState();
+      expect(state.weeklyVolume).toBe(previous);
+      expect(state.volumeLandmarks).toEqual([chestLandmark]);
+    });
   });
 
   it('adds flexible superset and inserts partner sets', async () => {
@@ -1490,6 +1675,7 @@ describe('must-work store contracts', () => {
       id: 'existing-gps-session',
       user_id: 'user-1',
       activity_type: 'run',
+      custom_type: null,
       title: null,
       date: '2026-07-12',
       started_at: '2026-07-12T14:00:00.000Z',
@@ -1624,5 +1810,383 @@ describe('session-only exercise substitution', () => {
     useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [original, { ...original, exercise_id: replacement.id }] } });
     await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('already in');
     expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+});
+
+// Set-count edits and exercise removal, live and in History. These pin the end
+// state (which rows survive, what the plan says), not how many calls it takes,
+// so batching the writes later (F28) keeps them green.
+describe('set-count edits never delete finished sets and superset partners follow', () => {
+  const planActions = {
+    ensureWorkoutDayPlan: useAppStore.getState().ensureWorkoutDayPlan,
+    updateWorkoutDayPlanItems: useAppStore.getState().updateWorkoutDayPlanItems,
+    fetchWorkoutDayPlanByWorkoutId: useAppStore.getState().fetchWorkoutDayPlanByWorkoutId,
+  };
+  afterEach(() => useAppStore.setState(planActions));
+
+  const set = (id: string, exerciseId: string, setNumber: number, completed: boolean): WorkoutSet => ({
+    id, workout_id: 'workout-1', exercise_id: exerciseId, set_number: setNumber,
+    weight: completed ? 100 : null, reps: completed ? 8 : null, rpe: null,
+    completed, completed_at: completed ? '2026-02-21T12:00:00.000Z' : null,
+  });
+  const item = (exerciseId: string, order: number, overrides: Partial<FlexiblePlanItem> = {}): FlexiblePlanItem => ({
+    exercise_id: exerciseId, exercise_name: exerciseId, order, target_sets: 4,
+    target_reps_min: 8, target_reps_max: 12, notes: null, hidden: false, superset_group_id: null, ...overrides,
+  });
+  const flexWorkout = (sets: WorkoutSet[]): Workout => ({
+    id: 'workout-1', user_id: 'user-1', split_day_id: null, date: '2026-02-21', notes: null, completed: false, sets,
+  });
+
+  // An in-memory `sets` table: inserts add rows, delete().eq/in('id') removes
+  // them, and select(...).eq(...).order() reads them back filtered.
+  function createSetsTable(initial: WorkoutSet[]) {
+    const rows = initial.map((row) => ({ ...row }));
+    const deletedIds: string[] = [];
+    let inserted = 0;
+    let deleting = false;
+    let filters: Record<string, unknown> = {};
+    const remove = (ids: string[]) => {
+      for (const id of ids) {
+        const index = rows.findIndex((row) => row.id === id);
+        if (index >= 0) rows.splice(index, 1);
+        deletedIds.push(id);
+      }
+      deleting = false;
+    };
+    const chain = createChain();
+    chain.insert.mockImplementation((payload: Partial<WorkoutSet> | Partial<WorkoutSet>[]) => {
+      for (const row of [payload].flat()) {
+        rows.push({ weight: null, reps: null, rpe: null, completed_at: null, ...row, id: `inserted-${++inserted}` } as WorkoutSet);
+      }
+      return chain;
+    });
+    chain.delete.mockImplementation(() => { deleting = true; return chain; });
+    chain.select.mockImplementation(() => { filters = {}; return chain; });
+    chain.eq.mockImplementation((column: string, value: string) => {
+      if (deleting && column === 'id') remove([value]);
+      else filters[column] = value;
+      return chain;
+    });
+    chain.in.mockImplementation((column: string, values: string[]) => {
+      if (deleting && column === 'id') remove(values);
+      return chain;
+    });
+    chain.order.mockImplementation(async () => ({
+      data: rows.filter((row) => Object.entries(filters).every(([key, value]) => row[key as keyof WorkoutSet] === value)),
+      error: null,
+    }));
+    const numbersFor = (exerciseId: string) => rows
+      .filter((row) => row.exercise_id === exerciseId)
+      .map((row) => row.set_number)
+      .sort((a, b) => a - b);
+    return { chain, rows, deletedIds, numbersFor };
+  }
+
+  // The live plan row echoes back whatever items were written; the workout
+  // refetch returns the current `sets` table.
+  function routeLiveWorkout(table: ReturnType<typeof createSetsTable>) {
+    const plansChain = createChain();
+    let written: FlexiblePlanItem[] = [];
+    plansChain.update.mockImplementation((payload: { items: FlexiblePlanItem[] }) => { written = payload.items; return plansChain; });
+    plansChain.single.mockImplementation(async () => ({
+      data: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: written }, error: null,
+    }));
+    const workoutsChain = createChain({
+      maybeSingle: vi.fn(async () => ({ data: flexWorkout(table.rows.map((row) => ({ ...row }))), error: null })),
+    });
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'workout_day_plans') return plansChain;
+      if (name === 'sets') return table.chain;
+      if (name === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${name}`);
+    });
+  }
+
+  const planItem = (exerciseId: string) => useAppStore.getState().currentWorkoutDayPlan?.items
+    .find((row) => row.exercise_id === exerciseId);
+
+  it('live: lowering target sets deletes only unfinished sets above the target', async () => {
+    const sets = [set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, true), set('a4', 'ex-a', 4, false)];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0)] },
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 2 });
+
+    expect(table.deletedIds).toEqual(['a4']);
+    expect(table.rows.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
+    expect(planItem('ex-a')?.target_sets).toBe(2);
+    expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
+  });
+
+  it('live: raising target sets adds the missing sets after the existing ones', async () => {
+    const sets = [set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false)];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0, { target_sets: 2 })] },
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 4 });
+
+    expect(table.numbersFor('ex-a')).toEqual([1, 2, 3, 4]);
+    expect(table.rows.filter((row) => row.set_number > 2).every((row) => !row.completed)).toBe(true);
+    expect(planItem('ex-a')?.target_sets).toBe(4);
+  });
+
+  it('live: a superset partner takes the same target and keeps its finished sets', async () => {
+    const sets = [
+      set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, false),
+      set('b1', 'ex-b', 1, true), set('b2', 'ex-b', 2, false), set('b3', 'ex-b', 3, true),
+    ];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [
+        item('ex-a', 0, { target_sets: 3, superset_group_id: 'group-1' }),
+        item('ex-b', 1, { target_sets: 3, superset_group_id: 'group-1' }),
+        item('ex-c', 2, { target_sets: 3 }),
+      ] },
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 2 });
+
+    expect(planItem('ex-a')?.target_sets).toBe(2);
+    expect(planItem('ex-b')?.target_sets).toBe(2);
+    expect(planItem('ex-c')?.target_sets).toBe(3);
+    expect(table.numbersFor('ex-a')).toEqual([1, 2]);
+    // b3 is finished, so it survives even though it is above the new target
+    expect(table.rows.filter((row) => row.exercise_id === 'ex-b').map((row) => row.id).sort()).toEqual(['b1', 'b2', 'b3']);
+    expect(table.deletedIds).toEqual(['a3']);
+  });
+
+  it('live: editing only notes writes the plan and never touches sets or refetches the workout', async () => {
+    const sets = [set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false)];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    const workout = flexWorkout(sets);
+    useAppStore.setState({
+      currentWorkout: workout,
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0, { target_sets: 2 })] },
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { notes: 'Pause at the bottom' });
+
+    expect(planItem('ex-a')).toMatchObject({ notes: 'Pause at the bottom', target_sets: 2 });
+    expect(supabaseMock.from.mock.calls.map(([name]) => name)).not.toContain('sets');
+    expect(supabaseMock.from.mock.calls.map(([name]) => name)).not.toContain('workouts');
+    expect(table.rows).toEqual(sets);
+    expect(useAppStore.getState().currentWorkout).toBe(workout);
+  });
+
+  it('live: removing an exercise hides it, breaks its superset and deletes only its unfinished sets', async () => {
+    const sets = [
+      set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, false),
+      set('b1', 'ex-b', 1, false),
+    ];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [
+        item('ex-a', 0, { superset_group_id: 'group-1' }),
+        item('ex-b', 1, { superset_group_id: 'group-1' }),
+        item('ex-c', 2, { superset_group_id: 'group-2' }),
+      ] },
+    });
+
+    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex-a');
+
+    expect(planItem('ex-a')).toMatchObject({ hidden: true, superset_group_id: null });
+    expect(planItem('ex-b')).toMatchObject({ hidden: false, superset_group_id: null });
+    expect(planItem('ex-c')).toMatchObject({ hidden: false, superset_group_id: 'group-2' });
+    expect(table.deletedIds.sort()).toEqual(['a2', 'a3']);
+    expect(table.rows.map((row) => row.id).sort()).toEqual(['a1', 'b1']);
+    expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.id).sort()).toEqual(['a1', 'b1']);
+  });
+
+  // History edits go through ensureWorkoutDayPlan/updateWorkoutDayPlanItems and
+  // read the sets fresh from the table.
+  function stubHistoryPlan(items: FlexiblePlanItem[]) {
+    const plan: WorkoutDayPlan = { id: 'plan-1', workout_id: 'workout-1', day_label: 'Past', items };
+    let written: FlexiblePlanItem[] | null = null;
+    useAppStore.setState({
+      ensureWorkoutDayPlan: vi.fn(async () => plan),
+      fetchWorkoutDayPlanByWorkoutId: vi.fn(async () => plan),
+      updateWorkoutDayPlanItems: vi.fn(async (_workoutId: string, next: FlexiblePlanItem[]) => {
+        written = next;
+        return { ...plan, items: next };
+      }),
+    });
+    return { writtenItem: (exerciseId: string) => written?.find((row) => row.exercise_id === exerciseId), written: () => written };
+  }
+
+  it('History: raising target sets adds numbered sets for the exercise and its superset partner', async () => {
+    const table = createSetsTable([
+      set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, true),
+      set('b1', 'ex-b', 1, true), set('b2', 'ex-b', 2, false),
+      set('c1', 'ex-c', 1, true),
+    ]);
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'sets') return table.chain;
+      throw new Error(`Unexpected table: ${name}`);
+    });
+    const plan = stubHistoryPlan([
+      item('ex-a', 0, { target_sets: 2, superset_group_id: 'group-1' }),
+      item('ex-b', 1, { target_sets: 2, superset_group_id: 'group-1' }),
+      item('ex-c', 2, { target_sets: 1 }),
+    ]);
+
+    await useAppStore.getState().updateWorkoutExerciseTargetSets('workout-1', 'ex-a', 4);
+
+    expect(table.numbersFor('ex-a')).toEqual([1, 2, 3, 4]);
+    expect(table.numbersFor('ex-b')).toEqual([1, 2, 3, 4]);
+    expect(table.numbersFor('ex-c')).toEqual([1]);
+    expect(plan.writtenItem('ex-a')?.target_sets).toBe(4);
+    expect(plan.writtenItem('ex-b')?.target_sets).toBe(4);
+    expect(plan.writtenItem('ex-c')?.target_sets).toBe(1);
+  });
+
+  it('History: lowering target sets keeps finished sets and removes only unfinished ones above the target', async () => {
+    const table = createSetsTable([
+      set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, true), set('a4', 'ex-a', 4, false),
+      set('b1', 'ex-b', 1, true), set('b2', 'ex-b', 2, true), set('b3', 'ex-b', 3, false), set('b4', 'ex-b', 4, true),
+    ]);
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'sets') return table.chain;
+      throw new Error(`Unexpected table: ${name}`);
+    });
+    const plan = stubHistoryPlan([
+      item('ex-a', 0, { superset_group_id: 'group-1' }),
+      item('ex-b', 1, { superset_group_id: 'group-1' }),
+    ]);
+
+    await useAppStore.getState().updateWorkoutExerciseTargetSets('workout-1', 'ex-a', 2);
+
+    expect(table.deletedIds.sort()).toEqual(['a4', 'b3']);
+    expect(table.rows.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3', 'b1', 'b2', 'b4']);
+    expect(plan.writtenItem('ex-a')?.target_sets).toBe(2);
+    expect(plan.writtenItem('ex-b')?.target_sets).toBe(2);
+  });
+
+  // Live grow numbers new sets from the count (existingSets.length + 1) while
+  // History numbers them from max(set_number) + 1; they differ when numbers
+  // have gaps. F28 decides which is right before this is pinned.
+  it.todo('numbers added sets consistently across live and History when set numbers have gaps (F28)');
+
+  it('History: clearing a superset ungroups every member and leaves other items alone', async () => {
+    supabaseMock.from.mockImplementation((name: string) => { throw new Error(`Unexpected table: ${name}`); });
+    const plan = stubHistoryPlan([
+      item('ex-a', 0, { superset_group_id: 'group-1' }),
+      item('ex-b', 1, { superset_group_id: 'group-1' }),
+      item('ex-c', 2, { superset_group_id: 'group-2' }),
+      item('ex-d', 3, { superset_group_id: 'group-2' }),
+      item('ex-e', 4),
+    ]);
+
+    await useAppStore.getState().clearWorkoutSuperset('workout-1', 'ex-b');
+
+    expect(plan.written()?.map((row) => [row.exercise_id, row.superset_group_id])).toEqual([
+      ['ex-a', null], ['ex-b', null], ['ex-c', 'group-2'], ['ex-d', 'group-2'], ['ex-e', null],
+    ]);
+  });
+});
+
+describe('fetchSplits reference stability', () => {
+  type SplitRow = {
+    id: string;
+    name: string;
+    is_active: boolean;
+    days: Array<{ id: string; day_name: string; day_order: number; exercises: Array<{ id: string; exercise_id: string; exercise_order: number }> }>;
+  };
+
+  const baseSplits = (): SplitRow[] => [
+    {
+      id: 'split-a',
+      name: 'Upper / Lower',
+      is_active: true,
+      days: [
+        {
+          id: 'day-2', day_name: 'Lower', day_order: 1, exercises: [
+            { id: 'se-3', exercise_id: 'squat', exercise_order: 0 },
+          ],
+        },
+        {
+          id: 'day-1', day_name: 'Upper', day_order: 0, exercises: [
+            { id: 'se-2', exercise_id: 'row', exercise_order: 1 },
+            { id: 'se-1', exercise_id: 'bench', exercise_order: 0 },
+          ],
+        },
+      ],
+    },
+    { id: 'split-b', name: 'Full body', is_active: false, days: [] },
+  ];
+
+  let payload: SplitRow[] = [];
+
+  beforeEach(() => {
+    payload = baseSplits();
+    useAppStore.setState({ fetchSplits: realFetchSplits, splits: [], activeSplit: null });
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table !== 'splits') throw new Error(`Unexpected table: ${table}`);
+      // Every response is freshly parsed, like a real network round trip.
+      const response = { data: structuredClone(payload), error: null };
+      const query = {
+        select: () => query,
+        eq: () => query,
+        order: () => query,
+        then: (resolve: (value: typeof response) => unknown) => Promise.resolve(response).then(resolve),
+      };
+      return query;
+    });
+  });
+
+  async function refetch() {
+    await useAppStore.getState().fetchSplits();
+    const { splits, activeSplit } = useAppStore.getState();
+    return { splits, activeSplit };
+  }
+
+  it('keeps the same splits and activeSplit references for an identical payload', async () => {
+    const first = await refetch();
+    expect(first.activeSplit?.id).toBe('split-a');
+    expect(first.activeSplit?.days.map((day) => day.id)).toEqual(['day-1', 'day-2']);
+    expect(first.activeSplit?.days[0].exercises.map((exercise) => exercise.exercise_id)).toEqual(['bench', 'row']);
+
+    const second = await refetch();
+    expect(second.splits).toBe(first.splits);
+    expect(second.activeSplit).toBe(first.activeSplit);
+  });
+
+  it.each([
+    ['renaming a day', (splits: SplitRow[]) => { splits[0].days[1].day_name = 'Upper (heavy)'; }],
+    ['adding a day', (splits: SplitRow[]) => { splits[0].days.push({ id: 'day-3', day_name: 'Arms', day_order: 2, exercises: [] }); }],
+    ['removing a day', (splits: SplitRow[]) => { splits[0].days.splice(0, 1); }],
+    ['reordering exercises', (splits: SplitRow[]) => {
+      splits[0].days[1].exercises[0].exercise_order = 0;
+      splits[0].days[1].exercises[1].exercise_order = 1;
+    }],
+    ['switching the active split', (splits: SplitRow[]) => { splits[0].is_active = false; splits[1].is_active = true; }],
+    ['deleting a split', (splits: SplitRow[]) => { splits.splice(1, 1); }],
+  ])('publishes new references after %s', async (_label, edit) => {
+    const first = await refetch();
+    edit(payload);
+    const second = await refetch();
+
+    expect(second.splits).not.toBe(first.splits);
+    expect(second.activeSplit).not.toBe(first.activeSplit);
+    expect(second.splits).toEqual(payload.map((split) => ({
+      ...split,
+      days: [...split.days]
+        .map((day) => ({ ...day, exercises: [...day.exercises].sort((a, b) => a.exercise_order - b.exercise_order) }))
+        .sort((a, b) => a.day_order - b.day_order),
+    })));
+    expect(second.activeSplit?.id).toBe(payload.find((split) => split.is_active)?.id);
   });
 });

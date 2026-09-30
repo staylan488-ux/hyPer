@@ -10,7 +10,7 @@ import {
 } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
-import { BottomNav } from '@/components/shared';
+import { BottomNav, RouteErrorScreen } from '@/components/shared';
 import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { Dashboard } from '@/pages/Dashboard';
@@ -133,18 +133,22 @@ const router = createBrowserRouter(
       {import.meta.env.DEV && <Route path="/preview/sign-in" element={<AuthForm />} />}
       {import.meta.env.DEV && <Route path="/sandbox" element={<Navigate to="/" replace />} />}
       <Route element={<PrivateLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/train" element={<Workout />} />
-        <Route path="/nutrition" element={<Nutrition />} />
-        <Route path="/train/program" element={<Splits />} />
-        <Route path="/train/run" element={<RunTracker />} />
-        <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
-        <Route path="/workout" element={<Navigate to="/train" replace />} />
-        <Route path="/splits" element={<Navigate to="/train/program" replace />} />
-        <Route path="/settings/*" element={<Settings />} />
-        <Route path="/analysis" element={<Analysis />} />
-        <Route path="/history" element={<History />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Pathless boundary: a page that throws renders the error screen inside
+            the shell, so the bottom nav stays usable. */}
+        <Route errorElement={<RouteErrorScreen />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/train" element={<Workout />} />
+          <Route path="/nutrition" element={<Nutrition />} />
+          <Route path="/train/program" element={<Splits />} />
+          <Route path="/train/run" element={<RunTracker />} />
+          <Route path="/train/templates" element={<Navigate to="/train/program" replace />} />
+          <Route path="/workout" element={<Navigate to="/train" replace />} />
+          <Route path="/splits" element={<Navigate to="/train/program" replace />} />
+          <Route path="/settings/*" element={<Settings />} />
+          <Route path="/analysis" element={<Analysis />} />
+          <Route path="/history" element={<History />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Route>
     </>,
   ),

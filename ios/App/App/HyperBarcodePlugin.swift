@@ -107,6 +107,11 @@ private final class NativeBarcodeSession: NSObject, DataScannerViewControllerDel
                   let value = barcode.payloadStringValue,
                   !value.isEmpty
             else { continue }
+            // Keep scanning past payloads that cannot be a food GTIN (e.g. GS1
+            // DataBar Expanded strings). Mirrors SUPPORTED_GTIN_LENGTHS in
+            // src/lib/barcodes.ts, which stays the checksum authority.
+            let digitCount = value.filter { $0.isASCII && $0.isNumber }.count
+            guard [8, 12, 13, 14].contains(digitCount) else { continue }
             finished = true
             scanner.stopScanning()
             let format: String

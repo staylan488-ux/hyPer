@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import { Loader2, Search, Dumbbell, ArrowRight } from 'lucide-react';
-import { Modal, Input, Chip } from '@/components/shared';
-import { supabase } from '@/lib/supabase';
+import { Modal, Input, Chip, Button } from '@/components/shared';
+import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
 
@@ -33,8 +33,11 @@ function ExercisePickerContent({
   initialMuscleGroup?: MuscleGroup;
   excludeExerciseIds?: string[];
 }) {
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Rows from earlier opens show immediately; a fresh copy replaces them quietly.
+  const [exercises, setExercises] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  const [loading, setLoading] = useState(() => peekExerciseLibrary() === null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const excludedSet = useMemo(() => new Set(excludeExerciseIds), [excludeExerciseIds]);
@@ -44,16 +47,22 @@ function ExercisePickerContent({
 
   const filterScrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch exercises on mount (each time picker opens)
+  // Load (or revalidate) exercises on mount (each time picker opens) and on retry
   useEffect(() => {
     let cancelled = false;
 
     const fetchExercises = async () => {
-      setLoading(true);
-      const { data } = await supabase.from('exercises').select('*').order('name');
-
-      if (!cancelled && data) {
-        setExercises(data as Exercise[]);
+      const hadCache = peekExerciseLibrary() !== null;
+      try {
+        const rows = await getExerciseLibrary({ force: hadCache });
+        if (!cancelled && (rows.length > 0 || !hadCache)) {
+          setExercises(rows);
+        }
+      } catch {
+        // with cached rows on screen a failed refresh changes nothing
+        if (!cancelled && !hadCache) {
+          setLoadFailed(true);
+        }
       }
       if (!cancelled) {
         setLoading(false);
@@ -65,7 +74,13 @@ function ExercisePickerContent({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAttempt]);
+
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setLoading(true);
+    setLoadAttempt((attempt) => attempt + 1);
+  };
 
   const filteredExercises = useMemo(() => {
     let result = exercises.filter((exercise) => !excludedSet.has(exercise.id));
@@ -164,6 +179,15 @@ function ExercisePickerContent({
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Loader2 className="w-5 h-5 animate-spin text-[var(--color-muted)]" strokeWidth={1.5} />
             <p className="t-label-sm">Loading exercises...</p>
+          </div>
+        ) : loadFailed ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <Dumbbell className="w-6 h-6 text-[var(--color-muted)]" strokeWidth={1.25} />
+            <p className="t-body text-[var(--color-text)]">Couldn't load exercises</p>
+            <p className="t-caption">Check your connection and try again</p>
+            <Button variant="secondary" size="sm" className="mt-1" onClick={retryLoad}>
+              Retry
+            </Button>
           </div>
         ) : filteredExercises.length === 0 ? (
           /* Empty state */

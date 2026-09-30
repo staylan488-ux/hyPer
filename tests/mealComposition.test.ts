@@ -14,7 +14,7 @@ const powder: Food = {
   id: 'powder', user_id: 'user-a', name: 'Protein powder', calories: 110, protein: 24, carbs: 2, fat: 1,
   serving_size: 30, serving_unit: 'g', source: 'custom', fdc_id: null,
 };
-const ingredients = [createMealIngredient(milk, 1.5, 'one'), createMealIngredient(powder, 2, 'two')];
+const ingredients = [createMealIngredient(milk, 1.5, '00000000-0000-4000-8000-000000000001'), createMealIngredient(powder, 2, '00000000-0000-4000-8000-000000000002')];
 const draft: MealDraft = {
   name: 'Protein shake', ingredients, time: '13:15', groupId: null, method: 'barcode',
   date: '2026-09-06', entryId: '22222222-2222-4222-8222-222222222222', saveAsReusableMeal: false, locked: false,
@@ -38,7 +38,7 @@ describe('meal composition', () => {
 
   it('snapshots foods so a later food edit cannot change a draft', () => {
     const food = { ...milk };
-    const snapshot = createMealIngredient(food, 1, 'milk');
+    const snapshot = createMealIngredient(food, 1, '00000000-0000-4000-8000-000000000003');
     food.calories = 500;
     expect(snapshot.food.calories).toBe(120);
   });
@@ -60,7 +60,7 @@ describe('meal composition', () => {
   });
 
   it.each([0, -1, NaN, Infinity])('rejects invalid ingredient or meal quantity %s', (quantity) => {
-    expect(() => createMealIngredient(milk, quantity, 'bad')).toThrow();
+    expect(() => createMealIngredient(milk, quantity, '00000000-0000-4000-8000-000000000004')).toThrow();
     expect(() => scaleMealIngredients(ingredients, quantity)).toThrow();
   });
 

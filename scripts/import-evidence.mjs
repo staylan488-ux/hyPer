@@ -400,7 +400,7 @@ function buildAnchorProfiles() {
       stability: 'medium',
       fatigue_cost: 'high',
       long_length_bias: false,
-      substitutions: ['Machine Shoulder Press', 'Dumbbell Shoulder Press'],
+      substitutions: ['Machine Shoulder Press', 'Overhead Dumbbell Press'],
     },
     {
       name: 'Seated Cable Row',
