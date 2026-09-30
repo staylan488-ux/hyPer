@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/sessionUser';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { logMacro } from '@/lib/nutritionMacros';
 import { subDays, format } from 'date-fns';
@@ -46,8 +46,8 @@ export function useWeeklyNutrition() {
 
 async function fetchWeeklyNutrition() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const today = new Date();
     const sevenDaysAgo = subDays(today, 6);
@@ -58,7 +58,7 @@ async function fetchWeeklyNutrition() {
     const { data: nutritionLogs, error: logsError } = await fetchNutritionLogsWithFoods<
       { date: string; servings: number; food_id: string },
       { id: string; calories: number; protein: number }
-    >(user.id, { from: startDateStr, to: endDateStr }, 'date, servings, food_id', 'id, calories, protein');
+    >(userId, { from: startDateStr, to: endDateStr }, 'date, servings, food_id', 'id, calories, protein');
 
     if (logsError) throw logsError;
 
