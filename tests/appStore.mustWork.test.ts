@@ -538,6 +538,57 @@ describe('must-work store contracts', () => {
     );
   });
 
+  it('saves a flexible template with the notes on screen over stale saved notes', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'workout-1',
+        user_id: 'user-1',
+        split_day_id: null,
+        date: '2026-02-19',
+        notes: JSON.stringify({ movementNotes: { 'exercise-1': 'Old text' } }),
+        completed: false,
+        sets: [],
+      },
+      currentWorkoutDayPlan: {
+        id: 'plan-1',
+        workout_id: 'workout-1',
+        day_label: 'Upper',
+        items: [
+          { exercise_id: 'exercise-1', exercise_name: 'Bench', order: 0, target_sets: 3, notes: 'Old text', hidden: false },
+          { exercise_id: 'exercise-2', exercise_name: 'Row', order: 1, target_sets: 3, notes: 'Template cue', hidden: false },
+          { exercise_id: 'exercise-3', exercise_name: 'Curl', order: 2, target_sets: 3, notes: 'Keep me', hidden: false },
+        ],
+      },
+    });
+
+    const templateUpsertChain = createChain();
+    const templateFetchChain = createChain({
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'flex_day_templates') {
+        return templateUpsertChain.upsert.mock.calls.length > 0 ? templateFetchChain : templateUpsertChain;
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout({
+      'exercise-1': '  Typed just now ',
+      'exercise-2': '',
+    });
+
+    const items = (templateUpsertChain.upsert.mock.calls[0][0] as { items: FlexiblePlanItem[] }).items;
+    expect(items.map((item) => [item.exercise_id, item.notes])).toEqual([
+      ['exercise-1', 'Typed just now'],
+      ['exercise-2', null],
+      ['exercise-3', 'Keep me'],
+    ]);
+  });
+
   it('does not remove sets when only completed sets exist', async () => {
     const currentWorkout: Workout = {
       id: 'workout-1',

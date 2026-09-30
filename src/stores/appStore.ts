@@ -237,7 +237,8 @@ interface AppState {
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
   renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
   deleteFlexTemplate: (templateId: string) => Promise<void>;
-  saveFlexibleTemplateFromCurrentWorkout: () => Promise<void>;
+  // movementNotesOverride: the notes on screen; a key there wins over the saved notes.
+  saveFlexibleTemplateFromCurrentWorkout: (movementNotesOverride?: Record<string, string>) => Promise<void>;
 
   // Macro targets
   fetchMacroTarget: () => Promise<void>;
@@ -1320,7 +1321,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  saveFlexibleTemplateFromCurrentWorkout: async () => {
+  saveFlexibleTemplateFromCurrentWorkout: async (movementNotesOverride) => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !currentWorkoutDayPlan) return;
@@ -1329,10 +1330,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!label) return;
 
     const movementNotes = parseWorkoutNotes(currentWorkout?.notes || null).movementNotes;
-    const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => ({
-      ...item,
-      notes: movementNotes[item.exercise_id] ?? item.notes ?? null,
-    }));
+    const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => {
+      if (movementNotesOverride && item.exercise_id in movementNotesOverride) {
+        return { ...item, notes: movementNotesOverride[item.exercise_id].trim() || null };
+      }
+      return { ...item, notes: movementNotes[item.exercise_id] ?? item.notes ?? null };
+    });
 
     const { error } = await supabase
       .from('flex_day_templates')

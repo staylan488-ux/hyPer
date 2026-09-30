@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
+import { createNoteAutosaver, type NoteAutosaver } from '@/lib/noteAutosave';
 import {
   formatWorkoutDuration,
   getWorkoutDurationMs,
@@ -696,7 +697,8 @@ export function History() {
   const [savedMovementNoteKey, setSavedMovementNoteKey] = useState<string | null>(null);
   const [targetSetDrafts, setTargetSetDrafts] = useState<Record<string, string>>({});
 
-  const noteSaveTimersRef = useRef<Record<string, number>>({});
+  const noteSaverRef = useRef<NoteAutosaver | null>(null);
+  const mountedRef = useRef(false);
   const movementNotesRef = useRef<Record<string, Record<string, string>>>({});
   const legacyNotesRef = useRef<Record<string, string | null>>({});
   // Only the latest month request may write state, so quick month taps (or a
@@ -716,13 +718,6 @@ export function History() {
     legacyNotesRef.current = legacyNotesByWorkout;
   }, [legacyNotesByWorkout]);
 
-  useEffect(() => {
-    const timersRef = noteSaveTimersRef;
-    return () => {
-      Object.values(timersRef.current).forEach((timerId) => window.clearTimeout(timerId));
-    };
-  }, []);
-
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
     setShowSuccess(true);
@@ -732,6 +727,60 @@ export function History() {
   const showSavedToast = useCallback(() => {
     showToast('Saved');
   }, [showToast]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const saver = createNoteAutosaver({
+      debounceMs: 1000,
+      save: async (workoutId, serialized, exerciseId) => {
+        const noteKey = `${workoutId}:${exerciseId}`;
+        if (mountedRef.current) setSavingMovementNoteKey(noteKey);
+        try {
+          await updateWorkoutNotes(workoutId, serialized);
+        } catch {
+          // the draft stays in place, so the next edit or blur retries
+          if (mountedRef.current) {
+            setSavingMovementNoteKey(null);
+            showToast('Note not saved');
+          }
+          return false;
+        }
+
+        if (!mountedRef.current) return true;
+        setMonthWorkouts((prev) => prev.map((workout) => (
+          workout.id === workoutId ? { ...workout, notes: serialized } : workout
+        )));
+        setSavingMovementNoteKey(null);
+        setSavedMovementNoteKey(noteKey);
+        window.setTimeout(() => {
+          setSavedMovementNoteKey((current) => (current === noteKey ? null : current));
+        }, 1200);
+        return true;
+      },
+    });
+    noteSaverRef.current = saver;
+
+    // leaving the app or the page saves a note still waiting in its debounce
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') void saver.flushAll();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      mountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      void saver.flushAll();
+    };
+  }, [showToast, updateWorkoutNotes]);
+
+  // Serializes a workout's notes from the refs when the save fires. A workout
+  // no longer loaded (the month changed) has nothing to save, so its server
+  // notes are never overwritten with an empty payload.
+  const buildNotesPayload = useCallback((workoutId: string) => () => {
+    const movementNotes = movementNotesRef.current[workoutId];
+    if (!movementNotes) return null;
+    return serializeWorkoutNotes(movementNotes, legacyNotesRef.current[workoutId] || null);
+  }, []);
 
   const fetchMonthWorkouts = useCallback(async (month: Date) => {
     const requestId = ++monthRequestRef.current;
@@ -782,6 +831,7 @@ export function History() {
         const parsed = parseWorkoutNotes(workout.notes || null);
         notesByWorkout[workout.id] = parsed.movementNotes;
         legacyByWorkout[workout.id] = parsed.legacyNote;
+        noteSaverRef.current?.markPersisted(workout.id, serializeWorkoutNotes(parsed.movementNotes, parsed.legacyNote));
       });
 
       setMovementNotesByWorkout(notesByWorkout);
@@ -974,6 +1024,7 @@ export function History() {
     setWorkoutPlans((prev) => ({ ...prev, [workoutId]: plan || null }));
 
     const parsed = parseWorkoutNotes(workout.notes || null);
+    noteSaverRef.current?.markPersisted(workoutId, serializeWorkoutNotes(parsed.movementNotes, parsed.legacyNote));
     setMovementNotesByWorkout((prev) => ({ ...prev, [workoutId]: parsed.movementNotes }));
     setLegacyNotesByWorkout((prev) => ({ ...prev, [workoutId]: parsed.legacyNote }));
   }, [fetchWorkoutById, fetchWorkoutDayPlanByWorkoutId, syncWorkoutCompletion]);
@@ -1015,45 +1066,6 @@ export function History() {
     }
   }, [fetchWorkoutDayPlanByWorkoutId, workoutPlans]);
 
-  const persistMovementNotes = useCallback(async (workoutId: string, exerciseId: string) => {
-    const movementNotes = movementNotesRef.current[workoutId] || {};
-    const legacyNote = legacyNotesRef.current[workoutId] || null;
-    const serialized = serializeWorkoutNotes(movementNotes, legacyNote);
-
-    setSavingMovementNoteKey(`${workoutId}:${exerciseId}`);
-    try {
-      await updateWorkoutNotes(workoutId, serialized);
-    } catch {
-      // keep the draft in place so the next edit or blur retries
-      setSavingMovementNoteKey(null);
-      showToast('Note not saved');
-      return;
-    }
-
-    setMonthWorkouts((prev) => prev.map((workout) => (
-      workout.id === workoutId ? { ...workout, notes: serialized } : workout
-    )));
-
-    setSavingMovementNoteKey(null);
-    setSavedMovementNoteKey(`${workoutId}:${exerciseId}`);
-    window.setTimeout(() => {
-      setSavedMovementNoteKey((current) => (current === `${workoutId}:${exerciseId}` ? null : current));
-    }, 1200);
-  }, [showToast, updateWorkoutNotes]);
-
-  const queueMovementNotePersist = useCallback((workoutId: string, exerciseId: string) => {
-    const timerKey = `${workoutId}:${exerciseId}`;
-    const existingTimer = noteSaveTimersRef.current[timerKey];
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-    }
-
-    noteSaveTimersRef.current[timerKey] = window.setTimeout(() => {
-      delete noteSaveTimersRef.current[timerKey];
-      void persistMovementNotes(workoutId, exerciseId);
-    }, 1000);
-  }, [persistMovementNotes]);
-
   const handleMovementNoteChange = useCallback((workoutId: string, exerciseId: string, value: string) => {
     const bounded = value.slice(0, 200);
 
@@ -1072,36 +1084,25 @@ export function History() {
       };
     });
 
-    queueMovementNotePersist(workoutId, exerciseId);
-  }, [queueMovementNotePersist]);
+    noteSaverRef.current?.schedule(workoutId, exerciseId, buildNotesPayload(workoutId));
+  }, [buildNotesPayload]);
 
   const handleMovementNoteBlur = useCallback((workoutId: string, exerciseId: string) => {
-    const timerKey = `${workoutId}:${exerciseId}`;
-    const timerId = noteSaveTimersRef.current[timerKey];
-    if (timerId) {
-      window.clearTimeout(timerId);
-      delete noteSaveTimersRef.current[timerKey];
-    }
-
-    void persistMovementNotes(workoutId, exerciseId);
-  }, [persistMovementNotes]);
+    // an unchanged note sends nothing and shows no 'Saved'
+    void noteSaverRef.current?.saveNow(workoutId, exerciseId, buildNotesPayload(workoutId));
+  }, [buildNotesPayload]);
 
   useEffect(() => {
     // Save any note still waiting in its debounce before the new month's data
-    // replaces the note maps; persistMovementNotes reads them synchronously.
-    Object.entries(noteSaveTimersRef.current).forEach(([timerKey, timerId]) => {
-      window.clearTimeout(timerId);
-      delete noteSaveTimersRef.current[timerKey];
-      const [workoutId, exerciseId] = timerKey.split(':');
-      void persistMovementNotes(workoutId, exerciseId);
-    });
+    // replaces the note maps; the payload is built from them synchronously.
+    void noteSaverRef.current?.flushAll();
 
     const timer = setTimeout(() => {
       void fetchMonthWorkouts(selectedMonth);
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [fetchMonthWorkouts, persistMovementNotes, selectedMonth]);
+  }, [fetchMonthWorkouts, selectedMonth]);
 
   const handleDeleteWorkout = async (workoutId: string) => {
     try {
@@ -1263,12 +1264,7 @@ export function History() {
         };
       });
 
-      const timerKey = `${workoutId}:${exerciseId}`;
-      const timerId = noteSaveTimersRef.current[timerKey];
-      if (timerId) {
-        window.clearTimeout(timerId);
-        delete noteSaveTimersRef.current[timerKey];
-      }
+      noteSaverRef.current?.cancel(workoutId, exerciseId);
     });
   };
 

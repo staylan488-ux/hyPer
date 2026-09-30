@@ -43,6 +43,7 @@ import { emitBurstFrom } from '@/lib/fx';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
+import { createNoteAutosaver, flexiblePlanNoteToWrite, type NoteAutosaver } from '@/lib/noteAutosave';
 import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, saveRestTimerSession, syncRestTimerSession } from '@/lib/restTimer';
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
@@ -179,7 +180,6 @@ export function Workout() {
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, planSchedule, currentWorkout, adaptiveSchedulingEnabled);
   const [movementNotes, setMovementNotes] = useState<Record<string, string>>({});
-  const [legacyWorkoutNote, setLegacyWorkoutNote] = useState<string | null>(null);
   const [savingMovementNoteId, setSavingMovementNoteId] = useState<string | null>(null);
   const [savedMovementNoteId, setSavedMovementNoteId] = useState<string | null>(null);
   const [previousWorkoutSetsByExercise, setPreviousWorkoutSetsByExercise] = useState<PreviousWorkoutSetMap>({});
@@ -187,8 +187,12 @@ export function Workout() {
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
-  const noteSaveTimersRef = useRef<Record<string, number>>({});
-  const lastPersistedNotesRef = useRef<string>('');
+  const legacyWorkoutNoteRef = useRef<string | null>(null);
+  // The workout whose notes the refs above currently hold.
+  const notesWorkoutIdRef = useRef<string | null>(null);
+  const userIdRef = useRef(userId);
+  const noteSaverRef = useRef<NoteAutosaver | null>(null);
+  const mountedRef = useRef(false);
   const planScheduleRequestRef = useRef(0);
   const previousTargetsFailedRef = useRef(false);
   const previousTargetsContextRef = useRef<string | null>(null);
@@ -227,14 +231,82 @@ export function Workout() {
   }, [movementNotes]);
 
   useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const saver = createNoteAutosaver({
+      debounceMs: 1200,
+      save: async (workoutId, serializedPayload, exerciseId) => {
+        const ownerId = userIdRef.current;
+        if (!ownerId) return false;
+        // only the workout still on screen shows the saving/saved indicator
+        const showsIndicator = () => mountedRef.current && notesWorkoutIdRef.current === workoutId;
+
+        if (showsIndicator()) setSavingMovementNoteId(exerciseId);
+        const { error } = await supabase
+          .from('workouts')
+          .update({ notes: serializedPayload })
+          .eq('id', workoutId)
+          .eq('user_id', ownerId);
+
+        if (error) {
+          console.error('Error saving movement note:', error);
+          if (showsIndicator()) setSavingMovementNoteId(null);
+          return false;
+        }
+
+        if (showsIndicator()) {
+          setSavingMovementNoteId(null);
+          setSavedMovementNoteId(exerciseId);
+          window.setTimeout(() => {
+            setSavedMovementNoteId((current) => (current === exerciseId ? null : current));
+          }, 1200);
+        }
+        return true;
+      },
+      // Flexible sessions also keep the note on the plan item (templates and
+      // History read it there). Decided separately from the workouts.notes
+      // no-op check, so clearing a note that came from a template still saves.
+      onFlush: (workoutId, exerciseId) => {
+        const store = useAppStore.getState();
+        const nextNote = flexiblePlanNoteToWrite({
+          workoutId,
+          exerciseId,
+          movementNotes: notesWorkoutIdRef.current === workoutId ? movementNotesRef.current : null,
+          workout: store.currentWorkout,
+          plan: store.currentWorkoutDayPlan,
+        });
+        if (nextNote === null) return;
+        return store.updateFlexibleExerciseMeta(exerciseId, { notes: nextNote });
+      },
+    });
+    noteSaverRef.current = saver;
+
+    // backgrounding the app with the keyboard up still saves the note
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') void saver.flushAll();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
-      Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      mountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      void saver.flushAll();
     };
   }, []);
 
   useEffect(() => {
-    Object.values(noteSaveTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
-    noteSaveTimersRef.current = {};
+    // Switching or finishing the workout saves its pending notes instead of
+    // dropping them. This cleanup runs before the notes effect below swaps the
+    // refs, and each save carries the workout id captured when it was queued.
+    return () => {
+      void noteSaverRef.current?.flushAll();
+    };
+  }, [currentWorkoutId]);
+
+  useEffect(() => {
     setFlexibleTargetSetDrafts({});
     setActiveExerciseId(null);
     dispatchExpansion({ type: 'reset' });
@@ -409,26 +481,27 @@ export function Workout() {
   }, [userId, activeSplit, planSchedule, weekCursor, currentWorkoutId, currentWorkoutCompleted]);
 
   useEffect(() => {
+    notesWorkoutIdRef.current = currentWorkoutId;
     if (!currentWorkoutId) {
       setMovementNotes({});
-      setLegacyWorkoutNote(null);
-      lastPersistedNotesRef.current = '';
+      movementNotesRef.current = {};
+      legacyWorkoutNoteRef.current = null;
       return;
     }
 
     const parsed = parseWorkoutNotes(currentWorkoutNotes);
     setMovementNotes(parsed.movementNotes);
     movementNotesRef.current = parsed.movementNotes;
-    setLegacyWorkoutNote(parsed.legacyNote);
+    legacyWorkoutNoteRef.current = parsed.legacyNote;
 
     const initialPayload: WorkoutNotesPayload = {
       movementNotes: parsed.movementNotes,
       legacyNote: parsed.legacyNote || undefined,
     };
-    lastPersistedNotesRef.current = serializeWorkoutNotes(
+    noteSaverRef.current?.markPersisted(currentWorkoutId, serializeWorkoutNotes(
       initialPayload.movementNotes || {},
       initialPayload.legacyNote
-    );
+    ));
   }, [currentWorkoutId, currentWorkoutNotes]);
 
   useEffect(() => {
@@ -485,78 +558,31 @@ export function Workout() {
     if (previousTargetsFailedRef.current) setPreviousTargetsRetryNonce((nonce) => nonce + 1);
   }, [previousTargetsRetrySignal]);
 
-  const persistMovementNotes = useCallback(async (exerciseId: string) => {
-    if (!currentWorkoutId || !userId) return;
-
-    setSavingMovementNoteId(exerciseId);
-
-    const serializedPayload = serializeWorkoutNotes(
-      movementNotesRef.current,
-      legacyWorkoutNote || undefined
-    );
-
-    if (serializedPayload === lastPersistedNotesRef.current) {
-      setSavingMovementNoteId(null);
-      return;
-    }
-
-    const { error } = await supabase
-      .from('workouts')
-      .update({ notes: serializedPayload })
-      .eq('id', currentWorkoutId)
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Error saving movement note:', error);
-      setSavingMovementNoteId(null);
-      return;
-    }
-
-    setSavingMovementNoteId(null);
-    lastPersistedNotesRef.current = serializedPayload;
-    setSavedMovementNoteId(exerciseId);
-    window.setTimeout(() => {
-      setSavedMovementNoteId((current) => (current === exerciseId ? null : current));
-    }, 1200);
-  }, [currentWorkoutId, legacyWorkoutNote, userId]);
-
-  const queueMovementNotePersist = useCallback((exerciseId: string) => {
-    const existingTimer = noteSaveTimersRef.current[exerciseId];
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-    }
-
-    noteSaveTimersRef.current[exerciseId] = window.setTimeout(() => {
-      delete noteSaveTimersRef.current[exerciseId];
-      void persistMovementNotes(exerciseId);
-    }, 1200);
-  }, [persistMovementNotes]);
+  // Serializes the on-screen notes when the save fires; nothing is saved once
+  // the refs hold a different workout's notes.
+  const buildNotesPayload = (workoutId: string) => () => {
+    if (notesWorkoutIdRef.current !== workoutId) return null;
+    return serializeWorkoutNotes(movementNotesRef.current, legacyWorkoutNoteRef.current || undefined);
+  };
 
   const handleMovementNoteChange = (exerciseId: string, value: string) => {
     const boundedValue = value.slice(0, 200);
 
-    setMovementNotes((previous) => {
-      const next = { ...previous };
-      if (boundedValue.trim()) {
-        next[exerciseId] = boundedValue;
-      } else {
-        delete next[exerciseId];
-      }
-      movementNotesRef.current = next;
-      return next;
-    });
+    // A cleared note stays as '' rather than being deleted, so a note that came
+    // from a template does not reappear while the clear is saving. Blank
+    // entries are dropped when the notes are serialized.
+    const next = { ...movementNotesRef.current, [exerciseId]: boundedValue };
+    movementNotesRef.current = next;
+    setMovementNotes(next);
 
-    queueMovementNotePersist(exerciseId);
+    if (currentWorkoutId) {
+      noteSaverRef.current?.schedule(currentWorkoutId, exerciseId, buildNotesPayload(currentWorkoutId));
+    }
   };
 
   const handleMovementNoteBlur = (exerciseId: string) => {
-    const timerId = noteSaveTimersRef.current[exerciseId];
-    if (timerId) {
-      window.clearTimeout(timerId);
-      delete noteSaveTimersRef.current[exerciseId];
-    }
-
-    void persistMovementNotes(exerciseId);
+    if (!currentWorkoutId) return;
+    void noteSaverRef.current?.saveNow(currentWorkoutId, exerciseId, buildNotesPayload(currentWorkoutId));
   };
 
   const handleStartWorkout = async (day: SplitDay) => {
@@ -960,6 +986,12 @@ export function Workout() {
     });
   };
 
+  // Sends pending note saves while the session is still in the store, so a
+  // note typed just before finishing lands on the workout and its plan.
+  const flushMovementNotes = () => {
+    void noteSaverRef.current?.flushAll();
+  };
+
   const handleCompleteWorkout = async () => {
     if (completedSets < totalSets && totalSets > 0) {
       setShowCompleteConfirm(true);
@@ -972,6 +1004,7 @@ export function Workout() {
     }
 
     captureCompletionSummary();
+    flushMovementNotes();
     await completeWorkout();
     clearRestTimerSession();
     setShowRestTimer(false);
@@ -986,6 +1019,7 @@ export function Workout() {
     }
 
     captureCompletionSummary();
+    flushMovementNotes();
     await completeWorkout();
     clearRestTimerSession();
     setShowRestTimer(false);
@@ -994,9 +1028,11 @@ export function Workout() {
   const handleSaveTemplateAtCompletion = async () => {
     try {
       setSavingTemplate(true);
-      await saveFlexibleTemplateFromCurrentWorkout();
+      // the template takes the notes on screen, including ones still saving
+      await saveFlexibleTemplateFromCurrentWorkout(movementNotesRef.current);
       setShowSaveTemplatePrompt(false);
       captureCompletionSummary();
+      flushMovementNotes();
       await completeWorkout();
       clearRestTimerSession();
       setShowRestTimer(false);
@@ -1009,6 +1045,7 @@ export function Workout() {
   const handleSkipTemplateAtCompletion = () => {
     setShowSaveTemplatePrompt(false);
     captureCompletionSummary();
+    flushMovementNotes();
     void completeWorkout();
     clearRestTimerSession();
     setShowRestTimer(false);
@@ -1523,7 +1560,7 @@ export function Workout() {
                 : String(flexibleTargetSet);
               const isActive = expansion.expandedExerciseId === exerciseId;
               const allComplete = sets.length > 0 && completedInExercise === sets.length;
-              const movementNote = movementNotes[exerciseId] || item.notes || '';
+              const movementNote = exerciseId in movementNotes ? movementNotes[exerciseId] : (item.notes || '');
               const supersetGroupId = item.superset_group_id || null;
               const supersetPartner = supersetGroupId
                 ? activeFlexibleItems.find((candidate) => candidate.exercise_id !== exerciseId && candidate.superset_group_id === supersetGroupId)
@@ -1651,10 +1688,7 @@ export function Workout() {
                     value={movementNote}
                     saving={savingMovementNoteId === exerciseId}
                     saved={savedMovementNoteId === exerciseId}
-                    onChange={(value) => {
-                      handleMovementNoteChange(exerciseId, value);
-                      void updateFlexibleExerciseMeta(exerciseId, { notes: value.slice(0, 200) });
-                    }}
+                    onChange={(value) => handleMovementNoteChange(exerciseId, value)}
                     onBlur={() => handleMovementNoteBlur(exerciseId)}
                   />
                 </ExerciseCard>
