@@ -26,9 +26,10 @@ function weighIns(startKg: number, kgPerDay: number, days: number): WeightSample
   });
 }
 
+/** `days` complete days of logging, ending yesterday (today is still in progress). */
 function intake(caloriesPerDay: number, days: number): DailyIntake[] {
   return Array.from({ length: days }, (_, i) => ({
-    date: isoDay(-(days - 1) + i),
+    date: isoDay(-days + i),
     calories: caloriesPerDay,
   }));
 }
@@ -158,6 +159,30 @@ describe('data quality gates', () => {
 
     expect(result.meanIntakeKcal).toBe(2700);
     expect(result.measuredKcal).toBeCloseTo(2700, 6);
+  });
+});
+
+describe('today is still being logged', () => {
+  it('ignores a partly logged day today, even above the logging floor', () => {
+    // 1,200 kcal clears the 900 floor but is only breakfast and lunch.
+    const result = estimateExpenditure(
+      inputWith({ dailyIntake: [...intake(2700, 21), { date: isoDay(0), calories: 1200 }] })
+    );
+
+    expect(result.meanIntakeKcal).toBe(2700);
+    expect(result.loggedDayCount).toBe(21);
+    expect(result.blendWeight).toBeCloseTo(1, 6);
+  });
+
+  it('still reaches full logged coverage inside a phase-bounded window', () => {
+    // Phase started 25 days ago: usable from day -18. Every complete day since
+    // (-18..-1) is logged, so the measurement is fully trusted.
+    const result = estimateExpenditure(inputWith({ phaseStartedOn: isoDay(-25) }));
+
+    expect(result.windowStart).toBe(isoDay(-18));
+    expect(result.loggedDayCount).toBe(18);
+    expect(result.blendWeight).toBeCloseTo(1, 6);
+    expect(result.confidence).toBe('measured');
   });
 });
 
@@ -309,9 +334,31 @@ describe('convergence — the whole loop, week by week', () => {
     let confidence: 'predicted' | 'learning' | 'measured' | null = null;
     const history: number[] = [];
 
-    for (let day = 0; day < weeks * 7; day += 1) {
+    for (let day = 0; day <= weeks * 7; day += 1) {
       const date = new Date(2026, 0, 1 + day);
       const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+      // Morning weigh-in, reflecting everything eaten up to yesterday.
+      weightSamples.push({
+        measured_at: new Date(2026, 0, 1 + day, 8, 0, 0).toISOString(),
+        kilograms: weightKg,
+      });
+
+      // The weekly refresh runs later that morning, before today is logged.
+      if (day > 0 && day % 7 === 0) {
+        const estimate = estimateExpenditure({
+          predictedTdee,
+          bmr,
+          weightSamples,
+          dailyIntake,
+          previousExpenditureKcal: expenditureKcal,
+          previousConfidence: confidence,
+          through: new Date(2026, 0, 1 + day, 12, 0, 0),
+        });
+        expenditureKcal = estimate.expenditureKcal;
+        confidence = estimate.confidence;
+        history.push(estimate.expenditureKcal);
+      }
 
       // What the app tells them to eat today, given what it currently believes.
       const target = calculateMacroTargets({
@@ -330,25 +377,6 @@ describe('convergence — the whole loop, week by week', () => {
       // The body responds to the real balance, not the believed one.
       const balance = target - trueTdee;
       weightKg += balance / (balance < 0 ? 7700 : 6000);
-      weightSamples.push({
-        measured_at: new Date(2026, 0, 1 + day, 8, 0, 0).toISOString(),
-        kilograms: weightKg,
-      });
-
-      if (day % 7 === 6) {
-        const estimate = estimateExpenditure({
-          predictedTdee,
-          bmr,
-          weightSamples,
-          dailyIntake,
-          previousExpenditureKcal: expenditureKcal,
-          previousConfidence: confidence,
-          through: date,
-        });
-        expenditureKcal = estimate.expenditureKcal;
-        confidence = estimate.confidence;
-        history.push(estimate.expenditureKcal);
-      }
     }
 
     return { expenditureKcal, confidence, history, weightKg };
