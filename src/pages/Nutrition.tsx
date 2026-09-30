@@ -21,7 +21,7 @@ import {
 import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { sumMacros } from '@/lib/nutritionMacros';
-import { createLatestRequestGate, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
+import { createLatestRequestGate, nextMonthGroups, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
   addDays,
@@ -142,7 +142,7 @@ export function Nutrition() {
       const { data: groups, error: groupsError } = groupsResult;
 
       if (groupsError) console.error('Error fetching nutrition groups:', groupsError);
-      setMonthGroups((groups || []) as NutritionGroup[]);
+      setMonthGroups((current) => nextMonthGroups(current, groups as NutritionGroup[] | null, Boolean(groupsError)));
       // Groups that failed to load are not the month's real groups, so they
       // must not trigger default meal creation.
       const appliedMonthKey = groupsError ? null : key;

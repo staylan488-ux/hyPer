@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLatestRequestGate,
+  nextMonthGroups,
   nutritionMonthKey,
   shouldEnsureDefaultGroups,
 } from '@/lib/nutritionMonthLoad';
@@ -71,5 +72,24 @@ describe('latest request gate', () => {
     expect(gate.isCurrent(token)).toBe(true);
     gate.begin();
     expect(gate.isCurrent(token)).toBe(false);
+  });
+});
+
+describe('month groups after a read', () => {
+  const onScreen = [
+    { id: 'breakfast', date: '2026-09-14' },
+    { id: 'snack-a', date: '2026-09-14' },
+  ];
+
+  it('keeps the groups on screen when an offline refetch after a failed reorder fails too', () => {
+    // Reorder could not save, so the page refetched; the groups read failed as well.
+    expect(nextMonthGroups(onScreen, null, true)).toBe(onScreen);
+  });
+
+  it('shows the fetched groups when the read succeeds, including an empty month', () => {
+    const fetched = [{ id: 'lunch', date: '2026-09-14' }];
+    expect(nextMonthGroups(onScreen, fetched, false)).toBe(fetched);
+    expect(nextMonthGroups(onScreen, [], false)).toEqual([]);
+    expect(nextMonthGroups(onScreen, null, false)).toEqual([]);
   });
 });
