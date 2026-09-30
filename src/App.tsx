@@ -10,6 +10,7 @@ import {
 } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useAuthStore } from '@/stores/authStore';
+import { useAppStore } from '@/stores/appStore';
 import { BottomNav, RouteErrorScreen } from '@/components/shared';
 import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
@@ -34,6 +35,7 @@ import { useAmbientLight } from '@/hooks/useAmbientLight';
 import { NativeGlassSurfaces, probeGlassSurfaces } from '@/lib/nativeGlassSurfaces';
 import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
+import { watchRestTimerWorkoutEnd } from '@/lib/restTimerWorkoutGuard';
 
 function BootSplash() {
   return (
@@ -175,6 +177,8 @@ function App() {
   useEffect(() => {
     return initializeTheme();
   }, [initializeTheme]);
+
+  useEffect(() => watchRestTimerWorkoutEnd(useAppStore), []);
 
   // MotionConfig reducedMotion="user" wraps <App /> once in main.tsx.
   return <RouterProvider router={router} />;
