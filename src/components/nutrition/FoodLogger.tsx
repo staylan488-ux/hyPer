@@ -5,6 +5,7 @@ import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, Selec
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
+import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
@@ -151,6 +152,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [trialInitialHint, setTrialInitialHint] = useState('');
   const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
   const trialEntryIds = useRef(new WeakMap<TrialFoodItem, string>());
+  // one id per new entry until it is confirmed saved, so a retry after a lost
+  // response updates that row instead of logging the food twice
+  const [pendingEntryId] = useState(createPendingEntryId);
+  // one-off manual food row from a failed log, reused when retried unchanged
+  const manualFoodRef = useRef<{ key: string; id: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1126,7 +1132,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     };
 
     try {
-      await persistNutritionEntry(fullPayload, initialEntry?.id, retryEntryId);
+      await persistNutritionEntry(fullPayload, initialEntry?.id, entryWriteId(!!initialEntry, retryEntryId, pendingEntryId));
+      // confirmed: the next save is a new entry (per item in the photo loop)
+      if (!retryEntryId) pendingEntryId.clear();
       if (shouldComplete) onComplete();
       return true;
     } catch (error) {
@@ -1432,16 +1440,22 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       }
 
       if (!resolvedFoodId) {
-        resolvedFoodId = await insertFoodRecord(
-          user.id,
-          { name: normalizedName, calories, protein, carbs, fat },
-          'manual_entry'
-        );
+        // a retry after a failed log reuses the one-off food row it already
+        // created for these exact values instead of leaving another orphan
+        const manualFoodKey = [user.id, normalizeFoodName(normalizedName), calories, protein, carbs, fat].join('|');
+        resolvedFoodId = manualFoodRef.current?.key === manualFoodKey
+          ? manualFoodRef.current.id
+          : await insertFoodRecord(
+            user.id,
+            { name: normalizedName, calories, protein, carbs, fat },
+            'manual_entry'
+          );
 
         if (!resolvedFoodId) {
           console.error('Error creating one-off manual food entry');
           return;
         }
+        manualFoodRef.current = { key: manualFoodKey, id: resolvedFoodId };
       }
 
       if (!resolvedFoodId) {
@@ -1458,11 +1472,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         }
       }
 
-      await saveNutritionEntry(
+      const saved = await saveNutritionEntry(
         resolvedFoodId,
         parseFloat(servings || '1'),
         pendingBarcodeBinding ? 'barcode_saved' : initialEntry?.source || 'manual',
       );
+      if (saved) manualFoodRef.current = null;
     } catch (error) {
       console.error('Error in manual submit:', error);
     } finally {
