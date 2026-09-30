@@ -66,6 +66,14 @@ struct RunControlIntent: LiveActivityIntent {
             var state = activity.content.state
             state.finishArmedUntil = nil
             if control == .rest {
+                // Carry the clock forward to the tap before toggling, so the
+                // lock-screen clock freezes at (or keeps counting from) the true
+                // elapsed time rather than the value from the last app sync. In
+                // free mode resting is a pause, so a stopped clock adds nothing.
+                let clockRunning = !(state.isResting && state.mode != "intervals")
+                if clockRunning {
+                    state.elapsedS += max(0, Int(now.timeIntervalSince(state.updatedAt).rounded(.down)))
+                }
                 state.isResting.toggle()
                 state.updatedAt = now
             }

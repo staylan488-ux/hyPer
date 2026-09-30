@@ -63,16 +63,26 @@ struct RunControlIntent: LiveActivityIntent {
             }
         }
 
-        NotificationCenter.default.post(
-            name: .hyperRunControl,
-            object: nil,
-            userInfo: ["action": control.rawValue, "timestampMs": now.timeIntervalSince1970 * 1_000]
-        )
+        // perform() runs off the main actor. Deliver on main so the plugin's
+        // observer runs serialized with the location delegate, and still
+        // before this intent updates or ends the activity.
+        let userInfo: [String: Any] = ["action": control.rawValue, "timestampMs": now.timeIntervalSince1970 * 1_000]
+        await MainActor.run {
+            NotificationCenter.default.post(name: .hyperRunControl, object: nil, userInfo: userInfo)
+        }
 
         for activity in Activity<RunActivityAttributes>.activities {
             var state = activity.content.state
             state.finishArmedUntil = nil
             if control == .rest {
+                // Carry the clock forward to the tap before toggling, so the
+                // lock-screen clock freezes at (or keeps counting from) the true
+                // elapsed time rather than the value from the last app sync. In
+                // free mode resting is a pause, so a stopped clock adds nothing.
+                let clockRunning = !(state.isResting && state.mode != "intervals")
+                if clockRunning {
+                    state.elapsedS += max(0, Int(now.timeIntervalSince(state.updatedAt).rounded(.down)))
+                }
                 state.isResting.toggle()
                 state.updatedAt = now
             }
@@ -111,6 +121,17 @@ final class RunLiveActivityCoordinator {
         }
         lastUpdateAt = now
 
+        // Keep a lock-screen "Tap to finish" arming alive across this sync;
+        // only the intent's second tap ends the run.
+        var finishArmedUntil: Date?
+        if let current = activities.first,
+           current.attributes.runID == runID,
+           let armedUntil = current.content.state.finishArmedUntil,
+           armedUntil > now
+        {
+            finishArmedUntil = armedUntil
+        }
+
         let state = RunActivityAttributes.ContentState(
             mode: mode,
             distanceM: distanceM,
@@ -119,7 +140,7 @@ final class RunLiveActivityCoordinator {
             livePace: livePace,
             averagePace: averagePace,
             isResting: isResting,
-            finishArmedUntil: nil
+            finishArmedUntil: finishArmedUntil
         )
         let content = ActivityContent(state: state, staleDate: now.addingTimeInterval(30))
 

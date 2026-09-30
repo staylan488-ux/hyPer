@@ -82,6 +82,10 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
     private var recording = false
     private var motion = "unknown"
     private var pendingPermissionCall: CAPPluginCall?
+    // Where the last drainSamples scan ended in the trace file, so the next
+    // drain reads only what was appended since instead of re-decoding the
+    // whole run. Cleared whenever the file is reset, discarded or resumed.
+    private var drainResumePoint: (runID: String, sequence: Int, offset: UInt64)?
 
     // stored properties cannot be availability-gated; keep type-erased storage
     // and expose an iOS 17-only typed accessor
@@ -165,6 +169,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                 } else {
                     self.currentRunID = runID
                     self.sequence = UserDefaults.standard.integer(forKey: DefaultsKey.sequence)
+                    self.drainResumePoint = nil
                 }
                 self.beginPlatformRecording()
                 call.resolve(["recording": self.recording, "lastSequence": self.sequence])
@@ -220,33 +225,78 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             let afterSequence = max(0, call.getInt("afterSequence") ?? 0)
-            guard let fileURL = self.traceFileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
+            guard
+                let runID = self.currentRunID,
+                let fileURL = self.traceFileURL,
+                FileManager.default.fileExists(atPath: fileURL.path)
+            else {
                 call.resolve(["samples": [], "lastSequence": afterSequence, "hasMore": false])
                 return
             }
 
             do {
-                let data = try Data(contentsOf: fileURL)
-                let lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
+                // Continue from the previous page when the caller wants nothing
+                // at or before it. The first drain after a launch or resume, or
+                // an older cursor, reads the whole file as before.
+                var baseOffset: UInt64 = 0
+                var scannedSequence = 0
+                let data: Data
+                if let point = self.drainResumePoint, point.runID == runID, afterSequence >= point.sequence {
+                    let handle = try FileHandle(forReadingFrom: fileURL)
+                    defer { try? handle.close() }
+                    try handle.seek(toOffset: point.offset)
+                    data = try handle.readToEnd() ?? Data()
+                    baseOffset = point.offset
+                    scannedSequence = point.sequence
+                } else {
+                    data = try Data(contentsOf: fileURL)
+                }
+
                 var samples: [PersistedRunSample] = []
-                samples.reserveCapacity(min(1_000, lines.count))
-                for line in lines {
+                // Every line before `scannedOffset` has a sequence at or below
+                // `scannedSequence`. That includes lines skipped here as
+                // already delivered or corrupt, which a full read would skip
+                // again, so the point also moves when the live listener
+                // delivered everything and this page comes back empty.
+                var scannedOffset: UInt64?
+                var lineStart = data.startIndex
+                while lineStart < data.endIndex, samples.count < 1_000 {
+                    let newline = data[lineStart...].firstIndex(of: 0x0A)
+                    let lineEnd = newline ?? data.endIndex
+                    let nextStart = newline.map { data.index(after: $0) } ?? data.endIndex
+                    defer { lineStart = nextStart }
+                    // append() writes each line with its newline in one write,
+                    // so only resume past lines that are complete.
+                    if newline != nil {
+                        scannedOffset = baseOffset + UInt64(data.distance(from: data.startIndex, to: nextStart))
+                    }
                     // Skip a truncated/corrupt line (app killed mid-append)
                     // instead of failing the whole recovery — a single bad line
                     // must not brick resume for the entire run.
-                    guard let sample = try? self.decoder.decode(PersistedRunSample.self, from: Data(line)) else {
-                        continue
+                    guard
+                        lineEnd > lineStart,
+                        let sample = try? self.decoder.decode(
+                            PersistedRunSample.self,
+                            from: Data(data[lineStart..<lineEnd])
+                        )
+                    else { continue }
+                    if newline != nil {
+                        scannedSequence = max(scannedSequence, sample.sequence)
                     }
-                    if sample.sequence > afterSequence {
-                        samples.append(sample)
-                        if samples.count == 1_000 { break }
-                    }
+                    guard sample.sequence > afterSequence else { continue }
+                    samples.append(sample)
+                }
+                if let scannedOffset {
+                    self.drainResumePoint = (runID, scannedSequence, scannedOffset)
                 }
                 let lastReturnedSequence = samples.last?.sequence ?? afterSequence
                 call.resolve([
                     "samples": samples.map(\.bridgeValue),
                     "lastSequence": lastReturnedSequence,
-                    "hasMore": lastReturnedSequence < self.sequence,
+                    // Only a full page can have more. Comparing with the
+                    // in-memory `sequence` reports more forever once a failed
+                    // append leaves a sequence that was never written.
+                    "hasMore": samples.count == 1_000,
                 ])
             } catch {
                 call.reject("Unable to recover native run samples.", "PERSISTENCE_FAILED", error)
@@ -456,6 +506,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         )
         currentRunID = runID
         sequence = 0
+        drainResumePoint = nil
         let defaults = UserDefaults.standard
         defaults.set(runID, forKey: DefaultsKey.runID)
         defaults.set(sequence, forKey: DefaultsKey.sequence)
@@ -475,6 +526,7 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         currentRunID = nil
         sequence = 0
+        drainResumePoint = nil
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: DefaultsKey.runID)
         defaults.removeObject(forKey: DefaultsKey.sequence)
@@ -520,12 +572,25 @@ final class HyperRunPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc private func handleRunControl(_ notification: Notification) {
         guard
-            recording,
             let action = notification.userInfo?["action"] as? String,
             RunControlAction(rawValue: action) != nil
         else { return }
         let timestampMs = notification.userInfo?["timestampMs"] as? Double
             ?? Date().timeIntervalSince1970 * 1_000
+        // The observer runs on the posting thread. Controls touch `recording`,
+        // the control sequence and UIKit/CoreLocation teardown, which are all
+        // serialized on main, so hop there if a poster was not already on it.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyRunControl(action: action, timestampMs: timestampMs)
+            }
+            return
+        }
+        applyRunControl(action: action, timestampMs: timestampMs)
+    }
+
+    private func applyRunControl(action: String, timestampMs: Double) {
+        guard recording else { return }
         let defaults = UserDefaults.standard
         let controlSequence = defaults.integer(forKey: DefaultsKey.controlSequence) + 1
         defaults.set(controlSequence, forKey: DefaultsKey.controlSequence)
