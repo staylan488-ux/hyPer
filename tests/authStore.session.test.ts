@@ -16,7 +16,9 @@ vi.mock('@/lib/supabase', () => ({
   supabase: supabaseMock,
 }));
 
+import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
 import { useAuthStore } from '@/stores/authStore';
+import { authScreen } from '@/lib/authScreen';
 import { initialAppData, useAppStore } from '@/stores/appStore';
 
 type Profile = {
@@ -55,6 +57,7 @@ beforeEach(() => {
     profile: null,
     loading: true,
     initialized: false,
+    reconnecting: false,
   });
 });
 
@@ -426,5 +429,85 @@ describe('in-memory app data on account change', () => {
 
     expect(useAppStore.getState().currentWorkout).toBeNull();
     expect(useAppStore.getState().whoopConnection).toBeNull();
+  });
+});
+
+describe('offline restore with an expired access token', () => {
+  const screen = (signInInstead = false) => authScreen(useAuthStore.getState(), signInInstead);
+
+  async function initializeWithError(error: Error | null) {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null }, error });
+    supabaseMock.auth.onAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    });
+    await useAuthStore.getState().initialize();
+    const callback = supabaseMock.auth.onAuthStateChange.mock.calls[0]?.[0] as AuthCallback | undefined;
+    if (!callback) throw new Error('Expected auth callback to be registered');
+    return callback;
+  }
+
+  it('waits for the connection instead of showing sign-in', async () => {
+    await initializeWithError(new AuthRetryableFetchError('Failed to fetch', 0));
+
+    const state = useAuthStore.getState();
+    expect(state.initialized).toBe(true);
+    expect(state.user).toBeNull();
+    expect(state.reconnecting).toBe(true);
+    expect(screen()).toBe('offline');
+    // "Sign in instead" is a local choice only
+    expect(screen(true)).toBe('sign-in');
+    expect(supabaseMock.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('ignores the empty INITIAL_SESSION and opens the app when the refresh succeeds', async () => {
+    const requested = profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const callback = await initializeWithError(new AuthRetryableFetchError('Failed to fetch', 0));
+
+    callback('INITIAL_SESSION', null);
+    expect(useAuthStore.getState().reconnecting).toBe(true);
+    expect(screen()).toBe('offline');
+
+    callback('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+    expect(useAuthStore.getState().reconnecting).toBe(false);
+    expect(useAuthStore.getState().user?.id).toBe('user-1');
+    expect(screen()).toBe('app');
+    await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('One'));
+    expect(requested).toEqual(['user-1']);
+  });
+
+  it('shows sign-in when auth-js signs out while reconnecting', async () => {
+    const callback = await initializeWithError(new AuthRetryableFetchError('Failed to fetch', 0));
+
+    callback('SIGNED_OUT', null);
+    expect(useAuthStore.getState().reconnecting).toBe(false);
+    expect(useAuthStore.getState().profile).toBeNull();
+    expect(screen()).toBe('sign-in');
+  });
+
+  it('shows sign-in straight away without a stored session', async () => {
+    await initializeWithError(null);
+    expect(useAuthStore.getState().reconnecting).toBe(false);
+    expect(screen()).toBe('sign-in');
+  });
+
+  it('shows sign-in after a non-retryable refresh failure', async () => {
+    await initializeWithError(new AuthApiError('Invalid Refresh Token: Refresh Token Not Found', 400, 'refresh_token_not_found'));
+    expect(useAuthStore.getState().reconnecting).toBe(false);
+    expect(screen()).toBe('sign-in');
+  });
+
+  it('still opens straight into the app with a valid stored session', async () => {
+    profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    await initializeWith({ user: { id: 'user-1' } });
+    expect(useAuthStore.getState().reconnecting).toBe(false);
+    expect(screen()).toBe('app');
+  });
+
+  it('shows the splash until initialized', () => {
+    expect(screen()).toBe('boot');
   });
 });

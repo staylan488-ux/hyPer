@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { BottomNav, RouteErrorScreen } from '@/components/shared';
 import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
+import { Button } from '@/components/shared/Button';
 import { Dashboard } from '@/pages/Dashboard';
 import { Workout } from '@/pages/Workout';
 import { Nutrition } from '@/pages/Nutrition';
@@ -34,8 +35,11 @@ import { useAmbientLight } from '@/hooks/useAmbientLight';
 import { NativeGlassSurfaces, probeGlassSurfaces } from '@/lib/nativeGlassSurfaces';
 import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
+import { authScreen } from '@/lib/authScreen';
 
-function BootSplash() {
+/** `onSignInInstead` marks the offline restore: the saved sign-in is kept and
+ * the app opens by itself once the connection returns. */
+function BootSplash({ onSignInInstead }: { onSignInInstead?: () => void } = {}) {
   return (
     <div className="material-foundation min-h-screen flex flex-col items-center justify-center px-6">
       <motion.div
@@ -60,9 +64,17 @@ function BootSplash() {
           }}
           style={{ width: '64px', transformOrigin: 'center' }}
         />
-        <p className="mt-7 text-[10px] tracking-[0.24em] uppercase text-[var(--color-muted)]">
-          Preparing your edition
+        <p
+          className="mt-7 text-[10px] tracking-[0.24em] uppercase text-[var(--color-muted)]"
+          role="status"
+        >
+          {onSignInInstead ? 'Offline, waiting for a connection' : 'Preparing your edition'}
         </p>
+        {onSignInInstead && (
+          <Button type="button" variant="ghost" size="sm" className="mt-5" onClick={onSignInInstead}>
+            Sign in instead
+          </Button>
+        )}
       </motion.div>
     </div>
   );
@@ -98,15 +110,22 @@ function AnimatedOutlet() {
 }
 
 function PrivateLayout() {
-  const { user, initialized } = useAuthStore();
+  const { user, initialized, reconnecting } = useAuthStore();
+  // local only: signing in instead never signs out, so the saved session stays
+  const [signInInstead, setSignInInstead] = useState(false);
   useAppViewport();
   useAmbientLight();
 
-  if (!initialized) {
+  const screen = authScreen({ initialized, user, reconnecting }, signInInstead);
+  if (screen === 'boot') {
     return <BootSplash />;
   }
 
-  if (!user) {
+  if (screen === 'offline') {
+    return <BootSplash onSignInInstead={() => setSignInInstead(true)} />;
+  }
+
+  if (screen === 'sign-in') {
     return <AuthForm />;
   }
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { User, Session } from '@supabase/supabase-js';
+import { isAuthRetryableFetchError, type User, type Session } from '@supabase/supabase-js';
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
@@ -46,6 +46,10 @@ interface AuthState {
   profile: { id: string; display_name: string | null } | null;
   loading: boolean;
   initialized: boolean;
+  /** Offline cold start with a stored session whose access token expired:
+   * the refresh token is intact, so wait for the connection instead of
+   * presenting sign-in. Ends on SIGNED_OUT or any event with a session. */
+  reconnecting: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
   resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
@@ -63,20 +67,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   loading: true,
   initialized: false,
+  reconnecting: false,
 
   initialize: async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error } = await supabase.auth.getSession();
     
     if (session) {
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
       // no-op when local settings exist; restores them after storage eviction
       void hydratePhotoWorkerSettings(session.user.id);
+    } else if (error && isAuthRetryableFetchError(error)) {
+      // the refresh failed for lack of a network and auth-js kept the stored
+      // session; its auto-refresh emits TOKEN_REFRESHED once the connection is
+      // back. A non-retryable failure removes the session and signs out.
+      set({ loading: false, initialized: true, reconnecting: true });
     } else {
       set({ loading: false, initialized: true });
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
+      // while reconnecting, the INITIAL_SESSION that follows the failed
+      // restore carries no session; it is not a sign-out
+      if (!session && event !== 'SIGNED_OUT' && get().reconnecting) return;
+      if (get().reconnecting) set({ reconnecting: false });
+
       // compare user ids, never event names: TOKEN_REFRESHED and the SIGNED_IN
       // on every foreground resume keep the same id and the active workout
       const prevId = get().user?.id;
@@ -221,6 +236,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null });
+    set({ user: null, session: null, profile: null, reconnecting: false });
   },
 }));
