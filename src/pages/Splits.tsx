@@ -167,6 +167,8 @@ export function Splits() {
       }
 
       navigate('/train');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingTemplateLabel(null);
     }

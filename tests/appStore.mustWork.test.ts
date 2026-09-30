@@ -282,6 +282,148 @@ describe('must-work store contracts', () => {
     expect(insertWorkoutChain.insert).toHaveBeenCalledTimes(1);
   });
 
+  describe('starting a workout', () => {
+    const insertedWorkout = {
+      id: 'workout-new',
+      user_id: 'user-1',
+      split_day_id: 'split-day-1',
+      date: '2026-02-14',
+      notes: null,
+      completed: false,
+      created_at: '2026-02-14T12:00:00.000Z',
+    };
+
+    // workouts: 1st call = resume check, 2nd = insert, later = delete/refetch.
+    function routeStart({ setsError = null, workoutInsertError = null, existing = null }: {
+      setsError?: unknown;
+      workoutInsertError?: unknown;
+      existing?: Workout | null;
+    } = {}) {
+      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      const existingChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: existing, error: null }),
+      });
+      const insertWorkoutChain = createChain({
+        single: vi.fn().mockResolvedValue(workoutInsertError
+          ? { data: null, error: workoutInsertError }
+          : { data: insertedWorkout, error: null }),
+      });
+      const laterWorkoutsChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { ...insertedWorkout, sets: [] }, error: null }),
+      });
+      const splitExercisesChain = createChain({
+        order: vi.fn().mockResolvedValue({
+          data: [
+            { exercise_id: 'exercise-squat', target_sets: 3, exercise_order: 0 },
+            { exercise_id: 'exercise-press', target_sets: 2, exercise_order: 1 },
+          ],
+          error: null,
+        }),
+      });
+      const setsChain = createChain();
+      setsChain.insert.mockImplementation(() => ({ error: setsError }));
+      const plansChain = createChain({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'plan-new', workout_id: 'workout-new', day_label: 'Pull', items: [] },
+          error: null,
+        }),
+      });
+
+      let workoutCalls = 0;
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') {
+          workoutCalls += 1;
+          if (workoutCalls === 1) return existingChain;
+          if (workoutCalls === 2) return insertWorkoutChain;
+          return laterWorkoutsChain;
+        }
+        if (table === 'split_exercises') return splitExercisesChain;
+        if (table === 'sets') return setsChain;
+        if (table === 'workout_day_plans') return plansChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+      return { setsChain, laterWorkoutsChain };
+    }
+
+    it('creates every planned set in one insert, in plan order', async () => {
+      const { setsChain } = routeStart();
+
+      const result = await useAppStore.getState().startWorkout('split-day-1');
+
+      expect(result?.id).toBe('workout-new');
+      expect(setsChain.insert).toHaveBeenCalledTimes(1);
+      expect(setsChain.insert).toHaveBeenCalledWith([
+        ['exercise-squat', 1], ['exercise-squat', 2], ['exercise-squat', 3],
+        ['exercise-press', 1], ['exercise-press', 2],
+      ].map(([exerciseId, setNumber]) => ({
+        workout_id: 'workout-new',
+        exercise_id: exerciseId,
+        set_number: setNumber,
+        completed: false,
+      })));
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-new');
+    });
+
+    it('removes the new workout and rejects when the set insert fails', async () => {
+      const { laterWorkoutsChain } = routeStart({ setsError: { message: 'offline' } });
+
+      await expect(useAppStore.getState().startWorkout('split-day-1')).rejects.toThrow("Couldn't start the workout");
+
+      expect(laterWorkoutsChain.delete).toHaveBeenCalledTimes(1);
+      expect(laterWorkoutsChain.eq).toHaveBeenCalledWith('id', 'workout-new');
+      expect(laterWorkoutsChain.maybeSingle).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout).toBeNull();
+    });
+
+    it('rejects instead of returning null when a flexible workout cannot be created', async () => {
+      routeStart({ workoutInsertError: { message: 'offline' } });
+
+      await expect(useAppStore.getState().startFlexibleWorkout('Pull')).rejects.toThrow("Couldn't start the workout");
+      expect(useAppStore.getState().currentWorkout).toBeNull();
+    });
+
+    it('still returns null when a split workout is already in progress', async () => {
+      const splitInProgress: Workout = {
+        ...insertedWorkout,
+        id: 'workout-split',
+        created_at: new Date().toISOString(),
+        sets: [],
+      };
+      const { setsChain } = routeStart({ existing: splitInProgress });
+
+      await expect(useAppStore.getState().startFlexibleWorkout('Pull')).resolves.toBeNull();
+      expect(setsChain.insert).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout).toBeNull();
+    });
+
+    it('creates a template flexible workout with one insert that skips hidden items', async () => {
+      const { setsChain } = routeStart();
+      const templateItems: FlexiblePlanItem[] = [
+        { exercise_id: 'exercise-row', exercise_name: 'Row', order: 0, target_sets: 2, target_reps_min: 8, target_reps_max: 12, notes: null, hidden: false, superset_group_id: null },
+        { exercise_id: 'exercise-curl', exercise_name: 'Curl', order: 1, target_sets: 3, target_reps_min: 8, target_reps_max: 12, notes: null, hidden: true, superset_group_id: null },
+        { exercise_id: 'exercise-pulldown', exercise_name: 'Pulldown', order: 2, target_sets: 1, target_reps_min: 8, target_reps_max: 12, notes: null, hidden: false, superset_group_id: null },
+      ];
+      const baseFrom = supabaseMock.from.getMockImplementation()!;
+      supabaseMock.from.mockImplementation((table: string) => (
+        table === 'flex_day_templates'
+          ? createChain({ maybeSingle: vi.fn().mockResolvedValue({ data: { items: templateItems }, error: null }) })
+          : baseFrom(table)
+      ));
+
+      await useAppStore.getState().startFlexibleWorkout('Pull', 'Pull');
+
+      expect(setsChain.insert).toHaveBeenCalledTimes(1);
+      expect(setsChain.insert).toHaveBeenCalledWith([
+        ['exercise-row', 1], ['exercise-row', 2], ['exercise-pulldown', 1],
+      ].map(([exerciseId, setNumber]) => ({
+        workout_id: 'workout-new',
+        exercise_id: exerciseId,
+        set_number: setNumber,
+        completed: false,
+      })));
+    });
+  });
+
   it('adds a new set with next set number and updates workout state', async () => {
     const currentWorkout: Workout = {
       id: 'workout-1',
@@ -1720,7 +1862,13 @@ describe('must-work store contracts', () => {
     });
 
     expect(plansChain.update).toHaveBeenCalled();
-    expect(setsInsertChain.insert).toHaveBeenCalledTimes(3);
+    expect(setsInsertChain.insert).toHaveBeenCalledTimes(1);
+    expect(setsInsertChain.insert).toHaveBeenCalledWith([1, 2, 3].map((setNumber) => ({
+      workout_id: 'workout-1',
+      exercise_id: 'exercise-b',
+      set_number: setNumber,
+      completed: false,
+    })));
 
     const updatedPlan = useAppStore.getState().currentWorkoutDayPlan;
     const groupIds = new Set((updatedPlan?.items || []).map((item) => item.superset_group_id).filter(Boolean));
@@ -1906,12 +2054,14 @@ describe('set-count edits never delete finished sets and superset partners follo
     id: 'workout-1', user_id: 'user-1', split_day_id: null, date: '2026-02-21', notes: null, completed: false, sets,
   });
 
-  // An in-memory `sets` table: inserts add rows, delete().eq/in('id') removes
-  // them, and select(...).eq(...).order() reads them back filtered.
+  // An in-memory `sets` table: inserts add rows (insert().select() with the
+  // exercise embed returns them), delete().eq/in('id') removes them, and
+  // select(...).eq(...).order() reads them back filtered.
   function createSetsTable(initial: WorkoutSet[]) {
     const rows = initial.map((row) => ({ ...row }));
     const deletedIds: string[] = [];
     let inserted = 0;
+    let lastInserted: WorkoutSet[] = [];
     let deleting = false;
     let filters: Record<string, unknown> = {};
     const remove = (ids: string[]) => {
@@ -1924,13 +2074,20 @@ describe('set-count edits never delete finished sets and superset partners follo
     };
     const chain = createChain();
     chain.insert.mockImplementation((payload: Partial<WorkoutSet> | Partial<WorkoutSet>[]) => {
+      lastInserted = [];
       for (const row of [payload].flat()) {
-        rows.push({ weight: null, reps: null, rpe: null, completed_at: null, ...row, id: `inserted-${++inserted}` } as WorkoutSet);
+        const created = { weight: null, reps: null, rpe: null, completed_at: null, ...row, id: `inserted-${++inserted}` } as WorkoutSet;
+        rows.push(created);
+        lastInserted.push({ ...created });
       }
       return chain;
     });
     chain.delete.mockImplementation(() => { deleting = true; return chain; });
-    chain.select.mockImplementation(() => { filters = {}; return chain; });
+    chain.select.mockImplementation((columns?: string) => {
+      if (columns?.includes('exercise:')) return Promise.resolve({ data: lastInserted, error: null });
+      filters = {};
+      return chain;
+    });
     chain.eq.mockImplementation((column: string, value: string) => {
       if (deleting && column === 'id') remove([value]);
       else filters[column] = value;
@@ -2005,6 +2162,34 @@ describe('set-count edits never delete finished sets and superset partners follo
     expect(table.numbersFor('ex-a')).toEqual([1, 2, 3, 4]);
     expect(table.rows.filter((row) => row.set_number > 2).every((row) => !row.completed)).toBe(true);
     expect(planItem('ex-a')?.target_sets).toBe(4);
+    expect(table.chain.insert).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.set_number)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('live: a set logged while target sets change stays logged (no whole-workout refetch)', async () => {
+    const sets = [set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false)];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0, { target_sets: 2 })] },
+    });
+    // The user logs a2 while the insert request is in flight.
+    const insert = table.chain.insert.getMockImplementation()!;
+    table.chain.insert.mockImplementationOnce((payload: Partial<WorkoutSet>[]) => {
+      const current = useAppStore.getState().currentWorkout!;
+      useAppStore.setState({
+        currentWorkout: { ...current, sets: current.sets.map((row) => (row.id === 'a2' ? { ...row, completed: true } : row)) },
+      });
+      return insert(payload);
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 3 });
+
+    const liveSets = useAppStore.getState().currentWorkout!.sets;
+    expect(liveSets.find((row) => row.id === 'a2')?.completed).toBe(true);
+    expect(liveSets.map((row) => row.set_number)).toEqual([1, 2, 3]);
+    expect(supabaseMock.from.mock.calls.map(([name]) => name)).not.toContain('workouts');
   });
 
   it('live: a superset partner takes the same target and keeps its finished sets', async () => {

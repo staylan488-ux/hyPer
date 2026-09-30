@@ -569,6 +569,8 @@ export function Workout() {
     try {
       setStartingDayId(day.id);
       await startWorkout(day.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingDayId(null);
     }
@@ -777,6 +779,8 @@ export function Workout() {
         window.alert('You already have an in-progress split workout today. Finish it before starting a flexible workout.');
         return;
       }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingFlexibleWorkout(false);
     }

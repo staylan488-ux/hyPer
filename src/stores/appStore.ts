@@ -138,6 +138,48 @@ function randomSupersetGroupId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const START_WORKOUT_ERROR = "Couldn't start the workout. Check your connection and try again.";
+
+interface PlaceholderSetSpec {
+  exerciseId: string;
+  from: number;
+  to: number;
+}
+
+// Creates empty sets in one request. Rows keep plan order, then set_number,
+// exactly as the old one-insert-per-set loops did. Callers must check `error`.
+async function insertPlaceholderSets(
+  workoutId: string,
+  specs: PlaceholderSetSpec[],
+  withSelect = false,
+): Promise<{ data: WorkoutSet[]; error: unknown }> {
+  const rows: { workout_id: string; exercise_id: string; set_number: number; completed: boolean }[] = [];
+  for (const { exerciseId, from, to } of specs) {
+    for (let setNumber = from; setNumber <= to; setNumber += 1) {
+      rows.push({ workout_id: workoutId, exercise_id: exerciseId, set_number: setNumber, completed: false });
+    }
+  }
+
+  if (rows.length === 0) return { data: [], error: null };
+
+  if (withSelect) {
+    const { data, error } = await supabase
+      .from('sets')
+      .insert(rows)
+      .select('*, exercise:exercises!exercise_id(*)');
+    return { data: (data || []) as WorkoutSet[], error };
+  }
+
+  const { error } = await supabase.from('sets').insert(rows);
+  return { data: [], error };
+}
+
+// Removes the workout row a failed start just created (its plan cascades).
+async function discardStartedWorkout(workoutId: string) {
+  const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+  if (error) console.error('Error removing workout after a failed start:', error);
+}
+
 function resolveWorkoutCompletedAt(
   sets: Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>,
   fallback = new Date().toISOString(),
@@ -621,7 +663,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   startWorkout: async (splitDayId) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) throw new Error(START_WORKOUT_ERROR);
 
     // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
@@ -655,26 +697,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       .select()
       .single();
 
-    if (error || !workout) return null;
+    if (error || !workout) {
+      console.error('Error creating workout:', error);
+      throw new Error(START_WORKOUT_ERROR);
+    }
 
     // Get split day exercises and create placeholder sets
-    const { data: splitExercises } = await supabase
+    const { data: splitExercises, error: splitExercisesError } = await supabase
       .from('split_exercises')
       .select('*, exercise:exercises(*)')
       .eq('split_day_id', splitDayId)
       .order('exercise_order');
 
-    if (splitExercises) {
-      for (const se of splitExercises) {
-        for (let i = 1; i <= se.target_sets; i++) {
-          await supabase.from('sets').insert({
-            workout_id: workout.id,
-            exercise_id: se.exercise_id,
-            set_number: i,
-            completed: false,
-          });
-        }
-      }
+    // Never leave a workout that is missing sets: it would resume for a day.
+    const { error: setsError } = splitExercisesError
+      ? { error: splitExercisesError }
+      : await insertPlaceholderSets(workout.id, (splitExercises || []).map((se) => ({
+          exerciseId: se.exercise_id,
+          from: 1,
+          to: se.target_sets,
+        })));
+
+    if (setsError) {
+      console.error('Error creating workout sets:', setsError);
+      await discardStartedWorkout(workout.id);
+      throw new Error(START_WORKOUT_ERROR);
     }
 
     // Fetch the complete workout with sets
@@ -693,7 +740,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return completeWorkout as Workout;
     }
 
-    return null;
+    // The workout and its sets exist, so a retry resumes it.
+    throw new Error(START_WORKOUT_ERROR);
   },
 
   startFlexibleWorkout: async (dayLabel, templateLabel) => {
@@ -701,7 +749,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!label) return null;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!user) throw new Error(START_WORKOUT_ERROR);
 
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
@@ -739,7 +787,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       .select()
       .single();
 
-    if (error || !workout) return null;
+    if (error || !workout) {
+      console.error('Error creating flexible workout:', error);
+      throw new Error(START_WORKOUT_ERROR);
+    }
 
     let templateItems: FlexiblePlanItem[] = [];
 
@@ -768,19 +819,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error creating flexible workout plan:', planError);
     }
 
-    if (templateItems.length > 0) {
-      for (const item of templateItems) {
-        if (item.hidden) continue;
-        const targetSets = normalizeTargetSets(item.target_sets);
-        for (let setNumber = 1; setNumber <= targetSets; setNumber += 1) {
-          await supabase.from('sets').insert({
-            workout_id: workout.id,
-            exercise_id: item.exercise_id,
-            set_number: setNumber,
-            completed: false,
-          });
-        }
-      }
+    const { error: setsError } = await insertPlaceholderSets(
+      workout.id,
+      templateItems
+        .filter((item) => !item.hidden)
+        .map((item) => ({ exerciseId: item.exercise_id, from: 1, to: normalizeTargetSets(item.target_sets) })),
+    );
+
+    if (setsError) {
+      console.error('Error creating flexible workout sets:', setsError);
+      await discardStartedWorkout(workout.id);
+      throw new Error(START_WORKOUT_ERROR);
     }
 
     const { data: completeWorkout, error: fetchError } = await supabase
@@ -808,7 +857,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return completeWorkout as Workout;
     }
 
-    return null;
+    // The workout and its sets exist, so a retry resumes it.
+    throw new Error(START_WORKOUT_ERROR);
   },
 
   fetchCurrentWorkout: async () => {
@@ -1017,23 +1067,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const existingSetsCount = currentWorkout.sets.filter((set) => set.exercise_id === exercise.id).length;
     if (existingSetsCount === 0) {
       const targetSets = normalizeTargetSets(existing?.target_sets ?? 3);
-      for (let setNumber = 1; setNumber <= targetSets; setNumber += 1) {
-        await supabase.from('sets').insert({
-          workout_id: currentWorkout.id,
-          exercise_id: exercise.id,
-          set_number: setNumber,
-          completed: false,
-        });
-      }
+      const { data: createdSets, error: setsError } = await insertPlaceholderSets(
+        currentWorkout.id,
+        [{ exerciseId: exercise.id, from: 1, to: targetSets }],
+        true,
+      );
 
-      const { data: refreshedWorkout } = await supabase
-        .from('workouts')
-        .select('*, sets(*, exercise:exercises!exercise_id(*))')
-        .eq('id', currentWorkout.id)
-        .maybeSingle();
-
-      if (refreshedWorkout) {
-        set({ currentWorkout: refreshedWorkout as Workout });
+      if (setsError) {
+        console.error('Error creating flexible exercise sets:', setsError);
+      } else {
+        // Merge instead of refetching so a set logged meanwhile stays logged.
+        const latest = get().currentWorkout;
+        if (latest?.id === currentWorkout.id) {
+          set({ currentWorkout: { ...latest, sets: [...latest.sets, ...createdSets] } });
+        }
       }
     }
 
@@ -1102,23 +1149,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    for (let setNumber = 1; setNumber <= normalizeTargetSets(partnerItem.target_sets); setNumber += 1) {
-      await supabase.from('sets').insert({
-        workout_id: currentWorkout.id,
-        exercise_id: partner.id,
-        set_number: setNumber,
-        completed: false,
-      });
-    }
+    const { data: createdSets, error: setsError } = await insertPlaceholderSets(
+      currentWorkout.id,
+      [{ exerciseId: partner.id, from: 1, to: normalizeTargetSets(partnerItem.target_sets) }],
+      true,
+    );
 
-    const { data: refreshedWorkout } = await supabase
-      .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
-      .eq('id', currentWorkout.id)
-      .maybeSingle();
-
-    if (refreshedWorkout) {
-      set({ currentWorkout: refreshedWorkout as Workout });
+    if (setsError) {
+      console.error('Error creating flexible superset sets:', setsError);
+    } else {
+      // Merge instead of refetching so a set logged meanwhile stays logged.
+      const latest = get().currentWorkout;
+      if (latest?.id === currentWorkout.id) {
+        set({ currentWorkout: { ...latest, sets: [...latest.sets, ...createdSets] } });
+      }
     }
 
     set({
@@ -1211,20 +1255,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             .map((item) => item.exercise_id)
         : [exerciseId];
 
+      const additions: PlaceholderSetSpec[] = [];
+      const removedIds: string[] = [];
+
       for (const affectedExerciseId of affectedExerciseIds) {
         const existingSets = workout.sets
           .filter((set) => set.exercise_id === affectedExerciseId)
           .sort((a, b) => a.set_number - b.set_number);
 
         if (existingSets.length < desiredSets) {
-          for (let setNumber = existingSets.length + 1; setNumber <= desiredSets; setNumber += 1) {
-            await supabase.from('sets').insert({
-              workout_id: workout.id,
-              exercise_id: affectedExerciseId,
-              set_number: setNumber,
-              completed: false,
-            });
-          }
+          additions.push({ exerciseId: affectedExerciseId, from: existingSets.length + 1, to: desiredSets });
         }
 
         if (existingSets.length > desiredSets) {
@@ -1234,19 +1274,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
           for (const set of removable) {
             if (set.set_number <= desiredSets) break;
-            await supabase.from('sets').delete().eq('id', set.id);
+            removedIds.push(set.id);
           }
         }
       }
 
-      const { data: refreshedWorkout } = await supabase
-        .from('workouts')
-        .select('*, sets(*, exercise:exercises!exercise_id(*))')
-        .eq('id', workout.id)
-        .maybeSingle();
+      const { data: createdSets, error: setsError } = await insertPlaceholderSets(workout.id, additions, true);
+      if (setsError) console.error('Error adding sets for flexible target change:', setsError);
 
-      if (refreshedWorkout) {
-        set({ currentWorkout: refreshedWorkout as Workout });
+      let deletedIds: string[] = [];
+      if (removedIds.length > 0) {
+        const { error: deleteError } = await supabase.from('sets').delete().in('id', removedIds);
+        if (deleteError) console.error('Error removing sets for flexible target change:', deleteError);
+        else deletedIds = removedIds;
+      }
+
+      // Merge instead of refetching so a set logged meanwhile stays logged.
+      const latest = get().currentWorkout;
+      if (latest?.id === workout.id && (createdSets.length > 0 || deletedIds.length > 0)) {
+        set({
+          currentWorkout: {
+            ...latest,
+            sets: [...latest.sets.filter((entry) => !deletedIds.includes(entry.id)), ...createdSets],
+          },
+        });
       }
     }
 
