@@ -7,6 +7,7 @@ const supabaseMock = vi.hoisted(() => ({
   from: vi.fn(),
   auth: {
     getUser: vi.fn(),
+    getSession: vi.fn(),
   },
 }));
 
@@ -108,6 +109,7 @@ function makeWorkoutWithSet(set: WorkoutSet): Workout {
 beforeEach(() => {
   supabaseMock.from.mockReset();
   supabaseMock.auth.getUser.mockReset();
+  supabaseMock.auth.getSession.mockReset();
 
   useAppStore.setState({
     activeSplit: null,
@@ -129,8 +131,8 @@ describe('must-work store contracts', () => {
     vi.setSystemTime(new Date('2026-02-15T01:00:00.000Z'));
 
     try {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     const existingWorkout: Workout = {
@@ -184,8 +186,8 @@ describe('must-work store contracts', () => {
     vi.setSystemTime(new Date('2026-02-15T01:00:00.000Z'));
 
     try {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     const overnightWorkout: Workout = {
@@ -220,9 +222,45 @@ describe('must-work store contracts', () => {
     }
   });
 
+  it('keeps the active workout when the stored session is gone (expired and not refreshable)', async () => {
+    const activeWorkout = makeWorkoutWithSet({
+      id: 'set-1', workout_id: 'workout-1', exercise_id: 'exercise-1', set_number: 1,
+      weight: 185, reps: 8, rpe: 8, completed: true, completed_at: '2026-03-10T11:20:00.000Z',
+    });
+    useAppStore.setState({ currentWorkout: activeWorkout });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toEqual(activeWorkout);
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it('reads the user id from the stored session without an auth server lookup', async () => {
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    const workoutsChain = createChain();
+    const splitsChain = createChain({
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      if (table === 'splits') return splitsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+    await realFetchSplits();
+
+    expect(workoutsChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(splitsChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+  });
+
   it('does not resume a stale incomplete workout that is older than 24 hours', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     const staleWorkout: Workout = {
@@ -300,7 +338,7 @@ describe('must-work store contracts', () => {
       workoutInsertError?: unknown;
       existing?: Workout | null;
     } = {}) {
-      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
       const existingChain = createChain({
         maybeSingle: vi.fn().mockResolvedValue({ data: existing, error: null }),
       });
@@ -374,6 +412,78 @@ describe('must-work store contracts', () => {
       expect(laterWorkoutsChain.eq).toHaveBeenCalledWith('id', 'workout-new');
       expect(laterWorkoutsChain.maybeSingle).not.toHaveBeenCalled();
       expect(useAppStore.getState().currentWorkout).toBeNull();
+    });
+
+    it('does not resume a set-less workout left by a start that timed out after saving', async () => {
+      // First Start: the workout row commits on the server, but the reply is
+      // aborted at the request deadline, so no sets are added.
+      routeStart({ workoutInsertError: { message: 'AbortError: The operation was aborted.' } });
+      await expect(useAppStore.getState().startWorkout('split-day-1')).rejects.toThrow("Couldn't start the workout");
+
+      // Second Start finds that row: in progress, recent, and without sets.
+      const orphan: Workout = {
+        ...insertedWorkout,
+        id: 'workout-orphan',
+        created_at: new Date().toISOString(),
+        sets: [],
+      };
+      const existingChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: orphan, error: null }),
+      });
+      const discardChain = createChain();
+      const insertWorkoutChain = createChain({
+        single: vi.fn().mockResolvedValue({ data: insertedWorkout, error: null }),
+      });
+      const placeholderSet: WorkoutSet = {
+        id: 'set-1', workout_id: 'workout-new', exercise_id: 'exercise-squat', set_number: 1,
+        weight: null, reps: null, rpe: null, completed: false, completed_at: null,
+      };
+      const refetchChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { ...insertedWorkout, sets: [placeholderSet] }, error: null }),
+      });
+      const splitExercisesChain = createChain({
+        order: vi.fn().mockResolvedValue({
+          data: [{ exercise_id: 'exercise-squat', target_sets: 1, exercise_order: 0 }],
+          error: null,
+        }),
+      });
+      const setsChain = createChain();
+      setsChain.insert.mockImplementation(() => ({ error: null }));
+      const workoutChains = [existingChain, discardChain, insertWorkoutChain, refetchChain];
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') return workoutChains.shift();
+        if (table === 'split_exercises') return splitExercisesChain;
+        if (table === 'sets') return setsChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+
+      const result = await useAppStore.getState().startWorkout('split-day-1');
+
+      expect(discardChain.delete).toHaveBeenCalledTimes(1);
+      expect(discardChain.eq).toHaveBeenCalledWith('id', 'workout-orphan');
+      expect(insertWorkoutChain.insert).toHaveBeenCalledTimes(1);
+      expect(setsChain.insert).toHaveBeenCalledTimes(1);
+      expect(result?.id).toBe('workout-new');
+      expect(result?.sets).toHaveLength(1);
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-new');
+    });
+
+    it('still resumes an in-progress split workout that has sets', async () => {
+      const inProgress: Workout = {
+        ...insertedWorkout,
+        id: 'workout-split',
+        created_at: new Date().toISOString(),
+        sets: [{
+          id: 'set-1', workout_id: 'workout-split', exercise_id: 'exercise-squat', set_number: 1,
+          weight: 100, reps: 5, rpe: null, completed: true, completed_at: new Date().toISOString(),
+        }],
+      };
+      const { setsChain, laterWorkoutsChain } = routeStart({ existing: inProgress });
+
+      await expect(useAppStore.getState().startWorkout('split-day-1')).resolves.toEqual(inProgress);
+      expect(laterWorkoutsChain.delete).not.toHaveBeenCalled();
+      expect(setsChain.insert).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-split');
     });
 
     it('rejects instead of returning null when a flexible workout cannot be created', async () => {
@@ -524,8 +634,8 @@ describe('must-work store contracts', () => {
   });
 
   it('persists workout mode when no workout is active', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     useAppStore.setState({ currentWorkout: null, workoutMode: 'split' });
@@ -616,8 +726,8 @@ describe('must-work store contracts', () => {
   });
 
   it('saves flexible template from current workout and includes movement notes', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     useAppStore.setState({
@@ -682,8 +792,8 @@ describe('must-work store contracts', () => {
   });
 
   it('saves a flexible template with the notes on screen over stale saved notes', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     useAppStore.setState({
@@ -1192,13 +1302,13 @@ describe('must-work store contracts', () => {
 
   describe('fetchActivitySegmentsBySessionIds tells failure from empty', () => {
     it('returns null when nobody is signed in', async () => {
-      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: null } });
+      supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } });
       await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds(['s-1'])).resolves.toBeNull();
       expect(supabaseMock.from).not.toHaveBeenCalled();
     });
 
     it('returns null when the query fails', async () => {
-      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
       const chain = createChain({
         order: vi.fn().mockResolvedValue({ data: null, error: { message: 'offline' } }),
       });
@@ -1210,7 +1320,7 @@ describe('must-work store contracts', () => {
     });
 
     it('returns [] when the query succeeds with no rows', async () => {
-      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
       const chain = createChain({
         order: vi.fn().mockResolvedValue({ data: [], error: null }),
       });
@@ -1222,7 +1332,7 @@ describe('must-work store contracts', () => {
 
     it('returns [] without a request for no ids', async () => {
       await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds([])).resolves.toEqual([]);
-      expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+      expect(supabaseMock.auth.getSession).not.toHaveBeenCalled();
     });
   });
 
@@ -1471,8 +1581,8 @@ describe('must-work store contracts', () => {
   });
 
   it('marks a workout complete with the latest completed set timestamp', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: null },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: null },
     });
 
     useAppStore.setState({
@@ -1559,7 +1669,7 @@ describe('must-work store contracts', () => {
     expect(workoutsChain.update).toHaveBeenNthCalledWith(2, { completed: true, completed_at: '2026-03-10T11:20:00.000Z' });
     expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
     expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
-    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+    expect(supabaseMock.auth.getSession).not.toHaveBeenCalled();
   });
 
   it('turns a stalled finish into the retry message instead of waiting forever', async () => {
@@ -1597,14 +1707,14 @@ describe('must-work store contracts', () => {
       expect(signals).toHaveLength(2);
       expect(signals.every((signal) => signal.aborted)).toBe(true);
       expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
-      expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+      expect(supabaseMock.auth.getSession).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('finishes without waiting for the weekly volume recount', async () => {
-    supabaseMock.auth.getUser.mockReturnValue(new Promise(() => {}));
+    supabaseMock.auth.getSession.mockReturnValue(new Promise(() => {}));
     useAppStore.setState({
       currentWorkout: makeWorkoutWithSet({
         id: 'set-1',
@@ -1629,11 +1739,11 @@ describe('must-work store contracts', () => {
 
     expect(workoutsChain.update).toHaveBeenCalledWith({ completed: true, completed_at: '2026-03-10T11:20:00.000Z' });
     expect(useAppStore.getState().currentWorkout).toBeNull();
-    expect(supabaseMock.auth.getUser).toHaveBeenCalled();
+    expect(supabaseMock.auth.getSession).toHaveBeenCalled();
   });
 
   it('activates the target before deactivating the rest, then refreshes splits', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
     useAppStore.setState({ fetchSplits: fetchSplitsSpy });
 
@@ -1658,7 +1768,7 @@ describe('must-work store contracts', () => {
   });
 
   it('never deactivates other splits when activating the target fails', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
     useAppStore.setState({ fetchSplits: fetchSplitsSpy });
 
@@ -1680,7 +1790,7 @@ describe('must-work store contracts', () => {
   });
 
   it('never deactivates other splits when the target row no longer exists', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
     useAppStore.setState({ fetchSplits: fetchSplitsSpy });
 
@@ -1817,8 +1927,8 @@ describe('must-work store contracts', () => {
   });
 
   it('upserts macro targets by user_id and stores saved target', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     const savedTarget = {
@@ -1864,8 +1974,8 @@ describe('must-work store contracts', () => {
   });
 
   it('calculates weekly volume from completed sets even when workout is unfinished', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     const workouts = [
@@ -1920,8 +2030,8 @@ describe('must-work store contracts', () => {
   });
 
   it('does not count incomplete sets in weekly volume', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({
-      data: { user: { id: 'user-1' } },
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
     });
 
     useAppStore.setState({
@@ -2017,8 +2127,8 @@ describe('must-work store contracts', () => {
     }
 
     beforeEach(() => {
-      supabaseMock.auth.getUser.mockResolvedValue({
-        data: { user: { id: 'user-1' } },
+      supabaseMock.auth.getSession.mockResolvedValue({
+        data: { session: { user: { id: 'user-1' } } },
       });
     });
 
@@ -2032,7 +2142,7 @@ describe('must-work store contracts', () => {
       await useAppStore.getState().calculateWeeklyVolume();
 
       const state = useAppStore.getState();
-      expect(supabaseMock.auth.getUser).toHaveBeenCalledTimes(1);
+      expect(supabaseMock.auth.getSession).toHaveBeenCalledTimes(1);
       expect(landmarksChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
       expect(state.volumeLandmarks).toEqual([chestLandmark, tricepsLandmark]);
       expect(state.weeklyVolume).toEqual([
@@ -2295,7 +2405,7 @@ describe('must-work store contracts', () => {
   });
 
   it('reuses an existing GPS session when a tracked-run save is retried', async () => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
 
     const run: FinishedRun = {
       runId: 'stable-run-id',
@@ -2850,7 +2960,7 @@ describe('fetchSplits reference stability', () => {
   beforeEach(() => {
     payload = baseSplits();
     useAppStore.setState({ fetchSplits: realFetchSplits, splits: [], activeSplit: null });
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     supabaseMock.from.mockImplementation((table: string) => {
       if (table !== 'splits') throw new Error(`Unexpected table: ${table}`);
       // Every response is freshly parsed, like a real network round trip.
@@ -3061,7 +3171,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
   }
 
   beforeEach(() => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     whoopClientMock.fetchWhoopBatchRemote.mockReset();
     whoopClientMock.fetchWhoopBatchRemote.mockResolvedValue({ records: [], nextToken: null });
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -3084,7 +3194,8 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     expect(linked).toHaveLength(1);
     expect(linked[0].payload).toMatchObject({ session_id: 'created-session' });
     // one lookup for the sync and one for the status refresh, none per write
-    expect(supabaseMock.auth.getUser).toHaveBeenCalledTimes(2);
+    expect(supabaseMock.auth.getSession).toHaveBeenCalledTimes(2);
+    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
   });
 
   it('reports a sync with a failed segment link instead of calling it unavailable', async () => {
@@ -3239,7 +3350,7 @@ describe('saveTrackedRun WHOOP absorb failures', () => {
   const gpsSegment = makeWhoopSegment({ id: 'gps-seg', source: 'gps', external_id: 'gps:absorb-run:1' });
 
   beforeEach(() => {
-    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     useAppStore.setState({
       createActivitySession: vi.fn().mockResolvedValue(gpsSession),
       upsertActivitySegments: vi.fn().mockResolvedValue([gpsSegment]),

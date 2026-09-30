@@ -7,6 +7,7 @@ import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/sessionUser';
 import {
   changedGroupOrders,
   insertNutritionGroupByTime,
@@ -20,7 +21,7 @@ import {
 import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { sumMacros } from '@/lib/nutritionMacros';
-import { createLatestRequestGate, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
+import { createLatestRequestGate, nextMonthGroups, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
   addDays,
@@ -115,15 +116,15 @@ export function Nutrition() {
     // current values instead of replaying from zero.
     if (loadedMonthKeyRef.current !== key) setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !requestGate.isCurrent(token)) return;
+      const userId = await getSessionUserId();
+      if (!userId || !requestGate.isCurrent(token)) return;
 
       const from = format(startOfMonth(month), 'yyyy-MM-dd');
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
 
       const [logsResult, groupsResult] = await Promise.all([
         fetchNutritionLogsWithFoods<Omit<NutritionLogEntry, 'food'>, NonNullable<NutritionLogEntry['food']>>(
-          user.id,
+          userId,
           { from, to },
           '*',
           'id, name, description, calories, protein, carbs, fat, serving_size, serving_unit',
@@ -131,7 +132,7 @@ export function Nutrition() {
         supabase
           .from('nutrition_groups')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .gte('date', from)
           .lte('date', to)
           .order('sort_order', { ascending: true }),
@@ -141,7 +142,7 @@ export function Nutrition() {
       const { data: groups, error: groupsError } = groupsResult;
 
       if (groupsError) console.error('Error fetching nutrition groups:', groupsError);
-      setMonthGroups((groups || []) as NutritionGroup[]);
+      setMonthGroups((current) => nextMonthGroups(current, groups as NutritionGroup[] | null, Boolean(groupsError)));
       // Groups that failed to load are not the month's real groups, so they
       // must not trigger default meal creation.
       const appliedMonthKey = groupsError ? null : key;
@@ -259,12 +260,12 @@ export function Nutrition() {
 
     const ensureDefaultGroups = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const userId = await getSessionUserId();
+        if (!userId) return;
 
         const { data, error } = await supabase.from('nutrition_groups').insert(
           missingLabels.map((label, index) => ({
-            user_id: user.id,
+            user_id: userId,
             date: selectedDateKey,
             kind: 'meal' as const,
             label,
@@ -316,10 +317,10 @@ export function Nutrition() {
   }, [monthLogs]);
 
   const createGroup = async (kind: 'meal' | 'snack') => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
     const { data, error } = await supabase.from('nutrition_groups').insert({
-      user_id: user.id,
+      user_id: userId,
       date: selectedDateKey,
       kind,
       label: null,

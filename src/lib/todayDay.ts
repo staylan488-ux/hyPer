@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/sessionUser';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { sumMacros } from '@/lib/nutritionMacros';
 
@@ -48,12 +49,12 @@ async function readTodayDone(userId: string, day: string): Promise<TodayDay['tod
  */
 export async function readTodayDay(day: string): Promise<TodayDay | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const [nutritionTotals, todayDone] = await Promise.all([
-      readNutritionTotals(user.id, day),
-      readTodayDone(user.id, day),
+      readNutritionTotals(userId, day),
+      readTodayDone(userId, day),
     ]);
     return { nutritionTotals, todayDone };
   } catch (error) {

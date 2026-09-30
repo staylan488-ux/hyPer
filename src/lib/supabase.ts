@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { isNativeIOS } from '@/lib/nativeBridge'
 import { nativeAuthStorage } from '@/lib/nativeSecureStorage'
+import { timedFetch } from '@/lib/timedFetch'
 import { isPreviewActive } from '@/preview/flag'
 import { createMockClient } from '@/preview/mockSupabase'
 
@@ -24,5 +25,7 @@ export const supabase = preview
         autoRefreshToken: true,
         detectSessionInUrl: !nativeIOS,
         ...(nativeIOS ? { flowType: 'pkce' as const, storage: nativeAuthStorage } : {}),
-      }
+      },
+      // A stalled connection fails after a deadline instead of hanging.
+      global: { fetch: timedFetch },
     })
