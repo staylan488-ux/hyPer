@@ -186,6 +186,9 @@ export function Workout() {
   const [previousTargetsRetryNonce, setPreviousTargetsRetryNonce] = useState(0);
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const finishingRef = useRef(false);
   const movementNotesRef = useRef<Record<string, string>>({});
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const lastPersistedNotesRef = useRef<string>('');
@@ -241,6 +244,7 @@ export function Workout() {
     setSetAdjustmentExerciseId(null);
     setShowSessionDetails(false);
     setRestTimerSeed(0);
+    setFinishError(null);
   }, [currentWorkoutId]);
 
   useEffect(() => {
@@ -565,6 +569,8 @@ export function Workout() {
     try {
       setStartingDayId(day.id);
       await startWorkout(day.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingDayId(null);
     }
@@ -773,6 +779,8 @@ export function Workout() {
         window.alert('You already have an in-progress split workout today. Finish it before starting a flexible workout.');
         return;
       }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingFlexibleWorkout(false);
     }
@@ -943,9 +951,9 @@ export function Workout() {
 
   // ── End exercise ordering ──
 
-  const captureCompletionSummary = () => {
+  const buildCompletionSummary = (): CompletionSummary => {
     const sessionSets = currentWorkout?.sets ?? [];
-    setCompletionSummary({
+    return {
       title: currentSessionTitle,
       completedSets,
       totalSets,
@@ -957,10 +965,34 @@ export function Workout() {
         gain: gain.gain,
       })),
       completedAt: Date.now(),
-    });
+    };
+  };
+
+  // Build the summary while the session still exists (the store clears it on
+  // success), but only celebrate and clear the rest timer once the save lands.
+  const finishWorkout = async () => {
+    if (finishingRef.current) return;
+    const summary = buildCompletionSummary();
+    finishingRef.current = true;
+    setFinishing(true);
+    setFinishError(null);
+
+    try {
+      await completeWorkout();
+      setCompletionSummary(summary);
+      clearRestTimerSession();
+      setShowRestTimer(false);
+    } catch (error) {
+      setFinishError(error instanceof Error ? error.message : "Couldn't finish the workout. Check your connection and try again.");
+    } finally {
+      finishingRef.current = false;
+      setFinishing(false);
+    }
   };
 
   const handleCompleteWorkout = async () => {
+    if (finishingRef.current) return;
+
     if (completedSets < totalSets && totalSets > 0) {
       setShowCompleteConfirm(true);
       return;
@@ -971,10 +1003,7 @@ export function Workout() {
       return;
     }
 
-    captureCompletionSummary();
-    await completeWorkout();
-    clearRestTimerSession();
-    setShowRestTimer(false);
+    await finishWorkout();
   };
 
   const handleConfirmComplete = async () => {
@@ -985,10 +1014,7 @@ export function Workout() {
       return;
     }
 
-    captureCompletionSummary();
-    await completeWorkout();
-    clearRestTimerSession();
-    setShowRestTimer(false);
+    await finishWorkout();
   };
 
   const handleSaveTemplateAtCompletion = async () => {
@@ -996,22 +1022,16 @@ export function Workout() {
       setSavingTemplate(true);
       await saveFlexibleTemplateFromCurrentWorkout();
       setShowSaveTemplatePrompt(false);
-      captureCompletionSummary();
-      await completeWorkout();
-      clearRestTimerSession();
-      setShowRestTimer(false);
+      await finishWorkout();
       await fetchFlexTemplates();
     } finally {
       setSavingTemplate(false);
     }
   };
 
-  const handleSkipTemplateAtCompletion = () => {
+  const handleSkipTemplateAtCompletion = async () => {
     setShowSaveTemplatePrompt(false);
-    captureCompletionSummary();
-    void completeWorkout();
-    clearRestTimerSession();
-    setShowRestTimer(false);
+    await finishWorkout();
   };
 
   /* ═══════════════ Initializing ═══════════════ */
@@ -1465,8 +1485,9 @@ export function Workout() {
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout}>Finish</Button>
+          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
         </div>
+        {finishError && <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>}
         <div className="studio-session-summary">
           <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
           <span>{completedSets} / {totalSets} sets</span>
@@ -1851,7 +1872,7 @@ export function Workout() {
             <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
               Keep training
             </Button>
-            <Button className="flex-1" onClick={handleConfirmComplete}>
+            <Button className="flex-1" onClick={handleConfirmComplete} disabled={finishing}>
               Finish
             </Button>
           </div>
@@ -1866,14 +1887,14 @@ export function Workout() {
           </p>
           <p className="t-caption">An existing template with this label will be replaced with today's exercises and notes.</p>
           <div className="flex gap-3 pt-1">
-            <Button variant="secondary" className="flex-1" onClick={handleSkipTemplateAtCompletion}>
+            <Button variant="secondary" className="flex-1" onClick={handleSkipTemplateAtCompletion} disabled={finishing}>
               Skip
             </Button>
             <Button
               className="flex-1"
               onClick={() => { void handleSaveTemplateAtCompletion(); }}
               loading={savingTemplate}
-              disabled={savingTemplate}
+              disabled={savingTemplate || finishing}
             >
               {savingTemplate ? 'Saving…' : 'Save template'}
             </Button>
