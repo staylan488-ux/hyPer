@@ -85,3 +85,39 @@ devices. No local cache is used as a substitute for a successful account save.
 
 Next: check the GitHub PR for `codex/adaptive-scheduling-toggle`. PR creation
 and merge are authorized for this setting; native device validation remains pending.
+
+## Photo worker models + VM re-login (2026-09-29, DEPLOYED)
+
+User asked: re-login Codex and Claude on the VM; AI food logging (photo +
+describe) on gpt-6-sol and claude-sonnet-5-5. Merged in PR #131 (b414477f).
+
+- Worker defaults: `gpt-6-sol`, `claude-sonnet-5-5`, both `high`. The coach
+  now has its own `PHOTO_WORKER_COACH_MODEL` (default `claude-opus-5`, `max`);
+  before, it shared `ANTHROPIC_MODEL` and would have silently moved too.
+  `/health` reports `models.coach` / `efforts.coach`.
+- `gpt-6-sol` needs codex-cli >= 0.158 on a ChatGPT account. 0.146 returns
+  "model is not supported when using Codex with a ChatGPT account". Verified
+  on 0.158 with the worker's exact describe flags; Sonnet 5.5 verified too.
+- The Gemini `analyze-food-trial` edge function is a separate trial and was
+  not changed.
+- Staged on the VM (md5-verified): worker + core + schemas in
+  `/home/aross/hyper-deploy/scripts/`, and `/home/aross/worker-models-relogin.sh`.
+  Live service still reported the old models after staging.
+- The script (run interactively with sudo): upgrades the service user's
+  Codex to 0.159.0 only if < 0.158; `codex login --device-auth` as
+  `hyper-photo`; Claude via `setup-token` if the env file uses
+  `CLAUDE_CODE_OAUTH_TOKEN`, else `claude auth login`. It real-call checks
+  gpt-6-sol, sonnet-5-5 and opus-5 against a CANDIDATE env file via
+  systemd-run (same user, env parser, flags). Only if all pass: back up
+  `/etc/hyper/photo-worker.env`, install, wait for in-flight jobs, run
+  `worker-code-deploy.sh`, assert `/health` models.
+- Validation: 594/594 vitest, eslint clean, env-editing helpers harness-tested.
+  Not yet exercised: the script end to end (needs sudo + the user's logins).
+- Risk (recorded earlier in the root handoff): the worker serves other app
+  users through personal ChatGPT/Claude subscription logins.
+
+Deployed 2026-09-29 20:46 UTC: the user ran the script; it only installs
+after all three real-call checks pass. Verified afterwards: service active,
+`/health` models gpt-6-sol / claude-sonnet-5-5 / coach claude-opus-5, efforts
+high / high / max, both providers authenticated, deployed worker md5 matches
+b414477f. Rollback: `/etc/hyper/photo-worker.env.bak.1790714545` + restart.
