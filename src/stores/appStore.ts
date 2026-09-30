@@ -11,7 +11,7 @@ import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
-import { canResumeWorkout } from '@/lib/workoutSessions';
+import { canResumeWorkout, isAbandonedSplitStart } from '@/lib/workoutSessions';
 import { runSaveWithRetry, saveWorkoutSet } from '@/lib/saveWorkoutSet';
 import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
@@ -810,8 +810,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (existing && canResumeWorkout(existing as Workout)) {
-      set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
-      return existing as Workout;
+      if (!isAbandonedSplitStart(existing as Workout)) {
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
+        return existing as Workout;
+      }
+      // An earlier start saved the workout but never added its sets. Nothing
+      // was logged in it, so replace it with a complete one.
+      await discardStartedWorkout(existing.id);
     }
 
     const today = format(new Date(), 'yyyy-MM-dd');

@@ -94,6 +94,22 @@ export function canResumeWorkout(
   return differenceInHours(now, startedAt) <= 24;
 }
 
+/**
+ * A split workout with no sets and no notes is what a start leaves behind when
+ * the workout row saved but the reply never arrived (timed out, connection
+ * dropped): the placeholder sets were never added. Starting again replaces it
+ * instead of resuming an empty session for a day. A flexible workout starts
+ * without sets on purpose, and a workout whose sets were not loaded is not
+ * judged.
+ */
+export function isAbandonedSplitStart(
+  workout: Pick<Workout, 'split_day_id' | 'notes' | 'sets'>,
+): boolean {
+  if (workout.split_day_id === null) return false;
+  if (!Array.isArray(workout.sets) || workout.sets.length > 0) return false;
+  return !workout.notes?.trim();
+}
+
 export function resolveWorkoutTitle(input: WorkoutTitleInput): string {
   const splitDayName = trimValue(input.splitDayName);
   if (splitDayName) return splitDayName;

@@ -414,6 +414,78 @@ describe('must-work store contracts', () => {
       expect(useAppStore.getState().currentWorkout).toBeNull();
     });
 
+    it('does not resume a set-less workout left by a start that timed out after saving', async () => {
+      // First Start: the workout row commits on the server, but the reply is
+      // aborted at the request deadline, so no sets are added.
+      routeStart({ workoutInsertError: { message: 'AbortError: The operation was aborted.' } });
+      await expect(useAppStore.getState().startWorkout('split-day-1')).rejects.toThrow("Couldn't start the workout");
+
+      // Second Start finds that row: in progress, recent, and without sets.
+      const orphan: Workout = {
+        ...insertedWorkout,
+        id: 'workout-orphan',
+        created_at: new Date().toISOString(),
+        sets: [],
+      };
+      const existingChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: orphan, error: null }),
+      });
+      const discardChain = createChain();
+      const insertWorkoutChain = createChain({
+        single: vi.fn().mockResolvedValue({ data: insertedWorkout, error: null }),
+      });
+      const placeholderSet: WorkoutSet = {
+        id: 'set-1', workout_id: 'workout-new', exercise_id: 'exercise-squat', set_number: 1,
+        weight: null, reps: null, rpe: null, completed: false, completed_at: null,
+      };
+      const refetchChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { ...insertedWorkout, sets: [placeholderSet] }, error: null }),
+      });
+      const splitExercisesChain = createChain({
+        order: vi.fn().mockResolvedValue({
+          data: [{ exercise_id: 'exercise-squat', target_sets: 1, exercise_order: 0 }],
+          error: null,
+        }),
+      });
+      const setsChain = createChain();
+      setsChain.insert.mockImplementation(() => ({ error: null }));
+      const workoutChains = [existingChain, discardChain, insertWorkoutChain, refetchChain];
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') return workoutChains.shift();
+        if (table === 'split_exercises') return splitExercisesChain;
+        if (table === 'sets') return setsChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+
+      const result = await useAppStore.getState().startWorkout('split-day-1');
+
+      expect(discardChain.delete).toHaveBeenCalledTimes(1);
+      expect(discardChain.eq).toHaveBeenCalledWith('id', 'workout-orphan');
+      expect(insertWorkoutChain.insert).toHaveBeenCalledTimes(1);
+      expect(setsChain.insert).toHaveBeenCalledTimes(1);
+      expect(result?.id).toBe('workout-new');
+      expect(result?.sets).toHaveLength(1);
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-new');
+    });
+
+    it('still resumes an in-progress split workout that has sets', async () => {
+      const inProgress: Workout = {
+        ...insertedWorkout,
+        id: 'workout-split',
+        created_at: new Date().toISOString(),
+        sets: [{
+          id: 'set-1', workout_id: 'workout-split', exercise_id: 'exercise-squat', set_number: 1,
+          weight: 100, reps: 5, rpe: null, completed: true, completed_at: new Date().toISOString(),
+        }],
+      };
+      const { setsChain, laterWorkoutsChain } = routeStart({ existing: inProgress });
+
+      await expect(useAppStore.getState().startWorkout('split-day-1')).resolves.toEqual(inProgress);
+      expect(laterWorkoutsChain.delete).not.toHaveBeenCalled();
+      expect(setsChain.insert).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-split');
+    });
+
     it('rejects instead of returning null when a flexible workout cannot be created', async () => {
       routeStart({ workoutInsertError: { message: 'offline' } });
 
