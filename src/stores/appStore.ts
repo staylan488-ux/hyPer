@@ -249,7 +249,8 @@ interface AppState {
   // true when WHOOP-imported segments still reference the session; deleting
   // such a session must tombstone instead so re-sync cannot resurrect it
   hasLinkedWhoopSegments: (sessionId: string) => Promise<boolean>;
-  fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[]>;
+  // null means the load failed (or nobody is signed in); [] means no segments.
+  fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[] | null>;
   upsertActivitySegments: (inputs: ActivitySegmentInput[]) => Promise<ActivitySegment[]>;
   syncWhoop: () => Promise<WhoopSyncResult | null>;
   whoopConnection: WhoopConnection | null;
@@ -278,7 +279,8 @@ interface AppState {
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
   renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
   deleteFlexTemplate: (templateId: string) => Promise<void>;
-  saveFlexibleTemplateFromCurrentWorkout: () => Promise<void>;
+  // movementNotesOverride: the notes on screen; a key there wins over the saved notes.
+  saveFlexibleTemplateFromCurrentWorkout: (movementNotesOverride?: Record<string, string>) => Promise<void>;
 
   // Macro targets
   fetchMacroTarget: () => Promise<void>;
@@ -1419,7 +1421,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  saveFlexibleTemplateFromCurrentWorkout: async () => {
+  saveFlexibleTemplateFromCurrentWorkout: async (movementNotesOverride) => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !currentWorkoutDayPlan) return;
@@ -1428,10 +1430,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!label) return;
 
     const movementNotes = parseWorkoutNotes(currentWorkout?.notes || null).movementNotes;
-    const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => ({
-      ...item,
-      notes: movementNotes[item.exercise_id] ?? item.notes ?? null,
-    }));
+    const itemsWithNotes = currentWorkoutDayPlan.items.map((item) => {
+      if (movementNotesOverride && item.exercise_id in movementNotesOverride) {
+        return { ...item, notes: movementNotesOverride[item.exercise_id].trim() || null };
+      }
+      return { ...item, notes: movementNotes[item.exercise_id] ?? item.notes ?? null };
+    });
 
     const { error } = await supabase
       .from('flex_day_templates')
@@ -1511,7 +1515,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error } = await supabase.from('sets').update(updates).eq('id', setId);
     if (error) {
       console.error('Error updating set:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { currentWorkout } = get();
@@ -1771,7 +1775,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (sessionIds.length === 0) return [];
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    if (!user) return null;
 
     const { data, error } = await supabase
       .from('activity_segments')
@@ -1782,7 +1786,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching activity segments:', error);
-      return [];
+      return null;
     }
 
     return (data || []) as ActivitySegment[];
@@ -2260,7 +2264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (deleteError) {
       console.error('Error removing set from workout:', deleteError);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { data: remainingSets, error: remainingError } = await supabase
@@ -2272,7 +2276,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (remainingError) {
       console.error('Error fetching remaining sets for compaction:', remainingError);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     for (const [index, row] of (remainingSets || []).entries()) {
@@ -2353,7 +2357,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error removing exercise from workout:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
@@ -2388,30 +2392,47 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   syncWorkoutCompletion: async (workoutId) => {
-    const { data: sets, error } = await supabase
-      .from('sets')
-      .select('id, completed, completed_at')
-      .eq('workout_id', workoutId);
+    // Read the workout's own completion state with its sets so an edit can
+    // only move it toward complete. A workout finished with skipped sets stays
+    // finished; un-finishing is never a side effect of editing.
+    const { data: workout, error } = await supabase
+      .from('workouts')
+      .select('completed, completed_at, sets(id, completed, completed_at)')
+      .eq('id', workoutId)
+      .maybeSingle();
 
-    if (error) {
-      console.error('Error syncing workout completion:', error);
+    if (error || !workout) {
+      if (error) console.error('Error syncing workout completion:', error);
       return { totalSets: 0, completedSets: 0, completed: false };
     }
 
-    const totalSets = (sets || []).length;
-    const completedSets = (sets || []).filter((set) => Boolean(set.completed)).length;
-    const completed = totalSets > 0 && completedSets === totalSets;
-    const completedAt = completed
-      ? resolveWorkoutCompletedAt((sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>)
+    const sets = (workout.sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>;
+    const totalSets = sets.length;
+    const completedSets = sets.filter((set) => Boolean(set.completed)).length;
+    const wasCompleted = Boolean(workout.completed);
+    const existingCompletedAt = typeof workout.completed_at === 'string'
+      && Number.isFinite(new Date(workout.completed_at).getTime())
+      ? workout.completed_at
       : null;
 
-    const { error: updateError } = await supabase
-      .from('workouts')
-      .update({ completed, completed_at: completedAt })
-      .eq('id', workoutId);
+    let completed = wasCompleted;
+    let completedAt: string | null = workout.completed_at ?? null;
+    if (wasCompleted) {
+      completedAt = existingCompletedAt ?? resolveWorkoutCompletedAt(sets);
+    } else if (totalSets > 0 && completedSets === totalSets) {
+      completed = true;
+      completedAt = resolveWorkoutCompletedAt(sets);
+    }
 
-    if (updateError) {
-      console.error('Error persisting workout completion state:', updateError);
+    if (completed !== wasCompleted || completedAt !== (workout.completed_at ?? null)) {
+      const { error: updateError } = await supabase
+        .from('workouts')
+        .update({ completed, completed_at: completedAt })
+        .eq('id', workoutId);
+
+      if (updateError) {
+        console.error('Error persisting workout completion state:', updateError);
+      }
     }
 
     const { currentWorkout } = get();
@@ -2430,7 +2451,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error updating workout notes:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { currentWorkout } = get();
