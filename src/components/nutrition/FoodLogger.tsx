@@ -11,6 +11,8 @@ import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
 import { createRequestGate } from '@/lib/requestGate';
 import { resolveBarcodeByPriority } from '@/lib/barcodePriority';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { dedupeSavedMealsByName, listSavedMealRows, retireSavedMeal } from '@/lib/savedMeals';
+import { insertOneServingFood, persistExternalFood } from '@/lib/foodPersistence';
 import { useAuthStore } from '@/stores/authStore';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
@@ -98,6 +100,11 @@ interface PhotoReviewItem {
 
 type PhotoFiles = Partial<Record<PhotoAnalysisAngle, File>>;
 type PhotoPreviews = Partial<Record<PhotoAnalysisAngle, string>>;
+
+type SavedMealRow = Pick<Food, 'id' | 'user_id' | 'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'fdc_id' | 'description'> & {
+  serving_size: number | null;
+  serving_unit: string | null;
+};
 
 type SelectedFoodMeta = {
   source: 'photo';
@@ -549,40 +556,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     values: { name: string; calories: number; protein: number; carbs: number; fat: number },
     source: 'saved_meal' | 'manual_entry'
   ) => {
-    const payload = {
-      user_id: userId,
-      name: values.name,
-      calories: values.calories,
-      protein: values.protein,
-      carbs: values.carbs,
-      fat: values.fat,
-      source,
-    };
-
-    let { data, error } = await supabase
-      .from('foods')
-      .insert({
-        ...payload,
-        serving_size: 1,
-        serving_unit: 'serving',
-      })
-      .select('id')
-      .single();
-
-    if (error && shouldDropColumn(error, 'serving_size')) {
-      ({ data, error } = await supabase
-        .from('foods')
-        .insert(payload)
-        .select('id')
-        .single());
-    }
-
-    if (error || !data) {
+    const { id, error } = await insertOneServingFood(userId, values, source);
+    if (!id) {
       console.error('Error creating food record:', error);
       return null;
     }
-
-    return data.id as string;
+    return id;
   };
 
   const isSelectedSavedMealMatch = useMemo(() => {
@@ -611,13 +590,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      const { data, error } = await supabase
-        .from('foods')
-        .select('id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, description')
-        .eq('user_id', userId)
-        .in('source', ['saved_meal', 'custom'])
-        .order('created_at', { ascending: false })
-        .limit(120);
+      const { data, error } = await listSavedMealRows<SavedMealRow>(
+        userId,
+        'id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, description',
+        120,
+      );
 
       if (!isCurrent()) return;
       if (error) {
@@ -626,29 +603,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      const uniqueMealsByName = new Map<string, Food>();
-
-      for (const meal of data || []) {
-        const normalizedName = normalizeFoodName(meal.name || '');
-        if (!normalizedName || uniqueMealsByName.has(normalizedName)) continue;
-
-        uniqueMealsByName.set(normalizedName, {
-          id: meal.id,
-          user_id: meal.user_id,
-          name: meal.name,
-          calories: Number(meal.calories) || 0,
-          protein: Number(meal.protein) || 0,
-          carbs: Number(meal.carbs) || 0,
-          fat: Number(meal.fat) || 0,
-          serving_size: Number(meal.serving_size) || 1,
-          serving_unit: meal.serving_unit || 'serving',
-          source: 'custom',
-          fdc_id: meal.fdc_id,
-          description: meal.description,
-        });
-      }
-
-      const meals = Array.from(uniqueMealsByName.values());
+      const meals = dedupeSavedMealsByName(data, (meal): Food => ({
+        id: meal.id,
+        user_id: meal.user_id,
+        name: meal.name,
+        calories: Number(meal.calories) || 0,
+        protein: Number(meal.protein) || 0,
+        carbs: Number(meal.carbs) || 0,
+        fat: Number(meal.fat) || 0,
+        serving_size: Number(meal.serving_size) || 1,
+        serving_unit: meal.serving_unit || 'serving',
+        source: 'custom',
+        fdc_id: meal.fdc_id,
+        description: meal.description,
+      }));
       setSavedMeals(meals);
       if (useAuthStore.getState().user?.id === userId) writeSavedFoodsCache(userId, meals);
     } finally {
@@ -728,12 +696,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      const { error } = await supabase
-        .from('foods')
-        .update({ source: 'manual_entry' })
-        .eq('id', meal.id)
-        .eq('user_id', userId)
-        .in('source', ['saved_meal', 'custom']);
+      const { error } = await retireSavedMeal(userId, meal.id);
 
       if (error) {
         setSavedMealError('Could not delete saved meal. Please try again.');
@@ -1042,94 +1005,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       }
     }
 
-    if (food.source === 'open_food_facts' && food.external_id) {
+    if ((food.source === 'open_food_facts' || food.source === 'fatsecret') && food.external_id) {
       const userId = await getSessionUserId();
       if (!userId) {
         console.error('No user found while saving barcode food');
         return null;
       }
 
-      const { data: existingFood, error: lookupError } = await supabase
-        .from('foods')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('external_source', 'open_food_facts')
-        .eq('external_id', food.external_id)
-        .limit(1)
-        .maybeSingle();
-
-      if (lookupError) console.error('Error looking up Open Food Facts food:', lookupError);
-      if (existingFood) return existingFood.id;
-
-      const { data: newFood, error: insertError } = await supabase
-        .from('foods')
-        .insert({
-          user_id: userId,
-          name: food.name,
-          calories: food.calories,
-          protein: food.protein,
-          carbs: food.carbs,
-          fat: food.fat,
-          serving_size: food.serving_size || 1,
-          serving_unit: food.serving_unit || 'serving',
-          source: 'open_food_facts',
-          fdc_id: null,
-          external_source: 'open_food_facts',
-          external_id: food.external_id,
-        })
-        .select('id')
-        .single();
-
-      if (insertError || !newFood) {
-        console.error('Error creating Open Food Facts food:', insertError);
-        return null;
-      }
-      foodId = newFood.id;
-    }
-
-    if (food.source === 'fatsecret' && food.external_id) {
-      const userId = await getSessionUserId();
-      if (!userId) {
-        console.error('No user found while saving barcode food');
-        return null;
-      }
-
-      const { data: existingFood, error: lookupError } = await supabase
-        .from('foods')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('external_source', 'fatsecret')
-        .eq('external_id', food.external_id)
-        .limit(1)
-        .maybeSingle();
-
-      if (lookupError) console.error('Error looking up FatSecret food:', lookupError);
-      if (existingFood) return existingFood.id;
-
-      const { data: newFood, error: insertError } = await supabase
-        .from('foods')
-        .insert({
-          user_id: userId,
-          name: food.name,
-          calories: food.calories,
-          protein: food.protein,
-          carbs: food.carbs,
-          fat: food.fat,
-          serving_size: food.serving_size || 1,
-          serving_unit: food.serving_unit || 'serving',
-          source: 'fatsecret',
-          fdc_id: null,
-          external_source: 'fatsecret',
-          external_id: food.external_id,
-        })
-        .select('id')
-        .single();
-
-      if (insertError || !newFood) {
-        console.error('Error creating FatSecret food:', insertError);
-        return null;
-      }
-      foodId = newFood.id;
+      return persistExternalFood({ ...food, external_id: food.external_id }, userId, food.source);
     }
 
     if (food.source === 'custom' || food.source === 'saved_meal' || food.source === 'manual_entry') {
@@ -1444,12 +1327,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      const { error: retireError } = await supabase
-        .from('foods')
-        .update({ source: 'manual_entry' })
-        .eq('id', selectedSavedMealId)
-        .eq('user_id', userId)
-        .in('source', ['saved_meal', 'custom']);
+      const { error: retireError } = await retireSavedMeal(userId, selectedSavedMealId);
 
       // the new meal row exists either way, so the form points at it
       setSelectedSavedMealId(nextSavedMealId);
