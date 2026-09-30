@@ -90,6 +90,26 @@ export async function saveNutritionProfile(
   return normalizeProfile(data);
 }
 
+/**
+ * Write only the learned-expenditure columns of an existing profile. The
+ * adaptive refresh uses this so it can never write back goal, rate, activity
+ * or phase from the snapshot it started with.
+ */
+export async function saveExpenditure(
+  userId: string,
+  fields: Pick<NutritionProfile, 'expenditure_kcal' | 'expenditure_confidence' | 'expenditure_updated_at'>
+): Promise<NutritionProfile> {
+  const { data, error } = await supabase
+    .from('nutrition_profiles')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return normalizeProfile(data);
+}
+
 /** The writable subset of a stored profile. */
 export function toNutritionProfileInput(profile: NutritionProfile): NutritionProfileInput {
   return {

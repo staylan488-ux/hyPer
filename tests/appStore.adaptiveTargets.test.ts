@@ -121,17 +121,17 @@ function seedMeasurableData() {
   );
 }
 
-/** Echoes a nutrition_profiles write back as the saved row. */
+/** A one-row nutrition_profiles table; every write merges and echoes the row. */
 function profilesTable() {
-  const chain = createChain();
-  let written: Record<string, unknown> = {};
-  const capture = (row: Record<string, unknown>) => {
-    written = { ...adaptiveProfile, ...row };
+  const chain = createChain() as Chain & { row: Record<string, unknown> };
+  chain.row = { ...adaptiveProfile };
+  const capture = (fields: Record<string, unknown>) => {
+    chain.row = { ...chain.row, ...fields };
     return chain;
   };
   chain.upsert.mockImplementation(capture);
   chain.update.mockImplementation(capture);
-  chain.single.mockImplementation(async () => ({ data: written, error: null }));
+  chain.single.mockImplementation(async () => ({ data: chain.row, error: null }));
   return chain;
 }
 
@@ -363,5 +363,144 @@ describe('refreshAdaptiveTargets write order and status', () => {
 
     await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('skipped');
     expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+describe('refreshAdaptiveTargets against concurrent edits', () => {
+  beforeEach(() => {
+    seedMeasurableData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile });
+  });
+
+  it('writes only the expenditure columns', async () => {
+    const profiles = profilesTable();
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargetsTable() });
+
+    await useAppStore.getState().refreshAdaptiveTargets();
+
+    expect(profiles.upsert).not.toHaveBeenCalled();
+    expect(profiles.update).toHaveBeenCalledWith({
+      expenditure_kcal: expect.any(Number),
+      expenditure_confidence: 'measured',
+      expenditure_updated_at: expect.any(String),
+      updated_at: expect.any(String),
+    });
+    expect(profiles.eq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+
+  it('keeps a goal change made mid-refresh and writes nothing computed for the old goal', async () => {
+    const intakeGate = deferred<unknown>();
+    const intake = await dataMock.getDailyIntake();
+    dataMock.getDailyIntake.mockReset();
+    dataMock.getDailyIntake.mockReturnValue(intakeGate.promise);
+
+    const profiles = profilesTable();
+    const macroTargets = macroTargetsTable();
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    const refresh = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(dataMock.getDailyIntake).toHaveBeenCalled());
+
+    const { expenditure_kcal, expenditure_confidence, expenditure_updated_at } = adaptiveProfile;
+    await useAppStore.getState().updateNutritionProfile({
+      sex: 'male',
+      birth_year: 1990,
+      height_cm: 180,
+      body_fat_pct: null,
+      activity: 'moderately_active',
+      goal: 'cut',
+      rate_pct_per_week: -0.5,
+      unit_system: 'metric',
+      adaptive_enabled: true,
+      phase_started_on: adaptiveProfile.phase_started_on,
+      expenditure_kcal,
+      expenditure_confidence,
+      expenditure_updated_at,
+    });
+    const phaseAfterEdit = useAppStore.getState().nutritionProfile?.phase_started_on;
+    expect(phaseAfterEdit).not.toBe(adaptiveProfile.phase_started_on);
+
+    intakeGate.resolve(intake);
+    await expect(refresh).resolves.toBe('skipped');
+
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('macro_targets');
+    expect(profiles.update).not.toHaveBeenCalled();
+    for (const profile of [useAppStore.getState().nutritionProfile, profiles.row]) {
+      expect(profile).toMatchObject({ goal: 'cut', rate_pct_per_week: -0.5, phase_started_on: phaseAfterEdit });
+    }
+  });
+
+  it('does not replace a target saved while it ran', async () => {
+    const intakeGate = deferred<unknown>();
+    const intake = await dataMock.getDailyIntake();
+    dataMock.getDailyIntake.mockReset();
+    dataMock.getDailyIntake.mockReturnValue(intakeGate.promise);
+    const macroTargets = macroTargetsTable();
+    routeTables({ nutrition_profiles: profilesTable(), macro_targets: macroTargets });
+
+    const refresh = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(dataMock.getDailyIntake).toHaveBeenCalled());
+    useAppStore.setState({ macroTarget: manualTarget });
+    intakeGate.resolve(intake);
+
+    await expect(refresh).resolves.toBe('skipped');
+    expect(macroTargets.update).not.toHaveBeenCalled();
+    expect(macroTargets.upsert).not.toHaveBeenCalled();
+    expect(useAppStore.getState().macroTarget).toBe(manualTarget);
+  });
+
+  it('shares one run between two concurrent unforced calls', async () => {
+    const profiles = profilesTable();
+    const macroTargets = macroTargetsTable({
+      update: { data: { ...manualTarget, source: 'adaptive' }, error: null },
+    });
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    const first = useAppStore.getState().refreshAdaptiveTargets();
+    const second = useAppStore.getState().refreshAdaptiveTargets();
+
+    expect(second).toBe(first);
+    await expect(Promise.all([first, second])).resolves.toEqual(['updated', 'updated']);
+    expect(dataMock.getLatestBodyWeight).toHaveBeenCalledTimes(1);
+    expect(dataMock.getDailyIntake).toHaveBeenCalledTimes(1);
+    expect(macroTargets.update).toHaveBeenCalledTimes(1);
+    expect(profiles.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a fresh computation for a forced call made while one is in flight', async () => {
+    const intakeGate = deferred<unknown>();
+    const intake = await dataMock.getDailyIntake();
+    dataMock.getDailyIntake.mockReset();
+    dataMock.getDailyIntake.mockReturnValueOnce(intakeGate.promise).mockResolvedValue(intake);
+    const profiles = profilesTable();
+    const macroTargets = macroTargetsTable({
+      update: { data: { ...manualTarget, source: 'adaptive' }, error: null },
+    });
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    const unforced = useAppStore.getState().refreshAdaptiveTargets();
+    const forced = useAppStore.getState().refreshAdaptiveTargets({ force: true });
+    expect(forced).not.toBe(unforced);
+
+    let forcedDone = false;
+    void forced.then(() => { forcedDone = true; });
+    await vi.waitFor(() => expect(dataMock.getDailyIntake).toHaveBeenCalledTimes(1));
+    expect(forcedDone).toBe(false);
+
+    intakeGate.resolve(intake);
+    await expect(unforced).resolves.toBe('updated');
+    await expect(forced).resolves.toBe('updated');
+
+    // The forced call ran its own reads and writes after the first finished,
+    // even though the first had just stamped the profile as fresh.
+    expect(dataMock.getDailyIntake).toHaveBeenCalledTimes(2);
+    expect(macroTargets.update).toHaveBeenCalledTimes(2);
+    expect(profiles.update).toHaveBeenCalledTimes(2);
   });
 });
