@@ -96,6 +96,36 @@ describe('native glass navigation', () => {
     connection.dispose();
   });
 
+  it('sends an identical state once and each changed field again', async () => {
+    const { connection, plugin } = setup();
+    await tick();
+    connection.update({ ...initial });
+    connection.update({ ...initial });
+    await tick();
+    expect(plugin.sync).toHaveBeenCalledTimes(1);
+    connection.update({ ...initial, selected: 'fuel' });
+    connection.update({ ...initial, selected: 'fuel', theme: 'light' });
+    connection.update({ ...initial, selected: 'fuel', theme: 'light', visible: false });
+    connection.update({ ...initial, selected: 'fuel', theme: 'light', visible: false });
+    await tick();
+    expect(plugin.sync).toHaveBeenCalledTimes(4);
+    connection.dispose();
+  });
+
+  it('resends an identical state after native did not apply the last one', async () => {
+    const { connection, plugin, callbacks } = setup();
+    await tick();
+    vi.mocked(plugin.sync).mockResolvedValueOnce({ supported: true, applied: false });
+    connection.update({ ...initial, selected: 'fuel' });
+    await tick();
+    expect(callbacks.ready).toHaveBeenLastCalledWith(false);
+    connection.update({ ...initial, selected: 'fuel' });
+    await tick();
+    expect(plugin.sync).toHaveBeenCalledTimes(3);
+    expect(callbacks.ready).toHaveBeenLastCalledWith(true);
+    connection.dispose();
+  });
+
   it('matches route sections without matching unrelated prefixes', () => {
     expect(nativeTabForPath('/')).toBe('today');
     expect(nativeTabForPath('/train/program')).toBe('train');

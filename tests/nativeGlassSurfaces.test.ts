@@ -4,6 +4,7 @@ import {
   glassSurfacesKnownSupported,
   resetGlassSurfaces,
   type GlassSurfacesPlugin,
+  type RestDockState,
   type ToastState,
 } from '@/lib/nativeGlassSurfaces';
 
@@ -78,6 +79,64 @@ describe('native glass surfaces', () => {
     await tick();
     expect(ready).toHaveBeenCalledTimes(1);
     expect(ready).toHaveBeenLastCalledWith(true);
+  });
+
+  it('sends an identical state once and every changed field again', async () => {
+    const p = plugin();
+    const { connection } = connect(p);
+    await tick();
+    connection.update({ ...initial });
+    connection.update({ ...initial });
+    await tick();
+    expect(p.syncToast).toHaveBeenCalledTimes(1);
+    connection.update({ ...initial, message: 'Weight logged' });
+    connection.update({ ...initial, message: 'Weight logged', theme: 'dark' });
+    connection.update({ ...initial, message: 'Weight logged', theme: 'dark', visible: false });
+    connection.update({ ...initial, message: 'Weight logged', theme: 'dark', visible: false });
+    await tick();
+    expect(p.syncToast).toHaveBeenCalledTimes(4);
+    connection.dispose();
+    expect(p.syncToast).toHaveBeenCalledTimes(5);
+  });
+
+  it('dedupes the rest dock per field, including a paused remaining time', async () => {
+    const p = plugin();
+    const rest: RestDockState = {
+      visible: true, theme: 'light', status: 'running', endsAtMs: 90_000, remainingMs: 0, totalMs: 90_000, nextLabel: 'Row · set 2', accent: '#A8352A',
+    };
+    const connection = connectNativeSurface({ plugin: p, key: 'rest', initial: rest, send: (state) => p.syncRest(state), ready: vi.fn() });
+    await tick();
+    connection.update({ ...rest });
+    await tick();
+    expect(p.syncRest).toHaveBeenCalledTimes(1);
+    const changes: Partial<RestDockState>[] = [
+      { visible: false }, { theme: 'dark' }, { endsAtMs: 120_000 }, { totalMs: 120_000 }, { nextLabel: null }, { accent: '#C0503A' },
+      { status: 'paused', remainingMs: 42_000 }, { status: 'paused', remainingMs: 41_000 },
+    ];
+    for (const change of changes) {
+      connection.update({ ...rest, ...change });
+      await tick();
+    }
+    expect(p.syncRest).toHaveBeenCalledTimes(1 + changes.length);
+    connection.dispose();
+  });
+
+  it('resends an identical state after native did not apply the last one', async () => {
+    const p = plugin();
+    const { connection, ready } = connect(p);
+    await tick();
+    vi.mocked(p.syncToast).mockResolvedValueOnce({ supported: true, applied: false });
+    connection.update({ ...initial, message: 'Weight logged' });
+    await tick();
+    expect(ready).toHaveBeenLastCalledWith(false);
+    connection.update({ ...initial, message: 'Weight logged' });
+    await tick();
+    expect(p.syncToast).toHaveBeenCalledTimes(3);
+    expect(ready).toHaveBeenLastCalledWith(true);
+    connection.update({ ...initial, message: 'Weight logged' });
+    await tick();
+    expect(p.syncToast).toHaveBeenCalledTimes(3);
+    connection.dispose();
   });
 
   it('falls back and hides when a sync fails', async () => {

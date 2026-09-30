@@ -296,7 +296,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       theme,
       status: isComplete ? 'completed' : isRunning ? 'running' : 'paused',
       endsAtMs: endsAtMs !== null && Number.isFinite(endsAtMs) ? endsAtMs : null,
-      remainingMs: timeLeft * 1000,
+      // Native counts down from endsAtMs while running and reads remainingMs
+      // only when paused; a fixed 0 keeps the running state identical each tick.
+      remainingMs: isRunning ? 0 : timeLeft * 1000,
       totalMs: seconds * 1000,
       nextLabel: nextUpLabel,
       accent,
