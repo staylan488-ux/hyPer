@@ -5,12 +5,18 @@ import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, Selec
 import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
+import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
+import { createRequestGate } from '@/lib/requestGate';
+import { resolveBarcodeByPriority } from '@/lib/barcodePriority';
+import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { useAuthStore } from '@/stores/authStore';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
   buildLoggedAt,
   computeAmountFromServings,
   computeServingsFromAmount,
+  describeTargetUnchanged,
   getCompatibleMeasurementUnits,
   normalizeFoodName,
   numbersNearlyEqual,
@@ -40,6 +46,7 @@ import {
   searchOpenFoodFactsByBarcodeSecure,
   searchUsdaFoodByBarcodeSecure,
   searchUsdaFoodsSecure,
+  searchUsdaFoodsSecureStrict,
 } from '@/lib/usdaClient';
 
 const COMBINE_MEAL_KEY = 'hyper.nutrition.combine-meal';
@@ -132,9 +139,13 @@ export interface FoodLoggerProps {
   initialMethod?: FoodCaptureMethod;
   onMethodChange?: (method: FoodCaptureMethod) => void;
   onComposeMeal?: (food: Food, editSaved?: boolean) => void;
+  /** True while a photo, describe or AI analysis runs, so closing can ask first. */
+  onAnalysisBusyChange?: (busy: boolean) => void;
+  /** True while a finished photo estimate waits unseen on the Photo tab. */
+  onUnreviewedResultChange?: (waiting: boolean) => void;
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange, onUnreviewedResultChange }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -149,11 +160,28 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   useEffect(() => { onMethodChange?.(mode); }, [mode, onMethodChange]);
   const [foodAnalysisMode] = useState(getFoodAnalysisMode);
   const [trialInitialHint, setTrialInitialHint] = useState('');
+  // The AI logger stays mounted (hidden) once its tab was opened, so switching
+  // tabs mid-analysis or after a result keeps its photos, result and edits.
+  // trialKey remounts it for a Describe hand-off so it reads the new hint.
+  const [trialVisited, setTrialVisited] = useState(false);
+  const [trialKey, setTrialKey] = useState(0);
+  const [trialAnalyzing, setTrialAnalyzing] = useState(false);
+  useEffect(() => {
+    if (foodAnalysisMode === 'gemini' && mode === 'photo') setTrialVisited(true);
+  }, [foodAnalysisMode, mode]);
   const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
   const trialEntryIds = useRef(new WeakMap<TrialFoodItem, string>());
+  // one id per new entry until it is confirmed saved, so a retry after a lost
+  // response updates that row instead of logging the food twice
+  const [pendingEntryId] = useState(createPendingEntryId);
+  // one-off manual food row from a failed log, reused when retried unchanged
+  const manualFoodRef = useRef<{ key: string; id: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
+  // what the last manual USDA search found: nothing, or a failure to retry
+  const [searchStatus, setSearchStatus] = useState<'idle' | 'short' | 'empty' | 'error'>('idle');
+  const [usdaSearches] = useState(createRequestGate);
   const [loadingFoodId, setLoadingFoodId] = useState<string | null>(null);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [servings, setServings] = useState(initialEntry ? String(initialEntry.servings) : '1');
@@ -175,6 +203,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   // personal product bound to this code
   const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
   const [pendingBarcodeBinding, setPendingBarcodeBinding] = useState<string | null>(null);
+  // a newer scan, or leaving the Scan tab, supersedes an in-flight lookup so a
+  // late result can't replace the product under review or bind the wrong code
+  const [barcodeLookups] = useState(createRequestGate);
+  useEffect(() => {
+    if (mode !== 'barcode') barcodeLookups.invalidate();
+  }, [mode, barcodeLookups]);
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
   const entryDateKey = format(entryDate, 'yyyy-MM-dd');
   const entryUsesSelectedDayGroups = entryDateKey === selectedDateKey;
@@ -192,7 +226,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     carbs: initialEntry?.food ? formatMacroInput(initialEntry.food.carbs) : '',
     fat: initialEntry?.food ? formatMacroInput(initialEntry.food.fat) : '',
   });
-  const [savedMeals, setSavedMeals] = useState<Food[]>([]);
+  const storeUserId = useAuthStore((state) => state.user?.id);
+  // start from the last list this account fetched; the refetch still runs
+  const [savedMeals, setSavedMeals] = useState<Food[]>(() => readSavedFoodsCache(storeUserId) ?? []);
+  const [savedMealFetches] = useState(createRequestGate);
   const [savedQuery, setSavedQuery] = useState('');
   const [managingSavedMeals, setManagingSavedMeals] = useState(false);
   const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
@@ -209,6 +246,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [foodDescriptionBusy, setFoodDescriptionBusy] = useState(false);
   const [foodDescriptionError, setFoodDescriptionError] = useState<string | null>(null);
   const [foodDescriptionResult, setFoodDescriptionResult] = useState<FoodDescriptionResult | null>(null);
+  // set when the user edited the fields or picked a saved meal while a describe
+  // ran: the estimate waits for "Fill fields" instead of replacing their input
+  const [pendingDescribeFill, setPendingDescribeFill] = useState(false);
+  const [describeRequests] = useState(createRequestGate);
+  const describeTargetRef = useRef({ manualFood, selectedSavedMealId });
+  useEffect(() => {
+    describeTargetRef.current = { manualFood, selectedSavedMealId };
+  }, [manualFood, selectedSavedMealId]);
+  useEffect(() => () => describeRequests.invalidate(), [describeRequests]);
   const [photoHint, setPhotoHint] = useState('');
   const [photoPlateDiameter, setPhotoPlateDiameter] = useState('');
   const [photoIngredients, setPhotoIngredients] = useState('');
@@ -217,6 +263,18 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
   const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
+  const analysisBusy = photoAnalyzing || foodDescriptionBusy || trialAnalyzing;
+  useEffect(() => {
+    onAnalysisBusyChange?.(analysisBusy);
+    return () => onAnalysisBusyChange?.(false);
+  }, [analysisBusy, onAnalysisBusyChange]);
+  // a photo estimate that landed while the user was on another tab: the Photo
+  // tab is marked and closing the sheet asks before discarding it
+  const photoResultWaiting = mode !== 'photo' && photoItems.length > 0;
+  useEffect(() => {
+    onUnreviewedResultChange?.(photoResultWaiting);
+    return () => onUnreviewedResultChange?.(false);
+  }, [photoResultWaiting, onUnreviewedResultChange]);
   // On by default: the breakdown is how the estimate is made accurate, but one
   // row per plate is how the day stays readable. Remembered per device.
   const [combineAsOneMeal, setCombineAsOneMeal] = useState<boolean>(() => {
@@ -240,6 +298,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     Object.values(photoPreviewsRef.current).forEach((preview) => URL.revokeObjectURL(preview));
   }, []);
 
+  // a list already on screen stays while it refreshes; the spinner is only
+  // for a list that has nothing to show yet
+  const showSavedMealsLoading = loadingSavedMeals && savedMeals.length === 0;
   const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
   const manualSuggestions = useMemo(() => {
     if (manualNameQuery.length < 2) return [];
@@ -264,49 +325,60 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     [savedMeals, selectedSavedMealId]
   );
   const searchUSDA = async (query: string) => {
-    if (!query.trim()) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    // the lookup rejects shorter queries, which used to look like no matches
+    if (trimmed.length < 2) {
+      setSearchStatus('short');
+      return;
+    }
 
+    // a newer search (e.g. Enter pressed again mid-flight) supersedes this one,
+    // so the results always match the words in the box
+    const isCurrent = usdaSearches.begin();
     setLoading(true);
-    const foods = await searchUsdaFoodsSecure(query);
-    setSearchResults(foods);
-    setLoading(false);
+    setSearchStatus('idle');
+    try {
+      const foods = await searchUsdaFoodsSecureStrict(trimmed);
+      if (!isCurrent()) return;
+      setSearchResults(foods);
+      if (foods.length === 0) setSearchStatus('empty');
+    } catch {
+      if (!isCurrent()) return;
+      setSearchResults([]);
+      setSearchStatus('error');
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
   };
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
+    // checked after every await; a superseded lookup applies nothing
+    const isCurrent = barcodeLookups.begin();
     let food: Food | null = null;
     let provider: 'usda' | 'open_food_facts' | 'saved' | 'fatsecret' = 'saved';
 
     // owner catalog first: a previously scanned or label-captured product
     // resolves locally before any external provider is asked
     food = await findSavedFoodByBarcode(barcode);
+    if (!isCurrent()) return false;
 
-    // FatSecret next when configured — curated coverage ahead of the free
-    // sources; returns null (skip) when unconfigured or unknown
+    // Only after a saved-catalog miss (a rescan of a saved product makes no
+    // provider calls): ask every external provider at once, but take the answer
+    // in fixed priority. FatSecret first when configured (curated coverage;
+    // null when unconfigured or unknown), then USDA, then Open Food Facts. A
+    // leg's error counts as a miss, so a transient failure still reaches the
+    // miss path below (create a personal product).
     if (!food) {
-      provider = 'fatsecret';
-      try {
-        food = await searchFatSecretByBarcodeSecure(barcode);
-      } catch {
-        // fall through to the free providers on any FatSecret error
-      }
-    }
-
-    if (!food) {
-      provider = 'usda';
-      try {
-        food = await searchUsdaFoodByBarcodeSecure(barcode);
-      } catch {
-        // A second independent product source can still satisfy the scan.
-      }
-    }
-
-    if (!food) {
-      provider = 'open_food_facts';
-      try {
-        food = await searchOpenFoodFactsByBarcodeSecure(barcode);
-      } catch {
-        // A transient error must still reach the miss path below (create a
-        // personal product), like the FatSecret and USDA legs above.
+      const external = await resolveBarcodeByPriority([
+        ['fatsecret', () => searchFatSecretByBarcodeSecure(barcode)],
+        ['usda', () => searchUsdaFoodByBarcodeSecure(barcode)],
+        ['open_food_facts', () => searchOpenFoodFactsByBarcodeSecure(barcode)],
+      ] as const);
+      if (!isCurrent()) return false;
+      if (external) {
+        food = external.value;
+        provider = external.provider;
       }
     }
     if (!food) {
@@ -319,6 +391,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
     if (food.fdc_id && !food.serving_label) {
       const detail = await fetchUsdaFoodDetailSecure(food.fdc_id);
+      if (!isCurrent()) return false;
       const portion = selectPortionFromDetail(detail);
       if (portion) food = applyPortion(food, portion);
     }
@@ -329,18 +402,22 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setServings('1');
     setMeasurementAmount('1');
     return true;
-  }, []);
+  }, [barcodeLookups]);
 
   const handleDescribeFood = async () => {
     if (foodDescriptionBusy) return;
     if (foodAnalysisMode === 'gemini') {
       setTrialInitialHint(foodDescription);
+      setTrialKey((key) => key + 1);
       setMode('photo');
       return;
     }
 
+    const isCurrent = describeRequests.begin();
+    const before = describeTargetRef.current;
     setFoodDescriptionBusy(true);
     setFoodDescriptionError(null);
+    setPendingDescribeFill(false);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
@@ -352,6 +429,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         accessToken,
         settings: describeSettings,
       });
+      if (!isCurrent()) return;
       // surface a provider fallback instead of silently labeling the answer
       // with a different name than the one the user chose
       const describeFallbackNote = result.provider !== describeSettings.provider
@@ -360,23 +438,29 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       setFoodDescriptionResult(describeFallbackNote
         ? { ...result, notes: `${describeFallbackNote}${result.notes || ''}`.trim() }
         : result);
-      setManualFood({
-        name: result.name,
-        calories: formatMacroInput(result.calories),
-        protein: formatMacroInput(result.protein_g),
-        carbs: formatMacroInput(result.carbs_g),
-        fat: formatMacroInput(result.fat_g),
-      });
-      setSelectedSavedMealId(null);
-      setSaveAsReusableMeal(true);
-      setManualNameFocused(false);
-      setSavedMealMessage(null);
-      setSavedMealError(null);
+      if (describeTargetUnchanged(before, describeTargetRef.current)) applyDescribeEstimate(result);
+      else setPendingDescribeFill(true);
     } catch (error) {
-      setFoodDescriptionError(error instanceof Error ? error.message : 'Could not research this food.');
+      if (isCurrent()) setFoodDescriptionError(error instanceof Error ? error.message : 'Could not research this food.');
     } finally {
       setFoodDescriptionBusy(false);
     }
+  };
+
+  const applyDescribeEstimate = (result: FoodDescriptionResult) => {
+    setManualFood({
+      name: result.name,
+      calories: formatMacroInput(result.calories),
+      protein: formatMacroInput(result.protein_g),
+      carbs: formatMacroInput(result.carbs_g),
+      fat: formatMacroInput(result.fat_g),
+    });
+    setSelectedSavedMealId(null);
+    setSaveAsReusableMeal(true);
+    setManualNameFocused(false);
+    setSavedMealMessage(null);
+    setSavedMealError(null);
+    setPendingDescribeFill(false);
   };
 
   const clearSavedMealFeedback = () => {
@@ -513,9 +597,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [manualMacroValues, selectedSavedMeal]);
 
   const fetchSavedMeals = useCallback(async () => {
+    // an older response must never overwrite a newer one
+    const isCurrent = savedMealFetches.begin();
     setLoadingSavedMeals(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      if (!isCurrent()) return;
       if (!user) {
         setSavedMeals([]);
         return;
@@ -529,6 +616,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         .order('created_at', { ascending: false })
         .limit(120);
 
+      if (!isCurrent()) return;
       if (error) {
         console.error('Error fetching saved meals:', error);
         setSavedMeals([]);
@@ -557,13 +645,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         });
       }
 
-      setSavedMeals(Array.from(uniqueMealsByName.values()));
+      const meals = Array.from(uniqueMealsByName.values());
+      setSavedMeals(meals);
+      if (useAuthStore.getState().user?.id === user.id) writeSavedFoodsCache(user.id, meals);
     } finally {
-      setLoadingSavedMeals(false);
+      if (isCurrent()) setLoadingSavedMeals(false);
     }
-  }, []);
+  }, [savedMealFetches]);
 
   const handleSelectSavedMeal = (meal: Food) => {
+    // a describe still running must not replace the meal just picked
+    describeRequests.invalidate();
     if (decodeMealComposition(meal.description)) {
       if (onAddIngredients || !onComposeMeal) {
         setSelectedFood(meal);
@@ -608,6 +700,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleAddSavedMeal = () => {
+    describeRequests.invalidate();
+    setPendingDescribeFill(false);
     clearSavedMealFeedback();
     setManagingSavedMeals(false);
     openManualAsSavedMealRef.current = true;
@@ -1126,7 +1220,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     };
 
     try {
-      await persistNutritionEntry(fullPayload, initialEntry?.id, retryEntryId);
+      await persistNutritionEntry(fullPayload, initialEntry?.id, entryWriteId(!!initialEntry, retryEntryId, pendingEntryId));
+      // confirmed: the next save is a new entry (per item in the photo loop)
+      if (!retryEntryId) pendingEntryId.clear();
       if (shouldComplete) onComplete();
       return true;
     } catch (error) {
@@ -1143,9 +1239,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       return;
     }
     setSaving(true);
+    setSaveError(null);
     try {
       const foodId = await upsertFoodIfNeeded(food);
-      if (!foodId) return;
+      if (!foodId) {
+        setSaveError('Could not save this entry. Your changes are still here. Please try again.');
+        return;
+      }
       const source = selectedFoodMeta?.source === 'barcode'
         ? selectedFoodMeta.provider === 'open_food_facts'
           ? 'barcode_open_food_facts'
@@ -1155,6 +1255,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
       console.error('Error saving nutrition entry:', error);
+      setSaveError('Could not save this entry. Your changes are still here. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -1340,16 +1441,23 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      await supabase
+      const { error: retireError } = await supabase
         .from('foods')
         .update({ source: 'manual_entry' })
         .eq('id', selectedSavedMealId)
         .eq('user_id', user.id)
         .in('source', ['saved_meal', 'custom']);
 
+      // the new meal row exists either way, so the form points at it
       setSelectedSavedMealId(nextSavedMealId);
       setSaveAsReusableMeal(false);
-      setSavedMealMessage('Saved meal updated for future logs.');
+      if (retireError) {
+        setSavedMealError(
+          'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.',
+        );
+      } else {
+        setSavedMealMessage('Saved meal updated for future logs.');
+      }
       await fetchSavedMeals();
     } finally {
       setUpdatingSavedMeal(false);
@@ -1367,10 +1475,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     }
     setSaving(true);
     clearSavedMealFeedback();
+    setSaveError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('No user found');
+        setSaveError('Please sign in again to log food. Your changes are still here.');
         return;
       }
 
@@ -1432,16 +1542,23 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       }
 
       if (!resolvedFoodId) {
-        resolvedFoodId = await insertFoodRecord(
-          user.id,
-          { name: normalizedName, calories, protein, carbs, fat },
-          'manual_entry'
-        );
+        // a retry after a failed log reuses the one-off food row it already
+        // created for these exact values instead of leaving another orphan
+        const manualFoodKey = [user.id, normalizeFoodName(normalizedName), calories, protein, carbs, fat].join('|');
+        resolvedFoodId = manualFoodRef.current?.key === manualFoodKey
+          ? manualFoodRef.current.id
+          : await insertFoodRecord(
+            user.id,
+            { name: normalizedName, calories, protein, carbs, fat },
+            'manual_entry'
+          );
 
         if (!resolvedFoodId) {
           console.error('Error creating one-off manual food entry');
+          setSaveError('Could not save this entry. Your changes are still here. Please try again.');
           return;
         }
+        manualFoodRef.current = { key: manualFoodKey, id: resolvedFoodId };
       }
 
       if (!resolvedFoodId) {
@@ -1458,13 +1575,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         }
       }
 
-      await saveNutritionEntry(
+      const saved = await saveNutritionEntry(
         resolvedFoodId,
         parseFloat(servings || '1'),
         pendingBarcodeBinding ? 'barcode_saved' : initialEntry?.source || 'manual',
       );
+      if (saved) manualFoodRef.current = null;
     } catch (error) {
       console.error('Error in manual submit:', error);
+      setSaveError('Could not save this entry. Your changes are still here. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -1506,10 +1625,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     </div>
   );
 
-  if (photoItems.length > 0) {
+  // Every stage renders the AI logger in one keyed slot of its root, so opening
+  // a food to review and going back keeps its photos, result and edits.
+  const renderTrialLogger = (hidden: boolean) => foodAnalysisMode === 'gemini' && (trialVisited || mode === 'photo') ? (
+    <div key="food-trial-logger" hidden={hidden}>
+      <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} />
+    </div>
+  ) : null;
+
+  // a late result waits on the Photo tab instead of taking over another tab
+  if (mode === 'photo' && photoItems.length > 0) {
     const totalCalories = Math.round(photoItems.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
     return (
       <div className="space-y-6 pt-1">
+        {renderTrialLogger(true)}
         <div>
           <div className="flex flex-col gap-1 min-[420px]:flex-row min-[420px]:items-baseline min-[420px]:justify-between">
             <span className="t-label flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Photo review</span>
@@ -1673,6 +1802,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   if (selectedFood) {
     return (
       <div className="space-y-7 pt-1 pb-2">
+        {renderTrialLogger(true)}
         {/* ── Food header + macro ledger ── */}
         <div>
           <span className="t-label-sm block mb-2">{loggerMode === 'edit' ? 'Editing entry' : 'Selected'}</span>
@@ -1868,17 +1998,28 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           { value: 'search', label: 'USDA' },
           { value: 'barcode', label: 'Scan' },
           { value: 'manual', label: 'Manual' },
-          { value: 'photo', label: foodAnalysisMode === 'gemini' ? 'AI' : 'Photo' },
+          {
+            value: 'photo',
+            label: foodAnalysisMode === 'gemini' ? 'AI' : photoResultWaiting ? (
+              <span className="inline-flex items-center gap-1">
+                Photo
+                <span className="w-1 h-1 rounded-full bg-[var(--color-accent)]" aria-hidden />
+                <span className="sr-only">, estimate ready</span>
+              </span>
+            ) : 'Photo',
+          },
         ]}
         distribution="equal"
         size="sm"
       />
 
+      {renderTrialLogger(mode !== 'photo')}
+
       {mode === 'saved' ? (
         <div className="space-y-4">
           <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[var(--color-border)] pb-2">
             <span className="t-label-sm">
-              {loadingSavedMeals ? 'Loading' : `${savedMeals.length} saved`}
+              {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -1926,7 +2067,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </p>
           )}
 
-          {loadingSavedMeals ? (
+          {showSavedMealsLoading ? (
             <div className="flex items-center gap-2 py-6 t-caption">
               <Loader2 className="w-4 h-4 animate-spin" />
               Loading saved foods…
@@ -2023,6 +2164,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" strokeWidth={1.75} />}
             </button>
           </div>
+
+          {!loading && searchStatus === 'short' && <p className="t-caption">Type at least 2 characters.</p>}
+          {!loading && searchStatus === 'empty' && <p className="t-caption">No USDA matches.</p>}
+          {!loading && searchStatus === 'error' && (
+            <div>
+              <p className="t-caption text-[var(--color-accent)]" role="alert">Search failed. Check your connection and try again.</p>
+              <Button variant="secondary" size="sm" className="mt-3" onClick={() => void searchUSDA(searchQuery)}>
+                Retry
+              </Button>
+            </div>
+          )}
 
           <div className="max-h-56 md:max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
             {searchResults.map((food, index) => (
@@ -2139,6 +2291,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <FormField label="Food, portion, and preparation">
                   <textarea
                     value={foodDescription}
+                    readOnly={foodDescriptionBusy}
                     onChange={(event) => {
                       setFoodDescription(event.target.value.slice(0, 1500));
                       setFoodDescriptionError(null);
@@ -2168,7 +2321,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 {foodDescriptionResult && (
                   <div className="space-y-2">
                     <div className="flex items-baseline justify-between gap-4">
-                      <span className="t-label">Estimate filled below</span>
+                      <span className="t-label">{pendingDescribeFill ? 'Estimate ready' : 'Estimate filled below'}</span>
                       <span className="t-data-sm text-[var(--color-muted)]">
                         {foodDescriptionResult.provider === 'anthropic' ? 'Claude' : 'OpenAI'} · {Math.round(foodDescriptionResult.confidence * 100)}%
                       </span>
@@ -2188,7 +2341,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                         ))}
                       </p>
                     )}
-                    <p className="t-caption">Review every field. Logging will also add it to Saved; a package label should win if available.</p>
+                    {pendingDescribeFill ? (
+                      <>
+                        <p className="t-caption">You changed the fields while this ran, so your entries were kept.</p>
+                        <Button variant="secondary" size="sm" onClick={() => applyDescribeEstimate(foodDescriptionResult)}>
+                          Fill fields with estimate
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="t-caption">Review every field. Logging will also add it to Saved; a package label should win if available.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -2211,8 +2373,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
           {manualNameFocused && manualNameQuery.length >= 2 && (
             <div>
-              <p className="t-label-sm mb-2.5">{loadingSavedMeals ? 'Loading saved meals…' : 'Saved meals'}</p>
-              {!loadingSavedMeals && manualSuggestions.length > 0 ? (
+              <p className="t-label-sm mb-2.5">{showSavedMealsLoading ? 'Loading saved meals…' : 'Saved meals'}</p>
+              {!showSavedMealsLoading && manualSuggestions.length > 0 ? (
                 <div className="max-h-36 overflow-y-auto">
                   {manualSuggestions.map((meal) => (
                     <button
@@ -2229,7 +2391,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                     </button>
                   ))}
                 </div>
-              ) : !loadingSavedMeals ? (
+              ) : !showSavedMealsLoading ? (
                 <p className="t-caption">No saved meal matches yet.</p>
               ) : null}
             </div>
@@ -2345,9 +2507,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             {onAddIngredients ? 'Add ingredient' : loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </>
-      ) : foodAnalysisMode === 'gemini' ? (
-        <FoodTrialLogger addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
-      ) : (
+      ) : foodAnalysisMode === 'gemini' ? null : (
         <div className="space-y-5">
           <input
             ref={topPhotoInputRef}
@@ -2462,6 +2622,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             min="1"
             max="100"
             value={photoPlateDiameter}
+            readOnly={photoAnalyzing}
             onChange={(event) => setPhotoPlateDiameter(event.target.value)}
             placeholder="e.g., 27"
           />
@@ -2469,6 +2630,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Input
             label="Oils, sauces, dressings, hidden ingredients"
             value={photoIngredients}
+            readOnly={photoAnalyzing}
             onChange={(event) => setPhotoIngredients(event.target.value)}
             placeholder="e.g., 1 tbsp olive oil, sauce on side, or none"
           />
@@ -2476,6 +2638,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Input
             label="Extra details (optional)"
             value={photoHint}
+            readOnly={photoAnalyzing}
             onChange={(e) => setPhotoHint(e.target.value)}
             placeholder="e.g., 27 cm plate, extra olive oil"
           />

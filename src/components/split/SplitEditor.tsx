@@ -1,5 +1,5 @@
-import { useCallback, useState, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { memo, useCallback } from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import {
   ChevronUp,
   ChevronDown,
@@ -17,7 +17,8 @@ import {
   fadeUp,
   staggerContainer,
 } from '@/lib/animations';
-import { normalizeSetRange } from '@/lib/setRangeNotes';
+import { SetRangeFields } from '@/components/split/SetRangeFields';
+import { commitFocusedField } from '@/lib/commitFocusedField';
 import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 
 // ═══════════════════════════════════
@@ -31,92 +32,27 @@ interface SplitEditorProps {
 }
 
 // ═══════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════
-
-function clampInt(value: string, min: number, max: number, fallback: number): number {
-  const parsed = Number(value);
-  if (value === '' || Number.isNaN(parsed)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(parsed)));
-}
-
-interface ExerciseInputDraft {
-  minSets: string;
-  targetSets: string;
-  maxSets: string;
-  minReps: string;
-  maxReps: string;
-}
-
-function buildExerciseInputDraft(exercise: DraftExercise): ExerciseInputDraft {
-  return {
-    minSets: String(exercise.target_sets_min),
-    targetSets: String(exercise.target_sets),
-    maxSets: String(exercise.target_sets_max),
-    minReps: String(exercise.target_reps_min),
-    maxReps: String(exercise.target_reps_max),
-  };
-}
-
-// ═══════════════════════════════════
 // EXERCISE ROW
 // ═══════════════════════════════════
 
-function ExerciseRow({
-  day,
+// Memoized: typing a day or program name leaves untouched rows alone.
+const ExerciseRow = memo(function ExerciseRow({
+  dayId,
   exercise,
   index,
   total,
   onPickExercise,
 }: {
-  day: DraftDay;
+  dayId: string;
   exercise: DraftExercise;
   index: number;
   total: number;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
-  const { reorderExercise, updateExerciseTargets, removeExercise, clearExerciseSuperset } =
-    useSplitEditStore();
-  const [inputDraft, setInputDraft] = useState<ExerciseInputDraft>(() => buildExerciseInputDraft(exercise));
-
-  const commitSetRangeDraft = (patch: Partial<ExerciseInputDraft> = {}) => {
-    const merged = { ...inputDraft, ...patch };
-
-    const nextMin = clampInt(merged.minSets, 1, 10, exercise.target_sets_min);
-    const nextTarget = clampInt(merged.targetSets, 1, 10, exercise.target_sets);
-    const nextMax = clampInt(merged.maxSets, 1, 10, exercise.target_sets_max);
-
-    const normalized = normalizeSetRange(nextMin, nextTarget, nextMax);
-
-    setInputDraft((prev) => ({
-      ...prev,
-      minSets: String(normalized.minSets),
-      targetSets: String(normalized.targetSets),
-      maxSets: String(normalized.maxSets),
-    }));
-
-    updateExerciseTargets(day.id, exercise.id, {
-      target_sets_min: normalized.minSets,
-      target_sets: normalized.targetSets,
-      target_sets_max: normalized.maxSets,
-    });
-  };
-
-  const commitRepDraft = (field: 'minReps' | 'maxReps', fallback: number) => {
-    const value = inputDraft[field];
-    const clamped = field === 'minReps'
-      ? clampInt(value, 1, 100, fallback)
-      : clampInt(value, 1, 100, fallback);
-
-    const patch = { [field]: String(clamped) } as Partial<ExerciseInputDraft>;
-    setInputDraft((prev) => ({ ...prev, ...patch }));
-
-    if (field === 'minReps') {
-      updateExerciseTargets(day.id, exercise.id, { target_reps_min: clamped });
-    } else {
-      updateExerciseTargets(day.id, exercise.id, { target_reps_max: clamped });
-    }
-  };
+  const reorderExercise = useSplitEditStore((s) => s.reorderExercise);
+  const updateExerciseTargets = useSplitEditStore((s) => s.updateExerciseTargets);
+  const removeExercise = useSplitEditStore((s) => s.removeExercise);
+  const clearExerciseSuperset = useSplitEditStore((s) => s.clearExerciseSuperset);
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -143,7 +79,7 @@ function ExerciseRow({
         <button
           type="button"
           className="pressable flex-1 text-left group flex items-center gap-1.5 min-w-0"
-          onClick={() => onPickExercise(day.id, 'swap', exercise.id)}
+          onClick={() => onPickExercise(dayId, 'swap', exercise.id)}
         >
           <span className="flex flex-col min-w-0">
             <span className="t-body text-[var(--color-text)] break-words">
@@ -165,7 +101,7 @@ function ExerciseRow({
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
-              onClick={() => clearExerciseSuperset(day.id, exercise.id)}
+              onClick={() => clearExerciseSuperset(dayId, exercise.id)}
               whileTap={{ scale: 0.985 }}
               title="Remove Superset"
               aria-label={`Remove superset for ${exercise.exercise.name}`}
@@ -176,7 +112,7 @@ function ExerciseRow({
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => onPickExercise(day.id, 'superset', exercise.id)}
+              onClick={() => onPickExercise(dayId, 'superset', exercise.id)}
               whileTap={{ scale: 0.985 }}
               title="Add Superset"
               aria-label={`Add superset for ${exercise.exercise.name}`}
@@ -189,7 +125,7 @@ function ExerciseRow({
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isFirst}
             aria-label={`Move ${exercise.exercise.name} earlier`}
-            onClick={() => reorderExercise(day.id, exercise.id, -1)}
+            onClick={() => reorderExercise(dayId, exercise.id, -1)}
             whileTap={isFirst ? undefined : { scale: 0.985 }}
           >
             <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -200,7 +136,7 @@ function ExerciseRow({
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isLast}
             aria-label={`Move ${exercise.exercise.name} later`}
-            onClick={() => reorderExercise(day.id, exercise.id, 1)}
+            onClick={() => reorderExercise(dayId, exercise.id, 1)}
             whileTap={isLast ? undefined : { scale: 0.985 }}
           >
             <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -210,7 +146,7 @@ function ExerciseRow({
             type="button"
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
             aria-label={`Remove ${exercise.exercise.name}`}
-            onClick={() => removeExercise(day.id, exercise.id)}
+            onClick={() => removeExercise(dayId, exercise.id)}
             whileTap={{ scale: 0.985 }}
           >
             <X className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -219,117 +155,22 @@ function ExerciseRow({
       </div>
 
       {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
-      <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
-        <SetRepCell label="Min sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            value={inputDraft.minSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, minSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            value={inputDraft.targetSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, targetSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Max sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            value={inputDraft.maxSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Reps↓">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={100}
-            value={inputDraft.minReps}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, minReps: e.target.value }))}
-            onBlur={() => commitRepDraft('minReps', exercise.target_reps_min)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRepDraft('minReps', exercise.target_reps_min);
-              }
-            }}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Reps↑">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={100}
-            value={inputDraft.maxReps}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxReps: e.target.value }))}
-            onBlur={() => commitRepDraft('maxReps', exercise.target_reps_max)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRepDraft('maxReps', exercise.target_reps_max);
-              }
-            }}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-      </div>
+      <SetRangeFields
+        values={exercise}
+        onCommitSets={(range) => updateExerciseTargets(dayId, exercise.id, range)}
+        onCommitReps={(patch) => updateExerciseTargets(dayId, exercise.id, patch)}
+      />
     </motion.div>
   );
-}
-
-/** Labelled numeric cell — tracked-caps label over a recessed well input */
-function SetRepCell({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm">{label}</span>
-      {children}
-    </label>
-  );
-}
+});
 
 // ═══════════════════════════════════
 // DAY CARD
 // ═══════════════════════════════════
 
-function DayCard({
+// Memoized: store actions that leave a day untouched keep its object, so
+// only the edited day re-renders.
+const DayCard = memo(function DayCard({
   day,
   index,
   total,
@@ -340,7 +181,9 @@ function DayCard({
   total: number;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
-  const { renameDay, reorderDays, removeDay } = useSplitEditStore();
+  const renameDay = useSplitEditStore((s) => s.renameDay);
+  const reorderDays = useSplitEditStore((s) => s.reorderDays);
+  const removeDay = useSplitEditStore((s) => s.removeDay);
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -439,8 +282,8 @@ function DayCard({
             ) : (
               day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
-                  key={`${exercise.id}:${exercise.target_sets_min}:${exercise.target_sets}:${exercise.target_sets_max}:${exercise.target_reps_min}:${exercise.target_reps_max}:${exercise.superset_group_id || 'none'}`}
-                  day={day}
+                  key={exercise.id}
+                  dayId={day.id}
                   exercise={exercise}
                   index={exerciseIndex}
                   total={day.exercises.length}
@@ -464,24 +307,22 @@ function DayCard({
       </Card>
     </motion.div>
   );
-}
+});
 
 // ═══════════════════════════════════
 // SPLIT EDITOR
 // ═══════════════════════════════════
 
 export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorProps) {
-  const {
-    draft,
-    isDirty,
-    saving,
-    error,
-    renameSplit,
-    updateDescription,
-    addDay,
-    saveEdit,
-    cancelEdit,
-  } = useSplitEditStore();
+  const draft = useSplitEditStore((s) => s.draft);
+  const isDirty = useSplitEditStore((s) => s.isDirty);
+  const saving = useSplitEditStore((s) => s.saving);
+  const error = useSplitEditStore((s) => s.error);
+  const renameSplit = useSplitEditStore((s) => s.renameSplit);
+  const updateDescription = useSplitEditStore((s) => s.updateDescription);
+  const addDay = useSplitEditStore((s) => s.addDay);
+  const saveEdit = useSplitEditStore((s) => s.saveEdit);
+  const cancelEdit = useSplitEditStore((s) => s.cancelEdit);
 
   const handleCancel = useCallback(() => {
     if (isDirty) {
@@ -495,6 +336,8 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
   }, [isDirty, cancelEdit, onClose]);
 
   const handleSave = useCallback(async () => {
+    // Commit a cell still being typed in before the draft is read.
+    commitFocusedField();
     const success = await saveEdit();
     if (success) {
       onSaved();
@@ -564,17 +407,21 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
           </span>
         </div>
 
-        <AnimatePresence mode="popLayout">
-          {draft.days.map((day, index) => (
-            <DayCard
-              key={day.id}
-              day={day}
-              index={index}
-              total={draft.days.length}
-              onPickExercise={onPickExercise}
-            />
-          ))}
-        </AnimatePresence>
+        {/* The group re-measures every layout node when any one updates, so
+            memoized cards below a day that grew or shrank still glide. */}
+        <LayoutGroup>
+          <AnimatePresence mode="popLayout">
+            {draft.days.map((day, index) => (
+              <DayCard
+                key={day.id}
+                day={day}
+                index={index}
+                total={draft.days.length}
+                onPickExercise={onPickExercise}
+              />
+            ))}
+          </AnimatePresence>
+        </LayoutGroup>
       </motion.div>
 
       {/* ── Add Day ── */}

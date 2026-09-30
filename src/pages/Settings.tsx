@@ -51,6 +51,7 @@ import {
   type WeightUnit,
 } from '@/lib/weightDisplayCore';
 import { buildWeightTrend } from '@/lib/weightTrend';
+import { WINDOW_DAYS as ADAPTIVE_WINDOW_DAYS } from '@/lib/adaptiveExpenditure';
 import { WeightTrendChart } from '@/components/shared/charts';
 import { lbsToKg } from '@/lib/nutritionCalculator';
 import { NATIVE_AUTH_CALLBACK_SCHEME, NativeAuth, isNativeIOS } from '@/lib/nativeBridge';
@@ -213,12 +214,18 @@ export function Settings() {
   const [weighInBusy, setWeighInBusy] = useState(false);
   const [resumingAdaptive, setResumingAdaptive] = useState(false);
 
-  // A smoothed rate of change, not a diff against yesterday's water weight.
+  // The full series drives the charts, the smoothed caption and their gates.
   const weightTrend = useMemo(() => buildWeightTrend(bodyWeightHistory), [bodyWeightHistory]);
+  // The weekly rate is fitted over the same 3-week window the coach and the
+  // adaptive targets use. With fewer than 2 weigh-ins in it, no rate shows.
+  const weightRate = useMemo(
+    () => buildWeightTrend(bodyWeightHistory, { windowDays: ADAPTIVE_WINDOW_DAYS }),
+    [bodyWeightHistory]
+  );
   const weightToUnit = useCallback((kilograms: number) => kgToUnit(kilograms, weightUnit), [weightUnit]);
   const weeklyWeightChange =
-    weightTrend.kgPerWeek !== null
-      ? `${weightTrend.kgPerWeek > 0 ? '+' : '−'}${Math.abs(kgToUnit(weightTrend.kgPerWeek, weightUnit)).toFixed(2)} ${weightUnit}/wk`
+    weightRate.kgPerWeek !== null
+      ? `${weightRate.kgPerWeek > 0 ? '+' : '−'}${Math.abs(kgToUnit(weightRate.kgPerWeek, weightUnit)).toFixed(2)} ${weightUnit}/wk`
       : null;
 
   const handleToggleWeightUnit = () => {
@@ -792,11 +799,15 @@ export function Settings() {
       // rather than waiting for the next weekly window.
       await updateMacroTarget({ ...baseMacros, source: 'calculated' });
       setMacroDraft(null);
-      await refreshAdaptiveTargets({ force: true });
+      const refresh = await refreshAdaptiveTargets({ force: true });
+      // The source is already handed back, so a failed recalculation is not a
+      // failed resume; it retries on the next Today visit.
       setMacroMessage(
-        nutritionProfile?.adaptive_enabled
-          ? 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.'
-          : 'Target source saved. Complete nutrition setup to enable automatic updates.',
+        !nutritionProfile?.adaptive_enabled
+          ? 'Target source saved. Complete nutrition setup to enable automatic updates.'
+          : refresh === 'failed'
+            ? 'Automatic target management resumed, but recalculation could not run right now. It will retry automatically.'
+            : 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.',
       );
     } catch {
       setMacroError('Could not resume adaptive targets. Please try again.');
@@ -1073,8 +1084,8 @@ export function Settings() {
                 reveal="you-weight-spark"
                 summary={
                   <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
-                    <span>30-day trend</span>
-                    {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
+                    <span>30 days</span>
+                    {weeklyWeightChange && <span>{weeklyWeightChange} · 3-wk rate</span>}
                   </span>
                 }
               />
@@ -1864,11 +1875,9 @@ export function Settings() {
                       {formatWeight(latestBodyWeight.kilograms, weightUnit)}
                     </span>
                     <span className="t-caption text-[var(--color-text-dim)]">{weightUnit}</span>
-                    {weightTrend.kgPerWeek !== null && (
+                    {weeklyWeightChange && (
                       <span className="t-data-sm text-[var(--color-text-dim)]">
-                        {weightTrend.kgPerWeek > 0 ? '+' : '−'}
-                        {Math.abs(kgToUnit(weightTrend.kgPerWeek, weightUnit)).toFixed(2)}{' '}
-                        {weightUnit}/wk
+                        {weeklyWeightChange} · 3-wk rate
                       </span>
                     )}
                   </div>

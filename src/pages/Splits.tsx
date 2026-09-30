@@ -68,7 +68,11 @@ export function Splits() {
     excludeExerciseIds?: string[];
   }>({ isOpen: false, dayId: '', mode: 'add' });
 
-  const { startEdit, swapExercise, addExercise, addSupersetExercise } = useSplitEditStore();
+  // Actions only: selecting them keeps draft edits from re-rendering this page.
+  const startEdit = useSplitEditStore((s) => s.startEdit);
+  const swapExercise = useSplitEditStore((s) => s.swapExercise);
+  const addExercise = useSplitEditStore((s) => s.addExercise);
+  const addSupersetExercise = useSplitEditStore((s) => s.addSupersetExercise);
 
   useEffect(() => {
     void Promise.all([
@@ -133,7 +137,11 @@ export function Splits() {
 
   const handleDelete = async (splitId: string) => {
     if (confirm('Delete this program?')) {
-      await deleteSplit(splitId);
+      const result = await deleteSplit(splitId);
+      if (!result.ok) {
+        window.alert(result.reason ?? 'Could not delete the program.');
+        return;
+      }
       setShowMenu(null);
     }
   };
@@ -167,6 +175,8 @@ export function Splits() {
       }
 
       navigate('/train');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn't start the workout. Try again.");
     } finally {
       setStartingTemplateLabel(null);
     }
@@ -239,7 +249,11 @@ export function Splits() {
   };
 
   const handleSelectSplit = async (splitId: string, splitName: string) => {
-    await setActiveSplit(splitId);
+    const result = await setActiveSplit(splitId);
+    if (!result.ok) {
+      window.alert(result.reason ?? 'Could not set the active program.');
+      return;
+    }
     setShowMenu(null);
     await maybePromptPlanStart(splitId, splitName);
   };
@@ -726,7 +740,6 @@ export function Splits() {
         <SplitBuilder
           onComplete={(createdSplit) => {
             setShowBuilder(false);
-            void fetchSplits();
 
             if (createdSplit) {
               void maybePromptPlanStart(createdSplit.id, createdSplit.name);

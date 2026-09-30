@@ -10,8 +10,9 @@ import { withTimeout } from '@/lib/withTimeout';
 
 const SCAN_INTERVAL_MS = 180;
 // hard ceilings so no await can strand the UI in a disabled busy state: the
-// catalog lookup chain (saved → FatSecret → USDA → OFF) has no per-leg
-// timeouts, and a native plugin call whose bridge callback is lost would
+// catalog lookup (saved first, then FatSecret, USDA and OFF queried
+// concurrently with that priority preserved) has no per-leg client timeouts,
+// and a native plugin call whose bridge callback is lost would
 // otherwise leave 'starting' stuck forever with the button unusable
 const LOOKUP_TIMEOUT_MS = 45_000;
 const NATIVE_AVAILABILITY_TIMEOUT_MS = 10_000;

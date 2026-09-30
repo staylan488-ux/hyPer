@@ -132,6 +132,12 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
   // The window normally spans WINDOW_DAYS, but never reaches back into the
   // transient that follows a change of goal or rate.
   let windowStart = shiftIsoDate(windowEnd, -(WINDOW_DAYS - 1));
+  // Intake counts complete days only, so its window ends yesterday: a refresh
+  // mid-day would otherwise read today's half-logged total as a full day and
+  // bias the estimate low. Weigh-ins keep today, since a morning weigh-in is
+  // already complete.
+  const intakeEnd = shiftIsoDate(windowEnd, -1);
+  let intakeStart = shiftIsoDate(intakeEnd, -(WINDOW_DAYS - 1));
   const reasons: string[] = [];
 
   if (input.phaseStartedOn) {
@@ -142,9 +148,11 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
         reasons.push('Just changed your goal — the first week of weight change is water, not tissue.');
       }
     }
+    if (earliestUsable > intakeStart) intakeStart = earliestUsable;
   }
 
   const inWindow = (date: string) => date >= windowStart && date <= windowEnd;
+  const inIntakeWindow = (date: string) => date >= intakeStart && date <= intakeEnd;
 
   const weightSamples = input.weightSamples.filter((sample) => {
     const ms = Date.parse(sample.measured_at);
@@ -154,7 +162,7 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
   // Days below the threshold are treated as MISSING, never as a real low day.
   const intakeFloor = input.bmr * MIN_LOGGED_FRACTION_OF_BMR;
   const loggedDays = input.dailyIntake.filter(
-    (day) => inWindow(day.date) && Number.isFinite(day.calories) && day.calories >= intakeFloor
+    (day) => inIntakeWindow(day.date) && Number.isFinite(day.calories) && day.calories >= intakeFloor
   );
 
   const trend = buildWeightTrend(weightSamples, { windowDays: WINDOW_DAYS });
@@ -234,7 +242,8 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
   // Coverage of the window drives how much the measurement is trusted. Both
   // inputs must be present, so the weaker one governs.
   const usableSpan = Math.min(WINDOW_DAYS, daysBetween(windowStart, windowEnd) + 1);
-  const loggedCoverage = (loggedDayCount - MIN_LOGGED_DAYS) / Math.max(1, usableSpan - MIN_LOGGED_DAYS);
+  const intakeSpan = Math.min(WINDOW_DAYS, daysBetween(intakeStart, intakeEnd) + 1);
+  const loggedCoverage = (loggedDayCount - MIN_LOGGED_DAYS) / Math.max(1, intakeSpan - MIN_LOGGED_DAYS);
   const weighInCoverage = (weighInDayCount - MIN_WEIGH_IN_DAYS) / Math.max(1, usableSpan - MIN_WEIGH_IN_DAYS);
   const coverage = clamp(Math.min(loggedCoverage, weighInCoverage), 0, 1);
   const blendWeight = BLEND_AT_GATE + (1 - BLEND_AT_GATE) * coverage;

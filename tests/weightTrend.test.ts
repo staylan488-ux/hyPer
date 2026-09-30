@@ -267,3 +267,33 @@ describe('weight trend', () => {
     expect(buildWeightTrend(shuffled)).toEqual(buildWeightTrend(ordered));
   });
 });
+
+describe('You screen weekly rate (21-day window, full-series charts)', () => {
+  it('reports the recent slope while the unwindowed fit blends in older weeks', () => {
+    // 40 flat days, then 20 days losing 0.1 kg/day (-0.7 kg/wk).
+    const flat = Array.from({ length: 40 }, () => 90);
+    const losing = Array.from({ length: 20 }, (_, i) => 90 - (i + 1) * 0.1);
+    const samples = samplesFrom('2026-07-01', [...flat, ...losing]);
+
+    const chartTrend = buildWeightTrend(samples);
+    const rate = buildWeightTrend(samples, { windowDays: 21 });
+
+    expect(rate.kgPerWeek as number).toBeCloseTo(-0.7, 1);
+    expect(chartTrend.kgPerWeek as number).toBeGreaterThan(-0.5);
+    expect(chartTrend.points).toHaveLength(60);
+    expect(chartTrend.fittedDayCount).toBe(60);
+  });
+
+  it('keeps the charts for sparse weigh-ins but shows no rate when the window has one', () => {
+    // Two weigh-ins 30 days apart.
+    const samples = samplesFrom('2026-07-01', [90, ...Array.from({ length: 29 }, () => null), 89]);
+
+    const chartTrend = buildWeightTrend(samples);
+    const rate = buildWeightTrend(samples, { windowDays: 21 });
+
+    expect(chartTrend.fittedDayCount).toBeGreaterThanOrEqual(2);
+    expect(chartTrend.kgPerWeek).not.toBeNull();
+    expect(rate.fittedDayCount).toBe(1);
+    expect(rate.kgPerWeek).toBeNull();
+  });
+});

@@ -66,4 +66,23 @@ describe('USDA search resilience', () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
+
+  it('rethrows a failed request only when the caller opts in', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('network down');
+    const fetcher = vi.fn(async () => {
+      throw failure;
+    }) as unknown as typeof fetch;
+
+    await expect(searchUsdaFoods('oats', 'api-key', fetcher, { rethrow: true })).rejects.toBe(failure);
+    await expect(searchUsdaFoods('oats', 'api-key', fetcher, { rethrow: false })).resolves.toEqual([]);
+    await expect(searchUsdaFoods('oats', 'api-key', fetcher)).resolves.toEqual([]);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('still reports a successful search with no foods as an empty list when rethrowing', async () => {
+    const fetcher = vi.fn(async () => ({ json: async () => ({ foods: [] }) })) as unknown as typeof fetch;
+
+    await expect(searchUsdaFoods('zzzz', 'api-key', fetcher, { rethrow: true })).resolves.toEqual([]);
+  });
 });

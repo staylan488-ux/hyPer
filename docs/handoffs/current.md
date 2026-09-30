@@ -18,11 +18,17 @@ The combined state of all three passed:
 
 A preview click-through covered Today, set save and rest, finish, food logging with time, History, Coaching, Program, Run, You and Saved meals, in Ivory and Black, with no console errors. Fonts are now self-hosted, with no Google requests.
 
-Held for owner decisions:
-- F24 (Monday training week);
-- F81 (21- or 30-day weight rate);
-- F110 (delete or restore the Cronometer importer);
-- F53 (offline cold start with an expired login, an auth-flow change).
+Owner decisions (2026-09-30), all implemented in PR #134:
+- Monday–Sunday training week (F24);
+- the 21-day weight rate (F81);
+- delete the Cronometer importer (F110);
+- approve the offline sign-in change (F53).
+
+PRs #128, #129 and #130 are merged. PR #134 (`opt/batch-b-pr`; per-finding history on `opt/batch-b`) carries:
+- Batch B packages B-3, B-4, B-6/B-7, B-8, B-10, B-11, B-12, B-13 and B-14;
+- the four owner decisions.
+
+It passed 1452 tests, lint, build and the iOS build, plus a preview click-through.
 
 Production steps, none done:
 - F66 step B (delete the deployed process-food-photo function and its secrets);
@@ -30,7 +36,7 @@ Production steps, none done:
 - F103 (deploy analyze-food-trial);
 - C-6 (per-account USDA cache migration).
 
-Next: Batch B packages B-3 to B-14 and Batch C, per the plan. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
+Next: B-5 (F1, remove the extra auth round trip before queries) and B-9 (F7, request time limits), which touch nearly every file and so follow #134. Then Batch C, per the plan. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
 
 # Previous work snapshot — Kinetic beautification pass
 

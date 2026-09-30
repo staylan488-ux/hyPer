@@ -1,9 +1,5 @@
 import type { NutritionGroup } from '@/types';
 
-export type NutritionGroupDestination = Pick<NutritionGroup, 'kind' | 'label'> & {
-  ordinal?: number;
-};
-
 export const DEFAULT_NAMED_MEALS = ['breakfast', 'lunch', 'dinner'] as const;
 
 const NAMED_MEAL_TIME_MINUTES: Record<(typeof DEFAULT_NAMED_MEALS)[number], number> = {
@@ -73,6 +69,17 @@ export function normalizeNutritionGroupOrder(groups: NutritionGroup[]): Nutritio
   }));
 }
 
+/**
+ * The groups whose sort_order has to be written: every row in `next` that is
+ * missing from `previous` or sits at a different position there. `previous`
+ * includes freshly inserted rows as the database returned them, so a row that
+ * already landed in place is not rewritten.
+ */
+export function changedGroupOrders(previous: NutritionGroup[], next: NutritionGroup[]): NutritionGroup[] {
+  const previousOrder = new Map(previous.map((group) => [group.id, group.sort_order]));
+  return next.filter((group) => previousOrder.get(group.id) !== group.sort_order);
+}
+
 export function moveNutritionGroup(
   groups: NutritionGroup[],
   groupId: string,
@@ -102,21 +109,4 @@ export function legacyMealTypeForGroup(group: NutritionGroup | null): 'breakfast
   if (!group) return null;
   if (group.label) return group.label;
   return group.kind === 'snack' ? 'snack' : null;
-}
-
-export function cronometerGroupDestination(rawGroup: string): NutritionGroupDestination | null {
-  const normalized = rawGroup.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
-  if (!normalized) return null;
-
-  if (normalized === 'breakfast') return { kind: 'meal', label: 'breakfast' };
-  if (normalized === 'lunch') return { kind: 'meal', label: 'lunch' };
-  if (normalized === 'dinner' || normalized === 'supper') return { kind: 'meal', label: 'dinner' };
-
-  const mealMatch = normalized.match(/^meal\s*(\d+)?$/);
-  if (mealMatch) return { kind: 'meal', label: null, ordinal: Math.max(1, Number(mealMatch[1]) || 1) };
-
-  const snackMatch = normalized.match(/^snacks?\s*(\d+)?$/);
-  if (snackMatch) return { kind: 'snack', label: null, ordinal: Math.max(1, Number(snackMatch[1]) || 1) };
-
-  return null;
 }

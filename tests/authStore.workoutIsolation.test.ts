@@ -57,6 +57,9 @@ it('saves sets while a preference lookup triggered by session refresh is still p
     date: '2026-09-04', notes: null, completed: false, sets: [workoutSet],
   } });
 
+  // The boot-time lookup fails as if offline, so the refresh below retries it
+  // (a successful lookup is not repeated for the same account).
+  let failedUserLookups = 0;
   let stallUserLookup = false;
   let userLookupPending = false;
   let releaseUserLookup!: (response: Response) => void;
@@ -69,6 +72,10 @@ it('saves sets while a preference lookup triggered by session refresh is still p
         userLookupPending = true;
         return userLookup;
       }
+      if (failedUserLookups === 0) {
+        failedUserLookups += 1;
+        return Response.json({ message: 'unavailable' }, { status: 503 });
+      }
       return Response.json(backend.user);
     }
     if (path === '/rest/v1/profiles') return Response.json({ id: backend.user.id, display_name: 'Test' });
@@ -79,6 +86,8 @@ it('saves sets while a preference lookup triggered by session refresh is still p
   await useAuthStore.getState().initialize();
   await supabase.auth.getSession();
   await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('Test'));
+  await vi.waitFor(() => expect(failedUserLookups).toBe(1));
+  await new Promise((resolve) => setTimeout(resolve, 0));
   stallUserLookup = true;
 
   // The public refresh API emits the same TOKEN_REFRESHED event as the

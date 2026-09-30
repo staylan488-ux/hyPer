@@ -17,6 +17,10 @@ export interface TrainingHoursPoint {
   totalHours: number;
 }
 
+// The training week runs Monday to Sunday everywhere training is counted:
+// weekly volume, the Coaching header, training hours and the Train calendar.
+export const TRAINING_WEEK = { weekStartsOn: 1 } as const;
+
 const MAX_RECORDED_WORKOUT_DURATION_MS = 3 * 60 * 60 * 1000;
 
 function trimValue(value?: string | null): string {
@@ -134,7 +138,7 @@ export function buildWeeklyTrainingHours(
   weeks = 8,
 ): TrainingHoursPoint[] {
   const safeWeeks = Math.max(1, Math.floor(weeks));
-  const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const currentWeekStart = startOfWeek(now, TRAINING_WEEK);
   const firstWeekStart = subWeeks(currentWeekStart, safeWeeks - 1);
 
   const buckets = new Map<string, TrainingHoursPoint>();
@@ -159,7 +163,7 @@ export function buildWeeklyTrainingHours(
     const workoutStartDate = getWorkoutStartDate(workout);
     if (!workoutStartDate) continue;
 
-    const weekStart = format(startOfWeek(workoutStartDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const weekStart = format(startOfWeek(workoutStartDate, TRAINING_WEEK), 'yyyy-MM-dd');
     const bucket = buckets.get(weekStart);
     if (!bucket) continue;
 

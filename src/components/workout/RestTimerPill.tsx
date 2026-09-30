@@ -7,6 +7,7 @@ import { springs } from '@/lib/animations';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { useNativeRestDock } from '@/hooks/useNativeGlassSurfaces';
 import { useThemeStore } from '@/stores/themeStore';
+import { useAppStore } from '@/stores/appStore';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { cancelRestEndNotification, scheduleRestEndNotification } from '@/lib/restNotifications';
 import { syncWorkoutActivityRest } from '@/lib/liveActivity';
@@ -21,7 +22,9 @@ import {
   readRestTimerSession,
   resumeRestTimerSession,
   saveRestTimerSession,
+  shouldKeepRestAlertsOnUnmount,
   syncRestTimerSession,
+  type RestTimerContext,
   type RestTimerSession,
 } from '@/lib/restTimer';
 import './rest-timer.css';
@@ -34,6 +37,8 @@ interface RestTimerPillProps {
   /** "Bench Press · set 3" — names the upcoming set in the end-of-rest
    *  notification. Omitted for manual timers (no known next set). */
   nextUpLabel?: string | null;
+  /** Movement whose rest preference a preset change saves. */
+  exerciseId?: string | null;
   onDismiss: () => void;
   /** Fired when the user explicitly picks a new duration (preset). */
   onDurationChange?: (seconds: number) => void;
@@ -41,12 +46,12 @@ interface RestTimerPillProps {
 
 const PRESET_TIMES = [60, 120, 180, 300];
 
-function getInitialSession(workoutId: string, defaultSeconds: number, sessionSeed: number): RestTimerSession {
+function getInitialSession(workoutId: string, defaultSeconds: number, sessionSeed: number, context: RestTimerContext): RestTimerSession {
   const storedSession = readRestTimerSession();
   const syncedSession = storedSession ? syncRestTimerSession(storedSession) : null;
 
   if (sessionSeed > 0 || !syncedSession || !isRestTimerForWorkout(syncedSession, workoutId)) {
-    const nextSession = createRestTimerSession(workoutId, defaultSeconds);
+    const nextSession = createRestTimerSession(workoutId, defaultSeconds, undefined, context);
     saveRestTimerSession(nextSession);
     return nextSession;
   }
@@ -65,13 +70,19 @@ function formatTime(totalSeconds: number) {
  * Compact recovery bar stays available while the workout and set entry remain
  * usable. Timer options live in a sheet; the session persists across navigation.
  */
-export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel = null, onDismiss, onDurationChange }: RestTimerPillProps) {
-  const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed));
+export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90, nextUpLabel: nextUpLabelProp = null, exerciseId = null, onDismiss, onDurationChange }: RestTimerPillProps) {
+  const [session, setSession] = useState<RestTimerSession | null>(() => getInitialSession(workoutId, defaultSeconds, sessionSeed, { nextUpLabel: nextUpLabelProp, exerciseId }));
+  // The stored session keeps its context, so a pill restored after leaving
+  // Train still names the next set.
+  const nextUpLabel = session?.nextUpLabel ?? nextUpLabelProp;
+  const sessionContext: RestTimerContext = { nextUpLabel, exerciseId: session?.exerciseId ?? exerciseId };
   const [expanded, setExpanded] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customDraft, setCustomDraft] = useState('');
   const [customError, setCustomError] = useState(false);
-  const completionHandledRef = useRef(false);
+  // A rest that ended while the pill was unmounted already alerted through
+  // the notification; returning to Train must not chime late.
+  const completionHandledRef = useRef(sessionSeed === 0 && session?.status === 'completed');
   // Callback ref: the measured element changes when native glass takes over.
   const [bar, setBar] = useState<HTMLElement | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -105,7 +116,8 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
     const sync = () => {
       setSession((current) => {
-        if (!current) return current;
+        // A skipped rest is already cleared; the leaving bar must not save it back.
+        if (!current || leavingRef.current) return current;
         const nextSession = syncRestTimerSession(current);
         saveRestTimerSession(nextSession);
         return nextSession;
@@ -153,12 +165,15 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     }
   }, [sessionStatus, sessionStartedAt, sessionEndsAt, nextUpLabel]);
 
-  // Dismissed or unmounted (workout finished, navigation) — the workout session
-  // stays up; only the rest state clears. Workout.tsx owns that lifecycle.
+  // Unmounted: leaving Train while the rest still runs keeps the notification
+  // and lock-screen countdown armed (the pill re-arms them on return). A
+  // finished or replaced workout clears them; completeWorkout() empties the
+  // store before Workout.tsx clears the stored session, hence the store check.
   useEffect(() => () => {
+    if (shouldKeepRestAlertsOnUnmount(readRestTimerSession(), workoutId, useAppStore.getState().currentWorkout?.id)) return;
     void cancelRestEndNotification();
     syncWorkoutActivityRest(null);
-  }, []);
+  }, [workoutId]);
 
   // Keep the screen awake while a rest timer is running, so the phone can sit
   // on the bench with the countdown visible. iOS releases the lock whenever the
@@ -204,7 +219,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   const handleReset = () => {
     tapHaptic();
-    const nextSession = pauseRestTimerSession(createRestTimerSession(workoutId, seconds));
+    const nextSession = pauseRestTimerSession(createRestTimerSession(workoutId, seconds, undefined, sessionContext));
     saveRestTimerSession(nextSession);
     setSession(nextSession);
     completionHandledRef.current = false;
@@ -212,7 +227,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
   const handleSetTime = (newSeconds: number) => {
     tapHaptic();
-    const nextSession = createRestTimerSession(workoutId, newSeconds);
+    const nextSession = createRestTimerSession(workoutId, newSeconds, undefined, sessionContext);
     saveRestTimerSession(nextSession);
     setSession(nextSession);
     completionHandledRef.current = false;
@@ -251,6 +266,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     leavingRef.current = true;
     if (haptic) tapHaptic();
     clearRestTimerSession();
+    // Skip/Continue ends the rest now, not when the bar finishes leaving.
+    void cancelRestEndNotification();
+    syncWorkoutActivityRest(null);
     setExpanded(false);
     // The session is already cleared; the bar only finishes sliding away.
     if (readMotionPolicy().reducedMotion) {
@@ -279,7 +297,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       theme,
       status: isComplete ? 'completed' : isRunning ? 'running' : 'paused',
       endsAtMs: endsAtMs !== null && Number.isFinite(endsAtMs) ? endsAtMs : null,
-      remainingMs: timeLeft * 1000,
+      // Native counts down from endsAtMs while running and reads remainingMs
+      // only when paused; a fixed 0 keeps the running state identical each tick.
+      remainingMs: isRunning ? 0 : timeLeft * 1000,
       totalMs: seconds * 1000,
       nextLabel: nextUpLabel,
       accent,

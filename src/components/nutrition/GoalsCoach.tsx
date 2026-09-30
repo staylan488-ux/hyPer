@@ -7,7 +7,7 @@ import {
   requestCoachRecommendation,
   type CoachRecommendation,
 } from '@/lib/nutritionCoach';
-import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
+import { COACH_GOALS_KEY, getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { getBodyWeightHistorySince } from '@/lib/healthWeights';
 import { buildWeightTrend } from '@/lib/weightTrend';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
@@ -38,7 +38,7 @@ export function GoalsCoach({
 }) {
   const goalId = useId();
   const sharingId = useId();
-  const [goals, setGoals] = useState(() => globalThis.localStorage?.getItem('hyper.coach.goals') ?? '');
+  const [goals, setGoals] = useState(() => globalThis.localStorage?.getItem(COACH_GOALS_KEY) ?? '');
   const [shareMeasured, setShareMeasured] = useState(true);
   const [recommendation, setRecommendation] = useState<CoachRecommendation | null>(null);
   const [asking, setAsking] = useState(false);
@@ -52,7 +52,7 @@ export function GoalsCoach({
     onBusyChange?.(true);
     setError(null);
     try {
-      globalThis.localStorage?.setItem('hyper.coach.goals', goals);
+      globalThis.localStorage?.setItem(COACH_GOALS_KEY, goals);
       let result: CoachRecommendation;
       if (fixturePreview) {
         result = {

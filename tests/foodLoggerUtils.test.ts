@@ -4,6 +4,7 @@ import {
   buildLoggedAt,
   computeAmountFromServings,
   computeServingsFromAmount,
+  describeTargetUnchanged,
   getCompatibleMeasurementUnits,
   hasMissingColumnError,
   normalizeFoodName,
@@ -173,5 +174,15 @@ describe('foodLoggerUtils', () => {
     });
 
     expect(amount).toBeNull();
+  });
+
+  it('lets a describe estimate fill fields only when nothing changed while it ran', () => {
+    const empty = { name: '', calories: '', protein: '', carbs: '', fat: '' };
+    const before = { manualFood: empty, selectedSavedMealId: null };
+
+    expect(describeTargetUnchanged(before, { manualFood: { ...empty }, selectedSavedMealId: null })).toBe(true);
+    expect(describeTargetUnchanged(before, { manualFood: { ...empty, name: 'Burrito' }, selectedSavedMealId: null })).toBe(false);
+    expect(describeTargetUnchanged(before, { manualFood: { ...empty, fat: '12' }, selectedSavedMealId: null })).toBe(false);
+    expect(describeTargetUnchanged(before, { manualFood: empty, selectedSavedMealId: 'meal-1' })).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Link2, PenLine, Plus, Search, Unlink2, Wand2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button, Chip, Input, SelectSheet, TickStrip } from '@/components/shared';
@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import { splitTemplates } from '@/lib/splitTemplates';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { springs } from '@/lib/animations';
+import { SetRangeFields } from '@/components/split/SetRangeFields';
+import { commitFocusedField } from '@/lib/commitFocusedField';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
@@ -106,6 +108,8 @@ function normalizeExerciseName(name: string): string {
     .trim();
 }
 
+const CREATE_FAILED_MESSAGE = 'Could not create the program. Check your connection and try again.';
+
 function createLocalId(): string {
   const randomUuid = globalThis.crypto?.randomUUID;
   if (typeof randomUuid === 'function') {
@@ -113,11 +117,6 @@ function createLocalId(): string {
   }
 
   return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function clampSetInput(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.min(10, Math.round(value)));
 }
 
 function normalizeCustomSetRange(exercise: Pick<CustomExerciseDraft, 'target_sets_min' | 'target_sets' | 'target_sets_max'>) {
@@ -161,12 +160,18 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const [description, setDescription] = useState('');
   const [daysPerWeek, setDaysPerWeek] = useState(4);
   const [days, setDays] = useState<CustomDayDraft[]>([]);
+  // Latest committed days, readable right after commitFocusedField() flushes.
+  const daysRef = useRef(days);
+  useLayoutEffect(() => {
+    daysRef.current = days;
+  }, [days]);
   const [exerciseLibrary, setExerciseLibrary] = useState<Array<{ id: string; name: string }>>([]);
   const [activeCustomDayIndex, setActiveCustomDayIndex] = useState(0);
   const [exerciseQuery, setExerciseQuery] = useState('');
   const [customExerciseName, setCustomExerciseName] = useState('');
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState<MuscleGroup>('core');
   const [customError, setCustomError] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<{ message: string; tone: 'ok' | 'info' } | null>(null);
   const [supersetSourceLocalId, setSupersetSourceLocalId] = useState<string | null>(null);
 
@@ -474,6 +479,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
   const createFromTemplate = async (template: SplitTemplate) => {
     setLoading(true);
+    setTemplateError(null);
     try {
       const exerciseRows = await getExerciseRows();
 
@@ -510,23 +516,33 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         days: splitDays,
       });
 
-      onComplete(created ? { id: created.id, name: template.name } : undefined);
+      if (!created) {
+        setTemplateError(CREATE_FAILED_MESSAGE);
+        return;
+      }
+      onComplete({ id: created.id, name: template.name });
+    } catch {
+      setTemplateError(CREATE_FAILED_MESSAGE);
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreateCustom = async () => {
+    // A cell still being typed in (iOS keypad has no Enter) commits on blur;
+    // flush it so the program is built from what is on screen.
+    commitFocusedField();
+    const latestDays = daysRef.current;
     setLoading(true);
     setCustomError(null);
     try {
-      if (days.some((day) => day.exercises.length === 0)) {
+      if (latestDays.some((day) => day.exercises.length === 0)) {
         setCustomError('Each day needs at least one exercise before creating the program.');
         return;
       }
 
       if (
-        days.some((day) =>
+        latestDays.some((day) =>
           day.exercises.some((exercise) => {
             const range = normalizeCustomSetRange(exercise);
             return (
@@ -602,7 +618,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
       };
 
       const splitDays = await Promise.all(
-        days.map(async (day, dayIndex) => {
+        latestDays.map(async (day, dayIndex) => {
           const normalizedSupersetIds = new Map<string, string>();
 
           return {
@@ -647,7 +663,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         is_active: true,
         days: splitDays,
       });
-      onComplete(created ? { id: created.id, name } : undefined);
+      if (!created) {
+        setCustomError(CREATE_FAILED_MESSAGE);
+        return;
+      }
+      onComplete({ id: created.id, name });
     } catch (error) {
       setCustomError(error instanceof Error ? error.message : 'Could not create custom program.');
     } finally {
@@ -863,6 +883,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
             </li>
           ))}
         </ul>
+
+        {templateError && <p className="py-1 mb-2 t-caption text-[var(--color-accent)]">{templateError}</p>}
 
         <Button size="lg" className="w-full" disabled={loading} loading={loading} onClick={() => createFromTemplate(guidedTemplate)}>
           {loading ? 'Creating program…' : 'Build my program'}
@@ -1171,83 +1193,16 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
-                      <RangeCell
-                        label="Min"
-                        value={exercise.target_sets_min}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextMin = Number.isNaN(parsed)
-                              ? current.target_sets_min
-                              : clampSetInput(parsed, current.target_sets_min);
-                            const normalized = normalizeSetRange(nextMin, current.target_sets, current.target_sets_max);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Sets"
-                        value={exercise.target_sets}
-                        emphasized
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextTarget = Number.isNaN(parsed)
-                              ? current.target_sets
-                              : clampSetInput(parsed, current.target_sets);
-                            const normalized = normalizeSetRange(current.target_sets_min, nextTarget, current.target_sets_max);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Max"
-                        value={exercise.target_sets_max}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextMax = Number.isNaN(parsed)
-                              ? current.target_sets_max
-                              : clampSetInput(parsed, current.target_sets_max);
-                            const normalized = normalizeSetRange(current.target_sets_min, current.target_sets, nextMax);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Reps↓"
-                        value={exercise.target_reps_min}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
-                            ...current,
-                            target_reps_min: Number.isNaN(parsed) ? current.target_reps_min : parsed,
-                          }));
-                        }}
-                      />
-                      <RangeCell
-                        label="Reps↑"
-                        value={exercise.target_reps_max}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
-                            ...current,
-                            target_reps_max: Number.isNaN(parsed) ? current.target_reps_max : parsed,
-                          }));
-                        }}
-                      />
-                    </div>
+                    <SetRangeFields
+                      values={exercise}
+                      labels={{ minSets: 'Min', maxSets: 'Max' }}
+                      onCommitSets={(range) => {
+                        updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({ ...current, ...range }));
+                      }}
+                      onCommitReps={(patch) => {
+                        updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({ ...current, ...patch }));
+                      }}
+                    />
                   </div>
                 ))
               )}
@@ -1265,32 +1220,4 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   }
 
   return null;
-}
-
-/** Compact numeric cell for set/rep ranges */
-function RangeCell({
-  label,
-  value,
-  onCommit,
-  emphasized = false,
-}: {
-  label: string;
-  value: number;
-  onCommit: (parsed: number) => void;
-  emphasized?: boolean;
-}) {
-  return (
-    <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm">{label}</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        value={String(value)}
-        onChange={(event) => onCommit(Number(event.target.value || 0))}
-        className={`well w-full min-h-11 text-center t-data-sm outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] ${
-          emphasized ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
-        }`}
-      />
-    </label>
-  );
 }

@@ -12,6 +12,7 @@ vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true, isAppSandboxActi
 import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { maybeSeedPreview } from '@/preview/previewSeed';
+import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -46,6 +47,53 @@ describe('preview uses real program and workout store paths', () => {
       days: [{ day_name: 'Day one', day_order: 0, exercises: [{ exercise_id: 'ex_row', target_sets: 2, target_reps_min: 8, target_reps_max: 12, exercise_order: 0 }] }] });
     const refreshed = useAppStore.getState().splits.find((split) => split.id === created?.id);
     expect(refreshed?.days[0].exercises[0].exercise?.name).toBe('Barbell Row');
+    expect(refreshed?.is_active).toBe(false);
+    expect(useAppStore.getState().activeSplit?.id).toBe('split1');
+  });
+
+  it('creates an active program in one snapshot and leaves exactly one program active', async () => {
+    await useAppStore.getState().fetchSplits();
+    const rangeNotes = serializeSetRangeNotes(null, 2, 3, 4);
+    const created = await useAppStore.getState().createSplit({ name: 'Second plan', description: 'Two days', days_per_week: 3, is_active: true,
+      days: [
+        { day_name: 'Push', day_order: 7, exercises: [
+          { exercise_id: 'ex_bench', target_sets: 3, target_reps_min: 6, target_reps_max: 10, exercise_order: 5, notes: rangeNotes },
+          { exercise_id: 'ex_lateral', target_sets: 3, target_reps_min: 12, target_reps_max: 15, exercise_order: 9, superset_group_id: 'group-a' },
+          { exercise_id: 'ex_pushdown', target_sets: 3, target_reps_min: 10, target_reps_max: 12, exercise_order: 1, superset_group_id: 'group-a' },
+        ] },
+        { day_name: 'Pull', day_order: 3, exercises: [
+          { exercise_id: 'ex_row', target_sets: 4, target_reps_min: 8, target_reps_max: 12, exercise_order: 0 },
+          { exercise_id: 'ex_curl', target_sets: 2, target_reps_min: 10, target_reps_max: 15, exercise_order: 0 },
+        ] },
+      ] });
+    expect(created).not.toBeNull();
+    const { splits, activeSplit } = useAppStore.getState();
+    expect(splits.filter((split) => split.is_active).map((split) => split.id)).toEqual([created!.id]);
+    expect(activeSplit?.id).toBe(created!.id);
+    expect(activeSplit?.days_per_week).toBe(3);
+    expect(activeSplit?.days.map((day) => [day.day_name, day.day_order])).toEqual([['Push', 0], ['Pull', 1]]);
+    expect(activeSplit?.days[0].exercises.map((ex) => [ex.exercise_id, ex.exercise_order, ex.superset_group_id ?? null, ex.notes ?? null])).toEqual([
+      ['ex_bench', 0, null, rangeNotes],
+      ['ex_lateral', 1, 'group-a', null],
+      ['ex_pushdown', 2, 'group-a', null],
+    ]);
+    expect(activeSplit?.days[1].exercises.map((ex) => [ex.exercise_id, ex.exercise_order])).toEqual([['ex_row', 0], ['ex_curl', 1]]);
+    expect(splits.find((split) => split.id === 'split1')?.is_active).toBe(false);
+  });
+
+  it('removes the half-made program and keeps the current one active when the snapshot fails', async () => {
+    await useAppStore.getState().fetchSplits();
+    const splitCount = previewTables.splits.length;
+    const dayCount = previewTables.split_days.length;
+    vi.spyOn(client, 'rpc').mockResolvedValueOnce({ data: null, error: { message: 'connection lost' } } as never);
+    const created = await useAppStore.getState().createSplit({ name: 'Doomed plan', description: null, days_per_week: 1, is_active: true,
+      days: [{ day_name: 'Only day', day_order: 0, exercises: [{ exercise_id: 'ex_row', target_sets: 3, target_reps_min: 8, target_reps_max: 12, exercise_order: 0 }] }] });
+    expect(created).toBeNull();
+    expect(previewTables.splits).toHaveLength(splitCount);
+    expect(previewTables.split_days).toHaveLength(dayCount);
+    expect(previewTables.splits.find((split) => split.id === 'split1')?.is_active).toBe(true);
+    await useAppStore.getState().fetchSplits();
+    expect(useAppStore.getState().activeSplit?.id).toBe('split1');
   });
 
   it('saves the actual program editor snapshot, retaining IDs and removing omitted rows', async () => {
