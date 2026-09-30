@@ -2731,14 +2731,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // maybeSingle, not single — a user with no targets yet is the normal case,
     // not an error.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('macro_targets')
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (data) {
-      set({ macroTarget: data });
+    // A successful read with no row clears a target left over from a previous
+    // account. A failed read keeps what is shown, so a flaky connection never
+    // blanks the targets.
+    if (!error) {
+      set({ macroTarget: data ?? null });
     }
   },
 
