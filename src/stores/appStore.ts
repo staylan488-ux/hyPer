@@ -2273,30 +2273,47 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   syncWorkoutCompletion: async (workoutId) => {
-    const { data: sets, error } = await supabase
-      .from('sets')
-      .select('id, completed, completed_at')
-      .eq('workout_id', workoutId);
+    // Read the workout's own completion state with its sets so an edit can
+    // only move it toward complete. A workout finished with skipped sets stays
+    // finished; un-finishing is never a side effect of editing.
+    const { data: workout, error } = await supabase
+      .from('workouts')
+      .select('completed, completed_at, sets(id, completed, completed_at)')
+      .eq('id', workoutId)
+      .maybeSingle();
 
-    if (error) {
-      console.error('Error syncing workout completion:', error);
+    if (error || !workout) {
+      if (error) console.error('Error syncing workout completion:', error);
       return { totalSets: 0, completedSets: 0, completed: false };
     }
 
-    const totalSets = (sets || []).length;
-    const completedSets = (sets || []).filter((set) => Boolean(set.completed)).length;
-    const completed = totalSets > 0 && completedSets === totalSets;
-    const completedAt = completed
-      ? resolveWorkoutCompletedAt((sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>)
+    const sets = (workout.sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>;
+    const totalSets = sets.length;
+    const completedSets = sets.filter((set) => Boolean(set.completed)).length;
+    const wasCompleted = Boolean(workout.completed);
+    const existingCompletedAt = typeof workout.completed_at === 'string'
+      && Number.isFinite(new Date(workout.completed_at).getTime())
+      ? workout.completed_at
       : null;
 
-    const { error: updateError } = await supabase
-      .from('workouts')
-      .update({ completed, completed_at: completedAt })
-      .eq('id', workoutId);
+    let completed = wasCompleted;
+    let completedAt: string | null = workout.completed_at ?? null;
+    if (wasCompleted) {
+      completedAt = existingCompletedAt ?? resolveWorkoutCompletedAt(sets);
+    } else if (totalSets > 0 && completedSets === totalSets) {
+      completed = true;
+      completedAt = resolveWorkoutCompletedAt(sets);
+    }
 
-    if (updateError) {
-      console.error('Error persisting workout completion state:', updateError);
+    if (completed !== wasCompleted || completedAt !== (workout.completed_at ?? null)) {
+      const { error: updateError } = await supabase
+        .from('workouts')
+        .update({ completed, completed_at: completedAt })
+        .eq('id', workoutId);
+
+      if (updateError) {
+        console.error('Error persisting workout completion state:', updateError);
+      }
     }
 
     const { currentWorkout } = get();

@@ -1009,21 +1009,21 @@ describe('must-work store contracts', () => {
       },
     });
 
-    const setsChain = createChain();
-    setsChain.eq.mockImplementation(() => Promise.resolve({
-      data: [
-        { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
-        { id: 'set-2', completed: true, completed_at: '2026-03-10T12:35:00.000Z' },
-      ],
-      error: null,
-    }));
-
-    const workoutsChain = createChain();
+    const workoutsChain = createChain({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          completed: false,
+          completed_at: null,
+          sets: [
+            { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+            { id: 'set-2', completed: true, completed_at: '2026-03-10T12:35:00.000Z' },
+          ],
+        },
+        error: null,
+      }),
+    });
 
     supabaseMock.from.mockImplementation((table: string) => {
-      if (table === 'sets') {
-        return setsChain;
-      }
       if (table === 'workouts') return workoutsChain;
       throw new Error(`Unexpected table: ${table}`);
     });
@@ -1035,6 +1035,7 @@ describe('must-work store contracts', () => {
       completedSets: 2,
       completed: true,
     });
+    expect(workoutsChain.select).toHaveBeenCalledWith('completed, completed_at, sets(id, completed, completed_at)');
     expect(workoutsChain.update).toHaveBeenCalledWith({
       completed: true,
       completed_at: '2026-03-10T12:35:00.000Z',
@@ -1042,6 +1043,115 @@ describe('must-work store contracts', () => {
     expect(workoutsChain.eq).toHaveBeenCalledWith('id', 'workout-1');
     expect(useAppStore.getState().currentWorkout?.completed).toBe(true);
     expect(useAppStore.getState().currentWorkout?.completed_at).toBe('2026-03-10T12:35:00.000Z');
+  });
+
+  describe('syncWorkoutCompletion only moves a workout toward complete', () => {
+    function mockWorkoutRow(row: { completed: boolean; completed_at: string | null; sets: Array<{ id: string; completed: boolean; completed_at: string | null }> }) {
+      const workoutsChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: row, error: null }),
+      });
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') return workoutsChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+      return workoutsChain;
+    }
+
+    it('keeps a workout finished with a skipped set completed and does not write', async () => {
+      const workoutsChain = mockWorkoutRow({
+        completed: true,
+        completed_at: '2026-03-10T12:40:00.000Z',
+        sets: [
+          { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+          { id: 'set-2', completed: false, completed_at: null },
+        ],
+      });
+
+      const result = await useAppStore.getState().syncWorkoutCompletion('workout-1');
+
+      expect(result).toEqual({ totalSets: 2, completedSets: 1, completed: true });
+      expect(workoutsChain.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the original completed_at when a set is added to a finished workout', async () => {
+      useAppStore.setState({
+        currentWorkout: {
+          id: 'workout-1',
+          user_id: 'user-1',
+          split_day_id: null,
+          date: '2026-03-10',
+          notes: null,
+          completed: true,
+          completed_at: '2026-03-10T12:40:00.000Z',
+          sets: [],
+        },
+      });
+      const workoutsChain = mockWorkoutRow({
+        completed: true,
+        completed_at: '2026-03-10T12:40:00.000Z',
+        sets: [
+          { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+          { id: 'set-new', completed: false, completed_at: null },
+        ],
+      });
+
+      const result = await useAppStore.getState().syncWorkoutCompletion('workout-1');
+
+      expect(result.completed).toBe(true);
+      expect(workoutsChain.update).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout?.completed).toBe(true);
+      expect(useAppStore.getState().currentWorkout?.completed_at).toBe('2026-03-10T12:40:00.000Z');
+    });
+
+    it('fills a missing completed_at on a completed workout from the latest set time', async () => {
+      const workoutsChain = mockWorkoutRow({
+        completed: true,
+        completed_at: null,
+        sets: [
+          { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+          { id: 'set-2', completed: true, completed_at: '2026-03-10T12:31:00.000Z' },
+          { id: 'set-3', completed: false, completed_at: null },
+        ],
+      });
+
+      await useAppStore.getState().syncWorkoutCompletion('workout-1');
+
+      expect(workoutsChain.update).toHaveBeenCalledTimes(1);
+      expect(workoutsChain.update).toHaveBeenCalledWith({
+        completed: true,
+        completed_at: '2026-03-10T12:31:00.000Z',
+      });
+    });
+
+    it('leaves an incomplete workout with open sets incomplete without writing', async () => {
+      const workoutsChain = mockWorkoutRow({
+        completed: false,
+        completed_at: null,
+        sets: [
+          { id: 'set-1', completed: true, completed_at: '2026-03-10T12:20:00.000Z' },
+          { id: 'set-2', completed: false, completed_at: null },
+        ],
+      });
+
+      const result = await useAppStore.getState().syncWorkoutCompletion('workout-1');
+
+      expect(result).toEqual({ totalSets: 2, completedSets: 1, completed: false });
+      expect(workoutsChain.update).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing when the read fails', async () => {
+      const workoutsChain = createChain({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: 'offline' } }),
+      });
+      supabaseMock.from.mockImplementation(() => workoutsChain);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const result = await useAppStore.getState().syncWorkoutCompletion('workout-1');
+
+      expect(result).toEqual({ totalSets: 0, completedSets: 0, completed: false });
+      expect(workoutsChain.update).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
   });
 
   it('marks a workout complete with the latest completed set timestamp', async () => {
