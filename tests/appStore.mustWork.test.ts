@@ -1103,6 +1103,65 @@ describe('must-work store contracts', () => {
     expect(useAppStore.getState().currentWorkout).toBeNull();
   });
 
+  it('keeps the session open and rejects when the finish save fails', async () => {
+    const workout = makeWorkoutWithSet({
+      id: 'set-1',
+      workout_id: 'workout-1',
+      exercise_id: 'exercise-1',
+      set_number: 1,
+      weight: 185,
+      reps: 8,
+      rpe: 8,
+      completed: true,
+      completed_at: '2026-03-10T11:20:00.000Z',
+    });
+    const plan: WorkoutDayPlan = { id: 'plan-1', workout_id: 'workout-1', day_label: 'Upper', items: [] };
+    useAppStore.setState({ currentWorkout: workout, currentWorkoutDayPlan: plan });
+
+    const workoutsChain = createChain({
+      eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'x' }, status: 0 }),
+    });
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await expect(useAppStore.getState().completeWorkout()).rejects.toThrow("Couldn't finish the workout");
+
+    expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
+    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('finishes without waiting for the weekly volume recount', async () => {
+    supabaseMock.auth.getUser.mockReturnValue(new Promise(() => {}));
+    useAppStore.setState({
+      currentWorkout: makeWorkoutWithSet({
+        id: 'set-1',
+        workout_id: 'workout-1',
+        exercise_id: 'exercise-1',
+        set_number: 1,
+        weight: 185,
+        reps: 8,
+        rpe: 8,
+        completed: true,
+        completed_at: '2026-03-10T11:20:00.000Z',
+      }),
+    });
+
+    const workoutsChain = createChain();
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'workouts') return workoutsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await expect(useAppStore.getState().completeWorkout()).resolves.toBeUndefined();
+
+    expect(workoutsChain.update).toHaveBeenCalledWith({ completed: true, completed_at: '2026-03-10T11:20:00.000Z' });
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(supabaseMock.auth.getUser).toHaveBeenCalled();
+  });
+
   it('sets active split and refreshes splits', async () => {
     const splits = [
       { id: 'split-a', is_active: true },

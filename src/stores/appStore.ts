@@ -1431,13 +1431,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const completedAt = resolveWorkoutCompletedAt(currentWorkout.sets);
 
-    await supabase
+    const { error } = await supabase
       .from('workouts')
       .update({ completed: true, completed_at: completedAt })
       .eq('id', currentWorkout.id);
 
+    // Keep the session open when the save fails so the user can retry.
+    if (error) {
+      console.error('Error completing workout:', error);
+      throw new Error("Couldn't finish the workout. Check your connection and try again.");
+    }
+
     set({ currentWorkout: null, currentWorkoutDayPlan: null });
-    await get().calculateWeeklyVolume();
+    // Screens that show volume recompute it on mount; don't hold the finish on it.
+    void get().calculateWeeklyVolume().catch(() => {});
   },
 
   fetchWorkoutsByMonth: async (month: Date) => {
