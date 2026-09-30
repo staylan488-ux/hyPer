@@ -3,6 +3,7 @@ import { Camera, Check, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Search, Spa
 import { motion } from 'motion/react';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { supabase } from '@/lib/supabase';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
@@ -156,6 +157,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [initialEntry?.date, selectedDate]);
 
   const [servingReviewOpen, setServingReviewOpen] = useState(false);
+  const litRetakeRef = useLitSurface<HTMLButtonElement>();
   const [mode, setMode] = useState<FoodCaptureMethod>(initialEntry ? 'manual' : initialMethod || 'saved');
   useEffect(() => { onMethodChange?.(mode); }, [mode, onMethodChange]);
   const [foodAnalysisMode] = useState(getFoodAnalysisMode);
@@ -2563,6 +2565,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               )}
               {!photoAnalyzing && (
                 <button
+                  ref={litRetakeRef}
                   type="button"
                   onClick={() => handleRetakePhoto('top')}
                   className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"
@@ -2588,6 +2591,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 )}
                 {!photoAnalyzing && (
                   <button
+                    ref={litRetakeRef}
                     type="button"
                     onClick={() => handleRetakePhoto('side')}
                     className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"

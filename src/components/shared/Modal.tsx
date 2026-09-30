@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
 import { springs, backdrop, EASE_OUT_EXPO } from '@/lib/animations';
+import { useLitSurface } from '@/hooks/useLitSurface';
 
 interface ModalProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const litDialogRef = useLitSurface(dialogRef);
   const titleId = useId();
   const close = useEffectEvent(onClose);
   // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked)
@@ -119,7 +121,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
           onClick={(e) => e.target === overlayRef.current && onClose()}
         >
           <motion.div
-            ref={dialogRef}
+            ref={litDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={title ? titleId : undefined}

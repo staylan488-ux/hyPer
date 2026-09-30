@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import { BottomNav, Screen, Toast } from '@/components/shared';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { useAppViewport } from '@/hooks/useAppViewport';
-import { useAmbientLight } from '@/hooks/useAmbientLight';
 
 export function GlassPreview() {
   const params = new URLSearchParams(window.location.search);
@@ -15,7 +14,6 @@ export function GlassPreview() {
   const [toast, setToast] = useState(false);
   const [restKey, setRestKey] = useState(1);
   useAppViewport();
-  useAmbientLight();
 
   useEffect(() => {
     const timer = window.setInterval(() => setToast((shown) => !shown), 2600);

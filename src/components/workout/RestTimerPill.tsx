@@ -6,6 +6,7 @@ import { Modal, RailStrip, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { useNativeRestDock } from '@/hooks/useNativeGlassSurfaces';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAppStore } from '@/stores/appStore';
 import { completionHaptic, tapHaptic } from '@/lib/haptics';
@@ -85,6 +86,8 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   const completionHandledRef = useRef(sessionSeed === 0 && session?.status === 'completed');
   // Callback ref: the measured element changes when native glass takes over.
   const [bar, setBar] = useState<HTMLElement | null>(null);
+  // The web bar is measured through setBar as before, and also catches the light.
+  const setLitBar = useLitSurface(setBar);
   const [leaving, setLeaving] = useState(false);
   // Native taps are not flushed like DOM clicks, so a Pause arriving right
   // after Skip must see the dismissal synchronously.
@@ -316,7 +319,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       {/* With the native dock, an invisible anchor holds its place so page
           padding and drag auto-scroll still know where the dock sits. */}
       {nativeDock && createPortal(<div ref={setBar} className="studio-rest-bar studio-rest-bar-anchor" aria-hidden />, document.body)}
-      {!nativeDock && createPortal(<section ref={setBar} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
+      {!nativeDock && createPortal(<section ref={setLitBar} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
         <button type="button" className="studio-rest-summary" onClick={() => setExpanded(true)}
           aria-label={`Open rest timer options, ${statusLabel.toLowerCase()}, ${formatTime(timeLeft)}${nextUpLabel ? `, next ${nextUpLabel}` : ''}`}
           aria-haspopup="dialog" aria-expanded={expanded}>

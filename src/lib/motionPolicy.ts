@@ -83,7 +83,8 @@ function snapshot(): MotionPolicy {
 
 const SERVER_POLICY: MotionPolicy = { reducedMotion: false, reducedTransparency: false, rich: false };
 
-function subscribe(onChange: () => void) {
+/** Calls `onChange` when Reduce Motion or Reduce Transparency changes. */
+export function onMotionPolicyChange(onChange: () => void) {
   const lists = [media(REDUCED_MOTION), media(REDUCED_TRANSPARENCY)].filter(
     (list): list is MediaQueryList => list !== null,
   );
@@ -92,7 +93,7 @@ function subscribe(onChange: () => void) {
 }
 
 export function useMotionPolicy(): MotionPolicy {
-  return useSyncExternalStore(subscribe, snapshot, () => SERVER_POLICY);
+  return useSyncExternalStore(onMotionPolicyChange, snapshot, () => SERVER_POLICY);
 }
 
 // ═══════════════════════════════════
