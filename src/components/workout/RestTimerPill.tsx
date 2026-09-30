@@ -116,7 +116,8 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
 
     const sync = () => {
       setSession((current) => {
-        if (!current) return current;
+        // A skipped rest is already cleared; the leaving bar must not save it back.
+        if (!current || leavingRef.current) return current;
         const nextSession = syncRestTimerSession(current);
         saveRestTimerSession(nextSession);
         return nextSession;

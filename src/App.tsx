@@ -35,7 +35,7 @@ import { useAmbientLight } from '@/hooks/useAmbientLight';
 import { NativeGlassSurfaces, probeGlassSurfaces } from '@/lib/nativeGlassSurfaces';
 import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
-import { watchRestTimerWorkoutEnd } from '@/lib/restTimerWorkoutGuard';
+import { watchRestTimerSignOut, watchRestTimerWorkoutEnd } from '@/lib/restTimerWorkoutGuard';
 
 function BootSplash() {
   return (
@@ -179,6 +179,7 @@ function App() {
   }, [initializeTheme]);
 
   useEffect(() => watchRestTimerWorkoutEnd(useAppStore), []);
+  useEffect(() => watchRestTimerSignOut(useAuthStore), []);
 
   // MotionConfig reducedMotion="user" wraps <App /> once in main.tsx.
   return <RouterProvider router={router} />;
