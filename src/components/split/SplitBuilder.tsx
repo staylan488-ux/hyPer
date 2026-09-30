@@ -106,6 +106,8 @@ function normalizeExerciseName(name: string): string {
     .trim();
 }
 
+const CREATE_FAILED_MESSAGE = 'Could not create the program. Check your connection and try again.';
+
 function createLocalId(): string {
   const randomUuid = globalThis.crypto?.randomUUID;
   if (typeof randomUuid === 'function') {
@@ -167,6 +169,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const [customExerciseName, setCustomExerciseName] = useState('');
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState<MuscleGroup>('core');
   const [customError, setCustomError] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<{ message: string; tone: 'ok' | 'info' } | null>(null);
   const [supersetSourceLocalId, setSupersetSourceLocalId] = useState<string | null>(null);
 
@@ -474,6 +477,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
 
   const createFromTemplate = async (template: SplitTemplate) => {
     setLoading(true);
+    setTemplateError(null);
     try {
       const exerciseRows = await getExerciseRows();
 
@@ -510,7 +514,13 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         days: splitDays,
       });
 
-      onComplete(created ? { id: created.id, name: template.name } : undefined);
+      if (!created) {
+        setTemplateError(CREATE_FAILED_MESSAGE);
+        return;
+      }
+      onComplete({ id: created.id, name: template.name });
+    } catch {
+      setTemplateError(CREATE_FAILED_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -647,7 +657,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         is_active: true,
         days: splitDays,
       });
-      onComplete(created ? { id: created.id, name } : undefined);
+      if (!created) {
+        setCustomError(CREATE_FAILED_MESSAGE);
+        return;
+      }
+      onComplete({ id: created.id, name });
     } catch (error) {
       setCustomError(error instanceof Error ? error.message : 'Could not create custom program.');
     } finally {
@@ -863,6 +877,8 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
             </li>
           ))}
         </ul>
+
+        {templateError && <p className="py-1 mb-2 t-caption text-[var(--color-accent)]">{templateError}</p>}
 
         <Button size="lg" className="w-full" disabled={loading} loading={loading} onClick={() => createFromTemplate(guidedTemplate)}>
           {loading ? 'Creating program…' : 'Build my program'}

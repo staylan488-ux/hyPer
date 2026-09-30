@@ -1103,17 +1103,10 @@ describe('must-work store contracts', () => {
     expect(useAppStore.getState().currentWorkout).toBeNull();
   });
 
-  it('sets active split and refreshes splits', async () => {
-    const splits = [
-      { id: 'split-a', is_active: true },
-      { id: 'split-b', is_active: false },
-    ] as unknown as { id: string; is_active: boolean }[];
-
+  it('activates the target before deactivating the rest, then refreshes splits', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
-    useAppStore.setState({
-      splits: splits as unknown as ReturnType<typeof useAppStore.getState>['splits'],
-      fetchSplits: fetchSplitsSpy,
-    });
+    useAppStore.setState({ fetchSplits: fetchSplitsSpy });
 
     const splitsChain = createChain();
     supabaseMock.from.mockImplementation((table: string) => {
@@ -1121,16 +1114,38 @@ describe('must-work store contracts', () => {
       throw new Error(`Unexpected table: ${table}`);
     });
 
-    await useAppStore.getState().setActiveSplit('split-b');
+    const result = await useAppStore.getState().setActiveSplit('split-b');
 
-    expect(splitsChain.update).toHaveBeenCalledTimes(3);
-    expect(splitsChain.update).toHaveBeenNthCalledWith(1, { is_active: false });
+    expect(result).toEqual({ ok: true });
+    expect(splitsChain.update).toHaveBeenCalledTimes(2);
+    expect(splitsChain.update).toHaveBeenNthCalledWith(1, { is_active: true });
     expect(splitsChain.update).toHaveBeenNthCalledWith(2, { is_active: false });
-    expect(splitsChain.update).toHaveBeenNthCalledWith(3, { is_active: true });
-    expect(splitsChain.eq).toHaveBeenNthCalledWith(1, 'id', 'split-a');
-    expect(splitsChain.eq).toHaveBeenNthCalledWith(2, 'id', 'split-b');
-    expect(splitsChain.eq).toHaveBeenNthCalledWith(3, 'id', 'split-b');
+    expect(splitsChain.eq).toHaveBeenNthCalledWith(1, 'id', 'split-b');
+    expect(splitsChain.eq).toHaveBeenNthCalledWith(2, 'user_id', 'user-1');
+    expect(splitsChain.neq).toHaveBeenCalledWith('id', 'split-b');
     expect(fetchSplitsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never deactivates other splits when activating the target fails', async () => {
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
+    useAppStore.setState({ fetchSplits: fetchSplitsSpy });
+
+    const splitsChain = createChain();
+    (splitsChain as unknown as { error: unknown }).error = { message: 'network down' };
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'splits') return splitsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await useAppStore.getState().setActiveSplit('split-b');
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBeTruthy();
+    expect(splitsChain.update).toHaveBeenCalledTimes(1);
+    expect(splitsChain.update).toHaveBeenCalledWith({ is_active: true });
+    expect(splitsChain.neq).not.toHaveBeenCalled();
+    expect(fetchSplitsSpy).not.toHaveBeenCalled();
   });
 
   it('deletes a split and refreshes split list', async () => {
@@ -1143,11 +1158,30 @@ describe('must-work store contracts', () => {
       throw new Error(`Unexpected table: ${table}`);
     });
 
-    await useAppStore.getState().deleteSplit('split-z');
+    const result = await useAppStore.getState().deleteSplit('split-z');
 
+    expect(result).toEqual({ ok: true });
     expect(splitsChain.delete).toHaveBeenCalledTimes(1);
     expect(splitsChain.eq).toHaveBeenCalledWith('id', 'split-z');
     expect(fetchSplitsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed split delete instead of acting as if it worked', async () => {
+    const fetchSplitsSpy = vi.fn().mockResolvedValue(undefined);
+    useAppStore.setState({ fetchSplits: fetchSplitsSpy });
+
+    const splitsChain = createChain();
+    (splitsChain as unknown as { error: unknown }).error = { message: 'permission denied' };
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'splits') return splitsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const result = await useAppStore.getState().deleteSplit('split-z');
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBeTruthy();
+    expect(fetchSplitsSpy).not.toHaveBeenCalled();
   });
 
   it('deletes a workout in one request and lets the database cascade its sets', async () => {

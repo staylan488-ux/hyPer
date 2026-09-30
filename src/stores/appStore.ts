@@ -167,9 +167,9 @@ interface AppState {
   // Split actions
   fetchSplits: () => Promise<void>;
   createSplit: (split: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => Promise<Split | null>;
-  updateSplit: (id: string, updates: Partial<Split>) => Promise<void>;
-  deleteSplit: (id: string) => Promise<void>;
-  setActiveSplit: (splitId: string) => Promise<void>;
+  updateSplit: (id: string, updates: Partial<Split>) => Promise<{ ok: boolean; reason?: string }>;
+  deleteSplit: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  setActiveSplit: (splitId: string) => Promise<{ ok: boolean; reason?: string }>;
 
   // Workout actions
   startWorkout: (splitDayId: string) => Promise<Workout | null>;
@@ -278,6 +278,33 @@ function activitySessionInsertRow(userId: string, input: ActivitySessionInput) {
   };
 }
 
+// Activates the target before deactivating the rest, so a failure part-way
+// leaves two active rows (the newest still wins) rather than none.
+// `activated` reports whether the first step took effect.
+async function activateSplitRow(
+  splitId: string,
+  userId: string
+): Promise<{ ok: boolean; activated: boolean; reason?: string }> {
+  const { error: activateError } = await supabase
+    .from('splits')
+    .update({ is_active: true })
+    .eq('id', splitId);
+  if (activateError) {
+    return { ok: false, activated: false, reason: 'Could not set the active program. Try again.' };
+  }
+
+  const { error: deactivateError } = await supabase
+    .from('splits')
+    .update({ is_active: false })
+    .eq('user_id', userId)
+    .neq('id', splitId);
+  if (deactivateError) {
+    return { ok: false, activated: true, reason: 'Could not deactivate your other programs. Try again.' };
+  }
+
+  return { ok: true, activated: true };
+}
+
 // in-flight WHOOP sync per user id (see syncWhoop)
 const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 
@@ -340,6 +367,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // Inserted inactive: a failed create must never replace the program in use.
     const { data: split, error } = await supabase
       .from('splits')
       .insert({
@@ -347,68 +375,79 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: splitData.name,
         description: splitData.description,
         days_per_week: splitData.days_per_week,
-        is_active: splitData.is_active,
+        is_active: false,
       })
       .select()
       .single();
 
     if (error || !split) return null;
 
-    // Create split days and exercises
-    for (let i = 0; i < splitData.days.length; i++) {
-      const day = splitData.days[i];
-      const { data: splitDay } = await supabase
-        .from('split_days')
-        .insert({
-          split_id: split.id,
-          day_name: day.day_name,
-          day_order: i,
-        })
-        .select()
-        .single();
+    // One transactional call writes every day and exercise. Order comes from
+    // the array position, and rows without an id take the RPC's insert branch.
+    const { error: snapshotError } = await supabase.rpc('save_split_snapshot', {
+      p_split_id: split.id,
+      p_name: splitData.name,
+      p_description: splitData.description,
+      p_days_per_week: splitData.days_per_week,
+      p_days: splitData.days.map((day, i) => ({
+        day_name: day.day_name,
+        day_order: i,
+        exercises: (day.exercises ?? []).map((ex, j) => ({
+          exercise_id: ex.exercise_id,
+          target_sets: ex.target_sets,
+          target_reps_min: ex.target_reps_min,
+          target_reps_max: ex.target_reps_max,
+          exercise_order: j,
+          notes: ex.notes ?? null,
+          superset_group_id: ex.superset_group_id ?? null,
+        })),
+      })),
+    });
 
-      if (splitDay && day.exercises) {
-        for (let j = 0; j < day.exercises.length; j++) {
-          const ex = day.exercises[j];
-          await supabase.from('split_exercises').insert({
-            split_day_id: splitDay.id,
-            exercise_id: ex.exercise_id,
-            target_sets: ex.target_sets,
-            target_reps_min: ex.target_reps_min,
-            target_reps_max: ex.target_reps_max,
-            exercise_order: j,
-            notes: ex.notes,
-            superset_group_id: ex.superset_group_id ?? null,
-          });
-        }
+    // Best effort cleanup; if the delete also fails the leftover stays inactive.
+    const discard = async () => {
+      await supabase.from('splits').delete().eq('id', split.id);
+    };
+
+    if (snapshotError) {
+      await discard();
+      return null;
+    }
+
+    if (splitData.is_active) {
+      const activation = await activateSplitRow(split.id, user.id);
+      if (!activation.activated) {
+        await discard();
+        return null;
       }
     }
 
     await get().fetchSplits();
-    return split as Split;
+    return { ...split, is_active: splitData.is_active } as Split;
   },
 
   updateSplit: async (id, updates) => {
-    await supabase.from('splits').update(updates).eq('id', id);
+    const { error } = await supabase.from('splits').update(updates).eq('id', id);
+    if (error) return { ok: false, reason: 'Could not update the program. Try again.' };
     await get().fetchSplits();
+    return { ok: true };
   },
 
   deleteSplit: async (id) => {
-    await supabase.from('splits').delete().eq('id', id);
+    const { error } = await supabase.from('splits').delete().eq('id', id);
+    if (error) return { ok: false, reason: 'Could not delete the program. Try again.' };
     await get().fetchSplits();
+    return { ok: true };
   },
 
   setActiveSplit: async (splitId) => {
-    const { splits } = get();
-    
-    // Set all splits to inactive
-    for (const split of splits) {
-      await supabase.from('splits').update({ is_active: false }).eq('id', split.id);
-    }
-    
-    // Set selected split to active
-    await supabase.from('splits').update({ is_active: true }).eq('id', splitId);
-    await get().fetchSplits();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { ok: false, reason: 'Not signed in.' };
+
+    const activation = await activateSplitRow(splitId, user.id);
+    // A partial write still changed rows, so show what the database now holds.
+    if (activation.activated) await get().fetchSplits();
+    return activation.ok ? { ok: true } : { ok: false, reason: activation.reason };
   },
 
   fetchWorkoutMode: async () => {
