@@ -149,6 +149,31 @@ describe('createNoteAutosaver', () => {
     await flushed;
     expect(settled).toBe(true);
   });
+
+  it('a plan edit made right after the debounce fires sees the landed note write', async () => {
+    // Stands in for the store's plan: the note write replaces it when it lands.
+    let plan = { notes: 'from template', hidden: false };
+    let landNoteWrite: () => void = () => {};
+    const onFlush = vi.fn(() => new Promise<void>((resolve) => {
+      landNoteWrite = () => { plan = { ...plan, notes: '' }; resolve(); };
+    }));
+    const saver = createNoteAutosaver({ debounceMs: 1200, save: vi.fn().mockResolvedValue(true), onFlush });
+
+    saver.schedule('workout-a', 'bench', () => 'cleared');
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(onFlush).toHaveBeenCalledTimes(1);
+
+    // Nothing is pending any more, but the plan-note write is still in flight.
+    const removeExercise = (async () => {
+      await saver.flushAll();
+      return { ...plan, hidden: true };
+    })();
+    await vi.advanceTimersByTimeAsync(0);
+    landNoteWrite();
+
+    await expect(removeExercise).resolves.toEqual({ notes: '', hidden: true });
+    expect(onFlush).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('typing a flexible-session note', () => {

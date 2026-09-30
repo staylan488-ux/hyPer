@@ -693,10 +693,24 @@ export function Workout() {
 
   const exerciseIds = Object.keys(exerciseGroups);
   const orderedExerciseEntries = useMemo(() => Object.entries(exerciseGroups), [exerciseGroups]);
+  // Plan edits rebuild the whole item list from the store's plan, so a note's
+  // plan write that is pending or still in flight lands first; otherwise the
+  // later of the two writes would undo the other.
+  const settleNoteWrites = useCallback(async () => {
+    await noteSaverRef.current?.flushAll();
+  }, []);
+  const afterNoteWrites = (write: () => Promise<unknown>) => {
+    const workoutId = currentWorkoutId;
+    return settleNoteWrites().then(() => {
+      if (useAppStore.getState().currentWorkout?.id !== workoutId) return;
+      return write();
+    });
+  };
   const reorderSessionMovements = useCallback(async (ids: string[]) => {
     if (!currentWorkoutId) throw new Error('No active workout.');
+    await settleNoteWrites();
     await reorderWorkoutExercises(currentWorkoutId, ids);
-  }, [currentWorkoutId, reorderWorkoutExercises]);
+  }, [currentWorkoutId, reorderWorkoutExercises, settleNoteWrites]);
 
   useEffect(() => {
     if (currentWorkout?.id) {
@@ -833,7 +847,7 @@ export function Workout() {
 
     const targetSets = normalizeFlexibleTargetSets(parsed);
     if (targetSets !== fallbackValue) {
-      void updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets });
+      void afterNoteWrites(() => updateFlexibleExerciseMeta(exerciseId, { target_sets: targetSets }));
     }
   };
 
@@ -1598,7 +1612,7 @@ export function Workout() {
                           label: 'Unlink superset',
                           icon: <Unlink2 className="w-4 h-4" />,
                           tone: 'sage' as const,
-                          onClick: () => { void clearFlexibleSuperset(exerciseId); },
+                          onClick: () => { void afterNoteWrites(() => clearFlexibleSuperset(exerciseId)); },
                         }
                       : {
                           label: 'Add superset',
@@ -1612,7 +1626,7 @@ export function Workout() {
                       label: 'Remove exercise',
                       icon: <Trash2 className="w-4 h-4" />,
                       tone: 'danger' as const,
-                      onClick: () => { void removeFlexibleExerciseFromPlan(exerciseId); },
+                      onClick: () => { void afterNoteWrites(() => removeFlexibleExerciseFromPlan(exerciseId)); },
                     },
                   ]}
                 >
@@ -1706,12 +1720,13 @@ export function Workout() {
               setShowExercisePicker(false);
 
               if (supersetPickerSourceExerciseId) {
-                void addFlexibleSuperset(supersetPickerSourceExerciseId, exercise);
+                const sourceExerciseId = supersetPickerSourceExerciseId;
+                void afterNoteWrites(() => addFlexibleSuperset(sourceExerciseId, exercise));
                 setSupersetPickerSourceExerciseId(null);
                 return;
               }
 
-              void addFlexibleExercise(exercise);
+              void afterNoteWrites(() => addFlexibleExercise(exercise));
             }}
             excludeExerciseIds={activeFlexibleItems.map((item) => item.exercise_id)}
             title={supersetPickerSourceExerciseId ? 'Add Superset Exercise' : 'Add Exercise'}
@@ -1846,7 +1861,7 @@ export function Workout() {
           const workoutId = currentWorkout.id;
           setSubstitutionSource(null);
           setSubstituting(true);
-          void substituteWorkoutExercise(source, replacement).then(() => {
+          void afterNoteWrites(() => substituteWorkoutExercise(source, replacement)).then(() => {
             if (useAppStore.getState().currentWorkout?.id !== workoutId) return;
             setActiveExerciseId((active) => active === source ? replacement.id : active);
             dispatchExpansion({ type: 'replace', exerciseId: source, replacementId: replacement.id });
