@@ -156,3 +156,74 @@ describe('photo worker settings hydration', () => {
     expect(getPhotoWorkerSettings().url).toBe('https://local.example');
   });
 });
+
+describe('device AI settings owner', () => {
+  const saved = {
+    'hyper.photo-worker.url': 'https://a.example',
+    'hyper.photo-worker.provider': 'anthropic',
+    'hyper.coach.goals': 'Account A goals',
+  };
+
+  it('adopts the signed-in account on existing installs and keeps its settings', async () => {
+    const preferences = stubPreferences(saved);
+    await hydratePhotoWorkerSettings('owner-a');
+
+    expect(preferences.get('hyper.ai-settings.owner')).toBe('owner-a');
+    expect(preferences.get('hyper.coach.goals')).toBe('Account A goals');
+    expect(getPhotoWorkerSettings()).toEqual({ url: 'https://a.example', provider: 'anthropic' });
+    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('keeps settings and skips the lookup for the same owner', async () => {
+    const preferences = stubPreferences({ ...saved, 'hyper.ai-settings.owner': 'owner-a' });
+    await hydratePhotoWorkerSettings('owner-a');
+
+    expect(preferences.get('hyper.coach.goals')).toBe('Account A goals');
+    expect(getPhotoWorkerSettings().url).toBe('https://a.example');
+    expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('clears the previous account settings and restores the new account metadata', async () => {
+    const preferences = stubPreferences({ ...saved, 'hyper.ai-settings.owner': 'owner-a' });
+    supabaseMock.auth.getUser.mockResolvedValue(metadataUser('owner-b', {
+      url: 'https://b.example', provider: 'openai',
+    }));
+    const pending = hydratePhotoWorkerSettings('owner-b');
+    // cleared synchronously, before the lookup resolves
+    expect(preferences.get('hyper.coach.goals')).toBeUndefined();
+    await pending;
+
+    expect(preferences.get('hyper.ai-settings.owner')).toBe('owner-b');
+    expect(getPhotoWorkerSettings()).toEqual({ url: 'https://b.example', provider: 'openai' });
+  });
+
+  it('falls back to the build default when the new account has no saved choice', async () => {
+    const preferences = stubPreferences({ ...saved, 'hyper.ai-settings.owner': 'owner-a' });
+    supabaseMock.auth.getUser.mockResolvedValue(metadataUser('owner-c'));
+    await hydratePhotoWorkerSettings('owner-c');
+
+    expect(preferences.has('hyper.photo-worker.url')).toBe(false);
+    expect(preferences.has('hyper.coach.goals')).toBe(false);
+    const afterSwitch = getPhotoWorkerSettings();
+    stubPreferences();
+    expect(afterSwitch).toEqual(getPhotoWorkerSettings());
+    expect(afterSwitch.url).not.toBe('https://a.example');
+  });
+
+  it('restores the first account after switching back even if a lookup failed in between', async () => {
+    const preferences = stubPreferences({ 'hyper.ai-settings.owner': 'owner-d' });
+    supabaseMock.auth.getUser.mockResolvedValueOnce(metadataUser('owner-d', {
+      url: 'https://d.example', provider: 'openai',
+    }));
+    await hydratePhotoWorkerSettings('owner-d');
+    supabaseMock.auth.getUser.mockRejectedValueOnce(new TypeError('Load failed'));
+    await hydratePhotoWorkerSettings('owner-e');
+    expect(preferences.has('hyper.photo-worker.url')).toBe(false);
+
+    supabaseMock.auth.getUser.mockResolvedValueOnce(metadataUser('owner-d', {
+      url: 'https://d.example', provider: 'openai',
+    }));
+    await hydratePhotoWorkerSettings('owner-d');
+    expect(getPhotoWorkerSettings().url).toBe('https://d.example');
+  });
+});

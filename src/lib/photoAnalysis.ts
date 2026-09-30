@@ -38,6 +38,9 @@ export interface PhotoWorkerSettings {
 
 const URL_KEY = 'hyper.photo-worker.url';
 const PROVIDER_KEY = 'hyper.photo-worker.provider';
+export const COACH_GOALS_KEY = 'hyper.coach.goals';
+// account that owns the device-wide AI settings above
+const AI_SETTINGS_OWNER_KEY = 'hyper.ai-settings.owner';
 // Baked in at build time so phones/simulators reach the private worker without
 // anyone typing a URL. In dev we fall back to a local worker; in a production
 // build with no URL configured we return empty so callers surface the
@@ -79,6 +82,21 @@ let hydratingFor: string | null = null;
 export async function hydratePhotoWorkerSettings(userId?: string): Promise<void> {
   const storage = globalThis.localStorage;
   if (!storage) return;
+  // runs synchronously before any await, so a different account's goal text
+  // is gone before the coach can read it. Sign-out alone keeps everything:
+  // only a different account signing in resets the device settings.
+  if (userId) {
+    const owner = storage.getItem(AI_SETTINGS_OWNER_KEY);
+    if (owner !== userId) {
+      if (owner !== null) {
+        storage.removeItem(URL_KEY);
+        storage.removeItem(PROVIDER_KEY);
+        storage.removeItem(COACH_GOALS_KEY);
+        hydratedFor = null;
+      }
+      storage.setItem(AI_SETTINGS_OWNER_KEY, userId);
+    }
+  }
   if (storage.getItem(PROVIDER_KEY) !== null || storage.getItem(URL_KEY) !== null) return;
   if (userId && (hydratedFor === userId || hydratingFor === userId)) return;
   if (userId) hydratingFor = userId;
