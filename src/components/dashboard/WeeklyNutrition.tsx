@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Card, CardTitle } from '@/components/shared';
 import { BarChart } from '@/components/shared/charts';
@@ -8,6 +9,12 @@ import { DEFAULT_MACRO_TARGET } from '@/types';
 export function WeeklyNutrition() {
   const { weeklyNutrition, loading, error } = useWeeklyNutrition();
   const macroTarget = useAppStore((state) => state.macroTarget) ?? DEFAULT_MACRO_TARGET;
+  const fetchMacroTarget = useAppStore((state) => state.fetchMacroTarget);
+
+  // Progress can be opened directly, before Today has loaded the targets.
+  useEffect(() => {
+    void fetchMacroTarget();
+  }, [fetchMacroTarget]);
 
   return (
     <Card variant="slab" className="overflow-hidden">

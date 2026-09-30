@@ -69,6 +69,17 @@ export function normalizeNutritionGroupOrder(groups: NutritionGroup[]): Nutritio
   }));
 }
 
+/**
+ * The groups whose sort_order has to be written: every row in `next` that is
+ * missing from `previous` or sits at a different position there. `previous`
+ * includes freshly inserted rows as the database returned them, so a row that
+ * already landed in place is not rewritten.
+ */
+export function changedGroupOrders(previous: NutritionGroup[], next: NutritionGroup[]): NutritionGroup[] {
+  const previousOrder = new Map(previous.map((group) => [group.id, group.sort_order]));
+  return next.filter((group) => previousOrder.get(group.id) !== group.sort_order);
+}
+
 export function moveNutritionGroup(
   groups: NutritionGroup[],
   groupId: string,
