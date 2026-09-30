@@ -792,11 +792,15 @@ export function Settings() {
       // rather than waiting for the next weekly window.
       await updateMacroTarget({ ...baseMacros, source: 'calculated' });
       setMacroDraft(null);
-      await refreshAdaptiveTargets({ force: true });
+      const refresh = await refreshAdaptiveTargets({ force: true });
+      // The source is already handed back, so a failed recalculation is not a
+      // failed resume; it retries on the next Today visit.
       setMacroMessage(
-        nutritionProfile?.adaptive_enabled
-          ? 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.'
-          : 'Target source saved. Complete nutrition setup to enable automatic updates.',
+        !nutritionProfile?.adaptive_enabled
+          ? 'Target source saved. Complete nutrition setup to enable automatic updates.'
+          : refresh === 'failed'
+            ? 'Automatic target management resumed, but recalculation could not run right now. It will retry automatically.'
+            : 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.',
       );
     } catch {
       setMacroError('Could not resume adaptive targets. Please try again.');

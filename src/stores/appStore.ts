@@ -33,6 +33,13 @@ import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeig
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
 
+/**
+ * What an adaptive refresh did: 'skipped' (not due, off, or no weigh-in),
+ * 'unchanged' (expenditure saved, target left alone), 'updated' (both
+ * written) or 'failed'.
+ */
+export type AdaptiveRefreshStatus = 'updated' | 'unchanged' | 'skipped' | 'failed';
+
 /** Pull a little more than the estimator's window so its filter has slack. */
 const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
 
@@ -278,8 +285,11 @@ interface AppState {
   // Nutrition profile (the inputs behind the targets)
   fetchNutritionProfile: () => Promise<void>;
   updateNutritionProfile: (input: NutritionProfileInput) => Promise<void>;
-  /** Re-learn expenditure from logged intake vs weight trend, then re-target. */
-  refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<void>;
+  /**
+   * Re-learn expenditure from logged intake vs weight trend, then re-target.
+   * Never rejects; the status says what happened.
+   */
+  refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<AdaptiveRefreshStatus>;
 
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
@@ -2829,18 +2839,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshAdaptiveTargets: async (options) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const profile = get().nutritionProfile;
-    if (!profile || !profile.adaptive_enabled) return;
-    if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return;
-
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return 'skipped';
+
+      const profile = get().nutritionProfile;
+      if (!profile || !profile.adaptive_enabled) return 'skipped';
+      if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return 'skipped';
+
       const latest = await getLatestBodyWeight(user.id);
-      if (!latest) return;
+      if (!latest) return 'skipped';
       const weightKg = Number(latest.kilograms);
-      if (!Number.isFinite(weightKg) || weightKg <= 0) return;
+      if (!Number.isFinite(weightKg) || weightKg <= 0) return 'skipped';
 
       const now = new Date();
       const since = localIsoDate(
@@ -2866,6 +2876,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         through: now,
       });
 
+      // A target the user typed by hand is theirs. Never overwrite it. This is
+      // the fast exit; writeAdaptiveMacroTarget enforces it in the database.
+      // Nothing learned yet means the existing calculated target already
+      // reflects the prediction — rewriting it would just add churn.
+      const current = get().macroTarget;
+      let retargeted = false;
+      if (current?.source !== 'manual' && estimate.confidence !== 'predicted') {
+        const next = calculateMacroTargets(
+          macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
+        );
+        const savedTarget = await writeAdaptiveMacroTarget(user.id, {
+          calories: next.calories,
+          protein: next.protein,
+          carbs: next.carbs,
+          fat: next.fat,
+        });
+        if (savedTarget) {
+          set({ macroTarget: savedTarget });
+          retargeted = true;
+        }
+      }
+
+      // Stamp the profile only after the target write, so a failed target
+      // write is retried on the next visit instead of a week later.
       const saved = await saveNutritionProfile(user.id, {
         ...toNutritionProfileInput(profile),
         expenditure_kcal: estimate.expenditureKcal,
@@ -2874,27 +2908,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       set({ nutritionProfile: saved });
 
-      // A target the user typed by hand is theirs. Never overwrite it. This is
-      // the fast exit; writeAdaptiveMacroTarget enforces it in the database.
-      const current = get().macroTarget;
-      if (current?.source === 'manual') return;
-      // Nothing learned yet means the existing calculated target already
-      // reflects the prediction — rewriting it would just add churn.
-      if (estimate.confidence === 'predicted') return;
-
-      const next = calculateMacroTargets(
-        macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
-      );
-      const savedTarget = await writeAdaptiveMacroTarget(user.id, {
-        calories: next.calories,
-        protein: next.protein,
-        carbs: next.carbs,
-        fat: next.fat,
-      });
-      if (savedTarget) set({ macroTarget: savedTarget });
-    } catch {
+      return retargeted ? 'updated' : 'unchanged';
+    } catch (error) {
       // Adaptive targets are an enhancement. A failure here must never take
       // down the screen that triggered it.
+      console.warn('[adaptive] refresh failed', error);
+      return 'failed';
     }
   },
 

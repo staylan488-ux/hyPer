@@ -288,3 +288,80 @@ describe('refreshAdaptiveTargets never overwrites a manual target', () => {
     expect(useAppStore.getState().macroTarget).toEqual(row);
   });
 });
+
+describe('refreshAdaptiveTargets write order and status', () => {
+  beforeEach(() => {
+    seedMeasurableData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile });
+  });
+
+  const tablesInOrder = () => supabaseMock.from.mock.calls.map(([table]) => table as string);
+
+  it('leaves the profile unstamped when the target write fails, so the next visit retries', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const profiles = profilesTable();
+    const macroTargets = macroTargetsTable({ update: { data: null, error: { message: 'offline' } } });
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('failed');
+
+    expect(profiles.upsert).not.toHaveBeenCalled();
+    expect(profiles.update).not.toHaveBeenCalled();
+    expect(useAppStore.getState().nutritionProfile?.expenditure_updated_at).toBeNull();
+    expect(warn).toHaveBeenCalledWith('[adaptive] refresh failed', expect.anything());
+    warn.mockRestore();
+  });
+
+  it('writes the adaptive target first, then stamps the profile', async () => {
+    const macroTargets = macroTargetsTable({
+      update: { data: { ...manualTarget, source: 'adaptive' }, error: null },
+    });
+    const profiles = profilesTable();
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('updated');
+
+    expect(macroTargets.update).toHaveBeenCalledWith(expect.objectContaining({ source: 'adaptive' }));
+    const order = tablesInOrder();
+    expect(order.indexOf('macro_targets')).toBeLessThan(order.indexOf('nutrition_profiles'));
+    expect(useAppStore.getState().nutritionProfile?.expenditure_updated_at).toEqual(expect.any(String));
+    expect(useAppStore.getState().nutritionProfile?.expenditure_confidence).toBe('measured');
+  });
+
+  it('stamps the profile but leaves a manual target alone', async () => {
+    useAppStore.setState({ macroTarget: manualTarget });
+    routeTables({ nutrition_profiles: profilesTable(), macro_targets: macroTargetsTable() });
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('unchanged');
+
+    expect(tablesInOrder()).toEqual(['nutrition_profiles']);
+    expect(useAppStore.getState().macroTarget).toBe(manualTarget);
+    expect(useAppStore.getState().nutritionProfile?.expenditure_updated_at).toEqual(expect.any(String));
+  });
+
+  it('stamps the profile but does not rewrite the target on a predicted estimate', async () => {
+    dataMock.getDailyIntake.mockResolvedValue([]);
+    routeTables({ nutrition_profiles: profilesTable(), macro_targets: macroTargetsTable() });
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('unchanged');
+
+    expect(tablesInOrder()).toEqual(['nutrition_profiles']);
+    expect(useAppStore.getState().nutritionProfile?.expenditure_confidence).toBe('predicted');
+  });
+
+  it('resolves failed rather than rejecting when getUser throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    supabaseMock.auth.getUser.mockRejectedValue(new Error('auth down'));
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('failed');
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('skips without a weigh-in', async () => {
+    dataMock.getLatestBodyWeight.mockResolvedValue(null);
+
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('skipped');
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+});
