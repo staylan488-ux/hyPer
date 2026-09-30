@@ -699,6 +699,14 @@ export function History() {
   const noteSaveTimersRef = useRef<Record<string, number>>({});
   const movementNotesRef = useRef<Record<string, Record<string, string>>>({});
   const legacyNotesRef = useRef<Record<string, string | null>>({});
+  // Only the latest month request may write state, so quick month taps (or a
+  // late sync refetch) can never leave one month's data under another header.
+  const monthRequestRef = useRef(0);
+  const selectedMonthRef = useRef(selectedMonth);
+
+  useEffect(() => {
+    selectedMonthRef.current = selectedMonth;
+  }, [selectedMonth]);
 
   useEffect(() => {
     movementNotesRef.current = movementNotesByWorkout;
@@ -726,9 +734,12 @@ export function History() {
   }, [showToast]);
 
   const fetchMonthWorkouts = useCallback(async (month: Date) => {
+    const requestId = ++monthRequestRef.current;
+    const isStale = () => requestId !== monthRequestRef.current;
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      if (isStale()) return;
       if (!user) {
         setMonthWorkouts([]);
         setMonthActivities([]);
@@ -740,6 +751,7 @@ export function History() {
         fetchWorkoutsByMonth(month),
         fetchActivitySessionsByMonth(month),
       ]);
+      if (isStale()) return;
       const splitDayIds = workouts.filter((workout) => workout.split_day_id).map((workout) => workout.split_day_id as string);
       const uniqueSplitDayIds = [...new Set(splitDayIds)];
 
@@ -749,6 +761,7 @@ export function History() {
           .from('split_days')
           .select('id, day_name')
           .in('id', uniqueSplitDayIds);
+        if (isStale()) return;
         splitDays = splitDayData || [];
       }
 
@@ -763,6 +776,7 @@ export function History() {
           .from('workout_day_plans')
           .select('workout_id, day_label')
           .in('workout_id', flexibleWorkoutIds);
+        if (isStale()) return;
 
         workoutPlanLabels = new Map((planRows || []).map((plan) => [plan.workout_id, plan.day_label]));
       }
@@ -787,19 +801,13 @@ export function History() {
       setMovementNotesByWorkout(notesByWorkout);
       setLegacyNotesByWorkout(legacyByWorkout);
     } catch (error) {
+      if (isStale()) return;
       console.error('Error fetching month workouts:', error);
     }
 
+    if (isStale()) return;
     setLoading(false);
   }, [fetchActivitySessionsByMonth, fetchWorkoutsByMonth]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void fetchMonthWorkouts(selectedMonth);
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, [fetchMonthWorkouts, selectedMonth]);
 
   useEffect(() => {
     void fetchWhoopConnection();
@@ -858,8 +866,8 @@ export function History() {
       entry.id === updated.id ? { ...entry, ...updated } as WorkoutWithSplit : entry
     )));
     // the session is un-tombstoned server-side; bring it back into the day
-    if (sessionId) await fetchMonthWorkouts(selectedMonth);
-  }, [detachWhoopFromWorkout, fetchMonthWorkouts, selectedMonth]);
+    if (sessionId) await fetchMonthWorkouts(selectedMonthRef.current);
+  }, [detachWhoopFromWorkout, fetchMonthWorkouts]);
 
 
   // merge mode: pick same-day activities WHOOP recorded as separate records
@@ -1079,6 +1087,23 @@ export function History() {
     void persistMovementNotes(workoutId, exerciseId);
   }, [persistMovementNotes]);
 
+  useEffect(() => {
+    // Save any note still waiting in its debounce before the new month's data
+    // replaces the note maps; persistMovementNotes reads them synchronously.
+    Object.entries(noteSaveTimersRef.current).forEach(([timerKey, timerId]) => {
+      window.clearTimeout(timerId);
+      delete noteSaveTimersRef.current[timerKey];
+      const [workoutId, exerciseId] = timerKey.split(':');
+      void persistMovementNotes(workoutId, exerciseId);
+    });
+
+    const timer = setTimeout(() => {
+      void fetchMonthWorkouts(selectedMonth);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [fetchMonthWorkouts, persistMovementNotes, selectedMonth]);
+
   const handleDeleteWorkout = async (workoutId: string) => {
     try {
       await deleteWorkout(workoutId);
@@ -1115,7 +1140,7 @@ export function History() {
       // imported segments may belong to already-rendered sessions: reload both
       requestedSegmentIdsRef.current.clear();
       setSegmentsBySession({});
-      await fetchMonthWorkouts(selectedMonth);
+      await fetchMonthWorkouts(selectedMonthRef.current);
 
       const changes = whoop.created + whoop.updated;
       showToast(changes > 0 ? `Synced • ${whoop.created} new • ${whoop.updated} updated` : 'Up to date');
@@ -1125,7 +1150,7 @@ export function History() {
     } finally {
       setSyncingWhoop(false);
     }
-  }, [fetchMonthWorkouts, selectedMonth, showToast, syncWhoop, syncingWhoop, whoopConnection]);
+  }, [fetchMonthWorkouts, showToast, syncWhoop, syncingWhoop, whoopConnection]);
 
   const handleSaveActivity = useCallback(async (input: ActivitySessionInput) => {
     if (!activityEditor) return;
