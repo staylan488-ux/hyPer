@@ -2925,6 +2925,86 @@ describe('set-count edits never delete finished sets and superset partners follo
   });
 });
 
+describe('History plan edits read the plan once and write it once', () => {
+  const realPlanActions = {
+    ensureWorkoutDayPlan: useAppStore.getState().ensureWorkoutDayPlan,
+    updateWorkoutDayPlanItems: useAppStore.getState().updateWorkoutDayPlanItems,
+    fetchWorkoutDayPlanByWorkoutId: useAppStore.getState().fetchWorkoutDayPlanByWorkoutId,
+  };
+  beforeEach(() => useAppStore.setState(realPlanActions));
+
+  const item = (exerciseId: string, order: number, overrides: Partial<FlexiblePlanItem> = {}): FlexiblePlanItem => ({
+    exercise_id: exerciseId, exercise_name: exerciseId, order, target_sets: 2,
+    target_reps_min: 8, target_reps_max: 12, notes: null, hidden: false, superset_group_id: null, ...overrides,
+  });
+  const exercise = (id: string): Exercise => ({
+    id, name: id, muscle_group: 'chest', muscle_group_secondary: null, equipment: 'barbell', is_compound: true,
+  });
+
+  // The plan table answers every read with the stored row and every write
+  // with the written items; `sets` is any chain the edit needs.
+  function routePlan(items: FlexiblePlanItem[], setsChain: Chain) {
+    const row = { id: 'plan-1', workout_id: 'workout-1', day_label: 'Past', items };
+    const plansChain = createChain({ maybeSingle: vi.fn(async () => ({ data: { ...row }, error: null })) });
+    plansChain.update.mockImplementation((payload: { items: FlexiblePlanItem[] }) => { row.items = payload.items; return plansChain; });
+    plansChain.single.mockImplementation(async () => ({ data: { ...row }, error: null }));
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'workout_day_plans') return plansChain;
+      if (name === 'sets') return setsChain;
+      throw new Error(`Unexpected table: ${name}`);
+    });
+    return { reads: () => plansChain.maybeSingle.mock.calls.length, writes: () => plansChain.update.mock.calls.length, row };
+  }
+
+  it('adding an exercise', async () => {
+    const created: WorkoutSet = {
+      id: 'set-9', workout_id: 'workout-1', exercise_id: 'ex-b', set_number: 1,
+      weight: null, reps: null, rpe: null, completed: false, completed_at: null,
+    };
+    const plan = routePlan([item('ex-a', 0)], createChain({
+      order: vi.fn(async () => ({ data: [], error: null })),
+      single: vi.fn(async () => ({ data: created, error: null })),
+    }));
+
+    await useAppStore.getState().addExerciseToWorkout('workout-1', exercise('ex-b'));
+
+    expect([plan.reads(), plan.writes()]).toEqual([1, 1]);
+    expect(plan.row.items.map((row) => [row.exercise_id, row.target_sets])).toEqual([['ex-a', 2], ['ex-b', 1]]);
+  });
+
+  it('removing an exercise', async () => {
+    const plan = routePlan([item('ex-a', 0), item('ex-b', 1)], createChain());
+
+    await useAppStore.getState().removeExerciseFromWorkout('workout-1', 'ex-b');
+
+    expect([plan.reads(), plan.writes()]).toEqual([1, 1]);
+    expect(plan.row.items.find((row) => row.exercise_id === 'ex-b')?.hidden).toBe(true);
+  });
+
+  it('adding and clearing a superset', async () => {
+    const plan = routePlan([item('ex-a', 0)], createChain());
+
+    await useAppStore.getState().addSupersetToWorkout('workout-1', 'ex-a', exercise('ex-b'));
+    expect([plan.reads(), plan.writes()]).toEqual([1, 1]);
+    expect(plan.row.items.map((row) => row.exercise_id)).toEqual(['ex-a', 'ex-b']);
+
+    await useAppStore.getState().clearWorkoutSuperset('workout-1', 'ex-b');
+    expect([plan.reads(), plan.writes()]).toEqual([2, 2]);
+    expect(plan.row.items.every((row) => row.superset_group_id === null)).toBe(true);
+  });
+
+  it('changing target sets', async () => {
+    const plan = routePlan([item('ex-a', 0)], createChain({
+      order: vi.fn(async () => ({ data: [{ id: 'a1', set_number: 1, completed: true }, { id: 'a2', set_number: 2, completed: false }], error: null })),
+    }));
+
+    await useAppStore.getState().updateWorkoutExerciseTargetSets('workout-1', 'ex-a', 3);
+
+    expect([plan.reads(), plan.writes()]).toEqual([1, 1]);
+    expect(plan.row.items[0].target_sets).toBe(3);
+  });
+});
+
 describe('fetchSplits reference stability', () => {
   type SplitRow = {
     id: string;

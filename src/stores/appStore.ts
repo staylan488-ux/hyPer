@@ -330,7 +330,7 @@ interface AppState {
   updateWorkoutNotes: (workoutId: string, notes: string | null) => Promise<void>;
   fetchWorkoutDayPlanByWorkoutId: (workoutId: string) => Promise<WorkoutDayPlan | null>;
   ensureWorkoutDayPlan: (workoutId: string, fallbackLabel?: string) => Promise<WorkoutDayPlan | null>;
-  updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[]) => Promise<WorkoutDayPlan | null>;
+  updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[], preloadedPlan?: WorkoutDayPlan) => Promise<WorkoutDayPlan | null>;
   addSupersetToWorkout: (workoutId: string, baseExerciseId: string, partner: Exercise) => Promise<void>;
   clearWorkoutSuperset: (workoutId: string, exerciseId: string) => Promise<void>;
   updateWorkoutExerciseTargetSets: (workoutId: string, exerciseId: string, targetSets: number) => Promise<void>;
@@ -2412,7 +2412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         ];
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
     return createdSet;
   },
 
@@ -2445,7 +2445,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return item;
       });
 
-      await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+      await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
     }
 
     const { currentWorkout } = get();
@@ -2678,8 +2678,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     return toDayPlan(createdPlan);
   },
 
-  updateWorkoutDayPlanItems: async (workoutId, items) => {
-    const existingPlan = await get().ensureWorkoutDayPlan(workoutId);
+  // Pass the plan the caller just loaded to skip reading it again.
+  updateWorkoutDayPlanItems: async (workoutId, items, preloadedPlan) => {
+    const existingPlan = preloadedPlan ?? await get().ensureWorkoutDayPlan(workoutId);
     if (!existingPlan) return null;
 
     const normalizedItems = normalizeWorkoutPlanItems(items);
@@ -2740,7 +2741,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     nextItems.splice(baseIndex + 1, 0, partnerItem);
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
 
     const { data: existingSets, error: existingError } = await supabase
       .from('sets')
@@ -2797,7 +2798,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         : item
     ));
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
   },
 
   updateWorkoutExerciseTargetSets: async (workoutId, exerciseId, targetSets) => {
@@ -2819,7 +2820,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return item;
     });
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
 
     const affectedExerciseIds = sourceGroupId
       ? nextItems.filter((item) => !item.hidden && item.superset_group_id === sourceGroupId).map((item) => item.exercise_id)
