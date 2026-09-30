@@ -12,7 +12,7 @@ import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
 import { saveWorkoutSet } from '@/lib/saveWorkoutSet';
-import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
+import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
   isNewPhase,
@@ -54,7 +54,7 @@ import type {
   ActivitySegmentInput,
   WhoopConnection,
 } from '@/types';
-import { startOfWeek, endOfWeek, format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   CLEARED_WHOOP_STATS,
   whoopStatsFor,
@@ -2879,8 +2879,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const weekStart = format(startOfWeek(new Date()), 'yyyy-MM-dd');
-    const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
+    const { weekStart, weekEnd } = trainingWeekRange(new Date());
 
     // Get all completed sets from this week, regardless of whether
     // the parent workout was explicitly marked complete. Landmarks load

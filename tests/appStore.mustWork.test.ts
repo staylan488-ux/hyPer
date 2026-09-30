@@ -1491,6 +1491,37 @@ describe('must-work store contracts', () => {
       expect(state.weeklyVolume).toBe(previous);
       expect(state.volumeLandmarks).toEqual([chestLandmark]);
     });
+
+    describe('Monday-to-Sunday training week', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('on a Sunday, queries the Monday-to-Sunday week that ends that day', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 8, 27, 12)); // Sunday, local time
+        const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+
+        await useAppStore.getState().calculateWeeklyVolume();
+
+        expect(workoutsChain.gte).toHaveBeenCalledWith('date', '2026-09-21');
+        expect(workoutsChain.lte).toHaveBeenCalledWith('date', '2026-09-27');
+        expect(useAppStore.getState().weeklyVolume[0]).toEqual(
+          { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' }
+        );
+      });
+
+      it('on a Monday, starts a new week that runs through the next Sunday', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 8, 28, 9)); // Monday, local time
+        const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+
+        await useAppStore.getState().calculateWeeklyVolume();
+
+        expect(workoutsChain.gte).toHaveBeenCalledWith('date', '2026-09-28');
+        expect(workoutsChain.lte).toHaveBeenCalledWith('date', '2026-10-04');
+      });
+    });
   });
 
   it('adds flexible superset and inserts partner sets', async () => {
