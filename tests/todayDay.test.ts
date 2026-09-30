@@ -13,6 +13,8 @@ const supabaseMock = vi.hoisted(() => {
     const query = {
       select: () => query,
       eq: (column: string, value: unknown) => { state.filters.push([table, column, value]); return query; },
+      gte: (column: string, value: unknown) => { state.filters.push([table, `${column}>=`, value]); return query; },
+      lte: (column: string, value: unknown) => { state.filters.push([table, `${column}<=`, value]); return query; },
       in: () => query,
       limit: () => query,
       then: (resolve: (result: Result) => unknown, reject: (error: unknown) => unknown) =>
@@ -61,7 +63,9 @@ describe('readTodayDay', () => {
       nutritionTotals: { calories: 370, protein: 16, carbs: 54, fat: 11 },
       todayDone: { title: 'Session complete' },
     });
-    expect(supabaseMock.state.filters).toContainEqual(['nutrition_logs', 'date', DAY]);
+    // The shared log loader pins the range to exactly this day.
+    expect(supabaseMock.state.filters).toContainEqual(['nutrition_logs', 'date>=', DAY]);
+    expect(supabaseMock.state.filters).toContainEqual(['nutrition_logs', 'date<=', DAY]);
     expect(supabaseMock.state.filters).toContainEqual(['workouts', 'date', DAY]);
   });
 
