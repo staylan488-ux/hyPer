@@ -34,6 +34,12 @@ function isExistingAccountSignUpResponse(data: { user: User | null; session: Ses
 // skip the refetch while it runs or once the profile is loaded
 let profileRequestFor: string | null = null;
 
+// a password sign-in by an unconfirmed email emits SIGNED_IN before signIn
+// rejects it and signs out; it must not take over the device AI settings
+function isUnverifiedEmailUser(user: User) {
+  return user.app_metadata?.provider === 'email' && !user.email_confirmed_at;
+}
+
 // clears the in-memory copy of the previous account's data; every set is
 // already saved, and each screen's fetch rebuilds the store for the new user
 function resetAppData() {
@@ -76,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
       // no-op when local settings exist; restores them after storage eviction
-      void hydratePhotoWorkerSettings(session.user.id);
+      if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(session.user.id);
     } else if (error && isAuthRetryableFetchError(error)) {
       // the refresh failed for lack of a network and auth-js kept the stored
       // session; its auto-refresh emits TOKEN_REFRESHED once the connection is
@@ -103,7 +109,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (get().profile?.id !== userId && profileRequestFor !== userId) {
           get().fetchProfile();
         }
-        void hydratePhotoWorkerSettings(userId);
+        if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(userId);
       } else {
         set({ profile: null });
       }

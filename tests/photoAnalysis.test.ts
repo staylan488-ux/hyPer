@@ -226,4 +226,29 @@ describe('device AI settings owner', () => {
     await hydratePhotoWorkerSettings('owner-d');
     expect(getPhotoWorkerSettings().url).toBe('https://d.example');
   });
+
+  it('drops a lookup that lands after a different account took over', async () => {
+    const preferences = stubPreferences({ 'hyper.ai-settings.owner': 'owner-f' });
+    let release!: () => void;
+    supabaseMock.auth.getUser.mockImplementationOnce(() => new Promise((done) => {
+      release = () => done(metadataUser('owner-f', { url: 'https://f.example', provider: 'anthropic' }));
+    }));
+    const pending = hydratePhotoWorkerSettings('owner-f');
+
+    supabaseMock.auth.getUser.mockResolvedValueOnce(metadataUser('owner-g'));
+    await hydratePhotoWorkerSettings('owner-g');
+    release();
+    await pending;
+
+    expect(preferences.get('hyper.ai-settings.owner')).toBe('owner-g');
+    expect(preferences.has('hyper.photo-worker.url')).toBe(false);
+    expect(preferences.has('hyper.photo-worker.provider')).toBe(false);
+
+    // switching back still restores the first account's own choice
+    supabaseMock.auth.getUser.mockResolvedValueOnce(metadataUser('owner-f', {
+      url: 'https://f.example', provider: 'anthropic',
+    }));
+    await hydratePhotoWorkerSettings('owner-f');
+    expect(getPhotoWorkerSettings()).toEqual({ url: 'https://f.example', provider: 'anthropic' });
+  });
 });

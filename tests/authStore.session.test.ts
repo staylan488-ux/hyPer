@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const supabaseMock = vi.hoisted(() => ({
   from: vi.fn(),
@@ -429,6 +429,62 @@ describe('in-memory app data on account change', () => {
 
     expect(useAppStore.getState().currentWorkout).toBeNull();
     expect(useAppStore.getState().whoopConnection).toBeNull();
+  });
+});
+
+describe('device AI settings on a blocked sign-in', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubOwnerPreferences() {
+    const preferences = new Map([
+      ['hyper.ai-settings.owner', 'owner-a'],
+      ['hyper.photo-worker.url', 'https://a.example'],
+      ['hyper.coach.goals', 'Account A goals'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => preferences.get(key) ?? null,
+      setItem: (key: string, value: string) => preferences.set(key, value),
+      removeItem: (key: string) => preferences.delete(key),
+    });
+    return preferences;
+  }
+
+  it("keeps the owner's goal text when an unverified email is signed in and out", async () => {
+    const preferences = stubOwnerPreferences();
+    profilesByUser({ 'user-c': async () => ({ data: null, error: { message: 'no profile' } }) });
+    const callback = await initializeWith(null) as unknown as (event: string, session: unknown) => void;
+    const unverified = { id: 'user-c', app_metadata: { provider: 'email' }, email_confirmed_at: null };
+    supabaseMock.auth.signInWithPassword.mockImplementation(async () => {
+      // auth-js emits SIGNED_IN before signIn sees the missing confirmation
+      callback('SIGNED_IN', { user: unverified });
+      return { data: { user: unverified }, error: null };
+    });
+    supabaseMock.auth.signOut.mockImplementation(async () => {
+      callback('SIGNED_OUT', null);
+      return { error: null };
+    });
+
+    const result = await useAuthStore.getState().signIn('c@user.com', 'password123');
+
+    expect(result.error?.message).toBe('Please verify your email before signing in.');
+    expect(preferences.get('hyper.ai-settings.owner')).toBe('owner-a');
+    expect(preferences.get('hyper.coach.goals')).toBe('Account A goals');
+    expect(preferences.get('hyper.photo-worker.url')).toBe('https://a.example');
+  });
+
+  it('still hands the settings to a verified email account', async () => {
+    const preferences = stubOwnerPreferences();
+    profilesByUser({ 'user-d': async () => ({ data: null, error: { message: 'no profile' } }) });
+    const callback = await initializeWith(null) as unknown as (event: string, session: unknown) => void;
+
+    callback('SIGNED_IN', {
+      user: { id: 'user-d', app_metadata: { provider: 'email' }, email_confirmed_at: '2026-09-01T00:00:00Z' },
+    });
+
+    expect(preferences.get('hyper.ai-settings.owner')).toBe('user-d');
+    expect(preferences.has('hyper.coach.goals')).toBe(false);
   });
 });
 

@@ -93,6 +93,7 @@ export async function hydratePhotoWorkerSettings(userId?: string): Promise<void>
         storage.removeItem(PROVIDER_KEY);
         storage.removeItem(COACH_GOALS_KEY);
         hydratedFor = null;
+        hydratingFor = null;
       }
       storage.setItem(AI_SETTINGS_OWNER_KEY, userId);
     }
@@ -107,6 +108,9 @@ export async function hydratePhotoWorkerSettings(userId?: string): Promise<void>
     // offline or signed out: the next auth event retries
     if (error || !data.user) return;
     if (userId && data.user.id !== userId) return;
+    // a different account took over the device settings while this lookup
+    // ran; its settings must not land in that account's storage
+    if (userId && storage.getItem(AI_SETTINGS_OWNER_KEY) !== userId) return;
     if (userId) hydratedFor = userId;
     const stored = data.user.user_metadata?.photo_worker_settings as
       { url?: unknown; provider?: unknown } | undefined;
