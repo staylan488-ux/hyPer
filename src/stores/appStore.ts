@@ -435,6 +435,25 @@ async function activateSplitRow(
 // in-flight WHOOP sync per user id (see syncWhoop)
 const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 
+// Moves when an action that writes the live workout or its day plan starts,
+// and again when it settles. A read that overlapped such a write may hold the
+// rows from before it (a logged set as unlogged, a finished workout as
+// active), so fetchCurrentWorkout and fetchCurrentWorkoutDayPlan drop their
+// result when this moved while they ran. The store already holds the newer
+// state, and the next screen mount reads again.
+let workoutMutationSeq = 0;
+
+function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) => Promise<Result>) {
+  return async (...args: Args): Promise<Result> => {
+    workoutMutationSeq += 1;
+    try {
+      return await action(...args);
+    } finally {
+      workoutMutationSeq += 1;
+    }
+  };
+}
+
 // per-account data, reset when a different account signs in. workoutMode is
 // a device preference that fetchWorkoutMode reloads, so it stays out.
 export const initialAppData = {
@@ -765,6 +784,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    const readSeq = workoutMutationSeq;
     const { data, error } = await supabase
       .from('workout_day_plans')
       .select('id, workout_id, day_label, items')
@@ -775,6 +795,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error fetching workout day plan:', error);
       return;
     }
+
+    // A plan edit overlapped this read (see workoutMutationSeq).
+    if (workoutMutationSeq !== readSeq) return;
 
     if (!data) {
       set({ currentWorkoutDayPlan: null });
@@ -791,7 +814,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  startWorkout: async (splitDayId) => {
+  startWorkout: writesWorkout(async (splitDayId) => {
     const userId = await getSessionUserId();
     if (!userId) throw new Error(START_WORKOUT_ERROR);
 
@@ -877,9 +900,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // The workout and its sets exist, so a retry resumes it.
     throw new Error(START_WORKOUT_ERROR);
-  },
+  }),
 
-  startFlexibleWorkout: async (dayLabel, templateLabel) => {
+  startFlexibleWorkout: writesWorkout(async (dayLabel, templateLabel) => {
     const label = dayLabel.trim();
     if (!label) return null;
 
@@ -994,9 +1017,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // The workout and its sets exist, so a retry resumes it.
     throw new Error(START_WORKOUT_ERROR);
-  },
+  }),
 
   fetchCurrentWorkout: async () => {
+    const readSeq = workoutMutationSeq;
     const userId = await getSessionUserId();
     if (!userId) return;
 
@@ -1014,6 +1038,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    // A workout write overlapped this read, so its rows may predate the write.
+    if (workoutMutationSeq !== readSeq) return;
+
     if (workout && canResumeWorkout(workout as Workout)) {
       const nextWorkout = workout as Workout;
       set({ currentWorkout: nextWorkout });
@@ -1024,7 +1051,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  substituteWorkoutExercise: async (exerciseId, replacement) => {
+  substituteWorkoutExercise: writesWorkout(async (exerciseId, replacement) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.completed) throw new Error('No active workout.');
     const originalSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
@@ -1089,9 +1116,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       ] },
       ...(plan && nextItems ? { currentWorkoutDayPlan: { ...plan, items: nextItems } } : {}),
     });
-  },
+  }),
 
-  addWorkoutSet: async (exerciseId) => {
+  addWorkoutSet: writesWorkout(async (exerciseId) => {
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1125,9 +1152,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         sets: [...latestWorkout.sets, createdSet as WorkoutSet],
       },
     });
-  },
+  }),
 
-  setFlexibleWorkoutLabel: async (label) => {
+  setFlexibleWorkoutLabel: writesWorkout(async (label) => {
     const trimmed = label.trim();
     if (!trimmed) return;
 
@@ -1154,9 +1181,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(data.items),
       },
     });
-  },
+  }),
 
-  addFlexibleExercise: async (exercise) => {
+  addFlexibleExercise: writesWorkout(async (exercise) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1227,9 +1254,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       },
     });
-  },
+  }),
 
-  addFlexibleSuperset: async (baseExerciseId, partner) => {
+  addFlexibleSuperset: writesWorkout(async (baseExerciseId, partner) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1308,9 +1335,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       },
     });
-  },
+  }),
 
-  clearFlexibleSuperset: async (exerciseId) => {
+  clearFlexibleSuperset: writesWorkout(async (exerciseId) => {
     const { currentWorkoutDayPlan } = get();
     if (!currentWorkoutDayPlan) return;
 
@@ -1343,9 +1370,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       },
     });
-  },
+  }),
 
-  updateFlexibleExerciseMeta: async (exerciseId, updates) => {
+  updateFlexibleExerciseMeta: writesWorkout(async (exerciseId, updates) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
     const workout = currentWorkout;
@@ -1451,9 +1478,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       },
     });
-  },
+  }),
 
-  removeFlexibleExerciseFromPlan: async (exerciseId) => {
+  removeFlexibleExerciseFromPlan: writesWorkout(async (exerciseId) => {
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1510,7 +1537,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       },
     });
-  },
+  }),
 
   saveFlexibleTemplateFromCurrentWorkout: async (movementNotesOverride) => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
@@ -1546,7 +1573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().fetchFlexTemplates();
   },
 
-  removeLastUncompletedSet: async (exerciseId) => {
+  removeLastUncompletedSet: writesWorkout(async (exerciseId) => {
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1575,9 +1602,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         sets: latestWorkout.sets.filter((set) => set.id !== removableSet.id),
       },
     });
-  },
+  }),
 
-  logSet: async (exerciseId, setNumber, weight, reps, rpe) => {
+  logSet: writesWorkout(async (exerciseId, setNumber, weight, reps, rpe) => {
     const { currentWorkout } = get();
     if (!currentWorkout) throw new Error('No active workout to log this set.');
     const target = currentWorkout.sets.find(s => s.exercise_id === exerciseId && s.set_number === setNumber);
@@ -1600,9 +1627,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       : s);
 
     set({ currentWorkout: { ...latestWorkout, sets: updatedSets } });
-  },
+  }),
 
-  updateSet: async (setId, updates) => {
+  updateSet: writesWorkout(async (setId, updates) => {
     const { error } = await supabase.from('sets').update(updates).eq('id', setId);
     if (error) {
       console.error('Error updating set:', error);
@@ -1618,9 +1645,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     ));
 
     set({ currentWorkout: { ...currentWorkout, sets: updatedSets } });
-  },
+  }),
 
-  completeWorkout: async () => {
+  completeWorkout: writesWorkout(async () => {
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1648,7 +1675,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ currentWorkout: null, currentWorkoutDayPlan: null });
     // Screens that show volume recompute it on mount; don't hold the finish on it.
     void get().calculateWeeklyVolume().catch(() => {});
-  },
+  }),
 
   fetchWorkoutsByMonth: async (month: Date) => {
     const userId = await getSessionUserId();
@@ -1695,7 +1722,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return workout as Workout | null;
   },
 
-  deleteWorkout: async (workoutId: string) => {
+  deleteWorkout: writesWorkout(async (workoutId: string) => {
     // One statement: sets and the day plan go with it via ON DELETE CASCADE,
     // so a failure part-way can no longer leave a workout with its sets wiped.
     let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
@@ -1720,7 +1747,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().currentWorkout?.id === workoutId) {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
-  },
+  }),
 
   fetchActivitySessionsByMonth: async (month: Date) => {
     const userId = await getSessionUserId();
@@ -2133,7 +2160,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  attachWhoopToWorkout: async (workout, session) => {
+  attachWhoopToWorkout: writesWorkout(async (workout, session) => {
     const userId = await getSessionUserId();
     if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
@@ -2166,9 +2193,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
     }));
     return updated;
-  },
+  }),
 
-  detachWhoopFromWorkout: async (workout) => {
+  detachWhoopFromWorkout: writesWorkout(async (workout) => {
     const userId = await getSessionUserId();
     if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
@@ -2200,7 +2227,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
     }));
     return updated;
-  },
+  }),
 
   saveTrackedRun: async (run) => {
     const userId = await getSessionUserId();
@@ -2299,7 +2326,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return session;
   },
 
-  addSetToWorkout: async (workoutId, exerciseId) => {
+  addSetToWorkout: writesWorkout(async (workoutId, exerciseId) => {
     const { data: existingSets, error: fetchError } = await supabase
       .from('sets')
       .select('set_number')
@@ -2343,9 +2370,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return createdSet as WorkoutSet;
-  },
+  }),
 
-  removeSetFromWorkout: async (workoutId, exerciseId, setId) => {
+  removeSetFromWorkout: writesWorkout(async (workoutId, exerciseId, setId) => {
     const { error: deleteError } = await supabase
       .from('sets')
       .delete()
@@ -2399,9 +2426,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         sets: [...otherExerciseSets, ...compactedExerciseSets],
       },
     });
-  },
+  }),
 
-  addExerciseToWorkout: async (workoutId, exercise) => {
+  addExerciseToWorkout: writesWorkout(async (workoutId, exercise) => {
     const createdSet = await get().addSetToWorkout(workoutId, exercise.id);
     if (!createdSet) return null;
 
@@ -2437,9 +2464,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     await get().updateWorkoutDayPlanItems(workoutId, nextItems);
     return createdSet;
-  },
+  }),
 
-  removeExerciseFromWorkout: async (workoutId, exerciseId) => {
+  removeExerciseFromWorkout: writesWorkout(async (workoutId, exerciseId) => {
     const { error } = await supabase
       .from('sets')
       .delete()
@@ -2480,9 +2507,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       });
     }
-  },
+  }),
 
-  syncWorkoutCompletion: async (workoutId) => {
+  syncWorkoutCompletion: writesWorkout(async (workoutId) => {
     // Read the workout's own completion state with its sets so an edit can
     // only move it toward complete. A workout finished with skipped sets stays
     // finished; un-finishing is never a side effect of editing.
@@ -2532,9 +2559,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return { totalSets, completedSets, completed };
-  },
+  }),
 
-  updateWorkoutNotes: async (workoutId, notes) => {
+  updateWorkoutNotes: writesWorkout(async (workoutId, notes) => {
     const { error } = await supabase
       .from('workouts')
       .update({ notes })
@@ -2549,7 +2576,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (currentWorkout?.id === workoutId) {
       set({ currentWorkout: { ...currentWorkout, notes } });
     }
-  },
+  }),
 
   fetchWorkoutDayPlanByWorkoutId: async (workoutId) => {
     const { data, error } = await supabase
@@ -2580,7 +2607,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return plan;
   },
 
-  ensureWorkoutDayPlan: async (workoutId, fallbackLabel) => {
+  ensureWorkoutDayPlan: writesWorkout(async (workoutId, fallbackLabel) => {
     const existing = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
     if (existing) return existing;
 
@@ -2709,9 +2736,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       day_label: createdPlan.day_label,
       items: normalizeFlexiblePlanItems(createdPlan.items),
     };
-  },
+  }),
 
-  updateWorkoutDayPlanItems: async (workoutId, items) => {
+  updateWorkoutDayPlanItems: writesWorkout(async (workoutId, items) => {
     const existingPlan = await get().ensureWorkoutDayPlan(workoutId);
     if (!existingPlan) return null;
 
@@ -2742,9 +2769,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return nextPlan;
-  },
+  }),
 
-  addSupersetToWorkout: async (workoutId, baseExerciseId, partner) => {
+  addSupersetToWorkout: writesWorkout(async (workoutId, baseExerciseId, partner) => {
     const plan = await get().ensureWorkoutDayPlan(workoutId);
     if (!plan) return;
 
@@ -2820,9 +2847,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       });
     }
-  },
+  }),
 
-  clearWorkoutSuperset: async (workoutId, exerciseId) => {
+  clearWorkoutSuperset: writesWorkout(async (workoutId, exerciseId) => {
     const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
     if (!plan) return;
 
@@ -2836,9 +2863,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     ));
 
     await get().updateWorkoutDayPlanItems(workoutId, nextItems);
-  },
+  }),
 
-  updateWorkoutExerciseTargetSets: async (workoutId, exerciseId, targetSets) => {
+  updateWorkoutExerciseTargetSets: writesWorkout(async (workoutId, exerciseId, targetSets) => {
     const desiredSets = normalizeTargetSets(targetSets);
     const plan = await get().ensureWorkoutDayPlan(workoutId);
     if (!plan) return;
@@ -2912,9 +2939,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     }
-  },
+  }),
 
-  reorderWorkoutExercises: async (workoutId, exerciseIds) => {
+  reorderWorkoutExercises: writesWorkout(async (workoutId, exerciseIds) => {
     const currentPlan = get().currentWorkoutDayPlan;
     const plan = currentPlan?.workout_id === workoutId
       ? currentPlan
@@ -2950,7 +2977,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       } });
     }
-  },
+  }),
 
   fetchMacroTarget: async () => {
     const userId = await getSessionUserId();
@@ -3183,3 +3210,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ volumeLandmarks, weeklyVolume });
   },
 }));
+
+// Clears the in-memory copy of the previous account's data; every set is
+// already saved, and each screen's fetch rebuilds the store for the new user.
+// A workout read still running for the old account must not land afterwards.
+export function resetAppData() {
+  workoutMutationSeq += 1;
+  useAppStore.setState(initialAppData);
+}

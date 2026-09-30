@@ -4,7 +4,7 @@ import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { supabase } from '@/lib/supabase';
-import { initialAppData, useAppStore } from '@/stores/appStore';
+import { resetAppData } from '@/stores/appStore';
 
 const EXISTING_ACCOUNT_SIGNUP_MESSAGE = 'This email already has an account. If you created it with Google, use Continue with Google. Otherwise sign in.';
 
@@ -38,12 +38,6 @@ let profileRequestFor: string | null = null;
 // rejects it and signs out; it must not take over the device AI settings
 function isUnverifiedEmailUser(user: User) {
   return user.app_metadata?.provider === 'email' && !user.email_confirmed_at;
-}
-
-// clears the in-memory copy of the previous account's data; every set is
-// already saved, and each screen's fetch rebuilds the store for the new user
-function resetAppData() {
-  useAppStore.setState(initialAppData);
 }
 
 interface AuthState {
