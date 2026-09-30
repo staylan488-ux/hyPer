@@ -234,3 +234,120 @@ describe('auth session must-work behavior', () => {
     expect(useAuthStore.getState().profile).toEqual(updatedProfile);
   });
 });
+
+type AuthCallback = (event: string, session: { user: { id: string } } | null) => void;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function profilesByUser(results: Record<string, () => Promise<{ data: Profile | null; error: unknown }>>) {
+  const requested: string[] = [];
+  supabaseMock.from.mockImplementation((table: string) => {
+    if (table !== 'profiles') throw new Error(`Unexpected table: ${table}`);
+    let id = '';
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn((_column: string, value: string) => { id = value; return chain; }),
+      single: vi.fn(() => { requested.push(id); return results[id](); }),
+    };
+    return chain;
+  });
+  return requested;
+}
+
+async function initializeWith(session: { user: { id: string } } | null) {
+  supabaseMock.auth.getSession.mockResolvedValue({ data: { session }, error: null });
+  supabaseMock.auth.onAuthStateChange.mockReturnValue({
+    data: { subscription: { unsubscribe: vi.fn() } },
+  });
+  await useAuthStore.getState().initialize();
+  const callback = supabaseMock.auth.onAuthStateChange.mock.calls[0]?.[0] as AuthCallback | undefined;
+  if (!callback) throw new Error('Expected auth callback to be registered');
+  return callback;
+}
+
+describe('profile fetch dedupe across auth events', () => {
+  it('fetches the profile once when INITIAL_SESSION repeats the restored session', async () => {
+    const requested = profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const session = { user: { id: 'user-1' } };
+    const callback = await initializeWith(session);
+    callback('INITIAL_SESSION', session);
+
+    await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('One'));
+    expect(requested).toEqual(['user-1']);
+  });
+
+  it('skips the refetch on SIGNED_IN/TOKEN_REFRESHED for the same user but still replaces the session', async () => {
+    const requested = profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const callback = await initializeWith({ user: { id: 'user-1' } });
+    await vi.waitFor(() => expect(useAuthStore.getState().profile).not.toBeNull());
+
+    const refreshed = { user: { id: 'user-1' }, access_token: 'next' };
+    callback('TOKEN_REFRESHED', refreshed);
+    expect(useAuthStore.getState().session).toBe(refreshed);
+    expect(useAuthStore.getState().user).toBe(refreshed.user);
+    const resumed = { user: { id: 'user-1' }, access_token: 'resume' };
+    callback('SIGNED_IN', resumed);
+    expect(useAuthStore.getState().session).toBe(resumed);
+
+    await Promise.resolve();
+    expect(requested).toEqual(['user-1']);
+  });
+
+  it('refetches after sign-out and sign-in for the same user', async () => {
+    const requested = profilesByUser({
+      'user-1': async () => ({ data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const callback = await initializeWith({ user: { id: 'user-1' } });
+    await vi.waitFor(() => expect(useAuthStore.getState().profile).not.toBeNull());
+
+    callback('SIGNED_OUT', null);
+    expect(useAuthStore.getState().profile).toBeNull();
+    callback('SIGNED_IN', { user: { id: 'user-1' } });
+
+    await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('One'));
+    expect(requested).toEqual(['user-1', 'user-1']);
+  });
+
+  it('keeps the new account profile when the previous account response lands late', async () => {
+    const slow = deferred<{ data: Profile | null; error: unknown }>();
+    profilesByUser({
+      'user-1': () => slow.promise,
+      'user-2': async () => ({ data: { id: 'user-2', display_name: 'Two' }, error: null }),
+    });
+    const callback = await initializeWith({ user: { id: 'user-1' } });
+
+    callback('SIGNED_IN', { user: { id: 'user-2' } });
+    await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('Two'));
+    slow.resolve({ data: { id: 'user-1', display_name: 'One' }, error: null });
+    await slow.promise;
+    await Promise.resolve();
+
+    expect(useAuthStore.getState().profile).toEqual({ id: 'user-2', display_name: 'Two' });
+  });
+
+  it('retries on the next event after a failed profile fetch', async () => {
+    let attempt = 0;
+    const requested = profilesByUser({
+      'user-1': async () => (attempt++ === 0
+        ? { data: null, error: { message: 'offline' } }
+        : { data: { id: 'user-1', display_name: 'One' }, error: null }),
+    });
+    const callback = await initializeWith({ user: { id: 'user-1' } });
+    await vi.waitFor(() => expect(requested).toHaveLength(1));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useAuthStore.getState().profile).toBeNull();
+
+    callback('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+    await vi.waitFor(() => expect(useAuthStore.getState().profile?.display_name).toBe('One'));
+    expect(requested).toEqual(['user-1', 'user-1']);
+  });
+});

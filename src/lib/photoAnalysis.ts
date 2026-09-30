@@ -66,17 +66,31 @@ export function savePhotoWorkerSettings(settings: PhotoWorkerSettings): void {
   }).catch(() => {});
 }
 
+// user id whose metadata check succeeded (or is running) this run; later auth
+// events for the same account (token refresh, foreground SIGNED_IN) skip the
+// network lookup
+let hydratedFor: string | null = null;
+let hydratingFor: string | null = null;
+
 // restores saved worker settings after WebView storage was wiped (iOS can
 // evict localStorage under storage pressure). Local values always win — the
 // mirror only fills in when the local copy is gone, so a saved choice holds
 // until the user explicitly changes it.
-export async function hydratePhotoWorkerSettings(): Promise<void> {
+export async function hydratePhotoWorkerSettings(userId?: string): Promise<void> {
   const storage = globalThis.localStorage;
   if (!storage) return;
   if (storage.getItem(PROVIDER_KEY) !== null || storage.getItem(URL_KEY) !== null) return;
+  if (userId && (hydratedFor === userId || hydratingFor === userId)) return;
+  if (userId) hydratingFor = userId;
   try {
-    const { data } = await supabase.auth.getUser();
-    const stored = data.user?.user_metadata?.photo_worker_settings as
+    // the network lookup stays authoritative: a Keychain session can outlive
+    // a localStorage eviction and carry stale metadata
+    const { data, error } = await supabase.auth.getUser();
+    // offline or signed out: the next auth event retries
+    if (error || !data.user) return;
+    if (userId && data.user.id !== userId) return;
+    if (userId) hydratedFor = userId;
+    const stored = data.user.user_metadata?.photo_worker_settings as
       { url?: unknown; provider?: unknown } | undefined;
     if (!stored) return;
     if (typeof stored.url === 'string' && stored.url.trim()) {
@@ -86,7 +100,9 @@ export async function hydratePhotoWorkerSettings(): Promise<void> {
       storage.setItem(PROVIDER_KEY, stored.provider);
     }
   } catch {
-    // offline boot: build defaults apply until the next launch
+    // offline boot: build defaults apply until the next auth event retries
+  } finally {
+    if (userId && hydratingFor === userId) hydratingFor = null;
   }
 }
 

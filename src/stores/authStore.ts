@@ -28,6 +28,11 @@ function isExistingAccountSignUpResponse(data: { user: User | null; session: Ses
   return Array.isArray(data.user.identities) && data.user.identities.length === 0;
 }
 
+// user id whose profile request is in flight; auth events for the same account
+// (INITIAL_SESSION, TOKEN_REFRESHED, the SIGNED_IN on every foreground resume)
+// skip the refetch while it runs or once the profile is loaded
+let profileRequestFor: string | null = null;
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -59,7 +64,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
       // no-op when local settings exist; restores them after storage eviction
-      void hydratePhotoWorkerSettings();
+      void hydratePhotoWorkerSettings(session.user.id);
     } else {
       set({ loading: false, initialized: true });
     }
@@ -68,8 +73,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ session, user: session?.user ?? null });
 
       if (session?.user) {
-        get().fetchProfile();
-        void hydratePhotoWorkerSettings();
+        const userId = session.user.id;
+        if (get().profile?.id !== userId && profileRequestFor !== userId) {
+          get().fetchProfile();
+        }
+        void hydratePhotoWorkerSettings(userId);
       } else {
         set({ profile: null });
       }
@@ -80,14 +88,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { user } = get();
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    const userId = user.id;
+    profileRequestFor = userId;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-    if (!error && data) {
-      set({ profile: data });
+      // a slow response for a previous account must not land after a switch
+      if (!error && data && get().user?.id === data.id) {
+        set({ profile: data });
+      }
+    } finally {
+      if (profileRequestFor === userId) profileRequestFor = null;
     }
   },
 
