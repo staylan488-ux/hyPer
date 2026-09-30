@@ -2942,10 +2942,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             carbs: next.carbs,
             fat: next.fat,
           });
-          if (savedTarget) {
+          // A target the user saved while the write was in flight already won
+          // in the database; keep showing theirs instead of this stale echo.
+          if (savedTarget && sameMacroTarget(get().macroTarget, targetAtStart)) {
             set({ macroTarget: savedTarget });
-            retargeted = true;
           }
+          retargeted = !!savedTarget;
         }
 
         if (!sameAdaptiveInputs(get().nutritionProfile, profile)) return retargeted ? 'updated' : 'skipped';

@@ -455,6 +455,41 @@ describe('refreshAdaptiveTargets against concurrent edits', () => {
     expect(useAppStore.getState().macroTarget).toBe(manualTarget);
   });
 
+  it('keeps a manual target saved while the adaptive write was in flight', async () => {
+    const calculated: MacroTarget = { ...manualTarget, source: 'calculated' };
+    useAppStore.setState({ macroTarget: calculated });
+
+    // The guarded update is held; the Settings save's upsert answers at once.
+    const updateGate = deferred<Result>();
+    const savedManual: MacroTarget = { ...manualTarget, updated_at: '2026-09-30T09:00:00.000Z' };
+    const macroTargets = createChain({
+      maybeSingle: vi.fn().mockReturnValue(updateGate.promise),
+      single: vi.fn().mockResolvedValue({ data: savedManual, error: null }),
+    });
+    const profiles = profilesTable();
+    routeTables({ nutrition_profiles: profiles, macro_targets: macroTargets });
+
+    const refresh = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(macroTargets.maybeSingle).toHaveBeenCalled());
+
+    await useAppStore.getState().updateMacroTarget({
+      calories: savedManual.calories,
+      protein: savedManual.protein,
+      carbs: savedManual.carbs,
+      fat: savedManual.fat,
+      source: 'manual',
+    });
+    expect(useAppStore.getState().macroTarget).toEqual(savedManual);
+
+    // The adaptive response arrives late, echoing the row as it was before.
+    updateGate.resolve({ data: { ...calculated, calories: 2600, source: 'adaptive' }, error: null });
+
+    await expect(refresh).resolves.toBe('updated');
+    expect(useAppStore.getState().macroTarget).toEqual(savedManual);
+    // The profile is still stamped, so the write is not retried next visit.
+    expect(profiles.update).toHaveBeenCalledTimes(1);
+  });
+
   it('shares one run between two concurrent unforced calls', async () => {
     const profiles = profilesTable();
     const macroTargets = macroTargetsTable({
