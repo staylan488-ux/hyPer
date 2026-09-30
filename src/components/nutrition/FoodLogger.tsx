@@ -137,9 +137,11 @@ export interface FoodLoggerProps {
   initialMethod?: FoodCaptureMethod;
   onMethodChange?: (method: FoodCaptureMethod) => void;
   onComposeMeal?: (food: Food, editSaved?: boolean) => void;
+  /** True while a photo, describe or AI analysis runs, so closing can ask first. */
+  onAnalysisBusyChange?: (busy: boolean) => void;
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -154,6 +156,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   useEffect(() => { onMethodChange?.(mode); }, [mode, onMethodChange]);
   const [foodAnalysisMode] = useState(getFoodAnalysisMode);
   const [trialInitialHint, setTrialInitialHint] = useState('');
+  // The AI logger stays mounted (hidden) once its tab was opened, so switching
+  // tabs mid-analysis or after a result keeps its photos, result and edits.
+  // trialKey remounts it for a Describe hand-off so it reads the new hint.
+  const [trialVisited, setTrialVisited] = useState(false);
+  const [trialKey, setTrialKey] = useState(0);
+  const [trialAnalyzing, setTrialAnalyzing] = useState(false);
+  useEffect(() => {
+    if (foodAnalysisMode === 'gemini' && mode === 'photo') setTrialVisited(true);
+  }, [foodAnalysisMode, mode]);
   const trialSavedFoods = useRef(new WeakMap<TrialFoodItem, string>());
   const trialEntryIds = useRef(new WeakMap<TrialFoodItem, string>());
   // one id per new entry until it is confirmed saved, so a retry after a lost
@@ -245,6 +256,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoAnalyzing, setPhotoAnalyzing] = useState(false);
   const [photoItems, setPhotoItems] = useState<PhotoReviewItem[]>([]);
+  const analysisBusy = photoAnalyzing || foodDescriptionBusy || trialAnalyzing;
+  useEffect(() => {
+    onAnalysisBusyChange?.(analysisBusy);
+    return () => onAnalysisBusyChange?.(false);
+  }, [analysisBusy, onAnalysisBusyChange]);
   // On by default: the breakdown is how the estimate is made accurate, but one
   // row per plate is how the day stays readable. Remembered per device.
   const [combineAsOneMeal, setCombineAsOneMeal] = useState<boolean>(() => {
@@ -375,6 +391,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     if (foodDescriptionBusy) return;
     if (foodAnalysisMode === 'gemini') {
       setTrialInitialHint(foodDescription);
+      setTrialKey((key) => key + 1);
       setMode('photo');
       return;
     }
@@ -1954,6 +1971,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         size="sm"
       />
 
+      {foodAnalysisMode === 'gemini' && (trialVisited || mode === 'photo') && (
+        <div hidden={mode !== 'photo'}>
+          <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} />
+        </div>
+      )}
+
       {mode === 'saved' ? (
         <div className="space-y-4">
           <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[var(--color-border)] pb-2">
@@ -2446,9 +2469,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             {onAddIngredients ? 'Add ingredient' : loggerMode === 'edit' ? 'Save changes' : 'Log entry'}
           </Button>
         </>
-      ) : foodAnalysisMode === 'gemini' ? (
-        <FoodTrialLogger addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} />
-      ) : (
+      ) : foodAnalysisMode === 'gemini' ? null : (
         <div className="space-y-5">
           <input
             ref={topPhotoInputRef}
