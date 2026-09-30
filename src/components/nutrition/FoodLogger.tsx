@@ -8,6 +8,8 @@ import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
 import { createRequestGate } from '@/lib/requestGate';
 import { resolveBarcodeByPriority } from '@/lib/barcodePriority';
+import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { useAuthStore } from '@/stores/authStore';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
@@ -222,7 +224,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     carbs: initialEntry?.food ? formatMacroInput(initialEntry.food.carbs) : '',
     fat: initialEntry?.food ? formatMacroInput(initialEntry.food.fat) : '',
   });
-  const [savedMeals, setSavedMeals] = useState<Food[]>([]);
+  const storeUserId = useAuthStore((state) => state.user?.id);
+  // start from the last list this account fetched; the refetch still runs
+  const [savedMeals, setSavedMeals] = useState<Food[]>(() => readSavedFoodsCache(storeUserId) ?? []);
+  const [savedMealFetches] = useState(createRequestGate);
   const [savedQuery, setSavedQuery] = useState('');
   const [managingSavedMeals, setManagingSavedMeals] = useState(false);
   const [loadingSavedMeals, setLoadingSavedMeals] = useState(false);
@@ -284,6 +289,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     Object.values(photoPreviewsRef.current).forEach((preview) => URL.revokeObjectURL(preview));
   }, []);
 
+  // a list already on screen stays while it refreshes; the spinner is only
+  // for a list that has nothing to show yet
+  const showSavedMealsLoading = loadingSavedMeals && savedMeals.length === 0;
   const manualNameQuery = useMemo(() => normalizeFoodName(manualFood.name), [manualFood.name]);
   const manualSuggestions = useMemo(() => {
     if (manualNameQuery.length < 2) return [];
@@ -580,9 +588,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, [manualMacroValues, selectedSavedMeal]);
 
   const fetchSavedMeals = useCallback(async () => {
+    // an older response must never overwrite a newer one
+    const isCurrent = savedMealFetches.begin();
     setLoadingSavedMeals(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      if (!isCurrent()) return;
       if (!user) {
         setSavedMeals([]);
         return;
@@ -596,6 +607,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         .order('created_at', { ascending: false })
         .limit(120);
 
+      if (!isCurrent()) return;
       if (error) {
         console.error('Error fetching saved meals:', error);
         setSavedMeals([]);
@@ -624,11 +636,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         });
       }
 
-      setSavedMeals(Array.from(uniqueMealsByName.values()));
+      const meals = Array.from(uniqueMealsByName.values());
+      setSavedMeals(meals);
+      if (useAuthStore.getState().user?.id === user.id) writeSavedFoodsCache(user.id, meals);
     } finally {
-      setLoadingSavedMeals(false);
+      if (isCurrent()) setLoadingSavedMeals(false);
     }
-  }, []);
+  }, [savedMealFetches]);
 
   const handleSelectSavedMeal = (meal: Food) => {
     // a describe still running must not replace the meal just picked
@@ -1981,7 +1995,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         <div className="space-y-4">
           <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[var(--color-border)] pb-2">
             <span className="t-label-sm">
-              {loadingSavedMeals ? 'Loading' : `${savedMeals.length} saved`}
+              {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -2029,7 +2043,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </p>
           )}
 
-          {loadingSavedMeals ? (
+          {showSavedMealsLoading ? (
             <div className="flex items-center gap-2 py-6 t-caption">
               <Loader2 className="w-4 h-4 animate-spin" />
               Loading saved foods…
@@ -2335,8 +2349,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
           {manualNameFocused && manualNameQuery.length >= 2 && (
             <div>
-              <p className="t-label-sm mb-2.5">{loadingSavedMeals ? 'Loading saved meals…' : 'Saved meals'}</p>
-              {!loadingSavedMeals && manualSuggestions.length > 0 ? (
+              <p className="t-label-sm mb-2.5">{showSavedMealsLoading ? 'Loading saved meals…' : 'Saved meals'}</p>
+              {!showSavedMealsLoading && manualSuggestions.length > 0 ? (
                 <div className="max-h-36 overflow-y-auto">
                   {manualSuggestions.map((meal) => (
                     <button
@@ -2353,7 +2367,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                     </button>
                   ))}
                 </div>
-              ) : !loadingSavedMeals ? (
+              ) : !showSavedMealsLoading ? (
                 <p className="t-caption">No saved meal matches yet.</p>
               ) : null}
             </div>
