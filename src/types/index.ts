@@ -279,18 +279,6 @@ export interface NutritionGroup {
   updated_at?: string;
 }
 
-export interface NutritionImportBatch {
-  id: string;
-  user_id: string;
-  source: 'cronometer';
-  file_name: string;
-  file_hash: string;
-  row_count: number;
-  imported_count: number;
-  skipped_count: number;
-  created_at: string;
-}
-
 /** Where a saved target came from. 'manual' is never overwritten automatically. */
 export type MacroTargetSource = 'manual' | 'calculated' | 'adaptive';
 

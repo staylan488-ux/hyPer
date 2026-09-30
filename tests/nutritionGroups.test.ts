@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cronometerGroupDestination,
+  changedGroupOrders,
   hasValidNamedMealOrder,
   insertNutritionGroupByTime,
   legacyMealTypeForGroup,
@@ -123,15 +123,51 @@ describe('nutrition group ordering', () => {
   });
 });
 
-describe('Cronometer group mapping', () => {
-  it('maps named groups and numbered meals/snacks', () => {
-    expect(cronometerGroupDestination('Lunch')).toEqual({ kind: 'meal', label: 'lunch' });
-    expect(cronometerGroupDestination('Supper')).toEqual({ kind: 'meal', label: 'dinner' });
-    expect(cronometerGroupDestination('Meal 3')).toEqual({ kind: 'meal', label: null, ordinal: 3 });
-    expect(cronometerGroupDestination('Snacks 2')).toEqual({ kind: 'snack', label: null, ordinal: 2 });
+describe('nutrition group order writes', () => {
+  const named = (id: 'breakfast' | 'lunch' | 'dinner', sortOrder: number): NutritionGroup => (
+    { ...groups[0], id, label: id, sort_order: sortOrder }
+  );
+
+  it('writes nothing when an empty day receives its defaults already in order', () => {
+    const inserted = [named('breakfast', 0), named('lunch', 1), named('dinner', 2)];
+    expect(changedGroupOrders(inserted, normalizeNutritionGroupOrder(inserted))).toEqual([]);
   });
 
-  it('leaves unknown custom groups unassigned', () => {
-    expect(cronometerGroupDestination('Supplements')).toBeNull();
+  it('writes only the rows normalization moves when a day had just lunch', () => {
+    const existing = [named('lunch', 0)];
+    const inserted = [named('breakfast', 1), named('dinner', 2)];
+    const previous = [...existing, ...inserted];
+    const normalized = normalizeNutritionGroupOrder(previous);
+
+    expect(normalized.map((group) => group.id)).toEqual(['breakfast', 'lunch', 'dinner']);
+    expect(changedGroupOrders(previous, normalized).map((group) => [group.id, group.sort_order])).toEqual([
+      ['breakfast', 0],
+      ['lunch', 1],
+    ]);
+  });
+
+  it('writes exactly the two swapped groups when a group moves', () => {
+    const moved = moveNutritionGroup(groups, 'snack-a', -1)!;
+    expect(changedGroupOrders(groups, moved).map((group) => [group.id, group.sort_order])).toEqual([
+      ['snack-a', 1],
+      ['meal-a', 2],
+    ]);
+  });
+
+  it('writes only the new group and the groups after it when a meal is added', () => {
+    const defaults = [named('breakfast', 0), named('lunch', 1), named('dinner', 2)];
+    const created: NutritionGroup = { ...groups[1], id: 'new', sort_order: 3 };
+    const inserted = insertNutritionGroupByTime(defaults, created, new Date(2026, 6, 19, 10, 0));
+
+    expect(changedGroupOrders([...defaults, created], inserted).map((group) => [group.id, group.sort_order])).toEqual([
+      ['new', 1],
+      ['lunch', 2],
+      ['dinner', 3],
+    ]);
+  });
+
+  it('always writes a group that is missing from the previous list', () => {
+    const next = [named('breakfast', 0), { ...groups[1], id: 'unknown', sort_order: 1 }];
+    expect(changedGroupOrders([named('breakfast', 0)], next).map((group) => group.id)).toEqual(['unknown']);
   });
 });

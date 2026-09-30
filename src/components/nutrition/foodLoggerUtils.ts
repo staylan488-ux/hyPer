@@ -190,3 +190,17 @@ export function normalizeFoodName(name: string): string {
 export function numbersNearlyEqual(a: number, b: number, epsilon = 0.05): boolean {
   return Math.abs(a - b) <= epsilon;
 }
+
+export type ManualFoodFields = { name: string; calories: string; protein: string; carbs: string; fat: string };
+export type DescribeTargetState = { manualFood: ManualFoodFields; selectedSavedMealId: string | null };
+
+/**
+ * True when the manual fields and saved-meal pick are exactly as they were when
+ * a describe request started, so its estimate may fill them without replacing
+ * anything the user typed or picked while it ran.
+ */
+export function describeTargetUnchanged(before: DescribeTargetState, now: DescribeTargetState): boolean {
+  return before.selectedSavedMealId === now.selectedSavedMealId
+    && (['name', 'calories', 'protein', 'carbs', 'fat'] as const)
+      .every((field) => before.manualFood[field] === now.manualFood[field]);
+}

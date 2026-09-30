@@ -1,3 +1,5 @@
+import { sumMacros } from '@/lib/nutritionMacros';
+
 export interface NutritionLogDateLike {
   logged_at: string | null;
   created_at?: string | null;
@@ -24,10 +26,5 @@ export function getLogDate(log: NutritionLogDateLike): Date {
 }
 
 export function sumNutritionLogCalories(logs: NutritionLogCaloriesLike[]): number {
-  return logs.reduce((total, log) => {
-    const calories = Number(log.food?.calories);
-    const servings = Number(log.servings);
-    if (!Number.isFinite(calories) || !Number.isFinite(servings)) return total;
-    return total + calories * servings;
-  }, 0);
+  return sumMacros(logs).calories;
 }

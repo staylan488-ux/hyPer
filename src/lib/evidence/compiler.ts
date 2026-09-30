@@ -119,30 +119,32 @@ function optimizeDayExerciseOrder(
   blueprint: TemplateBlueprint,
   profileMap: ProfileMap
 ): TemplateExerciseDraft[] {
-  const withIndex: DayExerciseWithIndex[] = day.exercises.map((exercise, index) => ({ exercise, index }));
-  const knownProfiles = withIndex.filter(({ exercise }) => Boolean(getProfile(profileMap, exercise.name)));
-  const knownCoverage = withIndex.length > 0 ? knownProfiles.length / withIndex.length : 0;
+  // Resolve each profile once rather than inside the comparator.
+  const profiles = day.exercises.map((exercise) => getProfile(profileMap, exercise.name));
+  const knownCount = profiles.filter(Boolean).length;
+  const knownCoverage = day.exercises.length > 0 ? knownCount / day.exercises.length : 0;
 
   if (knownCoverage < 0.6) {
     return day.exercises;
   }
 
-  return [...withIndex]
-    .sort((a, b) => {
-      const profileA = getProfile(profileMap, a.exercise.name);
-      const profileB = getProfile(profileMap, b.exercise.name);
+  // Only profiled exercises are re-sorted, into the slots profiled exercises
+  // held. Unprofiled ones (e.g. Barbell Row, Lunge, Arnold Press) keep their
+  // authored slot instead of sinking below every isolation movement.
+  const ranked: Array<DayExerciseWithIndex & { score: number }> = [];
+  day.exercises.forEach((exercise, index) => {
+    const profile = profiles[index];
+    if (!profile) return;
+    ranked.push({
+      exercise,
+      index,
+      score: scoreExercise(exercise, day.muscle_groups, blueprint.focus_muscles, profile),
+    });
+  });
+  ranked.sort((a, b) => (a.score !== b.score ? b.score - a.score : a.index - b.index));
 
-      const scoreA = profileA
-        ? scoreExercise(a.exercise, day.muscle_groups, blueprint.focus_muscles, profileA)
-        : -1;
-      const scoreB = profileB
-        ? scoreExercise(b.exercise, day.muscle_groups, blueprint.focus_muscles, profileB)
-        : -1;
-
-      if (scoreA !== scoreB) return scoreB - scoreA;
-      return a.index - b.index;
-    })
-    .map(({ exercise }) => exercise);
+  let nextRanked = 0;
+  return day.exercises.map((exercise, index) => (profiles[index] ? ranked[nextRanked++].exercise : exercise));
 }
 
 function toSplitTemplate(snapshot: EvidenceSnapshot): SplitTemplate[] {

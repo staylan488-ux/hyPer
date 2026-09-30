@@ -146,6 +146,14 @@ function fixDayOrders(days: DraftDay[]): DraftDay[] {
   }));
 }
 
+const TARGET_FIELDS = [
+  'target_sets_min',
+  'target_sets',
+  'target_sets_max',
+  'target_reps_min',
+  'target_reps_max',
+] as const;
+
 function updateDraft(state: SplitEditState, updater: (draft: DraftSplit) => DraftSplit): Partial<SplitEditState> {
   if (!state.draft) return {};
   return { draft: updater(state.draft), isDirty: true, error: null };
@@ -312,58 +320,69 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
   },
 
   updateExerciseTargets: (dayId, exerciseId, updates) => {
-    set((state) =>
-      updateDraft(state, (d) => ({
-        ...d,
-        days: d.days.map((day) => {
-          if (day.id !== dayId) return day;
+    set((state) => {
+      if (!state.draft) return {};
+      const days = state.draft.days.map((day) => {
+        if (day.id !== dayId) return day;
 
-          const source = day.exercises.find((entry) => entry.id === exerciseId);
-          const sourceGroupId = source?.superset_group_id || null;
-          const setsUpdated = (
-            typeof updates.target_sets === 'number'
-            || typeof updates.target_sets_min === 'number'
-            || typeof updates.target_sets_max === 'number'
-          );
+        const source = day.exercises.find((entry) => entry.id === exerciseId);
+        const sourceGroupId = source?.superset_group_id || null;
+        const setsUpdated = (
+          typeof updates.target_sets === 'number'
+          || typeof updates.target_sets_min === 'number'
+          || typeof updates.target_sets_max === 'number'
+        );
 
-          const normalizedSource = source
-            ? normalizeSetRange(
-                typeof updates.target_sets_min === 'number' ? updates.target_sets_min : source.target_sets_min,
-                typeof updates.target_sets === 'number' ? updates.target_sets : source.target_sets,
-                typeof updates.target_sets_max === 'number' ? updates.target_sets_max : source.target_sets_max,
-              )
-            : null;
+        const normalizedSource = source
+          ? normalizeSetRange(
+              typeof updates.target_sets_min === 'number' ? updates.target_sets_min : source.target_sets_min,
+              typeof updates.target_sets === 'number' ? updates.target_sets : source.target_sets,
+              typeof updates.target_sets_max === 'number' ? updates.target_sets_max : source.target_sets_max,
+            )
+          : null;
 
-          return {
-            ...day,
-            exercises: day.exercises.map((ex) => {
-              if (ex.id !== exerciseId) {
-                if (!setsUpdated || !sourceGroupId || ex.superset_group_id !== sourceGroupId || !normalizedSource) {
-                  return ex;
-                }
-
-                return {
-                  ...ex,
-                  target_sets: normalizedSource.targetSets,
-                  target_sets_min: normalizedSource.minSets,
-                  target_sets_max: normalizedSource.maxSets,
-                };
+        return {
+          ...day,
+          exercises: day.exercises.map((ex) => {
+            if (ex.id !== exerciseId) {
+              if (!setsUpdated || !sourceGroupId || ex.superset_group_id !== sourceGroupId || !normalizedSource) {
+                return ex;
               }
 
-              const next = { ...ex, ...updates };
-              const normalized = normalizeSetRange(next.target_sets_min, next.target_sets, next.target_sets_max);
-
               return {
-                ...next,
-                target_sets: normalized.targetSets,
-                target_sets_min: normalized.minSets,
-                target_sets_max: normalized.maxSets,
+                ...ex,
+                target_sets: normalizedSource.targetSets,
+                target_sets_min: normalizedSource.minSets,
+                target_sets_max: normalizedSource.maxSets,
               };
-            }),
-          };
-        }),
-      }))
-    );
+            }
+
+            const next = { ...ex, ...updates };
+            const normalized = normalizeSetRange(next.target_sets_min, next.target_sets, next.target_sets_max);
+
+            return {
+              ...next,
+              target_sets: normalized.targetSets,
+              target_sets_min: normalized.minSets,
+              target_sets_max: normalized.maxSets,
+            };
+          }),
+        };
+      });
+
+      // A blur that changes nothing must not mark the draft dirty (which
+      // enables Save and the discard prompt), so keep the state untouched.
+      const previousDays = state.draft.days;
+      const changed = days.some((day, dayIndex) =>
+        day !== previousDays[dayIndex]
+        && day.exercises.some((ex, exIndex) =>
+          TARGET_FIELDS.some((field) => ex[field] !== previousDays[dayIndex].exercises[exIndex][field])
+        )
+      );
+      if (!changed) return state;
+
+      return updateDraft(state, (d) => ({ ...d, days }));
+    });
   },
 
   swapExercise: (dayId, exerciseId, newExercise) => {

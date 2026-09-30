@@ -7,8 +7,10 @@ import {
   parseRestInput,
   pauseRestTimerSession,
   readRestTimerSession,
+  REST_TIMER_STORAGE_KEY,
   resumeRestTimerSession,
   saveRestTimerSession,
+  shouldKeepRestAlertsOnUnmount,
   syncRestTimerSession,
 } from '@/lib/restTimer';
 
@@ -63,6 +65,56 @@ describe('restTimer helpers', () => {
 
     clearRestTimerSession(storage);
     expect(readRestTimerSession(storage)).toBeNull();
+  });
+
+  it('round-trips the next-set label and movement through storage and pause', () => {
+    const storage = createMemoryStorage();
+    const session = createRestTimerSession('workout-1', 90, new Date('2026-03-10T12:00:00.000Z'), {
+      nextUpLabel: 'Bench Press · set 3',
+      exerciseId: 'exercise-7',
+    });
+
+    saveRestTimerSession(pauseRestTimerSession(session, new Date('2026-03-10T12:00:10.000Z')), storage);
+    expect(readRestTimerSession(storage)).toMatchObject({
+      status: 'paused',
+      nextUpLabel: 'Bench Press · set 3',
+      exerciseId: 'exercise-7',
+    });
+  });
+
+  it('reads older payloads without context, and malformed context, as null', () => {
+    const storage = createMemoryStorage();
+    const base = {
+      workoutId: 'workout-1',
+      durationSeconds: 90,
+      startedAt: '2026-03-10T12:00:00.000Z',
+      endsAt: '2026-03-10T12:01:30.000Z',
+      remainingSeconds: 90,
+      status: 'running',
+      completedAt: null,
+    };
+
+    storage.setItem(REST_TIMER_STORAGE_KEY, JSON.stringify(base));
+    expect(readRestTimerSession(storage)).toMatchObject({ workoutId: 'workout-1', nextUpLabel: null, exerciseId: null });
+
+    storage.setItem(REST_TIMER_STORAGE_KEY, JSON.stringify({ ...base, nextUpLabel: 3, exerciseId: { id: 'x' } }));
+    expect(readRestTimerSession(storage)).toMatchObject({ workoutId: 'workout-1', nextUpLabel: null, exerciseId: null });
+  });
+
+  it('keeps rest alerts on unmount only while the rest runs for the active workout', () => {
+    const now = new Date('2026-03-10T12:00:00.000Z');
+    const running = createRestTimerSession('workout-1', 90, now);
+
+    // Leaving Train, or a new set replacing the pill: keep.
+    expect(shouldKeepRestAlertsOnUnmount(running, 'workout-1', 'workout-1')).toBe(true);
+    // Workout finished: the store empties before the session is cleared.
+    expect(shouldKeepRestAlertsOnUnmount(running, 'workout-1', null)).toBe(false);
+    expect(shouldKeepRestAlertsOnUnmount(running, 'workout-1', 'workout-2')).toBe(false);
+    // Skipped, paused, completed, or another workout's timer: cancel.
+    expect(shouldKeepRestAlertsOnUnmount(null, 'workout-1', 'workout-1')).toBe(false);
+    expect(shouldKeepRestAlertsOnUnmount(pauseRestTimerSession(running, now), 'workout-1', 'workout-1')).toBe(false);
+    expect(shouldKeepRestAlertsOnUnmount(syncRestTimerSession(running, new Date('2026-03-10T12:02:00.000Z')), 'workout-1', 'workout-1')).toBe(false);
+    expect(shouldKeepRestAlertsOnUnmount(createRestTimerSession('workout-2', 90, now), 'workout-1', 'workout-1')).toBe(false);
   });
 });
 

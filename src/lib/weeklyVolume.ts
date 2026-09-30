@@ -1,5 +1,8 @@
+import { endOfWeek, format, startOfWeek } from 'date-fns';
+
 import type { MuscleGroup, MuscleVolume, VolumeLandmark } from '@/types';
 import { classifyVolume } from '@/lib/volumeStatus';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 
 export type CompletedSetRow = {
   exercise: {
@@ -12,6 +15,15 @@ export type CompletedSetRow = {
 export type WeeklyVolumeWorkoutRow = {
   sets: CompletedSetRow[];
 };
+
+// The Monday-to-Sunday training week containing `now`, as local
+// 'yyyy-MM-dd' dates for the workouts date filter.
+export function trainingWeekRange(now: Date): { weekStart: string; weekEnd: string } {
+  return {
+    weekStart: format(startOfWeek(now, TRAINING_WEEK), 'yyyy-MM-dd'),
+    weekEnd: format(endOfWeek(now, TRAINING_WEEK), 'yyyy-MM-dd'),
+  };
+}
 
 // Counts this week's completed sets per muscle (1 for the primary muscle,
 // 0.5 for the secondary) and grades each muscle against its landmark.

@@ -38,6 +38,9 @@ export interface PhotoWorkerSettings {
 
 const URL_KEY = 'hyper.photo-worker.url';
 const PROVIDER_KEY = 'hyper.photo-worker.provider';
+export const COACH_GOALS_KEY = 'hyper.coach.goals';
+// account that owns the device-wide AI settings above
+const AI_SETTINGS_OWNER_KEY = 'hyper.ai-settings.owner';
 // Baked in at build time so phones/simulators reach the private worker without
 // anyone typing a URL. In dev we fall back to a local worker; in a production
 // build with no URL configured we return empty so callers surface the
@@ -66,17 +69,50 @@ export function savePhotoWorkerSettings(settings: PhotoWorkerSettings): void {
   }).catch(() => {});
 }
 
+// user id whose metadata check succeeded (or is running) this run; later auth
+// events for the same account (token refresh, foreground SIGNED_IN) skip the
+// network lookup
+let hydratedFor: string | null = null;
+let hydratingFor: string | null = null;
+
 // restores saved worker settings after WebView storage was wiped (iOS can
 // evict localStorage under storage pressure). Local values always win — the
 // mirror only fills in when the local copy is gone, so a saved choice holds
 // until the user explicitly changes it.
-export async function hydratePhotoWorkerSettings(): Promise<void> {
+export async function hydratePhotoWorkerSettings(userId?: string): Promise<void> {
   const storage = globalThis.localStorage;
   if (!storage) return;
+  // runs synchronously before any await, so a different account's goal text
+  // is gone before the coach can read it. Sign-out alone keeps everything:
+  // only a different account signing in resets the device settings.
+  if (userId) {
+    const owner = storage.getItem(AI_SETTINGS_OWNER_KEY);
+    if (owner !== userId) {
+      if (owner !== null) {
+        storage.removeItem(URL_KEY);
+        storage.removeItem(PROVIDER_KEY);
+        storage.removeItem(COACH_GOALS_KEY);
+        hydratedFor = null;
+        hydratingFor = null;
+      }
+      storage.setItem(AI_SETTINGS_OWNER_KEY, userId);
+    }
+  }
   if (storage.getItem(PROVIDER_KEY) !== null || storage.getItem(URL_KEY) !== null) return;
+  if (userId && (hydratedFor === userId || hydratingFor === userId)) return;
+  if (userId) hydratingFor = userId;
   try {
-    const { data } = await supabase.auth.getUser();
-    const stored = data.user?.user_metadata?.photo_worker_settings as
+    // the network lookup stays authoritative: a Keychain session can outlive
+    // a localStorage eviction and carry stale metadata
+    const { data, error } = await supabase.auth.getUser();
+    // offline or signed out: the next auth event retries
+    if (error || !data.user) return;
+    if (userId && data.user.id !== userId) return;
+    // a different account took over the device settings while this lookup
+    // ran; its settings must not land in that account's storage
+    if (userId && storage.getItem(AI_SETTINGS_OWNER_KEY) !== userId) return;
+    if (userId) hydratedFor = userId;
+    const stored = data.user.user_metadata?.photo_worker_settings as
       { url?: unknown; provider?: unknown } | undefined;
     if (!stored) return;
     if (typeof stored.url === 'string' && stored.url.trim()) {
@@ -86,7 +122,9 @@ export async function hydratePhotoWorkerSettings(): Promise<void> {
       storage.setItem(PROVIDER_KEY, stored.provider);
     }
   } catch {
-    // offline boot: build defaults apply until the next launch
+    // offline boot: build defaults apply until the next auth event retries
+  } finally {
+    if (userId && hydratingFor === userId) hydratingFor = null;
   }
 }
 

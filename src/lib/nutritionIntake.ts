@@ -1,49 +1,27 @@
 // Daily calorie totals for the adaptive expenditure estimator.
 //
-// nutrition_logs has no FK-embedded select, so the join is two round-trips —
-// the same shape Dashboard and Nutrition already use.
+// The logs -> foods join is the shared one in nutritionLogQueries, the same
+// query Today, Fuel and Progress use. A day appears only when at least one of
+// its entries has a countable calorie value.
 
-import { supabase } from './supabase';
 import type { DailyIntake } from './adaptiveExpenditure';
-
-interface LogRow {
-  date: string;
-  servings: number | string;
-  food_id: string;
-}
+import { fetchNutritionLogsWithFoods } from './nutritionLogQueries';
+import { logMacro } from './nutritionMacros';
 
 export async function getDailyIntake(userId: string, sinceIsoDate: string): Promise<DailyIntake[]> {
-  const { data: logs, error: logsError } = await supabase
-    .from('nutrition_logs')
-    .select('date, servings, food_id')
-    .eq('user_id', userId)
-    .gte('date', sinceIsoDate);
+  const { data: rows, error } = await fetchNutritionLogsWithFoods<
+    { date: string; servings: number | string; food_id: string },
+    { id: string; calories: number | string }
+  >(userId, { from: sinceIsoDate }, 'date, servings, food_id', 'id, calories');
 
-  if (logsError) throw new Error(logsError.message);
-  if (!logs || logs.length === 0) return [];
-
-  const rows = logs as LogRow[];
-  const foodIds = [...new Set(rows.map((row) => row.food_id).filter(Boolean))];
-  if (foodIds.length === 0) return [];
-
-  const { data: foods, error: foodsError } = await supabase
-    .from('foods')
-    .select('id, calories')
-    .in('id', foodIds);
-
-  if (foodsError) throw new Error(foodsError.message);
-
-  const caloriesByFood = new Map<string, number>();
-  for (const food of (foods || []) as Array<{ id: string; calories: number | string }>) {
-    caloriesByFood.set(food.id, Number(food.calories));
-  }
+  if (error) throw new Error(error.message);
+  if (!rows || rows.length === 0) return [];
 
   const totals = new Map<string, number>();
   for (const row of rows) {
-    const calories = caloriesByFood.get(row.food_id);
-    const servings = Number(row.servings);
-    if (!Number.isFinite(calories as number) || !Number.isFinite(servings)) continue;
-    totals.set(row.date, (totals.get(row.date) ?? 0) + (calories as number) * servings);
+    const calories = logMacro(row, 'calories');
+    if (calories === null) continue;
+    totals.set(row.date, (totals.get(row.date) ?? 0) + calories);
   }
 
   return [...totals.entries()]

@@ -7,7 +7,7 @@ import { EmptyState, Screen, VolumeRail, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
-import { buildWeeklyTrainingHours, type TrainingHoursPoint } from '@/lib/workoutSessions';
+import { buildWeeklyTrainingHours, TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
@@ -57,7 +57,7 @@ export function Analysis() {
         return;
       }
 
-      const from = startOfWeek(subWeeks(new Date(), 7), { weekStartsOn: 1 }).toISOString();
+      const from = startOfWeek(subWeeks(new Date(), 7), TRAINING_WEEK).toISOString();
 
       const { data: workouts, error } = await supabase
         .from('workouts')
@@ -113,7 +113,7 @@ export function Analysis() {
         </Link>
         <div className="flex items-baseline justify-between">
           <span className="t-label-sm">Progress</span>
-          <span className="t-label-sm">Week of {format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')}</span>
+          <span className="t-label-sm">Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}</span>
         </div>
         <PageTitle className="mt-3 pt-5 border-t border-[var(--color-border)]">Coaching</PageTitle>
       </header>

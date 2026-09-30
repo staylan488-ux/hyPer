@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { withTimeout } from '@/lib/withTimeout';
 
 /** Bridge to the in-app plugin (ios/App/App/RestActivityPlugin.swift): one
  *  Live Activity per workout session, on the lock screen and Dynamic Island.
@@ -28,15 +29,36 @@ export interface WorkoutActivityState {
 let sessionState: WorkoutActivityState | null = null;
 let restState: { startedAtEpochMs: number; endsAtEpochMs: number } | null = null;
 
-function push(): void {
-  if (!sessionState) return;
+// Native sync/end resolve only once ActivityKit has applied them, but each
+// runs as its own Swift Task. Chaining them here keeps them in call order, so
+// an older snapshot can never land last and a sync can never follow end().
+let tail: Promise<void> = Promise.resolve();
+// The one queued sync not yet sent. It reads the state when it runs, so pushes
+// made meanwhile collapse into it; end() drops it.
+let queuedSync: object | null = null;
+// A native call that never settles must not freeze every later update.
+const STEP_TIMEOUT_MS = 10_000;
 
-  void WorkoutActivity.sync({
-    ...sessionState,
-    restStartedAtEpochMs: restState?.startedAtEpochMs,
-    restEndsAtEpochMs: restState?.endsAtEpochMs,
-  }).catch(() => {
+function enqueue(step: () => Promise<void> | void): void {
+  tail = tail.then(() => withTimeout(Promise.resolve(step()), STEP_TIMEOUT_MS, 'Live Activity call timed out')).catch(() => {
     // The activity is garnish on top of the in-app session — fail quietly.
+  });
+}
+
+function push(): void {
+  if (!sessionState || queuedSync) return;
+
+  const token = {};
+  queuedSync = token;
+  enqueue(() => {
+    if (queuedSync !== token) return;
+    queuedSync = null;
+    if (!sessionState) return;
+    return WorkoutActivity.sync({
+      ...sessionState,
+      restStartedAtEpochMs: restState?.startedAtEpochMs,
+      restEndsAtEpochMs: restState?.endsAtEpochMs,
+    });
   });
 }
 
@@ -72,5 +94,6 @@ export function endWorkoutActivity(): void {
 
   sessionState = null;
   restState = null;
-  void WorkoutActivity.end().catch(() => {});
+  queuedSync = null;
+  enqueue(() => WorkoutActivity.end());
 }

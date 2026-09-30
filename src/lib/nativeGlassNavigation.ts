@@ -1,4 +1,5 @@
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { sameGlassState } from '@/lib/nativeGlassSurfaces';
 
 export const nativeTabPaths = {
   today: '/', train: '/train', fuel: '/nutrition', you: '/settings',
@@ -30,15 +31,23 @@ export function connectGlassNavigation(
   let supported = false;
   let handle: PluginListenerHandle | undefined;
   let lastRevision = 0;
+  // Newest state sent; cleared when not applied so the next update retries.
+  let lastSent: GlassNavigationState | null = null;
   const publish = async () => {
     if (disposed || !supported) return;
     const sent = ++revision;
     lastRevision = sent;
+    lastSent = state;
     try {
       const result = await plugin.sync({ ...state, revision: sent });
-      if (!disposed && sent === lastRevision) callbacks.ready(result.supported && result.applied);
+      if (!disposed && sent === lastRevision) {
+        const applied = result.supported && result.applied;
+        if (!applied) lastSent = null;
+        callbacks.ready(applied);
+      }
     } catch {
       if (!disposed && sent === lastRevision) {
+        lastSent = null;
         callbacks.ready(false);
         supported = false;
         void plugin.sync({ ...state, visible: false, revision: ++revision }).catch(() => {});
@@ -62,6 +71,7 @@ export function connectGlassNavigation(
   return {
     update(next: GlassNavigationState) {
       state = next;
+      if (supported && lastSent && sameGlassState(lastSent, next)) return;
       void publish();
     },
     dispose() {

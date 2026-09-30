@@ -89,6 +89,12 @@ export function glassSurfacesKnownSupported(): boolean | null {
 
 const revisions: Record<SurfaceKey, number> = { rest: 0, toast: 0 };
 
+/** Key-by-key comparison; glass states hold only primitives. */
+export function sameGlassState<S extends object>(a: S, b: S): boolean {
+  const keys = Object.keys(a) as (keyof S)[];
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
 interface SurfaceConnectionOptions<S extends { visible: boolean }> {
   plugin: GlassSurfacesPlugin;
   key: SurfaceKey;
@@ -103,16 +109,26 @@ export function connectNativeSurface<S extends { visible: boolean }>({ plugin, k
   let disposed = false;
   let supported = false;
   let latest = 0;
+  // The newest state sent, forgotten when native did not apply it, so an
+  // identical re-render or viewport event skips the bridge but a failed send
+  // still retries on the next update.
+  let lastSent: S | null = null;
 
   const publish = async () => {
     if (disposed || !supported) return;
     const revision = ++revisions[key];
     latest = revision;
+    lastSent = state;
     try {
       const result = await send({ ...state, revision });
-      if (!disposed && revision === latest) ready(result.supported && result.applied);
+      if (!disposed && revision === latest) {
+        const applied = result.supported && result.applied;
+        if (!applied) lastSent = null;
+        ready(applied);
+      }
     } catch {
       if (!disposed && revision === latest) {
+        lastSent = null;
         supported = false;
         knownSupport = false;
         ready(false);
@@ -134,6 +150,7 @@ export function connectNativeSurface<S extends { visible: boolean }>({ plugin, k
   return {
     update(next: S) {
       state = next;
+      if (supported && lastSent && sameGlassState(lastSent, next)) return;
       void publish();
     },
     dispose() {

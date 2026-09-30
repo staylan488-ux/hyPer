@@ -22,6 +22,11 @@ export function searchUsdaFoodsSecure(query: string): Promise<Food[]> {
   return searchUsdaFoods(query, 'server-side', () => invokeFoodLookup({ action: 'search', query }));
 }
 
+// Throws on a failed lookup instead of returning [], for the manual search box.
+export function searchUsdaFoodsSecureStrict(query: string): Promise<Food[]> {
+  return searchUsdaFoods(query, 'server-side', () => invokeFoodLookup({ action: 'search', query }), { rethrow: true });
+}
+
 export function searchUsdaFoodByBarcodeSecure(barcode: string): Promise<Food | null> {
   return searchUsdaFoodByBarcode(barcode, 'server-side', () => invokeFoodLookup({ action: 'barcode', barcode }));
 }

@@ -48,7 +48,7 @@ export function MealLogger(props: MealLoggerProps) {
   return <MealLoggerSession key={`${userId}:${props.initialEntry?.id || props.initialSavedMeal?.id || 'new'}`} {...props} userId={userId} />;
 }
 
-function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, ...props }: MealLoggerProps & { userId: string }) {
+function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, onAnalysisBusyChange, ...props }: MealLoggerProps & { userId: string }) {
   const { initialEntry, selectedDate, groups = [], onComplete } = props;
   const [savedTarget, setSavedTarget] = useState<Food | undefined>(initialSavedMeal);
   const draftKey = initialEntry ? `edit:${initialEntry.id}` : savedTarget ? `saved:${savedTarget.id}` : 'new';
@@ -67,6 +67,13 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, .
   const [error, setError] = useState('');
   const [storageFailed, setStorageFailed] = useState(false);
   const [invalidRows, setInvalidRows] = useState<string[]>([]);
+  // one flag for both capture loggers (only one is mounted at a time): leaving
+  // the capture view is blocked, and closing the sheet asks, while it analyzes
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const reportAnalysisBusy = useCallback((next: boolean) => {
+    setAnalysisBusy(next);
+    onAnalysisBusyChange?.(next);
+  }, [onAnalysisBusyChange]);
   const update = useCallback((patch: Partial<MealDraft>) => {
     setDraft((current) => {
       if (!current) return current;
@@ -136,8 +143,8 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, .
   };
 
   if (!draft || paused) return <div className="space-y-5">
-    {paused ? <Button variant="secondary" className="w-full" onClick={() => setPaused(false)}>Resume pending meal</Button> : !initialEntry && <Button variant="secondary" className="w-full" onClick={() => start()}>Build a meal</Button>}
-    <FoodLogger {...props} onComposeMeal={paused ? undefined : start} />
+    {paused ? <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume pending meal</Button> : !initialEntry && <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => start()}>Build a meal</Button>}
+    <FoodLogger {...props} onComposeMeal={paused ? undefined : start} onAnalysisBusyChange={reportAnalysisBusy} />
   </div>;
 
   const totals = getMealTotals(draft.ingredients);
@@ -170,10 +177,10 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, .
       </>}
       <Button className="w-full" size="lg" disabled={!valid || busy} loading={busy} onClick={() => void save()}>{draft.locked ? 'Retry save' : savedTarget || initialEntry ? 'Save changes' : 'Log meal'}</Button>
     </> : <>
-      <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} />
+      <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} onAnalysisBusyChange={reportAnalysisBusy} onUnreviewedResultChange={props.onUnreviewedResultChange} />
       <div className="sticky bottom-0 bg-[var(--color-base)] border-t border-[var(--color-border)] pt-3 pb-2 flex items-center gap-3">
         <div className="flex-1"><p className="t-label">{draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}</p><p className="t-caption mt-1">{Math.round(totals.calories)} kcal</p></div>
-        <Button disabled={!draft.ingredients.length} onClick={() => setReview(true)}>Review meal</Button>
+        <Button disabled={!draft.ingredients.length || analysisBusy} onClick={() => setReview(true)}>Review meal</Button>
       </div>
     </>}
   </div>;

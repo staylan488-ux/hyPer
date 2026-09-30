@@ -25,7 +25,10 @@ export function useAppViewport() {
       root.style.setProperty('--app-viewport-top', `${top}px`);
       root.style.setProperty('--app-viewport-height', `${height}px`);
       root.style.setProperty('--app-keyboard-inset', `${inset}px`);
-      root.dataset.keyboardOpen = String(keyboardOpen);
+      // Only on change: every write queues a MutationObserver record, and
+      // native glass surfaces re-sync on each one.
+      const open = String(keyboardOpen);
+      if (root.dataset.keyboardOpen !== open) root.dataset.keyboardOpen = open;
     };
     const reveal = () => {
       cancelAnimationFrame(frame);

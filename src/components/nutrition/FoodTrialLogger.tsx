@@ -13,12 +13,13 @@ interface FoodTrialLoggerProps {
   initialHint?: string;
   editingEntry?: boolean;
   addingIngredients?: boolean;
+  onAnalysisBusyChange?: (busy: boolean) => void;
 }
 
 const MACROS = ['calories', 'protein', 'carbs', 'fat'] as const;
 const formatAmount = (value: number) => Math.round(value * 10) / 10;
 
-export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '', editingEntry = false, addingIngredients = false }: FoodTrialLoggerProps) {
+export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '', editingEntry = false, addingIngredients = false, onAnalysisBusyChange }: FoodTrialLoggerProps) {
   const [hint, setHint] = useState(initialHint);
   const [answer, setAnswer] = useState('');
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
@@ -34,6 +35,13 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
   const [saveAsReusableMeal, setSaveAsReusableMeal] = useState(false);
   useEffect(() => { photosRef.current = photos; }, [photos]);
   useEffect(() => () => photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.preview)), []);
+  // lets the sheet ask before discarding a running analysis; never left on
+  // after this logger unmounts
+  const analyzing = busy === 'analysis';
+  useEffect(() => {
+    onAnalysisBusyChange?.(analyzing);
+    return () => onAnalysisBusyChange?.(false);
+  }, [analyzing, onAnalysisBusyChange]);
 
   const update = (index: number, patch: Partial<TrialFoodItem>) => {
     setItems((current) => current.map((item, position) => position === index ? { ...item, ...patch } : item));
