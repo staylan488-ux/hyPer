@@ -187,6 +187,30 @@ describe('useAppViewport keyboard lifecycle', () => {
     cleanup();
   });
 
+  it('writes the keyboard flag only when it changes, so overlay observers are not woken', () => {
+    const env = browser();
+    const writes: string[] = [];
+    const flags: Record<string, string> = {};
+    env.root.dataset = new Proxy(flags, {
+      set: (target, key, value) => { if (key === 'keyboardOpen') writes.push(value); target[key as string] = value; return true; },
+    });
+    const cleanup = env.mount();
+    env.viewport.offsetTop = 10;
+    env.viewport.dispatchEvent(new Event('scroll'));
+    env.viewport.dispatchEvent(new Event('resize'));
+    env.win.dispatchEvent(new Event('focus'));
+    env.flush();
+    expect(writes).toEqual(['false']);
+    env.viewport.height = 480;
+    env.viewport.dispatchEvent(new Event('resize'));
+    env.viewport.dispatchEvent(new Event('scroll'));
+    expect(writes).toEqual(['false', 'true']);
+    Object.assign(env.viewport, { height: 800, offsetTop: 0 });
+    env.viewport.dispatchEvent(new Event('resize'));
+    expect(writes).toEqual(['false', 'true', 'false']);
+    cleanup();
+  });
+
   it('updates without focused inputs and removes every listener and pending frame on unmount', () => {
     const env = browser();
     const targets = [env.viewport, env.win, env.doc];

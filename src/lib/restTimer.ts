@@ -6,6 +6,16 @@ export interface RestTimerSession {
   remainingSeconds: number;
   status: 'running' | 'paused' | 'completed';
   completedAt: string | null;
+  /** Upcoming set named in the "Rest over" notification. Optional so older
+   *  stored payloads stay readable; stored so it survives leaving Train. */
+  nextUpLabel?: string | null;
+  /** Movement whose rest preference a preset change saves. */
+  exerciseId?: string | null;
+}
+
+export interface RestTimerContext {
+  nextUpLabel?: string | null;
+  exerciseId?: string | null;
 }
 
 type TimerStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -27,6 +37,7 @@ export function createRestTimerSession(
   workoutId: string,
   durationSeconds: number,
   now: Date = new Date(),
+  context: RestTimerContext = {},
 ): RestTimerSession {
   const normalizedDuration = Math.max(1, Math.round(durationSeconds));
   const startedAt = now.toISOString();
@@ -40,6 +51,8 @@ export function createRestTimerSession(
     remainingSeconds: normalizedDuration,
     status: 'running',
     completedAt: null,
+    nextUpLabel: context.nextUpLabel ?? null,
+    exerciseId: context.exerciseId ?? null,
   };
 }
 
@@ -107,6 +120,8 @@ export function readRestTimerSession(storage?: TimerStorage | null): RestTimerSe
       remainingSeconds: parsed.remainingSeconds,
       status: parsed.status,
       completedAt: typeof parsed.completedAt === 'string' ? parsed.completedAt : null,
+      nextUpLabel: typeof parsed.nextUpLabel === 'string' ? parsed.nextUpLabel : null,
+      exerciseId: typeof parsed.exerciseId === 'string' ? parsed.exerciseId : null,
     };
   } catch {
     return null;
@@ -136,6 +151,22 @@ export function isRestTimerForWorkout(
 ): boolean {
   if (!session || !workoutId) return false;
   return session.workoutId === workoutId;
+}
+
+/**
+ * Whether the rest pill may unmount without cancelling the "Rest over"
+ * notification and lock-screen countdown: only while the stored timer is still
+ * running for a workout that is still the active one. Leaving Train keeps
+ * them; skip, pause, completion and a finished workout do not.
+ */
+export function shouldKeepRestAlertsOnUnmount(
+  storedSession: RestTimerSession | null,
+  workoutId: string,
+  activeWorkoutId: string | null | undefined,
+): boolean {
+  return storedSession?.status === 'running'
+    && isRestTimerForWorkout(storedSession, workoutId)
+    && activeWorkoutId === workoutId;
 }
 
 export function pauseRestTimerSession(

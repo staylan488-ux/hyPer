@@ -1898,9 +1898,12 @@ export function Workout() {
           sessionSeed={restTimerSeed}
           defaultSeconds={restTimerSeconds}
           nextUpLabel={restTimerNextUpLabel}
+          exerciseId={restTimerExerciseId}
           onDurationChange={(seconds) => {
-            if (userId && restTimerExerciseId) {
-              saveRestPreference(userId, restTimerExerciseId, seconds);
+            // After leaving Train the pill restores from storage; so does its movement.
+            const exerciseId = restTimerExerciseId ?? readRestTimerSession()?.exerciseId;
+            if (userId && exerciseId) {
+              saveRestPreference(userId, exerciseId, seconds);
             }
           }}
           onDismiss={() => setShowRestTimer(false)}
