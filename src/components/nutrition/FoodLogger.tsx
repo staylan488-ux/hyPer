@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
 import { createRequestGate } from '@/lib/requestGate';
+import { resolveBarcodeByPriority } from '@/lib/barcodePriority';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
@@ -296,37 +297,23 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     food = await findSavedFoodByBarcode(barcode);
     if (!isCurrent()) return false;
 
-    // FatSecret next when configured — curated coverage ahead of the free
-    // sources; returns null (skip) when unconfigured or unknown
+    // Only after a saved-catalog miss (a rescan of a saved product makes no
+    // provider calls): ask every external provider at once, but take the answer
+    // in fixed priority. FatSecret first when configured (curated coverage;
+    // null when unconfigured or unknown), then USDA, then Open Food Facts. A
+    // leg's error counts as a miss, so a transient failure still reaches the
+    // miss path below (create a personal product).
     if (!food) {
-      provider = 'fatsecret';
-      try {
-        food = await searchFatSecretByBarcodeSecure(barcode);
-      } catch {
-        // fall through to the free providers on any FatSecret error
-      }
+      const external = await resolveBarcodeByPriority([
+        ['fatsecret', () => searchFatSecretByBarcodeSecure(barcode)],
+        ['usda', () => searchUsdaFoodByBarcodeSecure(barcode)],
+        ['open_food_facts', () => searchOpenFoodFactsByBarcodeSecure(barcode)],
+      ] as const);
       if (!isCurrent()) return false;
-    }
-
-    if (!food) {
-      provider = 'usda';
-      try {
-        food = await searchUsdaFoodByBarcodeSecure(barcode);
-      } catch {
-        // A second independent product source can still satisfy the scan.
+      if (external) {
+        food = external.value;
+        provider = external.provider;
       }
-      if (!isCurrent()) return false;
-    }
-
-    if (!food) {
-      provider = 'open_food_facts';
-      try {
-        food = await searchOpenFoodFactsByBarcodeSecure(barcode);
-      } catch {
-        // A transient error must still reach the miss path below (create a
-        // personal product), like the FatSecret and USDA legs above.
-      }
-      if (!isCurrent()) return false;
     }
     if (!food) {
       // remember the code so manual entry can create a personal product
