@@ -17,6 +17,7 @@ import {
   sortNutritionGroups,
 } from '@/lib/nutritionGroups';
 import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
+import { createLatestRequestGate, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
   addDays,
@@ -93,13 +94,22 @@ export function Nutrition() {
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
+  const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
+  const loadedMonthKeyRef = useRef<string | null>(null);
+  const [requestGate] = useState(createLatestRequestGate);
   const defaultGroupsInFlight = useRef(new Set<string>());
+  const defaultGroupsFailed = useRef(new Set<string>());
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
-    setLoading(true);
+    const token = requestGate.begin();
+    const key = nutritionMonthKey(month);
+    // Only a month that is not on screen yet shows the skeleton. A refresh
+    // after a save keeps the page mounted so the numbers roll on from their
+    // current values instead of replaying from zero.
+    if (loadedMonthKeyRef.current !== key) setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !requestGate.isCurrent(token)) return;
 
       const from = format(startOfMonth(month), 'yyyy-MM-dd');
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -119,21 +129,25 @@ export function Nutrition() {
           .lte('date', to)
           .order('sort_order', { ascending: true }),
       ]);
+      if (!requestGate.isCurrent(token)) return;
       const { data: logs, error: logsError } = logsResult;
       const { data: groups, error: groupsError } = groupsResult;
 
       if (groupsError) console.error('Error fetching nutrition groups:', groupsError);
       setMonthGroups((groups || []) as NutritionGroup[]);
+      // Groups that failed to load are not the month's real groups, so they
+      // must not trigger default meal creation.
+      const appliedMonthKey = groupsError ? null : key;
+      loadedMonthKeyRef.current = appliedMonthKey;
+      setLoadedMonthKey(appliedMonthKey);
 
       if (logsError) {
         console.error('Error fetching logs:', logsError);
-        setLoading(false);
         return;
       }
 
       if (!logs || logs.length === 0) {
         setMonthLogs([]);
-        setLoading(false);
         return;
       }
 
@@ -142,6 +156,7 @@ export function Nutrition() {
         .from('foods')
         .select('id, name, description, calories, protein, carbs, fat, serving_size, serving_unit')
         .in('id', foodIds);
+      if (!requestGate.isCurrent(token)) return;
 
       if (foodsError) {
         console.error('Error fetching foods:', foodsError);
@@ -156,9 +171,13 @@ export function Nutrition() {
       setMonthLogs(mergedLogs);
     } catch (error) {
       console.error('Error fetching nutrition logs:', error);
+    } finally {
+      // Cleared on every exit, including signed-out or offline, so the page
+      // can never stay on its skeleton; a superseded request leaves it to the
+      // newest one.
+      if (requestGate.isCurrent(token)) setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [requestGate]);
 
   useEffect(() => {
     fetchMacroTarget();
@@ -240,7 +259,13 @@ export function Nutrition() {
   }, []);
 
   useEffect(() => {
-    if (loading || defaultGroupsInFlight.current.has(selectedDateKey)) return;
+    if (!shouldEnsureDefaultGroups({
+      loading,
+      loadedMonthKey,
+      selectedDateKey,
+      failedDates: defaultGroupsFailed.current,
+    })) return;
+    if (defaultGroupsInFlight.current.has(selectedDateKey)) return;
     const missingLabels = missingDefaultNamedMeals(selectedDayGroups);
     if (missingLabels.length === 0) return;
 
@@ -264,6 +289,7 @@ export function Nutrition() {
 
         if (error || !data) {
           console.error('Error creating default nutrition groups:', error);
+          defaultGroupsFailed.current.add(selectedDateKey);
           await fetchMonthLogs(selectedMonth);
           return;
         }
@@ -292,7 +318,7 @@ export function Nutrition() {
     return () => {
       cancelled = true;
     };
-  }, [fetchMonthLogs, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
+  }, [fetchMonthLogs, loadedMonthKey, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
 
   const dayTotals = useMemo(
     () =>
@@ -701,7 +727,15 @@ export function Nutrition() {
       </section>
 
       {/* Month jump sheet */}
-      <Modal isOpen={showMonthSheet} onClose={() => setShowMonthSheet(false)} title="Jump to date">
+      <Modal
+        isOpen={showMonthSheet}
+        onClose={() => {
+          setShowMonthSheet(false);
+          // Closing without a pick returns the page to the selected date's month.
+          setSelectedMonth((current) => isSameMonth(current, selectedDate) ? current : startOfMonth(selectedDate));
+        }}
+        title="Jump to date"
+      >
         <div className="pt-1 pb-2">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--color-border)]">
             <button
