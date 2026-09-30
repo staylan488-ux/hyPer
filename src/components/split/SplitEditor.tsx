@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronUp,
@@ -48,14 +48,16 @@ interface ExerciseInputDraft {
   maxReps: string;
 }
 
-function buildExerciseInputDraft(exercise: DraftExercise): ExerciseInputDraft {
-  return {
-    minSets: String(exercise.target_sets_min),
-    targetSets: String(exercise.target_sets),
-    maxSets: String(exercise.target_sets_max),
-    minReps: String(exercise.target_reps_min),
-    maxReps: String(exercise.target_reps_max),
-  };
+type ExerciseInputField = keyof ExerciseInputDraft;
+
+function exerciseFieldValue(exercise: DraftExercise, field: ExerciseInputField): number {
+  switch (field) {
+    case 'minSets': return exercise.target_sets_min;
+    case 'targetSets': return exercise.target_sets;
+    case 'maxSets': return exercise.target_sets_max;
+    case 'minReps': return exercise.target_reps_min;
+    case 'maxReps': return exercise.target_reps_max;
+  }
 }
 
 // ═══════════════════════════════════
@@ -77,23 +79,35 @@ function ExerciseRow({
 }) {
   const { reorderExercise, updateExerciseTargets, removeExercise, clearExerciseSuperset } =
     useSplitEditStore();
-  const [inputDraft, setInputDraft] = useState<ExerciseInputDraft>(() => buildExerciseInputDraft(exercise));
+  // Only the field being typed lives here; every other value comes straight
+  // from the store, so committed and superset-synced values show without
+  // remounting the row (which would drop focus and the iOS keyboard).
+  const [editing, setEditing] = useState<{ field: ExerciseInputField; value: string } | null>(null);
 
-  const commitSetRangeDraft = (patch: Partial<ExerciseInputDraft> = {}) => {
-    const merged = { ...inputDraft, ...patch };
+  const commitField = (field: ExerciseInputField, value: string) => {
+    setEditing(null);
 
-    const nextMin = clampInt(merged.minSets, 1, 10, exercise.target_sets_min);
-    const nextTarget = clampInt(merged.targetSets, 1, 10, exercise.target_sets);
-    const nextMax = clampInt(merged.maxSets, 1, 10, exercise.target_sets_max);
+    if (field === 'minReps' || field === 'maxReps') {
+      const current = exerciseFieldValue(exercise, field);
+      const clamped = clampInt(value, 1, 100, current);
+      if (clamped === current) return;
+      updateExerciseTargets(day.id, exercise.id, field === 'minReps'
+        ? { target_reps_min: clamped }
+        : { target_reps_max: clamped });
+      return;
+    }
 
-    const normalized = normalizeSetRange(nextMin, nextTarget, nextMax);
-
-    setInputDraft((prev) => ({
-      ...prev,
-      minSets: String(normalized.minSets),
-      targetSets: String(normalized.targetSets),
-      maxSets: String(normalized.maxSets),
-    }));
+    const valueFor = (f: 'minSets' | 'targetSets' | 'maxSets') => (f === field ? value : String(exerciseFieldValue(exercise, f)));
+    const normalized = normalizeSetRange(
+      clampInt(valueFor('minSets'), 1, 10, exercise.target_sets_min),
+      clampInt(valueFor('targetSets'), 1, 10, exercise.target_sets),
+      clampInt(valueFor('maxSets'), 1, 10, exercise.target_sets_max),
+    );
+    if (
+      normalized.minSets === exercise.target_sets_min
+      && normalized.targetSets === exercise.target_sets
+      && normalized.maxSets === exercise.target_sets_max
+    ) return;
 
     updateExerciseTargets(day.id, exercise.id, {
       target_sets_min: normalized.minSets,
@@ -102,21 +116,19 @@ function ExerciseRow({
     });
   };
 
-  const commitRepDraft = (field: 'minReps' | 'maxReps', fallback: number) => {
-    const value = inputDraft[field];
-    const clamped = field === 'minReps'
-      ? clampInt(value, 1, 100, fallback)
-      : clampInt(value, 1, 100, fallback);
-
-    const patch = { [field]: String(clamped) } as Partial<ExerciseInputDraft>;
-    setInputDraft((prev) => ({ ...prev, ...patch }));
-
-    if (field === 'minReps') {
-      updateExerciseTargets(day.id, exercise.id, { target_reps_min: clamped });
-    } else {
-      updateExerciseTargets(day.id, exercise.id, { target_reps_max: clamped });
-    }
-  };
+  const fieldProps = (field: ExerciseInputField) => ({
+    value: editing?.field === field ? editing.value : String(exerciseFieldValue(exercise, field)),
+    onChange: (e: ChangeEvent<HTMLInputElement>) => setEditing({ field, value: e.target.value }),
+    onBlur: () => {
+      if (editing?.field === field) commitField(field, editing.value);
+    },
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (editing?.field === field) commitField(field, editing.value);
+      }
+    },
+  });
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -226,15 +238,7 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={inputDraft.minSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, minSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
+            {...fieldProps('minSets')}
             className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
@@ -244,15 +248,7 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={inputDraft.targetSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, targetSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
+            {...fieldProps('targetSets')}
             className="well w-full min-h-11 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
           />
         </SetRepCell>
@@ -262,15 +258,7 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={10}
-            value={inputDraft.maxSets}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxSets: e.target.value }))}
-            onBlur={() => commitSetRangeDraft()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitSetRangeDraft();
-              }
-            }}
+            {...fieldProps('maxSets')}
             className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
@@ -280,15 +268,7 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={100}
-            value={inputDraft.minReps}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, minReps: e.target.value }))}
-            onBlur={() => commitRepDraft('minReps', exercise.target_reps_min)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRepDraft('minReps', exercise.target_reps_min);
-              }
-            }}
+            {...fieldProps('minReps')}
             className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
@@ -298,15 +278,7 @@ function ExerciseRow({
             inputMode="numeric"
             min={1}
             max={100}
-            value={inputDraft.maxReps}
-            onChange={(e) => setInputDraft((prev) => ({ ...prev, maxReps: e.target.value }))}
-            onBlur={() => commitRepDraft('maxReps', exercise.target_reps_max)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRepDraft('maxReps', exercise.target_reps_max);
-              }
-            }}
+            {...fieldProps('maxReps')}
             className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
           />
         </SetRepCell>
@@ -439,7 +411,7 @@ function DayCard({
             ) : (
               day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
-                  key={`${exercise.id}:${exercise.target_sets_min}:${exercise.target_sets}:${exercise.target_sets_max}:${exercise.target_reps_min}:${exercise.target_reps_max}:${exercise.superset_group_id || 'none'}`}
+                  key={exercise.id}
                   day={day}
                   exercise={exercise}
                   index={exerciseIndex}
