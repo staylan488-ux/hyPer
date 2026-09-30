@@ -23,11 +23,34 @@ export function reloadOnceForStaleChunk(
   return true;
 }
 
-export function installStaleChunkReload(target: Window = window) {
-  target.addEventListener('vite:preloadError', () => {
-    reloadOnceForStaleChunk(
-      () => target.sessionStorage,
-      () => target.location.reload(),
-    );
-  });
+interface ReloadEnv {
+  storage: () => FlagStorage | undefined;
+  reload: () => void;
+  isOffline: () => boolean;
+}
+
+const browserEnv: ReloadEnv = {
+  storage: () => window.sessionStorage,
+  reload: () => window.location.reload(),
+  isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+};
+
+/**
+ * Wraps a route's chunk loader, and only that: background warm-ups and
+ * optional imports (the 3D scenes) keep their own quiet fallbacks and never
+ * reload the page. Offline, a failed load is a connection problem, not a stale
+ * deploy, so it goes to the route error screen without spending the reload.
+ */
+export function reloadOnStaleChunk<T>(
+  load: () => Promise<T>,
+  env: ReloadEnv = browserEnv,
+): () => Promise<T> {
+  return () =>
+    load().catch((error: unknown) => {
+      if (!env.isOffline() && reloadOnceForStaleChunk(env.storage, env.reload)) {
+        // Keep the current screen up until the reload replaces the page.
+        return new Promise<T>(() => {});
+      }
+      throw error;
+    });
 }

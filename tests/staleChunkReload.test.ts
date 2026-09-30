@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { installStaleChunkReload, reloadOnceForStaleChunk } from '@/lib/staleChunkReload';
+import { reloadOnceForStaleChunk, reloadOnStaleChunk } from '@/lib/staleChunkReload';
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -32,15 +32,54 @@ describe('stale chunk reload', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('listens for Vite preload failures', () => {
-    const target = new EventTarget();
+  it('reloads once when a route chunk fails, and keeps the screen until it does', async () => {
     const reload = vi.fn();
-    Object.assign(target, { sessionStorage: memoryStorage(), location: { reload } });
-    installStaleChunkReload(target as unknown as Window);
+    const storage = memoryStorage();
+    const env = { storage: () => storage, reload, isOffline: () => false };
+    const stale = new Error('Failed to fetch dynamically imported module');
+    const open = reloadOnStaleChunk(() => Promise.reject(stale), env);
 
-    target.dispatchEvent(new Event('vite:preloadError'));
-    target.dispatchEvent(new Event('vite:preloadError'));
+    let settled = false;
+    void open().then(() => { settled = true; }, () => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
 
+    // The reloaded page failing again goes to the route error screen.
+    await expect(open()).rejects.toBe(stale);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes successful loads through untouched', async () => {
+    const reload = vi.fn();
+    const page = { Component: () => null };
+    const open = reloadOnStaleChunk(() => Promise.resolve(page), {
+      storage: () => memoryStorage(),
+      reload,
+      isOffline: () => false,
+    });
+
+    await expect(open()).resolves.toBe(page);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('never reloads while offline and keeps the reload for a real stale deploy', async () => {
+    const reload = vi.fn();
+    const storage = memoryStorage();
+    let offline = true;
+    const failure = new Error('Failed to fetch dynamically imported module');
+    const open = reloadOnStaleChunk(() => Promise.reject(failure), {
+      storage: () => storage,
+      reload,
+      isOffline: () => offline,
+    });
+
+    await expect(open()).rejects.toBe(failure);
+    expect(reload).not.toHaveBeenCalled();
+
+    offline = false;
+    void open();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });

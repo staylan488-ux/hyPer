@@ -6,12 +6,7 @@ import { MotionConfig } from 'motion/react'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
-import { installStaleChunkReload } from './lib/staleChunkReload'
 import { maybeSeedPreview } from './preview/previewSeed' // DEV-ONLY
-
-// Lazy screens are separate chunks; a tab left open across a deploy reloads
-// once to pick up the new build instead of failing to open them.
-installStaleChunkReload()
 
 // Auto-update: when a new version is deployed, the fresh service worker takes
 // over and this helper reloads the app immediately — no relaunch needed.

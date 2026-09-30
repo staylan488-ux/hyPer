@@ -34,6 +34,7 @@ import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
 import { watchRestTimerSignOut, watchRestTimerWorkoutEnd } from '@/lib/restTimerWorkoutGuard';
 import { authScreen } from '@/lib/authScreen';
+import { reloadOnStaleChunk } from '@/lib/staleChunkReload';
 
 /** `onSignInInstead` marks the offline restore: the saved sign-in is kept and
  * the app opens by itself once the connection returns. */
@@ -143,7 +144,7 @@ function PrivateLayout() {
  * `lazy` keeps the current screen until the chunk arrives, with no Suspense
  * inside the keyed route container. The three main tabs stay in the entry.
  */
-const lazyPage = {
+const pageChunk = {
   program: () => import('@/pages/Splits').then((m) => ({ Component: m.Splits })),
   run: () => import('@/pages/RunTracker').then((m) => ({ Component: m.RunTracker })),
   settings: () => import('@/pages/Settings').then((m) => ({ Component: m.Settings })),
@@ -151,11 +152,21 @@ const lazyPage = {
   history: () => import('@/pages/History').then((m) => ({ Component: m.History })),
 };
 
+/** Opening a screen whose chunk a deploy has replaced reloads the tab once. */
+const lazyPage = {
+  program: reloadOnStaleChunk(pageChunk.program),
+  run: reloadOnStaleChunk(pageChunk.run),
+  settings: reloadOnStaleChunk(pageChunk.settings),
+  analysis: reloadOnStaleChunk(pageChunk.analysis),
+  history: reloadOnStaleChunk(pageChunk.history),
+};
+
 /** Web only: fetch the lazy screens once launch has settled so a first visit
- * over the network is still instant. Native reads chunks from local files. */
+ * over the network is still instant. Native reads chunks from local files.
+ * Uses the plain loaders: a failed warm-up is silent and never reloads. */
 function warmLazyPages() {
   if (Capacitor.isNativePlatform()) return;
-  const warm = () => Object.values(lazyPage).forEach((load) => void load().catch(() => {}));
+  const warm = () => Object.values(pageChunk).forEach((load) => void load().catch(() => {}));
   const timer = window.setTimeout(() => {
     if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 5000 });
     else warm();
