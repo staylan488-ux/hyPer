@@ -18,6 +18,7 @@ import {
   staggerContainer,
 } from '@/lib/animations';
 import { SetRangeFields } from '@/components/split/SetRangeFields';
+import { commitFocusedField } from '@/lib/commitFocusedField';
 import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 
 // ═══════════════════════════════════
@@ -335,6 +336,8 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
   }, [isDirty, cancelEdit, onClose]);
 
   const handleSave = useCallback(async () => {
+    // Commit a cell still being typed in before the draft is read.
+    commitFocusedField();
     const success = await saveEdit();
     if (success) {
       onSaved();

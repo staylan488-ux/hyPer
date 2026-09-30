@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Link2, PenLine, Plus, Search, Unlink2, Wand2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button, Chip, Input, SelectSheet, TickStrip } from '@/components/shared';
@@ -8,6 +8,7 @@ import { splitTemplates } from '@/lib/splitTemplates';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { springs } from '@/lib/animations';
 import { SetRangeFields } from '@/components/split/SetRangeFields';
+import { commitFocusedField } from '@/lib/commitFocusedField';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
@@ -159,6 +160,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   const [description, setDescription] = useState('');
   const [daysPerWeek, setDaysPerWeek] = useState(4);
   const [days, setDays] = useState<CustomDayDraft[]>([]);
+  // Latest committed days, readable right after commitFocusedField() flushes.
+  const daysRef = useRef(days);
+  useLayoutEffect(() => {
+    daysRef.current = days;
+  }, [days]);
   const [exerciseLibrary, setExerciseLibrary] = useState<Array<{ id: string; name: string }>>([]);
   const [activeCustomDayIndex, setActiveCustomDayIndex] = useState(0);
   const [exerciseQuery, setExerciseQuery] = useState('');
@@ -523,16 +529,20 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   };
 
   const handleCreateCustom = async () => {
+    // A cell still being typed in (iOS keypad has no Enter) commits on blur;
+    // flush it so the program is built from what is on screen.
+    commitFocusedField();
+    const latestDays = daysRef.current;
     setLoading(true);
     setCustomError(null);
     try {
-      if (days.some((day) => day.exercises.length === 0)) {
+      if (latestDays.some((day) => day.exercises.length === 0)) {
         setCustomError('Each day needs at least one exercise before creating the program.');
         return;
       }
 
       if (
-        days.some((day) =>
+        latestDays.some((day) =>
           day.exercises.some((exercise) => {
             const range = normalizeCustomSetRange(exercise);
             return (
@@ -608,7 +618,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
       };
 
       const splitDays = await Promise.all(
-        days.map(async (day, dayIndex) => {
+        latestDays.map(async (day, dayIndex) => {
           const normalizedSupersetIds = new Map<string, string>();
 
           return {
