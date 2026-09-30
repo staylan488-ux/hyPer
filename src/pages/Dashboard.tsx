@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
@@ -7,7 +7,7 @@ import {
   Dumbbell,
   Plus,
 } from 'lucide-react';
-import { format, startOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
@@ -20,18 +20,10 @@ import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
-import { supabase } from '@/lib/supabase';
-import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
-import { sumMacros } from '@/lib/nutritionMacros';
+import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { plannedDayForDate } from '@/lib/planSchedule';
+import { EMPTY_TOTALS, readTodayDay } from '@/lib/todayDay';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
-
-interface NutritionTotals {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-}
 
 type HeroState =
   | { kind: 'loading' }
@@ -62,85 +54,39 @@ export function Dashboard() {
     fetchWorkoutMode,
   } = useAppStore();
 
-  const [loading, setLoading] = useState(true);
-  const [nutritionTotals, setNutritionTotals] = useState<NutritionTotals>({
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-  });
-  const [todayDone, setTodayDone] = useState<{ title: string } | null>(null);
-  const [mountedAt] = useState(() => Date.now());
-
   const userId = user?.id;
   const activeSplitId = activeSplit?.id;
   const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplitId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
 
-  const fetchNutritionTotals = useCallback(async () => {
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+  // One load for mount and every foreground refresh, so the two cannot drift.
+  const load = useCallback(async (day: string) => {
+    const [dayData] = await Promise.all([
+      readTodayDay(day),
+      fetchSplits(),
+      fetchMacroTarget(),
+      calculateWeeklyVolume(),
+      fetchCurrentWorkout(),
+      fetchWorkoutMode(),
+      fetchNutritionProfile(),
+    ]);
 
-      const today = format(new Date(), 'yyyy-MM-dd');
+    // Re-learn expenditure at most weekly, after the screen is already up.
+    void refreshAdaptiveTargets();
 
-      const { data: logs, error: logsError } = await fetchNutritionLogsWithFoods<
-        { food_id: string; servings: number },
-        { id: string; calories: number; protein: number; carbs: number; fat: number }
-      >(authUser.id, { from: today, to: today }, 'food_id, servings', 'id, calories, protein, carbs, fat');
+    // Throwing keeps the old day and its numbers on screen and lets the next
+    // return retry, instead of showing a new date above numbers never read.
+    if (!dayData) throw new Error(`Could not read Today for ${day}`);
+    return dayData;
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchSplits, fetchWorkoutMode, refreshAdaptiveTargets]);
 
-      if (logsError || !logs || logs.length === 0) {
-        setNutritionTotals({ calories: 0, protein: 0, carbs: 0, fat: 0 });
-        return;
-      }
-
-      setNutritionTotals(sumMacros(logs));
-    } catch (error) {
-      console.error('Error fetching nutrition totals:', error);
-    }
-  }, []);
-
-  const fetchTodayStatus = useCallback(async () => {
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const { data } = await supabase
-        .from('workouts')
-        .select('id, split_day_id')
-        .eq('user_id', authUser.id)
-        .eq('date', today)
-        .eq('completed', true)
-        .limit(1);
-
-      setTodayDone(data && data.length > 0 ? { title: 'Session complete' } : null);
-    } catch (error) {
-      console.error('Error fetching today status:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      await Promise.all([
-        fetchSplits(),
-        fetchMacroTarget(),
-        calculateWeeklyVolume(),
-        fetchCurrentWorkout(),
-        fetchWorkoutMode(),
-        fetchNutritionTotals(),
-        fetchTodayStatus(),
-        fetchNutritionProfile(),
-      ]);
-      setLoading(false);
-
-      // Re-learn expenditure at most weekly, after the screen is already up.
-      void refreshAdaptiveTargets();
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchWorkoutMode, refreshAdaptiveTargets]);
+  // The day and its data arrive together, so the header, Fuel and hero always
+  // describe the same day. A new day also re-reads schedule completions, so
+  // adaptive and flex plans stop counting yesterday's session as today's.
+  const { loading, dayKey, refreshedAt, data: today } = useTodayRefresh(load, retrySchedule);
+  const nutritionTotals = today?.nutritionTotals ?? EMPTY_TOTALS;
+  const todayDone = today?.todayDone ?? null;
 
   const hero = useMemo<HeroState>(() => {
     if (loading) return { kind: 'loading' };
@@ -168,7 +114,7 @@ export function Dashboard() {
         dayName,
         exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
         elapsed: currentWorkout.created_at
-          ? formatWorkoutDuration(Math.max(0, mountedAt - new Date(currentWorkout.created_at).getTime()))
+          ? formatWorkoutDuration(Math.max(0, refreshedAt - new Date(currentWorkout.created_at).getTime()))
           : '—',
       };
     }
@@ -183,7 +129,7 @@ export function Dashboard() {
     if (!schedule) return { kind: 'no-schedule' };
 
     const planned = plannedDayForDate(
-      startOfDay(new Date()),
+      parseISO(dayKey),
       activeSplit.days,
       schedule,
       0,
@@ -191,7 +137,7 @@ export function Dashboard() {
       adaptiveSchedulingEnabled
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, mountedAt, adaptiveSchedulingEnabled]);
+  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
 
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
@@ -208,7 +154,7 @@ export function Dashboard() {
       <header>
         <div className="flex items-baseline justify-between gap-3">
           <BrandWordmark variant="dashboard" />
-          <span className="t-caption">{format(new Date(), 'EEE · MMM d')}</span>
+          <span className="t-caption">{format(parseISO(dayKey), 'EEE · MMM d')}</span>
         </div>
         <h1 className="t-label mt-5">Today</h1>
       </header>
@@ -237,8 +183,8 @@ export function Dashboard() {
               </div>
             </div>
             <div className="space-y-4">
-              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" />
-              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" />
+              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
+              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" dayKey={dayKey} />
             </div>
           </>
         ) : (
@@ -471,9 +417,9 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-function FuelRow({ label, current, target, unit, seal }: { label: string; current: number; target: number; unit: string; seal: SealMacro }) {
+function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string; current: number; target: number; unit: string; seal: SealMacro; dayKey: string }) {
   const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
-  const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey: format(new Date(), 'yyyy-MM-dd'), live: true });
+  const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey, live: true });
   const over = target > 0 && current > target;
   const maxScale = Math.max(target * 1.18, current);
 
