@@ -894,18 +894,31 @@ export function History() {
     if (missing.length === 0) return;
 
     missing.forEach((id) => requestedSegmentIdsRef.current.add(id));
+    // A failed load forgets the request so revisiting the day tries again.
+    const forgetRequest = () => {
+      missing.forEach((id) => requestedSegmentIdsRef.current.delete(id));
+    };
     void fetchActivitySegmentsBySessionIds(missing).then((segments) => {
+      if (!segments) {
+        forgetRequest();
+        return;
+      }
+      const grouped: Record<string, ActivitySegment[]> = {};
+      segments.forEach((segment) => {
+        if (!segment.session_id) return;
+        (grouped[segment.session_id] ||= []).push(segment);
+      });
       setSegmentsBySession((prev) => {
         const next = { ...prev };
+        // replace rather than append so overlapping loads never double splits
         missing.forEach((id) => {
-          if (!next[id]) next[id] = [];
-        });
-        segments.forEach((segment) => {
-          if (!segment.session_id) return;
-          next[segment.session_id] = [...(next[segment.session_id] || []), segment];
+          next[id] = grouped[id] ?? [];
         });
         return next;
       });
+    }).catch((error) => {
+      console.error('Error loading activity splits:', error);
+      forgetRequest();
     });
   }, [selectedDayActivities, fetchActivitySegmentsBySessionIds]);
 

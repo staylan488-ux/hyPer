@@ -207,7 +207,8 @@ interface AppState {
   // true when WHOOP-imported segments still reference the session; deleting
   // such a session must tombstone instead so re-sync cannot resurrect it
   hasLinkedWhoopSegments: (sessionId: string) => Promise<boolean>;
-  fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[]>;
+  // null means the load failed (or nobody is signed in); [] means no segments.
+  fetchActivitySegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[] | null>;
   upsertActivitySegments: (inputs: ActivitySegmentInput[]) => Promise<ActivitySegment[]>;
   syncWhoop: () => Promise<WhoopSyncResult | null>;
   whoopConnection: WhoopConnection | null;
@@ -1656,7 +1657,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (sessionIds.length === 0) return [];
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    if (!user) return null;
 
     const { data, error } = await supabase
       .from('activity_segments')
@@ -1667,7 +1668,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching activity segments:', error);
-      return [];
+      return null;
     }
 
     return (data || []) as ActivitySegment[];

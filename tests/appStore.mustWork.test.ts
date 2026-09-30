@@ -996,6 +996,42 @@ describe('must-work store contracts', () => {
     expect(useAppStore.getState().currentWorkout?.sets.map((set) => set.id)).toEqual(['set-b']);
   });
 
+  describe('fetchActivitySegmentsBySessionIds tells failure from empty', () => {
+    it('returns null when nobody is signed in', async () => {
+      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: null } });
+      await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds(['s-1'])).resolves.toBeNull();
+      expect(supabaseMock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns null when the query fails', async () => {
+      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      const chain = createChain({
+        order: vi.fn().mockResolvedValue({ data: null, error: { message: 'offline' } }),
+      });
+      supabaseMock.from.mockImplementation(() => chain);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds(['s-1'])).resolves.toBeNull();
+      errorSpy.mockRestore();
+    });
+
+    it('returns [] when the query succeeds with no rows', async () => {
+      supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+      const chain = createChain({
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+      });
+      supabaseMock.from.mockImplementation(() => chain);
+
+      await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds(['s-1'])).resolves.toEqual([]);
+      expect(chain.in).toHaveBeenCalledWith('session_id', ['s-1']);
+    });
+
+    it('returns [] without a request for no ids', async () => {
+      await expect(useAppStore.getState().fetchActivitySegmentsBySessionIds([])).resolves.toEqual([]);
+      expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+    });
+  });
+
   describe('past-workout edits reject on a failed save', () => {
     const failure = { message: 'network down', code: 'fetch_failed' };
 
