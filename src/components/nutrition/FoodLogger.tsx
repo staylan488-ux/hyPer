@@ -141,9 +141,11 @@ export interface FoodLoggerProps {
   onComposeMeal?: (food: Food, editSaved?: boolean) => void;
   /** True while a photo, describe or AI analysis runs, so closing can ask first. */
   onAnalysisBusyChange?: (busy: boolean) => void;
+  /** True while a finished photo estimate waits unseen on the Photo tab. */
+  onUnreviewedResultChange?: (waiting: boolean) => void;
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange, onUnreviewedResultChange }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -266,6 +268,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     onAnalysisBusyChange?.(analysisBusy);
     return () => onAnalysisBusyChange?.(false);
   }, [analysisBusy, onAnalysisBusyChange]);
+  // a photo estimate that landed while the user was on another tab: the Photo
+  // tab is marked and closing the sheet asks before discarding it
+  const photoResultWaiting = mode !== 'photo' && photoItems.length > 0;
+  useEffect(() => {
+    onUnreviewedResultChange?.(photoResultWaiting);
+    return () => onUnreviewedResultChange?.(false);
+  }, [photoResultWaiting, onUnreviewedResultChange]);
   // On by default: the breakdown is how the estimate is made accurate, but one
   // row per plate is how the day stays readable. Remembered per device.
   const [combineAsOneMeal, setCombineAsOneMeal] = useState<boolean>(() => {
@@ -1989,7 +1998,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           { value: 'search', label: 'USDA' },
           { value: 'barcode', label: 'Scan' },
           { value: 'manual', label: 'Manual' },
-          { value: 'photo', label: foodAnalysisMode === 'gemini' ? 'AI' : 'Photo' },
+          {
+            value: 'photo',
+            label: foodAnalysisMode === 'gemini' ? 'AI' : photoResultWaiting ? (
+              <span className="inline-flex items-center gap-1">
+                Photo
+                <span className="w-1 h-1 rounded-full bg-[var(--color-accent)]" aria-hidden />
+                <span className="sr-only">, estimate ready</span>
+              </span>
+            ) : 'Photo',
+          },
         ]}
         distribution="equal"
         size="sm"

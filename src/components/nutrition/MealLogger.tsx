@@ -177,7 +177,7 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
       </>}
       <Button className="w-full" size="lg" disabled={!valid || busy} loading={busy} onClick={() => void save()}>{draft.locked ? 'Retry save' : savedTarget || initialEntry ? 'Save changes' : 'Log meal'}</Button>
     </> : <>
-      <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} onAnalysisBusyChange={reportAnalysisBusy} />
+      <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} onAnalysisBusyChange={reportAnalysisBusy} onUnreviewedResultChange={props.onUnreviewedResultChange} />
       <div className="sticky bottom-0 bg-[var(--color-base)] border-t border-[var(--color-border)] pt-3 pb-2 flex items-center gap-3">
         <div className="flex-1"><p className="t-label">{draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}</p><p className="t-caption mt-1">{Math.round(totals.calories)} kcal</p></div>
         <Button disabled={!draft.ingredients.length || analysisBusy} onClick={() => setReview(true)}>Review meal</Button>
