@@ -6,6 +6,7 @@ import { springs } from '@/lib/animations';
 import { supabase } from '@/lib/supabase';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
+import { createRequestGate } from '@/lib/requestGate';
 import type { Food, NutritionGroup } from '@/types';
 import { format, isToday } from 'date-fns';
 import {
@@ -181,6 +182,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   // personal product bound to this code
   const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
   const [pendingBarcodeBinding, setPendingBarcodeBinding] = useState<string | null>(null);
+  // a newer scan, or leaving the Scan tab, supersedes an in-flight lookup so a
+  // late result can't replace the product under review or bind the wrong code
+  const [barcodeLookups] = useState(createRequestGate);
+  useEffect(() => {
+    if (mode !== 'barcode') barcodeLookups.invalidate();
+  }, [mode, barcodeLookups]);
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
   const entryDateKey = format(entryDate, 'yyyy-MM-dd');
   const entryUsesSelectedDayGroups = entryDateKey === selectedDateKey;
@@ -279,12 +286,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
+    // checked after every await; a superseded lookup applies nothing
+    const isCurrent = barcodeLookups.begin();
     let food: Food | null = null;
     let provider: 'usda' | 'open_food_facts' | 'saved' | 'fatsecret' = 'saved';
 
     // owner catalog first: a previously scanned or label-captured product
     // resolves locally before any external provider is asked
     food = await findSavedFoodByBarcode(barcode);
+    if (!isCurrent()) return false;
 
     // FatSecret next when configured — curated coverage ahead of the free
     // sources; returns null (skip) when unconfigured or unknown
@@ -295,6 +305,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       } catch {
         // fall through to the free providers on any FatSecret error
       }
+      if (!isCurrent()) return false;
     }
 
     if (!food) {
@@ -304,6 +315,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       } catch {
         // A second independent product source can still satisfy the scan.
       }
+      if (!isCurrent()) return false;
     }
 
     if (!food) {
@@ -314,6 +326,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         // A transient error must still reach the miss path below (create a
         // personal product), like the FatSecret and USDA legs above.
       }
+      if (!isCurrent()) return false;
     }
     if (!food) {
       // remember the code so manual entry can create a personal product
@@ -325,6 +338,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
     if (food.fdc_id && !food.serving_label) {
       const detail = await fetchUsdaFoodDetailSecure(food.fdc_id);
+      if (!isCurrent()) return false;
       const portion = selectPortionFromDetail(detail);
       if (portion) food = applyPortion(food, portion);
     }
@@ -335,7 +349,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     setServings('1');
     setMeasurementAmount('1');
     return true;
-  }, []);
+  }, [barcodeLookups]);
 
   const handleDescribeFood = async () => {
     if (foodDescriptionBusy) return;
