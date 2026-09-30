@@ -37,7 +37,9 @@ export interface WhoopSyncPorts {
     createSession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
     updateSession: (sessionId: string, patch: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
     deleteSession: (sessionId: string) => Promise<void>;
-    linkSegmentsToSession: (segmentIds: string[], sessionId: string) => Promise<void>;
+    // false = the link write failed (logged by the port); the item is left out
+    // of the result counts and the next sync repairs it
+    linkSegmentsToSession: (segmentIds: string[], sessionId: string) => Promise<boolean | void>;
   };
   now?: () => Date;
 }
@@ -57,8 +59,32 @@ export const SYNC_OVERLAP_DAYS = 7;
 export const SYNC_DEFAULT_LOOKBACK_DAYS = 30;
 // safety cap; WHOOP pages are capped at 25 records
 export const SYNC_PAGE_CAP = 10;
+// writes in flight at once within one apply phase
+export const SYNC_APPLY_CONCURRENCY = 4;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Runs fn over items with at most `limit` in flight. After a failure no new
+// item starts, and the rejection is raised only once in-flight items settle,
+// so nothing keeps writing after the sync has reported failure.
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const errors: unknown[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (errors.length === 0 && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await fn(items[index]);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  if (errors.length > 0) throw errors[0];
+  return results;
+}
 
 export async function runWhoopSync(
   ports: WhoopSyncPorts,
@@ -110,31 +136,37 @@ export async function runWhoopSync(
 
   const plan = groupSegments(segments, sessions);
 
-  // 4) apply: creates, updates, relinks, deletes
-  for (const create of plan.creates) {
+  // 4) apply: creates, updates, relinks, deletes. Phases stay strictly in this
+  // order (deletes last: segment links are ON DELETE SET NULL); only items
+  // within one phase run in parallel. groupSegments' clusters are disjoint, so
+  // concurrent items never share a segment, and only relinks (plain segment
+  // re-points) can share a target session. Counts come from writes that
+  // actually landed, not from the plan.
+  const created = await mapLimit(plan.creates, SYNC_APPLY_CONCURRENCY, async (create) => {
     const session = await ports.data.createSession(create.session);
-    if (session && create.segmentIds.length > 0) {
-      await ports.data.linkSegmentsToSession(create.segmentIds, session.id);
-    }
-  }
-  for (const update of plan.updates) {
-    await ports.data.updateSession(update.sessionId, update.patch);
-    if (update.segmentIds.length > 0) {
-      await ports.data.linkSegmentsToSession(update.segmentIds, update.sessionId);
-    }
-  }
-  for (const relink of plan.relinks) {
-    await ports.data.linkSegmentsToSession(relink.segmentIds, relink.sessionId);
-  }
-  for (const sessionId of plan.deletes) {
-    await ports.data.deleteSession(sessionId);
-  }
+    if (!session) return false;
+    if (create.segmentIds.length === 0) return true;
+    return (await ports.data.linkSegmentsToSession(create.segmentIds, session.id)) !== false;
+  });
+  const updated = await mapLimit(plan.updates, SYNC_APPLY_CONCURRENCY, async (update) => {
+    const session = await ports.data.updateSession(update.sessionId, update.patch);
+    const linked = update.segmentIds.length === 0
+      || (await ports.data.linkSegmentsToSession(update.segmentIds, update.sessionId)) !== false;
+    return session != null && linked;
+  });
+  await mapLimit(plan.relinks, SYNC_APPLY_CONCURRENCY, (relink) =>
+    ports.data.linkSegmentsToSession(relink.segmentIds, relink.sessionId));
+  // Nothing ever deletes activity_segments, so an empty segment window beside
+  // auto-grouped WHOOP sessions can only mean a failed or empty read, never a
+  // real WHOOP change. Deleting on that evidence would drop real activities.
+  const deletes = segments.length > 0 ? plan.deletes : [];
+  await mapLimit(deletes, SYNC_APPLY_CONCURRENCY, (sessionId) => ports.data.deleteSession(sessionId));
 
   return {
     fetched: records.length,
-    created: plan.creates.length,
-    updated: plan.updates.length,
-    deleted: plan.deletes.length,
+    created: created.filter(Boolean).length,
+    updated: updated.filter(Boolean).length,
+    deleted: deletes.length,
     skippedUserEdited: plan.skippedUserEdited,
   };
 }
