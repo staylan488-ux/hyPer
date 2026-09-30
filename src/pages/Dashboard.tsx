@@ -21,6 +21,8 @@ import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { supabase } from '@/lib/supabase';
+import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
+import { sumMacros } from '@/lib/nutritionMacros';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
 
@@ -83,44 +85,17 @@ export function Dashboard() {
 
       const today = format(new Date(), 'yyyy-MM-dd');
 
-      const { data: logs, error: logsError } = await supabase
-        .from('nutrition_logs')
-        .select('food_id, servings')
-        .eq('user_id', authUser.id)
-        .eq('date', today);
+      const { data: logs, error: logsError } = await fetchNutritionLogsWithFoods<
+        { food_id: string; servings: number },
+        { id: string; calories: number; protein: number; carbs: number; fat: number }
+      >(authUser.id, { from: today, to: today }, 'food_id, servings', 'id, calories, protein, carbs, fat');
 
       if (logsError || !logs || logs.length === 0) {
         setNutritionTotals({ calories: 0, protein: 0, carbs: 0, fat: 0 });
         return;
       }
 
-      const foodIds = [...new Set(logs.map((log) => log.food_id))];
-
-      const { data: foods } = await supabase
-        .from('foods')
-        .select('id, calories, protein, carbs, fat')
-        .in('id', foodIds);
-
-      if (!foods) return;
-
-      const foodMap = new Map(foods.map((food) => [food.id, food]));
-
-      const totals = logs.reduce(
-        (acc, log) => {
-          const food = foodMap.get(log.food_id);
-          if (!food) return acc;
-
-          return {
-            calories: acc.calories + (food.calories || 0) * log.servings,
-            protein: acc.protein + (food.protein || 0) * log.servings,
-            carbs: acc.carbs + (food.carbs || 0) * log.servings,
-            fat: acc.fat + (food.fat || 0) * log.servings,
-          };
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0 }
-      );
-
-      setNutritionTotals(totals);
+      setNutritionTotals(sumMacros(logs));
     } catch (error) {
       console.error('Error fetching nutrition totals:', error);
     }

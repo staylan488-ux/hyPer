@@ -18,6 +18,8 @@ import {
   sortNutritionGroups,
 } from '@/lib/nutritionGroups';
 import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
+import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
+import { sumMacros } from '@/lib/nutritionMacros';
 import { createLatestRequestGate, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
@@ -116,12 +118,12 @@ export function Nutrition() {
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
 
       const [logsResult, groupsResult] = await Promise.all([
-        supabase
-          .from('nutrition_logs')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('date', from)
-          .lte('date', to),
+        fetchNutritionLogsWithFoods<Omit<NutritionLogEntry, 'food'>, NonNullable<NutritionLogEntry['food']>>(
+          user.id,
+          { from, to },
+          '*',
+          'id, name, description, calories, protein, carbs, fat, serving_size, serving_unit',
+        ),
         supabase
           .from('nutrition_groups')
           .select('*')
@@ -147,29 +149,7 @@ export function Nutrition() {
         return;
       }
 
-      if (!logs || logs.length === 0) {
-        setMonthLogs([]);
-        return;
-      }
-
-      const foodIds = [...new Set(logs.map((log) => log.food_id))];
-      const { data: foods, error: foodsError } = await supabase
-        .from('foods')
-        .select('id, name, description, calories, protein, carbs, fat, serving_size, serving_unit')
-        .in('id', foodIds);
-      if (!requestGate.isCurrent(token)) return;
-
-      if (foodsError) {
-        console.error('Error fetching foods:', foodsError);
-      }
-
-      const foodMap = new Map((foods || []).map((food) => [food.id, food]));
-      const mergedLogs: NutritionLogEntry[] = logs.map((log) => ({
-        ...log,
-        food: foodMap.get(log.food_id) || null,
-      }));
-
-      setMonthLogs(mergedLogs);
+      setMonthLogs(logs || []);
     } catch (error) {
       console.error('Error fetching nutrition logs:', error);
     } finally {
@@ -321,22 +301,7 @@ export function Nutrition() {
     };
   }, [fetchMonthLogs, loadedMonthKey, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
 
-  const dayTotals = useMemo(
-    () =>
-      selectedDayLogs.reduce(
-        (acc, log) => {
-          const food = log.food;
-          return {
-            calories: acc.calories + (food?.calories || 0) * log.servings,
-            protein: acc.protein + (food?.protein || 0) * log.servings,
-            carbs: acc.carbs + (food?.carbs || 0) * log.servings,
-            fat: acc.fat + (food?.fat || 0) * log.servings,
-          };
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0 }
-      ),
-    [selectedDayLogs]
-  );
+  const dayTotals = useMemo(() => sumMacros(selectedDayLogs), [selectedDayLogs]);
 
   const logsByDay = useMemo(() => {
     return monthLogs.reduce<Record<string, NutritionLogEntry[]>>((acc, log) => {

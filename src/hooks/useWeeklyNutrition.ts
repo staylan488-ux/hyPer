@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
+import { logMacro } from '@/lib/nutritionMacros';
 import { subDays, format } from 'date-fns';
 
 export interface DailyNutrition {
@@ -52,31 +54,13 @@ async function fetchWeeklyNutrition() {
     const startDateStr = format(sevenDaysAgo, 'yyyy-MM-dd');
     const endDateStr = format(today, 'yyyy-MM-dd');
 
-    // Fetch nutrition logs for the last 7 days
-    const { data: nutritionLogs, error: logsError } = await supabase
-      .from('nutrition_logs')
-      .select('date, servings, food_id')
-      .eq('user_id', user.id)
-      .gte('date', startDateStr)
-      .lte('date', endDateStr);
+    // Fetch nutrition logs for the last 7 days, each with its food
+    const { data: nutritionLogs, error: logsError } = await fetchNutritionLogsWithFoods<
+      { date: string; servings: number; food_id: string },
+      { id: string; calories: number; protein: number }
+    >(user.id, { from: startDateStr, to: endDateStr }, 'date, servings, food_id', 'id, calories, protein');
 
     if (logsError) throw logsError;
-
-    // Fetch foods for those logs
-    let foodsMap = new Map();
-    if (nutritionLogs && nutritionLogs.length > 0) {
-      const foodIds = [...new Set(nutritionLogs.map(log => log.food_id))];
-      const { data: foods, error: foodsError } = await supabase
-        .from('foods')
-        .select('id, calories, protein')
-        .in('id', foodIds);
-
-      if (foodsError) throw foodsError;
-
-      if (foods) {
-        foodsMap = new Map(foods.map(f => [f.id, f]));
-      }
-    }
 
     // Aggregate daily nutrition
     const dailyNutritionMap = new Map<string, DailyNutrition>();
@@ -87,13 +71,10 @@ async function fetchWeeklyNutrition() {
 
     if (nutritionLogs) {
       nutritionLogs.forEach(log => {
-        const food = foodsMap.get(log.food_id);
-        if (food) {
-          const dayData = dailyNutritionMap.get(log.date);
-          if (dayData) {
-            dayData.calories += (food.calories || 0) * log.servings;
-            dayData.protein += (food.protein || 0) * log.servings;
-          }
+        const dayData = dailyNutritionMap.get(log.date);
+        if (dayData) {
+          dayData.calories += logMacro(log, 'calories') ?? 0;
+          dayData.protein += logMacro(log, 'protein') ?? 0;
         }
       });
     }
