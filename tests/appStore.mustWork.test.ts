@@ -2838,6 +2838,35 @@ describe('set-count edits never delete finished sets and superset partners follo
     expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.id).sort()).toEqual(['a1', 'b1']);
   });
 
+  it('live: re-adding a removed exercise as a superset partner keeps its finished set and adds no duplicate set 1', async () => {
+    const sets = [
+      set('a1', 'ex-a', 1, false), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, false),
+      set('b1', 'ex-b', 1, true), set('b2', 'ex-b', 2, false), set('b3', 'ex-b', 3, false),
+    ];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [
+        item('ex-a', 0, { target_sets: 3 }),
+        item('ex-b', 1, { target_sets: 3 }),
+      ] },
+    });
+
+    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex-b');
+    expect(table.numbersFor('ex-b')).toEqual([1]);
+
+    await useAppStore.getState().addFlexibleSuperset('ex-a', {
+      id: 'ex-b', name: 'ex-b', muscle_group: 'back', muscle_group_secondary: null, equipment: 'barbell', is_compound: true,
+    });
+
+    expect(table.chain.insert).not.toHaveBeenCalled();
+    expect(table.numbersFor('ex-b')).toEqual([1]);
+    expect(useAppStore.getState().currentWorkout?.sets.filter((row) => row.exercise_id === 'ex-b').map((row) => row.id)).toEqual(['b1']);
+    const visible = useAppStore.getState().currentWorkoutDayPlan?.items.filter((row) => !row.hidden);
+    expect(visible?.map((row) => [row.exercise_id, row.superset_group_id !== null])).toEqual([['ex-a', true], ['ex-b', true]]);
+  });
+
   // History edits go through ensureWorkoutDayPlan/updateWorkoutDayPlanItems and
   // read the sets fresh from the table.
   function stubHistoryPlan(items: FlexiblePlanItem[]) {

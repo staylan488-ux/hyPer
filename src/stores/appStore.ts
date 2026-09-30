@@ -1282,15 +1282,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const { data: createdSets, error: setsError } = await insertPlaceholderSets(
-      currentWorkout.id,
-      [{ exerciseId: partner.id, from: 1, to: normalizeTargetSets(partnerItem.target_sets) }],
-      true,
-    );
+    // A partner removed earlier keeps its finished sets; adding sets 1..N again
+    // would duplicate their numbers, so it keeps what it has (as in History).
+    const partnerHasSets = currentWorkout.sets.some((set) => set.exercise_id === partner.id);
+    const { data: createdSets, error: setsError } = partnerHasSets
+      ? { data: [], error: null }
+      : await insertPlaceholderSets(
+          currentWorkout.id,
+          [{ exerciseId: partner.id, from: 1, to: normalizeTargetSets(partnerItem.target_sets) }],
+          true,
+        );
 
     if (setsError) {
       console.error('Error creating flexible superset sets:', setsError);
-    } else {
+    } else if (createdSets.length > 0) {
       // Merge instead of refetching so a set logged meanwhile stays logged.
       const latest = get().currentWorkout;
       if (latest?.id === currentWorkout.id) {
