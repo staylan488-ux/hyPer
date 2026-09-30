@@ -738,15 +738,7 @@ export function History() {
     const isStale = () => requestId !== monthRequestRef.current;
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (isStale()) return;
-      if (!user) {
-        setMonthWorkouts([]);
-        setMonthActivities([]);
-        setLoading(false);
-        return;
-      }
-
+      // The store fetchers already return [] when nobody is signed in.
       const [workouts, activities] = await Promise.all([
         fetchWorkoutsByMonth(month),
         fetchActivitySessionsByMonth(month),
@@ -754,32 +746,26 @@ export function History() {
       if (isStale()) return;
       const splitDayIds = workouts.filter((workout) => workout.split_day_id).map((workout) => workout.split_day_id as string);
       const uniqueSplitDayIds = [...new Set(splitDayIds)];
-
-      let splitDays: { id: string; day_name: string }[] = [];
-      if (uniqueSplitDayIds.length > 0) {
-        const { data: splitDayData } = await supabase
-          .from('split_days')
-          .select('id, day_name')
-          .in('id', uniqueSplitDayIds);
-        if (isStale()) return;
-        splitDays = splitDayData || [];
-      }
-
-      const splitDayMap = new Map(splitDays.map((splitDay) => [splitDay.id, splitDay.day_name]));
       const flexibleWorkoutIds = workouts
         .filter((workout) => workout.split_day_id === null)
         .map((workout) => workout.id);
 
-      let workoutPlanLabels = new Map<string, string>();
-      if (flexibleWorkoutIds.length > 0) {
-        const { data: planRows } = await supabase
-          .from('workout_day_plans')
-          .select('workout_id, day_label')
-          .in('workout_id', flexibleWorkoutIds);
-        if (isStale()) return;
+      // The two label lookups are independent, so they run together; an empty
+      // id list makes no request.
+      const [splitDayResult, planResult] = await Promise.all([
+        uniqueSplitDayIds.length > 0
+          ? supabase.from('split_days').select('id, day_name').in('id', uniqueSplitDayIds)
+          : Promise.resolve({ data: null }),
+        flexibleWorkoutIds.length > 0
+          ? supabase.from('workout_day_plans').select('workout_id, day_label').in('workout_id', flexibleWorkoutIds)
+          : Promise.resolve({ data: null }),
+      ]);
+      if (isStale()) return;
 
-        workoutPlanLabels = new Map((planRows || []).map((plan) => [plan.workout_id, plan.day_label]));
-      }
+      const splitDays: { id: string; day_name: string }[] = splitDayResult.data || [];
+      const splitDayMap = new Map(splitDays.map((splitDay) => [splitDay.id, splitDay.day_name]));
+      const planRows: { workout_id: string; day_label: string }[] = planResult.data || [];
+      const workoutPlanLabels = new Map(planRows.map((plan) => [plan.workout_id, plan.day_label]));
 
       const workoutsWithSplit: WorkoutWithSplit[] = workouts.map((workout) => ({
         ...workout,
