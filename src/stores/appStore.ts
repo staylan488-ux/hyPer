@@ -33,6 +33,7 @@ import { getDailyIntake } from '@/lib/nutritionIntake';
 import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeights';
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
+import { planSetCountChange } from '@/lib/workoutPlanOps';
 
 /**
  * What an adaptive refresh did: 'skipped' (not due, off, or no weigh-in),
@@ -1381,24 +1382,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const removedIds: string[] = [];
 
       for (const affectedExerciseId of affectedExerciseIds) {
-        const existingSets = workout.sets
-          .filter((set) => set.exercise_id === affectedExerciseId)
-          .sort((a, b) => a.set_number - b.set_number);
-
-        if (existingSets.length < desiredSets) {
-          additions.push({ exerciseId: affectedExerciseId, from: existingSets.length + 1, to: desiredSets });
+        const { insertNumbers, deleteIds } = planSetCountChange(
+          workout.sets.filter((set) => set.exercise_id === affectedExerciseId),
+          desiredSets,
+        );
+        if (insertNumbers.length > 0) {
+          additions.push({ exerciseId: affectedExerciseId, from: insertNumbers[0], to: insertNumbers[insertNumbers.length - 1] });
         }
-
-        if (existingSets.length > desiredSets) {
-          const removable = existingSets
-            .filter((set) => !set.completed)
-            .sort((a, b) => b.set_number - a.set_number);
-
-          for (const set of removable) {
-            if (set.set_number <= desiredSets) break;
-            removedIds.push(set.id);
-          }
-        }
+        removedIds.push(...deleteIds);
       }
 
       const { data: createdSets, error: setsError } = await insertPlaceholderSets(workout.id, additions, true);
@@ -2826,6 +2817,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? nextItems.filter((item) => !item.hidden && item.superset_group_id === sourceGroupId).map((item) => item.exercise_id)
       : [exerciseId];
 
+    const additions: PlaceholderSetSpec[] = [];
+    const removedIds: string[] = [];
+
     for (const affectedExerciseId of affectedExerciseIds) {
       const { data: existingSets, error: existingError } = await supabase
         .from('sets')
@@ -2839,40 +2833,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         continue;
       }
 
-      const sorted = (existingSets || []).slice().sort((a, b) => Number(a.set_number) - Number(b.set_number));
-      if (sorted.length < desiredSets) {
-        const currentMaxSetNumber = sorted.length > 0
-          ? Math.max(...sorted.map((set) => Number(set.set_number) || 0))
-          : 0;
-
-        const rows = Array.from({ length: desiredSets - sorted.length }, (_, index) => ({
-          workout_id: workoutId,
-          exercise_id: affectedExerciseId,
-          set_number: currentMaxSetNumber + index + 1,
-          completed: false,
-        }));
-
-        const { error: insertError } = await supabase.from('sets').insert(rows);
-        if (insertError) {
-          console.error('Error adding sets to match target sets:', insertError);
-        }
+      const { insertNumbers, deleteIds } = planSetCountChange(existingSets || [], desiredSets);
+      if (insertNumbers.length > 0) {
+        additions.push({ exerciseId: affectedExerciseId, from: insertNumbers[0], to: insertNumbers[insertNumbers.length - 1] });
       }
+      removedIds.push(...deleteIds);
+    }
 
-      if (sorted.length > desiredSets) {
-        const removable = sorted
-          .filter((set) => !set.completed && Number(set.set_number) > desiredSets)
-          .sort((a, b) => Number(b.set_number) - Number(a.set_number));
+    const { error: insertError } = await insertPlaceholderSets(workoutId, additions);
+    if (insertError) {
+      console.error('Error adding sets to match target sets:', insertError);
+    }
 
-        for (const row of removable) {
-          const { error: deleteError } = await supabase
-            .from('sets')
-            .delete()
-            .eq('id', row.id);
+    if (removedIds.length > 0) {
+      // Only unfinished sets, so a set logged since the read above survives.
+      const { error: deleteError } = await supabase
+        .from('sets')
+        .delete()
+        .eq('completed', false)
+        .in('id', removedIds);
 
-          if (deleteError) {
-            console.error('Error removing sets to match target sets:', deleteError);
-          }
-        }
+      if (deleteError) {
+        console.error('Error removing sets to match target sets:', deleteError);
       }
     }
   },

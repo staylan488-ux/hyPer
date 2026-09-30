@@ -2902,10 +2902,30 @@ describe('set-count edits never delete finished sets and superset partners follo
     expect(plan.writtenItem('ex-b')?.target_sets).toBe(2);
   });
 
-  // Live grow numbers new sets from the count (existingSets.length + 1) while
-  // History numbers them from max(set_number) + 1; they differ when numbers
-  // have gaps. F28 decides which is right before this is pinned.
-  it.todo('numbers added sets consistently across live and History when set numbers have gaps (F28)');
+  // Both paths share planSetCountChange, so added sets are numbered after the
+  // highest existing number and a gap never produces a duplicate.
+  it('numbers added sets from the highest set number in both live and History when numbers have gaps', async () => {
+    const gapped = () => [set('a1', 'ex-a', 1, true), set('a3', 'ex-a', 3, false)];
+
+    const liveTable = createSetsTable(gapped());
+    routeLiveWorkout(liveTable);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(gapped()),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0, { target_sets: 2 })] },
+    });
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 4 });
+    expect(liveTable.numbersFor('ex-a')).toEqual([1, 3, 4, 5]);
+    expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.set_number)).toEqual([1, 3, 4, 5]);
+
+    const historyTable = createSetsTable(gapped());
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'sets') return historyTable.chain;
+      throw new Error(`Unexpected table: ${name}`);
+    });
+    stubHistoryPlan([item('ex-a', 0, { target_sets: 2 })]);
+    await useAppStore.getState().updateWorkoutExerciseTargetSets('workout-1', 'ex-a', 4);
+    expect(historyTable.numbersFor('ex-a')).toEqual([1, 3, 4, 5]);
+  });
 
   it('History: clearing a superset ungroups every member and leaves other items alone', async () => {
     supabaseMock.from.mockImplementation((name: string) => { throw new Error(`Unexpected table: ${name}`); });
