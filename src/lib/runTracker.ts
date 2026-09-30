@@ -25,6 +25,9 @@ export interface GpsSample {
   // optional sustained-motion evidence from the phone accelerometer. This is
   // deliberately only a gate; route and distance still come from GPS/speed.
   motionDetected?: boolean;
+  // Native recorder sequence number. Only used to track how far a resumable
+  // run has consumed the durable native file; the engine never reads it.
+  nativeSeq?: number;
 }
 
 export type GpsSampleDecision =
@@ -217,6 +220,11 @@ export interface TrackerState {
   sprintEndCandidateSinceMs: number | null;
   sprintEndCandidateDistM: number;
   reps: SprintRep[];
+  // Highest native recorder sample/control sequence already applied to this
+  // state. Kept inside the snapshotted state so a resumed run drains only
+  // what the snapshot lacks. Absent in snapshots from older app versions.
+  nativeSampleSeq?: number | null;
+  nativeControlSeq?: number | null;
 }
 
 export type TrackerEvent =
@@ -290,6 +298,8 @@ export function createTracker(config: TrackerConfig, nowMs: number, runId?: stri
     sprintEndCandidateSinceMs: null,
     sprintEndCandidateDistM: 0,
     reps: [],
+    nativeSampleSeq: null,
+    nativeControlSeq: null,
   };
 }
 
@@ -615,6 +625,53 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
   }
 
   return trace(next, acceptedDecision, acceptedStepM);
+}
+
+/* ── Durable native recorder ── */
+
+/**
+ * Applies one sample delivered by the native recorder. Its sequence is
+ * recorded for every delivered sample, including ones the engine rejects as
+ * paused, warming or stale, so paused stretches are never replayed after a
+ * restore un-pauses. Samples at or before `replayCutoffMs` were already
+ * applied before a restore that carried no cursor, and only move the cursor.
+ */
+export function advanceRecordedSample(
+  state: TrackerState,
+  sample: GpsSample,
+  replayCutoffMs: number | null = null,
+): AdvanceResult {
+  const { nativeSeq, ...gpsSample } = sample;
+  if (replayCutoffMs != null && gpsSample.t <= replayCutoffMs) {
+    return { state: withNativeSampleSeq(state, nativeSeq), events: [] };
+  }
+  const result = advanceTracker(state, gpsSample);
+  return { ...result, state: withNativeSampleSeq(result.state, nativeSeq) };
+}
+
+export function withNativeSampleSeq(state: TrackerState, seq: number | undefined): TrackerState {
+  if (seq == null || seq <= (state.nativeSampleSeq ?? 0)) return state;
+  return { ...state, nativeSampleSeq: seq };
+}
+
+export function withNativeControlSeq(state: TrackerState, seq: number | undefined): TrackerState {
+  if (seq == null || seq <= (state.nativeControlSeq ?? 0)) return state;
+  return { ...state, nativeControlSeq: seq };
+}
+
+/**
+ * Where a restored run continues in the native recorder's durable file. A
+ * snapshot from before cursors existed replays from the start and relies on
+ * `replayCutoffMs` to skip samples it already counted.
+ */
+export function nativeResumePoint(restored: TrackerState): {
+  cursors: { sample: number; control: number };
+  replayCutoffMs: number | null;
+} {
+  return {
+    cursors: { sample: restored.nativeSampleSeq ?? 0, control: restored.nativeControlSeq ?? 0 },
+    replayCutoffMs: restored.nativeSampleSeq == null ? restored.lastSampleMs : null,
+  };
 }
 
 // hysteresis: EMA speed must hold above start-threshold to begin a rep and

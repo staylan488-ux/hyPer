@@ -22,18 +22,41 @@ function toGpsSample(sample: NativeRunSample): GpsSample {
     speedMps: sample.speedMps,
     speedAccuracyMps: sample.speedAccuracyMps,
     motionDetected: sample.motion === 'unknown' ? undefined : sample.motion === 'moving',
+    nativeSeq: sample.sequence,
   };
 }
 
-export function createNativeRunSource(runId: string, resume: boolean): NativePositionSource {
+export interface NativeRunCursors {
+  sample: number;
+  control: number;
+}
+
+// `cursors` are the last sample/control sequences the resumed state already
+// applied. `onNativeReset` fires with the cursors the source continues from
+// when the recorder's sequence is behind them: a fresh file (both back to 0),
+// or the same file with a sample sequence that fell back after a failed write
+// (sample cursor only; controls are numbered separately and kept).
+export function createNativeRunSource(
+  runId: string,
+  resume: boolean,
+  cursors?: NativeRunCursors,
+  onNativeReset?: (cursors: NativeRunCursors) => void,
+): NativePositionSource {
   let stopped = false;
-  let recoveryCursor = 0;
-  let controlCursor = 0;
+  let recoveryCursor = Math.max(0, cursors?.sample ?? 0);
+  let controlCursor = Math.max(0, cursors?.control ?? 0);
   let sampleHandler: ((sample: GpsSample) => void) | null = null;
   let controlHandler: ((control: NativeRunControl) => void) | null = null;
   const deliveredSequences = new Set<number>();
   const deliveredControls = new Set<number>();
   const listenerHandles: Array<{ remove: () => Promise<void> }> = [];
+
+  // Move the sample cursor over samples the live listener already delivered,
+  // but only through an unbroken run of sequences: a gap (a sample the
+  // listener never saw) holds the cursor so the next drain still recovers it.
+  const advanceCursor = () => {
+    while (deliveredSequences.has(recoveryCursor + 1)) recoveryCursor += 1;
+  };
 
   const cleanupListeners = async () => {
     const handles = listenerHandles.splice(0, listenerHandles.length);
@@ -48,6 +71,8 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
       | { kind: 'control'; timestampMs: number; control: NativeRunControl }
     > = [];
     while (true) {
+      const previousSampleCursor = recoveryCursor;
+      const previousControlCursor = controlCursor;
       const [sampleBatch, controlBatch] = await Promise.all([
         NativeRun.drainSamples({ afterSequence: recoveryCursor }),
         NativeRun.drainControls({ afterSequence: controlCursor }),
@@ -59,6 +84,9 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
       recoveryCursor = Math.max(recoveryCursor, sampleBatch.lastSequence);
       controlCursor = Math.max(controlCursor, controlBatch.lastSequence);
       if (!sampleBatch.hasMore && !controlBatch.hasMore) break;
+      // A native layer that keeps reporting more without advancing (e.g. a
+      // sequence assigned but never written) must not spin this loop forever.
+      if (recoveryCursor === previousSampleCursor && controlCursor === previousControlCursor) break;
     }
 
     pendingEvents.sort((a, b) => a.timestampMs - b.timestampMs);
@@ -71,6 +99,7 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
         controlHandler?.(event.control);
       }
     }
+    advanceCursor();
   };
 
   return {
@@ -85,7 +114,23 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
             throw new Error('Location permission denied. Allow Precise Location to track runs.');
           }
 
-          await NativeRun.startRecording({ runId, resume });
+          const recording = await NativeRun.startRecording({ runId, resume });
+          if (recording.lastSequence < recoveryCursor) {
+            if (recording.lastSequence === 0) {
+              // The native store was reset (new file, sequences from 1).
+              // Keeping the saved cursors would silently drop every new sample.
+              recoveryCursor = 0;
+              controlCursor = 0;
+            } else {
+              // Same file, but its saved sequence is behind samples JS already
+              // applied live (a write failed or the app died before saving
+              // it). New samples reuse those numbers, so follow the recorder;
+              // the caller filters the repeats by time. Controls keep their
+              // own sequence, so replaying them would repeat splits and rests.
+              recoveryCursor = recording.lastSequence;
+            }
+            if (!stopped) onNativeReset?.({ sample: recoveryCursor, control: controlCursor });
+          }
 
           // Recover anything recorded while the WebView was suspended before
           // subscribing, then drain once more to close the subscription race.
@@ -95,6 +140,7 @@ export function createNativeRunSource(runId: string, resume: boolean): NativePos
           listenerHandles.push(await NativeRun.addListener('locationSample', (sample) => {
             if (stopped || deliveredSequences.has(sample.sequence)) return;
             deliveredSequences.add(sample.sequence);
+            advanceCursor();
             sampleHandler?.(toGpsSample(sample));
           }));
           listenerHandles.push(await NativeRun.addListener('locationError', (event) => {
