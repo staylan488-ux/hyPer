@@ -17,9 +17,9 @@ import {
   getNutritionProfile,
   isNewPhase,
   macroInputFromProfile,
+  saveExpenditure,
   saveNutritionProfile,
   todayIsoDate,
-  toNutritionProfileInput,
   type NutritionProfile,
   type NutritionProfileInput,
 } from '@/lib/nutritionProfile';
@@ -33,8 +33,84 @@ import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeig
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
 
+/**
+ * What an adaptive refresh did: 'skipped' (not due, off, or no weigh-in),
+ * 'unchanged' (expenditure saved, target left alone), 'updated' (both
+ * written) or 'failed'.
+ */
+export type AdaptiveRefreshStatus = 'updated' | 'unchanged' | 'skipped' | 'failed';
+
 /** Pull a little more than the estimator's window so its filter has slack. */
 const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
+
+/**
+ * The profile fields a refresh computes from. If any change while it runs,
+ * its result was computed for inputs the user has since replaced.
+ */
+function sameAdaptiveInputs(a: NutritionProfile | null, b: NutritionProfile): boolean {
+  return a != null
+    && a.adaptive_enabled === b.adaptive_enabled
+    && a.sex === b.sex
+    && a.birth_year === b.birth_year
+    && a.height_cm === b.height_cm
+    && a.body_fat_pct === b.body_fat_pct
+    && a.activity === b.activity
+    && a.goal === b.goal
+    && a.rate_pct_per_week === b.rate_pct_per_week
+    && a.phase_started_on === b.phase_started_on;
+}
+
+/** Whether the stored target is still the one a refresh started from. */
+function sameMacroTarget(a: MacroTarget | null, b: MacroTarget | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.id === b.id
+    && a.source === b.source
+    && a.updated_at === b.updated_at
+    && a.calories === b.calories
+    && a.protein === b.protein
+    && a.carbs === b.carbs
+    && a.fat === b.fat;
+}
+
+/**
+ * One adaptive refresh at a time. An unforced call joins the run in flight; a
+ * forced one waits for it and then computes afresh.
+ */
+let adaptiveRefreshInFlight: Promise<AdaptiveRefreshStatus> | null = null;
+
+/**
+ * The adaptive loop's own target write. "Never overwrite a hand-typed target"
+ * is enforced inside each statement, so it holds even when the in-memory copy
+ * is stale (a failed read) or a manual save lands mid-refresh. Returns the
+ * stored row, or null when a manual target kept its place.
+ */
+async function writeAdaptiveMacroTarget(
+  userId: string,
+  macros: Pick<MacroTarget, 'calories' | 'protein' | 'carbs' | 'fat'>
+): Promise<MacroTarget | null> {
+  const fields = { ...macros, source: 'adaptive' as const, updated_at: new Date().toISOString() };
+
+  const updated = await supabase
+    .from('macro_targets')
+    .update(fields)
+    .eq('user_id', userId)
+    .neq('source', 'manual')
+    .select()
+    .maybeSingle();
+  if (updated.error) throw updated.error;
+  if (updated.data) return updated.data;
+
+  // Nothing matched: either no row yet, or a manual one. Insert only if absent
+  // (ON CONFLICT DO NOTHING), so a manual row is left alone.
+  const inserted = await supabase
+    .from('macro_targets')
+    .upsert({ user_id: userId, ...fields }, { onConflict: 'user_id', ignoreDuplicates: true })
+    .select()
+    .maybeSingle();
+  if (inserted.error) throw inserted.error;
+  return inserted.data ?? null;
+}
 import type {
   Split,
   SplitDay,
@@ -289,8 +365,11 @@ interface AppState {
   // Nutrition profile (the inputs behind the targets)
   fetchNutritionProfile: () => Promise<void>;
   updateNutritionProfile: (input: NutritionProfileInput) => Promise<void>;
-  /** Re-learn expenditure from logged intake vs weight trend, then re-target. */
-  refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<void>;
+  /**
+   * Re-learn expenditure from logged intake vs weight trend, then re-target.
+   * Never rejects; the status says what happened.
+   */
+  refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<AdaptiveRefreshStatus>;
 
   // Volume
   fetchVolumeLandmarks: () => Promise<void>;
@@ -2867,14 +2946,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // maybeSingle, not single — a user with no targets yet is the normal case,
     // not an error.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('macro_targets')
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (data) {
-      set({ macroTarget: data });
+    // A successful read with no row clears a target left over from a previous
+    // account. A failed read keeps what is shown, so a flaky connection never
+    // blanks the targets.
+    if (!error) {
+      set({ macroTarget: data ?? null });
     }
   },
 
@@ -2928,73 +3010,109 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ nutritionProfile: await saveNutritionProfile(user.id, payload) });
   },
 
-  refreshAdaptiveTargets: async (options) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  refreshAdaptiveTargets: (options) => {
+    const inFlight = adaptiveRefreshInFlight;
+    if (inFlight && !options?.force) return inFlight;
 
-    const profile = get().nutritionProfile;
-    if (!profile || !profile.adaptive_enabled) return;
-    if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return;
+    const run = (async (): Promise<AdaptiveRefreshStatus> => {
+      // A forced run (Settings "Resume") must compute fresh, so it waits for
+      // the one in flight rather than reusing its result.
+      if (inFlight) await inFlight;
 
-    try {
-      const latest = await getLatestBodyWeight(user.id);
-      if (!latest) return;
-      const weightKg = Number(latest.kilograms);
-      if (!Number.isFinite(weightKg) || weightKg <= 0) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return 'skipped';
 
-      const now = new Date();
-      const since = localIsoDate(
-        new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
-      );
-      const [weightSamples, dailyIntake] = await Promise.all([
-        getBodyWeightHistorySince(user.id, ADAPTIVE_LOOKBACK_DAYS, now),
-        getDailyIntake(user.id, since),
-      ]);
+        const profile = get().nutritionProfile;
+        if (!profile || !profile.adaptive_enabled) return 'skipped';
+        if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return 'skipped';
+        const targetAtStart = get().macroTarget;
 
-      // Seed the estimator with the PREDICTED figure, so a learned value can
-      // never bootstrap itself off its own previous output.
-      const predicted = calculateMacroTargets(macroInputFromProfile(profile, weightKg, null, now));
+        const latest = await getLatestBodyWeight(user.id);
+        if (!latest) return 'skipped';
+        const weightKg = Number(latest.kilograms);
+        if (!Number.isFinite(weightKg) || weightKg <= 0) return 'skipped';
 
-      const estimate = estimateExpenditure({
-        predictedTdee: predicted.tdee,
-        bmr: predicted.bmr,
-        weightSamples,
-        dailyIntake,
-        phaseStartedOn: profile.phase_started_on,
-        previousExpenditureKcal: profile.expenditure_kcal,
-        previousConfidence: profile.expenditure_confidence,
-        through: now,
-      });
+        const now = new Date();
+        const since = localIsoDate(
+          new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
+        );
+        const [weightSamples, dailyIntake] = await Promise.all([
+          getBodyWeightHistorySince(user.id, ADAPTIVE_LOOKBACK_DAYS, now),
+          getDailyIntake(user.id, since),
+        ]);
 
-      const saved = await saveNutritionProfile(user.id, {
-        ...toNutritionProfileInput(profile),
-        expenditure_kcal: estimate.expenditureKcal,
-        expenditure_confidence: estimate.confidence,
-        expenditure_updated_at: now.toISOString(),
-      });
-      set({ nutritionProfile: saved });
+        // Seed the estimator with the PREDICTED figure, so a learned value can
+        // never bootstrap itself off its own previous output.
+        const predicted = calculateMacroTargets(macroInputFromProfile(profile, weightKg, null, now));
 
-      // A target the user typed by hand is theirs. Never overwrite it.
-      const current = get().macroTarget;
-      if (current?.source === 'manual') return;
-      // Nothing learned yet means the existing calculated target already
-      // reflects the prediction — rewriting it would just add churn.
-      if (estimate.confidence === 'predicted') return;
+        const estimate = estimateExpenditure({
+          predictedTdee: predicted.tdee,
+          bmr: predicted.bmr,
+          weightSamples,
+          dailyIntake,
+          phaseStartedOn: profile.phase_started_on,
+          previousExpenditureKcal: profile.expenditure_kcal,
+          previousConfidence: profile.expenditure_confidence,
+          through: now,
+        });
 
-      const next = calculateMacroTargets(
-        macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
-      );
-      await get().updateMacroTarget({
-        calories: next.calories,
-        protein: next.protein,
-        carbs: next.carbs,
-        fat: next.fat,
-        source: 'adaptive',
-      });
-    } catch {
-      // Adaptive targets are an enhancement. A failure here must never take
-      // down the screen that triggered it.
-    }
+        // The user changed their goal or saved a target while this ran: the
+        // result is for inputs they replaced. Write nothing; the unchanged
+        // stamp lets the next Today visit recompute from the new inputs.
+        if (!sameAdaptiveInputs(get().nutritionProfile, profile)) return 'skipped';
+        if (!sameMacroTarget(get().macroTarget, targetAtStart)) return 'skipped';
+
+        // A target the user typed by hand is theirs. Never overwrite it. This is
+        // the fast exit; writeAdaptiveMacroTarget enforces it in the database.
+        // Nothing learned yet means the existing calculated target already
+        // reflects the prediction — rewriting it would just add churn.
+        let retargeted = false;
+        if (targetAtStart?.source !== 'manual' && estimate.confidence !== 'predicted') {
+          const next = calculateMacroTargets(
+            macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
+          );
+          const savedTarget = await writeAdaptiveMacroTarget(user.id, {
+            calories: next.calories,
+            protein: next.protein,
+            carbs: next.carbs,
+            fat: next.fat,
+          });
+          // A target the user saved while the write was in flight already won
+          // in the database; keep showing theirs instead of this stale echo.
+          if (savedTarget && sameMacroTarget(get().macroTarget, targetAtStart)) {
+            set({ macroTarget: savedTarget });
+          }
+          retargeted = !!savedTarget;
+        }
+
+        if (!sameAdaptiveInputs(get().nutritionProfile, profile)) return retargeted ? 'updated' : 'skipped';
+
+        // Stamp the profile only after the target write, so a failed target
+        // write is retried on the next visit instead of a week later. Only the
+        // expenditure columns are written, never the snapshot's goal or rate.
+        const saved = await saveExpenditure(user.id, {
+          expenditure_kcal: estimate.expenditureKcal,
+          expenditure_confidence: estimate.confidence,
+          expenditure_updated_at: now.toISOString(),
+        });
+        // A profile edit that landed during the write already set its own row.
+        if (sameAdaptiveInputs(get().nutritionProfile, profile)) set({ nutritionProfile: saved });
+
+        return retargeted ? 'updated' : 'unchanged';
+      } catch (error) {
+        // Adaptive targets are an enhancement. A failure here must never take
+        // down the screen that triggered it.
+        console.warn('[adaptive] refresh failed', error);
+        return 'failed';
+      }
+    })();
+
+    adaptiveRefreshInFlight = run;
+    void run.finally(() => {
+      if (adaptiveRefreshInFlight === run) adaptiveRefreshInFlight = null;
+    });
+    return run;
   },
 
   fetchVolumeLandmarks: async () => {
