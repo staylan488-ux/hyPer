@@ -1485,7 +1485,7 @@ export function Workout() {
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>Finish</Button>
+          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
         </div>
         {finishError && <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>}
         <div className="studio-session-summary">

@@ -25,6 +25,7 @@ vi.mock('@/lib/whoopClient', () => ({
 }));
 
 import { useAppStore } from '@/stores/appStore';
+import { SET_SAVE_TIMEOUT_MS } from '@/lib/saveWorkoutSet';
 
 const realFetchSplits = useAppStore.getState().fetchSplits;
 
@@ -1261,7 +1262,7 @@ describe('must-work store contracts', () => {
     useAppStore.setState({ currentWorkout: workout, currentWorkoutDayPlan: plan });
 
     const workoutsChain = createChain({
-      eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'x' }, status: 0 }),
+      abortSignal: vi.fn().mockResolvedValue({ data: null, error: { message: 'x' }, status: 0 }),
     });
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
@@ -1270,9 +1271,53 @@ describe('must-work store contracts', () => {
 
     await expect(useAppStore.getState().completeWorkout()).rejects.toThrow("Couldn't finish the workout");
 
+    // One retry with the same payload, then the session stays open.
+    expect(workoutsChain.abortSignal).toHaveBeenCalledTimes(2);
+    expect(workoutsChain.update).toHaveBeenNthCalledWith(2, { completed: true, completed_at: '2026-03-10T11:20:00.000Z' });
     expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
     expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
     expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('turns a stalled finish into the retry message instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    try {
+      const workout = makeWorkoutWithSet({
+        id: 'set-1',
+        workout_id: 'workout-1',
+        exercise_id: 'exercise-1',
+        set_number: 1,
+        weight: 185,
+        reps: 8,
+        rpe: 8,
+        completed: true,
+        completed_at: '2026-03-10T11:20:00.000Z',
+      });
+      useAppStore.setState({ currentWorkout: workout });
+
+      const signals: AbortSignal[] = [];
+      const workoutsChain = createChain({
+        abortSignal: vi.fn((signal: AbortSignal) => {
+          signals.push(signal);
+          return new Promise(() => {});
+        }),
+      });
+      supabaseMock.from.mockImplementation((table: string) => {
+        if (table === 'workouts') return workoutsChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
+
+      const finishing = expect(useAppStore.getState().completeWorkout()).rejects.toThrow("Couldn't finish the workout");
+      await vi.advanceTimersByTimeAsync(2 * SET_SAVE_TIMEOUT_MS);
+      await finishing;
+
+      expect(signals).toHaveLength(2);
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+      expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
+      expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('finishes without waiting for the weekly volume recount', async () => {
@@ -2055,7 +2100,8 @@ describe('set-count edits never delete finished sets and superset partners follo
   });
 
   // An in-memory `sets` table: inserts add rows (insert().select() with the
-  // exercise embed returns them), delete().eq/in('id') removes them, and
+  // exercise embed returns them), delete().eq/in('id') removes them (honoring
+  // other eq filters set first; a following select('id') returns them), and
   // select(...).eq(...).order() reads them back filtered.
   function createSetsTable(initial: WorkoutSet[]) {
     const rows = initial.map((row) => ({ ...row }));
@@ -2063,14 +2109,23 @@ describe('set-count edits never delete finished sets and superset partners follo
     let inserted = 0;
     let lastInserted: WorkoutSet[] = [];
     let deleting = false;
+    let deleteFilters: Record<string, unknown> = {};
+    let justDeleted: string[] | null = null;
     let filters: Record<string, unknown> = {};
     const remove = (ids: string[]) => {
+      justDeleted = [];
       for (const id of ids) {
         const index = rows.findIndex((row) => row.id === id);
-        if (index >= 0) rows.splice(index, 1);
+        if (index < 0) continue;
+        const matches = Object.entries(deleteFilters)
+          .every(([key, value]) => rows[index][key as keyof WorkoutSet] === value);
+        if (!matches) continue;
+        rows.splice(index, 1);
         deletedIds.push(id);
+        justDeleted.push(id);
       }
       deleting = false;
+      deleteFilters = {};
     };
     const chain = createChain();
     chain.insert.mockImplementation((payload: Partial<WorkoutSet> | Partial<WorkoutSet>[]) => {
@@ -2082,14 +2137,18 @@ describe('set-count edits never delete finished sets and superset partners follo
       }
       return chain;
     });
-    chain.delete.mockImplementation(() => { deleting = true; return chain; });
+    chain.delete.mockImplementation(() => { deleting = true; justDeleted = null; return chain; });
     chain.select.mockImplementation((columns?: string) => {
       if (columns?.includes('exercise:')) return Promise.resolve({ data: lastInserted, error: null });
+      const deleted = justDeleted;
+      justDeleted = null;
+      if (deleted && columns === 'id') return Promise.resolve({ data: deleted.map((id) => ({ id })), error: null });
       filters = {};
       return chain;
     });
-    chain.eq.mockImplementation((column: string, value: string) => {
-      if (deleting && column === 'id') remove([value]);
+    chain.eq.mockImplementation((column: string, value: unknown) => {
+      if (deleting && column === 'id') remove([value as string]);
+      else if (deleting) deleteFilters[column] = value;
       else filters[column] = value;
       return chain;
     });
@@ -2146,6 +2205,37 @@ describe('set-count edits never delete finished sets and superset partners follo
     expect(table.rows.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
     expect(planItem('ex-a')?.target_sets).toBe(2);
     expect(useAppStore.getState().currentWorkout?.sets.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
+  });
+
+  it('live: a set logged while target sets are lowered is not deleted', async () => {
+    const sets = [set('a1', 'ex-a', 1, true), set('a2', 'ex-a', 2, false), set('a3', 'ex-a', 3, false), set('a4', 'ex-a', 4, false)];
+    const table = createSetsTable(sets);
+    routeLiveWorkout(table);
+    useAppStore.setState({
+      currentWorkout: flexWorkout(sets),
+      currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0)] },
+    });
+    // The user logs a3 (saved on the server and on screen) while the plan
+    // update is in flight, after the store took its snapshot of the sets.
+    const route = supabaseMock.from.getMockImplementation()!;
+    supabaseMock.from.mockImplementation((name: string) => {
+      if (name === 'workout_day_plans') {
+        Object.assign(table.rows.find((row) => row.id === 'a3')!, { completed: true, reps: 8, weight: 100 });
+        const current = useAppStore.getState().currentWorkout!;
+        useAppStore.setState({
+          currentWorkout: { ...current, sets: current.sets.map((row) => (row.id === 'a3' ? { ...row, completed: true } : row)) },
+        });
+      }
+      return route(name);
+    });
+
+    await useAppStore.getState().updateFlexibleExerciseMeta('ex-a', { target_sets: 2 });
+
+    expect(table.deletedIds).toEqual(['a4']);
+    expect(table.rows.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
+    const liveSets = useAppStore.getState().currentWorkout!.sets;
+    expect(liveSets.map((row) => row.id).sort()).toEqual(['a1', 'a2', 'a3']);
+    expect(liveSets.find((row) => row.id === 'a3')?.completed).toBe(true);
   });
 
   it('live: raising target sets adds the missing sets after the existing ones', async () => {

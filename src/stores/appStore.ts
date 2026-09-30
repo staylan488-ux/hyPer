@@ -11,7 +11,7 @@ import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout } from '@/lib/workoutSessions';
-import { saveWorkoutSet } from '@/lib/saveWorkoutSet';
+import { runSaveWithRetry, saveWorkoutSet } from '@/lib/saveWorkoutSet';
 import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
@@ -1284,9 +1284,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       let deletedIds: string[] = [];
       if (removedIds.length > 0) {
-        const { error: deleteError } = await supabase.from('sets').delete().in('id', removedIds);
+        // Only delete sets that are still unfinished on the server, so a set
+        // logged during the plan update survives, and drop only what was deleted.
+        const { data: deletedRows, error: deleteError } = await supabase
+          .from('sets')
+          .delete()
+          .eq('completed', false)
+          .in('id', removedIds)
+          .select('id');
         if (deleteError) console.error('Error removing sets for flexible target change:', deleteError);
-        else deletedIds = removedIds;
+        else deletedIds = (deletedRows ?? []).map((row) => row.id);
       }
 
       // Merge instead of refetching so a set logged meanwhile stays logged.
@@ -1482,10 +1489,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const completedAt = resolveWorkoutCompletedAt(currentWorkout.sets);
 
-    const { error } = await supabase
-      .from('workouts')
-      .update({ completed: true, completed_at: completedAt })
-      .eq('id', currentWorkout.id);
+    // Bound the save so a stalled request on weak signal turns into the retry
+    // message instead of a silent wait. The payload is the same on each try.
+    let error: unknown;
+    try {
+      ({ error } = await runSaveWithRetry((signal) => supabase
+        .from('workouts')
+        .update({ completed: true, completed_at: completedAt })
+        .eq('id', currentWorkout.id)
+        .abortSignal(signal)));
+    } catch (caught) {
+      error = caught;
+    }
 
     // Keep the session open when the save fails so the user can retry.
     if (error) {
