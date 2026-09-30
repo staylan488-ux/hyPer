@@ -5,7 +5,7 @@ import { getSessionUserId } from '@/lib/sessionUser';
 import { isPreviewActive } from '@/preview/flag';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
-import { createKeyedSingleFlight } from '@/lib/singleFlight';
+import { createKeyedSingleFlight, createReadFlight } from '@/lib/singleFlight';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { planActivityMerge } from '@/lib/mergeActivities';
@@ -284,7 +284,8 @@ interface AppState {
   weeklyVolume: MuscleVolume[];
 
   // Split actions
-  fetchSplits: () => Promise<void>;
+  /** force: read again even if a read is running; pass it after a write. */
+  fetchSplits: (options?: { force?: boolean }) => Promise<void>;
   createSplit: (split: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => Promise<Split | null>;
   updateSplit: (id: string, updates: Partial<Split>) => Promise<{ ok: boolean; reason?: string }>;
   deleteSplit: (id: string) => Promise<{ ok: boolean; reason?: string }>;
@@ -352,7 +353,8 @@ interface AppState {
   clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
   removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
-  fetchFlexTemplates: () => Promise<void>;
+  /** force: read again even if a read is running; pass it after a write. */
+  fetchFlexTemplates: (options?: { force?: boolean }) => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
   renameFlexTemplate: (templateId: string, nextLabel: string, allowOverwrite?: boolean) => Promise<{ ok: boolean; conflictLabel?: string; reason?: string }>;
   deleteFlexTemplate: (templateId: string) => Promise<void>;
@@ -443,6 +445,17 @@ const whoopSyncFlight = createKeyedSingleFlight<WhoopSyncResult | null>();
 // state, and the next screen mount reads again.
 let workoutMutationSeq = 0;
 
+// Screens call the same reads on every mount (Today, Train and Program each
+// load splits, the live workout, the mode and templates), so concurrent calls
+// share one request. Keys carry the user id, and the workout reads also the
+// write sequence, so a call made after a write never joins a read from
+// before it.
+const splitsFlight = createReadFlight();
+const workoutModeFlight = createReadFlight();
+const flexTemplatesFlight = createReadFlight();
+const currentWorkoutFlight = createKeyedSingleFlight<void>();
+const workoutDayPlanFlight = createKeyedSingleFlight<void>();
+
 function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) => Promise<Result>) {
   return async (...args: Args): Promise<Result> => {
     workoutMutationSeq += 1;
@@ -473,46 +486,49 @@ export const useAppStore = create<AppState>((set, get) => ({
   ...initialAppData,
   workoutMode: 'split',
 
-  fetchSplits: async () => {
+  fetchSplits: async (options) => {
     const userId = await getSessionUserId();
     if (!userId) return;
+    if (options?.force) splitsFlight.invalidate();
 
-    const { data: splits } = await supabase
-      .from('splits')
-      .select(`
-        *,
-        days:split_days (
+    return splitsFlight.run(userId, async (isCurrent) => {
+      const { data: splits } = await supabase
+        .from('splits')
+        .select(`
           *,
-          exercises:split_exercises (
+          days:split_days (
             *,
-            exercise:exercises (*)
+            exercises:split_exercises (
+              *,
+              exercise:exercises (*)
+            )
           )
-        )
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-    if (splits) {
-      const formattedSplits = splits.map((split) => ({
-        ...split,
-        days: split.days
-          .map((day: SplitDay) => ({
-            ...day,
-            exercises: [...(day.exercises || [])].sort((a, b) => a.exercise_order - b.exercise_order),
-          }))
-          .sort((a: SplitDay, b: SplitDay) => a.day_order - b.day_order),
-      }));
+      if (splits && isCurrent()) {
+        const formattedSplits = splits.map((split) => ({
+          ...split,
+          days: split.days
+            .map((day: SplitDay) => ({
+              ...day,
+              exercises: [...(day.exercises || [])].sort((a, b) => a.exercise_order - b.exercise_order),
+            }))
+            .sort((a: SplitDay, b: SplitDay) => a.day_order - b.day_order),
+        }));
 
-      // Unchanged content keeps the existing references, so effects keyed on
-      // activeSplit (schedule, plan, calendar) don't refetch on every visit.
-      if (JSON.stringify(get().splits) === JSON.stringify(formattedSplits)) return;
+        // Unchanged content keeps the existing references, so effects keyed on
+        // activeSplit (schedule, plan, calendar) don't refetch on every visit.
+        if (JSON.stringify(get().splits) === JSON.stringify(formattedSplits)) return;
 
-      const active = formattedSplits.find((s: Split) => s.is_active);
-      set({ 
-        splits: formattedSplits, 
-        activeSplit: active || null 
-      });
-    }
+        const active = formattedSplits.find((s: Split) => s.is_active);
+        set({ 
+          splits: formattedSplits, 
+          activeSplit: active || null 
+        });
+      }
+    });
   },
 
   createSplit: async (splitData: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => {
@@ -574,21 +590,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    await get().fetchSplits();
+    await get().fetchSplits({ force: true });
     return { ...split, is_active: splitData.is_active } as Split;
   },
 
   updateSplit: async (id, updates) => {
     const { error } = await supabase.from('splits').update(updates).eq('id', id);
     if (error) return { ok: false, reason: 'Could not update the program. Try again.' };
-    await get().fetchSplits();
+    await get().fetchSplits({ force: true });
     return { ok: true };
   },
 
   deleteSplit: async (id) => {
     const { error } = await supabase.from('splits').delete().eq('id', id);
     if (error) return { ok: false, reason: 'Could not delete the program. Try again.' };
-    await get().fetchSplits();
+    await get().fetchSplits({ force: true });
     return { ok: true };
   },
 
@@ -598,34 +614,38 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const activation = await activateSplitRow(splitId, userId);
     // A partial write still changed rows, so show what the database now holds.
-    if (activation.activated) await get().fetchSplits();
+    if (activation.activated) await get().fetchSplits({ force: true });
     return activation.ok ? { ok: true } : { ok: false, reason: activation.reason };
   },
 
   fetchWorkoutMode: async () => {
-    const fallbackMode = readWorkoutModeFallback();
-
     const userId = await getSessionUserId();
     if (!userId) {
-      set({ workoutMode: fallbackMode });
+      set({ workoutMode: readWorkoutModeFallback() });
       return;
     }
 
-    const { data, error } = await supabase
-      .from('program_preferences')
-      .select('workout_mode')
-      .eq('user_id', userId)
-      .maybeSingle();
+    return workoutModeFlight.run(userId, async (isCurrent) => {
+      const { data, error } = await supabase
+        .from('program_preferences')
+        .select('workout_mode')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (error) {
-      console.error('Error fetching workout mode, using local fallback:', error);
-      set({ workoutMode: fallbackMode });
-      return;
-    }
+      // A mode switch made while this read ran wins over what it read.
+      if (!isCurrent()) return;
+      const fallbackMode = readWorkoutModeFallback();
 
-    const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
-    set({ workoutMode: mode });
-    writeWorkoutModeFallback(mode);
+      if (error) {
+        console.error('Error fetching workout mode, using local fallback:', error);
+        set({ workoutMode: fallbackMode });
+        return;
+      }
+
+      const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
+      set({ workoutMode: mode });
+      writeWorkoutModeFallback(mode);
+    });
   },
 
   setWorkoutMode: async (mode) => {
@@ -635,6 +655,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false, reason: 'Finish current workout before switching modes.' };
     }
 
+    // Reads running now, or until the save lands, may still see the old mode.
+    workoutModeFlight.invalidate();
     set({ workoutMode: mode });
     writeWorkoutModeFallback(mode);
 
@@ -649,6 +671,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }, {
         onConflict: 'user_id',
       });
+    workoutModeFlight.invalidate();
 
     if (error) {
       console.error('Error saving workout mode remotely, kept local mode:', error);
@@ -658,29 +681,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     return { ok: true };
   },
 
-  fetchFlexTemplates: async () => {
+  fetchFlexTemplates: async (options) => {
     const userId = await getSessionUserId();
     if (!userId) return;
+    if (options?.force) flexTemplatesFlight.invalidate();
 
-    const { data, error } = await supabase
-      .from('flex_day_templates')
-      .select('id, user_id, label, items')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+    return flexTemplatesFlight.run(userId, async (isCurrent) => {
+      const { data, error } = await supabase
+        .from('flex_day_templates')
+        .select('id, user_id, label, items')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching flex templates:', error);
-      return;
-    }
+      if (error) {
+        console.error('Error fetching flex templates:', error);
+        return;
+      }
+      if (!isCurrent()) return;
 
-    const templates = (data || []).map((row) => ({
-      id: row.id,
-      user_id: row.user_id,
-      label: row.label,
-      items: normalizeFlexiblePlanItems(row.items),
-    } as FlexDayTemplate));
+      const templates = (data || []).map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        label: row.label,
+        items: normalizeFlexiblePlanItems(row.items),
+      } as FlexDayTemplate));
 
-    set({ flexTemplates: templates });
+      set({ flexTemplates: templates });
+    });
   },
 
   startFlexibleWorkoutFromTemplate: async (label) => {
@@ -740,7 +767,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { ok: false, reason: 'Template overwrite partially failed.' };
       }
 
-      await get().fetchFlexTemplates();
+      await get().fetchFlexTemplates({ force: true });
       return { ok: true };
     }
 
@@ -755,7 +782,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false, reason: 'Could not rename template.' };
     }
 
-    await get().fetchFlexTemplates();
+    await get().fetchFlexTemplates({ force: true });
     return { ok: true };
   },
 
@@ -774,7 +801,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    await get().fetchFlexTemplates();
+    await get().fetchFlexTemplates({ force: true });
   },
 
   fetchCurrentWorkoutDayPlan: async (workoutId) => {
@@ -785,32 +812,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const readSeq = workoutMutationSeq;
-    const { data, error } = await supabase
-      .from('workout_day_plans')
-      .select('id, workout_id, day_label, items')
-      .eq('workout_id', targetWorkoutId)
-      .maybeSingle();
+    return workoutDayPlanFlight.run(`${targetWorkoutId}:${readSeq}`, async () => {
+      const { data, error } = await supabase
+        .from('workout_day_plans')
+        .select('id, workout_id, day_label, items')
+        .eq('workout_id', targetWorkoutId)
+        .maybeSingle();
 
-    if (error) {
-      console.error('Error fetching workout day plan:', error);
-      return;
-    }
+      if (error) {
+        console.error('Error fetching workout day plan:', error);
+        return;
+      }
 
-    // A plan edit overlapped this read (see workoutMutationSeq).
-    if (workoutMutationSeq !== readSeq) return;
+      // A plan edit overlapped this read (see workoutMutationSeq).
+      if (workoutMutationSeq !== readSeq) return;
 
-    if (!data) {
-      set({ currentWorkoutDayPlan: null });
-      return;
-    }
+      if (!data) {
+        set({ currentWorkoutDayPlan: null });
+        return;
+      }
 
-    set({
-      currentWorkoutDayPlan: {
-        id: data.id,
-        workout_id: data.workout_id,
-        day_label: data.day_label,
-        items: normalizeFlexiblePlanItems(data.items),
-      },
+      set({
+        currentWorkoutDayPlan: {
+          id: data.id,
+          workout_id: data.workout_id,
+          day_label: data.day_label,
+          items: normalizeFlexiblePlanItems(data.items),
+        },
+      });
     });
   },
 
@@ -1024,31 +1053,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getSessionUserId();
     if (!userId) return;
 
-    const { data: workout, error } = await supabase
-      .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
-      .eq('user_id', userId)
-      .eq('completed', false)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    return currentWorkoutFlight.run(`${userId}:${readSeq}`, async () => {
+      const { data: workout, error } = await supabase
+        .from('workouts')
+        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .eq('user_id', userId)
+        .eq('completed', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      console.error('Error fetching current workout:', error);
-      return;
-    }
+      if (error) {
+        console.error('Error fetching current workout:', error);
+        return;
+      }
 
-    // A workout write overlapped this read, so its rows may predate the write.
-    if (workoutMutationSeq !== readSeq) return;
+      // A workout write overlapped this read, so its rows may predate the write.
+      if (workoutMutationSeq !== readSeq) return;
 
-    if (workout && canResumeWorkout(workout as Workout)) {
-      const nextWorkout = workout as Workout;
-      set({ currentWorkout: nextWorkout });
+      if (workout && canResumeWorkout(workout as Workout)) {
+        const nextWorkout = workout as Workout;
+        set({ currentWorkout: nextWorkout });
 
-      await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
-    } else {
-      set({ currentWorkout: null, currentWorkoutDayPlan: null });
-    }
+        await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
+      } else {
+        set({ currentWorkout: null, currentWorkoutDayPlan: null });
+      }
+    });
   },
 
   substituteWorkoutExercise: writesWorkout(async (exerciseId, replacement) => {
@@ -1570,7 +1601,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    await get().fetchFlexTemplates();
+    await get().fetchFlexTemplates({ force: true });
   },
 
   removeLastUncompletedSet: writesWorkout(async (exerciseId) => {
