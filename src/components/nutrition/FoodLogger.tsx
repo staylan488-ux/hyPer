@@ -1616,11 +1616,20 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     </div>
   );
 
+  // Every stage renders the AI logger in one keyed slot of its root, so opening
+  // a food to review and going back keeps its photos, result and edits.
+  const renderTrialLogger = (hidden: boolean) => foodAnalysisMode === 'gemini' && (trialVisited || mode === 'photo') ? (
+    <div key="food-trial-logger" hidden={hidden}>
+      <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} />
+    </div>
+  ) : null;
+
   // a late result waits on the Photo tab instead of taking over another tab
   if (mode === 'photo' && photoItems.length > 0) {
     const totalCalories = Math.round(photoItems.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
     return (
       <div className="space-y-6 pt-1">
+        {renderTrialLogger(true)}
         <div>
           <div className="flex flex-col gap-1 min-[420px]:flex-row min-[420px]:items-baseline min-[420px]:justify-between">
             <span className="t-label flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Photo review</span>
@@ -1784,6 +1793,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   if (selectedFood) {
     return (
       <div className="space-y-7 pt-1 pb-2">
+        {renderTrialLogger(true)}
         {/* ── Food header + macro ledger ── */}
         <div>
           <span className="t-label-sm block mb-2">{loggerMode === 'edit' ? 'Editing entry' : 'Selected'}</span>
@@ -1985,11 +1995,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         size="sm"
       />
 
-      {foodAnalysisMode === 'gemini' && (trialVisited || mode === 'photo') && (
-        <div hidden={mode !== 'photo'}>
-          <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} />
-        </div>
-      )}
+      {renderTrialLogger(mode !== 'photo')}
 
       {mode === 'saved' ? (
         <div className="space-y-4">
