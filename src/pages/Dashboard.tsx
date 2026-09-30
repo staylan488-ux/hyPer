@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
@@ -21,18 +21,9 @@ import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
-import { supabase } from '@/lib/supabase';
 import { plannedDayForDate } from '@/lib/planSchedule';
+import { EMPTY_TOTALS, readTodayDay } from '@/lib/todayDay';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
-
-interface NutritionTotals {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-}
-
-const EMPTY_TOTALS: NutritionTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
 type HeroState =
   | { kind: 'loading' }
@@ -63,125 +54,39 @@ export function Dashboard() {
     fetchWorkoutMode,
   } = useAppStore();
 
-  // Each result remembers its day, so a failed refresh keeps same-day data
-  // on screen but never carries yesterday's into a new day.
-  const [nutritionTotals, setNutritionTotals] = useState<NutritionTotals & { day: string | null }>({ ...EMPTY_TOTALS, day: null });
-  const [todayDone, setTodayDone] = useState<{ title: string; day: string } | null>(null);
-
   const userId = user?.id;
   const activeSplitId = activeSplit?.id;
   const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplitId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
 
-  const fetchNutritionTotals = useCallback(async (today: string) => {
-    const keepSameDay = () => setNutritionTotals((previous) => previous.day === today ? previous : { ...EMPTY_TOTALS, day: today });
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        keepSameDay();
-        return;
-      }
-
-      const { data: logs, error: logsError } = await supabase
-        .from('nutrition_logs')
-        .select('food_id, servings')
-        .eq('user_id', authUser.id)
-        .eq('date', today);
-
-      if (logsError) {
-        keepSameDay();
-        return;
-      }
-      if (!logs || logs.length === 0) {
-        setNutritionTotals({ ...EMPTY_TOTALS, day: today });
-        return;
-      }
-
-      const foodIds = [...new Set(logs.map((log) => log.food_id))];
-
-      const { data: foods } = await supabase
-        .from('foods')
-        .select('id, calories, protein, carbs, fat')
-        .in('id', foodIds);
-
-      if (!foods) {
-        keepSameDay();
-        return;
-      }
-
-      const foodMap = new Map(foods.map((food) => [food.id, food]));
-
-      const totals = logs.reduce(
-        (acc, log) => {
-          const food = foodMap.get(log.food_id);
-          if (!food) return acc;
-
-          return {
-            calories: acc.calories + (food.calories || 0) * log.servings,
-            protein: acc.protein + (food.protein || 0) * log.servings,
-            carbs: acc.carbs + (food.carbs || 0) * log.servings,
-            fat: acc.fat + (food.fat || 0) * log.servings,
-          };
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0 }
-      );
-
-      setNutritionTotals({ ...totals, day: today });
-    } catch (error) {
-      console.error('Error fetching nutrition totals:', error);
-      keepSameDay();
-    }
-  }, []);
-
-  const fetchTodayStatus = useCallback(async (today: string) => {
-    const keepSameDay = () => setTodayDone((previous) => previous?.day === today ? previous : null);
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        keepSameDay();
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('workouts')
-        .select('id, split_day_id')
-        .eq('user_id', authUser.id)
-        .eq('date', today)
-        .eq('completed', true)
-        .limit(1);
-
-      if (error) {
-        keepSameDay();
-        return;
-      }
-      setTodayDone(data && data.length > 0 ? { title: 'Session complete', day: today } : null);
-    } catch (error) {
-      console.error('Error fetching today status:', error);
-      keepSameDay();
-    }
-  }, []);
-
   // One load for mount and every foreground refresh, so the two cannot drift.
   const load = useCallback(async (day: string) => {
-    await Promise.all([
+    const [dayData] = await Promise.all([
+      readTodayDay(day),
       fetchSplits(),
       fetchMacroTarget(),
       calculateWeeklyVolume(),
       fetchCurrentWorkout(),
       fetchWorkoutMode(),
-      fetchNutritionTotals(day),
-      fetchTodayStatus(day),
       fetchNutritionProfile(),
     ]);
 
     // Re-learn expenditure at most weekly, after the screen is already up.
     void refreshAdaptiveTargets();
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchNutritionTotals, fetchSplits, fetchTodayStatus, fetchWorkoutMode, refreshAdaptiveTargets]);
 
-  // A new day also re-reads schedule completions, so adaptive and flex plans
-  // stop counting yesterday's session as today's.
-  const { loading, dayKey, refreshedAt } = useTodayRefresh(load, retrySchedule);
+    // Throwing keeps the old day and its numbers on screen and lets the next
+    // return retry, instead of showing a new date above numbers never read.
+    if (!dayData) throw new Error(`Could not read Today for ${day}`);
+    return dayData;
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchSplits, fetchWorkoutMode, refreshAdaptiveTargets]);
+
+  // The day and its data arrive together, so the header, Fuel and hero always
+  // describe the same day. A new day also re-reads schedule completions, so
+  // adaptive and flex plans stop counting yesterday's session as today's.
+  const { loading, dayKey, refreshedAt, data: today } = useTodayRefresh(load, retrySchedule);
+  const nutritionTotals = today?.nutritionTotals ?? EMPTY_TOTALS;
+  const todayDone = today?.todayDone ?? null;
 
   const hero = useMemo<HeroState>(() => {
     if (loading) return { kind: 'loading' };

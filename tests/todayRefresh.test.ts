@@ -40,13 +40,13 @@ function browser() {
 function deferred() {
   let resolve!: () => void;
   let reject!: (error: unknown) => void;
-  const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise<void>((res, rej) => { resolve = () => res(); reject = rej; });
   return { promise, resolve, reject };
 }
 
-function mount(load: (day: string) => Promise<void>, onNewDay: () => void) {
+function mount<T>(load: (day: string) => Promise<T>, onNewDay: () => void) {
   hooks.reset();
-  const render = (): TodayRefreshState => {
+  const render = (): TodayRefreshState<T> => {
     hooks.state.cursor = 0;
     // eslint-disable-next-line react-hooks/rules-of-hooks -- renders the hook against the mocked React above
     return useTodayRefresh(load, onNewDay);
@@ -198,27 +198,135 @@ describe('useTodayRefresh', () => {
     expect(onNewDay).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the old day on screen when a refresh fails, and retries on the next return', async () => {
+  it('keeps the old day and its data together when a refresh fails, and retries on the next return', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const load = vi.fn(async () => undefined);
+    const load = vi.fn(async (day: string) => ({ kcal: day === '2026-09-29' ? 1_800 : 0 }));
     const onNewDay = vi.fn();
     const today = mount(load, onNewDay);
     await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ dayKey: '2026-09-29', data: { kcal: 1_800 } });
 
     load.mockRejectedValueOnce(new Error('offline'));
     vi.setSystemTime(new Date(2026, 8, 30, 7, 0, 0));
     page.show();
     await vi.advanceTimersByTimeAsync(0);
-    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-29' });
+    // Yesterday's date stays above yesterday's numbers, never a mix.
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-29', data: { kcal: 1_800 } });
     expect(onNewDay).not.toHaveBeenCalled();
 
     vi.setSystemTime(new Date(2026, 8, 30, 7, 0, 10));
     page.show();
     await vi.advanceTimersByTimeAsync(0);
     expect(load).toHaveBeenCalledTimes(3);
-    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-30' });
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-30', data: { kcal: 0 } });
     expect(onNewDay).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
+  });
+
+  it('ends the first-load shimmer even when it fails, and loads on the next return', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const load = vi.fn(async () => ({ kcal: 500 }));
+    load.mockRejectedValueOnce(new Error('offline'));
+    const onNewDay = vi.fn();
+    vi.setSystemTime(new Date(2026, 8, 29, 12, 0, 0));
+    const today = mount(load, onNewDay);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-29', data: null });
+
+    vi.setSystemTime(new Date(2026, 8, 29, 12, 0, 20));
+    page.show();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-29', data: { kcal: 500 } });
+    expect(onNewDay).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('still re-reads the schedule when the first successful load is on a later day', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const load = vi.fn(async () => undefined);
+    load.mockRejectedValueOnce(new Error('offline'));
+    const onNewDay = vi.fn();
+    const today = mount(load, onNewDay);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-29' });
+
+    vi.setSystemTime(new Date(2026, 8, 30, 7, 0, 0));
+    page.show();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ dayKey: '2026-09-30' });
+    expect(onNewDay).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it('does not retry a failed refresh on its own', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const load = vi.fn(async () => undefined);
+    mount(load, vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+
+    load.mockRejectedValue(new Error('offline'));
+    vi.setSystemTime(new Date(2026, 8, 30, 7, 0, 0));
+    page.show();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(load).toHaveBeenCalledTimes(2);
+    errorSpy.mockRestore();
+  });
+
+  it('runs the midnight rollover that fired while a load was in flight', async () => {
+    let pending = deferred();
+    const load = vi.fn(() => pending.promise);
+    const onNewDay = vi.fn();
+    vi.setSystemTime(new Date(2026, 8, 29, 23, 50, 0));
+    const today = mount(load, onNewDay);
+    await vi.advanceTimersByTimeAsync(0);
+    pending.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A foreground refresh for Sep 29 starts just before midnight...
+    pending = deferred();
+    vi.setSystemTime(new Date(2026, 8, 29, 23, 59, 59));
+    page.show();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenLastCalledWith('2026-09-29');
+
+    // ...the midnight timer fires while it is still running...
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(load).toHaveBeenCalledTimes(2);
+
+    // ...and once it lands, Today reloads for Sep 30 instead of waiting a day.
+    const late = pending;
+    pending = deferred();
+    late.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(load).toHaveBeenLastCalledWith('2026-09-30');
+    pending.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ loading: false, dayKey: '2026-09-30' });
+    expect(onNewDay).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads for the new day when a load straddles midnight with nothing else pending', async () => {
+    let pending = deferred();
+    const load = vi.fn(() => pending.promise);
+    const onNewDay = vi.fn();
+    const today = mount(load, onNewDay);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenLastCalledWith('2026-09-29');
+
+    // The first load is slow and lands after midnight, before the timer fires.
+    const first = pending;
+    pending = deferred();
+    vi.setSystemTime(new Date(2026, 8, 30, 0, 0, 0));
+    first.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenLastCalledWith('2026-09-30');
+    pending.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ dayKey: '2026-09-30' });
+    expect(onNewDay).toHaveBeenCalledTimes(1);
   });
 
   it('stops listening after unmount', async () => {
