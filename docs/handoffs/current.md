@@ -36,7 +36,13 @@ Production steps, none done:
 - F103 (deploy analyze-food-trial);
 - C-6 (per-account USDA cache migration).
 
-Next: B-5 (F1, remove the extra auth round trip before queries) and B-9 (F7, request time limits), which touch nearly every file and so follow #134. Then Batch C, per the plan. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
+PR #134 is merged. The next PR (`opt/batch-c1`) carries:
+- B-5 (F1): session-based user ids, removing the auth round trip before queries.
+- B-9 (F7): 30 s request limits, and 120 s for program saves.
+- C-2 (F44 + F99): route splitting plus a vendor chunk. The launch load drops from about 407 to 338 KB gzip.
+- C-5 (F50 step 2): the motion light runs only while lit surfaces are mounted.
+
+Remaining: C-1 (F22), C-3 (F28) and C-4 (F41) are in progress on top of that. C-6 (F65) needs an owner-approved migration. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
 
 # Previous work snapshot — Kinetic beautification pass
 

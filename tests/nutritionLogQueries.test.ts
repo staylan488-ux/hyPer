@@ -5,7 +5,7 @@ import { previewTables } from '@/preview/previewData';
 const calls = { foodsIn: [] as number[], failFoods: false };
 
 vi.mock('@/lib/supabase', () => ({ supabase: {
-  auth: { getUser: () => client.auth.getUser() },
+  auth: { getUser: () => client.auth.getUser(), getSession: () => client.auth.getSession() },
   from: (table: string) => {
     const builder = client.from(table);
     if (table !== 'foods') return builder;

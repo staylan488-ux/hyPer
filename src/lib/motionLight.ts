@@ -27,7 +27,15 @@ let target: MotionLight = { x: 0, y: 0 };
 let current: MotionLight = { x: 0, y: 0 };
 let frame = 0;
 let stopSource: (() => void) | null = null;
+let lingerTimer: ReturnType<typeof setTimeout> | null = null;
 let nativeActive = false;
+
+/**
+ * How long the sources outlive the last subscriber. Opening a sheet or menu
+ * right after another closes then keeps the same stream, so CoreMotion is not
+ * restarted over the bridge and the light keeps its resting grip.
+ */
+export const MOTION_LIGHT_LINGER_MS = 1800;
 
 const clamp = (value: number) => Math.max(-1, Math.min(1, value));
 
@@ -90,15 +98,29 @@ function startBrowserSource(): () => void {
   };
 }
 
+function stopSources() {
+  if (lingerTimer !== null) clearTimeout(lingerTimer);
+  lingerTimer = null;
+  stopSource?.();
+  stopSource = null;
+  if (frame) cancelAnimationFrame(frame);
+  frame = 0;
+}
+
 /**
- * Subscribe to the light. The first subscriber starts the sources; the last
- * one to leave stops them. Returns an unsubscribe function.
+ * Subscribe to the light. The first subscriber starts the sources; once the
+ * last one leaves they stop after a short linger (at once under reduced
+ * motion or transparency). Returns an unsubscribe function.
  */
 export function subscribeMotionLight(listener: Listener): () => void {
   const policy = readMotionPolicy();
   if (policy.reducedMotion || policy.reducedTransparency || typeof document === 'undefined') return () => {};
   listeners.add(listener);
   listener(current);
+  if (lingerTimer !== null) {
+    clearTimeout(lingerTimer);
+    lingerTimer = null;
+  }
   if (!stopSource) {
     const stopBrowser = startBrowserSource();
     // The native attitude stream (iOS) outranks browser sources once it runs.
@@ -115,14 +137,15 @@ export function subscribeMotionLight(listener: Listener): () => void {
       if (nativeActive) pushMotionLight(null);
     };
   }
+  let subscribed = true;
   return () => {
+    if (!subscribed) return;
+    subscribed = false;
     listeners.delete(listener);
-    if (listeners.size === 0) {
-      stopSource?.();
-      stopSource = null;
-      if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-    }
+    if (listeners.size > 0 || !stopSource) return;
+    const now = readMotionPolicy();
+    if (now.reducedMotion || now.reducedTransparency) stopSources();
+    else if (lingerTimer === null) lingerTimer = setTimeout(stopSources, MOTION_LIGHT_LINGER_MS);
   };
 }
 
@@ -137,8 +160,12 @@ export function pushMotionLight(light: MotionLight | null) {
 /** Test seam. */
 export function resetMotionLight() {
   listeners.clear();
+  if (lingerTimer !== null) clearTimeout(lingerTimer);
+  lingerTimer = null;
   stopSource?.();
   stopSource = null;
+  if (frame && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame);
+  frame = 0;
   target = { x: 0, y: 0 };
   current = { x: 0, y: 0 };
   nativeActive = false;

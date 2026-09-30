@@ -5,6 +5,7 @@ import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
+import { useLitSurface } from '@/hooks/useLitSurface';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
@@ -21,6 +22,7 @@ export function BottomNav() {
     location.pathname.startsWith('/train/session') || location.pathname.startsWith('/train/run') ||
     (hasActiveWorkout && ['/train', '/workout'].includes(location.pathname));
   const nativeNavigation = useNativeGlassNavigation(location.pathname, !isSessionRoute);
+  const litRef = useLitSurface<HTMLElement>();
 
   if (isSessionRoute || nativeNavigation) {
     return null;
@@ -36,6 +38,7 @@ export function BottomNav() {
 
   return (
     <motion.nav
+      ref={litRef}
       aria-label="Main navigation"
       className="bottom-nav"
       initial={false}

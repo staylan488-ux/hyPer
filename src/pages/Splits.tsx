@@ -10,6 +10,7 @@ import { SplitBuilder } from '@/components/split/SplitBuilder';
 import { SplitEditor } from '@/components/split/SplitEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { springs } from '@/lib/animations';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
@@ -35,6 +36,7 @@ export function Splits() {
   const navigate = useNavigate();
   const [showBuilder, setShowBuilder] = useState(false);
   const [showMenu, setShowMenu] = useState<string | null>(null);
+  const litMenuRef = useLitSurface<HTMLDivElement>();
   const [expandedSplit, setExpandedSplit] = useState<string | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -495,6 +497,7 @@ export function Splits() {
                     <AnimatePresence>
                       {showMenu === split.id && (
                         <motion.div
+                          ref={litMenuRef}
                           className="absolute right-0 top-full mt-1 material-glass rounded-[11px] z-10 min-w-[160px] overflow-hidden"
                           initial={{ opacity: 0, y: -4, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}

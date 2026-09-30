@@ -26,7 +26,7 @@ const supabaseMock = vi.hoisted(() => {
     state,
     client: {
       from,
-      auth: { getUser: async () => ({ data: { user: state.user }, error: null }) },
+      auth: { getSession: async () => ({ data: { session: state.user ? { user: state.user } : null }, error: null }) },
     },
   };
 });
