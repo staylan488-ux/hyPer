@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { memo, useCallback } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import {
   ChevronUp,
@@ -17,7 +17,7 @@ import {
   fadeUp,
   staggerContainer,
 } from '@/lib/animations';
-import { normalizeSetRange } from '@/lib/setRangeNotes';
+import { SetRangeFields } from '@/components/split/SetRangeFields';
 import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 
 // ═══════════════════════════════════
@@ -28,36 +28,6 @@ interface SplitEditorProps {
   onClose: () => void;
   onSaved: () => void;
   onPickExercise: (dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => void;
-}
-
-// ═══════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════
-
-function clampInt(value: string, min: number, max: number, fallback: number): number {
-  const parsed = Number(value);
-  if (value === '' || Number.isNaN(parsed)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(parsed)));
-}
-
-interface ExerciseInputDraft {
-  minSets: string;
-  targetSets: string;
-  maxSets: string;
-  minReps: string;
-  maxReps: string;
-}
-
-type ExerciseInputField = keyof ExerciseInputDraft;
-
-function exerciseFieldValue(exercise: DraftExercise, field: ExerciseInputField): number {
-  switch (field) {
-    case 'minSets': return exercise.target_sets_min;
-    case 'targetSets': return exercise.target_sets;
-    case 'maxSets': return exercise.target_sets_max;
-    case 'minReps': return exercise.target_reps_min;
-    case 'maxReps': return exercise.target_reps_max;
-  }
 }
 
 // ═══════════════════════════════════
@@ -82,56 +52,6 @@ const ExerciseRow = memo(function ExerciseRow({
   const updateExerciseTargets = useSplitEditStore((s) => s.updateExerciseTargets);
   const removeExercise = useSplitEditStore((s) => s.removeExercise);
   const clearExerciseSuperset = useSplitEditStore((s) => s.clearExerciseSuperset);
-  // Only the field being typed lives here; every other value comes straight
-  // from the store, so committed and superset-synced values show without
-  // remounting the row (which would drop focus and the iOS keyboard).
-  const [editing, setEditing] = useState<{ field: ExerciseInputField; value: string } | null>(null);
-
-  const commitField = (field: ExerciseInputField, value: string) => {
-    setEditing(null);
-
-    if (field === 'minReps' || field === 'maxReps') {
-      const current = exerciseFieldValue(exercise, field);
-      const clamped = clampInt(value, 1, 100, current);
-      if (clamped === current) return;
-      updateExerciseTargets(dayId, exercise.id, field === 'minReps'
-        ? { target_reps_min: clamped }
-        : { target_reps_max: clamped });
-      return;
-    }
-
-    const valueFor = (f: 'minSets' | 'targetSets' | 'maxSets') => (f === field ? value : String(exerciseFieldValue(exercise, f)));
-    const normalized = normalizeSetRange(
-      clampInt(valueFor('minSets'), 1, 10, exercise.target_sets_min),
-      clampInt(valueFor('targetSets'), 1, 10, exercise.target_sets),
-      clampInt(valueFor('maxSets'), 1, 10, exercise.target_sets_max),
-    );
-    if (
-      normalized.minSets === exercise.target_sets_min
-      && normalized.targetSets === exercise.target_sets
-      && normalized.maxSets === exercise.target_sets_max
-    ) return;
-
-    updateExerciseTargets(dayId, exercise.id, {
-      target_sets_min: normalized.minSets,
-      target_sets: normalized.targetSets,
-      target_sets_max: normalized.maxSets,
-    });
-  };
-
-  const fieldProps = (field: ExerciseInputField) => ({
-    value: editing?.field === field ? editing.value : String(exerciseFieldValue(exercise, field)),
-    onChange: (e: ChangeEvent<HTMLInputElement>) => setEditing({ field, value: e.target.value }),
-    onBlur: () => {
-      if (editing?.field === field) commitField(field, editing.value);
-    },
-    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (editing?.field === field) commitField(field, editing.value);
-      }
-    },
-  });
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -234,71 +154,14 @@ const ExerciseRow = memo(function ExerciseRow({
       </div>
 
       {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
-      <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
-        <SetRepCell label="Min sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            {...fieldProps('minSets')}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            {...fieldProps('targetSets')}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Max sets">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={10}
-            {...fieldProps('maxSets')}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Reps↓">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={100}
-            {...fieldProps('minReps')}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-        <SetRepCell label="Reps↑">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={100}
-            {...fieldProps('maxReps')}
-            className="well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]"
-          />
-        </SetRepCell>
-      </div>
+      <SetRangeFields
+        values={exercise}
+        onCommitSets={(range) => updateExerciseTargets(dayId, exercise.id, range)}
+        onCommitReps={(patch) => updateExerciseTargets(dayId, exercise.id, patch)}
+      />
     </motion.div>
   );
 });
-
-/** Labelled numeric cell — tracked-caps label over a recessed well input */
-function SetRepCell({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 // ═══════════════════════════════════
 // DAY CARD

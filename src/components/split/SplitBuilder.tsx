@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { splitTemplates } from '@/lib/splitTemplates';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { springs } from '@/lib/animations';
+import { SetRangeFields } from '@/components/split/SetRangeFields';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
@@ -115,11 +116,6 @@ function createLocalId(): string {
   }
 
   return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function clampSetInput(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.min(10, Math.round(value)));
 }
 
 function normalizeCustomSetRange(exercise: Pick<CustomExerciseDraft, 'target_sets_min' | 'target_sets' | 'target_sets_max'>) {
@@ -1187,83 +1183,16 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
-                      <RangeCell
-                        label="Min"
-                        value={exercise.target_sets_min}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextMin = Number.isNaN(parsed)
-                              ? current.target_sets_min
-                              : clampSetInput(parsed, current.target_sets_min);
-                            const normalized = normalizeSetRange(nextMin, current.target_sets, current.target_sets_max);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Sets"
-                        value={exercise.target_sets}
-                        emphasized
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextTarget = Number.isNaN(parsed)
-                              ? current.target_sets
-                              : clampSetInput(parsed, current.target_sets);
-                            const normalized = normalizeSetRange(current.target_sets_min, nextTarget, current.target_sets_max);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Max"
-                        value={exercise.target_sets_max}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => {
-                            const nextMax = Number.isNaN(parsed)
-                              ? current.target_sets_max
-                              : clampSetInput(parsed, current.target_sets_max);
-                            const normalized = normalizeSetRange(current.target_sets_min, current.target_sets, nextMax);
-                            return {
-                              ...current,
-                              target_sets_min: normalized.minSets,
-                              target_sets: normalized.targetSets,
-                              target_sets_max: normalized.maxSets,
-                            };
-                          });
-                        }}
-                      />
-                      <RangeCell
-                        label="Reps↓"
-                        value={exercise.target_reps_min}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
-                            ...current,
-                            target_reps_min: Number.isNaN(parsed) ? current.target_reps_min : parsed,
-                          }));
-                        }}
-                      />
-                      <RangeCell
-                        label="Reps↑"
-                        value={exercise.target_reps_max}
-                        onCommit={(parsed) => {
-                          updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({
-                            ...current,
-                            target_reps_max: Number.isNaN(parsed) ? current.target_reps_max : parsed,
-                          }));
-                        }}
-                      />
-                    </div>
+                    <SetRangeFields
+                      values={exercise}
+                      labels={{ minSets: 'Min', maxSets: 'Max' }}
+                      onCommitSets={(range) => {
+                        updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({ ...current, ...range }));
+                      }}
+                      onCommitReps={(patch) => {
+                        updateCustomExercise(activeCustomDayIndex, exercise.local_id, (current) => ({ ...current, ...patch }));
+                      }}
+                    />
                   </div>
                 ))
               )}
@@ -1281,32 +1210,4 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   }
 
   return null;
-}
-
-/** Compact numeric cell for set/rep ranges */
-function RangeCell({
-  label,
-  value,
-  onCommit,
-  emphasized = false,
-}: {
-  label: string;
-  value: number;
-  onCommit: (parsed: number) => void;
-  emphasized?: boolean;
-}) {
-  return (
-    <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm">{label}</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        value={String(value)}
-        onChange={(event) => onCommit(Number(event.target.value || 0))}
-        className={`well w-full min-h-11 text-center t-data-sm outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] ${
-          emphasized ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'
-        }`}
-      />
-    </label>
-  );
 }
