@@ -161,10 +161,13 @@ function mapUsdaFood(food: UsdaFood): Food {
   return applyPortion(base, selectPortionFromDetail(food));
 }
 
+// Returns [] on any error by default (photo grounding relies on that). The
+// manual search box opts into `rethrow` so it can tell a failure from no match.
 export async function searchUsdaFoods(
   query: string,
   apiKey: string | undefined,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
+  options: { rethrow?: boolean } = {}
 ): Promise<Food[]> {
   if (!query.trim() || !apiKey) return [];
 
@@ -181,6 +184,7 @@ export async function searchUsdaFoods(
     return data.foods.map(mapUsdaFood);
   } catch (error) {
     console.error('USDA search error:', error);
+    if (options.rethrow) throw error;
     return [];
   }
 }

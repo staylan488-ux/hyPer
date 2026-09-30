@@ -82,6 +82,10 @@ export function Nutrition() {
   const { macroTarget, fetchMacroTarget } = useAppStore();
   const [showLogger, setShowLogger] = useState(false);
   const [loggerBusy, setLoggerBusy] = useState(false);
+  // a photo, describe or AI analysis is running in the sheet
+  const [loggerAnalysisBusy, setLoggerAnalysisBusy] = useState(false);
+  // a finished photo estimate waits unseen on the sheet's Photo tab
+  const [loggerResultWaiting, setLoggerResultWaiting] = useState(false);
   const [monthLogs, setMonthLogs] = useState<NutritionLogEntry[]>([]);
   const [monthGroups, setMonthGroups] = useState<NutritionGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -794,6 +798,11 @@ export function Nutrition() {
         isOpen={showLogger}
         onClose={() => {
           if (loggerBusy) return;
+          if (loggerAnalysisBusy && !window.confirm('Analysis in progress. Close and discard it?')) return;
+          if (!loggerAnalysisBusy && loggerResultWaiting
+            && !window.confirm('A photo estimate is waiting on the Photo tab. Close and discard it?')) return;
+          setLoggerAnalysisBusy(false);
+          setLoggerResultWaiting(false);
           setShowLogger(false);
           setEditingEntry(null);
         }}
@@ -801,6 +810,8 @@ export function Nutrition() {
       >
         <MealLogger
           onBusyChange={setLoggerBusy}
+          onAnalysisBusyChange={setLoggerAnalysisBusy}
+          onUnreviewedResultChange={setLoggerResultWaiting}
           onCancel={() => { setShowLogger(false); setEditingEntry(null); }}
           selectedDate={selectedDate}
           initialEntry={editingEntry}
