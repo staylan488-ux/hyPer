@@ -8,6 +8,7 @@ import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import { supabase } from '@/lib/supabase';
 import {
+  changedGroupOrders,
   insertNutritionGroupByTime,
   legacyMealTypeForGroup,
   missingDefaultNamedMeals,
@@ -296,7 +297,7 @@ export function Nutrition() {
 
         const inserted = data as NutritionGroup[];
         const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, ...inserted]);
-        if (!await persistGroupOrder(normalized)) {
+        if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, ...inserted], normalized))) {
           await fetchMonthLogs(selectedMonth);
           return;
         }
@@ -362,7 +363,7 @@ export function Nutrition() {
     }
 
     const normalized = insertNutritionGroupByTime(selectedDayGroups, data as NutritionGroup);
-    if (!await persistGroupOrder(normalized)) {
+    if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, data as NutritionGroup], normalized))) {
       await fetchMonthLogs(selectedMonth);
       return;
     }
@@ -412,7 +413,7 @@ export function Nutrition() {
     const reordered = moveNutritionGroup(selectedDayGroups, groupId, direction);
     if (!reordered) return;
 
-    if (!await persistGroupOrder(reordered)) {
+    if (!await persistGroupOrder(changedGroupOrders(selectedDayGroups, reordered))) {
       await fetchMonthLogs(selectedMonth);
       return;
     }
