@@ -28,7 +28,6 @@ import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
 import { useNativeAuthCallback } from '@/hooks/useNativeAuthCallback';
 import { useAppViewport } from '@/hooks/useAppViewport';
-import { useAmbientLight } from '@/hooks/useAmbientLight';
 import { NativeGlassSurfaces, probeGlassSurfaces } from '@/lib/nativeGlassSurfaces';
 import { isNativeIOS } from '@/lib/nativeBridge';
 import { bindRouteScroll } from '@/lib/routeScroll';
@@ -113,7 +112,6 @@ function PrivateLayout() {
   // local only: signing in instead never signs out, so the saved session stays
   const [signInInstead, setSignInInstead] = useState(false);
   useAppViewport();
-  useAmbientLight();
 
   const screen = authScreen({ initialized, user, reconnecting }, signInInstead);
   if (screen === 'boot') {
