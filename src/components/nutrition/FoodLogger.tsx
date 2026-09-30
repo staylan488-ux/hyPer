@@ -43,6 +43,7 @@ import {
   searchOpenFoodFactsByBarcodeSecure,
   searchUsdaFoodByBarcodeSecure,
   searchUsdaFoodsSecure,
+  searchUsdaFoodsSecureStrict,
 } from '@/lib/usdaClient';
 
 const COMBINE_MEAL_KEY = 'hyper.nutrition.combine-meal';
@@ -162,6 +163,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [loading, setLoading] = useState(false);
+  // what the last manual USDA search found: nothing, or a failure to retry
+  const [searchStatus, setSearchStatus] = useState<'idle' | 'short' | 'empty' | 'error'>('idle');
+  const [usdaSearches] = useState(createRequestGate);
   const [loadingFoodId, setLoadingFoodId] = useState<string | null>(null);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [servings, setServings] = useState(initialEntry ? String(initialEntry.servings) : '1');
@@ -278,12 +282,31 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     [savedMeals, selectedSavedMealId]
   );
   const searchUSDA = async (query: string) => {
-    if (!query.trim()) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    // the lookup rejects shorter queries, which used to look like no matches
+    if (trimmed.length < 2) {
+      setSearchStatus('short');
+      return;
+    }
 
+    // a newer search (e.g. Enter pressed again mid-flight) supersedes this one,
+    // so the results always match the words in the box
+    const isCurrent = usdaSearches.begin();
     setLoading(true);
-    const foods = await searchUsdaFoodsSecure(query);
-    setSearchResults(foods);
-    setLoading(false);
+    setSearchStatus('idle');
+    try {
+      const foods = await searchUsdaFoodsSecureStrict(trimmed);
+      if (!isCurrent()) return;
+      setSearchResults(foods);
+      if (foods.length === 0) setSearchStatus('empty');
+    } catch {
+      if (!isCurrent()) return;
+      setSearchResults([]);
+      setSearchStatus('error');
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
   };
 
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<boolean> => {
@@ -2055,6 +2078,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" strokeWidth={1.75} />}
             </button>
           </div>
+
+          {!loading && searchStatus === 'short' && <p className="t-caption">Type at least 2 characters.</p>}
+          {!loading && searchStatus === 'empty' && <p className="t-caption">No USDA matches.</p>}
+          {!loading && searchStatus === 'error' && (
+            <div>
+              <p className="t-caption text-[var(--color-accent)]" role="alert">Search failed. Check your connection and try again.</p>
+              <Button variant="secondary" size="sm" className="mt-3" onClick={() => void searchUSDA(searchQuery)}>
+                Retry
+              </Button>
+            </div>
+          )}
 
           <div className="max-h-56 md:max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
             {searchResults.map((food, index) => (
