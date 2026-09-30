@@ -35,6 +35,39 @@ import { localIsoDate } from '@/lib/weightTrend';
 
 /** Pull a little more than the estimator's window so its filter has slack. */
 const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
+
+/**
+ * The adaptive loop's own target write. "Never overwrite a hand-typed target"
+ * is enforced inside each statement, so it holds even when the in-memory copy
+ * is stale (a failed read) or a manual save lands mid-refresh. Returns the
+ * stored row, or null when a manual target kept its place.
+ */
+async function writeAdaptiveMacroTarget(
+  userId: string,
+  macros: Pick<MacroTarget, 'calories' | 'protein' | 'carbs' | 'fat'>
+): Promise<MacroTarget | null> {
+  const fields = { ...macros, source: 'adaptive' as const, updated_at: new Date().toISOString() };
+
+  const updated = await supabase
+    .from('macro_targets')
+    .update(fields)
+    .eq('user_id', userId)
+    .neq('source', 'manual')
+    .select()
+    .maybeSingle();
+  if (updated.error) throw updated.error;
+  if (updated.data) return updated.data;
+
+  // Nothing matched: either no row yet, or a manual one. Insert only if absent
+  // (ON CONFLICT DO NOTHING), so a manual row is left alone.
+  const inserted = await supabase
+    .from('macro_targets')
+    .upsert({ user_id: userId, ...fields }, { onConflict: 'user_id', ignoreDuplicates: true })
+    .select()
+    .maybeSingle();
+  if (inserted.error) throw inserted.error;
+  return inserted.data ?? null;
+}
 import type {
   Split,
   SplitDay,
@@ -2841,7 +2874,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       set({ nutritionProfile: saved });
 
-      // A target the user typed by hand is theirs. Never overwrite it.
+      // A target the user typed by hand is theirs. Never overwrite it. This is
+      // the fast exit; writeAdaptiveMacroTarget enforces it in the database.
       const current = get().macroTarget;
       if (current?.source === 'manual') return;
       // Nothing learned yet means the existing calculated target already
@@ -2851,13 +2885,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = calculateMacroTargets(
         macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
       );
-      await get().updateMacroTarget({
+      const savedTarget = await writeAdaptiveMacroTarget(user.id, {
         calories: next.calories,
         protein: next.protein,
         carbs: next.carbs,
         fat: next.fat,
-        source: 'adaptive',
       });
+      if (savedTarget) set({ macroTarget: savedTarget });
     } catch {
       // Adaptive targets are an enhancement. A failure here must never take
       // down the screen that triggered it.
