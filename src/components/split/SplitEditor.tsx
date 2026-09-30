@@ -1,5 +1,5 @@
-import { useCallback, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { memo, useCallback, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import {
   ChevronUp,
   ChevronDown,
@@ -64,21 +64,24 @@ function exerciseFieldValue(exercise: DraftExercise, field: ExerciseInputField):
 // EXERCISE ROW
 // ═══════════════════════════════════
 
-function ExerciseRow({
-  day,
+// Memoized: typing a day or program name leaves untouched rows alone.
+const ExerciseRow = memo(function ExerciseRow({
+  dayId,
   exercise,
   index,
   total,
   onPickExercise,
 }: {
-  day: DraftDay;
+  dayId: string;
   exercise: DraftExercise;
   index: number;
   total: number;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
-  const { reorderExercise, updateExerciseTargets, removeExercise, clearExerciseSuperset } =
-    useSplitEditStore();
+  const reorderExercise = useSplitEditStore((s) => s.reorderExercise);
+  const updateExerciseTargets = useSplitEditStore((s) => s.updateExerciseTargets);
+  const removeExercise = useSplitEditStore((s) => s.removeExercise);
+  const clearExerciseSuperset = useSplitEditStore((s) => s.clearExerciseSuperset);
   // Only the field being typed lives here; every other value comes straight
   // from the store, so committed and superset-synced values show without
   // remounting the row (which would drop focus and the iOS keyboard).
@@ -91,7 +94,7 @@ function ExerciseRow({
       const current = exerciseFieldValue(exercise, field);
       const clamped = clampInt(value, 1, 100, current);
       if (clamped === current) return;
-      updateExerciseTargets(day.id, exercise.id, field === 'minReps'
+      updateExerciseTargets(dayId, exercise.id, field === 'minReps'
         ? { target_reps_min: clamped }
         : { target_reps_max: clamped });
       return;
@@ -109,7 +112,7 @@ function ExerciseRow({
       && normalized.maxSets === exercise.target_sets_max
     ) return;
 
-    updateExerciseTargets(day.id, exercise.id, {
+    updateExerciseTargets(dayId, exercise.id, {
       target_sets_min: normalized.minSets,
       target_sets: normalized.targetSets,
       target_sets_max: normalized.maxSets,
@@ -155,7 +158,7 @@ function ExerciseRow({
         <button
           type="button"
           className="pressable flex-1 text-left group flex items-center gap-1.5 min-w-0"
-          onClick={() => onPickExercise(day.id, 'swap', exercise.id)}
+          onClick={() => onPickExercise(dayId, 'swap', exercise.id)}
         >
           <span className="flex flex-col min-w-0">
             <span className="t-body text-[var(--color-text)] break-words">
@@ -177,7 +180,7 @@ function ExerciseRow({
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
-              onClick={() => clearExerciseSuperset(day.id, exercise.id)}
+              onClick={() => clearExerciseSuperset(dayId, exercise.id)}
               whileTap={{ scale: 0.985 }}
               title="Remove Superset"
               aria-label={`Remove superset for ${exercise.exercise.name}`}
@@ -188,7 +191,7 @@ function ExerciseRow({
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => onPickExercise(day.id, 'superset', exercise.id)}
+              onClick={() => onPickExercise(dayId, 'superset', exercise.id)}
               whileTap={{ scale: 0.985 }}
               title="Add Superset"
               aria-label={`Add superset for ${exercise.exercise.name}`}
@@ -201,7 +204,7 @@ function ExerciseRow({
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isFirst}
             aria-label={`Move ${exercise.exercise.name} earlier`}
-            onClick={() => reorderExercise(day.id, exercise.id, -1)}
+            onClick={() => reorderExercise(dayId, exercise.id, -1)}
             whileTap={isFirst ? undefined : { scale: 0.985 }}
           >
             <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -212,7 +215,7 @@ function ExerciseRow({
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
             disabled={isLast}
             aria-label={`Move ${exercise.exercise.name} later`}
-            onClick={() => reorderExercise(day.id, exercise.id, 1)}
+            onClick={() => reorderExercise(dayId, exercise.id, 1)}
             whileTap={isLast ? undefined : { scale: 0.985 }}
           >
             <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -222,7 +225,7 @@ function ExerciseRow({
             type="button"
             className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
             aria-label={`Remove ${exercise.exercise.name}`}
-            onClick={() => removeExercise(day.id, exercise.id)}
+            onClick={() => removeExercise(dayId, exercise.id)}
             whileTap={{ scale: 0.985 }}
           >
             <X className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -285,7 +288,7 @@ function ExerciseRow({
       </div>
     </motion.div>
   );
-}
+});
 
 /** Labelled numeric cell — tracked-caps label over a recessed well input */
 function SetRepCell({ label, children }: { label: string; children: ReactNode }) {
@@ -301,7 +304,9 @@ function SetRepCell({ label, children }: { label: string; children: ReactNode })
 // DAY CARD
 // ═══════════════════════════════════
 
-function DayCard({
+// Memoized: store actions that leave a day untouched keep its object, so
+// only the edited day re-renders.
+const DayCard = memo(function DayCard({
   day,
   index,
   total,
@@ -312,7 +317,9 @@ function DayCard({
   total: number;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
-  const { renameDay, reorderDays, removeDay } = useSplitEditStore();
+  const renameDay = useSplitEditStore((s) => s.renameDay);
+  const reorderDays = useSplitEditStore((s) => s.reorderDays);
+  const removeDay = useSplitEditStore((s) => s.removeDay);
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
@@ -412,7 +419,7 @@ function DayCard({
               day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
                   key={exercise.id}
-                  day={day}
+                  dayId={day.id}
                   exercise={exercise}
                   index={exerciseIndex}
                   total={day.exercises.length}
@@ -436,24 +443,22 @@ function DayCard({
       </Card>
     </motion.div>
   );
-}
+});
 
 // ═══════════════════════════════════
 // SPLIT EDITOR
 // ═══════════════════════════════════
 
 export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorProps) {
-  const {
-    draft,
-    isDirty,
-    saving,
-    error,
-    renameSplit,
-    updateDescription,
-    addDay,
-    saveEdit,
-    cancelEdit,
-  } = useSplitEditStore();
+  const draft = useSplitEditStore((s) => s.draft);
+  const isDirty = useSplitEditStore((s) => s.isDirty);
+  const saving = useSplitEditStore((s) => s.saving);
+  const error = useSplitEditStore((s) => s.error);
+  const renameSplit = useSplitEditStore((s) => s.renameSplit);
+  const updateDescription = useSplitEditStore((s) => s.updateDescription);
+  const addDay = useSplitEditStore((s) => s.addDay);
+  const saveEdit = useSplitEditStore((s) => s.saveEdit);
+  const cancelEdit = useSplitEditStore((s) => s.cancelEdit);
 
   const handleCancel = useCallback(() => {
     if (isDirty) {
@@ -536,17 +541,21 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
           </span>
         </div>
 
-        <AnimatePresence mode="popLayout">
-          {draft.days.map((day, index) => (
-            <DayCard
-              key={day.id}
-              day={day}
-              index={index}
-              total={draft.days.length}
-              onPickExercise={onPickExercise}
-            />
-          ))}
-        </AnimatePresence>
+        {/* The group re-measures every layout node when any one updates, so
+            memoized cards below a day that grew or shrank still glide. */}
+        <LayoutGroup>
+          <AnimatePresence mode="popLayout">
+            {draft.days.map((day, index) => (
+              <DayCard
+                key={day.id}
+                day={day}
+                index={index}
+                total={draft.days.length}
+                onPickExercise={onPickExercise}
+              />
+            ))}
+          </AnimatePresence>
+        </LayoutGroup>
       </motion.div>
 
       {/* ── Add Day ── */}

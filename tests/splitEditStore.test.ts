@@ -109,3 +109,40 @@ describe('splitEditStore.updateExerciseTargets', () => {
     expect(draftExercise('day-1', 'a')).toMatchObject({ target_sets_min: 4, target_sets: 4, target_sets_max: 6 });
   });
 });
+
+// The editor memoizes DayCard and ExerciseRow on these identities.
+describe('splitEditStore keeps untouched objects for memoized editor rows', () => {
+  it('keeps the days array when renaming the program or editing its description', () => {
+    const days = store().draft!.days;
+
+    store().renameSplit('Renamed');
+    expect(store().draft!.days).toBe(days);
+
+    store().updateDescription('New description');
+    expect(store().draft!.days).toBe(days);
+  });
+
+  it('replaces only the renamed day', () => {
+    const [upper, lower] = store().draft!.days;
+
+    store().renameDay('day-1', 'Upper A');
+
+    const [nextUpper, nextLower] = store().draft!.days;
+    expect(nextUpper).not.toBe(upper);
+    expect(nextUpper.day_name).toBe('Upper A');
+    expect(nextLower).toBe(lower);
+  });
+
+  it('replaces only the edited exercise row when targets change', () => {
+    const [a, b, c] = store().draft!.days[0].exercises;
+    const lower = store().draft!.days[1];
+
+    store().updateExerciseTargets('day-1', 'a', { target_reps_max: 15 });
+
+    const [nextA, nextB, nextC] = store().draft!.days[0].exercises;
+    expect(nextA).not.toBe(a);
+    expect(nextB).toBe(b);
+    expect(nextC).toBe(c);
+    expect(store().draft!.days[1]).toBe(lower);
+  });
+});

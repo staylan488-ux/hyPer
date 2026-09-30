@@ -68,7 +68,11 @@ export function Splits() {
     excludeExerciseIds?: string[];
   }>({ isOpen: false, dayId: '', mode: 'add' });
 
-  const { startEdit, swapExercise, addExercise, addSupersetExercise } = useSplitEditStore();
+  // Actions only: selecting them keeps draft edits from re-rendering this page.
+  const startEdit = useSplitEditStore((s) => s.startEdit);
+  const swapExercise = useSplitEditStore((s) => s.swapExercise);
+  const addExercise = useSplitEditStore((s) => s.addExercise);
+  const addSupersetExercise = useSplitEditStore((s) => s.addSupersetExercise);
 
   useEffect(() => {
     void Promise.all([
