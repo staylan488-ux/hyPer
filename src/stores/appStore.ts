@@ -1411,7 +1411,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error } = await supabase.from('sets').update(updates).eq('id', setId);
     if (error) {
       console.error('Error updating set:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { currentWorkout } = get();
@@ -2145,7 +2145,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (deleteError) {
       console.error('Error removing set from workout:', deleteError);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { data: remainingSets, error: remainingError } = await supabase
@@ -2157,7 +2157,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (remainingError) {
       console.error('Error fetching remaining sets for compaction:', remainingError);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     for (const [index, row] of (remainingSets || []).entries()) {
@@ -2238,7 +2238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error removing exercise from workout:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
@@ -2332,7 +2332,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error updating workout notes:', error);
-      return;
+      throw new Error('Could not save that change.');
     }
 
     const { currentWorkout } = get();

@@ -996,6 +996,92 @@ describe('must-work store contracts', () => {
     expect(useAppStore.getState().currentWorkout?.sets.map((set) => set.id)).toEqual(['set-b']);
   });
 
+  describe('past-workout edits reject on a failed save', () => {
+    const failure = { message: 'network down', code: 'fetch_failed' };
+
+    function workoutWithTwoSets(): Workout {
+      return {
+        id: 'workout-1',
+        user_id: 'user-1',
+        split_day_id: 'split-day-1',
+        date: '2026-02-14',
+        notes: 'Old note',
+        completed: false,
+        sets: [
+          { id: 'set-1', workout_id: 'workout-1', exercise_id: 'exercise-1', set_number: 1, weight: 100, reps: 5, rpe: null, completed: true, completed_at: null },
+          { id: 'set-2', workout_id: 'workout-1', exercise_id: 'exercise-1', set_number: 2, weight: 100, reps: 5, rpe: null, completed: true, completed_at: null },
+        ],
+      };
+    }
+
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      errorSpy.mockRestore();
+    });
+
+    it('updateSet rejects and leaves currentWorkout unchanged', async () => {
+      const before = workoutWithTwoSets();
+      useAppStore.setState({ currentWorkout: before });
+      const setsChain = createChain({ error: failure as unknown as null });
+      supabaseMock.from.mockImplementation(() => setsChain);
+
+      await expect(useAppStore.getState().updateSet('set-1', { weight: 120 })).rejects.toThrow('Could not save that change.');
+      expect(useAppStore.getState().currentWorkout).toEqual(before);
+    });
+
+    it('removeSetFromWorkout rejects when the delete fails', async () => {
+      const before = workoutWithTwoSets();
+      useAppStore.setState({ currentWorkout: before });
+      const deleteChain = createChain({ error: failure as unknown as null });
+      supabaseMock.from.mockImplementation(() => deleteChain);
+
+      await expect(useAppStore.getState().removeSetFromWorkout('workout-1', 'exercise-1', 'set-2')).rejects.toThrow();
+      expect(useAppStore.getState().currentWorkout).toEqual(before);
+    });
+
+    it('removeSetFromWorkout rejects when the compaction read fails', async () => {
+      const before = workoutWithTwoSets();
+      useAppStore.setState({ currentWorkout: before });
+      const deleteChain = createChain();
+      const remainingChain = createChain({
+        order: vi.fn().mockResolvedValue({ data: null, error: failure }),
+      });
+      let setsCalls = 0;
+      supabaseMock.from.mockImplementation(() => {
+        setsCalls += 1;
+        return setsCalls === 1 ? deleteChain : remainingChain;
+      });
+
+      await expect(useAppStore.getState().removeSetFromWorkout('workout-1', 'exercise-1', 'set-2')).rejects.toThrow();
+      expect(useAppStore.getState().currentWorkout).toEqual(before);
+    });
+
+    it('removeExerciseFromWorkout rejects and does not touch the plan', async () => {
+      const before = workoutWithTwoSets();
+      const fetchPlan = vi.fn();
+      useAppStore.setState({ currentWorkout: before, fetchWorkoutDayPlanByWorkoutId: fetchPlan });
+      const setsChain = createChain({ error: failure as unknown as null });
+      supabaseMock.from.mockImplementation(() => setsChain);
+
+      await expect(useAppStore.getState().removeExerciseFromWorkout('workout-1', 'exercise-1')).rejects.toThrow();
+      expect(fetchPlan).not.toHaveBeenCalled();
+      expect(useAppStore.getState().currentWorkout).toEqual(before);
+    });
+
+    it('updateWorkoutNotes rejects and leaves the notes unchanged', async () => {
+      const before = workoutWithTwoSets();
+      useAppStore.setState({ currentWorkout: before });
+      const workoutsChain = createChain({ error: failure as unknown as null });
+      supabaseMock.from.mockImplementation(() => workoutsChain);
+
+      await expect(useAppStore.getState().updateWorkoutNotes('workout-1', 'New note')).rejects.toThrow();
+      expect(useAppStore.getState().currentWorkout?.notes).toBe('Old note');
+    });
+  });
+
   it('syncs workout completion from set completion counts', async () => {
     useAppStore.setState({
       currentWorkout: {

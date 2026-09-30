@@ -971,11 +971,31 @@ export function History() {
     setLegacyNotesByWorkout((prev) => ({ ...prev, [workoutId]: parsed.legacyNote }));
   }, [fetchWorkoutById, fetchWorkoutDayPlanByWorkoutId, syncWorkoutCompletion]);
 
-  const runMutation = useCallback(async (workoutId: string, mutate: () => Promise<void>) => {
-    await mutate();
-    await refreshWorkout(workoutId);
-    showSavedToast();
-  }, [refreshWorkout, showSavedToast]);
+  // Never rejects: a failed edit says so, and the workout is refreshed either
+  // way so the screen shows what the server really holds (a partial failure
+  // can leave a delete applied but not its follow-up).
+  const runMutation = useCallback(async (workoutId: string, mutate: () => Promise<void>): Promise<boolean> => {
+    let failed = false;
+    try {
+      await mutate();
+    } catch (error) {
+      console.error('Error saving workout edit:', error);
+      failed = true;
+    }
+
+    try {
+      await refreshWorkout(workoutId);
+    } catch (error) {
+      console.error('Error refreshing workout after edit:', error);
+    }
+
+    if (failed) {
+      showToast('Could not save');
+    } else {
+      showSavedToast();
+    }
+    return !failed;
+  }, [refreshWorkout, showSavedToast, showToast]);
 
   const loadPlanIfExists = useCallback(async (workoutId: string) => {
     if (Object.prototype.hasOwnProperty.call(workoutPlans, workoutId)) return;
@@ -994,7 +1014,14 @@ export function History() {
     const serialized = serializeWorkoutNotes(movementNotes, legacyNote);
 
     setSavingMovementNoteKey(`${workoutId}:${exerciseId}`);
-    await updateWorkoutNotes(workoutId, serialized);
+    try {
+      await updateWorkoutNotes(workoutId, serialized);
+    } catch {
+      // keep the draft in place so the next edit or blur retries
+      setSavingMovementNoteKey(null);
+      showToast('Note not saved');
+      return;
+    }
 
     setMonthWorkouts((prev) => prev.map((workout) => (
       workout.id === workoutId ? { ...workout, notes: serialized } : workout
@@ -1005,7 +1032,7 @@ export function History() {
     window.setTimeout(() => {
       setSavedMovementNoteKey((current) => (current === `${workoutId}:${exerciseId}` ? null : current));
     }, 1200);
-  }, [updateWorkoutNotes]);
+  }, [showToast, updateWorkoutNotes]);
 
   const queueMovementNotePersist = useCallback((workoutId: string, exerciseId: string) => {
     const timerKey = `${workoutId}:${exerciseId}`;
@@ -1168,7 +1195,7 @@ export function History() {
     const completed = updates.weight !== null && updates.reps !== null;
     const workout = monthWorkouts.find((entry) => entry.id === workoutSet.workout_id);
 
-    await runMutation(workoutSet.workout_id, async () => {
+    const saved = await runMutation(workoutSet.workout_id, async () => {
       await updateSet(workoutSet.id, {
         weight: updates.weight,
         reps: updates.reps,
@@ -1182,12 +1209,14 @@ export function History() {
       });
     });
 
-    setEditingSet(null);
+    // keep the typed values in the open editor so a failed save can be retried
+    if (saved) setEditingSet(null);
   };
 
   const handleAddSet = async (workoutId: string, exerciseId: string) => {
     await runMutation(workoutId, async () => {
-      await addSetToWorkout(workoutId, exerciseId);
+      const created = await addSetToWorkout(workoutId, exerciseId);
+      if (!created) throw new Error('Could not add that set.');
     });
   };
 
@@ -2013,7 +2042,8 @@ export function History() {
           }
 
           void runMutation(workoutId, async () => {
-            await addExerciseToWorkout(workoutId, exercise);
+            const created = await addExerciseToWorkout(workoutId, exercise);
+            if (!created) throw new Error('Could not add that exercise.');
           });
         }}
         excludeExerciseIds={pickerState?.excludeExerciseIds || []}
