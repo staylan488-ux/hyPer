@@ -14,6 +14,7 @@ import {
   buildLoggedAt,
   computeAmountFromServings,
   computeServingsFromAmount,
+  describeTargetUnchanged,
   getCompatibleMeasurementUnits,
   normalizeFoodName,
   numbersNearlyEqual,
@@ -227,6 +228,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [foodDescriptionBusy, setFoodDescriptionBusy] = useState(false);
   const [foodDescriptionError, setFoodDescriptionError] = useState<string | null>(null);
   const [foodDescriptionResult, setFoodDescriptionResult] = useState<FoodDescriptionResult | null>(null);
+  // set when the user edited the fields or picked a saved meal while a describe
+  // ran: the estimate waits for "Fill fields" instead of replacing their input
+  const [pendingDescribeFill, setPendingDescribeFill] = useState(false);
+  const [describeRequests] = useState(createRequestGate);
+  const describeTargetRef = useRef({ manualFood, selectedSavedMealId });
+  useEffect(() => {
+    describeTargetRef.current = { manualFood, selectedSavedMealId };
+  }, [manualFood, selectedSavedMealId]);
+  useEffect(() => () => describeRequests.invalidate(), [describeRequests]);
   const [photoHint, setPhotoHint] = useState('');
   const [photoPlateDiameter, setPhotoPlateDiameter] = useState('');
   const [photoIngredients, setPhotoIngredients] = useState('');
@@ -369,8 +379,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       return;
     }
 
+    const isCurrent = describeRequests.begin();
+    const before = describeTargetRef.current;
     setFoodDescriptionBusy(true);
     setFoodDescriptionError(null);
+    setPendingDescribeFill(false);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
@@ -382,6 +395,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         accessToken,
         settings: describeSettings,
       });
+      if (!isCurrent()) return;
       // surface a provider fallback instead of silently labeling the answer
       // with a different name than the one the user chose
       const describeFallbackNote = result.provider !== describeSettings.provider
@@ -390,23 +404,29 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       setFoodDescriptionResult(describeFallbackNote
         ? { ...result, notes: `${describeFallbackNote}${result.notes || ''}`.trim() }
         : result);
-      setManualFood({
-        name: result.name,
-        calories: formatMacroInput(result.calories),
-        protein: formatMacroInput(result.protein_g),
-        carbs: formatMacroInput(result.carbs_g),
-        fat: formatMacroInput(result.fat_g),
-      });
-      setSelectedSavedMealId(null);
-      setSaveAsReusableMeal(true);
-      setManualNameFocused(false);
-      setSavedMealMessage(null);
-      setSavedMealError(null);
+      if (describeTargetUnchanged(before, describeTargetRef.current)) applyDescribeEstimate(result);
+      else setPendingDescribeFill(true);
     } catch (error) {
-      setFoodDescriptionError(error instanceof Error ? error.message : 'Could not research this food.');
+      if (isCurrent()) setFoodDescriptionError(error instanceof Error ? error.message : 'Could not research this food.');
     } finally {
       setFoodDescriptionBusy(false);
     }
+  };
+
+  const applyDescribeEstimate = (result: FoodDescriptionResult) => {
+    setManualFood({
+      name: result.name,
+      calories: formatMacroInput(result.calories),
+      protein: formatMacroInput(result.protein_g),
+      carbs: formatMacroInput(result.carbs_g),
+      fat: formatMacroInput(result.fat_g),
+    });
+    setSelectedSavedMealId(null);
+    setSaveAsReusableMeal(true);
+    setManualNameFocused(false);
+    setSavedMealMessage(null);
+    setSavedMealError(null);
+    setPendingDescribeFill(false);
   };
 
   const clearSavedMealFeedback = () => {
@@ -594,6 +614,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   }, []);
 
   const handleSelectSavedMeal = (meal: Food) => {
+    // a describe still running must not replace the meal just picked
+    describeRequests.invalidate();
     if (decodeMealComposition(meal.description)) {
       if (onAddIngredients || !onComposeMeal) {
         setSelectedFood(meal);
@@ -638,6 +660,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   };
 
   const handleAddSavedMeal = () => {
+    describeRequests.invalidate();
+    setPendingDescribeFill(false);
     clearSavedMealFeedback();
     setManagingSavedMeals(false);
     openManualAsSavedMealRef.current = true;
@@ -1561,7 +1585,8 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     </div>
   );
 
-  if (photoItems.length > 0) {
+  // a late result waits on the Photo tab instead of taking over another tab
+  if (mode === 'photo' && photoItems.length > 0) {
     const totalCalories = Math.round(photoItems.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
     return (
       <div className="space-y-6 pt-1">
@@ -2205,6 +2230,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 <FormField label="Food, portion, and preparation">
                   <textarea
                     value={foodDescription}
+                    readOnly={foodDescriptionBusy}
                     onChange={(event) => {
                       setFoodDescription(event.target.value.slice(0, 1500));
                       setFoodDescriptionError(null);
@@ -2234,7 +2260,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 {foodDescriptionResult && (
                   <div className="space-y-2">
                     <div className="flex items-baseline justify-between gap-4">
-                      <span className="t-label">Estimate filled below</span>
+                      <span className="t-label">{pendingDescribeFill ? 'Estimate ready' : 'Estimate filled below'}</span>
                       <span className="t-data-sm text-[var(--color-muted)]">
                         {foodDescriptionResult.provider === 'anthropic' ? 'Claude' : 'OpenAI'} · {Math.round(foodDescriptionResult.confidence * 100)}%
                       </span>
@@ -2254,7 +2280,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                         ))}
                       </p>
                     )}
-                    <p className="t-caption">Review every field. Logging will also add it to Saved; a package label should win if available.</p>
+                    {pendingDescribeFill ? (
+                      <>
+                        <p className="t-caption">You changed the fields while this ran, so your entries were kept.</p>
+                        <Button variant="secondary" size="sm" onClick={() => applyDescribeEstimate(foodDescriptionResult)}>
+                          Fill fields with estimate
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="t-caption">Review every field. Logging will also add it to Saved; a package label should win if available.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -2528,6 +2563,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             min="1"
             max="100"
             value={photoPlateDiameter}
+            readOnly={photoAnalyzing}
             onChange={(event) => setPhotoPlateDiameter(event.target.value)}
             placeholder="e.g., 27"
           />
@@ -2535,6 +2571,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Input
             label="Oils, sauces, dressings, hidden ingredients"
             value={photoIngredients}
+            readOnly={photoAnalyzing}
             onChange={(event) => setPhotoIngredients(event.target.value)}
             placeholder="e.g., 1 tbsp olive oil, sauce on side, or none"
           />
@@ -2542,6 +2579,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Input
             label="Extra details (optional)"
             value={photoHint}
+            readOnly={photoAnalyzing}
             onChange={(e) => setPhotoHint(e.target.value)}
             placeholder="e.g., 27 cm plate, extra olive oil"
           />
