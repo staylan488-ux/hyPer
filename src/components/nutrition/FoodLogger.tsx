@@ -1151,9 +1151,13 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       return;
     }
     setSaving(true);
+    setSaveError(null);
     try {
       const foodId = await upsertFoodIfNeeded(food);
-      if (!foodId) return;
+      if (!foodId) {
+        setSaveError('Could not save this entry. Your changes are still here. Please try again.');
+        return;
+      }
       const source = selectedFoodMeta?.source === 'barcode'
         ? selectedFoodMeta.provider === 'open_food_facts'
           ? 'barcode_open_food_facts'
@@ -1163,6 +1167,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       await saveNutritionEntry(foodId, servingsCount, source);
     } catch (error) {
       console.error('Error saving nutrition entry:', error);
+      setSaveError('Could not save this entry. Your changes are still here. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -1348,16 +1353,23 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         return;
       }
 
-      await supabase
+      const { error: retireError } = await supabase
         .from('foods')
         .update({ source: 'manual_entry' })
         .eq('id', selectedSavedMealId)
         .eq('user_id', user.id)
         .in('source', ['saved_meal', 'custom']);
 
+      // the new meal row exists either way, so the form points at it
       setSelectedSavedMealId(nextSavedMealId);
       setSaveAsReusableMeal(false);
-      setSavedMealMessage('Saved meal updated for future logs.');
+      if (retireError) {
+        setSavedMealError(
+          'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.',
+        );
+      } else {
+        setSavedMealMessage('Saved meal updated for future logs.');
+      }
       await fetchSavedMeals();
     } finally {
       setUpdatingSavedMeal(false);
@@ -1375,10 +1387,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     }
     setSaving(true);
     clearSavedMealFeedback();
+    setSaveError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('No user found');
+        setSaveError('Please sign in again to log food. Your changes are still here.');
         return;
       }
 
@@ -1453,6 +1467,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
         if (!resolvedFoodId) {
           console.error('Error creating one-off manual food entry');
+          setSaveError('Could not save this entry. Your changes are still here. Please try again.');
           return;
         }
         manualFoodRef.current = { key: manualFoodKey, id: resolvedFoodId };
@@ -1480,6 +1495,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       if (saved) manualFoodRef.current = null;
     } catch (error) {
       console.error('Error in manual submit:', error);
+      setSaveError('Could not save this entry. Your changes are still here. Please try again.');
     } finally {
       setSaving(false);
     }
