@@ -49,7 +49,7 @@ import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, sav
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
-import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
+import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
@@ -177,8 +177,13 @@ export function Workout() {
   const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);
   const [restTimerSeconds, setRestTimerSeconds] = useState(90);
-  const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(null);
-  const [planScheduleResolving, setPlanScheduleResolving] = useState(false);
+  // Seeded at mount, so a warm return never paints the Start Plan setup for a
+  // frame before the schedule effect below runs; the effect still re-reads
+  // the cache and syncs from the cloud.
+  const [planSchedule, setPlanSchedule] = useState<PlanSchedule | null>(() => (
+    userId && activeSplit && hydratedForUserId === userId ? loadPlanSchedule(userId, activeSplit.id) : null
+  ));
+  const [planScheduleResolving, setPlanScheduleResolving] = useState(() => Boolean(userId && activeSplit));
   const [weekCursor, setWeekCursor] = useState<Date>(new Date());
   const [weekWorkouts, setWeekWorkouts] = useState<Pick<Workout, 'id' | 'date' | 'split_day_id' | 'completed'>[]>([]);
   const [lastCompletedWorkout, setLastCompletedWorkout] = useState<Pick<Workout, 'date' | 'split_day_id'> | null>(null);
