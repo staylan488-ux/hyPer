@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { supabase } from '@/lib/supabase';
-import { normalizeFoodName, shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
+import { dedupeSavedMealsByName, insertSavedMeal, listSavedMealRows, retireSavedMeal } from '@/lib/savedMeals';
 import { MealLogger } from '@/components/nutrition/MealLogger';
 import { decodeMealComposition } from '@/lib/mealComposition';
 import {
@@ -499,13 +499,10 @@ export function Settings() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('foods')
-        .select('id, user_id, name, calories, protein, carbs, fat, source, description, serving_size, serving_unit')
-        .eq('user_id', user.id)
-        .in('source', ['saved_meal', 'custom'])
-        .order('created_at', { ascending: false })
-        .limit(150);
+      const { data, error } = await listSavedMealRows<SavedMeal>(
+        user.id,
+        'id, user_id, name, calories, protein, carbs, fat, source, description, serving_size, serving_unit',
+      );
 
       if (error) {
         setMealManagerError('Could not load saved meals.');
@@ -513,28 +510,19 @@ export function Settings() {
         return;
       }
 
-      const dedupedMeals = new Map<string, SavedMeal>();
-
-      for (const meal of data || []) {
-        const key = normalizeFoodName(meal.name || '');
-        if (!key || dedupedMeals.has(key)) continue;
-
-        dedupedMeals.set(key, {
-          id: meal.id,
-          user_id: meal.user_id,
-          name: meal.name,
-          calories: Number(meal.calories) || 0,
-          protein: Number(meal.protein) || 0,
-          carbs: Number(meal.carbs) || 0,
-          fat: Number(meal.fat) || 0,
-          source: meal.source,
-          description: meal.description,
-          serving_size: meal.serving_size,
-          serving_unit: meal.serving_unit,
-        });
-      }
-
-      setSavedMeals(Array.from(dedupedMeals.values()));
+      setSavedMeals(dedupeSavedMealsByName(data, (meal): SavedMeal => ({
+        id: meal.id,
+        user_id: meal.user_id,
+        name: meal.name,
+        calories: Number(meal.calories) || 0,
+        protein: Number(meal.protein) || 0,
+        carbs: Number(meal.carbs) || 0,
+        fat: Number(meal.fat) || 0,
+        source: meal.source,
+        description: meal.description,
+        serving_size: meal.serving_size,
+        serving_unit: meal.serving_unit,
+      })));
     } finally {
       setLoadingSavedMeals(false);
     }
@@ -588,41 +576,6 @@ export function Settings() {
     });
   };
 
-  const insertSavedMealRecord = async (
-    userId: string,
-    values: { name: string; calories: number; protein: number; carbs: number; fat: number },
-  ) => {
-    const payload = {
-      user_id: userId,
-      name: values.name,
-      calories: values.calories,
-      protein: values.protein,
-      carbs: values.carbs,
-      fat: values.fat,
-      source: 'saved_meal' as const,
-    };
-
-    let { data, error } = await supabase
-      .from('foods')
-      .insert({
-        ...payload,
-        serving_size: 1,
-        serving_unit: 'serving',
-      })
-      .select('id')
-      .single();
-
-    if (error && shouldDropColumn(error, 'serving_size')) {
-      ({ data, error } = await supabase.from('foods').insert(payload).select('id').single());
-    }
-
-    if (error || !data) {
-      return null;
-    }
-
-    return data.id;
-  };
-
   const saveMealEdit = async () => {
     if (!editingMealId || savingMealEdit) return;
 
@@ -649,18 +602,13 @@ export function Settings() {
         return;
       }
 
-      const replacementId = await insertSavedMealRecord(user.id, nextValues);
+      const { id: replacementId } = await insertSavedMeal(user.id, nextValues);
       if (!replacementId) {
         setMealManagerError('Could not save meal changes.');
         return;
       }
 
-      const { error: retireError } = await supabase
-        .from('foods')
-        .update({ source: 'manual_entry' })
-        .eq('id', editingMealId)
-        .eq('user_id', user.id)
-        .in('source', ['saved_meal', 'custom']);
+      const { error: retireError } = await retireSavedMeal(user.id, editingMealId);
 
       if (retireError) {
         setMealManagerError(
@@ -686,12 +634,7 @@ export function Settings() {
       return;
     }
 
-    const { error } = await supabase
-      .from('foods')
-      .update({ source: 'manual_entry' })
-      .eq('id', meal.id)
-      .eq('user_id', user.id)
-      .in('source', ['saved_meal', 'custom']);
+    const { error } = await retireSavedMeal(user.id, meal.id);
 
     if (error) {
       setMealManagerError('Could not delete saved meal.');
