@@ -33,6 +33,7 @@ import { getDailyIntake } from '@/lib/nutritionIntake';
 import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeights';
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
+import { planSetCountChange } from '@/lib/workoutPlanOps';
 
 /**
  * What an adaptive refresh did: 'skipped' (not due, off, or no weigh-in),
@@ -187,6 +188,25 @@ function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
     .map((item, index) => ({ ...item, order: index }));
 }
 
+// The workout row with its sets and each set's exercise.
+const WORKOUT_WITH_SETS_SELECT = '*, sets(*, exercise:exercises!exercise_id(*))';
+
+interface DayPlanRow {
+  id: string;
+  workout_id: string;
+  day_label: string;
+  items: unknown;
+}
+
+function toDayPlan(row: DayPlanRow): WorkoutDayPlan {
+  return {
+    id: row.id,
+    workout_id: row.workout_id,
+    day_label: row.day_label,
+    items: normalizeFlexiblePlanItems(row.items),
+  };
+}
+
 function normalizeTargetSets(value: number | null | undefined): number {
   if (!value || !Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(12, Math.round(value)));
@@ -316,7 +336,7 @@ interface AppState {
   updateWorkoutNotes: (workoutId: string, notes: string | null) => Promise<void>;
   fetchWorkoutDayPlanByWorkoutId: (workoutId: string) => Promise<WorkoutDayPlan | null>;
   ensureWorkoutDayPlan: (workoutId: string, fallbackLabel?: string) => Promise<WorkoutDayPlan | null>;
-  updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[]) => Promise<WorkoutDayPlan | null>;
+  updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[], preloadedPlan?: WorkoutDayPlan) => Promise<WorkoutDayPlan | null>;
   addSupersetToWorkout: (workoutId: string, baseExerciseId: string, partner: Exercise) => Promise<void>;
   clearWorkoutSuperset: (workoutId: string, exerciseId: string) => Promise<void>;
   updateWorkoutExerciseTargetSets: (workoutId: string, exerciseId: string, targetSets: number) => Promise<void>;
@@ -861,12 +881,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       set({
-        currentWorkoutDayPlan: {
-          id: data.id,
-          workout_id: data.workout_id,
-          day_label: data.day_label,
-          items: normalizeFlexiblePlanItems(data.items),
-        },
+        currentWorkoutDayPlan: toDayPlan(data),
       });
     });
   },
@@ -878,7 +893,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .eq('user_id', userId)
       .eq('completed', false)
       .order('created_at', { ascending: false })
@@ -942,7 +957,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Fetch the complete workout with sets
     const { data: completeWorkout, error: fetchError } = await supabase
       .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .eq('id', workout.id)
       .maybeSingle();
 
@@ -968,7 +983,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .eq('user_id', userId)
       .eq('completed', false)
       .order('created_at', { ascending: false })
@@ -1049,7 +1064,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const { data: completeWorkout, error: fetchError } = await supabase
       .from('workouts')
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .eq('id', workout.id)
       .maybeSingle();
 
@@ -1060,14 +1075,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (completeWorkout) {
       set({
         currentWorkout: completeWorkout as Workout,
-        currentWorkoutDayPlan: createdPlan
-          ? {
-              id: createdPlan.id,
-              workout_id: createdPlan.workout_id,
-              day_label: createdPlan.day_label,
-              items: normalizeFlexiblePlanItems(createdPlan.items),
-            }
-          : null,
+        currentWorkoutDayPlan: createdPlan ? toDayPlan(createdPlan) : null,
       });
       return completeWorkout as Workout;
     }
@@ -1084,7 +1092,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return currentWorkoutFlight.run(`${userId}:${readSeq}`, async () => {
       const { data: workout, error } = await supabase
         .from('workouts')
-        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .select(WORKOUT_WITH_SETS_SELECT)
         .eq('user_id', userId)
         .eq('completed', false)
         .order('created_at', { ascending: false })
@@ -1235,12 +1243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: data.id,
-        workout_id: data.workout_id,
-        day_label: data.day_label,
-        items: normalizeFlexiblePlanItems(data.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(data),
     });
   }),
 
@@ -1308,12 +1311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(updatedPlan),
     });
   }),
 
@@ -1372,15 +1370,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const { data: createdSets, error: setsError } = await insertPlaceholderSets(
-      currentWorkout.id,
-      [{ exerciseId: partner.id, from: 1, to: normalizeTargetSets(partnerItem.target_sets) }],
-      true,
-    );
+    // A partner removed earlier keeps its finished sets; adding sets 1..N again
+    // would duplicate their numbers, so it keeps what it has (as in History).
+    const partnerHasSets = currentWorkout.sets.some((set) => set.exercise_id === partner.id);
+    const { data: createdSets, error: setsError } = partnerHasSets
+      ? { data: [], error: null }
+      : await insertPlaceholderSets(
+          currentWorkout.id,
+          [{ exerciseId: partner.id, from: 1, to: normalizeTargetSets(partnerItem.target_sets) }],
+          true,
+        );
 
     if (setsError) {
       console.error('Error creating flexible superset sets:', setsError);
-    } else {
+    } else if (createdSets.length > 0) {
       // Merge instead of refetching so a set logged meanwhile stays logged.
       const latest = get().currentWorkout;
       if (latest?.id === currentWorkout.id) {
@@ -1389,12 +1392,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(updatedPlan),
     });
   }),
 
@@ -1424,12 +1422,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(updatedPlan),
     });
   }),
 
@@ -1482,24 +1475,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const removedIds: string[] = [];
 
       for (const affectedExerciseId of affectedExerciseIds) {
-        const existingSets = workout.sets
-          .filter((set) => set.exercise_id === affectedExerciseId)
-          .sort((a, b) => a.set_number - b.set_number);
-
-        if (existingSets.length < desiredSets) {
-          additions.push({ exerciseId: affectedExerciseId, from: existingSets.length + 1, to: desiredSets });
+        const { insertNumbers, deleteIds } = planSetCountChange(
+          workout.sets.filter((set) => set.exercise_id === affectedExerciseId),
+          desiredSets,
+        );
+        if (insertNumbers.length > 0) {
+          additions.push({ exerciseId: affectedExerciseId, from: insertNumbers[0], to: insertNumbers[insertNumbers.length - 1] });
         }
-
-        if (existingSets.length > desiredSets) {
-          const removable = existingSets
-            .filter((set) => !set.completed)
-            .sort((a, b) => b.set_number - a.set_number);
-
-          for (const set of removable) {
-            if (set.set_number <= desiredSets) break;
-            removedIds.push(set.id);
-          }
-        }
+        removedIds.push(...deleteIds);
       }
 
       const { data: createdSets, error: setsError } = await insertPlaceholderSets(workout.id, additions, true);
@@ -1532,12 +1515,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(updatedPlan),
     });
   }),
 
@@ -1581,7 +1559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const { data: refreshedWorkout } = await supabase
         .from('workouts')
-        .select('*, sets(*, exercise:exercises!exercise_id(*))')
+        .select(WORKOUT_WITH_SETS_SELECT)
         .eq('id', currentWorkout.id)
         .maybeSingle();
 
@@ -1591,12 +1569,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({
-      currentWorkoutDayPlan: {
-        id: updatedPlan.id,
-        workout_id: updatedPlan.workout_id,
-        day_label: updatedPlan.day_label,
-        items: normalizeFlexiblePlanItems(updatedPlan.items),
-      },
+      currentWorkoutDayPlan: toDayPlan(updatedPlan),
     });
   }),
 
@@ -2231,7 +2204,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .update(stats)
       .eq('id', workout.id)
       .eq('user_id', userId)
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .single();
 
     if (error || !data) {
@@ -2266,7 +2239,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .update(CLEARED_WHOOP_STATS)
       .eq('id', workout.id)
       .eq('user_id', userId)
-      .select('*, sets(*, exercise:exercises!exercise_id(*))')
+      .select(WORKOUT_WITH_SETS_SELECT)
       .single();
 
     if (error || !data) {
@@ -2523,7 +2496,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         ];
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
     return createdSet;
   }),
 
@@ -2556,7 +2529,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return item;
       });
 
-      await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+      await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
     }
 
     const { currentWorkout } = get();
@@ -2653,12 +2626,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!data) return null;
 
-    const plan: WorkoutDayPlan = {
-      id: data.id,
-      workout_id: data.workout_id,
-      day_label: data.day_label,
-      items: normalizeFlexiblePlanItems(data.items),
-    };
+    const plan = toDayPlan(data);
 
     const { currentWorkoutDayPlan, currentWorkout } = get();
     if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id !== plan.id) {
@@ -2791,16 +2759,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null;
     }
 
-    return {
-      id: createdPlan.id,
-      workout_id: createdPlan.workout_id,
-      day_label: createdPlan.day_label,
-      items: normalizeFlexiblePlanItems(createdPlan.items),
-    };
+    return toDayPlan(createdPlan);
   }),
 
-  updateWorkoutDayPlanItems: writesWorkout(async (workoutId, items) => {
-    const existingPlan = await get().ensureWorkoutDayPlan(workoutId);
+  // Pass the plan the caller just loaded to skip reading it again.
+  updateWorkoutDayPlanItems: writesWorkout(async (workoutId, items, preloadedPlan) => {
+    const existingPlan = preloadedPlan ?? await get().ensureWorkoutDayPlan(workoutId);
     if (!existingPlan) return null;
 
     const normalizedItems = normalizeWorkoutPlanItems(items);
@@ -2817,12 +2781,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null;
     }
 
-    const nextPlan: WorkoutDayPlan = {
-      id: updatedPlan.id,
-      workout_id: updatedPlan.workout_id,
-      day_label: updatedPlan.day_label,
-      items: normalizeFlexiblePlanItems(updatedPlan.items),
-    };
+    const nextPlan = toDayPlan(updatedPlan);
 
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
@@ -2866,7 +2825,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     nextItems.splice(baseIndex + 1, 0, partnerItem);
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
 
     const { data: existingSets, error: existingError } = await supabase
       .from('sets')
@@ -2923,7 +2882,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         : item
     ));
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
   }),
 
   updateWorkoutExerciseTargetSets: writesWorkout(async (workoutId, exerciseId, targetSets) => {
@@ -2945,11 +2904,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       return item;
     });
 
-    await get().updateWorkoutDayPlanItems(workoutId, nextItems);
+    await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
 
     const affectedExerciseIds = sourceGroupId
       ? nextItems.filter((item) => !item.hidden && item.superset_group_id === sourceGroupId).map((item) => item.exercise_id)
       : [exerciseId];
+
+    const additions: PlaceholderSetSpec[] = [];
+    const removedIds: string[] = [];
 
     for (const affectedExerciseId of affectedExerciseIds) {
       const { data: existingSets, error: existingError } = await supabase
@@ -2964,40 +2926,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         continue;
       }
 
-      const sorted = (existingSets || []).slice().sort((a, b) => Number(a.set_number) - Number(b.set_number));
-      if (sorted.length < desiredSets) {
-        const currentMaxSetNumber = sorted.length > 0
-          ? Math.max(...sorted.map((set) => Number(set.set_number) || 0))
-          : 0;
-
-        const rows = Array.from({ length: desiredSets - sorted.length }, (_, index) => ({
-          workout_id: workoutId,
-          exercise_id: affectedExerciseId,
-          set_number: currentMaxSetNumber + index + 1,
-          completed: false,
-        }));
-
-        const { error: insertError } = await supabase.from('sets').insert(rows);
-        if (insertError) {
-          console.error('Error adding sets to match target sets:', insertError);
-        }
+      const { insertNumbers, deleteIds } = planSetCountChange(existingSets || [], desiredSets);
+      if (insertNumbers.length > 0) {
+        additions.push({ exerciseId: affectedExerciseId, from: insertNumbers[0], to: insertNumbers[insertNumbers.length - 1] });
       }
+      removedIds.push(...deleteIds);
+    }
 
-      if (sorted.length > desiredSets) {
-        const removable = sorted
-          .filter((set) => !set.completed && Number(set.set_number) > desiredSets)
-          .sort((a, b) => Number(b.set_number) - Number(a.set_number));
+    const { error: insertError } = await insertPlaceholderSets(workoutId, additions);
+    if (insertError) {
+      console.error('Error adding sets to match target sets:', insertError);
+    }
 
-        for (const row of removable) {
-          const { error: deleteError } = await supabase
-            .from('sets')
-            .delete()
-            .eq('id', row.id);
+    if (removedIds.length > 0) {
+      // Only unfinished sets, so a set logged since the read above survives.
+      const { error: deleteError } = await supabase
+        .from('sets')
+        .delete()
+        .eq('completed', false)
+        .in('id', removedIds);
 
-          if (deleteError) {
-            console.error('Error removing sets to match target sets:', deleteError);
-          }
-        }
+      if (deleteError) {
+        console.error('Error removing sets to match target sets:', deleteError);
       }
     }
   }),
