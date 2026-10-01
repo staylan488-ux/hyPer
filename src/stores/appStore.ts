@@ -460,6 +460,15 @@ const flexTemplatesFlight = createReadFlight();
 const currentWorkoutFlight = createKeyedSingleFlight<void>();
 const workoutDayPlanFlight = createKeyedSingleFlight<void>();
 
+/**
+ * The current workout write sequence. A value saved before a read and compared
+ * later tells whether any workout was started, logged, finished or deleted in
+ * between (Today uses it to know whether a remembered "done today" still holds).
+ */
+export function getWorkoutWriteSeq() {
+  return workoutMutationSeq;
+}
+
 function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) => Promise<Result>) {
   return async (...args: Args): Promise<Result> => {
     workoutMutationSeq += 1;

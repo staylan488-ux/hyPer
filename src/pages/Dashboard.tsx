@@ -15,7 +15,7 @@ import type { SealMacro } from '@/lib/targetSeal';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
-import { useAppStore } from '@/stores/appStore';
+import { getWorkoutWriteSeq, useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
@@ -63,6 +63,8 @@ export function Dashboard() {
 
   // One load for mount and every foreground refresh, so the two cannot drift.
   const load = useCallback(async (day: string): Promise<TodayDaySnapshot> => {
+    // Taken before the read, so a workout write that overlaps it also counts.
+    const workoutWriteSeq = getWorkoutWriteSeq();
     const [dayData] = await Promise.all([
       readTodayDay(day),
       fetchSplits(),
@@ -79,7 +81,7 @@ export function Dashboard() {
     // Throwing keeps the old day and its numbers on screen and lets the next
     // return retry, instead of showing a new date above numbers never read.
     if (!dayData) throw new Error(`Could not read Today for ${day}`);
-    if (userId) rememberTodayDay(userId, day, dayData, activeWorkoutIdOf(useAppStore.getState().currentWorkout));
+    if (userId) rememberTodayDay(userId, day, dayData, activeWorkoutIdOf(useAppStore.getState().currentWorkout), workoutWriteSeq);
     return dayData;
   }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchSplits, fetchWorkoutMode, refreshAdaptiveTargets, userId]);
 
@@ -87,7 +89,7 @@ export function Dashboard() {
   // then refreshes in place. Only this account's data counts: a cold start,
   // another account or a new day shows the placeholders until the load ends.
   const storeReady = Boolean(userId) && hydratedForUserId === userId;
-  const seedToday = (day: string) => recallTodayDay(userId, day, activeWorkoutIdOf(currentWorkout));
+  const seedToday = (day: string) => recallTodayDay(userId, day, activeWorkoutIdOf(currentWorkout), getWorkoutWriteSeq());
 
   // The day and its data arrive together, so the header, Fuel and hero always
   // describe the same day. A new day also re-reads schedule completions, so

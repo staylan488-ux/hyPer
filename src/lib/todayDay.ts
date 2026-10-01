@@ -26,22 +26,33 @@ export interface TodayDaySnapshot {
 
 // The last Today read, so returning to Today shows it while the refresh runs.
 // Keyed by account and local day, so another account or a new day misses.
-let remembered: { key: string; day: TodayDay; activeWorkoutId: string | null } | null = null;
+let remembered: { key: string; day: TodayDay; activeWorkoutId: string | null; workoutWriteSeq: number } | null = null;
 
-/** Keeps the day just read, with the live workout it was read alongside. */
-export function rememberTodayDay(userId: string, dayKey: string, day: TodayDay, activeWorkoutId: string | null) {
-  remembered = { key: `${userId}:${dayKey}`, day, activeWorkoutId };
+/**
+ * Keeps the day just read, with the live workout it was read alongside and
+ * the workout write sequence (getWorkoutWriteSeq) from when the read started.
+ */
+export function rememberTodayDay(userId: string, dayKey: string, day: TodayDay, activeWorkoutId: string | null, workoutWriteSeq: number) {
+  remembered = { key: `${userId}:${dayKey}`, day, activeWorkoutId, workoutWriteSeq };
 }
 
 /**
- * The remembered day for this account and local day, or null. Starting or
- * finishing a workout since then can change whether today is done, so a
- * different live workout leaves todayDone unknown until the next read.
+ * The remembered day for this account and local day, or null. Starting,
+ * finishing or deleting a workout since then can change whether today is
+ * done, so any workout write or a different live workout leaves todayDone
+ * unknown until the next read. Starting and then finishing a session has no
+ * live workout on either side, which is why the id alone is not enough.
  */
-export function recallTodayDay(userId: string | null | undefined, dayKey: string, activeWorkoutId: string | null): TodayDaySnapshot | null {
+export function recallTodayDay(
+  userId: string | null | undefined,
+  dayKey: string,
+  activeWorkoutId: string | null,
+  workoutWriteSeq: number,
+): TodayDaySnapshot | null {
   if (!userId || remembered?.key !== `${userId}:${dayKey}`) return null;
   const { day } = remembered;
-  return remembered.activeWorkoutId === activeWorkoutId ? day : { ...day, todayDone: undefined };
+  const unchanged = remembered.activeWorkoutId === activeWorkoutId && remembered.workoutWriteSeq === workoutWriteSeq;
+  return unchanged ? day : { ...day, todayDone: undefined };
 }
 
 async function readNutritionTotals(userId: string, day: string): Promise<NutritionTotals> {

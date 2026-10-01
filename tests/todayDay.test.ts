@@ -95,23 +95,30 @@ describe('remembered Today', () => {
   const day = { nutritionTotals: { calories: 1800, protein: 140, carbs: 180, fat: 60 }, todayDone: null };
 
   it('returns the last read for the same account, day and live workout', () => {
-    rememberTodayDay('user-1', DAY, day, 'workout-1');
+    rememberTodayDay('user-1', DAY, day, 'workout-1', 4);
 
-    expect(recallTodayDay('user-1', DAY, 'workout-1')).toEqual(day);
+    expect(recallTodayDay('user-1', DAY, 'workout-1', 4)).toEqual(day);
   });
 
   it('misses for another account, another day, or no account', () => {
-    rememberTodayDay('user-1', DAY, day, null);
+    rememberTodayDay('user-1', DAY, day, null, 4);
 
-    expect(recallTodayDay('user-2', DAY, null)).toBeNull();
-    expect(recallTodayDay('user-1', '2026-10-01', null)).toBeNull();
-    expect(recallTodayDay(undefined, DAY, null)).toBeNull();
+    expect(recallTodayDay('user-2', DAY, null, 4)).toBeNull();
+    expect(recallTodayDay('user-1', '2026-10-01', null, 4)).toBeNull();
+    expect(recallTodayDay(undefined, DAY, null, 4)).toBeNull();
   });
 
   it('keeps the totals but leaves done unknown once the live workout changed', () => {
-    rememberTodayDay('user-1', DAY, day, 'workout-1');
+    rememberTodayDay('user-1', DAY, day, 'workout-1', 4);
 
     // Finished since the read: whether today is done must be read again.
-    expect(recallTodayDay('user-1', DAY, null)).toEqual({ nutritionTotals: day.nutritionTotals, todayDone: undefined });
+    expect(recallTodayDay('user-1', DAY, null, 4)).toEqual({ nutritionTotals: day.nutritionTotals, todayDone: undefined });
+  });
+
+  it('leaves done unknown after a workout write even with no live workout on either side', () => {
+    rememberTodayDay('user-1', DAY, day, null, 4);
+
+    // Started and finished since the read: the live workout is null again.
+    expect(recallTodayDay('user-1', DAY, null, 8)).toEqual({ nutritionTotals: day.nutritionTotals, todayDone: undefined });
   });
 });

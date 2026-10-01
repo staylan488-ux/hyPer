@@ -38,7 +38,8 @@ const backend = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase', () => ({ supabase: backend.client }));
 
-import { resetAppData, useAppStore } from '@/stores/appStore';
+import { recallTodayDay, rememberTodayDay } from '@/lib/todayDay';
+import { getWorkoutWriteSeq, resetAppData, useAppStore } from '@/stores/appStore';
 
 function hold(table: string) {
   let release!: (result: Result) => void;
@@ -185,5 +186,26 @@ describe('fetchCurrentWorkout against overlapping workout writes', () => {
     await read;
 
     expect(useAppStore.getState().currentWorkout).toBeNull();
+  });
+});
+
+describe('remembered Today across a session started and finished elsewhere', () => {
+  it('does not trust "not done" after starting and finishing with no live workout on either side', async () => {
+    useAppStore.setState({ currentWorkout: null });
+    const day = { nutritionTotals: { calories: 0, protein: 0, carbs: 0, fat: 0 }, todayDone: null };
+    rememberTodayDay('user-1', '2026-09-30', day, null, getWorkoutWriteSeq());
+
+    // Train: no open workout, the insert, the re-read, then the finish.
+    answer('workouts', { data: null, error: null });
+    answer('workouts', { data: { ...workoutWith(openSet), sets: undefined }, error: null });
+    answer('workouts', { data: workoutWith(openSet), error: null });
+    await useAppStore.getState().startFlexibleWorkout('Push');
+    expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
+    answer('workouts', { data: null, error: null, status: 204 });
+    await useAppStore.getState().completeWorkout();
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+
+    // Back on Today: the totals still show, but done waits for the read.
+    expect(recallTodayDay('user-1', '2026-09-30', null, getWorkoutWriteSeq())).toEqual({ ...day, todayDone: undefined });
   });
 });
