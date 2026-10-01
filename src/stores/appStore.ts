@@ -282,6 +282,10 @@ interface AppState {
   nutritionProfile: NutritionProfile | null;
   volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
+  /** The account whose splits, live workout and workout mode have each loaded
+   * into this store at least once, so a screen can show them while it reads
+   * again instead of a spinner. Null after a reset for another account. */
+  hydratedForUserId: string | null;
 
   // Split actions
   /** force: read again even if a read is running; pass it after a write. */
@@ -480,7 +484,20 @@ export const initialAppData = {
   volumeLandmarks: [],
   weeklyVolume: [],
   whoopConnection: null,
+  hydratedForUserId: null,
 } satisfies Partial<AppState>;
+
+// Which of the reads behind hydratedForUserId have succeeded, and for whom.
+type HydrationPart = 'splits' | 'workout' | 'mode';
+let hydration: { userId: string; loaded: Set<HydrationPart> } | null = null;
+
+function markHydrated(userId: string, part: HydrationPart) {
+  if (hydration?.userId !== userId) hydration = { userId, loaded: new Set() };
+  hydration.loaded.add(part);
+  if (hydration.loaded.size === 3 && useAppStore.getState().hydratedForUserId !== userId) {
+    useAppStore.setState({ hydratedForUserId: userId });
+  }
+}
 
 export const useAppStore = create<AppState>((set, get) => ({
   ...initialAppData,
@@ -520,13 +537,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Unchanged content keeps the existing references, so effects keyed on
         // activeSplit (schedule, plan, calendar) don't refetch on every visit.
-        if (JSON.stringify(get().splits) === JSON.stringify(formattedSplits)) return;
-
-        const active = formattedSplits.find((s: Split) => s.is_active);
-        set({ 
-          splits: formattedSplits, 
-          activeSplit: active || null 
-        });
+        if (JSON.stringify(get().splits) !== JSON.stringify(formattedSplits)) {
+          const active = formattedSplits.find((s: Split) => s.is_active);
+          set({ 
+            splits: formattedSplits, 
+            activeSplit: active || null 
+          });
+        }
+        markHydrated(userId, 'splits');
       }
     });
   },
@@ -645,6 +663,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
       set({ workoutMode: mode });
       writeWorkoutModeFallback(mode);
+      markHydrated(userId, 'mode');
     });
   },
 
@@ -1074,10 +1093,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (workout && canResumeWorkout(workout as Workout)) {
         const nextWorkout = workout as Workout;
         set({ currentWorkout: nextWorkout });
+        markHydrated(userId, 'workout');
 
         await get().fetchCurrentWorkoutDayPlan(nextWorkout.id);
       } else {
         set({ currentWorkout: null, currentWorkoutDayPlan: null });
+        markHydrated(userId, 'workout');
       }
     });
   },
@@ -3244,8 +3265,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 // Clears the in-memory copy of the previous account's data; every set is
 // already saved, and each screen's fetch rebuilds the store for the new user.
-// A workout read still running for the old account must not land afterwards.
+// A read still running for the old account must not land afterwards, and
+// screens show a spinner again until the new account's data has loaded.
 export function resetAppData() {
   workoutMutationSeq += 1;
+  splitsFlight.invalidate();
+  workoutModeFlight.invalidate();
+  flexTemplatesFlight.invalidate();
+  hydration = null;
   useAppStore.setState(initialAppData);
 }

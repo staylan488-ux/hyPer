@@ -18,6 +18,32 @@ export interface TodayDay {
   todayDone: { title: string } | null;
 }
 
+/** A remembered TodayDay; todayDone is undefined when it may be out of date. */
+export interface TodayDaySnapshot {
+  nutritionTotals: NutritionTotals;
+  todayDone: TodayDay['todayDone'] | undefined;
+}
+
+// The last Today read, so returning to Today shows it while the refresh runs.
+// Keyed by account and local day, so another account or a new day misses.
+let remembered: { key: string; day: TodayDay; activeWorkoutId: string | null } | null = null;
+
+/** Keeps the day just read, with the live workout it was read alongside. */
+export function rememberTodayDay(userId: string, dayKey: string, day: TodayDay, activeWorkoutId: string | null) {
+  remembered = { key: `${userId}:${dayKey}`, day, activeWorkoutId };
+}
+
+/**
+ * The remembered day for this account and local day, or null. Starting or
+ * finishing a workout since then can change whether today is done, so a
+ * different live workout leaves todayDone unknown until the next read.
+ */
+export function recallTodayDay(userId: string | null | undefined, dayKey: string, activeWorkoutId: string | null): TodayDaySnapshot | null {
+  if (!userId || remembered?.key !== `${userId}:${dayKey}`) return null;
+  const { day } = remembered;
+  return remembered.activeWorkoutId === activeWorkoutId ? day : { ...day, todayDone: undefined };
+}
+
 async function readNutritionTotals(userId: string, day: string): Promise<NutritionTotals> {
   const { data: logs, error } = await fetchNutritionLogsWithFoods<
     { food_id: string; servings: number },

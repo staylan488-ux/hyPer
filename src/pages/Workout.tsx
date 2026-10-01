@@ -133,6 +133,7 @@ export function Workout() {
     workoutMode,
     currentWorkoutDayPlan,
     flexTemplates,
+    hydratedForUserId,
     startWorkout,
     startFlexibleWorkout,
     fetchCurrentWorkout,
@@ -168,7 +169,10 @@ export function Workout() {
   const [showScheduleEditor, setShowScheduleEditor] = useState(false);
   const [startingDayId, setStartingDayId] = useState<string | null>(null);
   const [savingPlanSchedule, setSavingPlanSchedule] = useState(false);
-  const [initializing, setInitializing] = useState(true);
+  // Returning to Train shows this account's program and live workout from the
+  // store while the mount reads refresh them; a cold start or another account
+  // waits for them.
+  const [initializing, setInitializing] = useState(!userId || hydratedForUserId !== userId);
   const [restTimerSeed, setRestTimerSeed] = useState(0);
   const [restTimerNextUpLabel, setRestTimerNextUpLabel] = useState<string | null>(null);
   const [restTimerExerciseId, setRestTimerExerciseId] = useState<string | null>(null);

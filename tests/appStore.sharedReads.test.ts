@@ -38,7 +38,7 @@ const backend = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase', () => ({ supabase: backend.client }));
 
-import { useAppStore } from '@/stores/appStore';
+import { resetAppData, useAppStore } from '@/stores/appStore';
 
 function hold(table: string) {
   let release!: (result: Result) => void;
@@ -80,10 +80,8 @@ function workoutWith(set: WorkoutSet): Workout {
 beforeEach(() => {
   backend.queues.clear();
   backend.calls.length = 0;
-  useAppStore.setState({
-    splits: [], activeSplit: null, currentWorkout: null, currentWorkoutDayPlan: null,
-    flexTemplates: [], workoutMode: 'split',
-  });
+  resetAppData();
+  useAppStore.setState({ workoutMode: 'split' });
 });
 
 describe('shared store reads', () => {
@@ -196,5 +194,64 @@ describe('shared store reads', () => {
 
     expect(callsTo('flex_day_templates')).toBe(3);
     expect(useAppStore.getState().flexTemplates).toEqual([]);
+  });
+});
+
+describe('hydratedForUserId', () => {
+  const loadAll = (store = useAppStore.getState()) => Promise.all([
+    store.fetchSplits(),
+    store.fetchCurrentWorkout(),
+    store.fetchWorkoutMode(),
+  ]);
+
+  it('names the account once splits, the live workout and the mode have all loaded', async () => {
+    answer('splits', { data: [split('Upper Lower')], error: null });
+    answer('workouts', { data: null, error: null });
+    const releaseMode = hold('program_preferences');
+    const loading = loadAll();
+    await flush();
+    expect(useAppStore.getState().hydratedForUserId).toBeNull();
+
+    releaseMode({ data: { workout_mode: 'split' }, error: null });
+    await loading;
+
+    expect(useAppStore.getState().hydratedForUserId).toBe('user-1');
+  });
+
+  it('stays unset while one of the reads keeps failing', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    answer('splits', { data: [split('Upper Lower')], error: null });
+    answer('workouts', { data: null, error: { message: 'offline' } });
+    answer('program_preferences', { data: null, error: null });
+    await loadAll();
+    quiet.mockRestore();
+
+    expect(useAppStore.getState().hydratedForUserId).toBeNull();
+  });
+
+  it('is cleared by a reset, and a read still running from before it cannot restore it', async () => {
+    answer('splits', { data: [split('Upper Lower')], error: null });
+    answer('workouts', { data: null, error: null });
+    answer('program_preferences', { data: null, error: null });
+    await loadAll();
+    expect(useAppStore.getState().hydratedForUserId).toBe('user-1');
+
+    const releaseSplits = hold('splits');
+    const releaseWorkout = hold('workouts');
+    const releaseMode = hold('program_preferences');
+    const stale = loadAll();
+    await flush();
+
+    resetAppData();
+    releaseSplits({ data: [split('Previous account')], error: null });
+    releaseWorkout({ data: workoutWith(openSet), error: null });
+    releaseMode({ data: { workout_mode: 'flexible' }, error: null });
+    await stale;
+
+    const state = useAppStore.getState();
+    expect(state.hydratedForUserId).toBeNull();
+    expect(state.splits).toEqual([]);
+    expect(state.currentWorkout).toBeNull();
+    expect(state.workoutMode).toBe('split');
   });
 });

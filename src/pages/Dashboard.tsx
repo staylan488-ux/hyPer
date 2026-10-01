@@ -22,7 +22,7 @@ import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { plannedDayForDate } from '@/lib/planSchedule';
-import { EMPTY_TOTALS, readTodayDay } from '@/lib/todayDay';
+import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
 import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
 
 type HeroState =
@@ -45,6 +45,7 @@ export function Dashboard() {
     macroTarget,
     weeklyVolume,
     workoutMode,
+    hydratedForUserId,
     fetchMacroTarget,
     fetchNutritionProfile,
     refreshAdaptiveTargets,
@@ -61,7 +62,7 @@ export function Dashboard() {
   const { workouts: scheduleWorkouts, loading: scheduleWorkoutsLoading, error: scheduleError, retry: retrySchedule } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
 
   // One load for mount and every foreground refresh, so the two cannot drift.
-  const load = useCallback(async (day: string) => {
+  const load = useCallback(async (day: string): Promise<TodayDaySnapshot> => {
     const [dayData] = await Promise.all([
       readTodayDay(day),
       fetchSplits(),
@@ -78,18 +79,28 @@ export function Dashboard() {
     // Throwing keeps the old day and its numbers on screen and lets the next
     // return retry, instead of showing a new date above numbers never read.
     if (!dayData) throw new Error(`Could not read Today for ${day}`);
+    if (userId) rememberTodayDay(userId, day, dayData, activeWorkoutIdOf(useAppStore.getState().currentWorkout));
     return dayData;
-  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchSplits, fetchWorkoutMode, refreshAdaptiveTargets]);
+  }, [calculateWeeklyVolume, fetchCurrentWorkout, fetchMacroTarget, fetchNutritionProfile, fetchSplits, fetchWorkoutMode, refreshAdaptiveTargets, userId]);
+
+  // A return to Today shows the store and the last read of this day at once,
+  // then refreshes in place. Only this account's data counts: a cold start,
+  // another account or a new day shows the placeholders until the load ends.
+  const storeReady = Boolean(userId) && hydratedForUserId === userId;
+  const seedToday = (day: string) => recallTodayDay(userId, day, activeWorkoutIdOf(currentWorkout));
 
   // The day and its data arrive together, so the header, Fuel and hero always
   // describe the same day. A new day also re-reads schedule completions, so
   // adaptive and flex plans stop counting yesterday's session as today's.
-  const { loading, dayKey, refreshedAt, data: today } = useTodayRefresh(load, retrySchedule);
+  const { loading, dayKey, refreshedAt, data: today } = useTodayRefresh(load, retrySchedule, seedToday);
   const nutritionTotals = today?.nutritionTotals ?? EMPTY_TOTALS;
-  const todayDone = today?.todayDone ?? null;
+  const fuelLoading = loading && !today;
+  // undefined: not known yet. A failed first load settles it as not done.
+  const todayDone = today && today.todayDone !== undefined ? today.todayDone : loading ? undefined : null;
+  const heroLoading = loading && !storeReady;
 
   const hero = useMemo<HeroState>(() => {
-    if (loading) return { kind: 'loading' };
+    if (heroLoading) return { kind: 'loading' };
 
     if (currentWorkout && !currentWorkout.completed) {
       const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
@@ -119,6 +130,7 @@ export function Dashboard() {
       };
     }
 
+    if (todayDone === undefined) return { kind: 'loading' };
     if (todayDone) return { kind: 'done', title: todayDone.title };
 
     if (workoutMode === 'flexible') return { kind: 'flexible' };
@@ -137,7 +149,7 @@ export function Dashboard() {
       adaptiveSchedulingEnabled
     );
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [loading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
+  }, [heroLoading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
 
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
@@ -169,7 +181,7 @@ export function Dashboard() {
       >
         <h2 className="t-label mb-4">Fuel</h2>
 
-        {loading ? (
+        {fuelLoading ? (
           <div className="space-y-4">
             <div className="shimmer h-12 w-40" />
             <div className="shimmer h-px w-full" />
@@ -416,6 +428,10 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 }
 
 /* ───────────────────────── helpers ───────────────────────── */
+
+function activeWorkoutIdOf(workout: { id: string; completed: boolean } | null) {
+  return workout && !workout.completed ? workout.id : null;
+}
 
 function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string; current: number; target: number; unit: string; seal: SealMacro; dayKey: string }) {
   const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;

@@ -8,7 +8,8 @@ export interface TodayRefreshState<T> {
   dayKey: string;
   /** When that data was loaded; drives time-relative copy like elapsed time. */
   refreshedAt: number;
-  /** The day-scoped data `load` returned for `dayKey`; null until one succeeds. */
+  /** The day-scoped data `load` returned for `dayKey`, or the seed for it,
+   * shown until the first load replaces it; null when neither exists. */
   data: T | null;
 }
 
@@ -19,14 +20,18 @@ export interface TodayRefreshState<T> {
  * once it finishes. `load` throws when it could not read the day, which keeps
  * the old day and its data on screen; its result and the day are committed
  * together, so they always match. `onNewDay` runs after a day rollover.
+ * `seed` may supply remembered data for the mount day, shown (with loading
+ * still true) until the first load commits.
  */
-export function useTodayRefresh<T>(load: (dayKey: string) => Promise<T>, onNewDay: () => void): TodayRefreshState<T> {
-  const [state, setState] = useState<TodayRefreshState<T>>(() => ({
-    loading: true,
-    dayKey: todayKey(new Date()),
-    refreshedAt: Date.now(),
-    data: null,
-  }));
+export function useTodayRefresh<T>(
+  load: (dayKey: string) => Promise<T>,
+  onNewDay: () => void,
+  seed?: (dayKey: string) => T | null,
+): TodayRefreshState<T> {
+  const [state, setState] = useState<TodayRefreshState<T>>(() => {
+    const dayKey = todayKey(new Date());
+    return { loading: true, dayKey, refreshedAt: Date.now(), data: seed?.(dayKey) ?? null };
+  });
 
   useEffect(() => {
     let cancelled = false;

@@ -33,7 +33,7 @@ const supabaseMock = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock.client }));
 
-import { EMPTY_TOTALS, readTodayDay } from '@/lib/todayDay';
+import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay } from '@/lib/todayDay';
 
 const DAY = '2026-09-30';
 
@@ -88,5 +88,30 @@ describe('readTodayDay', () => {
   it('fails when there is no signed-in user', async () => {
     supabaseMock.state.user = null;
     await expect(readTodayDay(DAY)).resolves.toBeNull();
+  });
+});
+
+describe('remembered Today', () => {
+  const day = { nutritionTotals: { calories: 1800, protein: 140, carbs: 180, fat: 60 }, todayDone: null };
+
+  it('returns the last read for the same account, day and live workout', () => {
+    rememberTodayDay('user-1', DAY, day, 'workout-1');
+
+    expect(recallTodayDay('user-1', DAY, 'workout-1')).toEqual(day);
+  });
+
+  it('misses for another account, another day, or no account', () => {
+    rememberTodayDay('user-1', DAY, day, null);
+
+    expect(recallTodayDay('user-2', DAY, null)).toBeNull();
+    expect(recallTodayDay('user-1', '2026-10-01', null)).toBeNull();
+    expect(recallTodayDay(undefined, DAY, null)).toBeNull();
+  });
+
+  it('keeps the totals but leaves done unknown once the live workout changed', () => {
+    rememberTodayDay('user-1', DAY, day, 'workout-1');
+
+    // Finished since the read: whether today is done must be read again.
+    expect(recallTodayDay('user-1', DAY, null)).toEqual({ nutritionTotals: day.nutritionTotals, todayDone: undefined });
   });
 });
