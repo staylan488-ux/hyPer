@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createKeyedSingleFlight } from '@/lib/singleFlight';
+import { createKeyedSingleFlight, createReadFlight } from '@/lib/singleFlight';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -68,5 +68,68 @@ describe('createKeyedSingleFlight', () => {
 
     await expect(flight.run('user-1', () => { throw new Error('boom'); })).rejects.toThrow('boom');
     await expect(flight.run('user-1', async () => 'next')).resolves.toBe('next');
+  });
+});
+
+describe('createReadFlight', () => {
+  it('shares one in-flight read per key and reads again once it settles', async () => {
+    const flight = createReadFlight();
+    const gate = deferred<void>();
+    const read = vi.fn(() => gate.promise);
+
+    const first = flight.run('user-1', read);
+    const second = flight.run('user-1', read);
+    expect(first).toBe(second);
+    gate.resolve();
+    await first;
+
+    await flight.run('user-1', async () => {});
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it('never keeps a failed read', async () => {
+    const flight = createReadFlight();
+
+    await expect(flight.run('user-1', async () => { throw new Error('offline'); })).rejects.toThrow('offline');
+    const retry = vi.fn(async () => {});
+    await flight.run('user-1', retry);
+
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('after invalidate, a running read is no longer current and the next call reads again', async () => {
+    const flight = createReadFlight();
+    const gate = deferred<void>();
+    let staleWasCurrent: boolean | null = null;
+    const stale = flight.run('user-1', async (isCurrent) => {
+      await gate.promise;
+      staleWasCurrent = isCurrent();
+    });
+
+    flight.invalidate();
+    let freshWasCurrent: boolean | null = null;
+    const fresh = flight.run('user-1', async (isCurrent) => { freshWasCurrent = isCurrent(); });
+    expect(fresh).not.toBe(stale);
+    await fresh;
+    gate.resolve();
+    await stale;
+
+    expect(freshWasCurrent).toBe(true);
+    expect(staleWasCurrent).toBe(false);
+  });
+
+  it('a stale read settling does not evict the fresh one', async () => {
+    const flight = createReadFlight();
+    const staleGate = deferred<void>();
+    const freshGate = deferred<void>();
+    const stale = flight.run('user-1', () => staleGate.promise);
+    flight.invalidate();
+    const fresh = flight.run('user-1', () => freshGate.promise);
+
+    staleGate.resolve();
+    await stale;
+    expect(flight.run('user-1', async () => {})).toBe(fresh);
+    freshGate.resolve();
+    await fresh;
   });
 });
