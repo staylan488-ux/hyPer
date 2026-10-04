@@ -44,12 +44,12 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function mount<T>(load: (day: string) => Promise<T>, onNewDay: () => void) {
+function mount<T>(load: (day: string) => Promise<T>, onNewDay: () => void, seed?: (day: string) => T | null) {
   hooks.reset();
   const render = (): TodayRefreshState<T> => {
     hooks.state.cursor = 0;
     // eslint-disable-next-line react-hooks/rules-of-hooks -- renders the hook against the mocked React above
-    return useTodayRefresh(load, onNewDay);
+    return useTodayRefresh(load, onNewDay, seed);
   };
   const first = render();
   hooks.commit();
@@ -339,5 +339,33 @@ describe('useTodayRefresh', () => {
     page.show();
     await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the seed for the mount day until the first load replaces it', async () => {
+    vi.setSystemTime(new Date(2026, 8, 29, 12, 0, 0));
+    const gate = deferred();
+    const load = vi.fn(async () => { await gate.promise; return 'fresh'; });
+    const seed = vi.fn((day: string) => (day === '2026-09-29' ? 'remembered' : null));
+    const today = mount(load, vi.fn(), seed);
+
+    expect(seed).toHaveBeenCalledWith('2026-09-29');
+    expect(today.first).toMatchObject({ loading: true, data: 'remembered' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ loading: true, data: 'remembered' });
+
+    gate.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(today.render()).toMatchObject({ loading: false, data: 'fresh' });
+    expect(seed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the seed when the first load fails', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const load = vi.fn(async () => { throw new Error('offline'); });
+    const today = mount(load, vi.fn(), () => 'remembered');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(today.render()).toMatchObject({ loading: false, data: 'remembered' });
+    quiet.mockRestore();
   });
 });
