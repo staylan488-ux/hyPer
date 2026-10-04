@@ -3,7 +3,7 @@ import { createMockClient } from '@/preview/mockSupabase';
 import { previewTables } from '@/preview/previewData';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {
-  auth: { getUser: () => client.auth.getUser() },
+  auth: { getUser: () => client.auth.getUser(), getSession: () => client.auth.getSession() },
   from: (table: string) => client.from(table),
   rpc: (name: string, params: Record<string, unknown>) => client.rpc(name, params),
 } }));

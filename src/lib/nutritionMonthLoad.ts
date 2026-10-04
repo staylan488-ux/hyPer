@@ -36,6 +36,21 @@ export function shouldEnsureDefaultGroups({
 }
 
 /**
+ * The meal groups to show after a month's groups were read. A failed read
+ * (offline, timed out) keeps the groups already on screen: an empty list
+ * would pull every meal and snack header off the day until the connection
+ * returns. Groups from another month stay filtered out by date.
+ */
+export function nextMonthGroups<T>(
+  current: T[],
+  fetched: T[] | null | undefined,
+  failed: boolean,
+): T[] {
+  if (failed) return current;
+  return fetched || [];
+}
+
+/**
  * Hands out increasing tokens so only the newest of overlapping requests
  * applies its response; a slower answer for a month already left is dropped.
  */

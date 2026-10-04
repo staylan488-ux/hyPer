@@ -5,6 +5,7 @@ import {
   canResumeWorkout,
   formatWorkoutDuration,
   getWorkoutDurationMs,
+  isAbandonedSplitStart,
   resolveEditedSetCompletedAt,
   resolveWorkoutTitle,
 } from '@/lib/workoutSessions';
@@ -188,5 +189,26 @@ describe('workoutSessions helpers', () => {
       date: '2026-04-05',
       created_at: '2026-04-05T08:00:00.000Z',
     }, now)).toBe(false);
+  });
+});
+
+describe('isAbandonedSplitStart', () => {
+  const set = {
+    id: 'set-1', workout_id: 'w1', exercise_id: 'e1', set_number: 1,
+    weight: null, reps: null, rpe: null, completed: false, completed_at: null,
+  };
+
+  it('flags a split workout that never got its sets', () => {
+    expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: null, sets: [] })).toBe(true);
+    expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: '  ', sets: [] })).toBe(true);
+  });
+
+  it('keeps workouts that hold anything the user did or that start empty on purpose', () => {
+    expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: null, sets: [set] })).toBe(false);
+    expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: 'Felt strong', sets: [] })).toBe(false);
+    // Flexible workouts start without sets.
+    expect(isAbandonedSplitStart({ split_day_id: null, notes: null, sets: [] })).toBe(false);
+    // Sets that were not loaded are not the same as no sets.
+    expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: null, sets: undefined as unknown as [] })).toBe(false);
   });
 });

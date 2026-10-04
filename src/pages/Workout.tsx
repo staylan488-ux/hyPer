@@ -29,6 +29,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { SessionToken } from '@/components/workout/SessionToken';
@@ -2024,6 +2025,7 @@ function ExerciseCard({
     return () => window.clearTimeout(timer);
   }, [isActive]);
   const optionsRef = useRef<HTMLButtonElement>(null);
+  const litMenuRef = useLitSurface<HTMLDivElement>();
   useEffect(() => {
     if (!isActive || !headingRef.current) return;
     const scroller = headingRef.current.closest<HTMLElement>('[data-app-scroll-viewport]');
@@ -2061,7 +2063,7 @@ function ExerciseCard({
             className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
+            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
               {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
                 className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
                 onClick={() => { setMenuOpen(false); optionsRef.current?.focus({ preventScroll: true }); action.onClick(); }}>{action.icon}{action.label}</button>)}

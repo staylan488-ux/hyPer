@@ -6,6 +6,7 @@ const supabaseMock = vi.hoisted(() => ({
   from: vi.fn(),
   auth: {
     getUser: vi.fn(),
+    getSession: vi.fn(),
   },
 }));
 
@@ -165,7 +166,8 @@ function routeTables(tables: Record<string, Chain>) {
 beforeEach(() => {
   supabaseMock.from.mockReset();
   supabaseMock.auth.getUser.mockReset();
-  supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+  supabaseMock.auth.getSession.mockReset();
+  supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
   dataMock.getLatestBodyWeight.mockReset();
   dataMock.getBodyWeightHistorySince.mockReset();
   dataMock.getDailyIntake.mockReset();
@@ -349,9 +351,9 @@ describe('refreshAdaptiveTargets write order and status', () => {
     expect(useAppStore.getState().nutritionProfile?.expenditure_confidence).toBe('predicted');
   });
 
-  it('resolves failed rather than rejecting when getUser throws', async () => {
+  it('resolves failed rather than rejecting when the session lookup throws', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    supabaseMock.auth.getUser.mockRejectedValue(new Error('auth down'));
+    supabaseMock.auth.getSession.mockRejectedValue(new Error('auth down'));
 
     await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('failed');
     expect(supabaseMock.from).not.toHaveBeenCalled();

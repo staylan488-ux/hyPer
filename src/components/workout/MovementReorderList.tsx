@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffe
 import { createPortal } from 'react-dom';
 import { GripVertical } from 'lucide-react';
 import { tapHaptic } from '@/lib/haptics';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { movementBlocks, movementScrollSpeed, moveMovementBlock, type ReorderMovement } from './movementOrder';
 import './movement-reorder.css';
 
@@ -53,6 +54,7 @@ export function MovementReorderList({ items, onReorder, children }: {
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
+  const litGhostRef = useLitSurface(ghostRef);
   const sessionRef = useRef<DragSession | null>(null);
   const busyRef = useRef(false);
   const mounted = useRef(true);
@@ -315,7 +317,7 @@ export function MovementReorderList({ items, onReorder, children }: {
         {children}
       </div>
       {activeId && !busy && ghost && createPortal(
-        <div ref={ghostRef} className="material-glass studio-movement-drag-ghost" aria-hidden
+        <div ref={litGhostRef} className="material-glass studio-movement-drag-ghost" aria-hidden
           style={{ left: ghost.left, width: ghost.width, transform: `translateY(${ghost.top}px)` }}>
           <GripVertical size={18} />
           <div>{ghost.names.length > 1 && <span className="t-label-sm">Superset</span>}{ghost.names.map((name, index) => <p key={index}>{name}</p>)}</div>

@@ -12,6 +12,7 @@ import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHist
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import { supabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/sessionUser';
 import { springs } from '@/lib/animations';
 
 type CoachingTone = 'amber' | 'sage' | 'berry' | 'stone';
@@ -51,8 +52,8 @@ export function Analysis() {
 
   const fetchTrainingHours = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const userId = await getSessionUserId();
+      if (!userId) {
         setTrainingHours(buildWeeklyTrainingHours([]));
         return;
       }
@@ -62,7 +63,7 @@ export function Analysis() {
       const { data: workouts, error } = await supabase
         .from('workouts')
         .select('date, completed, completed_at, created_at')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('completed', true)
         .gte('created_at', from)
         .order('created_at', { ascending: true });

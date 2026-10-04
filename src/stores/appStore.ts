@@ -1,6 +1,7 @@
 import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { getSessionUserId } from '@/lib/sessionUser';
 import { isPreviewActive } from '@/preview/flag';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
@@ -10,7 +11,7 @@ import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { planActivityMerge } from '@/lib/mergeActivities';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
-import { canResumeWorkout } from '@/lib/workoutSessions';
+import { canResumeWorkout, isAbandonedSplitStart } from '@/lib/workoutSessions';
 import { runSaveWithRetry, saveWorkoutSet } from '@/lib/saveWorkoutSet';
 import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
@@ -454,8 +455,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   workoutMode: 'split',
 
   fetchSplits: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { data: splits } = await supabase
       .from('splits')
@@ -469,7 +470,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           )
         )
       `)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (splits) {
@@ -496,14 +497,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createSplit: async (splitData: Omit<Split, 'id' | 'user_id' | 'days'> & { days: { day_name: string; day_order: number; exercises?: { exercise_id: string; target_sets: number; target_reps_min: number; target_reps_max: number; exercise_order: number; notes?: string | null; superset_group_id?: string | null }[] }[] }) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     // Inserted inactive: a failed create must never replace the program in use.
     const { data: split, error } = await supabase
       .from('splits')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         name: splitData.name,
         description: splitData.description,
         days_per_week: splitData.days_per_week,
@@ -547,7 +548,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (splitData.is_active) {
-      const activation = await activateSplitRow(split.id, user.id);
+      const activation = await activateSplitRow(split.id, userId);
       if (!activation.activated) {
         await discard();
         return null;
@@ -573,10 +574,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setActiveSplit: async (splitId) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { ok: false, reason: 'Not signed in.' };
+    const userId = await getSessionUserId();
+    if (!userId) return { ok: false, reason: 'Not signed in.' };
 
-    const activation = await activateSplitRow(splitId, user.id);
+    const activation = await activateSplitRow(splitId, userId);
     // A partial write still changed rows, so show what the database now holds.
     if (activation.activated) await get().fetchSplits();
     return activation.ok ? { ok: true } : { ok: false, reason: activation.reason };
@@ -585,8 +586,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchWorkoutMode: async () => {
     const fallbackMode = readWorkoutModeFallback();
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const userId = await getSessionUserId();
+    if (!userId) {
       set({ workoutMode: fallbackMode });
       return;
     }
@@ -594,7 +595,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data, error } = await supabase
       .from('program_preferences')
       .select('workout_mode')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -618,13 +619,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ workoutMode: mode });
     writeWorkoutModeFallback(mode);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { ok: true };
+    const userId = await getSessionUserId();
+    if (!userId) return { ok: true };
 
     const { error } = await supabase
       .from('program_preferences')
       .upsert({
-        user_id: user.id,
+        user_id: userId,
         workout_mode: mode,
       }, {
         onConflict: 'user_id',
@@ -639,13 +640,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchFlexTemplates: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { data, error } = await supabase
       .from('flex_day_templates')
       .select('id, user_id, label, items')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -674,8 +675,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const trimmed = nextLabel.trim();
     if (!trimmed) return { ok: false, reason: 'Template label is required.' };
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { ok: false, reason: 'Not signed in.' };
+    const userId = await getSessionUserId();
+    if (!userId) return { ok: false, reason: 'Not signed in.' };
 
     const { flexTemplates } = get();
     const sourceTemplate = flexTemplates.find((template) => template.id === templateId);
@@ -698,7 +699,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { error: overwriteError } = await supabase
         .from('flex_day_templates')
         .upsert({
-          user_id: user.id,
+          user_id: userId,
           label: trimmed,
           items: sourceTemplate.items,
         }, {
@@ -728,7 +729,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .from('flex_day_templates')
       .update({ label: trimmed })
       .eq('id', templateId)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (error) {
       console.error('Error renaming flexible template:', error);
@@ -740,14 +741,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteFlexTemplate: async (templateId) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { error } = await supabase
       .from('flex_day_templates')
       .delete()
       .eq('id', templateId)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (error) {
       console.error('Error deleting flexible template:', error);
@@ -791,14 +792,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startWorkout: async (splitDayId) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error(START_WORKOUT_ERROR);
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error(START_WORKOUT_ERROR);
 
     // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('completed', false)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -809,8 +810,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (existing && canResumeWorkout(existing as Workout)) {
-      set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
-      return existing as Workout;
+      if (!isAbandonedSplitStart(existing as Workout)) {
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
+        return existing as Workout;
+      }
+      // An earlier start saved the workout but never added its sets. Nothing
+      // was logged in it, so replace it with a complete one.
+      await discardStartedWorkout(existing.id);
     }
 
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -818,7 +824,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: workout, error } = await supabase
       .from('workouts')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         split_day_id: splitDayId,
         date: today,
         completed: false,
@@ -877,13 +883,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const label = dayLabel.trim();
     if (!label) return null;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error(START_WORKOUT_ERROR);
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error(START_WORKOUT_ERROR);
 
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('completed', false)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -908,7 +914,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: workout, error } = await supabase
       .from('workouts')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         split_day_id: null,
         date: today,
         completed: false,
@@ -927,7 +933,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { data: template } = await supabase
         .from('flex_day_templates')
         .select('items')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('label', templateLabel.trim())
         .maybeSingle();
 
@@ -991,13 +997,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchCurrentWorkout: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { data: workout, error } = await supabase
       .from('workouts')
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('completed', false)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -1508,8 +1514,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveFlexibleTemplateFromCurrentWorkout: async (movementNotesOverride) => {
     const { currentWorkoutDayPlan, currentWorkout } = get();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !currentWorkoutDayPlan) return;
+    const userId = await getSessionUserId();
+    if (!userId || !currentWorkoutDayPlan) return;
 
     const label = currentWorkoutDayPlan.day_label.trim();
     if (!label) return;
@@ -1525,7 +1531,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error } = await supabase
       .from('flex_day_templates')
       .upsert({
-        user_id: user.id,
+        user_id: userId,
         label,
         items: itemsWithNotes,
       }, {
@@ -1645,8 +1651,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchWorkoutsByMonth: async (month: Date) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    const userId = await getSessionUserId();
+    if (!userId) return [];
 
     const from = format(startOfMonth(month), 'yyyy-MM-dd');
     const to = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -1657,7 +1663,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         *,
         sets (*, exercise:exercises!exercise_id (*))
       `)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: false })
@@ -1717,8 +1723,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchActivitySessionsByMonth: async (month: Date) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    const userId = await getSessionUserId();
+    if (!userId) return [];
 
     const from = format(startOfMonth(month), 'yyyy-MM-dd');
     const to = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -1726,7 +1732,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data, error } = await supabase
       .from('activity_sessions')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .is('dismissed_at', null)
       .gte('date', from)
       .lte('date', to)
@@ -1743,12 +1749,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createActivitySession: async (input) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const { data, error } = await supabase
       .from('activity_sessions')
-      .insert(activitySessionInsertRow(user.id, input))
+      .insert(activitySessionInsertRow(userId, input))
       .select()
       .single();
 
@@ -1761,8 +1767,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateActivitySession: async (activityId, updates) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const { data, error } = await supabase
       .from('activity_sessions')
@@ -1771,7 +1777,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         updated_at: new Date().toISOString(),
       })
       .eq('id', activityId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .select()
       .single();
 
@@ -1788,8 +1794,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // absorbed rows are hard-deleted (not tombstoned) because their data now lives
   // on the survivor — a tombstone would leave the merged time double-counted.
   mergeActivitySessions: async (sessions) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const plan = planActivityMerge(sessions);
     if (!plan) return null;
@@ -1797,7 +1803,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error: relinkError } = await supabase
       .from('activity_segments')
       .update({ session_id: plan.keepId, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .in('session_id', plan.absorbIds);
     if (relinkError) {
       console.error('Error re-pointing segments during merge:', relinkError);
@@ -1810,7 +1816,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error: deleteError } = await supabase
       .from('activity_sessions')
       .delete()
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .in('id', plan.absorbIds);
     if (deleteError) {
       console.error('Error removing absorbed activities:', deleteError);
@@ -1821,14 +1827,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteActivitySession: async (activityId) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { error } = await supabase
       .from('activity_sessions')
       .delete()
       .eq('id', activityId)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (error) {
       console.error('Error deleting activity session:', error);
@@ -1837,13 +1843,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   hasLinkedWhoopSegments: async (sessionId) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    const userId = await getSessionUserId();
+    if (!userId) return false;
 
     const { count, error } = await supabase
       .from('activity_segments')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('session_id', sessionId)
       .eq('source', 'whoop');
 
@@ -1859,13 +1865,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchActivitySegmentsBySessionIds: async (sessionIds) => {
     if (sessionIds.length === 0) return [];
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const { data, error } = await supabase
       .from('activity_segments')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .in('session_id', sessionIds)
       .order('started_at', { ascending: true });
 
@@ -1880,14 +1886,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   upsertActivitySegments: async (inputs) => {
     if (inputs.length === 0) return [];
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    const userId = await getSessionUserId();
+    if (!userId) return [];
 
     // session_id is deliberately omitted: on conflict the upsert would null out
     // existing links and every re-sync would churn sessions. Linkage is owned
     // exclusively by linkSegmentsToSession-style updates
     const rows = inputs.map((input) => ({
-      user_id: user.id,
+      user_id: userId,
       source: input.source,
       external_id: input.external_id,
       sport: input.sport ?? null,
@@ -1917,13 +1923,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchWhoopConnection: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     const { data, error } = await supabase
       .from('whoop_connections')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -1937,15 +1943,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   connectWhoop: async (returnTo) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     if (isPreviewActive()) {
       // sandbox: connecting just plants a mock metadata row
       const nowIso = new Date().toISOString();
       await supabase.from('whoop_connections').upsert(
         {
-          user_id: user.id,
+          user_id: userId,
           whoop_user_id: 'preview-whoop-user',
           scopes: 'read:workout offline',
           connected_at: nowIso,
@@ -1961,11 +1967,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   disconnectWhoop: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     if (isPreviewActive()) {
-      await supabase.from('whoop_connections').delete().eq('user_id', user.id);
+      await supabase.from('whoop_connections').delete().eq('user_id', userId);
     } else {
       await disconnectWhoopRemote();
     }
@@ -1973,14 +1979,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   syncWhoop: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const userId = await getSessionUserId();
+    if (!userId) return null;
 
     // One run per user at a time: a manual Sync tap during the automatic
     // launch/foreground sync joins that run instead of racing it into
-    // duplicate sessions. Registered with no await after getUser, so the first
+    // duplicate sessions. Registered with no await after the user lookup, so the first
     // caller to resume claims the key and later callers see it.
-    return whoopSyncFlight.run(user.id, async () => {
+    return whoopSyncFlight.run(userId, async () => {
       // preview drives the identical pipeline from fixture batches; production
       // fetches raw pages through the whoop-sync Edge Function
       const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
@@ -1995,7 +2001,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const { data: latest, error: latestError } = await supabase
           .from('activity_segments')
           .select('started_at')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('source', 'whoop')
           .order('started_at', { ascending: false })
           .limit(1)
@@ -2017,7 +2023,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const { data, error } = await supabase
                   .from('activity_segments')
                   .select('*')
-                  .eq('user_id', user.id)
+                  .eq('user_id', userId)
                   .eq('source', 'whoop')
                   .gte('started_at', fromIso)
                   .lte('started_at', toIso)
@@ -2035,7 +2041,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const { data, error } = await supabase
                   .from('activity_sessions')
                   .select('*')
-                  .eq('user_id', user.id)
+                  .eq('user_id', userId)
                   .gte('started_at', fromIso)
                   .lte('started_at', toIso);
                 if (error) {
@@ -2049,7 +2055,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const { data, error } = await supabase
                   .from('activity_sessions')
                   .select('*')
-                  .eq('user_id', user.id)
+                  .eq('user_id', userId)
                   .in('id', ids);
                 if (error) {
                   console.error('Error fetching sessions by ids:', error);
@@ -2059,11 +2065,11 @@ export const useAppStore = create<AppState>((set, get) => ({
               },
               // create/update/delete mirror createActivitySession,
               // updateActivitySession and deleteActivitySession but reuse the
-              // user resolved above instead of a getUser round trip per item
+              // user resolved above instead of a user lookup per item
               createSession: async (input) => {
                 const { data, error } = await supabase
                   .from('activity_sessions')
-                  .insert(activitySessionInsertRow(user.id, input))
+                  .insert(activitySessionInsertRow(userId, input))
                   .select()
                   .single();
                 if (error || !data) {
@@ -2077,7 +2083,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   .from('activity_sessions')
                   .update({ ...patch, updated_at: new Date().toISOString() })
                   .eq('id', sessionId)
-                  .eq('user_id', user.id)
+                  .eq('user_id', userId)
                   .select()
                   .single();
                 if (error || !data) {
@@ -2091,7 +2097,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   .from('activity_sessions')
                   .delete()
                   .eq('id', sessionId)
-                  .eq('user_id', user.id);
+                  .eq('user_id', userId);
                 if (error) {
                   console.error('Error deleting activity session:', error);
                   throw error;
@@ -2104,7 +2110,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 const { error } = await supabase
                   .from('activity_segments')
                   .update({ session_id: sessionId, updated_at: new Date().toISOString() })
-                  .eq('user_id', user.id)
+                  .eq('user_id', userId)
                   .in('id', segmentIds);
                 if (error) {
                   console.error('Error linking segments to session:', error);
@@ -2128,15 +2134,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   attachWhoopToWorkout: async (workout, session) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('You are signed out. Sign in and try again.');
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     const stats = whoopStatsFor(session);
     const { data, error } = await supabase
       .from('workouts')
       .update(stats)
       .eq('id', workout.id)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
       .single();
 
@@ -2152,7 +2158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .from('activity_sessions')
       .update({ dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', session.id)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
     if (dismissError) console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
 
     const updated = data as Workout;
@@ -2163,15 +2169,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   detachWhoopFromWorkout: async (workout) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('You are signed out. Sign in and try again.');
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     const sessionId = workout.whoop_session_id ?? null;
     const { data, error } = await supabase
       .from('workouts')
       .update(CLEARED_WHOOP_STATS)
       .eq('id', workout.id)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .select('*, sets(*, exercise:exercises!exercise_id(*))')
       .single();
 
@@ -2185,7 +2191,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         .from('activity_sessions')
         .update({ dismissed_at: null, updated_at: new Date().toISOString() })
         .eq('id', sessionId)
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
       if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
 
@@ -2197,8 +2203,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveTrackedRun: async (run) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('You are signed out. Sign in and try again.');
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     const { session: sessionInput, segments: segmentInputs } = finishedRunToActivity(run, run.runId);
 
@@ -2208,7 +2214,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data: existingSession, error: existingSessionError } = await supabase
       .from('activity_sessions')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('source', 'gps')
       .eq('activity_type', sessionInput.activity_type)
       .eq('started_at', sessionInput.started_at as string)
@@ -2236,7 +2242,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { error } = await supabase
         .from('activity_segments')
         .update({ session_id: session.id, updated_at: new Date().toISOString() })
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .in('id', segments.map((segment) => segment.id));
       if (error) {
         console.error('Error linking run segments:', error);
@@ -2252,7 +2258,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { data: windowSessions, error: windowError } = await supabase
         .from('activity_sessions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .gte('started_at', new Date(Date.parse(session.started_at) - 6 * 60 * 60 * 1000).toISOString())
         .lte('started_at', session.ended_at);
       if (windowError) {
@@ -2270,7 +2276,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const { error: absorbError } = await supabase
           .from('activity_segments')
           .update({ session_id: session.id, updated_at: new Date().toISOString() })
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('session_id', absorbable.id);
         // deleting the copy with its segments still attached would unlink them
         // (ON DELETE SET NULL) and the next WHOOP sync would recreate it
@@ -2947,15 +2953,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchMacroTarget: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     // maybeSingle, not single — a user with no targets yet is the normal case,
     // not an error.
     const { data, error } = await supabase
       .from('macro_targets')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     // A successful read with no row clears a target left over from a previous
@@ -2967,13 +2973,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateMacroTarget: async (target) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { data, error } = await supabase
       .from('macro_targets')
       .upsert({
-        user_id: user.id,
+        user_id: userId,
         ...target,
         updated_at: new Date().toISOString(),
       }, {
@@ -2992,19 +2998,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchNutritionProfile: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     try {
-      set({ nutritionProfile: await getNutritionProfile(user.id) });
+      set({ nutritionProfile: await getNutritionProfile(userId) });
     } catch {
       // A missing table on an un-migrated client should not break the app.
     }
   },
 
   updateNutritionProfile: async (input) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     // Changing goal or rate starts a new phase; the expenditure estimator uses
     // that date to skip the glycogen/water transient that follows.
@@ -3013,7 +3019,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? { ...input, phase_started_on: todayIsoDate() }
       : input;
 
-    set({ nutritionProfile: await saveNutritionProfile(user.id, payload) });
+    set({ nutritionProfile: await saveNutritionProfile(userId, payload) });
   },
 
   refreshAdaptiveTargets: (options) => {
@@ -3026,15 +3032,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (inFlight) await inFlight;
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return 'skipped';
-
+        // Local gates first: most calls stop here without an auth lookup.
         const profile = get().nutritionProfile;
         if (!profile || !profile.adaptive_enabled) return 'skipped';
         if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return 'skipped';
+
+        const userId = await getSessionUserId();
+        if (!userId) return 'skipped';
         const targetAtStart = get().macroTarget;
 
-        const latest = await getLatestBodyWeight(user.id);
+        const latest = await getLatestBodyWeight(userId);
         if (!latest) return 'skipped';
         const weightKg = Number(latest.kilograms);
         if (!Number.isFinite(weightKg) || weightKg <= 0) return 'skipped';
@@ -3044,8 +3051,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
         );
         const [weightSamples, dailyIntake] = await Promise.all([
-          getBodyWeightHistorySince(user.id, ADAPTIVE_LOOKBACK_DAYS, now),
-          getDailyIntake(user.id, since),
+          getBodyWeightHistorySince(userId, ADAPTIVE_LOOKBACK_DAYS, now),
+          getDailyIntake(userId, since),
         ]);
 
         // Seed the estimator with the PREDICTED figure, so a learned value can
@@ -3078,7 +3085,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           const next = calculateMacroTargets(
             macroInputFromProfile(profile, weightKg, estimate.expenditureKcal, now)
           );
-          const savedTarget = await writeAdaptiveMacroTarget(user.id, {
+          const savedTarget = await writeAdaptiveMacroTarget(userId, {
             calories: next.calories,
             protein: next.protein,
             carbs: next.carbs,
@@ -3097,7 +3104,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Stamp the profile only after the target write, so a failed target
         // write is retried on the next visit instead of a week later. Only the
         // expenditure columns are written, never the snapshot's goal or rate.
-        const saved = await saveExpenditure(user.id, {
+        const saved = await saveExpenditure(userId, {
           expenditure_kcal: estimate.expenditureKcal,
           expenditure_confidence: estimate.confidence,
           expenditure_updated_at: now.toISOString(),
@@ -3122,13 +3129,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchVolumeLandmarks: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { data } = await supabase
       .from('volume_landmarks')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (data) {
       set({ volumeLandmarks: data });
@@ -3136,8 +3143,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   calculateWeeklyVolume: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getSessionUserId();
+    if (!userId) return;
 
     const { weekStart, weekEnd } = trainingWeekRange(new Date());
 
@@ -3155,7 +3162,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             exercise:exercises (muscle_group, muscle_group_secondary)
           )
         `)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('sets.completed', true)
         .gte('date', weekStart)
         .lte('date', weekEnd),
@@ -3163,7 +3170,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         supabase
           .from('volume_landmarks')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
       ).catch(() => ({ data: null })),
     ]);
 
