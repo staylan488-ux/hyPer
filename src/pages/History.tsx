@@ -1819,7 +1819,7 @@ export function History() {
                                           <div className="flex items-baseline gap-3">
                                             <span className="t-data-sm text-[var(--color-muted)] w-10">{set.set_number.toString().padStart(2, '0')}</span>
                                             <span className="t-data text-[var(--color-text)]">
-                                              {set.weight || '—'} <span className="text-[var(--color-muted)]">lb</span> × {set.reps || '—'}
+                                              {set.weight ?? '—'} <span className="text-[var(--color-muted)]">lb</span> × {set.reps ?? '—'}
                                               {set.rpe ? <span className="text-[var(--color-muted)]"> @ {set.rpe}</span> : ''}
                                             </span>
                                           </div>

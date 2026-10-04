@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateE1RM, collectSessionGains, compareSetPerformance, describeSetGain, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
+import { calculateE1RM, collectSessionGains, compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry, sessionTonnage } from '@/lib/workoutProgress';
 
 describe('workoutProgress', () => {
   it('calculates e1RM with Epley formula', () => {
@@ -107,5 +107,47 @@ describe('set gains', () => {
       { exerciseId: 'row', setNumber: 1, gain: '+1 rep' },
     ]);
     expect(sessionTonnage(sets)).toBe(185 * 8 + 185 * 7 + 140 * 11);
+  });
+});
+
+describe('zero-rep and zero-weight sets', () => {
+  it('accepts 0 reps and 0 lb as a loggable entry', () => {
+    expect(isLoggableSetEntry('0', '0', '')).toBe(true);
+    expect(isLoggableSetEntry('0', '5', '')).toBe(true);
+    expect(isLoggableSetEntry('25', '0', '10')).toBe(true);
+  });
+
+  it('still rejects blank, negative, fractional-rep and out-of-range entries', () => {
+    expect(isLoggableSetEntry('', '0', '')).toBe(false);
+    expect(isLoggableSetEntry('0', '', '')).toBe(false);
+    expect(isLoggableSetEntry('-5', '3', '')).toBe(false);
+    expect(isLoggableSetEntry('0', '-1', '')).toBe(false);
+    expect(isLoggableSetEntry('0', '1.5', '')).toBe(false);
+    expect(isLoggableSetEntry('0', '3', '11')).toBe(false);
+  });
+
+  it('counts the first rep after a failed attempt as progress', () => {
+    expect(compareSetPerformance({ weight: 0, reps: 1 }, { weight: 0, reps: 0 })).toBe('beat');
+    expect(describeSetGain({ weight: 0, reps: 1 }, { weight: 0, reps: 0 })).toBe('+1 rep');
+    expect(compareSetPerformance({ weight: 0, reps: 0 }, { weight: 0, reps: 0 })).toBe('matched');
+    expect(compareSetPerformance({ weight: 0, reps: 0 }, { weight: 0, reps: 2 })).toBe('below');
+  });
+
+  it('compares a failed attempt only when one set wins on both weight and reps', () => {
+    expect(compareSetPerformance({ weight: 20, reps: 0 }, { weight: 10, reps: 0 })).toBe('unknown');
+    expect(compareSetPerformance({ weight: 10, reps: 2 }, { weight: 0, reps: 0 })).toBe('beat');
+    expect(describeSetGain({ weight: 10, reps: 2 }, { weight: 0, reps: 0 })).toBe('+10 lb · +2 reps');
+    expect(compareSetPerformance({ weight: 0, reps: 0 }, { weight: 10, reps: 2 })).toBe('below');
+    expect(compareSetPerformance({ weight: 0, reps: 3 }, { weight: 20, reps: 0 })).toBe('unknown');
+    expect(describeSetGain({ weight: 0, reps: 3 }, { weight: 20, reps: 0 })).toBeNull();
+  });
+
+  it('shows a 0 × 0 target and adds no tonnage', () => {
+    expect(formatSetPerformanceTarget({ weight: 0, reps: 0 })).toBe('0 × 0');
+    expect(sessionTonnage([
+      { weight: 0, reps: 0, completed: true },
+      { weight: 45, reps: 0, completed: true },
+      { weight: 0, reps: 8, completed: true },
+    ])).toBe(0);
   });
 });
