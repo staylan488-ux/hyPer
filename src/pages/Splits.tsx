@@ -766,7 +766,7 @@ export function Splits() {
       >
         <SplitEditor
           onClose={() => setShowEditor(false)}
-          onSaved={() => void fetchSplits()}
+          onSaved={() => void fetchSplits({ force: true })}
           onPickExercise={handlePickExercise}
         />
       </Modal>

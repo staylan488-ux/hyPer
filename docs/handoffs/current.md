@@ -42,7 +42,14 @@ PR #134 is merged. The next PR (`opt/batch-c1`) carries:
 - C-2 (F44 + F99): route splitting plus a vendor chunk. The launch load drops from about 407 to 338 KB gzip.
 - C-5 (F50 step 2): the motion light runs only while lit surfaces are mounted.
 
-Remaining: C-1 (F22), C-3 (F28) and C-4 (F41) are in progress on top of that. C-6 (F65) needs an owner-approved migration. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
+The final PR (`opt/batch-c2`, stacked on `opt/batch-c1`) carries:
+- C-1 (F22): the workout read race guard, shared in-flight reads, and an instant Today/Train keyed to `hydratedForUserId`.
+- C-3 (F28): a shared tested set-count and plan helper, fewer plan reads, and the duplicate "Set 1" fix.
+- C-4 (F41): food and saved-meal persistence shared by FoodLogger and Settings.
+
+The only remaining item from the review is C-6 (F65, the per-account USDA cache). It needs an owner-approved production migration.
+
+Known follow-up from C-1: on a planned or rest day in split mode, the Today hero can still shimmer briefly on tab switch, because the schedule hooks reload. Device checks listed in the PRs remain for the owner, notably the run tracking scenarios, the rest ring, the barcode scanner and the Health weight backlog.
 
 # Previous work snapshot — Kinetic beautification pass
 
