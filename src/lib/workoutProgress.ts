@@ -35,11 +35,26 @@ function toComparableSet(input: SetPerformanceInput): { weight: number; reps: nu
   const weight = toFiniteNumber(input.weight);
   const reps = toFiniteNumber(input.reps);
 
-  if (weight === null || reps === null || weight < 0 || reps <= 0) {
+  // Zero is a real result: bodyweight work logs 0 lb, and a failed first rep logs 0 reps.
+  if (weight === null || reps === null || weight < 0 || reps < 0) {
     return null;
   }
 
   return { weight, reps };
+}
+
+/**
+ * Whether typed set fields can be saved: weight and reps may be 0 (a
+ * bodyweight movement, or an attempt that failed on the first rep); RPE is
+ * optional.
+ */
+export function isLoggableSetEntry(weight: string, reps: string, rpe: string): boolean {
+  const weightValue = Number(weight);
+  const repsValue = Number(reps);
+  const rpeValue = Number(rpe);
+  return weight.trim() !== '' && Number.isFinite(weightValue) && weightValue >= 0
+    && reps.trim() !== '' && Number.isInteger(repsValue) && repsValue >= 0
+    && (rpe.trim() === '' || (Number.isFinite(rpeValue) && rpeValue >= 1 && rpeValue <= 10));
 }
 
 function approximatelyEqual(a: number, b: number, tolerance: number): boolean {
@@ -70,13 +85,21 @@ export function compareSetPerformance(current: SetPerformanceInput, previous: Se
   }
 
   if (sameReps) {
+    // Two failed attempts at different loads: neither lifted anything.
+    if (currentSet.reps <= REP_TOLERANCE) return 'unknown';
     return currentSet.weight > previousSet.weight ? 'beat' : 'below';
   }
 
   const currentE1RM = calculateE1RM(currentSet.weight, currentSet.reps);
   const previousE1RM = calculateE1RM(previousSet.weight, previousSet.reps);
 
-  if (currentE1RM === null || previousE1RM === null) return 'unknown';
+  if (currentE1RM === null || previousE1RM === null) {
+    // A 0-rep set has no estimated max, so only call it when one set has
+    // both more weight and more reps than the other.
+    if (currentSet.weight > previousSet.weight && currentSet.reps > previousSet.reps) return 'beat';
+    if (currentSet.weight < previousSet.weight && currentSet.reps < previousSet.reps) return 'below';
+    return 'unknown';
+  }
 
   if (currentE1RM > previousE1RM + E1RM_TOLERANCE) return 'beat';
   if (currentE1RM < previousE1RM - E1RM_TOLERANCE) return 'below';

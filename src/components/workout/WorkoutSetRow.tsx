@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { celebrationHaptic, tapHaptic } from '@/lib/haptics';
 import { emitBurstFrom } from '@/lib/fx';
 import { springs } from '@/lib/animations';
-import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget } from '@/lib/workoutProgress';
+import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 
@@ -42,9 +42,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const [stamp, setStamp] = useState<{ key: number; gain: string | null } | null>(null);
   const formattedTarget = previousTarget ? formatSetPerformanceTarget(previousTarget) : '';
   const performance = set.completed && previousTarget ? compareSetPerformance(set, previousTarget) : 'unknown';
-  const validNumbers = weight.trim() !== '' && Number.isFinite(Number(weight)) && Number(weight) >= 0 &&
-    reps.trim() !== '' && Number.isInteger(Number(reps)) && Number(reps) > 0 &&
-    (rpe.trim() === '' || (Number.isFinite(Number(rpe)) && Number(rpe) >= 1 && Number(rpe) <= 10));
+  const validNumbers = isLoggableSetEntry(weight, reps, rpe);
 
   useEffect(() => {
     if (!stamp) return;
@@ -169,7 +167,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       <div className="studio-set-entry" data-workout-set-entry>
         <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
         <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={previousTarget?.weight?.toString() ?? '0'} disabled={saving} inputMode="decimal" min={0} step="any" required />
-        <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={1} step={1} required />
+        <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={0} step={1} required />
         <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={previousTarget?.rpe?.toString() ?? '—'} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
         <button type="submit" className="studio-save-set material-button-primary" disabled={!validNumbers || saving} aria-busy={saving}
           aria-label={saving ? `Saving ${setLabel}` : saveError ? `Retry saving ${setLabel}` : set.completed ? `Save changes to ${setLabel}` : `Save ${setLabel}`}>
