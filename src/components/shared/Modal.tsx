@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
 import { springs, backdrop, EASE_OUT_EXPO } from '@/lib/animations';
 import { useLitSurface } from '@/hooks/useLitSurface';
+import { openSheetLayer, topSheet } from '@/lib/sheetLayers';
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,21 +13,6 @@ interface ModalProps {
   children: ReactNode;
   contentClassName?: string;
   initialFocusRef?: RefObject<HTMLInputElement | null>;
-}
-
-const openSheets: HTMLElement[] = [];
-let previousBodyOverflow = '';
-const backgroundInert = new Map<HTMLElement, boolean>();
-let backgroundObserver: MutationObserver | undefined;
-
-function isolateSheets() {
-  for (const child of Array.from(document.body.children)) {
-    if (!(child instanceof HTMLElement)) continue;
-    if (!backgroundInert.has(child)) backgroundInert.set(child, child.inert);
-    child.inert = openSheets.some((sheet) => child.contains(sheet))
-      ? backgroundInert.get(child) ?? false
-      : true;
-  }
 }
 
 /** An anchored sheet with a shared keyboard and focus boundary. */
@@ -46,21 +32,10 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
     const dialog = dialogRef.current;
     if (!isOpen || !dialog) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (openSheets.length === 0) {
-      previousBodyOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-    }
-    const lowerSheet = openSheets.at(-1);
-    if (lowerSheet) lowerSheet.inert = true;
-    openSheets.push(dialog);
-    isolateSheets();
-    if (!backgroundObserver) {
-      backgroundObserver = new MutationObserver(isolateSheets);
-      backgroundObserver.observe(document.body, { childList: true });
-    }
+    const releaseLayer = openSheetLayer(dialog);
     dialog.focus({ preventScroll: true });
     const handleKey = (event: KeyboardEvent) => {
-      if (openSheets.at(-1) !== dialog) return;
+      if (topSheet() !== dialog) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -78,18 +53,8 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
     document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('keydown', handleKey);
-      const wasTop = openSheets.at(-1) === dialog;
-      const index = openSheets.indexOf(dialog);
-      if (index !== -1) openSheets.splice(index, 1);
-      const remaining = openSheets.at(-1);
-      if (remaining) { remaining.inert = false; isolateSheets(); }
-      else {
-        document.body.style.overflow = previousBodyOverflow;
-        backgroundObserver?.disconnect();
-        backgroundObserver = undefined;
-        for (const [element, inert] of backgroundInert) element.inert = inert;
-        backgroundInert.clear();
-      }
+      const wasTop = topSheet() === dialog;
+      releaseLayer();
       if (wasTop && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, [isOpen]);
