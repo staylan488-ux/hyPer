@@ -146,7 +146,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     </> : <>
       <div>
         <p className="t-label">Your meal</p>
-        <h3 className="t-title mt-3">{formatAmount(totals.calories)} kcal</h3>
+        <h3 className="mt-3 flex flex-wrap items-baseline gap-x-2"><span className="number-hero">{formatAmount(totals.calories)}</span>{' '}<span className="t-caption">kcal</span></h3>
         <p className="t-data-sm mt-3">P {formatAmount(totals.protein)} g · C {formatAmount(totals.carbs)} g · F {formatAmount(totals.fat)} g</p>
         {result.summary && <p className="t-caption mt-3">{result.summary}</p>}
       </div>

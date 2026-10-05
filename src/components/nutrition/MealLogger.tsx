@@ -160,7 +160,7 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     {error && <p role="alert" className="t-caption text-[var(--color-accent)]">{error}</p>}
     {review ? <>
       <Input label="Meal name" placeholder="e.g., Protein shake" value={draft.name} maxLength={500} disabled={busy || draft.locked} onChange={(event) => update({ name: event.target.value })} />
-      <div><h3 className="t-title">{Math.round(totals.calories)} kcal</h3><p className="t-data-sm mt-2">P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g</p></div>
+      <div><h3 className="flex flex-wrap items-baseline gap-x-2"><span className="number-hero">{Math.round(totals.calories)}</span>{' '}<span className="t-caption">kcal</span></h3><p className="t-data-sm mt-2">P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g</p></div>
       <div>{draft.ingredients.map((item) => <IngredientRow key={item.id} item={item} disabled={busy || draft.locked}
         onChange={(servings) => update({ ingredients: draft.ingredients.map((part) => part.id === item.id ? { ...part, servings } : part) })}
         onInvalid={(invalid) => setInvalidRows((rows) => invalid ? [...new Set([...rows, item.id])] : rows.filter((id) => id !== item.id))}

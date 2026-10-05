@@ -71,7 +71,7 @@ struct WorkoutLockScreenView: View {
                 Spacer()
                 if let restRange = state.restRange {
                     Text(timerInterval: restRange, countsDown: true)
-                        .font(.system(size: 40, weight: .light, design: .serif))
+                        .font(.system(size: 40, weight: .medium))
                         .monospacedDigit()
                         .multilineTextAlignment(.trailing)
                         .foregroundColor(lacquer)
@@ -112,7 +112,7 @@ struct HyperWidgetsLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     if let restRange = context.state.restRange {
                         Text(timerInterval: restRange, countsDown: true)
-                            .font(.system(size: 28, weight: .light, design: .serif))
+                            .font(.system(size: 28, weight: .medium))
                             .monospacedDigit()
                             .multilineTextAlignment(.trailing)
                             .foregroundColor(ember)

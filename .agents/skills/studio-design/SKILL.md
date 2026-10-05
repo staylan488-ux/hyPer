@@ -10,9 +10,12 @@ tokens; an already approved direction does not need another design exploration.
 
 ## Typography and color
 
-- Fraunces carries page titles and key figures; Geist carries interface text
-  and compact tabular data. There is no separate monospace voice.
-- Current roles are 40px/1.06 Fraunces titles, 44px/1 Fraunces key figures,
+- Fraunces carries page titles; Geist carries interface text and compact
+  tabular data. Key figures and counters use the platform system sans through
+  `--font-metric` (SF on Apple platforms), weight 500, tabular digits and
+  -.025em tracking. Use system sans medium with monospaced digits for native
+  metric counterparts. There is no separate monospace voice.
+- Current roles are 40px/1.06 Fraunces titles, 44px/1 system-sans key figures,
   14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
   and accessibility without truncating meaningful names.
 - Use the current Ivory/Black theme tokens and one restrained Lacquer red accent. The approved

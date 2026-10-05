@@ -128,7 +128,7 @@ private struct RunMetric: View {
                 .tracking(1.2)
                 .foregroundColor(runMuted)
             Text(value)
-                .font(.system(size: 16, weight: .regular, design: .serif))
+                .font(.system(size: 16, weight: .medium))
                 .monospacedDigit()
                 .foregroundColor(runInk)
                 .lineLimit(1)
