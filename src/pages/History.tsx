@@ -8,7 +8,10 @@ import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
-import { createNoteAutosaver, type NoteAutosaver } from '@/lib/noteAutosave';
+import { createNoteAutosaver, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
+import { runWorkoutEdit } from '@/lib/workoutEdit';
+import { captureAccountScope } from '@/lib/accountScope';
+import { useAuthStore } from '@/stores/authStore';
 import {
   formatWorkoutDuration,
   getWorkoutDurationMs,
@@ -641,6 +644,7 @@ function progressFromSets(sets: WorkoutSet[]) {
 }
 
 export function History() {
+  const userId = useAuthStore((state) => state.user?.id);
   const {
     fetchWorkoutsByMonth,
     fetchWorkoutById,
@@ -700,6 +704,7 @@ export function History() {
   const noteSaverRef = useRef<NoteAutosaver | null>(null);
   const mountedRef = useRef(false);
   const movementNotesRef = useRef<Record<string, Record<string, string>>>({});
+  const dirtyMovementNotesRef = useRef<Record<string, Record<string, string>>>({});
   const legacyNotesRef = useRef<Record<string, string | null>>({});
   // Only the latest month request may write state, so quick month taps (or a
   // late sync refetch) can never leave one month's data under another header.
@@ -732,6 +737,8 @@ export function History() {
     mountedRef.current = true;
     const saver = createNoteAutosaver({
       debounceMs: 1000,
+      mergePayload: mergeQueuedMovementNotePayload,
+      isCurrent: captureAccountScope(),
       save: async (workoutId, serialized, exerciseId) => {
         const noteKey = `${workoutId}:${exerciseId}`;
         if (mountedRef.current) setSavingMovementNoteKey(noteKey);
@@ -757,6 +764,12 @@ export function History() {
         }, 1200);
         return true;
       },
+      onSaved: (workoutId, payload) => {
+        dirtyMovementNotesRef.current[workoutId] = remainingMovementNoteDrafts(
+          dirtyMovementNotesRef.current[workoutId] ?? {},
+          parseWorkoutNotes(payload).movementNotes,
+        );
+      },
     });
     noteSaverRef.current = saver;
 
@@ -771,7 +784,7 @@ export function History() {
       document.removeEventListener('visibilitychange', handleVisibility);
       void saver.flushAll();
     };
-  }, [showToast, updateWorkoutNotes]);
+  }, [showToast, updateWorkoutNotes, userId]);
 
   // Serializes a workout's notes from the refs when the save fires. A workout
   // no longer loaded (the month changed) has nothing to save, so its server
@@ -829,7 +842,7 @@ export function History() {
       const legacyByWorkout: Record<string, string | null> = {};
       workoutsWithSplit.forEach((workout) => {
         const parsed = parseWorkoutNotes(workout.notes || null);
-        notesByWorkout[workout.id] = parsed.movementNotes;
+        notesByWorkout[workout.id] = mergeMovementNoteDrafts(parsed.movementNotes, dirtyMovementNotesRef.current[workout.id] ?? {});
         legacyByWorkout[workout.id] = parsed.legacyNote;
         noteSaverRef.current?.markPersisted(workout.id, serializeWorkoutNotes(parsed.movementNotes, parsed.legacyNote));
       });
@@ -1002,8 +1015,15 @@ export function History() {
     return parts.length > 0 ? parts.join(' • ') : '0 sessions';
   }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
-  const refreshWorkout = useCallback(async (workoutId: string) => {
-    await syncWorkoutCompletion(workoutId);
+  const refreshWorkout = useCallback(async (workoutId: string, syncCompletion = true) => {
+    let completionError: unknown;
+    if (syncCompletion) {
+      try {
+        await syncWorkoutCompletion(workoutId);
+      } catch (error) {
+        completionError = error;
+      }
+    }
 
     const [workout, plan] = await Promise.all([
       fetchWorkoutById(workoutId),
@@ -1025,34 +1045,28 @@ export function History() {
 
     const parsed = parseWorkoutNotes(workout.notes || null);
     noteSaverRef.current?.markPersisted(workoutId, serializeWorkoutNotes(parsed.movementNotes, parsed.legacyNote));
-    setMovementNotesByWorkout((prev) => ({ ...prev, [workoutId]: parsed.movementNotes }));
+    setMovementNotesByWorkout((prev) => ({
+      ...prev,
+      [workoutId]: mergeMovementNoteDrafts(parsed.movementNotes, dirtyMovementNotesRef.current[workoutId] ?? {}),
+    }));
     setLegacyNotesByWorkout((prev) => ({ ...prev, [workoutId]: parsed.legacyNote }));
+    if (completionError) throw completionError;
   }, [fetchWorkoutById, fetchWorkoutDayPlanByWorkoutId, syncWorkoutCompletion]);
 
   // Never rejects: a failed edit says so, and the workout is refreshed either
   // way so the screen shows what the server really holds (a partial failure
   // can leave a delete applied but not its follow-up).
   const runMutation = useCallback(async (workoutId: string, mutate: () => Promise<void>): Promise<boolean> => {
-    let failed = false;
-    try {
-      await mutate();
-    } catch (error) {
-      console.error('Error saving workout edit:', error);
-      failed = true;
-    }
-
-    try {
-      await refreshWorkout(workoutId);
-    } catch (error) {
-      console.error('Error refreshing workout after edit:', error);
-    }
-
-    if (failed) {
+    const saved = await runWorkoutEdit(
+      () => noteSaverRef.current ? noteSaverRef.current.runAfterFlush(workoutId, mutate) : mutate(),
+      (syncCompletion) => refreshWorkout(workoutId, syncCompletion),
+    );
+    if (!saved) {
       showToast('Could not save');
     } else {
       showSavedToast();
     }
-    return !failed;
+    return saved;
   }, [refreshWorkout, showSavedToast, showToast]);
 
   const loadPlanIfExists = useCallback(async (workoutId: string) => {
@@ -1068,21 +1082,17 @@ export function History() {
 
   const handleMovementNoteChange = useCallback((workoutId: string, exerciseId: string, value: string) => {
     const bounded = value.slice(0, 200);
-
-    setMovementNotesByWorkout((prev) => {
-      const currentWorkoutNotes = { ...(prev[workoutId] || {}) };
-
-      if (bounded.trim()) {
-        currentWorkoutNotes[exerciseId] = bounded;
-      } else {
-        delete currentWorkoutNotes[exerciseId];
-      }
-
-      return {
-        ...prev,
-        [workoutId]: currentWorkoutNotes,
-      };
-    });
+    dirtyMovementNotesRef.current[workoutId] = {
+      ...dirtyMovementNotesRef.current[workoutId], [exerciseId]: bounded,
+    };
+    // Keep refs current synchronously; a blur/unmount can flush before React
+    // runs the effect that mirrors state back into these refs.
+    const next = {
+      ...movementNotesRef.current,
+      [workoutId]: { ...movementNotesRef.current[workoutId], [exerciseId]: bounded },
+    };
+    movementNotesRef.current = next;
+    setMovementNotesByWorkout(next);
 
     noteSaverRef.current?.schedule(workoutId, exerciseId, buildNotesPayload(workoutId));
   }, [buildNotesPayload]);
@@ -1268,7 +1278,7 @@ export function History() {
     });
   };
 
-  const handleTargetSetBlur = async (workoutId: string, exerciseId: string, fallbackValue: number) => {
+  const handleTargetSetBlur = async (workoutId: string, exerciseId: string) => {
     const draftKey = `${workoutId}:${exerciseId}`;
     const draftValue = targetSetDrafts[draftKey];
 
@@ -1285,11 +1295,12 @@ export function History() {
     }
 
     const bounded = Math.max(1, Math.min(12, parsed));
-    if (bounded !== fallbackValue) {
-      await runMutation(workoutId, async () => {
-        await updateWorkoutExerciseTargetSets(workoutId, exerciseId, bounded);
-      });
-    }
+    // Reconcile even when the target already matches: a previous attempt may
+    // have saved the plan but failed to insert/delete its sets.
+    const saved = await runMutation(workoutId, async () => {
+      await updateWorkoutExerciseTargetSets(workoutId, exerciseId, bounded);
+    });
+    if (!saved) return;
 
     setTargetSetDrafts((prev) => {
       const next = { ...prev };
@@ -1794,7 +1805,7 @@ export function History() {
                                                 [targetDraftKey]: event.target.value,
                                               }));
                                             }}
-                                            onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId, currentTargetSets); }}
+                                            onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId); }}
                                             aria-label="Target sets"
                                             className="w-14 min-h-11 px-2 py-1 well t-data-sm text-[var(--color-text)] text-center focus:outline-none"
                                           />

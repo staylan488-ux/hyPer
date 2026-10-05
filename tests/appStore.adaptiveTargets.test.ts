@@ -31,7 +31,7 @@ vi.mock('@/lib/nutritionIntake', async (importOriginal) => ({
   getDailyIntake: dataMock.getDailyIntake,
 }));
 
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, resetAppData } from '@/stores/appStore';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
 import { localIsoDate } from '@/lib/weightTrend';
 
@@ -172,7 +172,7 @@ beforeEach(() => {
   dataMock.getBodyWeightHistorySince.mockReset();
   dataMock.getDailyIntake.mockReset();
 
-  useAppStore.setState({ macroTarget: null, nutritionProfile: null });
+  resetAppData();
 });
 
 describe('fetchMacroTarget', () => {
@@ -539,5 +539,91 @@ describe('refreshAdaptiveTargets against concurrent edits', () => {
     expect(dataMock.getDailyIntake).toHaveBeenCalledTimes(2);
     expect(macroTargets.update).toHaveBeenCalledTimes(2);
     expect(profiles.update).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('nutrition account isolation', () => {
+  it('starts a new adaptive run after signing back in while the previous run is unresolved', async () => {
+    seedMeasurableData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile });
+    const oldWeight = deferred<unknown>();
+    dataMock.getLatestBodyWeight.mockReturnValueOnce(oldWeight.promise);
+    routeTables({ nutrition_profiles: profilesTable(), macro_targets: macroTargetsTable() });
+    const oldRun = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(dataMock.getLatestBodyWeight).toHaveBeenCalledTimes(1));
+    resetAppData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile });
+    const newRun = useAppStore.getState().refreshAdaptiveTargets();
+    expect(newRun).not.toBe(oldRun);
+    await expect(newRun).resolves.toBe('unchanged');
+    oldWeight.resolve({ kilograms: 80 });
+    await expect(oldRun).resolves.toBe('skipped');
+    expect(dataMock.getDailyIntake).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a cached profile belonging to a different account before reading health data', async () => {
+    useAppStore.setState({ nutritionProfile: { ...adaptiveProfile, user_id: 'old-user' } });
+    await expect(useAppStore.getState().refreshAdaptiveTargets()).resolves.toBe('skipped');
+    expect(dataMock.getLatestBodyWeight).not.toHaveBeenCalled();
+  });
+
+  it('does not insert a target after an account reset during the guarded update', async () => {
+    seedMeasurableData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile });
+    const result = deferred<Result>();
+    const targets = createChain({ maybeSingle: vi.fn().mockReturnValue(result.promise) });
+    routeTables({ macro_targets: targets, nutrition_profiles: profilesTable() });
+    const request = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(targets.update).toHaveBeenCalled());
+    resetAppData();
+    result.resolve({ data: null, error: null });
+    await expect(request).resolves.toBe('skipped');
+    expect(targets.upsert).not.toHaveBeenCalled();
+  });
+
+  it('keeps user B target when delayed user A fetch completes after account reset', async () => {
+    const result = deferred<Result>();
+    const chain = createChain({ maybeSingle: vi.fn().mockReturnValue(result.promise) });
+    routeTables({ macro_targets: chain });
+    const request = useAppStore.getState().fetchMacroTarget();
+    await vi.waitFor(() => expect(chain.maybeSingle).toHaveBeenCalled());
+    resetAppData();
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-2' } } } });
+    const targetB = { ...manualTarget, id: 'macro-2', user_id: 'user-2', calories: 1800 };
+    useAppStore.setState({ macroTarget: targetB });
+    result.resolve({ data: manualTarget, error: null });
+    await request;
+    expect(useAppStore.getState().macroTarget).toEqual(targetB);
+  });
+
+  it('keeps user B profile when delayed user A fetch completes after account reset', async () => {
+    const result = deferred<Result>();
+    const chain = createChain({ maybeSingle: vi.fn().mockReturnValue(result.promise) });
+    routeTables({ nutrition_profiles: chain });
+    const request = useAppStore.getState().fetchNutritionProfile();
+    await vi.waitFor(() => expect(chain.maybeSingle).toHaveBeenCalled());
+    resetAppData();
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-2' } } } });
+    const profileB = { ...adaptiveProfile, user_id: 'user-2', sex: 'female' as const, height_cm: 160 };
+    useAppStore.setState({ nutritionProfile: profileB });
+    result.resolve({ data: adaptiveProfile, error: null });
+    await request;
+    expect(useAppStore.getState().nutritionProfile).toEqual(profileB);
+  });
+
+  it('ignores adaptive response from old account when both accounts have no target', async () => {
+    seedMeasurableData();
+    useAppStore.setState({ nutritionProfile: adaptiveProfile, macroTarget: null });
+    const result = deferred<Result>();
+    const targets = createChain({ maybeSingle: vi.fn().mockReturnValue(result.promise) });
+    const profiles = profilesTable();
+    routeTables({ macro_targets: targets, nutrition_profiles: profiles });
+    const request = useAppStore.getState().refreshAdaptiveTargets();
+    await vi.waitFor(() => expect(targets.maybeSingle).toHaveBeenCalled());
+    resetAppData();
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-2' } } } });
+    result.resolve({ data: { ...manualTarget, source: 'adaptive' }, error: null });
+    await request;
+    expect(useAppStore.getState().macroTarget).toBeNull();
   });
 });

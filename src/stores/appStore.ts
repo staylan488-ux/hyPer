@@ -2,9 +2,11 @@ import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
+import { captureAccountScope, getAccountScopeGeneration, invalidateAccountScope } from '@/lib/accountScope';
 import { isPreviewActive } from '@/preview/flag';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
-import { runWhoopSync, type WhoopSyncResult } from '@/lib/whoopSync';
+import { runWhoopSync, whoopFetchStart, type WhoopSyncResult } from '@/lib/whoopSync';
+import { beginWhoopReconciliation, completeWhoopReconciliation, readWhoopReconciliation } from '@/lib/whoopReconciliation';
 import { createKeyedSingleFlight, createReadFlight } from '@/lib/singleFlight';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
@@ -51,6 +53,7 @@ const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
  */
 function sameAdaptiveInputs(a: NutritionProfile | null, b: NutritionProfile): boolean {
   return a != null
+    && a.user_id === b.user_id
     && a.adaptive_enabled === b.adaptive_enabled
     && a.sex === b.sex
     && a.birth_year === b.birth_year
@@ -67,6 +70,7 @@ function sameMacroTarget(a: MacroTarget | null, b: MacroTarget | null): boolean 
   if (a === b) return true;
   if (!a || !b) return false;
   return a.id === b.id
+    && a.user_id === b.user_id
     && a.source === b.source
     && a.updated_at === b.updated_at
     && a.calories === b.calories
@@ -79,7 +83,7 @@ function sameMacroTarget(a: MacroTarget | null, b: MacroTarget | null): boolean 
  * One adaptive refresh at a time. An unforced call joins the run in flight; a
  * forced one waits for it and then computes afresh.
  */
-let adaptiveRefreshInFlight: Promise<AdaptiveRefreshStatus> | null = null;
+const adaptiveRefreshFlights = new Map<string, Promise<AdaptiveRefreshStatus>>();
 
 /**
  * The adaptive loop's own target write. "Never overwrite a hand-typed target"
@@ -89,7 +93,8 @@ let adaptiveRefreshInFlight: Promise<AdaptiveRefreshStatus> | null = null;
  */
 async function writeAdaptiveMacroTarget(
   userId: string,
-  macros: Pick<MacroTarget, 'calories' | 'protein' | 'carbs' | 'fat'>
+  macros: Pick<MacroTarget, 'calories' | 'protein' | 'carbs' | 'fat'>,
+  isCurrent: () => boolean,
 ): Promise<MacroTarget | null> {
   const fields = { ...macros, source: 'adaptive' as const, updated_at: new Date().toISOString() };
 
@@ -101,6 +106,7 @@ async function writeAdaptiveMacroTarget(
     .select()
     .maybeSingle();
   if (updated.error) throw updated.error;
+  if (!isCurrent()) return null;
   if (updated.data) return updated.data;
 
   // Nothing matched: either no row yet, or a manual one. Insert only if absent
@@ -334,7 +340,7 @@ interface AppState {
   removeExerciseFromWorkout: (workoutId: string, exerciseId: string) => Promise<void>;
   syncWorkoutCompletion: (workoutId: string) => Promise<{ totalSets: number; completedSets: number; completed: boolean }>;
   updateWorkoutNotes: (workoutId: string, notes: string | null) => Promise<void>;
-  fetchWorkoutDayPlanByWorkoutId: (workoutId: string) => Promise<WorkoutDayPlan | null>;
+  fetchWorkoutDayPlanByWorkoutId: (workoutId: string, options?: { throwOnError?: boolean }) => Promise<WorkoutDayPlan | null>;
   ensureWorkoutDayPlan: (workoutId: string, fallbackLabel?: string) => Promise<WorkoutDayPlan | null>;
   updateWorkoutDayPlanItems: (workoutId: string, items: FlexiblePlanItem[], preloadedPlan?: WorkoutDayPlan) => Promise<WorkoutDayPlan | null>;
   addSupersetToWorkout: (workoutId: string, baseExerciseId: string, partner: Exercise) => Promise<void>;
@@ -533,8 +539,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   workoutMode: 'split',
 
   fetchSplits: async (options) => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
     if (options?.force) splitsFlight.invalidate();
 
     return splitsFlight.run(userId, async (isCurrent) => {
@@ -553,7 +560,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (splits && isCurrent()) {
+      if (splits && isCurrent() && isAccountCurrent()) {
         const formattedSplits = splits.map((split) => ({
           ...split,
           days: split.days
@@ -666,7 +673,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchWorkoutMode: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
+    if (!isAccountCurrent()) return;
     if (!userId) {
       set({ workoutMode: readWorkoutModeFallback() });
       return;
@@ -680,7 +689,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         .maybeSingle();
 
       // A mode switch made while this read ran wins over what it read.
-      if (!isCurrent()) return;
+      if (!isCurrent() || !isAccountCurrent()) return;
       const fallbackMode = readWorkoutModeFallback();
 
       if (error) {
@@ -697,6 +706,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setWorkoutMode: async (mode) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
 
     if (currentWorkout && !currentWorkout.completed) {
@@ -709,7 +719,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     writeWorkoutModeFallback(mode);
 
     const userId = await getSessionUserId();
-    if (!userId) return { ok: true };
+    if (!userId || !isAccountCurrent()) return { ok: true };
 
     const { error } = await supabase
       .from('program_preferences')
@@ -719,7 +729,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }, {
         onConflict: 'user_id',
       });
-    workoutModeFlight.invalidate();
+    if (isAccountCurrent()) workoutModeFlight.invalidate();
 
     if (error) {
       console.error('Error saving workout mode remotely, kept local mode:', error);
@@ -730,8 +740,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchFlexTemplates: async (options) => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
     if (options?.force) flexTemplatesFlight.invalidate();
 
     return flexTemplatesFlight.run(userId, async (isCurrent) => {
@@ -745,7 +756,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.error('Error fetching flex templates:', error);
         return;
       }
-      if (!isCurrent()) return;
+      if (!isCurrent() || !isAccountCurrent()) return;
 
       const templates = (data || []).map((row) => ({
         id: row.id,
@@ -887,8 +898,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startWorkout: writesWorkout(async (splitDayId) => {
+    const isCurrentAccount = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) throw new Error(START_WORKOUT_ERROR);
+    if (!userId || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
 
     // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
@@ -902,7 +914,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (existingError) {
       console.error('Error checking existing workout:', existingError);
+      throw new Error(START_WORKOUT_ERROR);
     }
+    if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
 
     if (existing && canResumeWorkout(existing as Workout)) {
       if (!isAbandonedSplitStart(existing as Workout)) {
@@ -966,6 +980,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (completeWorkout) {
+      if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
       set({ currentWorkout: completeWorkout as Workout, currentWorkoutDayPlan: null });
       return completeWorkout as Workout;
     }
@@ -975,11 +990,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   startFlexibleWorkout: writesWorkout(async (dayLabel, templateLabel) => {
+    const isCurrentAccount = captureAccountScope();
     const label = dayLabel.trim();
     if (!label) return null;
 
     const userId = await getSessionUserId();
-    if (!userId) throw new Error(START_WORKOUT_ERROR);
+    if (!userId || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
 
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
@@ -992,16 +1008,35 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (existingError) {
       console.error('Error checking existing workout:', existingError);
+      throw new Error(START_WORKOUT_ERROR);
     }
+    if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
 
     if (existing && canResumeWorkout(existing as Workout)) {
       if (existing.split_day_id !== null) {
         return null;
       }
 
-      await get().fetchCurrentWorkoutDayPlan(existing.id);
-      set({ currentWorkout: existing as Workout });
-      return existing as Workout;
+      const plan = await get().fetchWorkoutDayPlanByWorkoutId(existing.id, { throwOnError: true });
+      if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
+      if (plan) {
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: plan });
+        return existing as Workout;
+      }
+
+      if (existing.sets?.length || existing.notes?.trim()) {
+        // Preserve anything already logged; rebuild usable metadata from the
+        // saved sets instead of resuming a session that cannot add movements.
+        const repaired = await get().ensureWorkoutDayPlan(existing.id, label);
+        if (!repaired || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: repaired });
+        return existing as Workout;
+      }
+
+      // A timed-out start can leave just the empty workout row. Replace it so
+      // the chosen template, its plan and its sets are created together again.
+      const { error: discardError } = await supabase.from('workouts').delete().eq('id', existing.id);
+      if (discardError || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
     }
 
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -1025,13 +1060,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     let templateItems: FlexiblePlanItem[] = [];
 
     if (templateLabel?.trim()) {
-      const { data: template } = await supabase
+      const { data: template, error: templateError } = await supabase
         .from('flex_day_templates')
         .select('items')
         .eq('user_id', userId)
         .eq('label', templateLabel.trim())
         .maybeSingle();
 
+      if (templateError || !template) {
+        await discardStartedWorkout(workout.id);
+        throw new Error(START_WORKOUT_ERROR);
+      }
       templateItems = normalizeFlexiblePlanItems(template?.items);
     }
 
@@ -1045,8 +1084,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       .select('id, workout_id, day_label, items')
       .single();
 
-    if (planError) {
+    if (planError || !createdPlan) {
       console.error('Error creating flexible workout plan:', planError);
+      await discardStartedWorkout(workout.id);
+      throw new Error(START_WORKOUT_ERROR);
     }
 
     const { error: setsError } = await insertPlaceholderSets(
@@ -1073,6 +1114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (completeWorkout) {
+      if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
       set({
         currentWorkout: completeWorkout as Workout,
         currentWorkoutDayPlan: createdPlan ? toDayPlan(createdPlan) : null,
@@ -1109,6 +1151,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (workout && canResumeWorkout(workout as Workout)) {
         const nextWorkout = workout as Workout;
+        if (!nextWorkout.split_day_id) {
+          const { data: plan, error: planError } = await supabase
+            .from('workout_day_plans')
+            .select('id, workout_id, day_label, items')
+            .eq('workout_id', nextWorkout.id)
+            .maybeSingle();
+
+          if (workoutMutationSeq !== readSeq) return;
+
+          // Flexible sessions need their plan to accept edits. Keep a usable
+          // warm copy, or leave Start available to recover the durable row.
+          if (planError || !plan) {
+            if (planError) console.error('Error restoring workout day plan:', planError);
+            const { currentWorkout, currentWorkoutDayPlan } = get();
+            const hasWarmSession = currentWorkout?.id === nextWorkout.id
+              && currentWorkout.user_id === userId
+              && canResumeWorkout(currentWorkout)
+              && currentWorkoutDayPlan?.workout_id === nextWorkout.id;
+            if (!hasWarmSession) set({ currentWorkout: null, currentWorkoutDayPlan: null });
+            if (!planError) markHydrated(userId, 'workout');
+            return;
+          }
+
+          set({ currentWorkout: nextWorkout, currentWorkoutDayPlan: toDayPlan(plan) });
+          markHydrated(userId, 'workout');
+          return;
+        }
+
         set({ currentWorkout: nextWorkout });
         markHydrated(userId, 'workout');
 
@@ -1121,6 +1191,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   substituteWorkoutExercise: writesWorkout(async (exerciseId, replacement) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.completed) throw new Error('No active workout.');
     const originalSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
@@ -1177,7 +1248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const latest = get().currentWorkout;
-    if (!latest || latest.id !== currentWorkout.id) return;
+    if (!isAccountCurrent() || !latest || latest.id !== currentWorkout.id) return;
     set({
       currentWorkout: { ...latest, sets: [
         ...latest.sets.filter((entry) => entry.exercise_id !== exerciseId || entry.completed),
@@ -1188,6 +1259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   addWorkoutSet: writesWorkout(async (exerciseId) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1213,7 +1285,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const latestWorkout = get().currentWorkout;
-    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+    if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
 
     set({
       currentWorkout: {
@@ -1224,6 +1296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   setFlexibleWorkoutLabel: writesWorkout(async (label) => {
+    const isCurrentAccount = captureAccountScope();
     const trimmed = label.trim();
     if (!trimmed) return;
 
@@ -1239,15 +1312,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error || !data) {
       if (error) console.error('Error updating flexible day label:', error);
-      return;
+      throw new Error('Could not save the workout name. Try again.');
     }
 
+    if (!isCurrentAccount() || get().currentWorkout?.id !== currentWorkout.id) return;
     set({
       currentWorkoutDayPlan: toDayPlan(data),
     });
   }),
 
   addFlexibleExercise: writesWorkout(async (exercise) => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1287,7 +1362,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (planError || !updatedPlan) {
       if (planError) console.error('Error adding flexible exercise:', planError);
-      return;
+      throw new Error('Could not add the exercise. Try again.');
     }
 
     const existingSetsCount = currentWorkout.sets.filter((set) => set.exercise_id === exercise.id).length;
@@ -1301,21 +1376,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (setsError) {
         console.error('Error creating flexible exercise sets:', setsError);
+        throw new Error('Could not add the exercise sets. Try again.');
       } else {
         // Merge instead of refetching so a set logged meanwhile stays logged.
         const latest = get().currentWorkout;
-        if (latest?.id === currentWorkout.id) {
+        if (isCurrentAccount() && latest?.id === currentWorkout.id) {
           set({ currentWorkout: { ...latest, sets: [...latest.sets, ...createdSets] } });
         }
       }
     }
 
-    set({
-      currentWorkoutDayPlan: toDayPlan(updatedPlan),
-    });
+    if (isCurrentAccount() && get().currentWorkout?.id === currentWorkout.id) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
   }),
 
   addFlexibleSuperset: writesWorkout(async (baseExerciseId, partner) => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1367,7 +1444,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (planError || !updatedPlan) {
       if (planError) console.error('Error adding flexible superset:', planError);
-      return;
+      throw new Error('Could not add the superset. Try again.');
     }
 
     // A partner removed earlier keeps its finished sets; adding sets 1..N again
@@ -1383,20 +1460,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (setsError) {
       console.error('Error creating flexible superset sets:', setsError);
+      throw new Error('Could not add the superset sets. Try again.');
     } else if (createdSets.length > 0) {
       // Merge instead of refetching so a set logged meanwhile stays logged.
       const latest = get().currentWorkout;
-      if (latest?.id === currentWorkout.id) {
+      if (isCurrentAccount() && latest?.id === currentWorkout.id) {
         set({ currentWorkout: { ...latest, sets: [...latest.sets, ...createdSets] } });
       }
     }
 
-    set({
-      currentWorkoutDayPlan: toDayPlan(updatedPlan),
-    });
+    if (isCurrentAccount() && get().currentWorkout?.id === currentWorkout.id) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
   }),
 
   clearFlexibleSuperset: writesWorkout(async (exerciseId) => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkoutDayPlan } = get();
     if (!currentWorkoutDayPlan) return;
 
@@ -1418,15 +1497,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (planError || !updatedPlan) {
       if (planError) console.error('Error clearing flexible superset:', planError);
-      return;
+      throw new Error('Could not unlink the superset. Try again.');
     }
 
-    set({
-      currentWorkoutDayPlan: toDayPlan(updatedPlan),
-    });
+    if (isCurrentAccount() && get().currentWorkoutDayPlan?.id === currentWorkoutDayPlan.id) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
   }),
 
   updateFlexibleExerciseMeta: writesWorkout(async (exerciseId, updates) => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
     const workout = currentWorkout;
@@ -1460,7 +1540,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (planError || !updatedPlan) {
       if (planError) console.error('Error updating flexible exercise metadata:', planError);
-      return;
+      throw new Error('Could not save the exercise targets. Try again.');
     }
 
     if (hasSetUpdate) {
@@ -1486,7 +1566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const { data: createdSets, error: setsError } = await insertPlaceholderSets(workout.id, additions, true);
-      if (setsError) console.error('Error adding sets for flexible target change:', setsError);
+      if (setsError) throw new Error('Could not add the workout sets. Try again.');
 
       let deletedIds: string[] = [];
       if (removedIds.length > 0) {
@@ -1498,13 +1578,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           .eq('completed', false)
           .in('id', removedIds)
           .select('id');
-        if (deleteError) console.error('Error removing sets for flexible target change:', deleteError);
+        if (deleteError) throw new Error('Could not remove the workout sets. Try again.');
         else deletedIds = (deletedRows ?? []).map((row) => row.id);
       }
 
       // Merge instead of refetching so a set logged meanwhile stays logged.
       const latest = get().currentWorkout;
-      if (latest?.id === workout.id && (createdSets.length > 0 || deletedIds.length > 0)) {
+      if (isCurrentAccount() && latest?.id === workout.id && (createdSets.length > 0 || deletedIds.length > 0)) {
         set({
           currentWorkout: {
             ...latest,
@@ -1514,12 +1594,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    set({
-      currentWorkoutDayPlan: toDayPlan(updatedPlan),
-    });
+    if (isCurrentAccount() && get().currentWorkout?.id === workout.id) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
   }),
 
   removeFlexibleExerciseFromPlan: writesWorkout(async (exerciseId) => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
@@ -1547,7 +1628,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (planError || !updatedPlan) {
       if (planError) console.error('Error removing flexible exercise from plan:', planError);
-      return;
+      throw new Error('Could not remove the exercise. Try again.');
     }
 
     const uncompletedSetIds = currentWorkout.sets
@@ -1555,7 +1636,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       .map((set) => set.id);
 
     if (uncompletedSetIds.length > 0) {
-      await supabase.from('sets').delete().in('id', uncompletedSetIds);
+      const { error: deleteError } = await supabase.from('sets').delete().eq('completed', false).in('id', uncompletedSetIds);
+      if (deleteError) throw new Error('Could not remove the exercise sets. Try again.');
 
       const { data: refreshedWorkout } = await supabase
         .from('workouts')
@@ -1563,20 +1645,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         .eq('id', currentWorkout.id)
         .maybeSingle();
 
-      if (refreshedWorkout) {
+      if (refreshedWorkout && isCurrentAccount() && get().currentWorkout?.id === currentWorkout.id) {
         set({ currentWorkout: refreshedWorkout as Workout });
       }
     }
 
-    set({
-      currentWorkoutDayPlan: toDayPlan(updatedPlan),
-    });
+    if (isCurrentAccount() && get().currentWorkout?.id === currentWorkout.id) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
   }),
 
   saveFlexibleTemplateFromCurrentWorkout: async (movementNotesOverride) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkoutDayPlan, currentWorkout } = get();
     const userId = await getSessionUserId();
-    if (!userId || !currentWorkoutDayPlan) return;
+    if (!userId || !currentWorkoutDayPlan || !isAccountCurrent()) return;
+    if (currentWorkout && currentWorkout.user_id !== userId) return;
 
     const label = currentWorkoutDayPlan.day_label.trim();
     if (!label) return;
@@ -1604,10 +1688,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    await get().fetchFlexTemplates({ force: true });
+    if (isAccountCurrent()) await get().fetchFlexTemplates({ force: true });
   },
 
   removeLastUncompletedSet: writesWorkout(async (exerciseId) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1628,7 +1713,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const latestWorkout = get().currentWorkout;
-    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+    if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
 
     set({
       currentWorkout: {
@@ -1639,6 +1724,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   logSet: writesWorkout(async (exerciseId, setNumber, weight, reps, rpe) => {
+    const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) throw new Error('No active workout to log this set.');
     const target = currentWorkout.sets.find(s => s.exercise_id === exerciseId && s.set_number === setNumber);
@@ -1647,7 +1733,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const updatedSet = await saveWorkoutSet(target, { weight, reps, rpe: rpe ?? null });
     const latestWorkout = get().currentWorkout;
     // A slow response must never write into a different workout opened meanwhile.
-    if (!latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+    if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
 
     const updatedSets = latestWorkout.sets.map(s => s.id === target.id
       ? {
@@ -1664,6 +1750,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   updateSet: writesWorkout(async (setId, updates) => {
+    const isAccountCurrent = captureAccountScope();
     const { error } = await supabase.from('sets').update(updates).eq('id', setId);
     if (error) {
       console.error('Error updating set:', error);
@@ -1671,7 +1758,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const { currentWorkout } = get();
-    if (!currentWorkout) return;
+    if (!currentWorkout || !isAccountCurrent()) return;
     if (!currentWorkout.sets.some((set) => set.id === setId)) return;
 
     const updatedSets = currentWorkout.sets.map((set) => (
@@ -1682,6 +1769,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   completeWorkout: writesWorkout(async () => {
+    const isCurrentAccount = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
@@ -1706,6 +1794,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw new Error("Couldn't finish the workout. Check your connection and try again.");
     }
 
+    if (!isCurrentAccount() || get().currentWorkout?.id !== currentWorkout.id) return;
     set({ currentWorkout: null, currentWorkoutDayPlan: null });
     // Screens that show volume recompute it on mount; don't hold the finish on it.
     void get().calculateWeeklyVolume().catch(() => {});
@@ -1757,6 +1846,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteWorkout: writesWorkout(async (workoutId: string) => {
+    const isAccountCurrent = captureAccountScope();
     // One statement: sets and the day plan go with it via ON DELETE CASCADE,
     // so a failure part-way can no longer leave a workout with its sets wiped.
     let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
@@ -1778,7 +1868,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     // A deleted in-progress workout must not stay on the Workout tab.
-    if (get().currentWorkout?.id === workoutId) {
+    if (isAccountCurrent() && get().currentWorkout?.id === workoutId) {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
     }
   }),
@@ -1984,8 +2074,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchWhoopConnection: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return null;
+    if (!userId || !isAccountCurrent()) return null;
 
     const { data, error } = await supabase
       .from('whoop_connections')
@@ -1999,6 +2090,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const connection = (data as WhoopConnection | null) ?? null;
+    if (!isAccountCurrent()) return null;
     set({ whoopConnection: connection });
     return connection;
   },
@@ -2028,26 +2120,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   disconnectWhoop: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     if (isPreviewActive()) {
       await supabase.from('whoop_connections').delete().eq('user_id', userId);
     } else {
       await disconnectWhoopRemote();
     }
-    set({ whoopConnection: null });
+    if (isAccountCurrent()) set({ whoopConnection: null });
   },
 
   syncWhoop: async () => {
+    const isCurrentAccount = captureAccountScope();
+    const accountGeneration = getAccountScopeGeneration();
     const userId = await getSessionUserId();
-    if (!userId) return null;
+    if (!userId || !isCurrentAccount()) return null;
+    const requireCurrentAccount = () => {
+      if (!isCurrentAccount()) throw new Error('WHOOP sync stopped because the account changed.');
+    };
 
     // One run per user at a time: a manual Sync tap during the automatic
     // launch/foreground sync joins that run instead of racing it into
     // duplicate sessions. Registered with no await after the user lookup, so the first
     // caller to resume claims the key and later callers see it.
-    return whoopSyncFlight.run(userId, async () => {
+    return whoopSyncFlight.run(`${userId}:${accountGeneration}`, async () => {
       // preview drives the identical pipeline from fixture batches; production
       // fetches raw pages through the whoop-sync Edge Function
       const fetchBatch = isPreviewActive() ? fetchWhoopFixtureBatch : fetchWhoopBatchRemote;
@@ -2057,6 +2155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // against it deletes, duplicates or un-dismisses activities. A throw aborts
       // the run before any destructive step and surfaces as "Sync unavailable".
       try {
+        requireCurrentAccount();
         // watermark: newest whoop segment already imported. A failed read must
         // not fall back to the 30-day first-sync window
         const { data: latest, error: latestError } = await supabase
@@ -2068,71 +2167,120 @@ export const useAppStore = create<AppState>((set, get) => ({
           .limit(1)
           .maybeSingle();
         if (latestError) throw latestError;
+        requireCurrentAccount();
+
+        const sinceIso = (latest as { started_at?: string } | null)?.started_at ?? null;
+        const checkpoint = readWhoopReconciliation(userId);
+        let reconcileFromIso = whoopFetchStart(new Date(), sinceIso);
+        if (!checkpoint.historyReconciled) {
+          // First use of the checkpoint (also after clearing app storage):
+          // repair historical segments stranded by the old watermark rule.
+          // This reads stored history, without refetching years from WHOOP.
+          const { data: oldest, error } = await supabase
+            .from('activity_segments')
+            .select('started_at')
+            .eq('user_id', userId)
+            .eq('source', 'whoop')
+            .order('started_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (error) throw error;
+          requireCurrentAccount();
+          if (oldest?.started_at && Date.parse(oldest.started_at) < Date.parse(reconcileFromIso)) {
+            reconcileFromIso = oldest.started_at;
+          }
+        }
+        reconcileFromIso = beginWhoopReconciliation(userId, checkpoint, reconcileFromIso);
+
+        // Reconciliation cannot treat a truncated database result as the full
+        // window. Stable ordering and pages below the API row limit preserve
+        // older memberships when repairing a large backlog.
+        const PAGE_SIZE = 500;
+        const readWindow = async <T,>(table: 'activity_segments' | 'activity_sessions', fromIso: string, toIso: string): Promise<T[]> => {
+          const rows: T[] = [];
+          for (let page = 0; page < 100; page++) {
+            requireCurrentAccount();
+            let query = supabase.from(table).select('*').eq('user_id', userId)
+              .gte('started_at', fromIso).lte('started_at', toIso)
+              .order('started_at', { ascending: true }).order('id', { ascending: true });
+            if (table === 'activity_segments') query = query.eq('source', 'whoop');
+            const { data, error } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+            if (error) throw error;
+            requireCurrentAccount();
+            rows.push(...((data ?? []) as T[]));
+            if (!data || data.length < PAGE_SIZE) return rows;
+          }
+          throw new Error('WHOOP history is too large to reconcile safely in one sync.');
+        };
 
         const result = await runWhoopSync(
           {
-            fetchBatch,
+            fetchBatch: async (params) => {
+              requireCurrentAccount();
+              const result = await fetchBatch(params);
+              requireCurrentAccount();
+              return result;
+            },
             data: {
-              // the shared action returns [] on error (saveTrackedRun relies on
-              // that), so only this port turns a short result into a failure
+              // Capture this sync's account for every row instead of resolving
+              // the current user again in a shared store action mid-sync.
               upsertSegments: async (inputs) => {
-                const rows = await get().upsertActivitySegments(inputs);
-                if (inputs.length > 0 && rows.length === 0) throw new Error('WHOOP segment upsert failed');
-                return rows;
+                requireCurrentAccount();
+                const rows = inputs.map((input) => ({
+                  user_id: userId,
+                  source: input.source,
+                  external_id: input.external_id,
+                  sport: input.sport ?? null,
+                  started_at: input.started_at,
+                  ended_at: input.ended_at,
+                  duration_seconds: input.duration_seconds ?? null,
+                  strain: input.strain ?? null,
+                  avg_hr: input.avg_hr ?? null,
+                  max_hr: input.max_hr ?? null,
+                  energy_kcal: input.energy_kcal ?? null,
+                  distance_m: input.distance_m ?? null,
+                  raw: input.raw ?? null,
+                  updated_at: new Date().toISOString(),
+                }));
+                // Omit session_id so re-ingestion preserves existing links.
+                const { data, error } = await supabase.from('activity_segments')
+                  .upsert(rows, { onConflict: 'user_id,source,external_id' }).select();
+                if (error) throw error;
+                requireCurrentAccount();
+                if (!data || data.length !== inputs.length) throw new Error('WHOOP segment upsert was incomplete');
+                return data as ActivitySegment[];
               },
-              fetchWhoopSegmentsInWindow: async (fromIso, toIso) => {
-                const { data, error } = await supabase
-                  .from('activity_segments')
-                  .select('*')
-                  .eq('user_id', userId)
-                  .eq('source', 'whoop')
-                  .gte('started_at', fromIso)
-                  .lte('started_at', toIso)
-                  .order('started_at', { ascending: true });
-                if (error) {
-                  console.error('Error fetching whoop segments:', error);
-                  throw error;
-                }
-                return (data || []) as ActivitySegment[];
-              },
-              fetchSessionsInWindow: async (fromIso, toIso) => {
-                // deliberately includes dismissed + user-edited rows (tombstones
-                // must hold) and ALL sources (whoop metrics enrich GPS or
-                // manual sessions covering the same time window)
-                const { data, error } = await supabase
-                  .from('activity_sessions')
-                  .select('*')
-                  .eq('user_id', userId)
-                  .gte('started_at', fromIso)
-                  .lte('started_at', toIso);
-                if (error) {
-                  console.error('Error fetching sessions in window:', error);
-                  throw error;
-                }
-                return (data || []) as ActivitySession[];
-              },
+              fetchWhoopSegmentsInWindow: (fromIso, toIso) =>
+                readWindow<ActivitySegment>('activity_segments', fromIso, toIso),
+              fetchSessionsInWindow: (fromIso, toIso) =>
+                readWindow<ActivitySession>('activity_sessions', fromIso, toIso),
               fetchSessionsByIds: async (ids) => {
-                if (ids.length === 0) return [];
-                const { data, error } = await supabase
-                  .from('activity_sessions')
-                  .select('*')
-                  .eq('user_id', userId)
-                  .in('id', ids);
-                if (error) {
-                  console.error('Error fetching sessions by ids:', error);
-                  throw error;
+                const sessions: ActivitySession[] = [];
+                // Keep PostgREST URLs bounded when a repair covers many hosts.
+                for (let offset = 0; offset < ids.length; offset += 100) {
+                  requireCurrentAccount();
+                  const { data, error } = await supabase
+                    .from('activity_sessions')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .in('id', ids.slice(offset, offset + 100));
+                  if (error) throw error;
+                  requireCurrentAccount();
+                  sessions.push(...((data ?? []) as ActivitySession[]));
                 }
-                return (data || []) as ActivitySession[];
+                return sessions;
               },
               // create/update/delete mirror createActivitySession,
               // updateActivitySession and deleteActivitySession but reuse the
               // user resolved above instead of a user lookup per item
               createSession: async (input) => {
+                requireCurrentAccount();
                 const { data, error } = await supabase
                   .from('activity_sessions')
                   .insert(activitySessionInsertRow(userId, input))
                   .select()
                   .single();
+                requireCurrentAccount();
                 if (error || !data) {
                   if (error) console.error('Error creating activity session:', error);
                   return null;
@@ -2140,6 +2288,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 return data as ActivitySession;
               },
               updateSession: async (sessionId, patch) => {
+                requireCurrentAccount();
                 const { data, error } = await supabase
                   .from('activity_sessions')
                   .update({ ...patch, updated_at: new Date().toISOString() })
@@ -2147,6 +2296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   .eq('user_id', userId)
                   .select()
                   .single();
+                requireCurrentAccount();
                 if (error || !data) {
                   if (error) console.error('Error updating activity session:', error);
                   return null;
@@ -2154,25 +2304,29 @@ export const useAppStore = create<AppState>((set, get) => ({
                 return data as ActivitySession;
               },
               deleteSession: async (sessionId) => {
+                requireCurrentAccount();
                 const { error } = await supabase
                   .from('activity_sessions')
                   .delete()
                   .eq('id', sessionId)
                   .eq('user_id', userId);
+                requireCurrentAccount();
                 if (error) {
                   console.error('Error deleting activity session:', error);
                   throw error;
                 }
               },
-              // a failed link is logged and reported, not thrown: aborting the
-              // whole sync as "unavailable" is worse than an unlinked session,
-              // which the next sync deletes and recreates
+              // A failed link retains the durable reconciliation window and
+              // makes this sync unavailable; a later sync repairs the partial
+              // import, including activities outside the normal overlap.
               linkSegmentsToSession: async (segmentIds, sessionId) => {
+                requireCurrentAccount();
                 const { error } = await supabase
                   .from('activity_segments')
                   .update({ session_id: sessionId, updated_at: new Date().toISOString() })
                   .eq('user_id', userId)
                   .in('id', segmentIds);
+                requireCurrentAccount();
                 if (error) {
                   console.error('Error linking segments to session:', error);
                   return false;
@@ -2181,8 +2335,11 @@ export const useAppStore = create<AppState>((set, get) => ({
               },
             },
           },
-          { sinceIso: (latest as { started_at?: string } | null)?.started_at ?? null },
+          { sinceIso, reconcileFromIso },
         );
+
+        requireCurrentAccount();
+        completeWhoopReconciliation(userId);
 
         // whoop-sync stamps last_synced_at server-side; refresh the status row
         if (!isPreviewActive()) void get().fetchWhoopConnection();
@@ -2361,6 +2518,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addSetToWorkout: writesWorkout(async (workoutId, exerciseId) => {
+    const isAccountCurrent = captureAccountScope();
     const { data: existingSets, error: fetchError } = await supabase
       .from('sets')
       .select('set_number')
@@ -2394,7 +2552,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id === workoutId) {
+    if (isAccountCurrent() && currentWorkout?.id === workoutId) {
       set({
         currentWorkout: {
           ...currentWorkout,
@@ -2407,6 +2565,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   removeSetFromWorkout: writesWorkout(async (workoutId, exerciseId, setId) => {
+    const isAccountCurrent = captureAccountScope();
     const { error: deleteError } = await supabase
       .from('sets')
       .delete()
@@ -2442,11 +2601,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (renumberError) {
         console.error('Error compacting set numbers:', renumberError);
+        throw new Error('Could not save that change.');
       }
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id !== workoutId) return;
+    if (!isAccountCurrent() || currentWorkout?.id !== workoutId) return;
 
     const otherExerciseSets = currentWorkout.sets.filter((set) => set.exercise_id !== exerciseId);
     const compactedExerciseSets = currentWorkout.sets
@@ -2501,6 +2661,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   removeExerciseFromWorkout: writesWorkout(async (workoutId, exerciseId) => {
+    const isAccountCurrent = captureAccountScope();
     const { error } = await supabase
       .from('sets')
       .delete()
@@ -2512,7 +2673,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw new Error('Could not save that change.');
     }
 
-    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
+    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId, { throwOnError: true });
     if (plan) {
       const removing = plan.items.find((item) => item.exercise_id === exerciseId);
       const removingGroupId = removing?.superset_group_id || null;
@@ -2533,7 +2694,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id === workoutId) {
+    if (isAccountCurrent() && currentWorkout?.id === workoutId) {
       set({
         currentWorkout: {
           ...currentWorkout,
@@ -2544,6 +2705,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   syncWorkoutCompletion: writesWorkout(async (workoutId) => {
+    const isCurrentAccount = captureAccountScope();
     // Read the workout's own completion state with its sets so an edit can
     // only move it toward complete. A workout finished with skipped sets stays
     // finished; un-finishing is never a side effect of editing.
@@ -2555,7 +2717,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error || !workout) {
       if (error) console.error('Error syncing workout completion:', error);
-      return { totalSets: 0, completedSets: 0, completed: false };
+      throw new Error('Could not refresh workout completion. Try again.');
     }
 
     const sets = (workout.sets || []) as Array<Pick<WorkoutSet, 'completed' | 'completed_at'>>;
@@ -2584,11 +2746,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (updateError) {
         console.error('Error persisting workout completion state:', updateError);
+        throw new Error('Could not save workout completion. Try again.');
       }
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id === workoutId) {
+    if (isCurrentAccount() && currentWorkout?.id === workoutId) {
       set({ currentWorkout: { ...currentWorkout, completed, completed_at: completedAt } });
     }
 
@@ -2596,6 +2759,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   updateWorkoutNotes: writesWorkout(async (workoutId, notes) => {
+    const isCurrentAccount = captureAccountScope();
     const { error } = await supabase
       .from('workouts')
       .update({ notes })
@@ -2607,12 +2771,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id === workoutId) {
+    if (isCurrentAccount() && currentWorkout?.id === workoutId) {
       set({ currentWorkout: { ...currentWorkout, notes } });
     }
   }),
 
-  fetchWorkoutDayPlanByWorkoutId: async (workoutId) => {
+  fetchWorkoutDayPlanByWorkoutId: async (workoutId, options) => {
+    const isCurrentAccount = captureAccountScope();
     const { data, error } = await supabase
       .from('workout_day_plans')
       .select('id, workout_id, day_label, items')
@@ -2621,6 +2786,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching workout day plan by workout id:', error);
+      if (options?.throwOnError) throw new Error('Could not load the workout plan. Try again.');
       return null;
     }
 
@@ -2629,7 +2795,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const plan = toDayPlan(data);
 
     const { currentWorkoutDayPlan, currentWorkout } = get();
-    if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id !== plan.id) {
+    if (isCurrentAccount() && currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id !== plan.id) {
       set({ currentWorkoutDayPlan: plan });
     }
 
@@ -2637,7 +2803,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   ensureWorkoutDayPlan: writesWorkout(async (workoutId, fallbackLabel) => {
-    const existing = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
+    const isCurrentAccount = captureAccountScope();
+    const existing = await get().fetchWorkoutDayPlanByWorkoutId(workoutId, { throwOnError: true });
+    if (!isCurrentAccount()) throw new Error('The signed-in account changed.');
     if (existing) return existing;
 
     const { data: workout, error: workoutError } = await supabase
@@ -2648,7 +2816,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (workoutError || !workout) {
       if (workoutError) console.error('Error fetching workout for day plan creation:', workoutError);
-      return null;
+      throw new Error('Could not load the workout. Try again.');
     }
 
     const { data: workoutSets, error: setsError } = await supabase
@@ -2659,7 +2827,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (setsError) {
       console.error('Error fetching workout sets for day plan creation:', setsError);
-      return null;
+      throw new Error('Could not load the workout sets. Try again.');
     }
 
     const setCountByExercise = new Map<string, number>();
@@ -2705,6 +2873,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (splitError) {
         console.error('Error fetching split exercise metadata for day plan creation:', splitError);
+        throw new Error('Could not load the program exercises. Try again.');
       } else {
         splitExerciseRows = (splitExercises || []) as typeof splitExerciseRows;
       }
@@ -2744,6 +2913,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
+    if (!isCurrentAccount()) throw new Error('The signed-in account changed.');
     const { data: createdPlan, error: createError } = await supabase
       .from('workout_day_plans')
       .insert({
@@ -2756,7 +2926,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (createError || !createdPlan) {
       if (createError) console.error('Error creating workout day plan:', createError);
-      return null;
+      throw new Error('Could not create the workout plan. Try again.');
     }
 
     return toDayPlan(createdPlan);
@@ -2764,8 +2934,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Pass the plan the caller just loaded to skip reading it again.
   updateWorkoutDayPlanItems: writesWorkout(async (workoutId, items, preloadedPlan) => {
+    const isCurrentAccount = captureAccountScope();
     const existingPlan = preloadedPlan ?? await get().ensureWorkoutDayPlan(workoutId);
-    if (!existingPlan) return null;
+    if (!existingPlan || !isCurrentAccount()) throw new Error('Could not load the workout plan. Try again.');
 
     const normalizedItems = normalizeWorkoutPlanItems(items);
 
@@ -2778,13 +2949,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error || !updatedPlan) {
       if (error) console.error('Error updating workout day plan items:', error);
-      return null;
+      throw new Error('Could not save the workout plan. Try again.');
     }
 
     const nextPlan = toDayPlan(updatedPlan);
 
     const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
+    if (isCurrentAccount() && currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
       set({ currentWorkoutDayPlan: nextPlan });
     }
 
@@ -2792,6 +2963,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   addSupersetToWorkout: writesWorkout(async (workoutId, baseExerciseId, partner) => {
+    const isAccountCurrent = captureAccountScope();
     const plan = await get().ensureWorkoutDayPlan(workoutId);
     if (!plan) return;
 
@@ -2835,7 +3007,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (existingError) {
       console.error('Error checking partner exercise sets:', existingError);
-      return;
+      throw new Error('Could not load the superset sets. Try again.');
     }
 
     if ((existingSets || []).length > 0) return;
@@ -2855,11 +3027,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (createSetsError) {
       console.error('Error creating partner exercise sets for superset:', createSetsError);
-      return;
+      throw new Error('Could not add the superset sets. Try again.');
     }
 
     const { currentWorkout } = get();
-    if (currentWorkout?.id === workoutId && createdSets) {
+    if (isAccountCurrent() && currentWorkout?.id === workoutId && createdSets) {
       set({
         currentWorkout: {
           ...currentWorkout,
@@ -2870,8 +3042,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   clearWorkoutSuperset: writesWorkout(async (workoutId, exerciseId) => {
-    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId);
-    if (!plan) return;
+    const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId, { throwOnError: true });
+    if (!plan) throw new Error('Could not load the workout plan. Try again.');
 
     const target = plan.items.find((item) => item.exercise_id === exerciseId);
     if (!target?.superset_group_id) return;
@@ -2923,7 +3095,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (existingError) {
         console.error('Error fetching sets while updating target sets:', existingError);
-        continue;
+        throw new Error('Could not load the workout sets. Try again.');
       }
 
       const { insertNumbers, deleteIds } = planSetCountChange(existingSets || [], desiredSets);
@@ -2936,6 +3108,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { error: insertError } = await insertPlaceholderSets(workoutId, additions);
     if (insertError) {
       console.error('Error adding sets to match target sets:', insertError);
+      throw new Error('Could not add the workout sets. Try again.');
     }
 
     if (removedIds.length > 0) {
@@ -2948,11 +3121,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (deleteError) {
         console.error('Error removing sets to match target sets:', deleteError);
+        throw new Error('Could not remove the workout sets. Try again.');
       }
     }
   }),
 
   reorderWorkoutExercises: writesWorkout(async (workoutId, exerciseIds) => {
+    const isAccountCurrent = captureAccountScope();
     const currentPlan = get().currentWorkoutDayPlan;
     const plan = currentPlan?.workout_id === workoutId
       ? currentPlan
@@ -2982,7 +3157,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Do not replace a different session (or newer plan edit) after a slow save.
     const latest = get();
-    if (latest.currentWorkout?.id === workoutId && latest.currentWorkoutDayPlan === planAtSave && (!planAtSave || planAtSave.id === plan.id)) {
+    if (isAccountCurrent() && latest.currentWorkout?.id === workoutId && latest.currentWorkoutDayPlan === planAtSave && (!planAtSave || planAtSave.id === plan.id)) {
       set({ currentWorkoutDayPlan: {
         ...plan,
         items: normalizeFlexiblePlanItems(updatedPlan.items),
@@ -2991,8 +3166,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   fetchMacroTarget: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     // maybeSingle, not single — a user with no targets yet is the normal case,
     // not an error.
@@ -3005,14 +3181,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A successful read with no row clears a target left over from a previous
     // account. A failed read keeps what is shown, so a flaky connection never
     // blanks the targets.
-    if (!error) {
+    if (!error && isAccountCurrent()) {
       set({ macroTarget: data ?? null });
     }
   },
 
   updateMacroTarget: async (target) => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     const { data, error } = await supabase
       .from('macro_targets')
@@ -3030,25 +3207,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw error;
     }
 
-    if (data) {
+    if (data && isAccountCurrent()) {
       set({ macroTarget: data });
     }
   },
 
   fetchNutritionProfile: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     try {
-      set({ nutritionProfile: await getNutritionProfile(userId) });
+      const profile = await getNutritionProfile(userId);
+      if (isAccountCurrent()) set({ nutritionProfile: profile });
     } catch {
       // A missing table on an un-migrated client should not break the app.
     }
   },
 
   updateNutritionProfile: async (input) => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     // Changing goal or rate starts a new phase; the expenditure estimator uses
     // that date to skip the glycogen/water transient that follows.
@@ -3057,17 +3237,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? { ...input, phase_started_on: todayIsoDate() }
       : input;
 
-    set({ nutritionProfile: await saveNutritionProfile(userId, payload) });
+    const profile = await saveNutritionProfile(userId, payload);
+    if (isAccountCurrent()) set({ nutritionProfile: profile });
   },
 
   refreshAdaptiveTargets: (options) => {
-    const inFlight = adaptiveRefreshInFlight;
+    const isAccountCurrent = captureAccountScope();
+    const owner = get().nutritionProfile?.user_id;
+    if (!owner) return Promise.resolve('skipped');
+    const inFlight = adaptiveRefreshFlights.get(owner);
     if (inFlight && !options?.force) return inFlight;
 
     const run = (async (): Promise<AdaptiveRefreshStatus> => {
       // A forced run (Settings "Resume") must compute fresh, so it waits for
       // the one in flight rather than reusing its result.
       if (inFlight) await inFlight;
+      if (!isAccountCurrent()) return 'skipped';
 
       try {
         // Local gates first: most calls stop here without an auth lookup.
@@ -3076,11 +3261,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (!options?.force && !shouldRefreshExpenditure(profile.expenditure_updated_at)) return 'skipped';
 
         const userId = await getSessionUserId();
-        if (!userId) return 'skipped';
+        if (!userId || !isAccountCurrent() || profile.user_id !== userId) return 'skipped';
         const targetAtStart = get().macroTarget;
+        if (targetAtStart && targetAtStart.user_id !== userId) return 'skipped';
 
         const latest = await getLatestBodyWeight(userId);
-        if (!latest) return 'skipped';
+        if (!latest || !isAccountCurrent()) return 'skipped';
         const weightKg = Number(latest.kilograms);
         if (!Number.isFinite(weightKg) || weightKg <= 0) return 'skipped';
 
@@ -3111,7 +3297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // The user changed their goal or saved a target while this ran: the
         // result is for inputs they replaced. Write nothing; the unchanged
         // stamp lets the next Today visit recompute from the new inputs.
-        if (!sameAdaptiveInputs(get().nutritionProfile, profile)) return 'skipped';
+        if (!isAccountCurrent() || !sameAdaptiveInputs(get().nutritionProfile, profile)) return 'skipped';
         if (!sameMacroTarget(get().macroTarget, targetAtStart)) return 'skipped';
 
         // A target the user typed by hand is theirs. Never overwrite it. This is
@@ -3128,16 +3314,17 @@ export const useAppStore = create<AppState>((set, get) => ({
             protein: next.protein,
             carbs: next.carbs,
             fat: next.fat,
-          });
+          }, isAccountCurrent);
           // A target the user saved while the write was in flight already won
           // in the database; keep showing theirs instead of this stale echo.
+          if (!isAccountCurrent()) return 'skipped';
           if (savedTarget && sameMacroTarget(get().macroTarget, targetAtStart)) {
             set({ macroTarget: savedTarget });
           }
           retargeted = !!savedTarget;
         }
 
-        if (!sameAdaptiveInputs(get().nutritionProfile, profile)) return retargeted ? 'updated' : 'skipped';
+        if (!isAccountCurrent() || !sameAdaptiveInputs(get().nutritionProfile, profile)) return retargeted ? 'updated' : 'skipped';
 
         // Stamp the profile only after the target write, so a failed target
         // write is retried on the next visit instead of a week later. Only the
@@ -3148,7 +3335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           expenditure_updated_at: now.toISOString(),
         });
         // A profile edit that landed during the write already set its own row.
-        if (sameAdaptiveInputs(get().nutritionProfile, profile)) set({ nutritionProfile: saved });
+        if (isAccountCurrent() && sameAdaptiveInputs(get().nutritionProfile, profile)) set({ nutritionProfile: saved });
 
         return retargeted ? 'updated' : 'unchanged';
       } catch (error) {
@@ -3159,30 +3346,32 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     })();
 
-    adaptiveRefreshInFlight = run;
+    adaptiveRefreshFlights.set(owner, run);
     void run.finally(() => {
-      if (adaptiveRefreshInFlight === run) adaptiveRefreshInFlight = null;
+      if (adaptiveRefreshFlights.get(owner) === run) adaptiveRefreshFlights.delete(owner);
     });
     return run;
   },
 
   fetchVolumeLandmarks: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     const { data } = await supabase
       .from('volume_landmarks')
       .select('*')
       .eq('user_id', userId);
 
-    if (data) {
+    if (data && isAccountCurrent()) {
       set({ volumeLandmarks: data });
     }
   },
 
   calculateWeeklyVolume: async () => {
+    const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId) return;
+    if (!userId || !isAccountCurrent()) return;
 
     const { weekStart, weekEnd } = trainingWeekRange(new Date());
 
@@ -3212,7 +3401,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ).catch(() => ({ data: null })),
     ]);
 
-    if (!workouts) return;
+    if (!workouts || !isAccountCurrent()) return;
 
     // If the landmarks query failed, keep grading against the stored list.
     const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
@@ -3227,6 +3416,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 // A read still running for the old account must not land afterwards, and
 // screens show a spinner again until the new account's data has loaded.
 export function resetAppData() {
+  invalidateAccountScope();
+  adaptiveRefreshFlights.clear();
   workoutMutationSeq += 1;
   splitsFlight.invalidate();
   workoutModeFlight.invalidate();

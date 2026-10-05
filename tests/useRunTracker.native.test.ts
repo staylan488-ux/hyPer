@@ -43,7 +43,7 @@ const hooks = vi.hoisted(() => {
   };
 });
 
-type SourceCall = [string, boolean, NativeRunCursors | undefined, ((cursors: NativeRunCursors) => void) | undefined];
+type SourceCall = [string, boolean, NativeRunCursors | undefined, ((cursors: NativeRunCursors) => void) | undefined, ((controls: NativeRunControl[]) => number) | undefined];
 
 const native = vi.hoisted(() => {
   const sources: Array<{
@@ -133,6 +133,35 @@ afterEach(() => {
 });
 
 describe('useRunTracker native resume wiring', () => {
+  it('checkpoints represented legacy controls before replaying later controls', () => {
+    const run = mount();
+    run.first.start('free', null);
+    const live = native.sources[0];
+    for (let seq = 1; seq <= 12; seq++) live.onSample!(sample(seq));
+    live.onControl!({ sequence: 1, timestampMs: T0 + 12_500, action: 'rest' });
+    live.onControl!({ sequence: 2, timestampMs: T0 + 14_500, action: 'rest' });
+    hooks.unmount();
+    const raw = JSON.parse(storage.getItem(RUN_TRACKER_STORAGE_KEY)!);
+    delete raw.state.nativeSampleSeq;
+    delete raw.state.nativeControlSeq;
+    raw.savedAtMs = T0 + 20_000;
+    storage.setItem(RUN_TRACKER_STORAGE_KEY, JSON.stringify(raw));
+
+    const back = mount();
+    back.first.resume();
+    const recover = (native.sources[1].args as SourceCall)[4]!;
+    expect(recover([
+      { sequence: 1, timestampMs: T0 + 12_500, action: 'rest' },
+      { sequence: 2, timestampMs: T0 + 14_500, action: 'rest' },
+      { sequence: 3, timestampMs: T0 + 21_000, action: 'rest' },
+    ])).toBe(2);
+    expect(back.render().state).toMatchObject({ nativeControlSeq: 2, totalPausedMs: 2000 });
+    // The real source filters the represented prefix and delivers the later
+    // control. The hook retains that pause and its new exact sequence.
+    native.sources[1].onControl!({ sequence: 3, timestampMs: T0 + 21_000, action: 'rest' });
+    expect(back.render().state).toMatchObject({ nativeControlSeq: 3, pausedAtMs: T0 + 21_000, totalPausedMs: 2000 });
+  });
+
   it('resumes after a tab switch from the cursors of the snapshot flushed on unmount', () => {
     const run = mount();
     run.first.start('free', null);

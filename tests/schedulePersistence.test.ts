@@ -3,7 +3,7 @@ import type { SplitDay } from '@/types';
 
 const database = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  type Result = { data: Row[] | null; error: Error | null };
+  type Result = { data: Row[] | null; error: { message: string; code?: string } | null };
   const state = {
     tables: {} as Record<string, Row[]>,
     failure: null as Error | null,
@@ -19,9 +19,12 @@ const database = vi.hoisted(() => {
     private orders: string[] = [];
     private first = 0;
     private last = Infinity;
+    private mutation: { mode: 'insert' | 'update'; row: Row } | null = null;
 
     constructor(private table: string) {}
     select() { return this; }
+    insert(row: Row) { this.mutation = { mode: 'insert', row }; return this; }
+    update(row: Row) { this.mutation = { mode: 'update', row }; return this; }
     eq(field: string, value: unknown) { this.filters.push((row) => row[field] === value); return this; }
     gte(field: string, value: string) { this.filters.push((row) => String(row[field]) >= value); return this; }
     in(field: string, values: unknown[]) { this.filters.push((row) => values.includes(row[field])); return this; }
@@ -45,6 +48,24 @@ const database = vi.hoisted(() => {
       return { data: rows.slice(this.first, this.last + 1), error: null };
     }
     async maybeSingle() {
+      if (this.mutation) {
+        state.upserts++;
+        const failure = state.upsertFailures.shift();
+        if (state.upsertGate) await state.upsertGate;
+        if (failure) return { data: null, error: failure };
+        const { mode, row } = this.mutation;
+        const rows = state.tables[this.table] ?? [];
+        if (mode === 'insert') {
+          if (rows.some((old) => old.user_id === row.user_id && old.split_id === row.split_id)) {
+            return { data: null, error: { message: 'duplicate', code: '23505' } };
+          }
+          state.tables[this.table] = [...rows, structuredClone(row)];
+          return { data: row, error: null };
+        }
+        const matching = rows.filter((old) => this.filters.every((filter) => filter(old)));
+        for (const old of matching) Object.assign(old, structuredClone(row));
+        return { data: matching[0] ?? null, error: null };
+      }
       const result = this.result();
       return { ...result, data: result.data?.[0] ?? null };
     }
@@ -103,6 +124,7 @@ function session(id: string, date: string, day: string | null, userId = 'user') 
 describe('schedule persistence and completion loading', () => {
   beforeEach(() => {
     database.state.tables = {};
+    database.state.failure = null;
     database.state.failure = null;
     database.state.failAtOffset = 0;
     database.state.ranges = [];
@@ -369,5 +391,56 @@ describe('plan schedule cloud save retry', () => {
     expect(loadPlanSchedule('user', 'split')).toBeNull();
     expect(await loadPlanScheduleAsync('user', 'split')).toMatchObject({ splitId: 'split', startDate: '2026-08-31' });
     expect(await loadPlanScheduleAsync('user', 'other-split')).toBeNull();
+  });
+
+  it('does not retry a pending write after a failed cloud read', async () => {
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    database.state.failure = new Error('read unavailable');
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    await flush();
+    expect(database.state.upserts).toBe(1);
+    expect(rawCache().pendingSync).toBe(true);
+    database.state.failure = null;
+  });
+
+  it.each([false, true])('preserves a cloud edit that lands after the retry read (existing row: %s)', async (exists) => {
+    const oldRow = {
+      user_id: 'user', split_id: 'split', start_date: '2026-08-31', mode: 'fixed',
+      weekdays: [1, 2, 4, 5], anchor_day: 1, updated_at: '2026-08-30T08:00:00.000Z',
+    };
+    if (exists) database.state.tables.plan_schedules = [oldRow];
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    let release!: () => void;
+    database.state.upsertGate = new Promise<void>((resolve) => { release = resolve; });
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    const newer = { ...oldRow, start_date: '2026-09-07', updated_at: '2026-09-02T08:00:00.000Z' };
+    database.state.tables.plan_schedules = [newer];
+    release();
+    await flush();
+    expect(database.state.tables.plan_schedules).toEqual([newer]);
+    expect(rawCache().pendingSync).toBe(true);
+    database.state.upsertGate = null;
+    const notify = vi.fn();
+    await loadWithBackgroundSync('user', 'split', notify).done;
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-09-07' }));
+    expect(rawCache().pendingSync).toBeUndefined();
+  });
+
+  it('serializes a pending retry before a newer local edit', async () => {
+    database.state.upsertFailures = [{ message: 'offline' }];
+    savePlanSchedule('user', schedule);
+    await flush();
+    let release!: () => void;
+    database.state.upsertGate = new Promise<void>((resolve) => { release = resolve; });
+    await loadWithBackgroundSync('user', 'split', vi.fn()).done;
+    const edited = savePlanSchedule('user', { ...schedule, weekdays: [2, 4, 6] });
+    release();
+    await flush();
+    expect(database.state.tables.plan_schedules[0]).toMatchObject({ weekdays: [2, 4, 6], updated_at: edited.updatedAt });
+    expect(rawCache()).toEqual(edited);
   });
 });

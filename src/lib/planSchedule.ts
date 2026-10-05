@@ -149,7 +149,9 @@ function rowToSchedule(row: {
   });
 }
 
-async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule | null> {
+type ScheduleRead = { ok: true; schedule: PlanSchedule | null } | { ok: false };
+
+async function loadFromDB(userId: string, splitId: string): Promise<ScheduleRead> {
   try {
     const { data, error } = await supabase
       .from('plan_schedules')
@@ -158,10 +160,12 @@ async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule
       .eq('split_id', splitId)
       .maybeSingle();
 
-    if (error || !data) return null;
-    return rowToSchedule(data);
+    if (error) return { ok: false };
+    if (!data) return { ok: true, schedule: null };
+    const schedule = rowToSchedule(data);
+    return schedule ? { ok: true, schedule } : { ok: false };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 
@@ -169,23 +173,54 @@ async function loadFromDB(userId: string, splitId: string): Promise<PlanSchedule
 type SaveOutcome = 'saved' | 'failed' | 'rejected';
 const PERMANENT_SAVE_ERRORS = new Set(['23503', '23514']);
 
-async function saveToDB(userId: string, schedule: PlanSchedule): Promise<SaveOutcome> {
+// A delayed retry must finish before a newer local edit writes. Different
+// devices are protected separately by the conditional update/insert below.
+const scheduleWrites = new Map<string, Promise<SaveOutcome>>();
+
+function saveToDB(userId: string, schedule: PlanSchedule, observed?: PlanSchedule | null): Promise<SaveOutcome> {
+  const key = keyFor(userId, schedule.splitId);
+  const previous = scheduleWrites.get(key);
+  const write = () => {
+    if (loadLocalCache(userId, schedule.splitId)?.updatedAt !== schedule.updatedAt) {
+      return Promise.resolve<SaveOutcome>('failed');
+    }
+    return writeToDB(userId, schedule, observed);
+  };
+  const pending = previous ? previous.then(write) : write();
+  scheduleWrites.set(key, pending);
+  void pending.then(() => {
+    if (scheduleWrites.get(key) === pending) scheduleWrites.delete(key);
+  });
+  return pending;
+}
+
+async function writeToDB(userId: string, schedule: PlanSchedule, observed?: PlanSchedule | null): Promise<SaveOutcome> {
   try {
-    const { error } = await supabase
-      .from('plan_schedules')
-      .upsert({
-        user_id: userId,
-        split_id: schedule.splitId,
-        start_date: schedule.startDate,
-        mode: schedule.mode,
-        weekdays: schedule.mode === 'flex' && schedule.flexAnchorIndex !== undefined
-          ? [schedule.flexAnchorIndex] : schedule.weekdays,
-        anchor_day: schedule.mode === 'flex' && schedule.flexAnchorIndex !== undefined
-          ? null : schedule.anchorDay ?? null,
-        updated_at: schedule.updatedAt ?? new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,split_id',
-      });
+    const row = {
+      user_id: userId,
+      split_id: schedule.splitId,
+      start_date: schedule.startDate,
+      mode: schedule.mode,
+      weekdays: schedule.mode === 'flex' && schedule.flexAnchorIndex !== undefined
+        ? [schedule.flexAnchorIndex] : schedule.weekdays,
+      anchor_day: schedule.mode === 'flex' && schedule.flexAnchorIndex !== undefined
+        ? null : schedule.anchorDay ?? null,
+      updated_at: schedule.updatedAt ?? new Date().toISOString(),
+    };
+    let result;
+    if (observed === undefined) {
+      result = await supabase.from('plan_schedules').upsert(row, { onConflict: 'user_id,split_id' });
+    } else if (observed === null) {
+      // A concurrent insert wins; a retry must never turn into an overwrite.
+      result = await supabase.from('plan_schedules').insert(row).select('updated_at').maybeSingle();
+    } else {
+      if (!observed.updatedAt) return 'failed';
+      result = await supabase.from('plan_schedules').update(row)
+        .eq('user_id', userId).eq('split_id', schedule.splitId)
+        .eq('updated_at', observed.updatedAt).select('updated_at').maybeSingle();
+    }
+    const { error } = result;
+    if (!error && observed !== undefined && !result.data) return 'failed';
     if (!error) return 'saved';
     if (PERMANENT_SAVE_ERRORS.has((error as { code?: string }).code ?? '')) {
       if (import.meta.env.DEV) console.warn('Plan schedule cannot be saved to the cloud', error);
@@ -216,7 +251,11 @@ export async function loadPlanScheduleAsync(userId: string, splitId: string): Pr
   const cached = loadLocalCache(userId, splitId);
   if (cached) return cached;
 
-  const remote = await loadFromDB(userId, splitId);
+  const result = await loadFromDB(userId, splitId);
+  // A local edit created while the cache-miss read ran owns the cache now.
+  const editedWhileLoading = loadLocalCache(userId, splitId);
+  if (editedWhileLoading) return editedWhileLoading;
+  const remote = result.ok ? result.schedule : null;
   if (remote) {
     saveLocalCache(userId, remote);
   }
@@ -228,10 +267,13 @@ export async function loadPlanScheduleAsync(userId: string, splitId: string): Pr
  * cloud save is flagged locally and retried by the next loadWithBackgroundSync.
  */
 export function savePlanSchedule(userId: string, schedule: PlanSchedule): PlanSchedule {
-  const stamped = { ...schedule, updatedAt: new Date().toISOString() };
-  saveLocalCache(userId, stamped);
+  const previousTime = Date.parse(loadLocalCache(userId, schedule.splitId)?.updatedAt ?? '');
+  const timestamp = Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0);
+  const stamped = { ...schedule, updatedAt: new Date(timestamp).toISOString() };
+  // Persist the retry intent before launching a request, including app exits.
+  saveLocalCache(userId, stamped, true);
   void saveToDB(userId, stamped).then((outcome) => {
-    if (outcome === 'failed') setPendingSync(userId, stamped, true);
+    if (outcome !== 'failed') setPendingSync(userId, stamped, false);
   });
   return stamped;
 }
@@ -256,20 +298,21 @@ export function loadWithBackgroundSync(
   const cached = loadLocalCache(userId, splitId);
   let cancelled = false;
 
-  const done = loadFromDB(userId, splitId).then((remote) => {
-    if (cancelled) return;
+  const done = loadFromDB(userId, splitId).then((result) => {
+    if (cancelled || !result.ok) return;
+    const remote = result.schedule;
 
     // A schedule may have been edited while this request was in flight.
     const current = loadLocalEntry(userId, splitId);
     const currentCache = current?.schedule ?? null;
 
     // Re-send a schedule whose earlier cloud save failed, keeping its original
-    // updatedAt, unless the cloud already holds a strictly newer copy. A null
-    // remote may also be a read error; the retry then fails and stays pending.
+    // updatedAt, unless the cloud already holds a strictly newer copy. A failed
+    // read never authorizes a write; a successful read supplies a CAS version.
     // The retry never changes what is shown, so done does not wait for it.
     if (current?.pendingSync && (!remote || timeOf(current.schedule) >= timeOf(remote))) {
       const pending = current.schedule;
-      void saveToDB(userId, pending).then((outcome) => {
+      void saveToDB(userId, pending, remote).then((outcome) => {
         if (outcome !== 'failed') setPendingSync(userId, pending, false);
       });
       return;

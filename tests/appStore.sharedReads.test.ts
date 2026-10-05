@@ -31,7 +31,7 @@ const backend = vi.hoisted(() => {
     calls,
     client: {
       from,
-      auth: { getSession: async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null }) },
+      auth: { getSession: vi.fn(async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null })) },
     },
   };
 });
@@ -69,6 +69,7 @@ const openSet: WorkoutSet = {
   id: 'set-1', workout_id: 'workout-1', exercise_id: 'exercise-1', set_number: 1,
   weight: null, reps: null, rpe: null, completed: false, completed_at: null,
 };
+const livePlan = { id: 'plan-1', workout_id: 'workout-1', day_label: 'Arms', items: [] };
 
 function workoutWith(set: WorkoutSet): Workout {
   return {
@@ -78,6 +79,7 @@ function workoutWith(set: WorkoutSet): Workout {
 }
 
 beforeEach(() => {
+  backend.client.auth.getSession.mockReset().mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
   backend.queues.clear();
   backend.calls.length = 0;
   resetAppData();
@@ -85,6 +87,45 @@ beforeEach(() => {
 });
 
 describe('shared store reads', () => {
+  it('does not save a captured workout template into the account returned after a reset', async () => {
+    useAppStore.setState({
+      currentWorkout: workoutWith(openSet),
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Arms', items: [] },
+    });
+    let release!: (result: Awaited<ReturnType<typeof backend.client.auth.getSession>>) => void;
+    backend.client.auth.getSession.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+    const save = useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout();
+    resetAppData();
+    release({ data: { session: { user: { id: 'user-2' } } }, error: null });
+    await save;
+    expect(backend.calls).toEqual([]);
+  });
+
+  it('ignores an old set-write echo after the same account signs back in', async () => {
+    useAppStore.setState({ currentWorkout: workoutWith(openSet) });
+    const release = hold('sets');
+    const save = useAppStore.getState().updateSet(openSet.id, { weight: 50 });
+    await flush();
+    resetAppData();
+    useAppStore.setState({ currentWorkout: workoutWith({ ...openSet, weight: 100 }) });
+    release({ data: null, error: null });
+    await save;
+    expect(useAppStore.getState().currentWorkout?.sets[0].weight).toBe(100);
+  });
+
+  it.each(['fetchSplits', 'fetchWorkoutMode', 'fetchFlexTemplates'] as const)(
+    'invalidates %s even when reset happens before its session lookup resolves', async (action) => {
+      let release!: (result: Awaited<ReturnType<typeof backend.client.auth.getSession>>) => void;
+      backend.client.auth.getSession.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+      const stale = useAppStore.getState()[action]();
+      resetAppData();
+      release({ data: { session: { user: { id: 'user-1' } } }, error: null });
+      await stale;
+      expect(backend.calls).toEqual([]);
+      expect(useAppStore.getState().hydratedForUserId).toBeNull();
+    },
+  );
+
   it('makes one splits request for concurrent callers', async () => {
     answer('splits', { data: [split('Upper Lower')], error: null });
 
@@ -127,7 +168,8 @@ describe('shared store reads', () => {
 
   it('makes one live workout and one day plan request for concurrent callers', async () => {
     answer('workouts', { data: workoutWith(openSet), error: null });
-    answer('workout_day_plans', { data: null, error: null });
+    answer('workout_day_plans', { data: livePlan, error: null });
+    answer('workout_day_plans', { data: livePlan, error: null });
 
     await Promise.all([
       useAppStore.getState().fetchCurrentWorkout(),
@@ -154,6 +196,7 @@ describe('shared store reads', () => {
     await useAppStore.getState().logSet('exercise-1', 1, 100, 8, 8);
 
     answer('workouts', { data: workoutWith(logged), error: null });
+    answer('workout_day_plans', { data: livePlan, error: null });
     await useAppStore.getState().fetchCurrentWorkout();
     releaseOld({ data: workoutWith(openSet), error: null });
     await oldRead;

@@ -1,4 +1,16 @@
-# Current work snapshot — optimization pass
+# Current work snapshot — optimization second-review fixes
+
+Recorded 2026-10-04 (Pacific). The owner requested a thorough review of the six optimization commits after `de2cd14`, then explicitly requested implementation of all thirteen recommendations. Implementation began on `opt/batch-c2-pr` at `e0a7ce0`. The owner subsequently authorized a PR and merge; the changeset is prepared on `fix/optimization-recovery` against `main` at `5da071d`, retaining the newer sheet-layer and zero-value set fixes. Deployment, release, and production-data writes remain outside this request.
+
+The [second review and implementation record](../audits/2026-10-04-optimization-second-review.md#implementation-follow-up) maps R1–R13 to the changes and regression tests. Fixes cover WHOOP retry progress, native GPS/control ordering and legacy recovery, account isolation, schedule retry conflicts, workout note lifetimes, honest History failures, flexible start/restore recovery, response-body deadlines, nutrition month callbacks, retained Gemini drafts, and focused numeric program edits.
+
+Validation after integration with current main: all 1,646 tests across 134 files passed in one full run, plus lint/test typechecking, web build/Capacitor sync, and the iOS simulator build. Fixture browser checks at 390×844 covered Ivory/Black, focused numeric Save/Cancel, and declining AI-draft replacement. Required runtime variables were present. No tracked generated iOS files changed.
+
+Physical-device run/background/Live Activity behavior and production persistence remain unverified. Legacy snapshots with mixed in-app/native pauses cannot be reconstructed with certainty; migration uses a conservative accounted-prefix rule. Multi-statement workout mutations remain non-atomic but report failure and retain retry paths. See the implementation record for limits and prior deployment follow-ups.
+
+The pre-existing untracked `.claude/launch.json` and `supabase/.temp/linked-project.json` were preserved and excluded from this changeset. The audit, implementation helpers, and new regression tests belong to this changeset.
+
+# Previous work snapshot — optimization pass
 
 Recorded 2026-09-26 (Pacific). The owner asked for a thorough optimization review that loses no quality or feature usability. The read-only multi-agent review is recorded in [the optimization review](../audits/2026-09-26-optimization-review.md): 98 confirmed findings, each with a safety guard.
 

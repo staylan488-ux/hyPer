@@ -37,8 +37,7 @@ export interface WhoopSyncPorts {
     createSession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
     updateSession: (sessionId: string, patch: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
     deleteSession: (sessionId: string) => Promise<void>;
-    // false = the link write failed (logged by the port); the item is left out
-    // of the result counts and the next sync repairs it
+    // false = the link write failed; reconciliation must remain pending.
     linkSegmentsToSession: (segmentIds: string[], sessionId: string) => Promise<boolean | void>;
   };
   now?: () => Date;
@@ -64,6 +63,13 @@ export const SYNC_APPLY_CONCURRENCY = 4;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export function whoopFetchStart(now: Date, sinceIso?: string | null): string {
+  const sinceMs = sinceIso ? Date.parse(sinceIso) : NaN;
+  return new Date(Number.isNaN(sinceMs)
+    ? now.getTime() - SYNC_DEFAULT_LOOKBACK_DAYS * DAY_MS
+    : sinceMs - SYNC_OVERLAP_DAYS * DAY_MS).toISOString();
+}
+
 // Runs fn over items with at most `limit` in flight. After a failure no new
 // item starts, and the rejection is raised only once in-flight items settle,
 // so nothing keeps writing after the sync has reported failure.
@@ -88,15 +94,13 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 
 export async function runWhoopSync(
   ports: WhoopSyncPorts,
-  opts: { sinceIso?: string | null } = {},
+  opts: { sinceIso?: string | null; reconcileFromIso?: string } = {},
 ): Promise<WhoopSyncResult> {
   const now = ports.now ? ports.now() : new Date();
-  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : NaN;
-  const fetchStartMs = Number.isNaN(sinceMs)
-    ? now.getTime() - SYNC_DEFAULT_LOOKBACK_DAYS * DAY_MS
-    : sinceMs - SYNC_OVERLAP_DAYS * DAY_MS;
-  const fetchStart = new Date(fetchStartMs).toISOString();
+  const fetchStart = whoopFetchStart(now, opts.sinceIso);
   const fetchEnd = now.toISOString();
+  const reconcileStart = opts.reconcileFromIso && Date.parse(opts.reconcileFromIso) < Date.parse(fetchStart)
+    ? opts.reconcileFromIso : fetchStart;
 
   // 1) pull raw records (paginated)
   const records: WhoopWorkoutRecord[] = [];
@@ -107,6 +111,9 @@ export async function runWhoopSync(
     nextToken = batch.nextToken;
     if (!nextToken) break;
   }
+  // An incomplete remote window must not advance the segment watermark and
+  // silently strand the pages we did not fetch.
+  if (nextToken) throw new Error('WHOOP returned more pages than this sync can safely import.');
 
   // 2) idempotent segment upsert
   if (records.length > 0) {
@@ -115,8 +122,8 @@ export async function runWhoopSync(
 
   // 3) read back the reconciliation window and build the grouping plan
   const [segments, windowSessions] = await Promise.all([
-    ports.data.fetchWhoopSegmentsInWindow(fetchStart, fetchEnd),
-    ports.data.fetchSessionsInWindow(fetchStart, fetchEnd),
+    ports.data.fetchWhoopSegmentsInWindow(reconcileStart, fetchEnd),
+    ports.data.fetchSessionsInWindow(reconcileStart, fetchEnd),
   ]);
 
   // A host session that started BEFORE the window can still own segments inside
@@ -144,18 +151,26 @@ export async function runWhoopSync(
   // actually landed, not from the plan.
   const created = await mapLimit(plan.creates, SYNC_APPLY_CONCURRENCY, async (create) => {
     const session = await ports.data.createSession(create.session);
-    if (!session) return false;
+    if (!session) throw new Error('WHOOP activity creation failed. The unfinished import will be retried.');
     if (create.segmentIds.length === 0) return true;
-    return (await ports.data.linkSegmentsToSession(create.segmentIds, session.id)) !== false;
+    if (await ports.data.linkSegmentsToSession(create.segmentIds, session.id) === false) {
+      throw new Error('WHOOP activity linking failed. The unfinished import will be retried.');
+    }
+    return true;
   });
   const updated = await mapLimit(plan.updates, SYNC_APPLY_CONCURRENCY, async (update) => {
     const session = await ports.data.updateSession(update.sessionId, update.patch);
+    if (!session) throw new Error('WHOOP activity update failed. The unfinished import will be retried.');
     const linked = update.segmentIds.length === 0
       || (await ports.data.linkSegmentsToSession(update.segmentIds, update.sessionId)) !== false;
-    return session != null && linked;
+    if (!linked) throw new Error('WHOOP activity linking failed. The unfinished import will be retried.');
+    return true;
   });
-  await mapLimit(plan.relinks, SYNC_APPLY_CONCURRENCY, (relink) =>
-    ports.data.linkSegmentsToSession(relink.segmentIds, relink.sessionId));
+  await mapLimit(plan.relinks, SYNC_APPLY_CONCURRENCY, async (relink) => {
+    if (await ports.data.linkSegmentsToSession(relink.segmentIds, relink.sessionId) === false) {
+      throw new Error('WHOOP activity linking failed. The unfinished import will be retried.');
+    }
+  });
   // Nothing ever deletes activity_segments, so an empty segment window beside
   // auto-grouped WHOOP sessions can only mean a failed or empty read, never a
   // real WHOOP change. Deleting on that evidence would drop real activities.

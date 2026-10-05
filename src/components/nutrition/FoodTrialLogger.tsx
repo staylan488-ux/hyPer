@@ -6,6 +6,11 @@ import { analyzeFoodTrial, trialFoodTotals, type FoodTrialResult, type TrialFood
 import { buildClarifiedMealHint, isValidTrialReview } from './foodTrialReview';
 import type { PhotoAnalysisImage } from '@/lib/photoAnalysis';
 
+export interface FoodTrialDraftState {
+  hasDraft: boolean;
+  busy: boolean;
+}
+
 interface FoodTrialLoggerProps {
   whenRow: ReactNode;
   prepareImage: (file: File) => Promise<{ imageBase64: string; mimeType: string }>;
@@ -14,12 +19,13 @@ interface FoodTrialLoggerProps {
   editingEntry?: boolean;
   addingIngredients?: boolean;
   onAnalysisBusyChange?: (busy: boolean) => void;
+  onDraftStateChange?: (state: FoodTrialDraftState) => void;
 }
 
 const MACROS = ['calories', 'protein', 'carbs', 'fat'] as const;
 const formatAmount = (value: number) => Math.round(value * 10) / 10;
 
-export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '', editingEntry = false, addingIngredients = false, onAnalysisBusyChange }: FoodTrialLoggerProps) {
+export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '', editingEntry = false, addingIngredients = false, onAnalysisBusyChange, onDraftStateChange }: FoodTrialLoggerProps) {
   const [hint, setHint] = useState(initialHint);
   const [answer, setAnswer] = useState('');
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
@@ -42,6 +48,11 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     onAnalysisBusyChange?.(analyzing);
     return () => onAnalysisBusyChange?.(false);
   }, [analyzing, onAnalysisBusyChange]);
+  const hasDraft = !!hint.trim() || photos.length > 0 || result !== null;
+  useEffect(() => {
+    onDraftStateChange?.({ hasDraft, busy: busy !== null });
+  }, [hasDraft, busy, onDraftStateChange]);
+  useEffect(() => () => onDraftStateChange?.({ hasDraft: false, busy: false }), [onDraftStateChange]);
 
   const update = (index: number, patch: Partial<TrialFoodItem>) => {
     setItems((current) => current.map((item, position) => position === index ? { ...item, ...patch } : item));

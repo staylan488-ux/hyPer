@@ -13,6 +13,7 @@ import { springs } from '@/lib/animations';
 import { useLitSurface } from '@/hooks/useLitSurface';
 import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
 
 export function Splits() {
@@ -755,12 +756,7 @@ export function Splits() {
       <Modal
         isOpen={showEditor}
         onClose={() => {
-          const { isDirty, cancelEdit } = useSplitEditStore.getState();
-          if (isDirty) {
-            if (!window.confirm('You have unsaved changes. Discard them?')) return;
-          }
-          cancelEdit();
-          setShowEditor(false);
+          if (discardSplitEdit()) setShowEditor(false);
         }}
         title="Edit program"
       >
