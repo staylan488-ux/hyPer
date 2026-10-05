@@ -120,7 +120,7 @@ struct RestDockView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 9) {
                             Text(clock(left))
-                                .font(Font(HyperFonts.display(30)))
+                                .font(.system(size: 30, weight: .medium))
                                 .monospacedDigit()
                                 .foregroundStyle(warning ? model.accent : Color.primary)
                                 .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))

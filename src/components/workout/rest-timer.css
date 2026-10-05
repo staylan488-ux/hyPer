@@ -32,11 +32,11 @@
 }
 
 .studio-rest-countdown {
-  font-family: var(--font-display);
+  font-family: var(--font-metric);
   font-size: 30px;
-  font-weight: 340;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: -.03em;
+  letter-spacing: -.025em;
   font-variant-numeric: tabular-nums;
 }
 

@@ -57,6 +57,7 @@
   --font-sans: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
   --font-mono: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-metric: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
   /* Spacing */
   --spacing-section: 1.875rem;
@@ -227,12 +228,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .t-data-hero, .number-hero, .number-large {
-  font-family: var(--font-display);
+  font-family: var(--font-metric);
   font-size: 44px;
-  font-weight: 340;
-  font-variation-settings: 'opsz' 144;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: -.03em;
+  letter-spacing: -.025em;
   font-variant-numeric: tabular-nums;
 }
 .t-display, .font-display {

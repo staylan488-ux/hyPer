@@ -12,8 +12,7 @@ interface RollingNumberProps {
 }
 
 /**
- * Letterpress odometer for hero data. Each digit is a column of 0–9 that
- * rolls to its value — Fraunces numerals doing what they were made for.
+ * Odometer for hero data. Each digit is a column of 0–9 that rolls to its value.
  * Purely presentational: inherits font/size/colour from the surrounding
  * class, honours reduced motion via MotionConfig (digits land instantly).
  */
