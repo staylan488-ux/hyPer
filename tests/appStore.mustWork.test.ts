@@ -2487,31 +2487,44 @@ describe('must-work store contracts', () => {
 describe('session-only exercise substitution', () => {
   beforeEach(() => {
     useAppStore.setState({ currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Today', items: [
-      { exercise_id: 'original', order: 0, target_sets: 6, target_reps_min: 3, target_reps_max: 5 },
+      { exercise_id: 'original', exercise_name: 'Lat Pulldown', order: 0, target_sets: 6, target_reps_min: 3, target_reps_max: 5 },
     ] } });
   });
   const original: WorkoutSet = {
     id: 'original-set', workout_id: 'workout-1', exercise_id: 'original',
     set_number: 1, weight: 100, reps: 5, rpe: 9, completed: false, completed_at: null,
   };
-  const replacement = { id: 'replacement', name: 'Cable fly', muscle_group: 'chest',
-    muscle_group_secondary: null, equipment: 'cable', is_compound: false } as import('@/types').Exercise;
+  const replacement = { id: 'replacement', name: 'Pull-Up', muscle_group: 'back',
+    muscle_group_secondary: 'biceps', equipment: 'bodyweight', is_compound: true } as Exercise;
+  // Captured at collection time; earlier suites replace this action with mocks.
+  const fetchPlan = useAppStore.getState().fetchWorkoutDayPlanByWorkoutId;
+  const lastPlanWrite = (chain: Chain) => (chain.update.mock.calls.at(-1)?.[0] as { items: FlexiblePlanItem[] }).items;
 
-  it('creates independent defaults and preserves completed original sets without touching the program', async () => {
+  it('moves only the unfinished sets, with fresh loads, and never touches the program', async () => {
     const chain = createChain();
     supabaseMock.from.mockReturnValue(chain);
     const completed = { ...original, id: 'logged', completed: true };
-    useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [completed, original] } });
+    const second = { ...original, id: 'second', set_number: 2 };
+    const third = { ...original, id: 'third', set_number: 3 };
+    useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [completed, second, third] } });
     await useAppStore.getState().substituteWorkoutExercise('original', replacement);
     const sets = useAppStore.getState().currentWorkout!.sets;
     expect(sets.filter((row) => row.exercise_id === 'original')).toEqual([completed]);
-    expect(sets.filter((row) => row.exercise_id === 'replacement')).toHaveLength(3);
+    expect(sets.filter((row) => row.exercise_id === 'replacement')).toHaveLength(2);
     expect(sets.find((row) => row.exercise_id === 'replacement')).toMatchObject({ weight: null, reps: null, rpe: null, set_number: 1, completed: false });
     expect(supabaseMock.from.mock.calls.every(([table]) => ['sets', 'workout_day_plans'].includes(table))).toBe(true);
     expect(chain.eq).toHaveBeenCalledWith('completed', false);
+    expect(useAppStore.getState().currentWorkoutDayPlan!.items).toEqual([
+      expect.objectContaining({ exercise_id: 'original', target_sets: 1 }),
+      expect.objectContaining({
+        exercise_id: 'replacement', exercise_name: 'Pull-Up', target_sets: 2, target_reps_min: 3, target_reps_max: 5,
+        substitutes_for: { exercise_id: 'original', exercise_name: 'Lat Pulldown', notes: null },
+      }),
+    ]);
+    expect(lastPlanWrite(chain)[1].substitutes_for).toMatchObject({ exercise_id: 'original' });
   });
 
-  it('changes only the flexible session plan and clears inherited targets and notes', async () => {
+  it('carries the flexible rep target but not the original note', async () => {
     supabaseMock.from.mockReturnValue(createChain());
     useAppStore.setState({
       currentWorkout: { ...makeWorkoutWithSet(original), split_day_id: null },
@@ -2521,9 +2534,87 @@ describe('session-only exercise substitution', () => {
     });
     await useAppStore.getState().substituteWorkoutExercise('original', replacement);
     expect(useAppStore.getState().currentWorkoutDayPlan!.items[0]).toMatchObject({
-      exercise_id: 'replacement', target_sets: 3, target_reps_min: 8, target_reps_max: 12, notes: null,
+      exercise_id: 'replacement', target_sets: 1, target_reps_min: 3, target_reps_max: 5, notes: null,
+      substitutes_for: { exercise_id: 'original', notes: 'Original cue' },
     });
     expect(supabaseMock.from.mock.calls.map(([table]) => table)).not.toContain('flex_day_templates');
+  });
+
+  it('switches back to the planned exercise from the program, restoring its notes', async () => {
+    const chain = createChain();
+    supabaseMock.from.mockReturnValue(chain);
+    const plannedExercise = { ...replacement, id: 'original', name: 'Lat Pulldown', equipment: 'cable' };
+    useAppStore.setState({
+      activeSplit: { id: 'split', user_id: 'user-1', name: 'Upper/Lower', description: null, days_per_week: 4, is_active: true, days: [{
+        id: 'split-day-1', split_id: 'split', day_name: 'Upper A', day_order: 0, exercises: [{
+          id: 'se', split_day_id: 'split-day-1', exercise_id: 'original', exercise: plannedExercise,
+          target_sets: 3, target_reps_min: 3, target_reps_max: 5, exercise_order: 0, notes: null,
+        }],
+      }] },
+      currentWorkout: { ...makeWorkoutWithSet({ ...original, exercise_id: 'replacement', exercise: replacement }) },
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Today', items: [{
+        exercise_id: 'replacement', exercise_name: 'Pull-Up', order: 0, target_sets: 1, target_reps_min: 3, target_reps_max: 5,
+        notes: '[set-range]{"min":1,"max":10}', superset_group_id: 'pair',
+        substitutes_for: { exercise_id: 'original', exercise_name: 'Lat Pulldown', notes: 'Wide grip' },
+      }] },
+    });
+    await useAppStore.getState().switchBackWorkoutExercise('replacement');
+    const item = useAppStore.getState().currentWorkoutDayPlan!.items[0];
+    expect(item).toMatchObject({ exercise_id: 'original', exercise_name: 'Lat Pulldown', notes: 'Wide grip', superset_group_id: 'pair' });
+    expect(item).not.toHaveProperty('substitutes_for');
+    expect(useAppStore.getState().currentWorkout!.sets).toEqual([
+      expect.objectContaining({ exercise_id: 'original', set_number: 1, completed: false, exercise: plannedExercise }),
+    ]);
+  });
+
+  it('rejoins sets the planned exercise already finished when switching back', async () => {
+    supabaseMock.from.mockReturnValue(createChain());
+    const finished = { ...original, id: 'finished', completed: true };
+    const swapped = { ...original, id: 'swapped', exercise_id: 'replacement', exercise: replacement };
+    useAppStore.setState({
+      currentWorkout: { ...makeWorkoutWithSet(finished), sets: [{ ...finished, exercise: { ...replacement, id: 'original', name: 'Lat Pulldown' } }, swapped, { ...swapped, id: 'swapped-2', set_number: 2 }] },
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Today', items: [
+        { exercise_id: 'original', exercise_name: 'Lat Pulldown', order: 0, target_sets: 1, superset_group_id: null },
+        { exercise_id: 'replacement', exercise_name: 'Pull-Up', order: 1, target_sets: 2, superset_group_id: 'pair',
+          substitutes_for: { exercise_id: 'original', exercise_name: 'Lat Pulldown', notes: null } },
+      ] },
+    });
+    await useAppStore.getState().switchBackWorkoutExercise('replacement');
+    expect(useAppStore.getState().currentWorkoutDayPlan!.items).toEqual([
+      expect.objectContaining({ exercise_id: 'original', target_sets: 3, superset_group_id: 'pair' }),
+    ]);
+    const plannedSets = useAppStore.getState().currentWorkout!.sets.filter((row) => row.exercise_id === 'original');
+    expect(plannedSets.map((row) => [row.set_number, row.completed])).toEqual([[1, true], [2, false], [3, false]]);
+    expect(useAppStore.getState().currentWorkout!.sets.some((row) => row.exercise_id === 'replacement')).toBe(false);
+  });
+
+  it('keeps flexible templates free of session swaps', async () => {
+    const chain = createChain();
+    supabaseMock.from.mockReturnValue(chain);
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
+    useAppStore.setState({
+      fetchFlexTemplates: vi.fn(async () => {}),
+      currentWorkout: { ...makeWorkoutWithSet(original), split_day_id: null },
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Pull', items: [
+        { exercise_id: 'replacement', order: 0, substitutes_for: { exercise_id: 'original', exercise_name: 'Lat Pulldown' } },
+      ] },
+    });
+    await useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout();
+    const saved = (chain.upsert.mock.calls[0]?.[0] as { items: FlexiblePlanItem[] }).items;
+    expect(saved).toEqual([expect.objectContaining({ exercise_id: 'replacement' })]);
+    expect(saved[0]).not.toHaveProperty('substitutes_for');
+  });
+
+  it('reads swap markers back from the saved session plan', async () => {
+    const chain = createChain();
+    chain.maybeSingle.mockResolvedValue({ data: { id: 'plan', workout_id: 'workout-1', day_label: 'Upper', items: [
+      { exercise_id: 'replacement', order: 0, substitutes_for: { exercise_id: 'original', exercise_name: 'Lat Pulldown' } },
+      { exercise_id: 'other', order: 1, substitutes_for: 'garbled' },
+    ] }, error: null });
+    supabaseMock.from.mockReturnValue(chain);
+    const plan = await fetchPlan('workout-1');
+    expect(plan!.items[0].substitutes_for).toEqual({ exercise_id: 'original', exercise_name: 'Lat Pulldown', notes: null });
+    expect(plan!.items[1]).not.toHaveProperty('substitutes_for');
   });
 
   it('leaves the original intact if insertion fails', async () => {
@@ -2542,11 +2633,15 @@ describe('session-only exercise substitution', () => {
     removal.eq.mockReturnValue(removal);
     Object.assign(removal, { error: { message: 'offline' } });
     const cleanup = createChain();
-    supabaseMock.from.mockReturnValueOnce(insert).mockReturnValueOnce(createChain()).mockReturnValueOnce(removal).mockReturnValueOnce(cleanup).mockReturnValueOnce(createChain());
+    const rollback = createChain();
+    supabaseMock.from.mockReturnValueOnce(insert).mockReturnValueOnce(createChain()).mockReturnValueOnce(removal).mockReturnValueOnce(cleanup).mockReturnValueOnce(rollback);
     useAppStore.setState({ currentWorkout: makeWorkoutWithSet(original) });
+    const planBefore = useAppStore.getState().currentWorkoutDayPlan!;
     await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('Please try again');
     expect(cleanup.delete).toHaveBeenCalled();
+    expect(rollback.update).toHaveBeenCalledWith({ items: planBefore.items });
     expect(useAppStore.getState().currentWorkout!.sets).toEqual([original]);
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBe(planBefore);
   });
 
   it('rejects duplicates and finished movements before writing', async () => {
@@ -2554,6 +2649,7 @@ describe('session-only exercise substitution', () => {
     await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('no remaining sets');
     useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [original, { ...original, exercise_id: replacement.id }] } });
     await expect(useAppStore.getState().substituteWorkoutExercise('original', replacement)).rejects.toThrow('already in');
+    await expect(useAppStore.getState().switchBackWorkoutExercise('original')).rejects.toThrow('not a swap');
     expect(supabaseMock.from).not.toHaveBeenCalled();
   });
 });

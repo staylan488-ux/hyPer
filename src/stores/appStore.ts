@@ -1,4 +1,3 @@
-import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
@@ -36,6 +35,8 @@ import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeig
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
 import { planSetCountChange } from '@/lib/workoutPlanOps';
+import { parseExerciseSubstitution, planExerciseSubstitution, withoutSubstitution } from '@/lib/exerciseSubstitution';
+import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 
 /**
  * What an adaptive refresh did: 'skipped' (not due, off, or no weigh-in),
@@ -177,6 +178,7 @@ function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
         ? value.order
         : index;
 
+      const substitution = parseExerciseSubstitution(value.substitutes_for);
       return {
         exercise_id: exerciseId,
         order,
@@ -187,6 +189,7 @@ function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
         notes: typeof value.notes === 'string' ? value.notes : null,
         hidden: Boolean(value.hidden),
         superset_group_id: typeof value.superset_group_id === 'string' ? value.superset_group_id : null,
+        ...(substitution ? { substitutes_for: substitution } : {}),
       } as FlexiblePlanItem;
     })
     .filter((item): item is FlexiblePlanItem => Boolean(item))
@@ -325,7 +328,10 @@ interface AppState {
   startWorkout: (splitDayId: string) => Promise<Workout | null>;
   startFlexibleWorkout: (dayLabel: string, templateLabel?: string | null) => Promise<Workout | null>;
   fetchCurrentWorkout: () => Promise<void>;
+  /** Swaps a movement's unfinished sets to another exercise for this session only. */
   substituteWorkoutExercise: (exerciseId: string, replacement: Exercise) => Promise<void>;
+  /** Returns a swapped movement to the exercise it replaced. */
+  switchBackWorkoutExercise: (exerciseId: string) => Promise<void>;
   addWorkoutSet: (exerciseId: string) => Promise<void>;
   removeLastUncompletedSet: (exerciseId: string) => Promise<void>;
   logSet: (exerciseId: string, setNumber: number, weight: number, reps: number, rpe?: number) => Promise<void>;
@@ -1194,57 +1200,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isAccountCurrent = captureAccountScope();
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.completed) throw new Error('No active workout.');
-    const originalSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
-    if (!originalSets.some((entry) => !entry.completed)) throw new Error('This movement has no remaining sets.');
-    if (currentWorkout.sets.some((entry) => entry.exercise_id === replacement.id)) {
-      throw new Error('That exercise is already in this workout.');
-    }
+    const sourceSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
+    if (!sourceSets.some((entry) => !entry.completed)) throw new Error('This movement has no remaining sets.');
 
     const plan = currentWorkoutDayPlan?.workout_id === currentWorkout.id
       ? currentWorkoutDayPlan
       : await get().ensureWorkoutDayPlan(currentWorkout.id);
     if (!plan) throw new Error('Could not prepare the workout. Please try again.');
 
-    // Fresh movement defaults, never the original movement's prescription or loads.
-    // Its history is loaded by the same target/autofill path as every other movement.
-    const rows = Array.from({ length: 3 }, (_, index) => ({
+    // Rejects a duplicate before anything is written. The replacement's loads
+    // come from its own history through the usual target/autofill path.
+    const { items: plannedItems, setNumbers } = planExerciseSubstitution({
+      items: plan.items,
+      sets: currentWorkout.sets,
+      sourceId: exerciseId,
+      sourceName: sourceSets[0]?.exercise?.name ?? null,
+      replacement,
+      splitSession: Boolean(currentWorkout.split_day_id),
+    });
+    const nextItems = normalizeWorkoutPlanItems(plannedItems);
+    const rows = setNumbers.map((setNumber) => ({
       id: crypto.randomUUID(), workout_id: currentWorkout.id,
-      exercise_id: replacement.id, set_number: index + 1, completed: false,
+      exercise_id: replacement.id, set_number: setNumber, completed: false,
       weight: null, reps: null, rpe: null, completed_at: null,
     }));
     const { error: insertError } = await supabase.from('sets').insert(rows);
     if (insertError) throw new Error('Could not add the replacement. Please try again.');
 
-    const nextItems = plan.items.filter((item) => item.exercise_id !== replacement.id).flatMap((item) => {
-      if (item.exercise_id !== exerciseId) return [item];
-      const replacementItem = {
-        ...item, exercise_id: replacement.id, exercise_name: replacement.name,
-        target_sets: 3, target_reps_min: 8, target_reps_max: 12,
-        notes: currentWorkout.split_day_id ? serializeSetRangeNotes(null, 1, 3, 10) : null,
-      };
-      return originalSets.some((entry) => entry.completed)
-        ? [{ ...item, target_sets: originalSets.filter((entry) => entry.completed).length, superset_group_id: null }, replacementItem]
-        : [replacementItem];
-    }).map((item, order) => ({ ...item, order }));
-
     try {
-      if (plan && nextItems) {
-        const { error } = await supabase.from('workout_day_plans').update({ items: nextItems }).eq('id', plan.id);
-        if (error) throw error;
-      }
+      const { error: planError } = await supabase.from('workout_day_plans').update({ items: nextItems }).eq('id', plan.id);
+      if (planError) throw planError;
       const { error } = await supabase.from('sets').delete()
         .eq('workout_id', currentWorkout.id).eq('exercise_id', exerciseId).eq('completed', false);
       if (error) throw error;
     } catch {
       const { error: cleanupError } = await supabase.from('sets').delete().in('id', rows.map((row) => row.id));
-      const rollback = plan
-        ? await supabase.from('workout_day_plans').update({ items: plan.items }).eq('id', plan.id)
-        : null;
-      if (cleanupError || rollback?.error) {
+      const rollback = await supabase.from('workout_day_plans').update({ items: plan.items }).eq('id', plan.id);
+      if (cleanupError || rollback.error) {
         await get().fetchCurrentWorkout();
-        throw new Error('The substitution only partly saved. Check the workout before trying again.');
+        throw new Error('The swap only partly saved. Check the workout before trying again.');
       }
-      throw new Error('Could not substitute the exercise. Please try again.');
+      throw new Error('Could not swap the exercise. Please try again.');
     }
 
     const latest = get().currentWorkout;
@@ -1254,9 +1250,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...latest.sets.filter((entry) => entry.exercise_id !== exerciseId || entry.completed),
         ...rows.map((row) => ({ ...row, exercise: replacement } as WorkoutSet)),
       ] },
-      ...(plan && nextItems ? { currentWorkoutDayPlan: { ...plan, items: nextItems } } : {}),
+      currentWorkoutDayPlan: { ...plan, items: nextItems },
     });
   }),
+
+  switchBackWorkoutExercise: async (exerciseId) => {
+    const { currentWorkout, currentWorkoutDayPlan, activeSplit, splits } = get();
+    const origin = currentWorkout && currentWorkoutDayPlan?.workout_id === currentWorkout.id
+      ? currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId)?.substitutes_for
+      : null;
+    if (!origin) throw new Error('This movement is not a swap.');
+
+    // Any copy of the planned exercise already on hand, else the library.
+    const known = currentWorkout?.sets.find((entry) => entry.exercise_id === origin.exercise_id && entry.exercise)?.exercise
+      ?? [activeSplit, ...splits].flatMap((split) => split?.days ?? []).flatMap((day) => day.exercises ?? [])
+        .find((entry) => entry.exercise_id === origin.exercise_id && entry.exercise)?.exercise;
+    const planned = known
+      ?? (await getExerciseLibrary().catch(() => [] as Exercise[])).find((entry) => entry.id === origin.exercise_id);
+    if (!planned) {
+      throw new Error(`Could not load ${origin.exercise_name ?? 'the planned exercise'}. Check your connection and try again.`);
+    }
+    await get().substituteWorkoutExercise(exerciseId, planned);
+  },
 
   addWorkoutSet: writesWorkout(async (exerciseId) => {
     const isAccountCurrent = captureAccountScope();
@@ -1330,8 +1345,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const nextItems = existing
       ? currentWorkoutDayPlan.items.map((item) => (
+          // Adding a removed movement again is a choice, not a swap.
           item.exercise_id === exercise.id
-            ? { ...item, hidden: false, exercise_name: exercise.name }
+            ? { ...withoutSubstitution(item), hidden: false, exercise_name: exercise.name }
             : item
         ))
       : [
@@ -1671,7 +1687,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { ...item, notes: movementNotesOverride[item.exercise_id].trim() || null };
       }
       return { ...item, notes: movementNotes[item.exercise_id] ?? item.notes ?? null };
-    });
+    }).map(withoutSubstitution);
 
     const { error } = await supabase
       .from('flex_day_templates')
@@ -2634,7 +2650,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? plan.items.map((item) => (
           item.exercise_id === exercise.id
             ? {
-                ...item,
+                ...withoutSubstitution(item),
                 hidden: false,
                 exercise_name: exercise.name,
                 target_sets: item.target_sets ?? 1,

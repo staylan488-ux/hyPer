@@ -10,6 +10,7 @@ import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { createNoteAutosaver, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
 import { runWorkoutEdit } from '@/lib/workoutEdit';
+import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { captureAccountScope } from '@/lib/accountScope';
 import { useAuthStore } from '@/stores/authStore';
 import {
@@ -1650,7 +1651,10 @@ export function History() {
                             const targetDraftKey = `${workout.id}:${exerciseId}`;
                             const targetDraft = targetSetDrafts[targetDraftKey];
                             const targetInputValue = typeof targetDraft === 'string' ? targetDraft : String(currentTargetSets);
-                            const movementNote = movementNotesByWorkout[workout.id]?.[exerciseId] || planItem?.notes || '';
+                            // A program's set-range tag rides in plan notes; it is never a note to show.
+                            const movementNote = movementNotesByWorkout[workout.id]?.[exerciseId]
+                              || parseSetRangeNotes(planItem?.notes, 1).baseNotes || '';
+                            const substitutedFor = planItem?.substitutes_for ?? null;
                             const noteCharacterCount = movementNote.length;
                             const hasMovementNote = movementNote.trim().length > 0;
                             const supersetGroupId = supersetByExercise.get(exerciseId) || null;
@@ -1687,6 +1691,9 @@ export function History() {
                                     </div>
                                     <div className="min-w-0">
                                       <span className="t-body text-[var(--color-text)]">{exerciseName}</span>
+                                      {substitutedFor && (
+                                        <p className="t-caption mt-0.5">Instead of {substitutedFor.exercise_name ?? 'the planned exercise'}</p>
+                                      )}
                                       {supersetGroupId && supersetPartnerName && (
                                         <p className="t-label-sm mt-0.5">Superset with {supersetPartnerName}</p>
                                       )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
+import { useEffect, useMemo, useRef, useState, useDeferredValue, type ReactNode } from 'react';
 import { Loader2, Search, Dumbbell, ArrowRight } from 'lucide-react';
 import { Modal, Input, Chip, Button } from '@/components/shared';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
@@ -14,6 +14,8 @@ interface ExercisePickerProps {
   /** Title shown in the header */
   title?: string;
   excludeExerciseIds?: string[];
+  /** Shown above the search, e.g. context or a shortcut for this choice. */
+  intro?: ReactNode;
 }
 
 const ALL_MUSCLE_GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
@@ -27,11 +29,13 @@ function ExercisePickerContent({
   onSelect,
   initialMuscleGroup,
   excludeExerciseIds = [],
+  intro,
 }: {
   onClose: () => void;
   onSelect: (exercise: Exercise) => void;
   initialMuscleGroup?: MuscleGroup;
   excludeExerciseIds?: string[];
+  intro?: ReactNode;
 }) {
   // Rows from earlier opens show immediately; a fresh copy replaces them quietly.
   const [exercises, setExercises] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
@@ -129,6 +133,7 @@ function ExercisePickerContent({
 
   return (
     <div className="pt-4 space-y-6">
+      {intro}
       {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
@@ -253,6 +258,7 @@ export function ExercisePicker({
   initialMuscleGroup,
   title,
   excludeExerciseIds,
+  intro,
 }: ExercisePickerProps) {
   return (
     <Modal
@@ -266,6 +272,7 @@ export function ExercisePicker({
         onSelect={onSelect}
         initialMuscleGroup={initialMuscleGroup}
         excludeExerciseIds={excludeExerciseIds}
+        intro={intro}
       />
     </Modal>
   );

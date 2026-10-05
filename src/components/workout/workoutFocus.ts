@@ -86,7 +86,8 @@ export function getWorkoutResumeSet(
   splitDay?: { id: string; exercises: Array<Pick<SplitExercise, 'exercise_id' | 'exercise_order' | 'superset_group_id'>> } | null,
   dayPlan?: Pick<WorkoutDayPlan, 'workout_id' | 'items'> | null,
 ): WorkoutSet | undefined {
-  const movements = workout.split_day_id === null && dayPlan?.workout_id === workout.id
+  // The session plan holds this workout's swaps and order, like the Train screen.
+  const movements = dayPlan?.workout_id === workout.id
     ? dayPlan.items.filter((item) => !item.hidden).map((item) => ({ id: item.exercise_id, order: item.order, group: item.superset_group_id }))
     : splitDay?.id === workout.split_day_id
       ? splitDay.exercises.map((exercise) => ({ id: exercise.exercise_id, order: exercise.exercise_order, group: exercise.superset_group_id }))

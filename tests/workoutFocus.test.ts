@@ -135,4 +135,17 @@ describe('Dashboard resume cue', () => {
     ] };
     expect(getWorkoutResumeSet(workout, null, plan)?.id).toBe('b-1');
   });
+  it('follows the session plan of a program workout, including a swapped-in movement', () => {
+    const workout = { id: 'workout', split_day_id: 'day', sets: [row('a', 1, true), row('swap', 1), row('c', 1)] };
+    const day = { id: 'day', exercises: [
+      { exercise_id: 'a', exercise_order: 0, superset_group_id: null },
+      { exercise_id: 'b', exercise_order: 1, superset_group_id: null },
+      { exercise_id: 'c', exercise_order: 2, superset_group_id: null },
+    ] };
+    const plan = { workout_id: 'workout', items: [
+      { exercise_id: 'a', order: 0 }, { exercise_id: 'swap', order: 1 }, { exercise_id: 'c', order: 2 },
+    ] };
+    expect(getWorkoutResumeSet(workout, day, plan)?.id).toBe('swap-1');
+    expect(getWorkoutResumeSet(workout, day, { ...plan, workout_id: 'other' })?.id).toBe('c-1');
+  });
 });

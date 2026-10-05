@@ -17,6 +17,7 @@ import {
   Settings2,
   Timer,
   Trash2,
+  Undo2,
   Unlink2,
   X,
   Footprints,
@@ -66,6 +67,9 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   if (!value || !Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(12, Math.round(value)));
 }
+
+/** The rest bar's "Next ·" label is the movement name, this, and the set number. */
+const REST_NEXT_UP_SET = ' · set ';
 
 type SupersetRole = 'A' | 'B';
 
@@ -145,6 +149,7 @@ export function Workout() {
     completeWorkout,
     addWorkoutSet,
     substituteWorkoutExercise,
+    switchBackWorkoutExercise,
     removeLastUncompletedSet,
     setFlexibleWorkoutLabel,
     addFlexibleExercise,
@@ -225,9 +230,10 @@ export function Workout() {
   const [startingFlexibleWorkout, setStartingFlexibleWorkout] = useState(false);
   const [showSaveTemplatePrompt, setShowSaveTemplatePrompt] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  // The movement whose swap picker is open, the swap being saved, and a failed swap.
   const [substitutionSource, setSubstitutionSource] = useState<string | null>(null);
-  const [substituting, setSubstituting] = useState(false);
-  const [substitutionError, setSubstitutionError] = useState<string | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<{ exerciseId: string; targetName: string } | null>(null);
+  const [swapError, setSwapError] = useState<{ exerciseId: string; message: string } | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [supersetPickerSourceExerciseId, setSupersetPickerSourceExerciseId] = useState<string | null>(null);
 
@@ -356,6 +362,8 @@ export function Workout() {
     setActiveExerciseId(null);
     dispatchExpansion({ type: 'reset' });
     setSetAdjustmentExerciseId(null);
+    setSubstitutionSource(null);
+    setSwapError(null);
     setShowSessionDetails(false);
     setRestTimerSeed(0);
     setFinishError(null);
@@ -711,6 +719,11 @@ export function Workout() {
     ...item, exercise_order: item.order, target_sets: item.target_sets ?? 3,
     notes: item.notes ?? null,
   })) ?? splitDay?.exercises ?? [], [sessionPlanItems, splitDay?.exercises]);
+  const substitutionByExerciseId = useMemo(() => new Map(
+    (sessionPlanItems ?? []).flatMap((item) => (
+      item.substitutes_for && !item.hidden ? [[item.exercise_id, item.substitutes_for] as const] : []
+    ))
+  ), [sessionPlanItems]);
   const exerciseOrderById = useMemo(() => new Map(
     sessionExercises.map((exercise, index) => [
       exercise.exercise_id,
@@ -932,7 +945,7 @@ export function Workout() {
   const startRestForExercise = (exerciseId: string, nextUp?: { exerciseId: string; setNumber: number }) => {
     const prefs = userId ? loadRestPreferences(userId) : {};
     const nextUpName = nextUp ? workoutExerciseMap.get(nextUp.exerciseId)?.name : undefined;
-    setRestTimerNextUpLabel(nextUpName ? `${nextUpName} · set ${nextUp!.setNumber}` : null);
+    setRestTimerNextUpLabel(nextUpName ? `${nextUpName}${REST_NEXT_UP_SET}${nextUp!.setNumber}` : null);
     setRestTimerExerciseId(exerciseId || null);
     setRestTimerSeconds(resolveRestSeconds(prefs, exerciseId, 90));
     setRestTimerSeed((current) => current + 1);
@@ -1039,12 +1052,77 @@ export function Workout() {
         : Date.now(),
     });
   }, [currentWorkout, resolvedActiveExerciseId, orderedSets, workoutExerciseMap, completedSets, totalSets, currentSessionTitle, currentWorkoutCreatedAt]);
-  const substitutionAction = (exerciseId: string) => ({
-    label: 'Substitute exercise',
-    icon: <ArrowLeftRight className="w-4 h-4" />,
-    disabled: substituting || !exerciseGroups[exerciseId]?.some((entry) => !entry.completed),
-    onClick: () => { setSubstitutionError(null); setSubstitutionSource(exerciseId); },
-  });
+  const canSwap = (exerciseId: string) => !pendingSwap && Boolean(exerciseGroups[exerciseId]?.some((entry) => !entry.completed));
+  const openSwap = (exerciseId: string) => {
+    setSwapError(null);
+    setSubstitutionSource(exerciseId);
+  };
+
+  // Plan notes typed before the swap land first, like every other plan edit.
+  // The card shows progress and any failure where the user tapped Swap.
+  const runSwap = (exerciseId: string, target: { id: string; name: string }, write: () => Promise<void>) => {
+    if (pendingSwap || !currentWorkoutId) return;
+    const workoutId = currentWorkoutId;
+    const sourceName = workoutExerciseMap.get(exerciseId)?.name;
+    setSubstitutionSource(null);
+    setSwapError(null);
+    setPendingSwap({ exerciseId, targetName: target.name });
+    const guardedWrite = async () => {
+      if (useAppStore.getState().currentWorkout?.id !== workoutId) return false;
+      await write();
+      return true;
+    };
+    const run = noteSaverRef.current ? noteSaverRef.current.runAfterFlush(workoutId, guardedWrite) : guardedWrite();
+    void run.then((saved) => {
+      if (!saved || useAppStore.getState().currentWorkout?.id !== workoutId) return;
+      setActiveExerciseId((active) => active === exerciseId ? target.id : active);
+      dispatchExpansion({ type: 'replace', exerciseId, replacementId: target.id });
+      // A running rest that names the swapped movement now names the replacement.
+      const rest = readRestTimerSession();
+      const nextSet = useAppStore.getState().currentWorkout?.sets
+        .filter((entry) => entry.exercise_id === target.id && !entry.completed)
+        .sort((a, b) => a.set_number - b.set_number)[0];
+      if (sourceName && nextSet && isRestTimerForWorkout(rest, workoutId)
+        && rest?.nextUpLabel?.startsWith(`${sourceName}${REST_NEXT_UP_SET}`)) {
+        setRestTimerNextUpLabel(`${target.name}${REST_NEXT_UP_SET}${nextSet.set_number}`);
+      }
+    }, (error: unknown) => {
+      if (useAppStore.getState().currentWorkout?.id !== workoutId) return;
+      setSwapError({ exerciseId, message: error instanceof Error ? error.message : 'Could not swap the exercise. Try again.' });
+    }).finally(() => setPendingSwap(null));
+  };
+
+  const switchBack = (exerciseId: string) => {
+    const origin = substitutionByExerciseId.get(exerciseId);
+    if (!origin) return;
+    runSwap(exerciseId, { id: origin.exercise_id, name: origin.exercise_name ?? 'the planned exercise' },
+      () => switchBackWorkoutExercise(exerciseId));
+  };
+
+  const swapMenuActions = (exerciseId: string): CardMenuAction[] => {
+    const origin = substitutionByExerciseId.get(exerciseId);
+    return [
+      { label: 'Swap exercise', icon: <ArrowLeftRight className="w-4 h-4" />, disabled: !canSwap(exerciseId), onClick: () => openSwap(exerciseId) },
+      ...(origin ? [{
+        label: `Switch back to ${origin.exercise_name ?? 'planned exercise'}`,
+        icon: <Undo2 className="w-4 h-4" />,
+        disabled: !canSwap(exerciseId),
+        onClick: () => switchBack(exerciseId),
+      }] : []),
+    ];
+  };
+
+  const swapCardProps = (exerciseId: string) => {
+    const origin = substitutionByExerciseId.get(exerciseId);
+    return {
+      substitutionLabel: origin ? `Instead of ${origin.exercise_name ?? 'the planned exercise'}` : null,
+      swapStatus: pendingSwap?.exerciseId === exerciseId
+        ? { text: `Swapping to ${pendingSwap.targetName}…`, failed: false }
+        : swapError?.exerciseId === exerciseId ? { text: swapError.message, failed: true } : null,
+    };
+  };
+  const swapSourceName = substitutionSource ? workoutExerciseMap.get(substitutionSource)?.name ?? 'this movement' : '';
+  const swapSourceOrigin = substitutionSource ? substitutionByExerciseId.get(substitutionSource) ?? null : null;
 
   // ── End exercise ordering ──
 
@@ -1681,9 +1759,10 @@ export function Workout() {
                       : null
                   }
                   notePreview={!isActive && movementNote.trim() ? movementNote : null}
+                  {...swapCardProps(exerciseId)}
                   menuActions={[
                     { label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) },
-                    substitutionAction(exerciseId),
+                    ...swapMenuActions(exerciseId),
                     supersetGroupId
                       ? {
                           label: 'Unlink superset',
@@ -1850,13 +1929,23 @@ export function Workout() {
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
                 }
                 notePreview={!isActive && movementNote.trim() ? movementNote : null}
-                menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, substitutionAction(exerciseId)]}
+                {...swapCardProps(exerciseId)}
+                menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
-                <p className="t-caption mb-3">
-                  {exerciseSetRanges.has(exerciseId)
-                    ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
-                    : `${sets.length} sets`}
-                </p>
+                <div className="studio-movement-prescription">
+                  <p className="t-caption">
+                    {exerciseSetRanges.has(exerciseId)
+                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
+                      : `${sets.length} sets`}
+                  </p>
+                  {hasRemovableUncompletedSet && (
+                    <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
+                      aria-label={`Swap ${exerciseName} for this workout`}
+                      onClick={() => { tapHaptic(); openSwap(exerciseId); }}>
+                      <ArrowLeftRight size={14} aria-hidden />Swap
+                    </button>
+                  )}
+                </div>
                 <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <span className="t-caption">
@@ -1924,28 +2013,27 @@ export function Workout() {
       )}
 
       </MovementReorderList>
-      {substituting && <p className="t-caption" role="status">Substituting exercise…</p>}
-      {substitutionError && <p className="t-caption text-[var(--color-accent)]" role="alert">{substitutionError}</p>}
       <ExercisePicker
         isOpen={substitutionSource !== null}
         onClose={() => setSubstitutionSource(null)}
-        title="Substitute · this workout only"
+        title="Swap for this workout"
+        intro={substitutionSource && (swapSourceOrigin ? (
+          <div className="space-y-3">
+            <Button variant="secondary" className="w-full" onClick={() => switchBack(substitutionSource)}>
+              <Undo2 className="w-4 h-4" aria-hidden />
+              Switch back to {swapSourceOrigin.exercise_name ?? 'the planned exercise'}
+            </Button>
+            <p className="t-caption">Or replace {swapSourceName} with another exercise. Your program stays the same.</p>
+          </div>
+        ) : (
+          <p className="t-caption">Replacing {swapSourceName}. Its sets and rep target carry over; your program stays the same.</p>
+        ))}
         initialMuscleGroup={substitutionSource ? workoutExerciseMap.get(substitutionSource)?.muscle_group : undefined}
         excludeExerciseIds={exerciseIds}
         onSelect={(replacement) => {
+          if (!substitutionSource) return;
           const source = substitutionSource;
-          if (!source || substituting) return;
-          const workoutId = currentWorkout.id;
-          setSubstitutionSource(null);
-          setSubstituting(true);
-          void afterNoteWrites(() => substituteWorkoutExercise(source, replacement)).then((saved) => {
-            if (!saved) return;
-            if (useAppStore.getState().currentWorkout?.id !== workoutId) return;
-            setActiveExerciseId((active) => active === source ? replacement.id : active);
-            dispatchExpansion({ type: 'replace', exerciseId: source, replacementId: replacement.id });
-          }).catch((error: unknown) => {
-            setSubstitutionError(error instanceof Error ? error.message : 'Could not substitute. Please try again.');
-          }).finally(() => setSubstituting(false));
+          runSwap(source, replacement, () => substituteWorkoutExercise(source, replacement));
         }}
       />
 
@@ -2042,6 +2130,8 @@ function ExerciseCard({
   supersetRole,
   supersetLabel,
   notePreview,
+  substitutionLabel,
+  swapStatus,
   menuActions,
   children,
 }: {
@@ -2060,6 +2150,9 @@ function ExerciseCard({
   supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
   notePreview: string | null;
+  /** "Instead of …" when this movement is a session-only swap. */
+  substitutionLabel: string | null;
+  swapStatus: { text: string; failed: boolean } | null;
   menuActions: CardMenuAction[];
   children: React.ReactNode;
 }) {
@@ -2131,6 +2224,9 @@ function ExerciseCard({
         <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
         </div>
       </div>
+      {substitutionLabel && <p className="studio-movement-detail"><ArrowLeftRight size={13} aria-hidden />{substitutionLabel}</p>}
+      {swapStatus && <p className={`studio-movement-detail${swapStatus.failed ? ' text-[var(--color-accent)]' : ''}`}
+        role={swapStatus.failed ? 'alert' : 'status'}>{swapStatus.text}</p>}
       {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} />Superset {supersetLabel}</p>}
       {notePreview && <p className="studio-movement-note-preview">{notePreview}</p>}
       {/* Keep every draft mounted while the user browses other movements. The
