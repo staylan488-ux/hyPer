@@ -37,7 +37,7 @@ import {
 } from '@/lib/photoAnalysis';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { ServingEntry } from './ServingEntry';
-import { FoodTrialLogger } from './FoodTrialLogger';
+import { FoodTrialLogger, type FoodTrialDraftState } from './FoodTrialLogger';
 import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
 import { combineIntoOneMeal } from '@/lib/combineMeal';
 import { createMealIngredient, decodeMealComposition, type MealIngredient } from '@/lib/mealComposition';
@@ -176,6 +176,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const [trialVisited, setTrialVisited] = useState(false);
   const [trialKey, setTrialKey] = useState(0);
   const [trialAnalyzing, setTrialAnalyzing] = useState(false);
+  const [trialDraftState, setTrialDraftState] = useState<FoodTrialDraftState>({ hasDraft: false, busy: false });
   useEffect(() => {
     if (foodAnalysisMode === 'gemini' && mode === 'photo') setTrialVisited(true);
   }, [foodAnalysisMode, mode]);
@@ -417,6 +418,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   const handleDescribeFood = async () => {
     if (foodDescriptionBusy) return;
     if (foodAnalysisMode === 'gemini') {
+      if (trialAnalyzing || trialDraftState.busy) return;
+      if (trialDraftState.hasDraft
+        && !window.confirm('Replace the current AI meal? Unsaved work on the AI tab will be discarded.')) return;
       setTrialInitialHint(foodDescription);
       setTrialKey((key) => key + 1);
       setMode('photo');
@@ -1509,7 +1513,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   // a food to review and going back keeps its photos, result and edits.
   const renderTrialLogger = (hidden: boolean) => foodAnalysisMode === 'gemini' && (trialVisited || mode === 'photo') ? (
     <div key="food-trial-logger" hidden={hidden}>
-      <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} />
+      <FoodTrialLogger key={trialKey} addingIngredients={!!onAddIngredients} whenRow={whenRow} prepareImage={fileToCompressedJpegBase64} onSave={handleSaveTrialItems} initialHint={trialInitialHint} editingEntry={!!initialEntry} onAnalysisBusyChange={setTrialAnalyzing} onDraftStateChange={setTrialDraftState} />
     </div>
   ) : null;
 
@@ -2187,7 +2191,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   className="w-full"
                   onClick={() => void handleDescribeFood()}
                   loading={foodDescriptionBusy}
-                  disabled={foodDescriptionBusy || foodDescription.trim().length < 5}
+                  disabled={foodDescriptionBusy || (foodAnalysisMode === 'gemini' && (trialAnalyzing || trialDraftState.busy)) || foodDescription.trim().length < 5}
                 >
                   {foodAnalysisMode === 'gemini' ? 'Review with Gemini' : 'Research & fill fields'}
                 </Button>

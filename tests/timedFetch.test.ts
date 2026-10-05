@@ -90,6 +90,50 @@ describe('requestTimeoutMs', () => {
 });
 
 describe('timedFetch', () => {
+  it('keeps the database deadline active through a stalled response body', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (_input, init) => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('['));
+        init?.signal?.addEventListener('abort', () => controller.error(init.signal?.reason));
+      },
+    }))));
+    const query = settled(Promise.resolve(supabase.from('workouts').select('*')));
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    // Response.clone uses a message channel in Node; allow its error to arrive.
+    await vi.waitFor(() => expect(query.done).toBe(true));
+    expect(query.value).toMatchObject({ data: null, status: 0, error: { message: expect.stringContaining('AbortError') } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('forwards caller cancellation after headers while the body is pending', async () => {
+    let started!: () => void;
+    const headers = new Promise<void>((resolve) => { started = resolve; });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (_input, init) => {
+      const response = new Response(new ReadableStream({
+        start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(init.signal?.reason));
+        },
+      }));
+      started();
+      return response;
+    }));
+    const caller = new AbortController();
+    const request = timedFetch(`${BASE}/rest/v1/sets`, { signal: caller.signal });
+    const rejected = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    await headers;
+    caller.abort();
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([204, 205, 304])('preserves an empty response with status %s', async (status) => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(null, { status })));
+    const response = await timedFetch(`${BASE}/rest/v1/sets`, { method: 'HEAD' });
+    expect(response.status).toBe(status);
+    expect(await response.text()).toBe('');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('turns a stalled query into an ordinary error result after the deadline', async () => {
     const fetchMock = stalledFetch();
     vi.stubGlobal('fetch', fetchMock);

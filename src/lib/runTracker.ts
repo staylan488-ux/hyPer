@@ -225,6 +225,16 @@ export interface TrackerState {
   // what the snapshot lacks. Absent in snapshots from older app versions.
   nativeSampleSeq?: number | null;
   nativeControlSeq?: number | null;
+  /** One-time migration evidence from snapshots predating control cursors. */
+  legacyNativeControls?: LegacyNativeControls;
+}
+
+interface LegacyNativeControls {
+  savedAtMs: number;
+  mode: RunMode;
+  totalPausedMs: number;
+  pausedAtMs: number | null;
+  lastManualSplitMs: number | null;
 }
 
 export type TrackerEvent =
@@ -672,6 +682,46 @@ export function nativeResumePoint(restored: TrackerState): {
     cursors: { sample: restored.nativeSampleSeq ?? 0, control: restored.nativeControlSeq ?? 0 },
     replayCutoffMs: restored.nativeSampleSeq == null ? restored.lastSampleMs : null,
   };
+}
+
+/**
+ * Infer only a represented prefix of old native controls. A wall-clock save
+ * time alone is not proof: a control can still be waiting in the bridge when
+ * the snapshot is flushed. Interval laps retain their last applied control
+ * time; free runs retain pause duration and an optional open pause instant.
+ * Finish can never be represented by a still-running snapshot.
+ */
+export function legacyNativeControlCursor(
+  legacy: LegacyNativeControls,
+  controls: Array<{ sequence: number; timestampMs: number; action: string }>,
+): number {
+  let cursor = 0;
+  let pauseStart: number | null = null;
+  let pausedMs = 0;
+  const unique = new Map(controls.map((control) => [control.sequence, control]));
+  for (const control of [...unique.values()].sort((a, b) => a.sequence - b.sequence)) {
+    if (control.timestampMs > legacy.savedAtMs || control.action === 'finish') break;
+    if (legacy.mode === 'intervals') {
+      if (legacy.lastManualSplitMs == null || control.timestampMs > legacy.lastManualSplitMs) break;
+      cursor = control.sequence;
+      continue;
+    }
+    if (control.action !== 'rest') {
+      // Split is a no-op in free mode. Do not skip past an unmatched Rest.
+      if (pauseStart == null && pausedMs === legacy.totalPausedMs) cursor = control.sequence;
+      continue;
+    }
+    if (pauseStart == null) {
+      pauseStart = control.timestampMs;
+      if (pauseStart === legacy.pausedAtMs && pausedMs === legacy.totalPausedMs) cursor = control.sequence;
+    } else {
+      pausedMs += Math.max(0, control.timestampMs - pauseStart);
+      pauseStart = null;
+      if (pausedMs > legacy.totalPausedMs) break;
+      if (pausedMs === legacy.totalPausedMs) cursor = control.sequence;
+    }
+  }
+  return cursor;
 }
 
 // hysteresis: EMA speed must hold above start-threshold to begin a rep and
@@ -1223,7 +1273,11 @@ export function serializeTrackerTrace(
   return JSON.stringify(snapshot);
 }
 
-export function restoreTracker(raw: string | null, nowMs: number): TrackerState | null {
+export function restoreTracker(
+  raw: string | null,
+  nowMs: number,
+  options: { preservePause?: boolean } = {},
+): TrackerState | null {
   if (!raw) return null;
   try {
     const snapshot = JSON.parse(raw) as TrackerSnapshot;
@@ -1233,6 +1287,15 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     if (typeof snapshot.state.runId !== 'string') return null;
     // a crash while paused resumes un-paused (the paused span is closed out)
     const state = snapshot.state;
+    if (state.nativeControlSeq === undefined && !state.legacyNativeControls) {
+      state.legacyNativeControls = {
+        savedAtMs: snapshot.savedAtMs,
+        mode: state.config.mode,
+        totalPausedMs: state.totalPausedMs ?? 0,
+        pausedAtMs: state.pausedAtMs ?? null,
+        lastManualSplitMs: state.lastManualSplitMs ?? null,
+      };
+    }
     state.config = {
       ...defaultTrackerConfig(state.config.mode, state.config.autoLapM),
       ...state.config,
@@ -1243,11 +1306,11 @@ export function restoreTracker(raw: string | null, nowMs: number): TrackerState 
     // a run started before rest laps existed restores as an effort
     state.lapKind ??= 'work';
     state.laps = (state.laps ?? []).map((lap) => ({ ...lap, kind: lap.kind ?? 'work' }));
-    if (state.pausedAtMs != null) {
+    if (state.pausedAtMs != null && !options.preservePause) {
       state.totalPausedMs = (state.totalPausedMs ?? 0) + Math.max(0, snapshot.savedAtMs - state.pausedAtMs);
       state.pausedAtMs = null;
     }
-    if (state.autoPausedAtMs != null) {
+    if (state.autoPausedAtMs != null && !options.preservePause) {
       const closedAutoPauseMs = Math.max(0, snapshot.savedAtMs - state.autoPausedAtMs);
       state.totalAutoPausedMs = (state.totalAutoPausedMs ?? 0) + closedAutoPauseMs;
       state.lapAutoPausedMs = (state.lapAutoPausedMs ?? 0) + closedAutoPauseMs;

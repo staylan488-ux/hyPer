@@ -12,6 +12,7 @@ import {
   defaultTrackerConfig,
   finishTracker,
   isPaused,
+  legacyNativeControlCursor,
   manualSplit,
   nativeResumePoint,
   toggleRest,
@@ -139,9 +140,10 @@ function createDefaultPositionSource(
   resume: boolean,
   cursors?: NativeRunCursors,
   onNativeReset?: (cursors: NativeRunCursors) => void,
+  recoverLegacyControls?: (controls: NativeRunControl[]) => number,
 ): PositionSource {
   return isNativeIOS()
-    ? createNativeRunSource(runId, resume, cursors, onNativeReset)
+    ? createNativeRunSource(runId, resume, cursors, onNativeReset, recoverLegacyControls)
     : createGeolocationSource();
 }
 
@@ -377,7 +379,12 @@ export function useRunTracker(): UseRunTracker {
 
   const resume = useCallback(
     (source?: PositionSource) => {
-      const restored = restoreTracker(localStorage.getItem(RUN_TRACKER_STORAGE_KEY), Date.now());
+      // Native kept recording controls while JS was away. Replay against the
+      // saved pause state so a lock-screen Resume does not become another
+      // Pause, and background GPS recorded during rest remains excluded.
+      const restored = restoreTracker(localStorage.getItem(RUN_TRACKER_STORAGE_KEY), Date.now(), {
+        preservePause: !source && isNativeIOS(),
+      });
       if (!restored) {
         setResumable(false);
         return;
@@ -402,7 +409,19 @@ export function useRunTracker(): UseRunTracker {
           commit({ ...current, nativeSampleSeq: cursors.sample, nativeControlSeq: cursors.control });
         }
       };
-      attachSource(source ?? createDefaultPositionSource(restored.runId, true, resumePoint.cursors, onNativeReset));
+      const recoverLegacyControls = restored.legacyNativeControls
+        ? (controls: NativeRunControl[]) => {
+            const cursor = legacyNativeControlCursor(restored.legacyNativeControls!, controls);
+            const current = stateRef.current;
+            if (current?.runId === restored.runId && current.status === 'running') {
+              commit({ ...current, nativeControlSeq: cursor, legacyNativeControls: undefined });
+            }
+            return cursor;
+          }
+        : undefined;
+      attachSource(source ?? createDefaultPositionSource(
+        restored.runId, true, resumePoint.cursors, onNativeReset, recoverLegacyControls,
+      ));
     },
     [attachSource, commit],
   );

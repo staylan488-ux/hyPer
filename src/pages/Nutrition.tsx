@@ -97,6 +97,8 @@ export function Nutrition() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [deletedId, setDeletedId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
+  const selectedMonthRef = useRef(selectedMonth);
+  useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
@@ -109,15 +111,20 @@ export function Nutrition() {
   const defaultGroupsFailed = useRef(new Set<string>());
 
   const fetchMonthLogs = useCallback(async (month: Date) => {
-    const token = requestGate.begin();
     const key = nutritionMonthKey(month);
+    // A mutation from a month already left must not supersede the selected
+    // month's request, even if its failure arrives after that request started.
+    if (key !== nutritionMonthKey(selectedMonthRef.current)) return;
+    const token = requestGate.begin();
+    const isCurrent = () => requestGate.isCurrent(token)
+      && key === nutritionMonthKey(selectedMonthRef.current);
     // Only a month that is not on screen yet shows the skeleton. A refresh
     // after a save keeps the page mounted so the numbers roll on from their
     // current values instead of replaying from zero.
     if (loadedMonthKeyRef.current !== key) setLoading(true);
     try {
       const userId = await getSessionUserId();
-      if (!userId || !requestGate.isCurrent(token)) return;
+      if (!userId || !isCurrent()) return;
 
       const from = format(startOfMonth(month), 'yyyy-MM-dd');
       const to = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -137,7 +144,7 @@ export function Nutrition() {
           .lte('date', to)
           .order('sort_order', { ascending: true }),
       ]);
-      if (!requestGate.isCurrent(token)) return;
+      if (!isCurrent()) return;
       const { data: logs, error: logsError } = logsResult;
       const { data: groups, error: groupsError } = groupsResult;
 
@@ -161,7 +168,7 @@ export function Nutrition() {
       // Cleared on every exit, including signed-out or offline, so the page
       // can never stay on its skeleton; a superseded request leaves it to the
       // newest one.
-      if (requestGate.isCurrent(token)) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [requestGate]);
 
@@ -180,7 +187,7 @@ export function Nutrition() {
   const handleLogComplete = () => {
     setShowLogger(false);
     setEditingEntry(null);
-    fetchMonthLogs(selectedMonth);
+    fetchMonthLogs(selectedMonthRef.current);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
   };
@@ -276,14 +283,16 @@ export function Nutrition() {
         if (error || !data) {
           console.error('Error creating default nutrition groups:', error);
           defaultGroupsFailed.current.add(selectedDateKey);
-          await fetchMonthLogs(selectedMonth);
+          if (cancelled) return;
+          await fetchMonthLogs(selectedMonthRef.current);
           return;
         }
 
         const inserted = data as NutritionGroup[];
         const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, ...inserted]);
         if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, ...inserted], normalized))) {
-          await fetchMonthLogs(selectedMonth);
+          if (cancelled) return;
+          await fetchMonthLogs(selectedMonthRef.current);
           return;
         }
         if (cancelled) return;
@@ -334,7 +343,7 @@ export function Nutrition() {
 
     const normalized = insertNutritionGroupByTime(selectedDayGroups, data as NutritionGroup);
     if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, data as NutritionGroup], normalized))) {
-      await fetchMonthLogs(selectedMonth);
+      await fetchMonthLogs(selectedMonthRef.current);
       return;
     }
 
@@ -360,7 +369,7 @@ export function Nutrition() {
       console.error('Error moving nutrition entry to the previous day:', error);
       return;
     }
-    await fetchMonthLogs(selectedMonth);
+    await fetchMonthLogs(selectedMonthRef.current);
   };
 
   const moveEntry = async (logId: string, groupId: string | null) => {
@@ -384,7 +393,7 @@ export function Nutrition() {
     if (!reordered) return;
 
     if (!await persistGroupOrder(changedGroupOrders(selectedDayGroups, reordered))) {
-      await fetchMonthLogs(selectedMonth);
+      await fetchMonthLogs(selectedMonthRef.current);
       return;
     }
 

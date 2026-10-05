@@ -19,6 +19,7 @@ import {
 } from '@/lib/animations';
 import { SetRangeFields } from '@/components/split/SetRangeFields';
 import { commitFocusedField } from '@/lib/commitFocusedField';
+import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
 
 // ═══════════════════════════════════
@@ -315,29 +316,26 @@ const DayCard = memo(function DayCard({
 
 export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorProps) {
   const draft = useSplitEditStore((s) => s.draft);
-  const isDirty = useSplitEditStore((s) => s.isDirty);
   const saving = useSplitEditStore((s) => s.saving);
   const error = useSplitEditStore((s) => s.error);
   const renameSplit = useSplitEditStore((s) => s.renameSplit);
   const updateDescription = useSplitEditStore((s) => s.updateDescription);
   const addDay = useSplitEditStore((s) => s.addDay);
   const saveEdit = useSplitEditStore((s) => s.saveEdit);
-  const cancelEdit = useSplitEditStore((s) => s.cancelEdit);
 
   const handleCancel = useCallback(() => {
-    if (isDirty) {
-      const confirmed = window.confirm(
-        'You have unsaved changes. Discard them?'
-      );
-      if (!confirmed) return;
-    }
-    cancelEdit();
-    onClose();
-  }, [isDirty, cancelEdit, onClose]);
+    if (discardSplitEdit()) onClose();
+  }, [onClose]);
 
   const handleSave = useCallback(async () => {
+    if (useSplitEditStore.getState().saving) return;
     // Commit a cell still being typed in before the draft is read.
     commitFocusedField();
+    if (!useSplitEditStore.getState().isDirty) {
+      useSplitEditStore.getState().cancelEdit();
+      onClose();
+      return;
+    }
     const success = await saveEdit();
     if (success) {
       onSaved();
@@ -480,7 +478,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
               className="flex-1"
               onClick={handleSave}
               loading={saving}
-              disabled={saving || !isDirty}
+              disabled={saving}
             >
               Save
             </Button>

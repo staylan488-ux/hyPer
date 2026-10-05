@@ -15,7 +15,7 @@ tokens; an already approved direction does not need another design exploration.
 - Current roles are 40px/1.06 Fraunces titles, 44px/1 Fraunces key figures,
   14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
   and accessibility without truncating meaningful names.
-- Use Paper/Ink theme tokens and one restrained Lacquer red accent. The approved
+- Use the current Ivory/Black theme tokens and one restrained Lacquer red accent. The approved
   material refinement uses Ivory (#F5F5F0) and true Black (#000000), with soft
   neutral translucent surfaces. Positive/completed states use ink; use semantic
   tokens for both themes.
@@ -69,7 +69,7 @@ layout and makes motion, data and 3D the expressive layer.
   increased contrast removes moving light and blur. Keep the brand intro's
   skip/cleanup behavior and reduced-motion bypass.
 - Preserve safe areas, visible-viewport keyboard behavior, nested sheet focus,
-  and background isolation. Inspect changed UI in Paper/Ink at phone widths.
+  and background isolation. Inspect changed UI in Ivory/Black at phone widths.
 
 ## Implementation references
 

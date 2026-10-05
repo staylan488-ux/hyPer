@@ -55,7 +55,13 @@ export const timedFetch: typeof fetch = async (input, init) => {
   }, timeoutMs);
 
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    // fetch resolves at headers. Supabase still needs the entire JSON body;
+    // keep both deadline and caller cancellation attached until it arrives.
+    // These REST/auth responses are bounded, so buffer a clone and return the
+    // original with its status, URL, headers and unread body intact.
+    if (response.body) await response.clone().arrayBuffer();
+    return response;
   } finally {
     clearTimeout(timer);
     callerSignal?.removeEventListener('abort', forwardAbort);

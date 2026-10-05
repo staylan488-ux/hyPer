@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { runWhoopSync, type WhoopSyncPorts } from '@/lib/whoopSync';
-import type { WhoopWorkoutRecord } from '@/lib/whoopImport';
+import { runWhoopSync, whoopFetchStart, type WhoopSyncPorts } from '@/lib/whoopSync';
+import { beginWhoopReconciliation, completeWhoopReconciliation, readWhoopReconciliation } from '@/lib/whoopReconciliation';
+import { normalizeWhoopWorkout, type WhoopWorkoutRecord } from '@/lib/whoopImport';
 import type {
   ActivitySegment,
   ActivitySegmentInput,
@@ -564,7 +565,7 @@ function soloRecord(slot: number): WhoopWorkoutRecord {
 }
 
 describe('runWhoopSync apply phase', () => {
-  it('counts only sessions that were actually created and recreates the rest next sync', async () => {
+  it('reports failed creates and recreates the missing sessions on retry', async () => {
     const data = new FakeData();
     const laps = [1, 2, 3].map((n) => lapRecord(n));
     const healthy = data.ports();
@@ -572,9 +573,7 @@ describe('runWhoopSync apply phase', () => {
       createSession: async (input) => (input.activity_type === 'tennis' ? null : healthy.createSession(input)),
     });
 
-    const first = await runWhoopSync(ports, {});
-
-    expect(first.created).toBe(1);
+    await expect(runWhoopSync(ports, {})).rejects.toThrow('creation failed');
     expect(data.sessions.map((s) => s.activity_type)).toEqual(['interval_run']);
 
     const second = await runWhoopSync(makePorts(data, [[...laps, tennisRecord]]), {});
@@ -700,7 +699,7 @@ describe('runWhoopSync apply phase', () => {
     expect(data.sessions.map((s) => s.id)).not.toContain('stale-a');
   });
 
-  it('leaves a failed link out of the count without failing the sync, and repairs it next time', async () => {
+  it('reports a failed link and repairs it next time', async () => {
     const data = new FakeData();
     const healthy = data.ports();
     const flaky = withData(makePorts(data, [[soloRecord(0), soloRecord(1)]]), {
@@ -710,9 +709,7 @@ describe('runWhoopSync apply phase', () => {
       },
     });
 
-    const first = await runWhoopSync(flaky, {});
-
-    expect(first.created).toBe(1);
+    await expect(runWhoopSync(flaky, {})).rejects.toThrow('linking failed');
     expect(data.sessions).toHaveLength(2); // one inserted but unlinked
 
     const second = await runWhoopSync(makePorts(data, [[soloRecord(0), soloRecord(1)]]), {});
@@ -720,5 +717,81 @@ describe('runWhoopSync apply phase', () => {
     expect(second).toMatchObject({ created: 1, deleted: 1 });
     expect(data.sessions).toHaveLength(2);
     expect(data.segments.every((s) => s.session_id != null)).toBe(true);
+  });
+});
+
+describe('durable WHOOP reconciliation recovery', () => {
+  beforeEach(() => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      clear: () => values.clear(),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const oldRecord = { ...tennisRecord, id: 'old-tennis', start: '2026-06-20T10:00:00.000Z', end: '2026-06-20T11:00:00.000Z' };
+
+  async function sync(data: FakeData, records: WhoopWorkoutRecord[], overrides: Partial<WhoopSyncPorts['data']> = {}) {
+    const sinceIso = data.segments.map((segment) => segment.started_at).sort().at(-1) ?? null;
+    const checkpoint = readWhoopReconciliation('user-1');
+    const windowStart = whoopFetchStart(NOW, sinceIso);
+    const oldestStored = checkpoint.historyReconciled ? windowStart
+      : data.segments.map((segment) => segment.started_at).sort()[0] ?? windowStart;
+    const reconcileFromIso = beginWhoopReconciliation('user-1', checkpoint,
+      Date.parse(oldestStored) < Date.parse(windowStart) ? oldestStored : windowStart);
+    const result = await runWhoopSync(withData(makePorts(data, [records]), overrides), { sinceIso, reconcileFromIso });
+    completeWhoopReconciliation('user-1');
+    return result;
+  }
+
+  it.each(['read', 'create', 'link'] as const)('recovers a two-week-old activity after a failed %s despite a newer segment watermark', async (failure) => {
+    const data = new FakeData();
+    const healthy = data.ports();
+    const overrides: Partial<WhoopSyncPorts['data']> = failure === 'read'
+      ? { fetchSessionsInWindow: async () => { throw new Error('read failed'); } }
+      : failure === 'create'
+        ? { createSession: (input) => input.started_at === oldRecord.start ? Promise.resolve(null) : healthy.createSession(input) }
+        : { linkSegmentsToSession: async (ids, id) => ids.some((segmentId) => data.segments.find((segment) => segment.id === segmentId)?.external_id === oldRecord.id)
+          ? false : healthy.linkSegmentsToSession(ids, id) };
+    await expect(sync(data, [oldRecord, tennisRecord], overrides)).rejects.toThrow();
+    expect(data.segments).toHaveLength(2);
+    expect(Date.parse(readWhoopReconciliation('user-1').pendingFromIso!)).toBeLessThan(Date.parse(oldRecord.start));
+
+    // WHOOP now only returns the recent overlap, just like production. The
+    // saved reconciliation window still includes the older stored segment.
+    await sync(data, [tennisRecord]);
+    const older = data.sessions.find((session) => session.started_at === oldRecord.start)!;
+    expect(older).toBeDefined();
+    expect(data.segments.find((segment) => segment.external_id === oldRecord.id)?.session_id).toBe(older.id);
+    expect(readWhoopReconciliation('user-1')).toEqual({ pendingFromIso: null, historyReconciled: true });
+  });
+
+  it('repairs previously stranded history when no checkpoint exists, including after local storage is cleared', async () => {
+    const data = new FakeData();
+    await data.ports().upsertSegments([oldRecord, tennisRecord].map(normalizeWhoopWorkout));
+    await sync(data, [tennisRecord]);
+    expect(data.sessions.map((session) => session.started_at)).toContain(oldRecord.start);
+    localStorage.clear();
+    await sync(data, [tennisRecord]);
+    expect(data.sessions).toHaveLength(2);
+  });
+
+  it('keeps unfinished windows separate by account and never advances one past an earlier failure', () => {
+    const first = beginWhoopReconciliation('user-1', readWhoopReconciliation('user-1'), oldRecord.start);
+    expect(beginWhoopReconciliation('user-1', readWhoopReconciliation('user-1'), tennisRecord.start)).toBe(first);
+    expect(readWhoopReconciliation('user-2')).toEqual({ pendingFromIso: null, historyReconciled: false });
+    completeWhoopReconciliation('user-2');
+    expect(readWhoopReconciliation('user-1').pendingFromIso).toBe(first);
+  });
+
+  it('does not ingest a truncated remote fetch and therefore cannot advance its watermark', async () => {
+    const data = new FakeData();
+    const ports = makePorts(data, [[]]);
+    ports.fetchBatch = async () => ({ records: [tennisRecord], nextToken: 'another-page' });
+    await expect(runWhoopSync(ports)).rejects.toThrow('more pages');
+    expect(data.segments).toEqual([]);
+    expect(data.sessions).toEqual([]);
   });
 });

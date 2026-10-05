@@ -673,13 +673,13 @@ describe('createNativeRunSource live cursor', () => {
     source.resync();
     await settle();
 
-    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2]);
-    expect(delivered.map(seqOf).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2, 4]);
+    expect(delivered.map(seqOf)).toEqual([1, 2, 3, 4]);
 
     // with the gap filled the cursor moves past 4
     source.resync();
     await settle();
-    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2, 4]);
+    expect(afterSequences(fake.NativeRun.drainSamples)).toEqual([2, 4, 4]);
   });
 
   it('continues paging from the last full page and then resyncs from the end', async () => {
@@ -710,4 +710,90 @@ describe('createNativeRunSource live cursor', () => {
 
     expect(afterSequences(fake.NativeRun.drainSamples)[0]).toBe(0);
   });
+});
+
+it('drains suspended GPS before applying a newer live sample', async () => {
+  const samples = range(1, 201).map((seq) => {
+    const angle = seq * Math.PI * 2 / 120;
+    return { ...nativeSample(seq), latitude: 37.8712 + 60 * Math.sin(angle) / 111320,
+      longitude: -122.2601 + 60 * Math.cos(angle) / 88000, speedMps: Math.PI };
+  });
+  const toGps = (sample: NativeRunSample): GpsSample => ({
+    t: sample.timestampMs, lat: sample.latitude, lon: sample.longitude, accuracyM: sample.horizontalAccuracyM,
+    speedMps: sample.speedMps, speedAccuracyMps: sample.speedAccuracyMps, motionDetected: true, nativeSeq: sample.sequence,
+  });
+  let actual = createTracker(defaultTrackerConfig('free', null), T0, 'run-a');
+  let reference = actual;
+  for (const sample of samples) reference = advanceRecordedSample(reference, toGps(sample)).state;
+  fake.state.samples = samples.slice(0, 20);
+  const source = createNativeRunSource('run-a', true);
+  source.start((sample) => { actual = advanceRecordedSample(actual, sample).state; }, () => undefined);
+  await settle();
+  fake.state.samples = samples;
+  const pending = deferred<SampleBatch>();
+  fake.state.sampleScript.push(() => pending.promise);
+  source.resync();
+  fake.emit('locationSample', samples[200]);
+  expect(actual.nativeSampleSeq).toBe(20); // no checkpoint jumps over the backlog
+  pending.resolve({ samples: samples.slice(20), lastSequence: 201, hasMore: false });
+  await settle();
+  expect(actual.totalDistanceM).toBeCloseTo(reference.totalDistanceM, 1);
+});
+
+
+it('recovers a live sequence gap before visibilitychange can request a drain', async () => {
+  fake.state.samples = range(1, 20).map((seq) => nativeSample(seq));
+  const source = createNativeRunSource('run-a', true);
+  const { delivered } = startSource(source);
+  await settle();
+  fake.state.samples = range(1, 100).map((seq) => nativeSample(seq));
+  fake.emit('locationSample', nativeSample(100));
+  expect(delivered.map(seqOf)).toEqual(range(1, 20));
+  await settle();
+  expect(delivered.map(seqOf)).toEqual(range(1, 100));
+});
+
+it('does not mutate a detached run when an in-flight recovery finally settles', async () => {
+  fake.state.samples = range(1, 20).map((seq) => nativeSample(seq));
+  const source = createNativeRunSource('run-a', true);
+  const { delivered } = startSource(source);
+  await settle();
+  const pending = deferred<SampleBatch>();
+  fake.state.sampleScript.push(() => pending.promise);
+  source.resync();
+  fake.emit('locationSample', nativeSample(100));
+  source.detach();
+  pending.resolve({ samples: range(21, 100).map((seq) => nativeSample(seq)), lastSequence: 100, hasMore: false });
+  await settle();
+  expect(delivered.map(seqOf)).toEqual(range(1, 20));
+});
+
+it('holds live events after a failed recovery and retries them in order', async () => {
+  fake.state.samples = range(1, 20).map((seq) => nativeSample(seq));
+  const source = createNativeRunSource('run-a', true);
+  const { delivered } = startSource(source);
+  await settle();
+  fake.state.samples = range(1, 100).map((seq) => nativeSample(seq));
+  fake.state.sampleScript.push(() => Promise.reject(new Error('disk read temporarily unavailable')));
+  fake.emit('locationSample', nativeSample(100));
+  await settle();
+  expect(delivered.map(seqOf)).toEqual(range(1, 20));
+  source.resync();
+  await settle();
+  expect(delivered.map(seqOf)).toEqual(range(1, 100));
+});
+
+it('recovers controls and samples in time order even when newer live events arrive first', async () => {
+  const source = createNativeRunSource('run-a', true);
+  const { order } = startSource(source);
+  await settle();
+  const pending = deferred<SampleBatch>();
+  fake.state.sampleScript.push(() => pending.promise);
+  fake.state.controls = [nativeControl(1, T0 + 2_500)];
+  source.resync();
+  fake.emit('locationSample', nativeSample(5));
+  fake.emit('runControl', nativeControl(2, T0 + 4_500));
+  pending.resolve({ samples: range(1, 4).map((seq) => nativeSample(seq)), lastSequence: 4, hasMore: false });
+  await settle();
+  expect(order).toEqual(['s1', 's2', 'c1', 's3', 's4', 'c2', 's5']);
 });

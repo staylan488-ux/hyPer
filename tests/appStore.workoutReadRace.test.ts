@@ -9,6 +9,7 @@ type Result = { data: unknown; error: unknown; status?: number };
 const backend = vi.hoisted(() => {
   const queues = new Map<string, Array<() => Promise<Result>>>();
   const calls: string[] = [];
+  const mutations: string[] = [];
   const next = (table: string) => {
     const queued = queues.get(table)?.shift();
     return queued ? queued() : Promise.resolve({ data: null, error: null, status: 200 });
@@ -19,7 +20,10 @@ const backend = vi.hoisted(() => {
     const settle = () => (answer ??= next(table));
     const query: Record<string, unknown> = {};
     for (const method of ['select', 'update', 'insert', 'delete', 'eq', 'neq', 'in', 'order', 'limit', 'abortSignal', 'gte', 'lte']) {
-      query[method] = () => query;
+      query[method] = () => {
+        if (['update', 'insert', 'delete'].includes(method)) mutations.push(`${table}.${method}`);
+        return query;
+      };
     }
     query.single = () => settle();
     query.maybeSingle = () => settle();
@@ -29,6 +33,7 @@ const backend = vi.hoisted(() => {
   return {
     queues,
     calls,
+    mutations,
     client: {
       from,
       auth: { getSession: async () => ({ data: { session: { user: { id: 'user-1' } } }, error: null }) },
@@ -78,6 +83,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   backend.queues.clear();
   backend.calls.length = 0;
+  backend.mutations.length = 0;
   useAppStore.setState({
     currentWorkout: workoutWith(openSet),
     currentWorkoutDayPlan: null,
@@ -189,6 +195,113 @@ describe('fetchCurrentWorkout against overlapping workout writes', () => {
   });
 });
 
+describe('restoring flexible sessions with their required plan', () => {
+  const plan = { id: 'plan-1', workout_id: 'workout-1', day_label: 'Push', items: [] };
+
+  it('does not expose a cold session until its plan is available', async () => {
+    useAppStore.setState({ currentWorkout: null });
+    answer('workouts', { data: workoutWith(openSet), error: null });
+    const releasePlan = hold('workout_day_plans');
+
+    const read = useAppStore.getState().fetchCurrentWorkout();
+    await flush();
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+
+    releasePlan({ data: plan, error: null });
+    await read;
+
+    expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');
+    expect(useAppStore.getState().currentWorkoutDayPlan).toEqual(plan);
+    expect(backend.mutations).toEqual([]);
+  });
+
+  it.each([
+    ['missing', null],
+    ['unreadable', { message: 'offline' }],
+  ])('leaves Start available when a cold session has a %s plan', async (_label, error) => {
+    const loggedError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useAppStore.setState({ currentWorkout: null });
+    answer('workouts', { data: workoutWith(openSet), error: null });
+    answer('workout_day_plans', { data: null, error });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+    expect(backend.mutations).toEqual([]);
+    loggedError.mockRestore();
+  });
+
+  it.each([
+    ['missing', null],
+    ['unreadable', { message: 'offline' }],
+  ])('preserves a usable warm session when its refreshed plan is %s', async (_label, error) => {
+    const loggedError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warmWorkout = workoutWith(loggedSet);
+    useAppStore.setState({ currentWorkout: warmWorkout, currentWorkoutDayPlan: plan });
+    answer('workouts', { data: workoutWith(openSet), error: null });
+    answer('workout_day_plans', { data: null, error });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toBe(warmWorkout);
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBe(plan);
+    expect(backend.mutations).toEqual([]);
+    loggedError.mockRestore();
+  });
+
+  it('does not treat a cached plan for another workout as a usable session', async () => {
+    useAppStore.setState({ currentWorkoutDayPlan: { ...plan, workout_id: 'another-workout' } });
+    answer('workouts', { data: workoutWith(openSet), error: null });
+    answer('workout_day_plans', { data: null, error: null });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+
+  it('continues to restore a split session without a day plan', async () => {
+    const splitWorkout = { ...workoutWith(openSet), split_day_id: 'split-day-1' };
+    answer('workouts', { data: splitWorkout, error: null });
+    answer('workout_day_plans', { data: null, error: null });
+
+    await useAppStore.getState().fetchCurrentWorkout();
+
+    expect(useAppStore.getState().currentWorkout).toEqual(splitWorkout);
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+
+  it('does not restore a session finished while its required plan was loading', async () => {
+    answer('workouts', { data: workoutWith(loggedSet), error: null });
+    const releasePlan = hold('workout_day_plans');
+    const read = useAppStore.getState().fetchCurrentWorkout();
+    await flush();
+
+    answer('workouts', { data: null, error: null, status: 204 });
+    await useAppStore.getState().completeWorkout();
+    releasePlan({ data: plan, error: null });
+    await read;
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+
+  it('does not restore an old account session after its required plan finishes loading', async () => {
+    answer('workouts', { data: workoutWith(loggedSet), error: null });
+    const releasePlan = hold('workout_day_plans');
+    const read = useAppStore.getState().fetchCurrentWorkout();
+    await flush();
+
+    resetAppData();
+    releasePlan({ data: plan, error: null });
+    await read;
+
+    expect(useAppStore.getState().currentWorkout).toBeNull();
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+  });
+});
+
 describe('remembered Today across a session started and finished elsewhere', () => {
   it('does not trust "not done" after starting and finishing with no live workout on either side', async () => {
     useAppStore.setState({ currentWorkout: null });
@@ -198,6 +311,7 @@ describe('remembered Today across a session started and finished elsewhere', () 
     // Train: no open workout, the insert, the re-read, then the finish.
     answer('workouts', { data: null, error: null });
     answer('workouts', { data: { ...workoutWith(openSet), sets: undefined }, error: null });
+    answer('workout_day_plans', { data: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Push', items: [] }, error: null });
     answer('workouts', { data: workoutWith(openSet), error: null });
     await useAppStore.getState().startFlexibleWorkout('Push');
     expect(useAppStore.getState().currentWorkout?.id).toBe('workout-1');

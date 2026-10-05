@@ -27,6 +27,7 @@ vi.mock('@/lib/whoopClient', () => ({
 
 import { useAppStore } from '@/stores/appStore';
 import { SET_SAVE_TIMEOUT_MS } from '@/lib/saveWorkoutSet';
+import { invalidateAccountScope } from '@/lib/accountScope';
 
 const realFetchSplits = useAppStore.getState().fetchSplits;
 
@@ -1572,9 +1573,7 @@ describe('must-work store contracts', () => {
       supabaseMock.from.mockImplementation(() => workoutsChain);
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const result = await useAppStore.getState().syncWorkoutCompletion('workout-1');
-
-      expect(result).toEqual({ totalSets: 0, completedSets: 0, completed: false });
+      await expect(useAppStore.getState().syncWorkoutCompletion('workout-1')).rejects.toThrow('Could not refresh workout completion');
       expect(workoutsChain.update).not.toHaveBeenCalled();
       errorSpy.mockRestore();
     });
@@ -3190,6 +3189,10 @@ function installRecordingSupabase(respond: (query: RecordedQuery) => QueryResult
       return run();
     };
     builder.maybeSingle = builder.single;
+    builder.range = (from: number, to: number) => {
+      query.filters.push(['range', String(from), to]);
+      return builder;
+    };
     builder.then = (onFulfilled: (value: QueryResult) => unknown, onRejected?: (reason: unknown) => unknown) =>
       run().then(onFulfilled, onRejected);
     return builder;
@@ -3300,6 +3303,11 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
   }
 
   beforeEach(() => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+    });
     supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
     whoopClientMock.fetchWhoopBatchRemote.mockReset();
     whoopClientMock.fetchWhoopBatchRemote.mockResolvedValue({ records: [], nextToken: null });
@@ -3308,6 +3316,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('imports a new WHOOP workout on a healthy sync', async () => {
@@ -3327,7 +3336,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     expect(supabaseMock.auth.getUser).not.toHaveBeenCalled();
   });
 
-  it('reports a sync with a failed segment link instead of calling it unavailable', async () => {
+  it('reports a failed segment link and keeps reconciliation pending', async () => {
     const db = installRecordingSupabase((query) => {
       const kind = whoopReadKind(query);
       if (kind === 'watermark') return { data: null, error: null };
@@ -3343,7 +3352,8 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
 
     const result = await useAppStore.getState().syncWhoop();
 
-    expect(result).toMatchObject({ created: 0, deleted: 0 });
+    expect(result).toBeNull();
+    expect(JSON.parse(localStorage.getItem('hyper:whoop-reconciliation:v1:user-1')!).pendingFromIso).toBeTruthy();
     expect(db.writes().filter((q) => q.table === 'activity_sessions')).toHaveLength(1);
   });
 
@@ -3445,6 +3455,57 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
 
     expect(result).toBeNull();
     expect(whoopClientMock.fetchWhoopBatchRemote).not.toHaveBeenCalled();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('persists reconciliation before ingestion and writes nothing if the checkpoint cannot be saved', async () => {
+    const db = installWhoopDb({});
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+    expect(await useAppStore.getState().syncWhoop()).toBeNull();
+    expect(whoopClientMock.fetchWhoopBatchRemote).not.toHaveBeenCalled();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('stops an old-account sync and does not join it after the same account signs in again', async () => {
+    const db = installWhoopDb({});
+    let release!: () => void;
+    whoopClientMock.fetchWhoopBatchRemote.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ records: [], nextToken: null });
+    }));
+    const old = useAppStore.getState().syncWhoop();
+    await vi.waitFor(() => expect(whoopClientMock.fetchWhoopBatchRemote).toHaveBeenCalledOnce());
+    invalidateAccountScope();
+    const current = await useAppStore.getState().syncWhoop();
+    expect(current).not.toBeNull();
+    expect(whoopClientMock.fetchWhoopBatchRemote).toHaveBeenCalledTimes(2);
+    const queriesBeforeOldReturns = db.queries.length;
+    release();
+    expect(await old).toBeNull();
+    expect(db.queries).toHaveLength(queriesBeforeOldReturns);
+  });
+
+  it.each([false, true])('reads every historical page before applying a repair (later page failure: %s)', async (failLaterPage) => {
+    const host = makeActivitySession({ id: 'frozen', dismissed_at: new Date().toISOString() });
+    const segments = Array.from({ length: 501 }, (_, index) => makeWhoopSegment({ id: `segment-${index}`, session_id: host.id }));
+    const db = installRecordingSupabase((query) => {
+      const kind = whoopReadKind(query);
+      if (kind === 'watermark') return { data: { started_at: segments[0].started_at }, error: null };
+      if (kind === 'sessionsWindow') return { data: [host], error: null };
+      if (kind === 'segmentsWindow') {
+        const range = query.filters.find(([op]) => op === 'range')!;
+        const offset = Number(range[1]);
+        if (failLaterPage && offset > 0) return readFailure;
+        return { data: segments.slice(offset, offset + 500), error: null };
+      }
+      return undefined;
+    });
+    const result = await useAppStore.getState().syncWhoop();
+    if (failLaterPage) expect(result).toBeNull();
+    else expect(result).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(db.queries.filter((query) => whoopReadKind(query) === 'segmentsWindow')
+      .map((query) => query.filters.find(([op]) => op === 'range'))).toEqual([
+      ['range', '0', 499], ['range', '500', 999],
+    ]);
     expect(db.writes()).toEqual([]);
   });
 });
