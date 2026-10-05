@@ -97,6 +97,19 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
     if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current);
   }, []);
 
+  // A new label for the same rest (a swap renamed the upcoming movement)
+  // replaces the stored one. A remount passes none and keeps the stored label.
+  const labelPropRef = useRef(nextUpLabelProp);
+  useEffect(() => {
+    if (labelPropRef.current === nextUpLabelProp) return;
+    labelPropRef.current = nextUpLabelProp;
+    if (!nextUpLabelProp) return;
+    setSession((current) => {
+      if (!current || leavingRef.current || current.nextUpLabel === nextUpLabelProp) return current;
+      return saveRestTimerSession({ ...current, nextUpLabel: nextUpLabelProp });
+    });
+  }, [nextUpLabelProp]);
+
   const isRunning = session?.status === 'running';
 
   useLayoutEffect(() => {

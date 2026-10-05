@@ -1,4 +1,22 @@
-# Current work snapshot — optimization second-review fixes
+# Current work snapshot — session-only exercise swaps
+
+Recorded 2026-10-04 (Pacific). The owner asked for an intuitive way to swap a movement mid-session, for that workout only (e.g. Lat Pulldown taken → weighted Pull-Ups), mainly in program (split) workouts, so History shows what was really done instead of a note. Built on `feat/session-swap` from `main` at `1841914` (#139). The owner then authorized a commit and pull request; merge and release were not requested.
+
+PR #121 already had a basic swap in the movement menu. It now:
+- has a visible Swap action beside the target on expanded program-session movements, plus Swap exercise and Switch back in the menu;
+- carries the remaining set count and rep target to the replacement (loads still come from the replacement's own history);
+- records the planned movement as `substitutes_for` on the session plan item (JSONB, no migration), shown as "Instead of …" on the card and in History;
+- switches back with one tap, rejoining sets the original already finished.
+
+The saved program is never changed, and flexible templates drop the marker. Also fixed: Today's resume cue now follows the session plan for program workouts, the rest bar's "Next ·" label follows a swap, and History no longer shows raw `[set-range]` tags from plan notes.
+
+An independent review found that a superset replacement numbered from set 1 could block the partner's last round. Replacements in a superset now keep the moved sets' round numbers. Switching back now widens a program set range to admit the sets left.
+
+Validation: 1,662 tests across 135 files, the test typecheck, eslint on every changed file, and the production build passed. A headless browser run at 390×844 in Ivory and Black covered swap, menu, switch back with rejoin, leave/return, Today, finish and History, with no console errors. Native device behavior and production persistence were not exercised.
+
+A concurrent typography session is editing this same checkout: `.tmp/typography-*`, `src/index.css`, `settings.css`, `rest-timer.css`, `RollingNumber.tsx`, two nutrition loggers, three iOS Swift files and the studio-design skill. Those edits are not part of this changeset, which commits only its own files by name. The typography work should move to its own branch from `main` (`git switch -c <branch> main`) before it commits. Full `npm run lint` in the shared checkout currently fails only on its `.tmp/typography-ios` build output.
+
+# Previous work snapshot — optimization second-review fixes
 
 Recorded 2026-10-04 (Pacific). The owner requested a thorough review of the six optimization commits after `de2cd14`, then explicitly requested implementation of all thirteen recommendations. Implementation began on `opt/batch-c2-pr` at `e0a7ce0`. The owner subsequently authorized a PR and merge; the changeset is prepared on `fix/optimization-recovery` against `main` at `5da071d`, retaining the newer sheet-layer and zero-value set fixes. Deployment, release, and production-data writes remain outside this request.
 

@@ -78,6 +78,14 @@ export interface Workout {
   whoop_session_id?: string | null;
 }
 
+/** The planned movement a session-only swap stands in for. */
+export interface ExerciseSubstitution {
+  exercise_id: string;
+  exercise_name: string | null;
+  /** The planned movement's own plan notes, restored if the user switches back. */
+  notes?: string | null;
+}
+
 export interface FlexiblePlanItem {
   exercise_id: string;
   exercise_name?: string | null;
@@ -88,6 +96,8 @@ export interface FlexiblePlanItem {
   notes?: string | null;
   hidden?: boolean;
   superset_group_id?: string | null;
+  /** Set when this movement replaced a planned one for this session only. */
+  substitutes_for?: ExerciseSubstitution | null;
 }
 
 export interface WorkoutDayPlan {
