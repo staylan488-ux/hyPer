@@ -1530,7 +1530,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {photoProvider === 'anthropic' ? 'Claude' : 'OpenAI'}{photoModel ? ` · ${photoModel}` : ''}
             </span>
           </div>
-          <h3 className="t-title mt-3 pb-4 border-b border-[var(--color-border)]">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
+          <h3 className="t-title mt-3">{photoItems.length} food{photoItems.length === 1 ? '' : 's'} found</h3>
           {photoSummary && <p className="t-caption mt-4">{photoSummary}</p>}
           <p className="t-caption mt-2">Review every component and portion. USDA suggestions are never applied until you choose one.</p>
         </div>
@@ -1541,18 +1541,18 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <img
                 src={photoPreviews[angle]}
                 alt={`${angle === 'top' ? 'Top' : 'Side'} meal view`}
-                className="w-full aspect-[4/3] object-cover hairline-strong"
+                className="w-full aspect-[4/3] object-cover rounded-[var(--radius-control)] hairline-strong"
               />
               <figcaption className="t-label-sm mt-2">{angle === 'top' ? 'Top view' : '45° view'}</figcaption>
             </figure>
           ) : null)}
         </div>
 
-        <div>
+        <div className="platter platter-flush">
           {photoItems.map((item, index) => {
             const totals = photoItemTotals(item);
             return (
-              <div key={item.id} className="py-4 border-t border-[var(--color-border)]">
+              <div key={item.id} className="platter-row py-4 pl-4 pr-2">
                 <div className="flex items-start gap-3">
                   <span className="t-data-sm text-[var(--color-muted)] pt-3">{String(index + 1).padStart(2, '0')}</span>
                   <div className="flex-1 min-w-0 grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,1fr)_6rem]">
@@ -1670,7 +1670,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               </div>
             </div>
             <Button variant="ghost" className="shrink-0 !px-3" disabled={saving} onClick={resetPhotoState}>Retake</Button>
-            <Button className="min-w-0 shrink-0 !px-4" size="lg" loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
+            <Button className="min-w-0 shrink-0 !px-5" size="lg" metal={!onAddIngredients} loading={saving} disabled={photoItems.length === 0 || !timeValue} onClick={() => void handleSavePhotoItems()}>
               {onAddIngredients ? 'Add ingredients' : combineAsOneMeal && photoItems.length > 1
                 ? 'Log 1 meal'
                 : `Log ${photoItems.length} item${photoItems.length === 1 ? '' : 's'}`}
@@ -1690,7 +1690,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {/* ── Food header + macro ledger ── */}
         <div>
           <span className="t-label-sm block mb-2">{loggerMode === 'edit' ? 'Editing entry' : 'Selected'}</span>
-          <h3 className="t-title pb-4 border-b border-[var(--color-border)]">{selectedFood.name}</h3>
+          <h3 className="t-title">{selectedFood.name}</h3>
 
           {selectedFoodMeta?.source === 'photo' && (
             <div className="mt-5">
@@ -1724,16 +1724,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </p>
           )}
 
-          <div className="grid grid-cols-2 min-[420px]:grid-cols-4 gap-4 mt-6">
+          <div className="platter mt-5 grid grid-cols-4 gap-2 px-4 py-4">
             {[
               { label: 'kcal', value: Math.round(selectedFood.calories) },
               { label: 'protein', value: Math.round(selectedFood.protein), unit: 'g' },
               { label: 'carbs', value: Math.round(selectedFood.carbs), unit: 'g' },
               { label: 'fat', value: Math.round(selectedFood.fat), unit: 'g' },
             ].map((cell) => (
-              <div key={cell.label} className="border-t border-[var(--color-border)] pt-2.5">
+              <div key={cell.label} className="min-w-0 text-center">
                 <span className="t-label-sm block mb-1.5">{cell.label}</span>
-                <span className="flex items-baseline gap-0.5">
+                <span className="flex items-baseline justify-center gap-0.5">
                   <span className="t-data text-[var(--color-text)]">{cell.value}</span>
                   {cell.unit && (
                     <span className="t-caption text-[var(--color-text-dim)]">{cell.unit}</span>
@@ -1742,7 +1742,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               </div>
             ))}
           </div>
-          <p className="t-caption mt-3">
+          <p className="t-caption mt-3 px-1">
             {selectedFood.serving_label
               ? `per ${selectedFood.serving_label} (${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'g'})`
               : `per ${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'serving'}`}
@@ -1823,9 +1823,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         {whenRow}
 
         {/* ── This entry — the one important figure ── */}
-        <div>
+        <div className="platter">
           <span className="t-label block mb-2">This entry</span>
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="number-large text-[var(--color-text)]">{selectedFoodTotalCalories}</span>
             <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
             <span className="t-data-sm text-[var(--color-muted)] ml-2">{selectedFoodTotalProtein}g protein</span>
@@ -1849,6 +1849,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Button
             className="flex-[1.6]"
             size="lg"
+            metal={!onAddIngredients}
             onClick={() => {
               if (resolvedSelectedFoodServings === null) return;
               setServings(String(resolvedSelectedFoodServings));
@@ -1901,7 +1902,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
       {mode === 'saved' ? (
         <div className="space-y-4">
-          <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[var(--color-border)] pb-2">
+          <div className="flex min-h-11 items-center justify-between gap-4 pl-1">
             <span className="t-label-sm">
               {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
@@ -1929,14 +1930,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           </div>
 
-          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)]">
+          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
               placeholder="Find a saved food…"
               value={savedQuery}
               onChange={(event) => setSavedQuery(event.target.value)}
-              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none placeholder:text-[var(--color-muted)]"
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
             />
           </div>
 
@@ -1957,9 +1958,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               Loading saved foods…
             </div>
           ) : filteredSavedMeals.length > 0 ? (
-            <div className="max-h-64 w-full max-w-full overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
+            <div className="platter platter-flush max-h-72 w-full max-w-full overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
               {filteredSavedMeals.map((meal, index) => (
-                <div key={meal.id} className="flex w-full max-w-full min-w-0 items-stretch overflow-hidden border-t border-[var(--color-border)]">
+                <div key={meal.id} className="platter-row flex w-full max-w-full min-w-0 items-stretch overflow-hidden pl-4">
                   {managingSavedMeals ? (
                     <>
                       <div className="flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-2">
@@ -1975,7 +1976,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       </div>
                       <button
                         type="button"
-                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
+                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--platter-divider)] text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
                         onClick={() => handleEditSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
                         aria-label={`Edit saved meal ${meal.name}`}
@@ -1984,7 +1985,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       </button>
                       <button
                         type="button"
-                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
+                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--platter-divider)] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
                         onClick={() => void handleDeleteSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
                         aria-label={`Delete saved meal ${meal.name}`}
@@ -1997,7 +1998,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   ) : (
                     <button
                       type="button"
-                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 text-left"
+                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-4 text-left"
                       onClick={() => handleLogSavedMeal(meal)}
                       aria-label={`Log ${meal.name}`}
                     >
@@ -2017,7 +2018,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               ))}
             </div>
           ) : (
-            <div className="py-7 border-t border-[var(--color-border)]">
+            <div className="platter">
               <p className="t-heading">{savedQuery ? 'No saved foods match' : 'No saved foods yet'}</p>
               <p className="t-caption mt-2">Create one in Manual and choose “Save as reusable meal.”</p>
               <Button variant="secondary" size="sm" className="mt-4" onClick={() => setMode('manual')}>
@@ -2028,7 +2029,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         </div>
       ) : mode === 'search' ? (
         <>
-          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)]">
+          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
@@ -2036,7 +2037,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && searchUSDA(searchQuery)}
-              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none placeholder:text-[var(--color-muted)]"
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
             />
             <button
               type="button"
@@ -2060,12 +2061,12 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           )}
 
-          <div className="max-h-56 md:max-h-64 overflow-y-auto overscroll-contain touch-pan-y">
+          <div className={`${searchResults.length > 0 ? 'platter platter-flush' : ''} max-h-72 md:max-h-80 overflow-y-auto overscroll-contain touch-pan-y`}>
             {searchResults.map((food, index) => (
               <motion.button
                 key={food.fdc_id || food.id}
                 type="button"
-                className="pressable group w-full flex items-baseline gap-4 py-3.5 border-t border-[var(--color-border)] text-left"
+                className="platter-row pressable group w-full flex items-baseline gap-4 py-3.5 pl-4 pr-2 text-left"
                 onClick={async () => {
                   if (saving || loadingFoodId) return;
 
@@ -2120,7 +2121,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <div className="space-y-4">
             <BarcodeScanner onDetected={handleBarcodeDetected} />
             {missedBarcode && (
-              <div className="material-surface rounded-[11px] p-4">
+              <div className="platter">
                 <p className="t-caption">
                   {onAddIngredients ? `No catalog match for barcode ${missedBarcode}. Enter the package nutrition to add this ingredient.` : `No catalog match for barcode ${missedBarcode}. Enter it from the package label once and it will be yours on every future scan.`}
                 </p>
@@ -2153,10 +2154,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         </Suspense>
       ) : mode === 'manual' ? (
         <>
-          <div className="border-b border-[var(--color-border)] pb-5">
+          <div className="platter py-1.5">
             <button
               type="button"
-              className="pressable flex w-full items-center justify-between gap-4 text-left"
+              className="pressable flex w-full min-h-14 items-center justify-between gap-4 text-left"
               onClick={() => setShowFoodDescription((current) => !current)}
               aria-expanded={showFoodDescription}
             >
@@ -2171,7 +2172,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </button>
 
             {showFoodDescription && (
-              <div className="space-y-4 mt-4">
+              <div className="space-y-4 mt-3 mb-3.5">
                 <FormField label="Food, portion, and preparation">
                   <textarea
                     value={foodDescription}
@@ -2259,14 +2260,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             <div>
               <p className="t-label-sm mb-2.5">{showSavedMealsLoading ? 'Loading saved meals…' : 'Saved meals'}</p>
               {!showSavedMealsLoading && manualSuggestions.length > 0 ? (
-                <div className="max-h-36 overflow-y-auto">
+                <div className="platter platter-flush max-h-44 overflow-y-auto">
                   {manualSuggestions.map((meal) => (
                     <button
                       key={meal.id}
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSelectSavedMeal(meal)}
-                      className="pressable w-full text-left py-2.5 border-t border-[var(--color-border)]"
+                      className="platter-row pressable w-full min-h-11 text-left px-4 py-2.5"
                     >
                       <p className="t-body font-medium text-[var(--color-text)] break-words">{meal.name}</p>
                       <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
@@ -2347,10 +2348,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             <button
               type="button"
               onClick={() => setSaveAsReusableMeal(!saveAsReusableMeal)}
-              className="pressable flex items-center gap-3 text-left"
+              className="pressable flex min-h-11 items-center gap-3 text-left"
             >
               <span
-                className={`flex items-center justify-center w-[18px] h-[18px] border shrink-0 ${
+                className={`flex items-center justify-center w-[18px] h-[18px] rounded-[5px] border shrink-0 transition-colors ${
                   saveAsReusableMeal
                     ? 'bg-[var(--color-text)] border-[var(--color-text)]'
                     : 'border-[var(--color-border-strong)]'
@@ -2384,6 +2385,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
           <Button
             className="w-full"
             size="lg"
+            metal={!onAddIngredients}
             onClick={handleManualSubmit}
             disabled={!manualFood.name || saving || !timeValue}
             loading={saving}
@@ -2422,7 +2424,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <button
                 type="button"
                 onClick={() => topPhotoInputRef.current?.click()}
-                className="pressable w-full rounded-[11px] material-control py-10 flex flex-col items-center gap-3"
+                className="pressable w-full rounded-[var(--radius-control)] material-control py-10 flex flex-col items-center gap-3"
               >
                 <span className="flex items-center justify-center w-12 h-12">
                   <Camera className="w-5 h-5 text-[var(--color-text-dim)]" strokeWidth={1.5} />
@@ -2437,10 +2439,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               )}
             </div>
           ) : (
-            <div className="relative overflow-hidden hairline-strong">
+            <div className="relative overflow-hidden rounded-[var(--radius-control)] hairline-strong">
               <img src={photoPreviews.top} alt="Top view of meal" className="w-full h-52 object-cover" />
               {photoAnalyzing && (
-                <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)] flex flex-col items-center justify-center gap-2">
+                <>
+                  <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)]" aria-hidden />
+                  <span className="liquid-aura" aria-hidden />
+                </>
+              )}
+              {photoAnalyzing && (
+                <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-5 h-5 animate-spin text-[var(--color-accent)]" />
                   <span className="t-label text-[var(--color-text)]">Reading the plate…</span>
                 </div>
@@ -2450,7 +2458,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   ref={litRetakeRef}
                   type="button"
                   onClick={() => handleRetakePhoto('top')}
-                  className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"
+                  className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-4 material-glass rounded-[var(--radius-capsule)] t-label text-[var(--color-text)]"
                 >
                   <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                   Retake
@@ -2466,7 +2474,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <p className="t-caption mt-1">Adds height and depth, which improves portion estimates.</p>
             </div>
             {photoPreviews.side ? (
-              <div className="relative overflow-hidden hairline-strong">
+              <div className="relative overflow-hidden rounded-[var(--radius-control)] hairline-strong">
                 <img src={photoPreviews.side} alt="45 degree view of meal" className="w-full h-44 object-cover" />
                 {photoAnalyzing && (
                   <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)]" aria-hidden="true" />
@@ -2476,7 +2484,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                     ref={litRetakeRef}
                     type="button"
                     onClick={() => handleRetakePhoto('side')}
-                    className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-3 material-glass rounded-[var(--radius-control)] t-label text-[var(--color-text)]"
+                    className="pressable absolute top-2.5 right-2.5 flex min-h-11 items-center gap-1.5 px-4 material-glass rounded-[var(--radius-capsule)] t-label text-[var(--color-text)]"
                   >
                     <RefreshCw className="w-3 h-3" strokeWidth={1.75} />
                     Retake
@@ -2488,7 +2496,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 type="button"
                 onClick={() => sidePhotoInputRef.current?.click()}
                 disabled={photoAnalyzing}
-                className="pressable w-full min-h-20 rounded-[11px] material-control px-4 flex items-center gap-4 text-left disabled:opacity-40"
+                className="pressable w-full min-h-20 rounded-[var(--radius-control)] material-control px-4 flex items-center gap-4 text-left disabled:opacity-40"
               >
                 <span className="flex items-center justify-center w-10 h-10 shrink-0">
                   <ImagePlus className="w-4 h-4 text-[var(--color-text-dim)]" strokeWidth={1.5} />

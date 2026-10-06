@@ -8,6 +8,7 @@ import { springs } from '@/lib/animations';
 import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
+import { useLitSurface } from '@/hooks/useLitSurface';
 
 interface PreviousTarget { weight: number | null; reps: number | null; rpe: number | null }
 interface WorkoutSetRowProps {
@@ -35,6 +36,8 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const saveInFlight = useRef(false);
   const hasDraft = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+  // The metal key catches the motion light only while its entry is open.
+  const litSaveRef = useLitSurface<HTMLButtonElement>();
   const rowRef = useRef<HTMLButtonElement>(null);
   const focusOnOpen = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -169,7 +172,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={previousTarget?.weight?.toString() ?? '0'} disabled={saving} inputMode="decimal" min={0} step="any" required />
         <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={previousTarget?.reps?.toString() ?? '0'} disabled={saving} inputMode="numeric" min={0} step={1} required />
         <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={previousTarget?.rpe?.toString() ?? '—'} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
-        <button type="submit" className="studio-save-set material-button-primary" disabled={!validNumbers || saving} aria-busy={saving}
+        <button ref={editing ? litSaveRef : undefined} type="submit" className="studio-save-set material-button-primary liquid-metal" disabled={!validNumbers || saving} aria-busy={saving}
           aria-label={saving ? `Saving ${setLabel}` : saveError ? `Retry saving ${setLabel}` : set.completed ? `Save changes to ${setLabel}` : `Save ${setLabel}`}>
           {saving ? <Loader2 size={18} className="animate-spin" aria-hidden /> : saveError ? <span>Retry</span> : <Check size={20} aria-hidden />}
         </button>

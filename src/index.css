@@ -2,6 +2,7 @@
 @import "./styles/fonts.css";
 @import "./styles/materials.css";
 @import "./styles/kinetic.css";
+@import "./styles/liquid.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */
@@ -49,9 +50,11 @@
   --radius-xl: 0px;
   --radius-2xl: 0px;
   --radius-full: 9999px;
-  --radius-control: 11px;
-  --radius-sheet: 20px;
-  --radius-nav: 22px;
+  --radius-control: 14px;
+  --radius-capsule: 999px;
+  --radius-platter: 26px;
+  --radius-sheet: 30px;
+  --radius-nav: 999px;
 
   /* Typography */
   --font-sans: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
@@ -275,7 +278,10 @@ body {
 .studio-row-action { background: transparent; border-radius: 0; }
 .studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
 }
-:where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+/* Layered so a control's own outline utility (a well that rings itself) wins. */
+@layer base {
+  :where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+}
 
 /* ═════════════════════════════════════════════════════════════
    CONTENT — calm, readable surfaces beneath the glass control layer.

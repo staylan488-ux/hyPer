@@ -315,17 +315,20 @@ export function Splits() {
             />
           ) : (
             <>
-              <div className="flex items-baseline justify-between gap-3 mb-1">
-                <div className="min-w-0">
-                  <span className="t-label">Quick-start templates</span>
-                  <p className="t-caption mt-1">Saved from your flexible sessions</p>
-                </div>
-                <Button size="sm" variant="secondary" onClick={() => navigate('/train')}>
+              <section className="platter">
+                <p className="t-label">Flexible mode</p>
+                <p className="t-title mt-3 mb-6">Build today as you go.</p>
+                <Button size="lg" metal className="w-full" onClick={() => navigate('/train')}>
+                  <Play className="w-3.5 h-3.5" strokeWidth={1.75} fill="currentColor" />
                   Start session
                 </Button>
-              </div>
+              </section>
 
-              <ul className="mt-5">
+              <div className="mt-7 mb-3 px-1">
+                <span className="t-label">Quick-start templates</span>
+                <p className="t-caption mt-1">Saved from your flexible sessions</p>
+              </div>
+              <ul className="platter platter-flush">
                 {flexTemplates.map((template, index) => {
                   const isExpanded = expandedTemplateId === template.id;
                   const visibleItems = template.items.filter((item) => !item.hidden);
@@ -333,18 +336,18 @@ export function Splits() {
                   return (
                     <motion.li
                       key={template.id}
-                      className="border-t border-[var(--color-border)]"
+                      className="platter-row"
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ ...springs.settle, delay: Math.min(index * 0.05, 0.3) }}
                     >
-                      <div className="flex items-center gap-3 py-4">
+                      <div className="flex items-center gap-2 py-3 pl-5 pr-2">
                         <button
                           type="button"
-                          className="pressable flex-1 min-w-0 text-left flex items-baseline gap-4"
+                          className="pressable flex-1 min-w-0 min-h-11 text-left flex items-center gap-4"
                           onClick={() => setExpandedTemplateId(isExpanded ? null : template.id)}
                         >
-                          <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0">
+                          <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           <span className="flex-1 min-w-0">
@@ -359,6 +362,7 @@ export function Splits() {
                         <div className="flex items-center shrink-0">
                           <Button
                             size="sm"
+                            variant="secondary"
                             onClick={() => { void handleStartFromTemplate(template.label); }}
                             disabled={Boolean(startingTemplateLabel)}
                           >
@@ -368,7 +372,7 @@ export function Splits() {
                           <button
                             type="button"
                             aria-label="Rename template"
-                            className="pressable studio-row-action p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                            className="pressable studio-row-action px-0! ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                             onClick={() => handleOpenRenameTemplate(template)}
                           >
                             <Edit3 className="w-4 h-4" strokeWidth={1.5} />
@@ -376,7 +380,7 @@ export function Splits() {
                           <button
                             type="button"
                             aria-label="Delete template"
-                            className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+                            className="pressable studio-row-action px-0! text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
                             onClick={() => setTemplateToDelete(template)}
                           >
                             <Trash2 className="w-4 h-4" strokeWidth={1.5} />
@@ -393,9 +397,9 @@ export function Splits() {
                             exit={{ height: 0, opacity: 0 }}
                             transition={springs.settle}
                           >
-                            <div className="pb-4 pl-10">
+                            <div className="px-4 pb-4">
                               {visibleItems.length > 0 ? (
-                                <ul>
+                                <ul className="material-inset px-4 py-1">
                                   {visibleItems.map((item, itemIndex) => {
                                     const repsLabel = typeof item.target_reps_min === 'number' && typeof item.target_reps_max === 'number'
                                       ? `${item.target_reps_min}–${item.target_reps_max}`
@@ -403,7 +407,7 @@ export function Splits() {
                                     const setsLabel = typeof item.target_sets === 'number' ? `${item.target_sets}` : '—';
 
                                     return (
-                                      <li key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="flex items-baseline gap-3 py-2 border-t border-[var(--color-border-soft)]">
+                                      <li key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="flex items-baseline gap-3 py-2.5 border-t border-[var(--color-border-soft)] first:border-t-0">
                                         <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
                                           {String(itemIndex + 1).padStart(2, '0')}
                                         </span>
@@ -416,7 +420,7 @@ export function Splits() {
                                   })}
                                 </ul>
                               ) : (
-                                <p className="t-caption py-2">No visible exercises.</p>
+                                <p className="t-caption py-2 px-1">No visible exercises.</p>
                               )}
                             </div>
                           </motion.div>
@@ -443,7 +447,7 @@ export function Splits() {
           />
         </motion.div>
       ) : (
-        <ul>
+        <ul className="space-y-4">
           {splits.map((split, index) => {
             const isExpanded = expandedSplit === split.id;
             const totalExercises = split.days.reduce((sum, d) => sum + (d.exercises?.length || 0), 0);
@@ -451,43 +455,41 @@ export function Splits() {
             return (
               <motion.li
                 key={split.id}
-                className="border-t border-[var(--color-border)]"
+                className={`platter platter-flush overflow-visible! ${showMenu === split.id ? 'relative z-20' : ''}`}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...springs.settle, delay: Math.min(index * 0.05, 0.3) }}
               >
                 {/* Program Header */}
-                <div className="flex items-start gap-3 py-4">
+                <div className="flex items-start gap-1 pl-5 pr-2 pt-4 pb-4">
                   <button
                     type="button"
-                    className="pressable flex-1 min-w-0 text-left flex items-baseline gap-4"
+                    className="pressable flex-1 min-w-0 text-left flex items-start gap-4 pt-1"
                     onClick={() => setExpandedSplit(isExpanded ? null : split.id)}
                   >
-                    <span className={`t-data-sm w-6 shrink-0 ${split.is_active ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
                     <span className="flex-1 min-w-0">
-                      <span className="flex flex-wrap items-center gap-2.5">
-                        <span className="t-heading break-words">{split.name}</span>
-                        {split.is_active && (
-                          <span className="t-label-sm shrink-0 text-[var(--color-accent)]">Active</span>
-                        )}
+                      <span className="flex items-center gap-2 mb-2">
+                        {split.is_active && <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" aria-hidden />}
+                        <span className={`t-label ${split.is_active ? 'text-[var(--color-accent)]' : ''}`}>
+                          {split.is_active ? 'Active' : `Program ${String(index + 1).padStart(2, '0')}`}
+                        </span>
                       </span>
+                      <span className={`block break-words ${split.is_active ? 't-title text-[30px]!' : 't-heading text-[17px]!'}`}>{split.name}</span>
                       {split.description && (
-                        <span className="t-caption block mt-1 line-clamp-2">{split.description}</span>
+                        <span className="t-caption block mt-2 line-clamp-2">{split.description}</span>
                       )}
-                      <span className="t-data-sm text-[var(--color-muted)] block mt-1.5">
+                      <span className="t-data-sm text-[var(--color-muted)] flex items-center gap-2 mt-2">
                         {split.days.length} {split.days.length === 1 ? 'day' : 'days'} · {totalExercises} {totalExercises === 1 ? 'exercise' : 'exercises'}
+                        <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="inline-flex shrink-0">
+                          <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.75} />
+                        </motion.span>
                       </span>
                     </span>
-                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="self-center shrink-0">
-                      <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
-                    </motion.span>
                   </button>
 
                   <div className="relative shrink-0">
                     <motion.button
-                      className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                      className="pressable studio-row-action px-0! rounded-full! text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                       onClick={() => setShowMenu(showMenu === split.id ? null : split.id)}
                       whileTap={{ scale: 0.985 }}
                       aria-label="Program options"
@@ -499,7 +501,7 @@ export function Splits() {
                       {showMenu === split.id && (
                         <motion.div
                           ref={litMenuRef}
-                          className="absolute right-0 top-full mt-1 material-glass rounded-[11px] z-10 min-w-[160px] overflow-hidden"
+                          className="absolute right-0 top-full mt-1 material-glass glass-edge rounded-[var(--radius-control)] z-10 min-w-[184px] overflow-hidden py-1"
                           initial={{ opacity: 0, y: -4, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -4, scale: 0.98 }}
@@ -507,7 +509,7 @@ export function Splits() {
                         >
                           {!split.is_active && (
                             <button
-                              className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5 transition-colors"
+                              className="relative z-[1] w-full min-h-11 px-4 py-3 text-left t-body text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-3 transition-colors"
                               onClick={() => {
                                 void handleSelectSplit(split.id, split.name);
                               }}
@@ -517,14 +519,14 @@ export function Splits() {
                             </button>
                           )}
                           <button
-                            className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
+                            className="relative z-[1] w-full min-h-11 px-4 py-3 text-left t-body text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] flex items-center gap-3 border-t border-[var(--color-border-soft)] first:border-t-0 transition-colors"
                             onClick={() => handleEdit(split)}
                           >
                             <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                             Edit
                           </button>
                           <button
-                            className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
+                            className="relative z-[1] w-full min-h-11 px-4 py-3 text-left t-body text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] flex items-center gap-3 border-t border-[var(--color-border-soft)] transition-colors"
                             onClick={() => handleDelete(split.id)}
                           >
                             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -546,7 +548,7 @@ export function Splits() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={springs.settle}
                     >
-                      <ul className="pb-2 pl-10">
+                      <ul className="shadow-[inset_0_1px_0_var(--platter-divider)]">
                         {split.days.map((day, dayIndex) => {
                           const isDayExpanded = expandedDay === day.id;
                           const exerciseCount = day.exercises?.length || 0;
@@ -554,14 +556,14 @@ export function Splits() {
                           return (
                             <motion.li
                               key={day.id}
-                              className="border-t border-[var(--color-border-soft)]"
+                              className="platter-row"
                               initial={{ opacity: 0, x: -8 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: dayIndex * 0.04, ...springs.settle }}
                             >
                               <button
                                 type="button"
-                                className="pressable w-full flex items-center gap-3 py-3 text-left"
+                                className="pressable w-full min-h-[60px] flex items-center gap-4 px-5 py-3 text-left"
                                 onClick={() => setExpandedDay(isDayExpanded ? null : day.id)}
                               >
                                 <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
@@ -588,11 +590,11 @@ export function Splits() {
                                     transition={springs.settle}
                                   >
                                     {exerciseCount > 0 ? (
-                                      <ul className="pb-3 pl-8">
+                                      <ul className="material-inset mx-4 mb-4 px-4 py-1">
                                         {day.exercises?.map((ex, exIndex) => (
                                           <motion.li
                                             key={ex.id}
-                                            className="flex items-baseline gap-3 py-2 border-t border-[var(--color-border-soft)]"
+                                            className="flex items-baseline gap-3 py-2.5 border-t border-[var(--color-border-soft)] first:border-t-0"
                                             initial={{ opacity: 0, y: 4 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: exIndex * 0.03, ...springs.settle }}
@@ -615,7 +617,7 @@ export function Splits() {
                                         ))}
                                       </ul>
                                     ) : (
-                                      <p className="t-caption py-3 pl-8">No exercises assigned</p>
+                                      <p className="t-caption px-5 pb-4">No exercises assigned</p>
                                     )}
                                   </motion.div>
                                 )}

@@ -10,8 +10,8 @@
 .studio-session-summary h1 > button { display: flex; align-items: center; gap: 10px; min-height: 44px; text-align: left; }
 .studio-session-summary h1 svg { flex-shrink: 0; color: var(--color-text-dim); }
 .studio-session-summary > span { flex-shrink: 0; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.studio-session-header [role="img"] { width: 100%; }
-.studio-session-header [role="img"] > span { flex: 1; height: 2px; }
+.studio-session-header [role="img"]:not(.metal-ring) { width: 100%; }
+.studio-session-header [role="img"]:not(.metal-ring) > span { flex: 1; height: 2px; }
 .studio-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0 2px; }
 .studio-session-actions > div { display: flex; align-items: center; gap: 12px; }
 .studio-session-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; font-size: 12px; color: var(--color-text-dim); }
@@ -66,9 +66,8 @@
 .studio-set-input::-webkit-inner-spin-button { appearance: none; }
 .studio-set-input:focus-visible { outline: 1px solid var(--color-text); outline-offset: 2px; }
 .studio-set-input::placeholder { color: var(--color-muted); opacity: .7; }
-.studio-save-set { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; border: 0; border-radius: var(--radius-control); color: var(--button-primary-fg); font-size: 11px; transition: transform .12s; }
-.studio-save-set:hover:not(:disabled) { background-color: var(--button-primary-hover); }
-.studio-save-set:active:not(:disabled) { background-color: var(--button-primary-active); transform: scale(.985); }
+.studio-save-set { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; border: 0; border-radius: 50%; color: var(--metal-dome-fg); font-size: 11px; transition: transform .12s; }
+.studio-save-set:active:not(:disabled) { transform: scale(.94); }
 .studio-save-set:disabled { opacity: .45; }
 .studio-save-error { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--color-text); }
 .studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px; font-size: 12px; color: var(--color-text-dim); }
@@ -150,3 +149,43 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
+
+/* ── Liquid: movements on platters ───────────────────────────────────
+   Each movement is a glass platter; the open one is the lit, working
+   surface. Sets keep their ledger rhythm inside it. */
+.studio-session-top > .material-button-secondary { min-height: 36px; padding: 0 16px; }
+.studio-session-summary { align-items: center; }
+.studio-session-ring-count { font-family: var(--font-metric); font-size: 17px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.studio-session-ring-count > span { color: var(--color-text-dim); }
+.studio-session-actions { padding-bottom: 14px; }
+.studio-session-actions > div > button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-capsule);
+  background: var(--material-secondary);
+  box-shadow: var(--material-rim);
+  color: var(--color-text);
+}
+.studio-session-actions > div > button svg { color: var(--color-text-dim); }
+
+.studio-movement {
+  margin-bottom: 12px;
+  padding: 4px 4px 4px 18px;
+  border-bottom: 0;
+  border-radius: var(--radius-platter);
+  background: var(--platter-fill);
+  box-shadow: var(--platter-edge), var(--platter-shadow);
+}
+.studio-movement:not(.is-active) { padding: 14px 4px 14px 18px; }
+.studio-movement.is-active { padding: 18px 10px 14px 18px; }
+.studio-movement.is-complete:not(.is-active) { padding: 8px 4px 8px 18px; opacity: .78; }
+.studio-movement.is-active .studio-movement-content { padding-right: 8px; }
+.studio-movement-name { margin-top: 6px; }
+.studio-set-ledger, .studio-set-editor { border-bottom-color: var(--platter-divider); }
+.studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
+.studio-set-editor { margin: 4px -10px 6px; padding: 10px 10px 2px; border-radius: 20px; border-bottom: 0; background: var(--material-inset); box-shadow: var(--material-inset-shadow); }
+.studio-set-input { border-radius: 12px; background: var(--material-secondary); box-shadow: var(--material-rim); }
+.studio-set-input:focus-visible { outline: 1.5px solid var(--color-text); outline-offset: 1px; }
+.studio-set-gain { box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+.studio-set-ledger.is-stamped::after { border-radius: 12px; }
+.studio-reorder-list.is-reordering .studio-movement { padding: 12px 4px 12px 18px; }

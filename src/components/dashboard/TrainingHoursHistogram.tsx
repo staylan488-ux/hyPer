@@ -19,7 +19,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
 
   if (!hasTraining) {
     return (
-      <div className="py-12 text-center">
+      <div className="py-10 text-center">
         <p className="t-heading">No training hours yet.</p>
         <p className="t-caption mt-3">Complete a workout to chart your weekly time</p>
       </div>
@@ -27,19 +27,26 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   }
 
   const totalMinutes = points.reduce((sum, point) => sum + point.totalMinutes, 0);
-  const data: BarDatum[] = points.map((point) => {
+  const data: BarDatum[] = points.map((point, index) => {
     const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
-    const week = format(parseISO(point.weekStart), 'MMM d');
+    const start = parseISO(point.weekStart);
+    const week = format(start, 'MMM d');
+    // Axis labels name the month only where it changes, so eight weeks fit
+    // on one crisp line ("Aug 17 · 24 · 31 · Sep 7 …").
+    const previous = index > 0 ? parseISO(points[index - 1].weekStart) : null;
+    const axisLabel = !previous || previous.getMonth() !== start.getMonth() ? week : format(start, 'd');
     return {
       key: point.weekStart,
-      label: point.label,
+      label: axisLabel,
       value: point.totalMinutes,
       emphasis: isPeak,
-      caption: (
+      caption: point.totalHours > 0 ? (
         <>
-          {point.totalHours > 0 ? point.totalHours : '0'}
-          <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
+          {point.totalHours}
+          <span className="text-[var(--color-muted)] ml-px">h</span>
         </>
+      ) : (
+        <span className="opacity-60">0</span>
       ),
       ariaLabel: `Week of ${week}: ${formatMinutes(point.totalMinutes)}${isPeak ? ', peak week' : ''}`,
       readout: (
@@ -55,7 +62,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <BarChart
         data={data}
         height={144}
@@ -69,7 +76,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
           </span>
         }
       />
-      <p className="t-label-sm pt-2 border-t border-[var(--color-border)]">
+      <p className="t-label-sm text-[var(--color-muted)]">
         Completed session time · last 8 weeks
       </p>
     </div>

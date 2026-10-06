@@ -2,16 +2,22 @@ import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
+import { useLitSurface } from '@/hooks/useLitSurface';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
+  /** A screen's hero action: the primary's chrome bezel comes alive and
+   * follows the phone's tilt. Use for at most one action per screen. */
+  metal?: boolean;
 }
 
-/** Studio actions: solid primary, quiet filled secondary, unboxed contextual. */
+/** Studio actions: a metal-capped primary, clear glass secondary, unboxed contextual. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
+  ({ className = '', variant = 'primary', size = 'md', loading, disabled, metal = false, children, onClick, ...props }, ref) => {
+    const litRef = useLitSurface<HTMLButtonElement>(ref ?? undefined);
+    const live = metal && variant === 'primary';
     const baseStyles = `
       inline-flex items-center justify-center
       [font-family:var(--font-sans)] uppercase font-medium
@@ -19,12 +25,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       focus:outline-none
       focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
       disabled:opacity-35 disabled:cursor-not-allowed
-      rounded-[var(--radius-control)]
+      rounded-[var(--radius-capsule)]
     `;
 
     const variants = {
       primary: `
-        material-button-primary
+        material-button-primary ${live ? 'liquid-metal' : 'metal-static'}
         bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
         hover:bg-[var(--button-primary-hover)]
         active:bg-[var(--button-primary-active)]
@@ -54,7 +60,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     return (
       <motion.button
-        ref={ref}
+        ref={live ? litRef : ref}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
         whileTap={isDisabled ? undefined : { scale: 0.985 }}

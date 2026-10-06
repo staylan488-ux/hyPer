@@ -219,18 +219,19 @@ export function VolumeMaquette({ volume, variant = 'full', focus = null, onSelec
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 mt-2">
-        <span className="flex items-center gap-3 t-caption" aria-hidden>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mt-3">
+        <span className="flex items-center gap-2.5 t-caption" aria-hidden>
           <Legend swatch="color-mix(in srgb, var(--color-text) 20%, var(--color-base))" label="Light" />
           <Legend swatch="color-mix(in srgb, var(--color-text) 84%, var(--color-base))" label="Heavy" />
           <Legend swatch="var(--color-accent)" label="Over" />
         </span>
         {ready && (
-          <span className="flex items-center">
-            <button type="button" className="studio-row-action min-h-11 px-3" onClick={() => controllerRef.current?.turnTo('front')}>
+          <span className="flex items-center rounded-[var(--radius-capsule)] bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] shadow-[inset_0_1px_1px_color-mix(in_srgb,var(--color-text)_6%,transparent)]">
+            <button type="button" className="pressable min-h-11 px-3.5 rounded-[var(--radius-capsule)] text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text)]" onClick={() => controllerRef.current?.turnTo('front')}>
               Front
             </button>
-            <button type="button" className="studio-row-action min-h-11 px-3" onClick={() => controllerRef.current?.turnTo('back')}>
+            <span aria-hidden className="w-px h-4 bg-[var(--color-border)]" />
+            <button type="button" className="pressable min-h-11 px-3.5 rounded-[var(--radius-capsule)] text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text)]" onClick={() => controllerRef.current?.turnTo('back')}>
               Back
             </button>
           </span>
@@ -243,7 +244,7 @@ export function VolumeMaquette({ volume, variant = 'full', focus = null, onSelec
 function Legend({ swatch, label }: { swatch: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className="w-2.5 h-2.5 rounded-full" style={{ background: swatch }} />
+      <span className="w-2 h-2 rounded-full shadow-[inset_0_0_0_.5px_color-mix(in_srgb,var(--color-text)_18%,transparent)]" style={{ background: swatch }} />
       {label}
     </span>
   );

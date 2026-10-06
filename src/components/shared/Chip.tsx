@@ -30,7 +30,7 @@ export function Chip({ children, selected = false, onClick, tone = 'neutral', si
       }}
       disabled={disabled}
       aria-pressed={selected}
-      className={`pressable inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-control)] border-0 font-medium whitespace-nowrap transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none ${sizing} ${toneStyles} ${className}`}
+      className={`pressable inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-capsule)] border-0 font-medium whitespace-nowrap transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none ${sizing} ${toneStyles} ${className}`}
     >
       {children}
     </button>

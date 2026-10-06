@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle, MetalRing } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
@@ -64,6 +64,7 @@ import {
   subMonths,
 } from 'date-fns';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
+import './progress-liquid.css';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -385,13 +386,13 @@ function WorkoutActivityPanel({
   };
 
   return (
-    <div className="border-t border-[var(--color-border)] pt-4 mb-4">
-      <div className="flex items-baseline justify-between gap-3">
+    <div className="px-5 py-4">
+      <div className="flex items-center justify-between gap-3">
         <p className="t-label">Activity stats</p>
         {attached ? (
           <button
             type="button"
-            className="t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            className="pressable min-h-11 -mr-2 px-2 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
             disabled={busyId != null}
             onClick={() => void run(workout.id, () => onDetach(workout))}
           >
@@ -410,7 +411,7 @@ function WorkoutActivityPanel({
       </div>
 
       {attached ? (
-        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 gap-2 mt-3 p-3">
+        <div className="ledger-well grid grid-cols-4 gap-2 mt-3 px-4 py-3.5">
           {([
             ['strain', workout.strain != null ? workout.strain.toFixed(1) : '—'],
             ['avg hr', workout.avg_hr != null ? String(workout.avg_hr) : '—'],
@@ -434,7 +435,7 @@ function WorkoutActivityPanel({
               key={activity.id}
               type="button"
               disabled={busyId != null}
-              className="studio-secondary-action w-full text-left px-3 py-2.5 disabled:opacity-50 active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+              className="ledger-choice disabled:opacity-50"
               onClick={() => void run(activity.id, () => onAttach(workout, activity))}
             >
               <span className="t-body block">
@@ -490,7 +491,7 @@ function ActivityLedgerRow({
   const hasSplits = primarySegments.length >= 2;
 
   return (
-    <div className="border-t border-[var(--color-border)] py-3">
+    <div className="px-5 py-4">
       <div className="flex items-start justify-between gap-3">
         {selectable && (
           <button
@@ -499,12 +500,14 @@ function ActivityLedgerRow({
             aria-checked={selected}
             aria-label={`Select ${title} to merge`}
             onClick={onToggleSelected}
-            className="pressable h-11 w-11 shrink-0 rounded-[11px] material-control flex items-center justify-center"
+            className={`pressable h-11 w-11 shrink-0 rounded-[var(--radius-control)] flex items-center justify-center transition-colors ${
+              selected ? 'bg-[var(--color-text)] text-[var(--color-base)]' : 'material-control'
+            }`}
           >
-            {selected && <span className="h-2.5 w-2.5 bg-[var(--color-text)]" />}
+            {selected && <Check className="h-4 w-4" strokeWidth={2.25} />}
           </button>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="t-label-sm">Activity</p>
           <p className="mt-1 t-body text-[var(--color-text)] break-words">{title}</p>
           <p className="t-data-sm text-[var(--color-muted)] mt-1">
@@ -520,7 +523,7 @@ function ActivityLedgerRow({
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center -mr-3 -mt-2.5">
           {hasSplits && (
             <button
               type="button"
@@ -564,7 +567,7 @@ function ActivityLedgerRow({
             transition={springs.settle}
             className="overflow-hidden"
           >
-            <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+            <div className="mt-3 pt-3 shadow-[inset_0_1px_0_var(--platter-divider)]">
               <LapPaceChart
                 className="mb-4"
                 laps={primarySegments.map((segment) => ({
@@ -1331,23 +1334,12 @@ export function History() {
       </header>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-        <div className="mb-9">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--color-border)]">
-            <motion.button
-              onClick={() => {
-                setMonthDirection(-1);
-                setSelectedMonth((prev) => subMonths(prev, 1));
-              }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: -2 }}
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
+        <section className="platter px-3 pt-3 pb-3" aria-label="Calendar">
+          <div className="flex items-center justify-between gap-2 pl-2 pb-3">
             <AnimatePresence mode="wait">
               <motion.h3
                 key={format(selectedMonth, 'yyyy-MM')}
-                className="t-label"
+                className="t-display text-[1.375rem] text-[var(--color-text)]"
                 initial={{ opacity: 0, x: monthDirection * 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: monthDirection * -20 }}
@@ -1356,28 +1348,41 @@ export function History() {
                 {format(selectedMonth, 'MMMM yyyy')}
               </motion.h3>
             </AnimatePresence>
-            <motion.button
-              onClick={() => {
-                setMonthDirection(1);
-                setSelectedMonth((prev) => addMonths(prev, 1));
-              }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: 2 }}
-              aria-label="Next month"
-            >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
+            <div className="flex items-center gap-2">
+              <motion.button
+                onClick={() => {
+                  setMonthDirection(-1);
+                  setSelectedMonth((prev) => subMonths(prev, 1));
+                }}
+                className="ledger-nav-key"
+                whileTap={{ scale: 0.9, x: -2 }}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
+              </motion.button>
+              <motion.button
+                onClick={() => {
+                  setMonthDirection(1);
+                  setSelectedMonth((prev) => addMonths(prev, 1));
+                }}
+                className="ledger-nav-key"
+                whileTap={{ scale: 0.9, x: 2 }}
+                aria-label="Next month"
+              >
+                <ChevronRight className="w-4 h-4" strokeWidth={1.75} />
+              </motion.button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 gap-[3px]">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="t-label-sm text-center pb-2">
+              <div key={`${day}-${index}`} className="t-label-sm text-center pb-2 text-[var(--color-muted)]">
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-[3px]">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
@@ -1416,30 +1421,29 @@ export function History() {
                   title={titleLabel || undefined}
                   aria-label={`${format(day, 'EEEE, MMMM d')}${titleLabel ? ` · ${titleLabel}` : ''}`}
                   aria-pressed={isSelected}
-                  className={`min-h-20 rounded-[11px] transition-colors relative px-1.5 py-1.5 ${
-                    isSelected
-                      ? 'text-[var(--color-base)]'
-                      : inMonth
-                        ? 'text-[var(--color-text)] active:bg-[var(--color-surface-2)]'
-                        : 'text-[var(--color-muted)] active:bg-[var(--color-surface-2)]'
+                  className={`ledger-day min-h-[72px] rounded-[var(--radius-control)] transition-colors relative px-1 pt-1.5 pb-1.5 ${
+                    inMonth ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)] opacity-55'
                   }`}
                 >
                   {isSelected && (
                     <motion.div
-                      className="absolute inset-0 rounded-[11px] bg-[var(--color-text)]"
+                      className="ledger-day-lens absolute inset-0"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
                   )}
-                  {isTodayDate && !isSelected && (
-                    <span className="absolute top-1.5 right-1.5 w-1 h-1 bg-[var(--color-accent)] z-10" />
-                  )}
-                  <div className="relative z-10 flex h-full flex-col items-start">
-                    <span className={`t-data-sm ${isSelected ? 'font-medium' : ''}`}>{format(day, 'd')}</span>
+                  <div className="relative z-10 flex h-full flex-col items-center">
+                    <span
+                      className={`t-data-sm leading-none tabular-nums ${isSelected ? 'font-semibold' : ''} ${
+                        isTodayDate ? 'text-[var(--color-accent)] font-semibold' : ''
+                      }`}
+                    >
+                      {format(day, 'd')}
+                    </span>
                     {daySummaryLabel && (
                       <span
-                        className={`mt-1 line-clamp-2 text-left text-[11px] leading-tight font-sans ${
-                          isSelected ? 'text-[color-mix(in_srgb,var(--color-base)_85%,transparent)]' : 'text-[var(--color-text-dim)]'
+                        className={`mt-1.5 line-clamp-2 text-center text-[10.5px] leading-[1.2] font-sans ${
+                          isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'
                         }`}
                       >
                         {daySummaryLabel}
@@ -1448,39 +1452,27 @@ export function History() {
                   </div>
                   {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
                     <motion.div
-                      className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
+                      className="absolute bottom-2 inset-x-0 z-10 flex items-center justify-center gap-[3px]"
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={springs.lift}
                     >
-                      {dayWorkouts.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 ${
-                            isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
-                      {dayActivities.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 border ${
-                            isSelected ? 'border-[var(--color-base)]' : 'border-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
+                      {dayWorkouts.length > 0 && <span className="ledger-mark-lift" />}
+                      {dayActivities.length > 0 && <span className="ledger-mark-activity" />}
                     </motion.div>
                   )}
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
       </motion.div>
 
       {loading ? (
-        <div className="space-y-4 pt-8 border-t border-[var(--color-border)]">
+        <div className="platter mt-7 space-y-4">
           {[1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3">
-              <div className="shimmer h-10 w-10" />
+              <div className="shimmer h-10 w-10 rounded-full" />
               <div className="flex-1 space-y-1.5">
                 <div className="shimmer h-3.5 w-1/2" />
                 <div className="shimmer h-2.5 w-1/3" />
@@ -1490,16 +1482,16 @@ export function History() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-          <div className="flex items-center justify-between gap-4 mb-4 pt-8 border-t border-[var(--color-border)]">
-            <div>
+          <div className="flex items-end justify-between gap-4 mt-8 mb-3 px-1">
+            <div className="min-w-0">
               <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-              <p className="t-label-sm mt-1">{selectedDaySummary}</p>
+              <p className="t-label-sm mt-1.5 text-[var(--color-muted)]">{selectedDaySummary}</p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 shrink-0">
               {syncAvailable && (
                 <button
                   type="button"
-                  className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40"
+                  className="ledger-capsule"
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
@@ -1508,7 +1500,7 @@ export function History() {
               )}
               <button
                 type="button"
-                className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
+                className="ledger-capsule"
                 onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
               >
                 + Activity
@@ -1517,7 +1509,7 @@ export function History() {
           </div>
 
           {selectedDayWorkouts.length === 0 && selectedDayActivities.length === 0 ? (
-            <div className="py-12">
+            <div className="platter py-10 text-center">
               <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">No sessions recorded.</p>
             </div>
           ) : (
@@ -1580,21 +1572,27 @@ export function History() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: workoutIndex * 0.06, ...springs.settle }}
-                  className="border-t border-[var(--color-border)] first:border-t-0"
+                  className={`platter platter-flush ${workoutIndex > 0 ? 'mt-3' : ''}`}
                 >
-                  <div className="overflow-hidden">
-                    <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="w-full text-left flex items-center justify-between gap-3 py-4" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 material-surface rounded-[11px] flex items-center justify-center shrink-0">
+                  <div>
+                    <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="pressable w-full text-left flex items-center justify-between gap-3 px-5 py-4 min-h-[76px]" onClick={() => { void handleToggleWorkout(workout); }}>
+                      <div className="flex items-center gap-4 min-w-0">
+                        <MetalRing
+                          progress={progress.totalSets > 0 ? progress.completedSets / progress.totalSets : 0}
+                          label={`${progress.completedSets} of ${progress.totalSets} sets complete`}
+                          size={44}
+                          thickness={3}
+                          reveal={`history-workout-${workout.id}`}
+                        >
                           {progress.completed ? (
                             <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
                           ) : (
-                            <span className="t-data-sm text-[var(--color-muted)]">{progress.percent}%</span>
+                            <span className="text-[10px] font-medium tabular-nums text-[var(--color-text-dim)]">{progress.percent}%</span>
                           )}
-                        </div>
+                        </MetalRing>
                         <div className="min-w-0">
                           <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
-                          <p className="t-caption mt-1.5">{subtitle}</p>
+                          <p className="t-caption mt-1">{subtitle}</p>
                         </div>
                       </div>
                       <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
@@ -1605,12 +1603,13 @@ export function History() {
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div
-                          className="pb-4 pt-1"
+                          className="overflow-hidden"
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={springs.settle}
                         >
+                          <div className="ledger-rule mx-5" />
                           <WorkoutActivityPanel
                             workout={workout}
                             dayActivities={selectedDayActivities}
@@ -1618,7 +1617,8 @@ export function History() {
                             onAttach={handleAttachActivity}
                             onDetach={handleDetachActivity}
                           />
-                          <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
+                          <div className="ledger-rule mx-5" />
+                          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
                             <p className="t-label">Exercises</p>
                             <Button
                               size="sm"
@@ -1672,13 +1672,13 @@ export function History() {
                             return (
                               <motion.div
                                 key={exerciseId}
-                                className="mb-3"
+                                className="platter-row px-5 pb-1"
                                 initial={{ opacity: 0, x: -8 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: exIndex * 0.04, ...springs.settle }}
                               >
                                 <div
-                                  className="flex flex-wrap items-center justify-between gap-y-2 py-3 px-2 -mx-2"
+                                  className="flex flex-wrap items-center justify-between pt-2.5"
                                 >
                                   <button
                                     type="button"
@@ -1686,8 +1686,14 @@ export function History() {
                                     onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
                                     className="pressable flex items-center gap-3 min-w-0 w-full min-h-11 text-left"
                                   >
-                                    <div className="w-7 h-7 flex items-center justify-center t-data-sm text-[var(--color-muted)] shrink-0">
-                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5 text-[var(--color-text)]" strokeWidth={2} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
+                                    <div
+                                      className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-medium tabular-nums shrink-0 ${
+                                        exerciseProgress.completed
+                                          ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+                                          : 'ledger-well text-[var(--color-muted)]'
+                                      }`}
+                                    >
+                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5" strokeWidth={2.25} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
                                     </div>
                                     <div className="min-w-0">
                                       <span className="t-body text-[var(--color-text)]">{exerciseName}</span>
@@ -1703,7 +1709,7 @@ export function History() {
                                     </div>
                                   </button>
 
-                                  <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(event) => event.stopPropagation()}>
+                                  <div className="flex items-center shrink-0 ml-auto -mr-3" onClick={(event) => event.stopPropagation()}>
                                     <button
                                       type="button"
                                       disabled={!canMoveUp}
@@ -1792,13 +1798,14 @@ export function History() {
                                 <AnimatePresence>
                                   {isExerciseExpanded && (
                                     <motion.div
-                                      className="ml-4 mt-2 space-y-px"
+                                      className="overflow-hidden"
                                       initial={{ height: 0, opacity: 0 }}
                                       animate={{ height: 'auto', opacity: 1 }}
                                       exit={{ height: 0, opacity: 0 }}
                                       transition={springs.settle}
                                     >
-                                      <div className="flex items-center justify-between gap-2 py-2.5 border-t border-[var(--color-border)]">
+                                      <div className="ledger-well ledger-sets mt-1 px-4">
+                                      <div className="flex items-center justify-between gap-2 py-2.5">
                                         <p className="t-label-sm">Target Sets</p>
                                         <div className="flex items-center gap-2">
                                           <input
@@ -1814,7 +1821,7 @@ export function History() {
                                             }}
                                             onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId); }}
                                             aria-label="Target sets"
-                                            className="w-14 min-h-11 px-2 py-1 well t-data-sm text-[var(--color-text)] text-center focus:outline-none"
+                                            className="ledger-field w-14 min-h-11 px-2 py-1 t-data-sm text-[var(--color-text)] text-center focus:outline-none"
                                           />
                                           <button
                                             type="button"
@@ -1829,7 +1836,7 @@ export function History() {
                                       {sets.map((set) => (
                                         <motion.div
                                           key={set.id}
-                                          className="flex items-center justify-between py-2.5 border-t border-[var(--color-border)]"
+                                          className="flex items-center justify-between py-0.5"
                                           initial={{ opacity: 0, y: 4 }}
                                           animate={{ opacity: 1, y: 0 }}
                                           transition={springs.settle}
@@ -1841,7 +1848,7 @@ export function History() {
                                               {set.rpe ? <span className="text-[var(--color-muted)]"> @ {set.rpe}</span> : ''}
                                             </span>
                                           </div>
-                                          <div className="flex items-center gap-0.5">
+                                          <div className="flex items-center -mr-3">
                                             <motion.button
                                               onClick={(event) => {
                                                 event.stopPropagation();
@@ -1867,8 +1874,9 @@ export function History() {
                                           </div>
                                         </motion.div>
                                       ))}
+                                      </div>
 
-                                      <div className="pt-4 border-t border-[var(--color-border)]">
+                                      <div className="pt-4 pb-4">
                                         <label
                                           htmlFor={`history-note-${workout.id}-${exerciseId}`}
                                           className="t-label-sm block mb-2"
@@ -1905,14 +1913,16 @@ export function History() {
                             );
                           })}
 
-                          <motion.button
-                            onClick={() => setShowDeleteConfirm(workout.id)}
-                            className="w-full mt-5 studio-secondary-action text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                            Delete session
-                          </motion.button>
+                          <div className="px-5 pt-3 pb-5">
+                            <motion.button
+                              onClick={() => setShowDeleteConfirm(workout.id)}
+                              className="w-full studio-secondary-action text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
+                              whileTap={{ scale: 0.98 }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              Delete session
+                            </motion.button>
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1921,52 +1931,53 @@ export function History() {
               );
             })}
               {selectedDayActivities.length > 0 && (
-                <div className={selectedDayWorkouts.length > 0 ? 'mt-6 pt-6 border-t border-[var(--color-border)]' : ''}>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="t-label-sm">Activities</span>
-                    <span className="t-label-sm">{selectedDayActivities.length}</span>
-                  </div>
-                  {selectedDayActivities.length > 1 && (
-                    <div className="flex items-center justify-between gap-3 pb-2">
-                      {mergeSelection ? (
-                        <>
-                          <span className="t-label-sm">
-                            {mergeSelection.length < 2
-                              ? 'Pick the activities that were really one'
-                              : `${mergeSelection.length} selected`}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)]"
-                              onClick={() => setMergeSelection(null)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              disabled={mergeSelection.length < 2 || merging}
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)] disabled:opacity-40"
-                              onClick={() => { void handleMergeActivities(); }}
-                            >
-                              {merging ? 'Merging…' : 'Merge'}
-                            </button>
-                          </div>
-                        </>
+                <div className={selectedDayWorkouts.length > 0 ? 'mt-7' : ''}>
+                  <div className="flex items-center justify-between gap-3 px-1 min-h-11">
+                    <span className="t-label">
+                      Activities <span className="text-[var(--color-muted)] tabular-nums ml-1">{selectedDayActivities.length}</span>
+                    </span>
+                    {selectedDayActivities.length > 1 && (
+                      mergeSelection ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            className="pressable min-h-11 px-2 t-label-sm text-[var(--color-muted)]"
+                            onClick={() => setMergeSelection(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={mergeSelection.length < 2 || merging}
+                            className="ledger-capsule"
+                            onClick={() => { void handleMergeActivities(); }}
+                          >
+                            {merging ? 'Merging…' : 'Merge'}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           type="button"
-                          className="pressable min-h-11 t-label-sm text-[var(--color-muted)] ml-auto"
+                          className="pressable min-h-11 -mr-1 px-1 t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
                           onClick={() => setMergeSelection([])}
                         >
                           Merge activities
                         </button>
-                      )}
-                    </div>
+                      )
+                    )}
+                  </div>
+                  {selectedDayActivities.length > 1 && mergeSelection && (
+                    <p className="t-caption px-1 -mt-1 mb-1" aria-live="polite">
+                      {mergeSelection.length < 2
+                        ? 'Pick the activities that were really one'
+                        : `${mergeSelection.length} selected`}
+                    </p>
                   )}
+                  <div className="platter platter-flush mt-2">
                   {selectedDayActivities.map((activity, activityIndex) => (
                     <motion.div
                       key={activity.id}
+                      className="platter-row"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.settle }}
@@ -1989,6 +2000,7 @@ export function History() {
                       />
                     </motion.div>
                   ))}
+                  </div>
                 </div>
               )}
             </>

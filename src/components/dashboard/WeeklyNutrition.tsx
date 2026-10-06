@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Card, CardTitle } from '@/components/shared';
 import { BarChart } from '@/components/shared/charts';
 import { useWeeklyNutrition } from '@/hooks/useWeeklyNutrition';
 import { useAppStore } from '@/stores/appStore';
@@ -17,11 +16,11 @@ export function WeeklyNutrition() {
   }, [fetchMacroTarget]);
 
   return (
-    <Card variant="slab" className="overflow-hidden">
-      <CardTitle>Nutrition · Last 7 days</CardTitle>
+    <section className="platter overflow-hidden">
+      <h3 className="t-label-sm">Nutrition · Last 7 days</h3>
       <p className="t-caption mt-2 mb-4">Logged totals against your current daily targets. Dashed lines mark each target. Drag across a chart to read each day.</p>
       {loading ? (
-        <div className="shimmer h-48" aria-label="Loading nutrition totals" />
+        <div className="shimmer h-48 rounded-[var(--radius-control)]" aria-label="Loading nutrition totals" />
       ) : error ? (
         <p className="t-caption py-4" role="alert">{error}</p>
       ) : weeklyNutrition.length === 0 ? (
@@ -80,6 +79,6 @@ export function WeeklyNutrition() {
           })}
         </div>
       )}
-    </Card>
+    </section>
   );
 }

@@ -18,24 +18,30 @@ tokens; an already approved direction does not need another design exploration.
 - Current roles are 40px/1.06 Fraunces titles, 44px/1 system-sans key figures,
   14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
   and accessibility without truncating meaningful names.
-- Use the current Ivory/Black theme tokens and one restrained Lacquer red accent. The approved
-  material refinement uses Ivory (#F5F5F0) and true Black (#000000), with soft
-  neutral translucent surfaces. Positive/completed states use ink; use semantic
-  tokens for both themes.
+- Use the current Ivory/Black theme tokens and one restrained Lacquer red accent:
+  Ivory (#F5F5F0) and true Black (#000000) under a soft neutral ambient light.
+  Positive/completed states use ink; use semantic tokens for both themes.
 - `text-base` collides with the `--color-base` theme color in Tailwind v4;
   use `text-[1rem]` when a 16px font size is intended.
 
 ## Structure and controls
 
-- Content stays editorial, separated by neutral rules and spacing. Reuse the
-  shared diffuse material classes; do not add bright rims, inset bevels, colored
-  edges or independent backdrop filters to nested cards and controls.
+- The approved Liquid direction (2026-10-06, "Metal accents") is in
+  [the liquid metal plan](../../../docs/plans/2026-10-06-liquid-metal.md):
+  page sections sit on `.platter` glass panels (grouped lists use
+  `platter-flush` + `platter-row`); floating chrome is liquid glass with a
+  specular edge; editorial content inside platters stays ruled. Nested cards
+  and controls never add their own backdrop filter.
 - Page titles use `PageTitle`, which condenses into the scroll-edge band.
-- Primary actions use the shared fill (dark: #303030 with #EAEAEA text);
-  secondary actions use quiet filled surfaces;
-  contextual row actions stay unboxed. Meaningful touch targets are at least 44px.
-- Use the dedicated radius tokens: controls 11px, sheets 20px, navigation 22px.
-  Ordinary content containers retain square corners.
+  Sheet titles use the editorial `sheet-title`.
+- Primary actions are metal-capped capsules (`Button` primary: graphite dome in
+  Black, pearl in Ivory, still chrome bezel). Exactly one hero action per
+  screen may pass `metal` for the live, tilt-lit bezel. Secondary actions are
+  clear glass capsules; contextual row actions stay unboxed. Progress uses
+  `MetalRing` dials and metal `RailStrip` bars. Meaningful touch targets are at
+  least 44px.
+- Use the radius tokens: capsule for buttons, chips, segmented tracks and the
+  web tab bar; controls/inputs 14px; platters 26px; sheets 30px.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
   web fallback elsewhere. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
@@ -77,8 +83,8 @@ layout and makes motion, data and 3D the expressive layer.
 ## Implementation references
 
 - [Tokens and typography](../../../src/index.css), [route shell](../../../src/App.tsx).
-- [Diffuse materials](../../../src/styles/materials.css),
-  [approved refinement](../../../docs/plans/2026-09-04-luminous-materials.md).
+- [Material tokens](../../../src/styles/materials.css),
+  [liquid glass and metal](../../../src/styles/liquid.css).
 - [Shared controls and sheets](../../../src/components/shared/),
   [motion primitives](../../../src/lib/animations.ts),
   [motion policy](../../../src/lib/motionPolicy.ts),

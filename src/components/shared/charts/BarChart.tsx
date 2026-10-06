@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { useFirstReveal } from '@/lib/motionPolicy';
@@ -38,10 +38,15 @@ interface BarChartProps {
   className?: string;
 }
 
+/** Graphite (Ivory) or titanium (Black) columns, lit from above like the hero figures. */
+const INK_FILL = 'var(--figure-ink, var(--color-text))';
+const ACCENT_FILL = 'linear-gradient(180deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 82%, var(--color-base)) 100%)';
+
 /**
- * Editorial bar chart: flat ink columns on a hairline baseline. Bars grow by
- * scaleY on first appearance; a finger scrubs across them with one detent per
- * bar and the readout line above follows.
+ * Editorial bar chart: rounded graphite columns on a hairline baseline. Bars
+ * grow by scaleY on first appearance; a finger scrubs across them with one
+ * detent per bar, a soft lens marks the selected column and the readout line
+ * above follows.
  */
 export function BarChart({
   data,
@@ -55,6 +60,7 @@ export function BarChart({
   className = '',
 }: BarChartProps) {
   const firstReveal = useFirstReveal(reveal);
+  const lensId = useId();
   const { ref, active, scrubbing, bind } = useScrub({ count: data.length, layout: 'band' });
   const top = Math.max(max ?? 0, ...data.map((d) => d.value), target ?? 0, Number.EPSILON);
   const selecting = active !== null;
@@ -80,7 +86,7 @@ export function BarChart({
         role="group"
         aria-label={`${label}. Use left and right arrows to read each bar.`}
         tabIndex={0}
-        className={`relative flex items-end gap-px border-b border-[var(--color-border-strong)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-strong)] select-none ${scrubbing ? 'cursor-grabbing' : 'cursor-pointer'}`}
+        className={`relative flex items-end border-b border-[var(--color-border)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-strong)] focus-visible:rounded-[6px] select-none ${scrubbing ? 'cursor-grabbing' : 'cursor-pointer'}`}
         style={{ height, ...bind.style }}
         onPointerDown={bind.onPointerDown}
         onPointerMove={bind.onPointerMove}
@@ -91,7 +97,7 @@ export function BarChart({
         {target !== undefined && target > 0 && (
           <div
             aria-hidden
-            className="absolute inset-x-0 border-t border-dashed border-[var(--color-border-strong)] pointer-events-none"
+            className="absolute inset-x-0 z-[1] border-t border-dashed border-[var(--color-border-strong)] pointer-events-none"
             style={{ bottom: Math.min(1, target / top) * barArea }}
           />
         )}
@@ -105,10 +111,19 @@ export function BarChart({
               role="img"
               className="relative flex-1 h-full flex flex-col justify-end items-center"
             >
+              {isActive && (
+                <motion.div
+                  aria-hidden
+                  layoutId={lensId}
+                  className="absolute inset-y-0 inset-x-[8%] rounded-t-[10px] pointer-events-none"
+                  style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-text) 3%, transparent), color-mix(in srgb, var(--color-text) 7%, transparent))' }}
+                  transition={springs.tactile}
+                />
+              )}
               {d.caption !== undefined && (
                 <motion.span
                   aria-hidden
-                  className={`t-data-sm tabular-nums mb-1.5 ${d.emphasis ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}
+                  className={`relative t-data-sm tabular-nums whitespace-nowrap mb-1.5 ${d.emphasis ? 'text-[var(--color-accent)]' : d.value > 0 ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}
                   initial={firstReveal ? { opacity: 0 } : false}
                   animate={{ opacity: selecting && !isActive ? 0.35 : 1 }}
                   transition={firstReveal ? { duration: 0.3, delay: 0.3 + i * 0.04 } : { duration: 0.18 }}
@@ -116,10 +131,10 @@ export function BarChart({
                   {d.caption}
                 </motion.span>
               )}
-              <div className="relative w-full shrink-0" style={{ height: fraction * barArea }}>
+              <div className="relative w-[58%] max-w-[30px] min-w-[3px] shrink-0" style={{ height: fraction * barArea }}>
                 <motion.div
                   aria-hidden
-                  className="absolute inset-0"
+                  className="absolute inset-0 rounded-t-[6px] rounded-b-[1.5px]"
                   initial={firstReveal ? { scaleY: 0 } : false}
                   animate={{ scaleY: 1, opacity: selecting && !isActive ? 0.28 : 1 }}
                   transition={
@@ -129,7 +144,7 @@ export function BarChart({
                   }
                   style={{
                     transformOrigin: '50% 100%',
-                    backgroundColor: d.emphasis ? 'var(--color-accent)' : 'var(--color-text)',
+                    background: d.emphasis ? ACCENT_FILL : INK_FILL,
                   }}
                 />
               </div>
@@ -138,11 +153,11 @@ export function BarChart({
         })}
       </div>
 
-      <div className="flex gap-px mt-2" aria-hidden>
+      <div className="flex mt-2.5" aria-hidden>
         {data.map((d, i) => (
           <span
             key={d.key}
-            className={`flex-1 text-center t-caption transition-colors duration-150 ${active === i ? 'text-[var(--color-text)]' : ''}`}
+            className={`flex-1 min-w-0 text-center text-[11px] leading-[1.3] tracking-[0.01em] tabular-nums whitespace-nowrap transition-colors duration-150 ${active === i ? 'text-[var(--color-text)] font-medium' : 'text-[var(--color-muted)]'}`}
           >
             {d.label}
           </span>

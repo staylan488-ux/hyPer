@@ -23,28 +23,30 @@ export function AdaptiveSplitSchedulingSetting() {
 
   return (
     <section>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-labelledby="adaptive-split-label"
-        aria-describedby="adaptive-split-description"
-        disabled={saving || !userId}
-        onClick={() => void toggle()}
-        className="you-row disabled:opacity-60"
-      >
-        <span id="adaptive-split-label" className="you-row-title flex-1 min-w-0">Adaptive split scheduling</span>
-        <span aria-hidden="true" className="t-label-sm shrink-0">{enabled ? 'On' : 'Off'}</span>
-        <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${enabled ? 'bg-[var(--color-text)]' : 'bg-[var(--color-border-strong)]'}`}>
-          <span className={`absolute top-1 h-4 w-4 rounded-full bg-[var(--color-base)] ${enabled ? 'right-1' : 'left-1'}`} />
-        </span>
-      </button>
-      <p id="adaptive-split-description" className="t-body mt-4">
+      <div className="platter platter-flush">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-labelledby="adaptive-split-label"
+          aria-describedby="adaptive-split-description"
+          disabled={saving || !userId}
+          onClick={() => void toggle()}
+          className="you-row disabled:opacity-60"
+        >
+          <span id="adaptive-split-label" className="you-row-title flex-1 min-w-0">Adaptive split scheduling</span>
+          <span aria-hidden="true" className="t-label-sm shrink-0">{enabled ? 'On' : 'Off'}</span>
+          <span aria-hidden="true" className="you-switch" data-on={enabled ? 'true' : 'false'}>
+            <span className="you-switch-knob" />
+          </span>
+        </button>
+      </div>
+      <p id="adaptive-split-description" className="you-footnote">
         Adjust upcoming workouts and rest days based on the split day you complete.
         When off, keep your saved schedule.
       </p>
-      {saving && <p role="status" className="t-caption mt-3">Saving…</p>}
-      {error && <p role="alert" className="t-body mt-3">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
+      {saving && <p role="status" className="t-caption mt-3 px-1">Saving…</p>}
+      {error && <p role="alert" className="t-body mt-3 px-1">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
     </section>
   );
 }

@@ -25,7 +25,7 @@ import {
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
+import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, MetalRing, Modal, TickStrip, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -1665,7 +1665,7 @@ export function Workout() {
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
+          <Button variant="secondary" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
         </div>
         {finishError && <div className="flex items-center justify-between gap-3">
           <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
@@ -1675,11 +1675,10 @@ export function Workout() {
         </div>}
         <div className="studio-session-summary">
           <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
-          <span>{completedSets} / {totalSets} sets</span>
+          <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} size={64} thickness={5} reveal="session-sets">
+            <span className="studio-session-ring-count">{completedSets}<span>/{totalSets}</span></span>
+          </MetalRing>
         </div>
-        {totalSets > 0 && totalSets <= 40 ? (
-          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" reveal="session-sets" />
-        ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
         <div className="studio-session-actions">
           <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
           <div>
@@ -2069,7 +2068,7 @@ export function Workout() {
             <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
               Keep training
             </Button>
-            <Button className="flex-1" onClick={handleConfirmComplete} disabled={finishing}>
+            <Button metal className="flex-1" onClick={handleConfirmComplete} disabled={finishing}>
               Finish
             </Button>
           </div>

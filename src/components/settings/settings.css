@@ -2,31 +2,55 @@
   max-width: 42rem;
   margin-inline: auto;
 }
+
+/* Grouped rows on a platter, like iOS Settings. A row standing alone still
+   reads as a row: it keeps its padding and loses only the divider. */
 .you-row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   width: 100%;
   text-align: left;
-  padding: 13px 0;
-  min-height: 56px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 14px 18px 14px 20px;
+  min-height: 60px;
+  transition: background-color 160ms ease;
+}
+.you-row:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+@media (hover: hover) {
+  .you-row:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-text) 3%, transparent);
+  }
 }
 .you-row-title {
   display: block;
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.35;
   color: var(--color-text);
   overflow-wrap: anywhere;
 }
 .you-row-description {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--color-text-dim);
   overflow-wrap: anywhere;
 }
+.you-row-chevron {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+/* Footer copy under a group, the way iOS explains a setting. */
+.you-footnote {
+  padding: 10px 4px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+
 .you-text-action,
 .you-back {
   min-height: 44px;
@@ -35,40 +59,137 @@
   color: var(--color-text);
 }
 .you-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 10px -6px;
+  padding-right: 8px;
+  color: var(--color-text-dim);
+  transition: color 160ms ease;
+}
+.you-back:hover { color: var(--color-text); }
+
+/* Search: a clear glass capsule that opens the search sheet. */
+.you-search-field {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--radius-capsule);
+  background-color: var(--material-secondary);
+  background-image: var(--material-wash);
+  box-shadow: var(--material-rim);
+  color: var(--color-text-dim);
+  font-size: 15px;
+  text-align: left;
+  transition: color 160ms ease;
 }
-.you-weight-hero {
-  padding: 18px 0;
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
+.you-search-field:hover { color: var(--color-text); }
+.you-search-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: var(--material-secondary);
+  background-image: var(--material-wash);
+  box-shadow: var(--material-rim);
+  color: var(--color-text);
 }
+
+/* Profile row: a monogram seal beside the name. */
+.you-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--color-text);
+  background: var(--material-inset);
+  box-shadow: var(--material-inset-shadow);
+}
+
 .you-weight-value {
   font-family: var(--font-metric);
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.025em;
   line-height: 1.15;
   overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+.you-weight-value.is-empty {
+  font-size: 22px;
+  color: var(--color-text-dim);
 }
 .you-target-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  padding-block: 20px;
-  border-block: 1px solid var(--color-border);
+}
+.you-target-grid > div {
+  padding: 18px 20px;
+}
+.you-target-grid > div:nth-child(even) {
+  box-shadow: inset 1px 0 0 var(--platter-divider);
+}
+.you-target-grid > div:nth-child(n + 3) {
+  box-shadow: inset 0 1px 0 var(--platter-divider);
+}
+.you-target-grid > div:nth-child(4) {
+  box-shadow: inset 1px 0 0 var(--platter-divider), inset 0 1px 0 var(--platter-divider);
 }
 .you-target-value {
   font-family: var(--font-metric);
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.025em;
-  line-height: 1.3;
+  line-height: 1.25;
+  color: var(--color-text);
 }
+
+/* A switch machined like iOS: a capsule groove and a raised pearl knob. */
+.you-switch {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  flex-shrink: 0;
+  border-radius: var(--radius-capsule);
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .08);
+  transition: background-color 220ms ease;
+}
+.you-switch[data-on='true'] { background: var(--color-text); }
+.you-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f1ee 100%);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 3px 8px rgba(0, 0, 0, .18), 0 1px 1px rgba(0, 0, 0, .12);
+  transition: transform 260ms cubic-bezier(.3, 1.3, .5, 1);
+}
+.you-switch[data-on='true'] .you-switch-knob { transform: translateX(20px); }
+.dark .you-switch[data-on='true'] .you-switch-knob {
+  background: linear-gradient(180deg, #2c2c2f 0%, #121214 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .you-switch, .you-switch-knob { transition: none; }
+}
+
 .you-settings .t-caption {
   color: var(--color-text-dim);
 }
@@ -76,8 +197,11 @@
   outline: 2px solid var(--color-text);
   outline-offset: 3px;
 }
+.you-settings .you-row:focus-visible {
+  outline-offset: -3px;
+}
 /* Keep shared materials; make settings actions and essential guidance readable. */
-.you-settings button:not(.you-row):not(.you-back):not(.you-text-action) {
+.you-settings button:not(.you-row):not(.you-back):not(.you-text-action):not(.you-search-field) {
   text-transform: none;
   letter-spacing: normal;
   font-size: 14px;
@@ -105,6 +229,10 @@
   outline-offset: 5px;
   scroll-margin-block: 24px;
 }
+.platter.you-search-highlight,
+.platter .you-search-highlight {
+  outline-offset: -2px;
+}
 
 /* Keep the input stationary as results change, including above the keyboard. */
 .studio-sheet:has(.you-search) {
@@ -114,4 +242,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.you-search input[type='search'] {
+  border-radius: var(--radius-capsule);
+  padding-left: 44px;
+}
+.you-search input[type='search']:focus-visible {
+  outline-width: 1.5px;
+  outline-offset: 0;
+  outline-color: color-mix(in srgb, var(--color-text) 45%, transparent);
 }

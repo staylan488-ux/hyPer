@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
-import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
+import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -432,6 +432,9 @@ export function Nutrition() {
     { label: 'Fat', current: dayTotals.fat, target: targetFat },
   ];
 
+  const energyPct = targetKcal > 0 ? Math.round((dayTotals.calories / targetKcal) * 100) : 0;
+  const energyOver = dayTotals.calories > targetKcal;
+
   const liveDay = isToday(selectedDate);
   const calorieSeal = useTargetSeal({ macro: 'calories', current: dayTotals.calories, target: targetKcal, dayKey: selectedDateKey, live: liveDay && !loading });
   const proteinSeal = useTargetSeal({
@@ -455,55 +458,51 @@ export function Nutrition() {
         <PageTitle className="mt-5">Fuel</PageTitle>
       </header>
 
-      {/* ── Energy hero — the day's calories, big ── */}
-      <section
-        className="mt-6"
-      >
+      {/* ── Energy hero — the day's calories, big, with the page's one metal action ── */}
+      <section className="platter mt-5">
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-4" aria-hidden>
             <div className="shimmer h-3 w-24" />
-            <div className="shimmer h-16 w-44" />
-            <div className="shimmer h-px w-full" />
+            <div className="flex items-center justify-between gap-4">
+              <div className="shimmer h-12 w-40" />
+              <div className="shimmer h-[84px] w-[84px] rounded-full" />
+            </div>
           </div>
         ) : (
           <>
-            <div className="flex items-end justify-between gap-4">
+            <span className="t-label block mb-4">Energy consumed</span>
+            <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <span className="t-label block mb-3">Energy consumed</span>
                 <div className="flex items-baseline gap-2.5">
                   <RollingNumber value={Math.round(dayTotals.calories).toLocaleString()} className="number-hero text-[var(--color-text)]" />
                   <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
                 </div>
-              </div>
-              <div className="text-right shrink-0 pb-1.5">
-                <span className="t-data-sm text-[var(--color-text-dim)]">
-                  / {Math.round(targetKcal).toLocaleString()}
-                </span>
-                <span className="t-label-sm mt-1 flex items-center justify-end gap-1.5">
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="t-data-sm text-[var(--color-text-dim)]">
+                    / {Math.round(targetKcal).toLocaleString()}
+                  </span>
+                  <span className="t-label-sm">{calorieSeal.met ? 'On target' : 'Daily target'}</span>
                   <SealMark show={calorieSeal.met} label="Calorie target met" anchorRef={calorieSeal.anchorRef} />
-                  {calorieSeal.met ? 'On target' : 'Daily target'}
-                </span>
+                </div>
               </div>
+              <MetalRing
+                progress={targetKcal > 0 ? dayTotals.calories / targetKcal : 0}
+                label={`${Math.round(dayTotals.calories).toLocaleString()} of ${Math.round(targetKcal).toLocaleString()} kcal eaten`}
+                size={84}
+                thickness={6}
+                reveal="fuel-energy-ring"
+              >
+                <span className={`t-data-lg ${energyOver ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>{energyPct}%</span>
+                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">{energyOver ? 'over' : 'eaten'}</span>
+              </MetalRing>
             </div>
-            <RailStrip
-              value={dayTotals.calories / Math.max(targetKcal * 1.18, dayTotals.calories)}
-              notch={targetKcal / Math.max(targetKcal * 1.18, dayTotals.calories)}
-              tone={dayTotals.calories > targetKcal ? 'berry' : 'chalk'}
-              size="md"
-              className="mt-6"
-              reveal="fuel-energy"
-            />
           </>
         )}
-      </section>
 
-      {/* ── Primary action ── */}
-      <div
-        className="mt-6"
-      >
         <Button
           size="lg"
-          className="w-full"
+          metal
+          className="w-full mt-6"
           onClick={() => {
             setEditingEntry(null);
             setShowLogger(true);
@@ -512,31 +511,31 @@ export function Nutrition() {
           <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
           Log food
         </Button>
-      </div>
+      </section>
 
       {/* Supporting macro ledger keeps energy as the single hero. */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
+      <section className="platter mt-4">
         <span className="t-label block mb-5">Macros</span>
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-5" aria-hidden>
             {[0, 1, 2].map((i) => (
               <div key={i} className="space-y-2.5">
-                <div className="shimmer h-2.5 w-10" />
-                <div className="shimmer h-8 w-14" />
-                <div className="shimmer h-px w-full" />
+                <div className="flex justify-between">
+                  <div className="shimmer h-3.5 w-14" />
+                  <div className="shimmer h-3.5 w-16" />
+                </div>
+                <div className="shimmer h-1 w-full rounded-full" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {macroFigures.map((macro) => {
               const max = Math.max(macro.target * 1.18, macro.current);
               const over = macro.current > macro.target;
               return (
                 <div key={macro.label}>
-                  <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <div className="flex items-baseline justify-between gap-3 mb-2.5">
                     <span className="t-body flex items-center gap-2">
                       {macro.label}
                       {macro.label === 'Protein' && (
@@ -562,16 +561,14 @@ export function Nutrition() {
       </section>
 
       {/* ── Week strip + month jump ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <div className="flex items-baseline justify-between mb-4">
+      <section className="platter mt-4 px-3 pt-3 pb-3">
+        <div className="flex items-center justify-between pl-2 mb-1">
           <span className="t-label">{format(weekStart, 'MMMM')}</span>
           <div className="flex items-center">
             <button
               type="button"
               aria-label="Previous week"
-              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setWeekAnchor((current) => addDays(current, -7))}
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
@@ -579,7 +576,7 @@ export function Nutrition() {
             <button
               type="button"
               aria-label="Next week"
-              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setWeekAnchor((current) => addDays(current, 7))}
             >
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
@@ -587,7 +584,7 @@ export function Nutrition() {
             <button
               type="button"
               aria-label="Open month calendar"
-              className="pressable studio-row-action p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               onClick={() => setShowMonthSheet(true)}
             >
               <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
@@ -609,22 +606,22 @@ export function Nutrition() {
                 onClick={() => pickDate(day)}
                 aria-label={format(day, 'EEEE, MMMM d')}
                 aria-pressed={isSelected}
-                className={`relative rounded-[11px] flex flex-col items-center gap-1.5 py-3 transition-colors ${
-                  isSelected ? 'bg-[var(--color-text)]' : 'pressable'
+                className={`relative rounded-[var(--radius-capsule)] flex flex-col items-center gap-1.5 py-3 transition-[background-color,box-shadow] duration-200 ${
+                  isSelected ? 'material-selected' : 'pressable'
                 }`}
               >
                 {dayIsToday && !isSelected && (
                   <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
                 )}
-                <span className={`t-label-sm ${isSelected ? 'text-[var(--color-base)]' : 'text-[var(--color-muted)]'}`}>
+                <span className={`t-label-sm ${isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
                   {format(day, 'EEEEE')}
                 </span>
-                <span className={`t-data ${isSelected ? 'text-[var(--color-base)]' : 'text-[var(--color-text-dim)]'}`}>
+                <span className={`t-data ${isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
                   {format(day, 'd')}
                 </span>
                 <span
                   className={`w-1 h-1 rounded-full ${hasLogs ? '' : 'opacity-0'}`}
-                  style={{ backgroundColor: isSelected ? 'var(--color-base)' : 'var(--color-text-dim)' }}
+                  style={{ backgroundColor: isSelected ? 'var(--color-text)' : 'var(--color-text-dim)' }}
                 />
               </button>
             );
@@ -633,10 +630,8 @@ export function Nutrition() {
       </section>
 
       {/* ── Unified food inbox + meal groups ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <div className="flex items-baseline justify-between mb-4">
+      <section className="mt-7">
+        <div className="flex items-center justify-between gap-3 pl-1 mb-2">
           <div className="flex items-baseline gap-2">
             <span className="t-label">Meals</span>
             {!loading && selectedDayLogs.length > 0 && (
@@ -645,16 +640,16 @@ export function Nutrition() {
             </span>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setShowGroupSheet(true)}>
+          <Button variant="ghost" size="sm" className="-mr-2" onClick={() => setShowGroupSheet(true)}>
             <Layers3 className="w-4 h-4" strokeWidth={1.5} />
             Add meal
           </Button>
         </div>
 
         {loading ? (
-          <div className="space-y-px">
+          <div className="platter platter-flush" aria-hidden>
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]">
+              <div key={i} className="platter-row flex items-center gap-4 px-5 py-4">
                 <div className="shimmer h-3 w-12" />
                 <div className="flex-1 space-y-1.5">
                   <div className="shimmer h-3.5 w-2/3" />
@@ -666,6 +661,7 @@ export function Nutrition() {
           </div>
         ) : selectedDayLogs.length === 0 && selectedDayGroups.length === 0 ? (
           <EmptyState
+            className="platter"
             art="plate"
             title="Nothing logged yet"
             body={isToday(selectedDate) ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
@@ -717,12 +713,12 @@ export function Nutrition() {
         title="Jump to date"
       >
         <div className="pt-1 pb-2">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--color-border)]">
+          <div className="flex items-center justify-between mb-3">
             <button
               type="button"
               aria-label="Previous month"
               onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
-              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -731,7 +727,7 @@ export function Nutrition() {
               type="button"
               aria-label="Next month"
               onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
-              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             >
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
@@ -742,7 +738,7 @@ export function Nutrition() {
               <span key={`${d}-${i}`} className="t-label-sm text-center py-1">{d}</span>
             ))}
           </div>
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 gap-y-1">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const isSelected = isSameDay(day, selectedDate);
@@ -759,11 +755,11 @@ export function Nutrition() {
                     pickDate(day);
                     setShowMonthSheet(false);
                   }}
-                  className={`relative h-11 rounded-[11px] t-data transition-colors ${
+                  className={`relative mx-auto w-11 h-11 rounded-[var(--radius-capsule)] t-data transition-[background-color,box-shadow] duration-200 ${
                     isSelected
-                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+                      ? 'material-selected text-[var(--color-text)] font-medium'
                       : inMonth
-                        ? 'text-[var(--color-text-dim)] active:bg-[var(--color-surface-2)]'
+                        ? 'text-[var(--color-text-dim)] active:bg-[var(--material-inset)]'
                         : 'text-[var(--color-muted)] opacity-50'
                   }`}
                 >
@@ -782,7 +778,7 @@ export function Nutrition() {
       </Modal>
 
       <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
-        <div className="space-y-px pb-2">
+        <div className="platter platter-flush mb-2">
           {[
             { kind: 'meal' as const, title: 'Meal', description: 'Inserted by time and numbered by its place in the day' },
             { kind: 'snack' as const, title: 'Snack', description: 'Inserted by time and numbered with other snacks' },
@@ -790,14 +786,14 @@ export function Nutrition() {
             <button
               key={option.kind}
               type="button"
-              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border-soft)] text-left"
+              className="platter-row pressable w-full flex items-center justify-between gap-4 px-5 py-4 min-h-11 text-left"
               onClick={() => void createGroup(option.kind)}
             >
               <span>
                 <span className="t-heading block">{option.title}</span>
                 <span className="t-caption block mt-0.5">{option.description}</span>
               </span>
-              <span className="t-data-sm text-[var(--color-muted)]">Add</span>
+              <span className="t-label-sm text-[var(--color-text-dim)] shrink-0">Add</span>
             </button>
           ))}
         </div>

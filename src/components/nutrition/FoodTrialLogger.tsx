@@ -119,7 +119,10 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       setPhotos((current) => [...current, ...selected.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
     }} />
     {photos.length > 0 && <div className="grid grid-cols-2 gap-3">{photos.map((photo, index) => <div key={photo.preview} className="space-y-2">
-      <img src={photo.preview} alt={`Meal photo ${index + 1}`} className="w-full h-36 object-cover rounded-xl" />
+      <div className="relative overflow-hidden rounded-[var(--radius-control)]">
+        <img src={photo.preview} alt={`Meal photo ${index + 1}`} className="block w-full h-36 object-cover" />
+        {busy === 'analysis' && <span className="liquid-aura" aria-hidden />}
+      </div>
       <Button variant="ghost" disabled={!!busy} onClick={() => { URL.revokeObjectURL(photo.preview); setPhotos((current) => current.filter((entry) => entry !== photo)); }}>Remove photo {index + 1}</Button>
     </div>)}</div>}
     <Button variant="secondary" className="w-full" disabled={!!busy || photos.length === 2} onClick={() => inputRef.current?.click()}><ImagePlus className="w-4 h-4" />Add photo</Button>
@@ -151,9 +154,9 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
         {result.summary && <p className="t-caption mt-3">{result.summary}</p>}
       </div>
       {editingEntry && items.length > 1 && <p className="t-caption" role="status">Keep one food to replace this entry. Add other foods separately.</p>}
-      {items.map((item, index) => {
+      {items.length > 0 && <div className="platter platter-flush">{items.map((item, index) => {
         const itemTotals = trialFoodTotals(item);
-        return <div key={index} className="space-y-3 border-t border-[var(--color-border)] pt-4">
+        return <div key={index} className="platter-row space-y-3 px-4 pt-4 pb-1">
           <div className="flex items-start justify-between gap-4"><div className="min-w-0"><h4 className="t-heading break-words">{item.name}</h4><p className="t-caption mt-1">{item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'}</p></div><span className="t-data-sm shrink-0">{formatAmount(itemTotals.calories)} kcal</span></div>
           <p className="t-data-sm">P {formatAmount(itemTotals.protein)} g · C {formatAmount(itemTotals.carbs)} g · F {formatAmount(itemTotals.fat)} g</p>
           <details>
@@ -169,7 +172,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
             </div>
           </details>
         </div>;
-      })}
+      })}</div>}
       {result.sources.length > 0 && <details className="t-caption"><summary className="min-h-11 flex items-center cursor-pointer">Sources ({result.sources.length})</summary><div className="space-y-3 pb-3">{result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="block underline underline-offset-2 break-words">{source.title}</a>)}</div></details>}
       {whenRow}
       {!addingIngredients && <label className="flex items-center gap-3 min-h-11 cursor-pointer">
@@ -181,7 +184,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
           <span className="t-caption block mt-1">{items.length > 1 ? 'Also add these foods to Saved meals for future logging.' : 'Also add this food to Saved meals for future logging.'}</span>
         </span>
       </label>}
-      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{addingIngredients ? 'Add ingredients' : editingEntry ? 'Save changes' : 'Log meal'}</Button></div>
+      <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" size="lg" metal={!addingIngredients} loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{addingIngredients ? 'Add ingredients' : editingEntry ? 'Save changes' : 'Log meal'}</Button></div>
     </>}
     {error && <p className="t-caption text-[var(--color-accent)]" role="alert">{error}</p>}
   </div>;

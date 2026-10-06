@@ -125,7 +125,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               className={`material-sheet-header flex items-center justify-between pl-6 pr-5 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
-              {title ? <h2 id={titleId} className="t-heading">{title}</h2> : <span />}
+              {title ? <h2 id={titleId} className="sheet-title">{title}</h2> : <span />}
               <motion.button
                 type="button"
                 onClick={onClose}

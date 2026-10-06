@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
-import { EmptyState, Screen, VolumeRail, PageTitle } from '@/components/shared';
+import { Button, EmptyState, MetalRing, Screen, VolumeRail, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
@@ -14,6 +14,7 @@ import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { springs } from '@/lib/animations';
+import './progress-liquid.css';
 
 type CoachingTone = 'amber' | 'sage' | 'berry' | 'stone';
 
@@ -101,6 +102,20 @@ export function Analysis() {
     [weeklyVolume]
   );
 
+  // One headline ratio: muscles whose weekly volume sits in the productive
+  // range (between MEV and the adaptive ceiling). Derived, never invented.
+  const rangeSummary = useMemo(() => {
+    const total = weeklyVolume.length;
+    const inRange = weeklyVolume.filter((mv) => mv.status === 'mev_mav' || mv.status === 'mav').length;
+    const under = weeklyVolume.filter((mv) => mv.status === 'below_mev').length;
+    const high = weeklyVolume.filter((mv) => mv.status === 'approaching_mrv' || mv.status === 'above_mrv').length;
+    const detail = [
+      under > 0 ? `${under} under` : null,
+      high > 0 ? `${high} near or over ceiling` : null,
+    ].filter(Boolean).join(' · ');
+    return { total, inRange, detail };
+  }, [weeklyVolume]);
+
   return (
     <Screen>
       {/* Header */}
@@ -127,15 +142,15 @@ export function Analysis() {
           body="Log a session and hyPer starts coaching your weekly volume against research landmarks."
           action={
             <Link to="/train">
-              <span className="pressable inline-flex items-center justify-center min-h-11 px-5 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] text-sm font-semibold">
+              <Button metal size="md" className="px-6">
                 Start training
-              </span>
+              </Button>
             </Link>
           }
         />
       ) : (
         <>
-        <section className="mb-8" aria-label="This week's volume by muscle">
+        <section className="platter" aria-label="This week's volume by muscle">
           <VolumeMaquette
             volume={weeklyVolume}
             onSelectMuscle={(muscle) => {
@@ -146,7 +161,27 @@ export function Analysis() {
             }}
           />
         </section>
-        <div className="mb-12 border-t border-[var(--color-border)]">
+        <section className="platter platter-flush mt-4" aria-label="Volume calls">
+          <div className="platter-row flex items-center justify-between gap-4 px-5 pt-5 pb-5">
+            <div className="min-w-0">
+              <p className="t-label">This week</p>
+              <p className="t-heading mt-2">
+                {rangeSummary.inRange} of {rangeSummary.total} {rangeSummary.total === 1 ? 'muscle' : 'muscles'} in range
+              </p>
+              {rangeSummary.detail && <p className="t-caption mt-1">{rangeSummary.detail}</p>}
+            </div>
+            <MetalRing
+              progress={rangeSummary.total > 0 ? rangeSummary.inRange / rangeSummary.total : 0}
+              label={`${rangeSummary.inRange} of ${rangeSummary.total} muscles in their productive volume range`}
+              size={72}
+              thickness={5}
+              reveal="coaching-range-ring"
+            >
+              <span className="number-medium text-[18px]! text-[var(--color-text)] tabular-nums">
+                {rangeSummary.inRange}<span className="text-[var(--color-text-dim)]">/{rangeSummary.total}</span>
+              </span>
+            </MetalRing>
+          </div>
           {coached.map(({ mv, call }) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
             const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
@@ -155,20 +190,20 @@ export function Analysis() {
             return (
               <motion.div
                 key={mv.muscle_group}
-                className="border-b border-[var(--color-border)]"
+                className="platter-row"
               >
                 <button
                   type="button"
-                  className="w-full text-left py-5"
+                  className="w-full text-left px-5 py-5"
                   aria-expanded={isExpanded}
                   onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
                 >
-                  <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                     <span className="t-label">
                       {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
                     </span>
                     <span className="flex items-center gap-2.5 shrink-0">
-                      <span className={`t-label-sm ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-dim)]'}`}>
+                      <span className="status-capsule" data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}>
                         {call.chip}
                       </span>
                       <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
@@ -210,8 +245,8 @@ export function Analysis() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={springs.settle}
                     >
-                      <div className="pb-5 pt-1">
-                        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 mb-4">
+                      <div className="px-5 pb-5">
+                        <div className="ledger-well grid grid-cols-4 mb-4">
                           {[
                             { label: 'MV', value: mv.landmark?.mv },
                             { label: 'MEV', value: mv.landmark?.mev },
@@ -237,22 +272,22 @@ export function Analysis() {
               </motion.div>
             );
           })}
-        </div>
+        </section>
         </>
       )}
 
       {/* Training hours */}
       <motion.section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+        className={`platter ${weeklyVolume.length === 0 ? 'mt-8' : 'mt-4'}`}
       >
-        <div className="flex items-baseline justify-between mb-5">
+        <div className="flex items-baseline justify-between mb-1">
           <span className="t-label">Training hours</span>
-          <span className="t-label-sm">8 weeks</span>
+          <span className="t-label-sm text-[var(--color-muted)]">8 weeks</span>
         </div>
         {hoursLoading ? (
-          <div className="flex items-end gap-px h-40 border-b border-[var(--color-border-strong)]">
+          <div className="flex items-end justify-around h-40 mt-11 border-b border-[var(--color-border)]">
             {Array.from({ length: 8 }).map((_, index) => (
-              <div key={index} className="shimmer flex-1 h-[45%]" />
+              <div key={index} className="shimmer w-[7%] h-[45%] rounded-t-[6px]" />
             ))}
           </div>
         ) : (
@@ -262,18 +297,18 @@ export function Analysis() {
 
       {/* Weekly nutrition */}
       <motion.section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+        className="progress-platter-host mt-4"
       >
         <WeeklyNutrition />
       </motion.section>
 
       {/* Research explainer — supporting detail, not the primary UI */}
       <motion.section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+        className="platter platter-flush mt-4"
       >
         <button
           type="button"
-          className="w-full min-h-11 flex items-center justify-between text-left"
+          className="w-full min-h-[60px] px-5 flex items-center justify-between text-left"
           aria-expanded={showExplainer}
           onClick={() => setShowExplainer(!showExplainer)}
         >
@@ -294,14 +329,14 @@ export function Analysis() {
               exit={{ height: 0, opacity: 0 }}
               transition={springs.settle}
             >
-              <div className="mt-5">
+              <div className="ledger-sets shadow-[inset_0_1px_0_var(--platter-divider)]">
                 {[
                   { tone: 'stone', label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
                   { tone: 'amber', label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
                   { tone: 'sage', label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
                   { tone: 'berry', label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-start gap-3 py-3 border-t border-[var(--color-border)]">
+                  <div key={item.label} className="flex items-start gap-3 px-5 py-4">
                     <div>
                       <p className="t-heading">{item.label}</p>
                       <p className="t-caption mt-1">{item.desc}</p>

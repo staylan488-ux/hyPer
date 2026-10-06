@@ -268,9 +268,9 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden bg-black aspect-[4/3] hairline-strong">
+      <div className="relative overflow-hidden bg-black aspect-[4/3] rounded-[var(--radius-platter)] hairline-strong">
         <video ref={videoRef} muted playsInline className={`w-full h-full object-cover ${scanning ? 'opacity-100' : 'opacity-35'}`} />
-        <div className="absolute inset-[18%_10%] border border-white/80" aria-hidden="true">
+        <div className="absolute inset-[18%_10%] rounded-[var(--radius-control)] border border-white/80" aria-hidden="true">
           <span className="absolute left-1/2 top-1/2 w-[82%] h-px -translate-x-1/2 bg-[var(--color-accent)]" />
         </div>
         {!scanning && (
@@ -282,7 +282,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
           <button
             type="button"
             onClick={() => { void toggleTorch(); }}
-            className="pressable absolute top-3 right-3 flex items-center justify-center w-11 h-11 bg-black/65 text-white"
+            className="pressable absolute top-3 right-3 flex items-center justify-center w-11 h-11 rounded-full bg-black/65 text-white"
             aria-label={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
           >
             <Flashlight className="w-4 h-4" fill={torchOn ? 'currentColor' : 'none'} />

@@ -109,7 +109,7 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-start py-2 border-t border-[var(--color-border)] ${draggedId === log.id ? 'opacity-45' : ''}`}
+        className={`platter-row grid grid-cols-[2.75rem_minmax(0,1fr)] items-start py-1.5 pl-1.5 pr-2 ${draggedId === log.id ? 'opacity-45' : ''}`}
         initial={{ opacity: 0, y: 8 }}
         animate={{
           opacity: deletedId === log.id ? 0 : 1,
@@ -155,7 +155,7 @@ export function NutritionGroupLedger({
             </div>
           </div>
 
-          <div className="flex items-start justify-between gap-3 pb-3">
+          <div className="flex items-start justify-between gap-3 pb-3 pr-3">
             <div className="min-w-0">
               <p className="t-body font-medium leading-snug text-[var(--color-text)] break-words">{log.food?.name || 'Unknown Food'}</p>
               <p className="t-data-sm leading-relaxed text-[var(--color-muted)] mt-1">
@@ -169,16 +169,16 @@ export function NutritionGroupLedger({
             </span>
           </div>
           {composition && (
-            <details className="group border-t border-[var(--color-border)]">
-              <summary className="pressable flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[var(--color-muted)] [&::-webkit-details-marker]:hidden">
+            <details className="group mb-2 mr-1 rounded-[var(--radius-control)] material-inset">
+              <summary className="pressable flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-[var(--color-muted)] [&::-webkit-details-marker]:hidden">
                 <span className="t-caption">{composition.ingredients.length} ingredient{composition.ingredients.length === 1 ? '' : 's'}</span>
                 <ChevronDown className="h-4 w-4 shrink-0 group-open:rotate-180" strokeWidth={1.5} />
               </summary>
-              <ul className="pb-2">
+              <ul className="px-3 pb-1">
                 {composition.ingredients.map((ingredient) => {
                   const servings = ingredient.servings * log.servings;
                   return (
-                    <li key={ingredient.id} className="flex items-start justify-between gap-3 border-t border-[var(--color-border)] py-3">
+                    <li key={ingredient.id} className="flex items-start justify-between gap-3 border-t border-[var(--platter-divider)] py-3">
                       <div className="min-w-0">
                         <p className="t-body break-words text-[var(--color-text)]">{ingredient.food.name}</p>
                         <p className="t-data-sm mt-1 text-[var(--color-muted)]">
@@ -223,9 +223,9 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-border)] material-surface' : 'border-[var(--color-border)]'} transition-colors`}
+        className={`platter platter-flush transition-shadow duration-200 ${activeDropId === dropId ? 'ring-1 ring-[var(--color-text-dim)]' : ''}`}
       >
-        <div className="flex items-center justify-between gap-2 py-3">
+        <div className="platter-row flex items-center justify-between gap-2 py-1.5 pl-5 pr-2">
           <div className="min-w-0">
             <span className="t-heading">{title}</span>
             <span className="t-data-sm text-[var(--color-muted)] ml-2">{entries.length}</span>
@@ -258,17 +258,17 @@ export function NutritionGroupLedger({
                 )}
               </div>
             )}
-            <span className="t-data-sm min-w-[4.5rem] text-right text-[var(--color-text-dim)] whitespace-nowrap">
+            <span className="t-data-sm min-w-[4.5rem] pr-3 text-right text-[var(--color-text-dim)] whitespace-nowrap">
               {totalCalories.toLocaleString()} kcal
             </span>
           </div>
         </div>
         {entries.length > 0 ? (
-          <ul><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>
+          <ul className="platter-row"><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>
         ) : (
           <button
             type="button"
-            className="w-full py-5 border-t border-[var(--color-border)] t-caption text-left"
+            className="platter-row w-full min-h-11 px-5 py-4 t-caption text-left"
             onClick={() => draggedId && dropInto(group?.id || null)}
           >
             Drag food here or use its move handle.
@@ -282,11 +282,13 @@ export function NutritionGroupLedger({
 
   return (
     <>
-      {(unassigned.length > 0 || draggedId) && renderDropSection(null, unassigned)}
-      {orderedGroups.map((group) => renderDropSection(group, logs.filter((log) => log.group_id === group.id)))}
+      <div className="space-y-4">
+        {(unassigned.length > 0 || draggedId) && renderDropSection(null, unassigned)}
+        {orderedGroups.map((group) => renderDropSection(group, logs.filter((log) => log.group_id === group.id)))}
+      </div>
 
       <Modal isOpen={!!movingEntry} onClose={() => setMovingEntry(null)} title="Move food">
-        <div className="space-y-px">
+        <div className="platter platter-flush mb-2">
           {[
             { id: null, label: 'Unassigned' },
             ...orderedGroups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, orderedGroups) })),
@@ -294,14 +296,14 @@ export function NutritionGroupLedger({
             <button
               key={destination.id || 'inbox'}
               type="button"
-              className="pressable w-full flex items-center justify-between py-4 border-t border-[var(--color-border)] text-left"
+              className="platter-row pressable w-full min-h-11 flex items-center justify-between gap-4 px-5 py-4 text-left"
               onClick={() => {
                 if (movingEntry) onMove(movingEntry.id, destination.id);
                 setMovingEntry(null);
               }}
             >
               <span className="t-heading">{destination.label}</span>
-              <span className="t-data-sm text-[var(--color-muted)]">
+              <span className={`t-label-sm shrink-0 ${(movingEntry?.group_id || null) === destination.id ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
                 {(movingEntry?.group_id || null) === destination.id ? 'Current' : 'Move'}
               </span>
             </button>

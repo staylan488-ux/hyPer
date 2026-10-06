@@ -4,11 +4,15 @@ import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
   ArrowRight,
   ArrowUpRight,
+  CalendarDays,
   Dumbbell,
+  History as HistoryIcon,
   Plus,
+  TrendingUp,
+  type LucideIcon,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
+import { Button, MetalRing, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import type { SealMacro } from '@/lib/targetSeal';
@@ -157,10 +161,10 @@ export function Dashboard() {
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
 
-  const stations: { to: string; index: string; label: string; sub: string }[] = [
-    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan' },
-    { to: '/history', index: '02', label: 'History', sub: 'Past sessions' },
-    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results' },
+  const stations: { to: string; index: string; label: string; sub: string; icon: LucideIcon }[] = [
+    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan', icon: CalendarDays },
+    { to: '/history', index: '02', label: 'History', sub: 'Past sessions', icon: HistoryIcon },
+    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results', icon: TrendingUp },
   ];
 
   return (
@@ -173,14 +177,15 @@ export function Dashboard() {
         <h1 className="t-label mt-5">Today</h1>
       </header>
 
-      <section className="mt-5">
-        <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
+      <section className="platter mt-5 overflow-hidden">
+        {hero.kind === 'resume' && <span className="liquid-aura is-quiet" aria-hidden />}
+        <div className="relative">
+          <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
+        </div>
       </section>
 
       {/* ── Fuel ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
+      <section className="platter mt-4">
         <h2 className="t-label mb-4">Fuel</h2>
 
         {fuelLoading ? (
@@ -190,11 +195,21 @@ export function Dashboard() {
           </div>
         ) : hasAnyNutrition ? (
           <>
-            <div className="mb-4">
-              <div className="flex items-baseline gap-2">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div className="min-w-0">
                 <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                <span className="t-caption">kcal left</span>
+                <span className="t-caption block mt-2">kcal left today</span>
               </div>
+              <MetalRing
+                progress={nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)}
+                label={`${Math.round(nutritionTotals.calories).toLocaleString()} of ${(macroTarget?.calories || DEFAULT_MACRO_TARGET.calories).toLocaleString()} kcal eaten`}
+                size={84}
+                thickness={6}
+                reveal="dash-fuel-ring"
+              >
+                <span className="t-data-lg text-[var(--color-text)]">{Math.round((nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)) * 100)}%</span>
+                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">eaten</span>
+              </MetalRing>
             </div>
             <div className="space-y-4">
               <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
@@ -205,7 +220,7 @@ export function Dashboard() {
           <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
         )}
 
-        <div className="mt-4 flex gap-3">
+        <div className="mt-5 flex gap-3">
           <Link to="/nutrition" className="flex-1">
             <Button variant="secondary" size="md" className="w-full">
               <Plus className="w-4 h-4" strokeWidth={1.75} />
@@ -221,18 +236,17 @@ export function Dashboard() {
       </section>
 
       {/* ── Contents / stations ── */}
-      <nav
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <span className="t-label block mb-3">Contents</span>
-        <ul>
+      <nav className="mt-7">
+        <span className="t-label block mb-3 px-1">Contents</span>
+        <ul className="platter platter-flush">
           {stations.map((s) => (
-            <li key={s.to}>
+            <li key={s.to} className="platter-row has-icon">
               <Link
                 to={s.to}
                 onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]"
+                className="pressable group flex items-center gap-4 py-3.5 px-4"
               >
+                <span className="icon-tile" aria-hidden><s.icon className="w-[17px] h-[17px]" strokeWidth={1.6} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="t-heading block">{s.label}</span>
                   <span className="t-caption">{s.sub}</span>
@@ -246,9 +260,7 @@ export function Dashboard() {
 
       {/* ── One insight, only when it exists ── */}
       {insight && (
-        <section
-          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-        >
+        <section className="platter mt-4">
           <Link to="/analysis" className="block group">
             <div className="flex items-baseline justify-between mb-3">
               <span className="t-label">This week</span>
@@ -311,19 +323,27 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" />
           <span className="t-label">{hero.title}</span>
         </div>
-        <h2 className="t-title">{hero.dayName}</h2>
-        {programName && <p className="t-caption mt-2">{programName}</p>}
-        <div className="flex items-baseline gap-2 mt-5">
-          <span className="t-data">{hero.completedSets} <span className="text-[var(--color-text-dim)]">/ {hero.totalSets}</span></span>
-          <span className="t-caption">sets complete{hero.elapsed !== '—' ? ` · ${hero.elapsed}` : ''}</span>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="t-title">{hero.dayName}</h2>
+            {programName && <p className="t-caption mt-2">{programName}</p>}
+            {hero.elapsed !== '—' && <p className="t-caption mt-1">{hero.elapsed} in</p>}
+          </div>
+          <MetalRing
+            progress={hero.totalSets > 0 ? hero.completedSets / hero.totalSets : 0}
+            label={`${hero.completedSets} of ${hero.totalSets} sets complete`}
+            reveal="dash-session-ring"
+          >
+            <span className="number-medium text-[20px]! text-[var(--color-text)]">{hero.completedSets}<span className="text-[var(--color-text-dim)]">/{hero.totalSets}</span></span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">sets</span>
+          </MetalRing>
         </div>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="sm" className="mt-3 w-full [&>span]:flex-1" />
-        <div className="py-4">
+        <div className="py-5">
           <p className="t-caption mb-1">{hero.nextExercise ? `Up next · Set ${hero.nextSet}` : 'All sets logged'}</p>
           <p className="t-body">{hero.nextExercise ?? 'Review and finish your session'}</p>
         </div>
         <Link to="/train">
-          <Button size="lg" className="w-full justify-between!">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
+          <Button size="lg" metal className="w-full justify-between! px-6">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
         </Link>
       </div>
     );
@@ -358,7 +378,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
         </h2>
         <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
         <Link to="/train">
-          <Button size="lg" className="w-full">
+          <Button size="lg" metal className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start workout
           </Button>
@@ -385,7 +405,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
         <HeroEyebrow accent>Flexible mode</HeroEyebrow>
         <p className="t-title mb-6">Build today as you go.</p>
         <Link to="/train">
-          <Button size="lg" className="w-full">
+          <Button size="lg" metal className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start session
           </Button>
