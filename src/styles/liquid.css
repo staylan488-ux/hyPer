@@ -37,9 +37,9 @@
 
   /* Metal: a bright, cool silver read against ivory. */
   --metal-chrome:
-    #6f747e 0deg, #b9bec8 26deg, #ffffff 52deg, #f2f4f8 66deg, #9da3ae 92deg,
-    #575c66 124deg, #8a909b 150deg, #e9ecf1 182deg, #ffffff 200deg, #c4c8d0 226deg,
-    #6c717b 262deg, #474b54 292deg, #a7acb6 326deg, #6f747e 360deg;
+    #969ba5 0deg, #c9cdd5 26deg, #ffffff 52deg, #f4f6f9 66deg, #b3b8c1 92deg,
+    #858a94 124deg, #a3a8b2 150deg, #eceef2 182deg, #ffffff 200deg, #d2d5dc 226deg,
+    #9297a1 262deg, #7f848e 292deg, #bcc0c8 326deg, #969ba5 360deg;
   --metal-glints:
     transparent 0deg, transparent 38deg,
     rgba(255, 166, 77, .85) 40deg, rgba(255, 255, 255, .95) 42deg, rgba(92, 150, 255, .85) 44deg,
@@ -262,6 +262,15 @@
   isolation: isolate;
   transition: --ring-p 1.1s cubic-bezier(.16, 1, .3, 1);
   --ring-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w) - .5px), #000 calc(100% - var(--ring-w)));
+  /* Round caps: one dot where the arc starts (12 o'clock) and one riding
+     its end, placed with trig so they follow the animated --ring-p. */
+  --ring-mid: calc(var(--ring-size) / 2 - var(--ring-w) / 2);
+  --ring-cap: calc(var(--ring-w) / 2 * min(1, var(--ring-p) * 400));
+  --ring-cap-start: radial-gradient(circle at 50% calc(var(--ring-w) / 2), #000 calc(var(--ring-cap) - .5px), transparent var(--ring-cap));
+  --ring-cap-end: radial-gradient(circle at
+      calc(var(--ring-size) / 2 + var(--ring-mid) * sin(var(--ring-p) * 1turn))
+      calc(var(--ring-size) / 2 - var(--ring-mid) * cos(var(--ring-p) * 1turn)),
+    #000 calc(var(--ring-cap) - .5px), transparent var(--ring-cap));
 }
 .metal-ring-track, .metal-ring-fill {
   position: absolute;
@@ -278,10 +287,14 @@
   background:
     conic-gradient(from calc(var(--metal-glint) - var(--light-y, 0) * 70deg), var(--metal-glints)),
     conic-gradient(from calc(var(--metal-spin) + var(--light-x, 0) * 90deg), var(--ring-chrome));
-  -webkit-mask: var(--ring-mask), conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0);
-  -webkit-mask-composite: source-in;
-  mask: var(--ring-mask), conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0);
-  mask-composite: intersect;
+  -webkit-mask:
+    var(--ring-cap-end), var(--ring-cap-start),
+    conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0), var(--ring-mask);
+  -webkit-mask-composite: source-over, source-over, source-in, source-over;
+  mask:
+    var(--ring-cap-end), var(--ring-cap-start),
+    conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0), var(--ring-mask);
+  mask-composite: add, add, intersect, add;
   animation: metal-spin 17s linear infinite, metal-glint 11s linear infinite reverse;
   filter: drop-shadow(0 0 6px var(--ring-glow));
 }
@@ -306,8 +319,8 @@
 :root, .light {
   --ring-groove: linear-gradient(180deg, rgba(35,38,37,.13), rgba(35,38,37,.06));
   --ring-chrome:
-    #50555e 0deg, #8d929c 40deg, #d9dce2 70deg, #8a8f99 104deg, #3e424a 140deg, #6c717b 180deg,
-    #c6cad2 214deg, #f0f1f4 230deg, #7b808a 262deg, #454952 300deg, #50555e 360deg;
+    #50555e 0deg, #80858f 40deg, #b3b7bf 70deg, #7d828c 104deg, #3e424a 140deg, #656a74 180deg,
+    #a5a9b2 214deg, #c3c7ce 230deg, #737882 262deg, #454952 300deg, #50555e 360deg;
   --ring-glow: rgba(255,255,255,.0);
 }
 .dark {
