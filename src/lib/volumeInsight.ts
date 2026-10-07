@@ -6,6 +6,12 @@ const mevDeficit = (mv: MuscleVolume) => (mv.landmark ? mv.landmark.mev - mv.wee
 /** A muscle's weekly sets as a share of its MEV (1 without a positive MEV). */
 const mevShare = (mv: MuscleVolume) => (mv.landmark && mv.landmark.mev > 0 ? mv.weekly_sets / mv.landmark.mev : 1);
 
+/** Under-MEV muscles, furthest behind first: most sets still needed, then
+ * the lowest share of MEV. Today's headline and Progress's rows share it. */
+export function byMevDeficit(a: MuscleVolume, b: MuscleVolume): number {
+  return mevDeficit(b) - mevDeficit(a) || mevShare(a) - mevShare(b);
+}
+
 /**
  * Today's one volume insight: the muscle furthest under its minimum effective
  * volume, else the one most past (or nearing) its ceiling, else one in the
@@ -21,7 +27,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]) {
   // lowest share of its MEV, so 3 of 8 comes before 1 of 6.
   const below = weeklyVolume
     .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => mevDeficit(b) - mevDeficit(a) || mevShare(a) - mevShare(b))[0];
+    .sort(byMevDeficit)[0];
   if (below?.landmark) {
     const gap = Math.max(1, Math.ceil(mevDeficit(below)));
     return {

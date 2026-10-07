@@ -27,7 +27,6 @@ import {
   sortActivitySessionsByStart,
 } from '@/lib/activitySessions';
 import {
-  activityTypeLabel,
   customActivityTypeSuggestions,
   formatClockDuration,
   formatDistanceMi,
@@ -41,6 +40,7 @@ import {
   type ActivitySegment,
   type ActivitySession,
   type ActivitySessionInput,
+  type ActivitySource,
   type ActivityType,
   type Exercise,
   type FlexiblePlanItem,
@@ -162,6 +162,14 @@ interface ActivityLedgerRowProps {
   selected?: boolean;
   onToggleSelected?: () => void;
 }
+
+/** Where an activity came from, as its row's last metadata field. */
+const ACTIVITY_SOURCE_LABEL: Record<ActivitySource, string> = {
+  manual: 'Manual',
+  whoop: 'WHOOP',
+  strava: 'Strava',
+  gps: 'GPS',
+};
 
 function formatSegmentDistance(distanceM: number | null): string | null {
   if (distanceM == null || distanceM <= 0) return null;
@@ -483,16 +491,14 @@ function ActivityLedgerRow({
   // recording's laps — foreign-source segments contribute metrics, not rows
   const primarySegments = segments.filter((segment) => segment.source === activity.source);
   const title = resolveActivityTitle(activity);
-  const typeLabel = activityTypeLabel(activity);
   const startTime = formatActivityStartTime(activity.started_at);
   const duration = formatActivityDuration(activity.duration_seconds);
-  // One order in every row: time · duration · source, then the type when a
-  // custom title hides it.
+  // One order in every row: time · duration · source, the source always
+  // last (a manual entry says so); the type is the title or left out.
   const subtitleParts = [
     startTime,
     duration !== '-' ? duration : null,
-    activity.source !== 'manual' ? activity.source.toUpperCase() : null,
-    activity.title?.trim() ? typeLabel : null,
+    ACTIVITY_SOURCE_LABEL[activity.source] ?? activity.source,
   ].filter(Boolean);
   const metricsParts = [
     formatDistanceMi(activity.distance_m),
@@ -538,7 +544,7 @@ function ActivityLedgerRow({
           <span className="block min-w-0 flex-1">
           <span className="block t-row-title-plain break-words">{title}</span>
           <span className="block t-data-sm text-[var(--color-muted)] mt-1">
-            {subtitleParts.length > 0 ? subtitleParts.join(' · ') : typeLabel}
+            {subtitleParts.join(' · ')}
           </span>
           {metricsParts.length > 0 && (
             <span className="block t-data-sm text-[var(--color-text-dim)] mt-0.5">

@@ -15,7 +15,6 @@ import {
   primarySide,
   shadeMuscles,
   STATUS_INK,
-  subjectFill,
   type MuscleShade,
   type ViewSide,
 } from '@/lib/volumeMap';
@@ -119,11 +118,16 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
         ))}
       </div>
 
-      {/* Only tones the figure draws: the under tone, in range as its ramp
-          (tone tracks how far into its range a muscle is, not raw sets),
-          lacquer only past the ceiling. */}
+      {/* Every tone the figure draws, and only those: the body (not trained
+          this week), the under tone, in range as its ramp (tone tracks how
+          far into its range a muscle is, not raw sets), lacquer only past
+          the ceiling. */}
       <div className="flex flex-col items-center gap-2 mt-5 t-caption" aria-hidden>
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ background: BODY_TONE }} />
+            Not trained
+          </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ background: UNDER_TONE }} />
             Under
@@ -171,7 +175,7 @@ function Figure({
 }: {
   side: ViewSide;
   shades: Map<MuscleGroup, MuscleShade>;
-  /** Illustrate one sentence: only this muscle is drawn (see subjectFill). */
+  /** Illustrate one sentence: this muscle's seam is drawn heavier. */
   subject?: MuscleGroup | null;
   /** The tapped muscle: the others recede. */
   selected?: MuscleGroup | null;
@@ -183,18 +187,17 @@ function Figure({
 }) {
   const regions = MAP_REGIONS.filter((region) => region.side === side);
   // Every muscle keeps the tone of its own status (lacquer only past MRV), so
-  // the figure never contradicts the legend. Illustrating one sentence, only
-  // its subject is drawn.
+  // the figure never contradicts the legend, beside a sentence too (Today's
+  // small figure speaks Progress's tones; its subject is marked by a heavier
+  // seam, never by a tone of its own).
   const bodyFill = inkFill(BODY_INK);
   const tone = (fill: string) => (fill === bodyFill ? BODY_TONE : fill.startsWith('color-mix') ? mapInk(fill) : fill);
-  const fillFor = (muscle: MuscleGroup) => tone(subject
-    ? subjectFill(shades.get(muscle), isSubjectMuscle(muscle, subject))
-    : muscleFill(shades.get(muscle)));
-  // Under MEV takes the under tone, the legend's "Under". Beside a
-  // sentence, its muscle does when the sentence is about under-stimulation.
-  const under = (muscle: MuscleGroup) => subject
-    ? isSubjectMuscle(muscle, subject) && isSubjectUnder(shades.get(muscle))
-    : isUnderStimulated(shades.get(muscle));
+  const fillFor = (muscle: MuscleGroup) => tone(muscleFill(shades.get(muscle)));
+  // Under MEV takes the under tone, the legend's "Under" (a sentence's
+  // muscle under MEV does even before its first set).
+  const under = (muscle: MuscleGroup) => isUnderStimulated(shades.get(muscle))
+    || (isSubjectMuscle(muscle, subject) && isSubjectUnder(shades.get(muscle)));
+  const spotlit = subject ? regions.filter((region) => isSubjectMuscle(region.muscle, subject)) : [];
   const mirrored = (mirror: boolean, content: ReactNode) => (
     <g transform={mirror ? 'scale(-1 1)' : undefined}>{content}</g>
   );
@@ -231,6 +234,18 @@ function Figure({
       pointerEvents="none"
     />
   );
+  // The sentence's muscle: its own seam drawn heavier, in the page colour.
+  const spotlight = spotlit.length > 0 && (
+    <path
+      d={spotlit.map((region) => region.d).join(' ')}
+      fill="none"
+      stroke="var(--color-base)"
+      strokeLinejoin="round"
+      vectorEffect="non-scaling-stroke"
+      style={{ strokeWidth: `calc(${seamWidth} * 2.5)` }}
+      pointerEvents="none"
+    />
+  );
 
   return (
     <svg className={className} viewBox="-46 0 92 220" preserveAspectRatio="xMidYMid meet" aria-hidden>
@@ -240,6 +255,8 @@ function Figure({
       {mirrored(true, muscles)}
       {mirrored(false, seams)}
       {mirrored(true, seams)}
+      {spotlight && mirrored(false, spotlight)}
+      {spotlight && mirrored(true, spotlight)}
     </svg>
   );
 }

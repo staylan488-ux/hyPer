@@ -12,6 +12,7 @@ import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHist
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { VolumeMap } from '@/components/coaching/VolumeMap';
 import { inRangeTone } from '@/lib/volumeMap';
+import { byMevDeficit } from '@/lib/volumeInsight';
 import { LandmarkRail } from '@/components/coaching/LandmarkRail';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
@@ -103,7 +104,10 @@ export function Analysis() {
     () =>
       weeklyVolume
         .map((mv) => ({ mv, call: buildCoachingCall(mv) }))
-        .sort((a, b) => a.call.priority - b.call.priority || b.mv.weekly_sets - a.mv.weekly_sets),
+        // Under-MEV rows in the headline's order (most sets still needed
+        // first, as their "Add ~N" reads); others by sets.
+        .sort((a, b) => a.call.priority - b.call.priority
+          || (a.mv.status === 'below_mev' && b.mv.status === 'below_mev' ? byMevDeficit(a.mv, b.mv) : b.mv.weekly_sets - a.mv.weekly_sets)),
     [weeklyVolume]
   );
 

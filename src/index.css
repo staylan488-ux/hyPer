@@ -112,8 +112,9 @@
   --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
   /* The volume map's silhouette (BODY_INK in lib/volumeMap). */
   --map-body: color-mix(in srgb, var(--color-text) 10%, var(--color-base));
-  /* Under MEV: one step past the body, below every in-range tone. */
-  --map-under: color-mix(in srgb, var(--color-text) 24%, var(--color-base));
+  /* Under MEV: a clear step past the body (≥1.6:1, so it never reads as
+     not trained) and ≥2:1 under every in-range tone. */
+  --map-under: color-mix(in srgb, var(--color-text) 32%, var(--color-base));
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@
      lib/volumeMap, VolumeMap). */
   --map-seam: 1px;
   --map-ink-drop: 13%;
-  --map-under: color-mix(in srgb, var(--color-text) 29%, var(--color-base));
+  --map-under: color-mix(in srgb, var(--color-text) 33%, var(--color-base));
 }
 
 * {

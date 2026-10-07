@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pickInsight } from '@/lib/volumeInsight';
+import { byMevDeficit, pickInsight } from '@/lib/volumeInsight';
 import type { MuscleVolume, VolumeLandmark } from '@/types';
 
 const landmark = (muscle_group: VolumeLandmark['muscle_group'], mev: number): VolumeLandmark => ({
@@ -16,6 +16,11 @@ describe("Today's volume insight", () => {
     expect(insight?.volume.muscle_group).toBe('chest'); // add 6, before calves 5 and glutes 3
     expect(insight?.headline).toBe('Chest is under-stimulated');
     expect(insight?.detail).toBe('4 sets this week — about 6 more to reach your minimum effective volume.');
+  });
+
+  it('orders Progress rows by the same key as the headline', () => {
+    const rows = [under('quads', 6, 8), under('chest', 4, 10), under('calves', 3, 8), under('glutes', 3, 6)].sort(byMevDeficit);
+    expect(rows.map((mv) => mv.muscle_group)).toEqual(['chest', 'calves', 'glutes', 'quads']);
   });
 
   it('breaks a tie in sets needed by the lowest share of MEV', () => {

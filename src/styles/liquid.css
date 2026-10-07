@@ -574,10 +574,13 @@ button.calendar-head-title:active { opacity: .5; }
    specular ring or directional highlight); the current tab is a flat fill
    inset 5px on every side, concentric with the bar. */
 .bottom-nav { border-radius: var(--radius-nav); padding: 0 5px; }
+/* Around it, a soft halo in the glass's own tone over the page (between its
+   60% and its label-row fill, within a few levels of both), so a ghost
+   passing under the bar never lights one shoulder of the pill. */
 .material-nav-selection {
   border-radius: var(--radius-capsule);
   background: var(--nav-selection);
-  box-shadow: none;
+  box-shadow: 0 0 8px 4px color-mix(in srgb, var(--nav-veil, transparent) 70%, var(--color-base));
 }
 
 /* ─── Fallbacks ─────────────────────────────────────────────── */

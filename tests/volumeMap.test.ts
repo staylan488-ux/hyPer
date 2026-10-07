@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BODY_INK, BODY_PATHS, MAP_REGIONS, STATUS_INK, inkFill, isSubjectMuscle, isSubjectUnder, isUnderStimulated, muscleFill, primarySide, shadeMuscles, subjectFill } from '../src/lib/volumeMap';
+import { BODY_PATHS, MAP_REGIONS, STATUS_INK, isSubjectMuscle, isSubjectUnder, isUnderStimulated, muscleFill, primarySide, shadeMuscles } from '../src/lib/volumeMap';
 import { isPluralMuscle, muscleSubject } from '../src/lib/muscleCopy';
 import type { MuscleVolume } from '../src/types';
 
@@ -45,23 +45,19 @@ describe('volume map', () => {
     const shades = shadeMuscles([volume('chest', 12, 'mav'), volume('side_delts', 26, 'above_mrv'), volume('back', 22, 'approaching_mrv')]);
     expect(muscleFill(shades.get('side_delts'))).toBe('var(--color-accent)');
     expect(muscleFill(shades.get('back'))).not.toContain('accent');
-    expect(muscleFill(shades.get('chest'))).toBe('color-mix(in srgb, var(--color-text) 72%, var(--color-base))');
+    expect(muscleFill(shades.get('chest'))).toBe('color-mix(in srgb, var(--color-text) 76%, var(--color-base))');
     expect(muscleFill(shades.get('quads'))).toBe('color-mix(in srgb, var(--color-text) 10%, var(--color-base))');
   });
 });
 
 describe('figure that illustrates one sentence', () => {
-  it('draws only the subject, in its legend style, lacquer only when the sentence is about the ceiling', () => {
+  it('names the subject (any deltoid head for shoulders) and whether it is under MEV', () => {
     const shades = shadeMuscles([volume('hamstrings', 5, 'below_mev'), volume('side_delts', 23, 'above_mrv'), volume('back', 21, 'approaching_mrv')]);
-    // Under MEV is the legend's hollow "Under": the body tone inside an outline, never a solid fill.
+    // Every muscle keeps Progress's tone beside a sentence; the subject is
+    // marked by its seam, so only its identity and status are asked here.
     expect(isSubjectUnder(shades.get('hamstrings'))).toBe(true);
-    expect(subjectFill(shades.get('hamstrings'), true)).toBe(inkFill(BODY_INK));
-    // Nearing the ceiling keeps the legend's heaviest ink.
     expect(isSubjectUnder(shades.get('back'))).toBe(false);
-    expect(subjectFill(shades.get('back'), true)).toBe(muscleFill(shades.get('back')));
-    // Over-ceiling side delts stay silhouette when the sentence is about hamstrings.
-    expect(subjectFill(shades.get('side_delts'), false)).toBe(inkFill(BODY_INK));
-    expect(subjectFill(shades.get('side_delts'), true)).toBe('var(--color-accent)');
+    expect(muscleFill(shades.get('side_delts'))).toBe('var(--color-accent)');
     expect(isSubjectMuscle('rear_delts', 'shoulders')).toBe(true);
     expect(isSubjectMuscle('chest', 'hamstrings')).toBe(false);
     expect(primarySide('shoulders')).toBe('front');
@@ -88,15 +84,22 @@ describe('muscle copy', () => {
 });
 
 describe('figure tones', () => {
-  // Theme tokens from index.css: Ivory #232323 on #F5F5F0 (under 24%), Black
-  // #F2F2F2 on #000000 (under 29%, status inks 13% toward the page).
+  // Theme tokens from index.css: Ivory #232323 on #F5F5F0 (body 10%, under
+  // 32%), Black #F2F2F2 on #000000 (body 18%, under 33%, status inks 13%
+  // toward the page).
   const lum = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
   const ratio = (a: number, b: number) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
   const mix = (text: number, base: number, ink: number) => text * ink + base * (1 - ink);
 
+  const lightUnder = mix(0x23, 0xF5, 0.32);
+  const darkUnder = mix(0xF2, 0, 0.33);
+
+  it('keeps under at least 1.6:1 from the untrained body in both themes', () => {
+    expect(ratio(lightUnder, mix(0x23, 0xF5, 0.1))).toBeGreaterThanOrEqual(1.6);
+    expect(ratio(darkUnder, mix(0xF2, 0, 0.18))).toBeGreaterThanOrEqual(1.6);
+  });
+
   it('keeps the first in-range step at least 2:1 from the under tone in both themes', () => {
-    const lightUnder = mix(0x23, 0xF5, 0.24);
-    const darkUnder = mix(0xF2, 0, 0.29);
     expect(ratio(mix(0x23, 0xF5, STATUS_INK.mev_mav), lightUnder)).toBeGreaterThanOrEqual(2);
     expect(ratio(mix(0xF2, 0, STATUS_INK.mev_mav) * 0.87, darkUnder)).toBeGreaterThanOrEqual(2);
   });

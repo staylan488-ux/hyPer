@@ -303,19 +303,20 @@ layout and makes motion, data and 3D the expressive layer.
   seams (`--map-seam`) and status fills a step toward the page
   (`--map-ink-drop`). Ink by volume status: trained but under MEV is the
   quietest mark, the ramp's lowest tone (`--map-under`), never heavier than
-  an in-range fill (the first in-range step at least 2:1 from it in both
-  themes), and the legend's "Under" swatch is that same tone; lacquer only
-  past MRV, no gloss or 3D. Progress shows the two views without captions;
-  its legend shows only tones the figure draws and keys the rows' chips in
-  their words ("Under", "In range", "Over ceiling": one name per state in
-  the summary, legend and chips; In range's swatch is the ramp itself and
-  a chip's mark is its muscle's own tone), captioned truthfully ("Stronger
-  tone = further into range": tone tracks status, not raw sets), and set counts stay ink (red is the figure, the status and the
-  rail marker). Beside a sentence
-  (Today's insight) the figure draws only the sentence's muscle, in the
-  same legend style as Progress (the under tone when the sentence is about
-  under-stimulation, its status ink otherwise, lacquer only past MRV), and
-  leaves the rest at the silhouette's tone.
+  an in-range fill (at least 1.6:1 from the untrained body and 2:1 from the
+  first in-range step, in both themes), and the legend's "Under" swatch is
+  that same tone; lacquer only past MRV, no gloss or 3D. Progress shows the
+  two views without captions; its legend shows every tone the figure draws
+  and only those ("Not trained" for the body, then the states that key the
+  rows' chips in their words: "Under", "In range", "Over ceiling", one name
+  per state in the summary, legend and chips; In range's swatch is the
+  ramp itself and a chip's mark is its muscle's own tone), captioned
+  truthfully ("Stronger tone = further into range": tone tracks status,
+  not raw sets), and set counts stay ink (red is the figure, the status and the
+  rail marker). Under rows list furthest behind first (most sets still
+  needed, the same order as Today's headline). Beside a sentence (Today's
+  insight) the figure speaks the same tones as Progress for every muscle,
+  and marks the sentence's muscle only by a heavier seam, never a tone.
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
   `/preview?previewSetSave=fail` exercises save failure and Retry;
   `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.

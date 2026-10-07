@@ -124,11 +124,11 @@ export function primarySide(muscle: MuscleGroup): ViewSide {
  * The first in-range step sits at least 2:1 from the under tone in both
  * themes, so a muscle in range never reads as one more under it. */
 export const STATUS_INK: Record<MuscleVolume['status'], number> = {
-  below_mev: 0.26,
-  mev_mav: 0.56,
-  mav: 0.72,
-  approaching_mrv: 0.9,
-  above_mrv: 0.9,
+  below_mev: 0.32,
+  mev_mav: 0.62,
+  mav: 0.76,
+  approaching_mrv: 0.92,
+  above_mrv: 0.92,
 };
 
 export interface MuscleShade {
@@ -182,18 +182,6 @@ export function muscleFill(shade: MuscleShade | undefined): string {
 export function isSubjectMuscle(muscle: MuscleGroup, subject: MuscleGroup | null): boolean {
   if (!subject) return false;
   return muscle === subject || (subject === 'shoulders' && DELTS.includes(muscle));
-}
-
-/**
- * A figure that illustrates one sentence (Today's insight) speaks the
- * Progress legend: the muscle the sentence is about keeps its own legend
- * style (the under tone below MEV, its status ink otherwise, lacquer only past
- * recoverable volume), and every other muscle stays at the silhouette's own
- * tone, so no other muscle competes with the story.
- */
-export function subjectFill(shade: MuscleShade | undefined, isSubject: boolean): string {
-  if (!isSubject || isSubjectUnder(shade)) return inkFill(BODY_INK);
-  return muscleFill(shade);
 }
 
 /** The sentence's muscle is under MEV (trained or not): the under tone, the
