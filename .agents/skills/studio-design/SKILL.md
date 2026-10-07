@@ -38,9 +38,9 @@ tokens; an already approved direction does not need another design exploration.
 - Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
   quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
   at the same height everywhere; it condenses into the scroll-edge band:
-  solid to 8px below the compact title row, then one 26px ramp in which
-  opacity (eased, t³) and a progressive blur move together, so content is
-  gone before it can smear and nothing crossing it shows a crisp edge.
+  solid to 8px below the compact title row, then one 26px opacity ramp
+  (eased, t³) with no blur, so nothing crossing it shows a crisp edge or
+  smears into a halo.
   Pushed screens keep their parent tab selected (`nativeTabForPath`).
   Contextual actions are sentence-case `text-action` buttons in the one ink
   tint; a disabled action is that tint at 30% opacity, never grey as a style.

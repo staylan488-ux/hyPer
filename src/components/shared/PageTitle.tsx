@@ -103,9 +103,6 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
           aria-hidden
           onClick={scrollToTop}
         >
-          <span className="page-scroll-edge-blur" data-step="1" />
-          <span className="page-scroll-edge-blur" data-step="2" />
-          <span className="page-scroll-edge-blur" data-step="3" />
           <span className="page-scroll-edge-veil" />
           {back && (
             // The header's own back control stays the accessible one; this

@@ -77,9 +77,6 @@ export function LiveSessionBar({ title, createdAt, titleRef, finishing, onMinimi
 
   return <>
     <motion.div className="page-scroll-edge studio-live-bar" style={{ '--band': band } as MotionStyle}>
-      <span className="page-scroll-edge-blur" data-step="1" aria-hidden />
-      <span className="page-scroll-edge-blur" data-step="2" aria-hidden />
-      <span className="page-scroll-edge-blur" data-step="3" aria-hidden />
       <span className="page-scroll-edge-veil" aria-hidden />
       {/* The full-screen cover minimises (the session keeps running) rather
           than going back. The clock sits on the screen's centre line. */}

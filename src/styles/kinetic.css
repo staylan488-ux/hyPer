@@ -31,16 +31,15 @@
   cursor: pointer;
 }
 .page-scroll-edge > * { opacity: var(--band, 0); }
-.page-scroll-edge-veil,
-.page-scroll-edge-blur {
+.page-scroll-edge-veil {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 /* Stage colour over the ramp: content visibility follows t³ (t = 0 at the
    solid edge, 1 at the ramp's foot), so it stays below 15% over the upper
-   half of the ramp, where the blur is strongest, and only reads as it
-   sharpens near the foot. */
+   half of the ramp and only reads near the foot. Opacity only, no blur:
+   a blur smears bright shapes into halos on true black. */
 .page-scroll-edge-veil {
   background: linear-gradient(
     to bottom,
@@ -54,32 +53,6 @@
     color-mix(in srgb, var(--material-foundation) 22%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.92),
     transparent 100%
   );
-}
-/* Progressive blur over the upper three quarters of the ramp, where content
-   is at most 45% visible: three stacked steps, strongest at the solid edge,
-   each feathered by its own mask. The foot is opacity only, so a line
-   resting there is faded, never smudged. */
-.page-scroll-edge-blur {
-  -webkit-mask-image: linear-gradient(to bottom, #000 var(--blur-hold), transparent var(--blur-end));
-  mask-image: linear-gradient(to bottom, #000 var(--blur-hold), transparent var(--blur-end));
-}
-.page-scroll-edge-blur[data-step='1'] {
-  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.1);
-  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.4);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-.page-scroll-edge-blur[data-step='2'] {
-  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.3);
-  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.6);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-}
-.page-scroll-edge-blur[data-step='3'] {
-  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.5);
-  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.78);
-  -webkit-backdrop-filter: blur(2.5px);
-  backdrop-filter: blur(2.5px);
 }
 .page-scroll-edge-title,
 .page-scroll-edge-back { z-index: 1; }
@@ -100,7 +73,6 @@
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .page-scroll-edge { height: 48px; }
-  .page-scroll-edge-blur { display: none; }
   .page-scroll-edge-veil {
     background: var(--material-foundation);
     border-bottom: 1px solid var(--color-border);
