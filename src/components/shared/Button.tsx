@@ -2,25 +2,23 @@ import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
-import { useLitSurface } from '@/hooks/useLitSurface';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
-  /** A screen's hero action: the primary's chrome bezel comes alive and
-   * follows the phone's tilt. Use for at most one action per screen. */
+  /** Marks a screen's hero action. Primaries are solid; liquid metal is
+   * reserved for the save-set key, so this no longer changes the look. */
   metal?: boolean;
 }
 
-/** Studio actions: a metal-capped primary, clear glass secondary, unboxed contextual. */
+/** Studio actions: a solid primary, a quiet filled secondary, unboxed contextual. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'primary', size = 'md', loading, disabled, metal = false, children, onClick, ...props }, ref) => {
-    const litRef = useLitSurface<HTMLButtonElement>(ref ?? undefined);
-    const live = metal && variant === 'primary';
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ({ className = '', variant = 'primary', size = 'md', loading, disabled, metal: _hero = false, children, onClick, ...props }, ref) => {
     const baseStyles = `
       inline-flex items-center justify-center
-      [font-family:var(--font-sans)] uppercase font-medium
+      [font-family:var(--font-sans)] font-semibold
       transition-colors duration-200
       focus:outline-none
       focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
@@ -30,7 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary: `
-        material-button-primary ${live ? 'liquid-metal' : 'metal-static'}
+        material-button-primary
         bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
         hover:bg-[var(--button-primary-hover)]
         active:bg-[var(--button-primary-active)]
@@ -51,16 +49,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes = {
-      sm: 'px-4 min-h-11 text-[11px] tracking-[0.16em] gap-2',
-      md: 'px-4 min-h-[45px] text-[11px] tracking-[0.16em] gap-2',
-      lg: 'px-4 min-h-[51px] text-[11px] tracking-[0.16em] gap-2',
+      sm: 'px-4 min-h-11 text-[14px] tracking-[-0.005em] gap-2',
+      md: 'px-5 min-h-[46px] text-[15px] tracking-[-0.01em] gap-2',
+      lg: 'px-5 min-h-[52px] text-[16px] tracking-[-0.01em] gap-2',
     };
 
     const isDisabled = disabled || loading;
 
     return (
       <motion.button
-        ref={live ? litRef : ref}
+        ref={ref}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
         whileTap={isDisabled ? undefined : { scale: 0.985 }}

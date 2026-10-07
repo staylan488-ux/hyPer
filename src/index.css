@@ -143,10 +143,10 @@
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
   --button-danger-fg: #F5F5F0;
-  --button-primary-bg: #303030;
-  --button-primary-fg: #EAEAEA;
-  --button-primary-hover: #363636;
-  --button-primary-active: #3B3B3B;
+  --button-primary-bg: #F2F2F2;
+  --button-primary-fg: #000000;
+  --button-primary-hover: #E6E6E6;
+  --button-primary-active: #D9D9D9;
 }
 
 * {
@@ -326,7 +326,7 @@ body {
 
 /* Clears the bottom nav + safe area */
 .pb-nav {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(8rem + var(--app-safe-bottom, 0px));
 }
 
 /* ═════════════════════════════════════════════════════════════

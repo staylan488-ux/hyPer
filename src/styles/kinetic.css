@@ -3,8 +3,8 @@
    Scroll-linked and data-driven layers that sit on the Studio materials.
    ═════════════════════════════════════════════════════════════ */
 
-/* Scroll-edge band: the condensed page title rests in a soft, masked blur
-   that fades into the content below — no hard toolbar edge. Fixed inside the
+/* Scroll-edge band: the condensed page title rests on the stage colour,
+   which fades into the content below — no hard toolbar edge. Fixed inside the
    (untransformed) route content, aligned with the scroll column. */
 .page-scroll-edge {
   position: fixed;
@@ -20,16 +20,15 @@
   justify-content: center;
   padding-top: 13px;
   cursor: pointer;
+  /* A plain fade of the stage colour, no blur: content dissolves under the
+     compact title with no smudge and no visible step. */
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--material-foundation) 86%, transparent) 0%,
-    color-mix(in srgb, var(--material-foundation) 55%, transparent) 52%,
+    var(--material-foundation) 0%,
+    var(--material-foundation) 52%,
+    color-mix(in srgb, var(--material-foundation) 70%, transparent) 72%,
     transparent 100%
   );
-  -webkit-backdrop-filter: blur(14px) var(--material-optics);
-  backdrop-filter: blur(14px) var(--material-optics);
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 50%, transparent 100%);
 }
 .page-scroll-edge-title {
   display: block;
@@ -44,10 +43,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-#root[inert] .page-scroll-edge {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .page-scroll-edge {
