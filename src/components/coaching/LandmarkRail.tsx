@@ -58,7 +58,8 @@ export function LandmarkRail({ current, mev, mavLow, mavHigh, mrv, over: overSta
   ];
 
   return (
-    <div className={className} role="img" aria-label={`${current} sets this week. MEV ${mev}, MAV ${mavLow} to ${mavHigh}, MRV ${mrv}.`}>
+    // One unit at the tab bar: the scale never rests without its labels.
+    <div className={className} role="img" data-rest-bar-unit aria-label={`${current} sets this week. MEV ${mev}, MAV ${mavLow} to ${mavHigh}, MRV ${mrv}.`}>
       <div className="relative h-4 mt-4">
         <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--color-border)]" />
         {/* "In range" is MEV to MRV: a quiet track under the heavy MAV band. */}

@@ -15,7 +15,7 @@ import { format, parseISO } from 'date-fns';
 import { Button, MetalRing, PageHeader, RollingNumber, Screen, TickStrip, BankedStamp } from '@/components/shared';
 import { VolumeMap } from '@/components/coaching/VolumeMap';
 import { LandmarkRail } from '@/components/coaching/LandmarkRail';
-import { muscleSubject } from '@/lib/muscleCopy';
+import { pickInsight } from '@/lib/volumeInsight';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
@@ -27,7 +27,7 @@ import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
-import { DEFAULT_MACRO_TARGET, type MuscleVolume, type SplitDay } from '@/types';
+import { DEFAULT_MACRO_TARGET, type SplitDay } from '@/types';
 
 type HeroState =
   | { kind: 'loading' }
@@ -204,9 +204,9 @@ export function Dashboard() {
               <span className="t-caption">kcal left</span>
             </span>
             <span className="t-data-sm block mt-2.5 text-[var(--color-text-dim)]">
-              {Math.round(nutritionTotals.calories).toLocaleString()} of {targetKcal.toLocaleString()} kcal
+              {Math.round(nutritionTotals.calories).toLocaleString()} / {targetKcal.toLocaleString()} kcal
               <span aria-hidden> · </span>
-              {Math.round(nutritionTotals.protein)} of {targetProtein} g protein
+              {Math.round(nutritionTotals.protein)} / {targetProtein} g protein
             </span>
           </Link>
         ) : (
@@ -438,53 +438,4 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 function activeWorkoutIdOf(workout: { id: string; completed: boolean } | null) {
   return workout && !workout.completed ? workout.id : null;
-}
-
-function pickInsight(weeklyVolume: MuscleVolume[]) {
-  if (!weeklyVolume || weeklyVolume.length === 0) return null;
-
-  const subject = (mv: MuscleVolume) => muscleSubject(mv.muscle_group);
-
-  const below = weeklyVolume
-    .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => a.weekly_sets - b.weekly_sets)[0];
-  if (below?.landmark) {
-    const gap = Math.max(1, Math.ceil(below.landmark.mev - below.weekly_sets));
-    return {
-      volume: below,
-      landmark: below.landmark,
-      headline: `${subject(below).name} ${subject(below).is} under-stimulated`,
-      detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-    };
-  }
-
-  const over = weeklyVolume
-    .filter((mv) => (mv.status === 'above_mrv' || mv.status === 'approaching_mrv') && mv.landmark)
-    .sort((a, b) => b.weekly_sets - a.weekly_sets)[0];
-  if (over?.landmark) {
-    return {
-      volume: over,
-      landmark: over.landmark,
-      headline:
-        over.status === 'above_mrv'
-          ? `${subject(over).name} ${subject(over).is} past recoverable volume`
-          : `${subject(over).name} ${subject(over).is} nearing ${subject(over).its} ceiling`,
-      detail:
-        over.status === 'above_mrv'
-          ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
-          : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-    };
-  }
-
-  const inZone = weeklyVolume.filter((mv) => mv.status === 'mav' && mv.landmark)[0];
-  if (inZone?.landmark) {
-    return {
-      volume: inZone,
-      landmark: inZone.landmark,
-      headline: `${subject(inZone).name} ${subject(inZone).is} in the adaptive zone`,
-      detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-    };
-  }
-
-  return null;
 }

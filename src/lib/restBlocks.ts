@@ -252,6 +252,8 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
   const blocks: RestBlock[] = [];
   const entries: Entry[] = [];
   const heads: { element: Element; last: number; top: number; bottom: number }[] = [];
+  // Units judged whole at the bar (`data-rest-bar-unit`: a scale with its labels).
+  const barUnits: RestBlock[] = [];
   const range = document.createRange();
   const column = (extent: Extent): Extent => ({ top: extent.top - columnTop, bottom: extent.bottom - columnTop });
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
@@ -281,6 +283,10 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
         const extent = ink ? { top: ink.top, bottom: ink.bottom } : null;
         if (extent) blocks.push(fill ? { ...column(extent), fill: true } : inset > 0.25 ? { ...column(extent), ink: column(extent).top + inset } : column(extent));
         if (graphic && ink) entries.push({ ...column({ top: ink.top, bottom: Math.min(ink.bottom, ink.top + BAR_GRAPHIC_MAX) }), node });
+      }
+      if (node.matches('[data-rest-bar-unit]')) {
+        const whole = inkOf(node);
+        if (whole) barUnits.push({ ...column({ top: whole.top, bottom: whole.bottom }), whole: true });
       }
       if (node.matches(HEAD_SELECTOR) && !heads.some((head) => head.element.contains(node))) {
         heads.push({ element: node, last: entries.length, top: Infinity, bottom: -Infinity });
@@ -323,9 +329,11 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     const next = entries.slice(head.last).find((entry) => !head.element.contains(entry.node) && entry.top > head.bottom - 2);
     if (next && next.top - head.bottom <= HEAD_REACH) items.push({ top: head.top, bottom: next.bottom });
   }
+  items.push(...barUnits);
   // Hairline rules rest well clear of the bar or under it (`REST_BAR_RULE_CLEAR`).
   for (const carrier of findRuleCarriers(root, columnTop)) {
-    // A scale's hairline (a figure, `role="img"`) is part of its graphic, not a divider.
+    // A scale's hairline (a figure, `role="img"`) is part of its graphic, not a
+    // divider; a scale rests whole with its labels (`data-rest-bar-unit`).
     if (carrier.element.closest('.page-header, [role="img"]')) continue;
     items.push({ top: carrier.offset, bottom: carrier.offset + 1, rule: true });
   }

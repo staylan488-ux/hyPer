@@ -13,7 +13,7 @@
   min-height: 44px;
   border-bottom: 1px solid var(--platter-divider, var(--color-border-soft));
 }
-.fuel-meal-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -.005em; color: var(--color-text); }
+.fuel-meal-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 15px; font-weight: 500; line-height: 1.3; letter-spacing: -.005em; color: var(--color-text); }
 .fuel-meal-count { font-size: 12px; font-weight: 400; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 /* Trailing values end on the shared accessory edge, 2pt inside the gutter. */
 .fuel-meal-kcal, .fuel-entry-kcal { padding-right: 1.5px; }
@@ -22,7 +22,9 @@
 .fuel-meal-empty { display: block; width: 100%; min-height: 44px; padding: 12px 0; text-align: left; font-size: 15px; line-height: 1.35; color: var(--color-text-dim); }
 /* An empty meal offers its own add, in line with the empty note. */
 .fuel-meal-empty-add { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0; }
-.fuel-meal-empty-add .text-action { margin-right: -10px; }
+/* Every meal's add sits in one fixed trailing column, its "+" on one guide
+   whatever the meal's name ("Add to Lunch", "Add to Dinner"). */
+.fuel-meal-empty-add .text-action { margin-right: -10px; min-width: 148px; justify-content: flex-start; }
 
 .fuel-entry { position: relative; }
 .fuel-entry + .fuel-entry { border-top: 1px solid var(--platter-divider, var(--color-border-soft)); }

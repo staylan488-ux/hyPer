@@ -53,8 +53,9 @@ export function WeeklyNutrition() {
               <div key={metric.key} className="flex items-baseline justify-between gap-4 py-3 border-b border-[var(--color-border-soft)]">
                 <dt className="t-caption">{metric.label} · {todayOnly ? 'so far' : 'daily average'}</dt>
                 <dd className="t-data-sm text-[var(--color-text)] tabular-nums">
-                  {Math.round(metric.average).toLocaleString()} {metric.unit}
-                  <span className="text-[var(--color-text-dim)]"> / {metric.target.toLocaleString()}</span>
+                  {/* One pair format everywhere: "784 / 2,600 kcal", as Fuel's macros. */}
+                  {Math.round(metric.average).toLocaleString()}
+                  <span className="text-[var(--color-text-dim)]"> / {metric.target.toLocaleString()} {metric.unit}</span>
                 </dd>
               </div>
             ))}

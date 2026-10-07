@@ -59,7 +59,8 @@ tokens; an already approved direction does not need another design exploration.
   `lib/titleSnap.ts`; Train's live session too): the first visible ink
   under the band (a line's glyphs, an icon's strokes, a filled box's edge;
   never a line box or padding) starts at the ramp's foot or up to 12pt past
-  it (`REST_GAP_FLEX`) on every page, snapping within 120pt, with nothing
+  it (`REST_GAP_FLEX`) on every page, aiming at 4pt (`REST_GAP_AIM`, worth a
+  little travel so pages rest alike), snapping within 120pt, with nothing
   showing above it. No text line, graphic or filled box rests in the band's
   ramp (each clears its foot by its glyphs or sits under the solid zone); a
   filled box (Fuel's Log food pill, a track) counts as hidden only once its
@@ -73,9 +74,12 @@ tokens; an already approved direction does not need another design exploration.
   the ramp and the bar passes under like a photo. Within the gap's flex the
   page takes the nearest offset with no line astride the tab bar's top edge
   or within 8pt above it (`REST_BAR_CLEAR`, judged by the glyphs' em box)
-  and no divider within 20pt above it (`REST_BAR_RULE_CLEAR`; a scale's
-  own hairline is part of its figure); only when no offset in the flex is
-  clean does a line rest passing under the glass. With no rest at the gap in reach, the nearest rest with a
+  and no divider within 20pt above it (`REST_BAR_RULE_CLEAR`); only when no
+  offset in the flex is clean does a line rest passing under the glass. A
+  scale is one unit at the bar (`data-rest-bar-unit`: a landmark rail's
+  ruler with its labels, never the ruler above the glass and its labels
+  under it), and it and dividers stay clear wherever any rest in reach
+  allows, then the one least astride. With no rest at the gap in reach, the nearest rest with a
   clean band.
   `data-rest-ignore`
   leaves a subtree out; the page header collapses with its title (anything
@@ -93,7 +97,7 @@ tokens; an already approved direction does not need another design exploration.
   scroll-snap. One bottom inset: at its scroll end a page's last ink rests
   24px above the tab bar's top, whatever padding its last row carries
   (`.pb-nav` plus PageTitle's `--end-trim`, `restingScrollEndAt`), or up to
-  8pt more when that ends with a clean band; a page at its end always rests
+  8pt more or 4pt less (`REST_END_GIVE`), whichever clean end is nearer; a page at its end always rests
   there, as in UIKit (Train's live session, with no tab bar, may grow by
   about a row to end on the gap or clean). Reduced transparency or increased contrast use a
   solid bar with no blur. The large title
@@ -170,9 +174,10 @@ tokens; an already approved direction does not need another design exploration.
   (`TabIcons`, an upright plain dumbbell; the current tab's glyph is its
   filled variant), 10.5px semibold
   labels in the current tab's ink or a neutral secondary grey (#575757
-  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 5px
-  backdrop blur (CSS standard deviation, a ~12-15px visible spread) under a
-  neutral fill (#1C1C1C at 50% in Black; near-white at 60% in Ivory, about
+  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 2.5px
+  backdrop blur (CSS standard deviation, so what passes under reads as soft
+  texture, never a bright blob) under a
+  neutral fill (#1C1C1C at 60% in Black; near-white at 60% in Ivory, about
   6 levels over the ivory, with one faint shadow), clipped to the capsule, so text passing under
   it visibly continues inside the capsule, softly blurred, while labels and
   icons stay legible (a 12px blur takes a 15pt line under ~4% contrast at
@@ -282,21 +287,22 @@ layout and makes motion, data and 3D the expressive layer.
   [renderer host](../../../src/lib/three/host.ts) and the
   [motion light](../../../src/lib/motionLight.ts). Weekly volume is a flat,
   matte front/back [muscle map](../../../src/lib/volumeMap.ts) in one tone
-  (`--map-body`, lifted in Black so the silhouette holds) with a 1.5px line
-  (1px on Today's small figure) for the seams between muscles and the
-  hollow outline. Ivory is the reference drawing; Black draws it the same
-  way with 1px seams in the page colour (`--map-seam`, never keylines),
-  status fills a step toward the page (`--map-ink-drop`) and the hollow
-  outline, and the legend ring with it, at 70% ink (`--map-hollow-ink`) so
-  it never glows. Ink by volume status, hollow (an inset ink outline, like
-  the ○ status glyph) while trained but under MEV, lacquer only past MRV, no
-  gloss or 3D. Progress shows the two views without captions; its legend
+  (`--map-body`, lifted in Black so the silhouette holds) with 1.5px seams
+  between muscles (1px on Today's small figure) in the page colour, drawn
+  once over every fill as one path so shared edges never double or stipple
+  and a narrow muscle never carries two strokes; no outlines or keylines.
+  Ivory is the reference drawing; Black draws it the same way with 1px
+  seams (`--map-seam`) and status fills a step toward the page
+  (`--map-ink-drop`). Ink by volume status: trained but under MEV is the
+  quietest mark, the ramp's lowest tone (`--map-under`), never heavier than
+  an in-range fill, and the legend's "Under" swatch is that same tone;
+  lacquer only past MRV, no gloss or 3D. Progress shows the two views without captions; its legend
   keys the rows' chips in their words ("Under", "In range", "Over ceiling":
   one name per state in the summary, legend and chips), with the shading
   ramp on its own line ("Stronger tone = more sets"), and set counts stay ink (red is the figure, the status and the
   rail marker). Beside a sentence
   (Today's insight) the figure draws only the sentence's muscle, in the
-  same legend style as Progress (hollow when the sentence is about
+  same legend style as Progress (the under tone when the sentence is about
   under-stimulation, its status ink otherwise, lacquer only past MRV), and
   leaves the rest at the silhouette's tone.
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;

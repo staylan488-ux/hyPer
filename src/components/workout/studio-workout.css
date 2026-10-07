@@ -1,5 +1,8 @@
 /* Movement details and set entry belong to the list; only active rest floats. */
-.studio-workout-page { padding-bottom: calc(32px + var(--app-safe-bottom, 0px)); }
+/* The session ends with its last ink 24pt above the home indicator's safe area
+   (the last row's own 12px padding plus this), as tab pages end 24pt above
+   the tab bar. */
+.studio-workout-page { padding-bottom: calc(12px + var(--app-safe-bottom, 0px)); }
 .studio-workout-page.has-rest-timer { padding-bottom: calc(var(--workout-rest-height, 76px) + 28px + var(--app-safe-bottom, 0px)); }
 /* The docked "Log set" action keeps the last rows clear of it (and of rest). */
 .studio-workout-page.has-next-set { padding-bottom: calc(52px + 40px + var(--app-safe-bottom, 0px)); }
@@ -84,7 +87,8 @@
 .studio-movement-name-compact { display: block; font-family: var(--font-sans); font-size: 17px; font-weight: 500; line-height: 1.3; letter-spacing: -.012em; color: var(--color-text); overflow-wrap: break-word; }
 .studio-movement.is-complete .studio-movement-name-compact { color: var(--color-text-dim); }
 .studio-movement-summary { font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.studio-movement-previous { color: var(--color-text); white-space: nowrap; }
+/* Kept together on one line, in the subtitle's own tone (one tone per subtitle). */
+.studio-movement-previous { white-space: nowrap; }
 /* The options glyph stands alone on the trailing gutter, its 44pt target
    overhanging into the margin. Open, it sits on the title's line, not the
    eyebrow's, as it does beside a closed "Up next" movement. */

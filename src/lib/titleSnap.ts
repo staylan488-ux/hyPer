@@ -44,8 +44,10 @@ export function restingScrollEnd(naturalEnd: number, rests: number[], limit: num
  *  as hidden only once it ends at the solid stage's edge, with no allowance
  *  into the ramp. `ink`: where a text line's glyphs start, below its line
  *  box's top; the gap under the band is measured to it. `rule`: a hairline
- *  at the tab bar, which rests `REST_BAR_RULE_CLEAR` clear of it. */
-export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean; ink?: number; rule?: boolean }
+ *  at the tab bar, which rests `REST_BAR_RULE_CLEAR` clear of it. `whole`:
+ *  a unit at the tab bar (a scale with its labels) that rests astride it
+ *  only when every rest in reach would. */
+export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean; ink?: number; rule?: boolean; whole?: boolean }
 /** The scroll-edge band, measured down from the scroll viewport's top edge:
  *  the solid stage ends at `solid`, the ramp at `foot`. `window`: the height
  *  between the ramp's foot and the tab bar's clear line. With it, every block
@@ -90,6 +92,10 @@ export const REST_GAP = 0;
 /** How far past the foot the first content may rest, so the page can also
  *  rest with no line astride the tab bar. */
 export const REST_GAP_FLEX = 12;
+/** Within the flex, the gap pages aim for, and what a point of travel costs
+ *  against a point of gap (`restNudgeTarget`). */
+export const REST_GAP_AIM = 4;
+export const REST_GAP_TRAVEL = 0.2;
 /** The furthest a rest moves to reach that gap (about one and a half rows;
  *  half a long figure's height). */
 export const REST_GAP_REACH = 120;
@@ -234,6 +240,7 @@ export function restNudgeTarget(
   for (const block of blocks) {
     marks.add(inkTop(block) - band.foot - REST_GAP);
     marks.add(inkTop(block) - band.foot - REST_GAP - REST_GAP_FLEX);
+    marks.add(inkTop(block) - band.foot - REST_GAP - REST_GAP_AIM);
   }
   if (bar) {
     for (const item of bar.items) {
@@ -246,8 +253,25 @@ export function restNudgeTarget(
     const gap = firstShown(offset);
     return gap >= -0.5 && gap <= REST_GAP_FLEX + 0.5;
   });
-  const nearest = (offsets: number[]) => offsets.sort((a, b) => Math.abs(a - scrollTop) - Math.abs(b - scrollTop))[0];
-  const target = nearest([...atGap, ...atEnd].filter((offset) => barCount(offset) === 0)) ?? nearest([...atGap, ...atEnd]);
+  // Nearest first, but a rest nearer one gap (`REST_GAP_AIM` past the foot)
+  // is worth a little more travel, so pages rest alike (the scroll end, whose
+  // gap is what it is, by distance alone).
+  const cost = (offset: number) => Math.abs(offset - scrollTop) * REST_GAP_TRAVEL
+    + (atEnd.includes(offset) ? 0 : Math.abs(firstShown(offset) - REST_GAP_AIM));
+  const nearest = (offsets: number[]) => offsets.sort((a, b) => cost(a) - cost(b))[0];
+  // With no rest wholly clear of the bar, a line may pass under it, but a
+  // scale stays whole with its labels and a divider stays clear where any
+  // rest in reach allows (`whole`, `rule`).
+  // (Where none can, the one least astride.)
+  const pool = [...atGap, ...atEnd];
+  const hardItems = bar ? bar.items.filter((item) => item.whole || item.rule) : [];
+  const hard = (offset: number) => hardItems.reduce((count, item) => count + (barDepth(item, offset, bar as RestBar) > 0 ? 1 : 0), 0);
+  const hardDepth = (offset: number) => hardItems.reduce((sum, item) => sum + barDepth(item, offset, bar as RestBar), 0);
+  const fewestHard = Math.min(...pool.map(hard));
+  const fallback = pool.filter((offset) => hard(offset) === fewestHard);
+  const leastHard = Math.min(...fallback.map(hardDepth));
+  const target = nearest(pool.filter((offset) => barCount(offset) === 0))
+    ?? nearest(fallback.filter((offset) => hardDepth(offset) <= leastHard + 2));
   if (target !== undefined) return Math.abs(target - scrollTop) < 0.5 ? null : target;
   if (nowTop === 0) return null;
   const reach = blocks.reduce((most, block) => (straddlesBand(block, scrollTop, band) ? Math.max(most, reachOf(block, band, limit)) : most), limit);
@@ -333,21 +357,26 @@ function bandNudgeTarget(
 export const REST_END_AIR = 24;
 /** The end may grow by up to this much past that air to end with a clean band. */
 export const REST_END_SLACK = 8;
+/** Or give back up to this much of that air, whichever clean end is nearer. */
+export const REST_END_GIVE = 4;
 
 /**
  * Where a page's scroll should end: its last ink (`lastInk`, a column offset)
  * rests `REST_END_AIR` above the tab bar's top (`barTop`, from the viewport's
  * top), the same on every page whatever padding its
  * last row carries. When that end would rest with a block split by the band,
- * it may grow by at most `REST_END_SLACK` to end clean, preferring an end at
- * the gap. A page that cannot collapse its title (`floor`) keeps its end.
+ * it may move to the nearest clean end, growing by at most `REST_END_SLACK` or
+ * giving back at most `REST_END_GIVE` of the air (a tie goes to an end at
+ * the gap). A page that cannot collapse its title (`floor`) keeps its end.
  */
 export function restingScrollEndAt(lastInk: number, barTop: number, blocks: RestBlock[], band: RestBand, floor = 0): number {
   const end = lastInk - (barTop - REST_END_AIR);
   if (!(end > 0.5) || end < floor - 0.5 || !Number.isFinite(end)) return end;
   if (straddleCount(blocks, end, band) === 0) return end;
-  const within = (offset: number) => offset > end && offset <= end + REST_END_SLACK && straddleCount(blocks, offset, band) === 0;
-  const gap = blocks.map((block) => inkTop(block) - band.foot - REST_GAP).filter(within).sort((a, b) => a - b)[0];
-  if (gap !== undefined) return gap;
-  return criticalOffsets(blocks, band).filter(within).sort((a, b) => a - b)[0] ?? end;
+  const within = (offset: number) => offset >= end - REST_END_GIVE && offset <= end + REST_END_SLACK
+    && Math.abs(offset - end) > 1e-6 && straddleCount(blocks, offset, band) === 0;
+  const gap = blocks.map((block) => inkTop(block) - band.foot - REST_GAP).filter(within);
+  const near = [...gap, ...criticalOffsets(blocks, band).filter(within)]
+    .sort((a, b) => Math.abs(a - end) - Math.abs(b - end) || Number(gap.includes(b)) - Number(gap.includes(a)));
+  return near[0] ?? end;
 }

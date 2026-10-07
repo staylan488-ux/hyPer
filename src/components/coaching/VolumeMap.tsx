@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { useFirstReveal } from '@/lib/motionPolicy';
@@ -28,7 +28,8 @@ const STATUS_WORDS: Record<MuscleVolume['status'], string> = {
   above_mrv: 'over ceiling',
 };
 
-/** Steps of the legend ramp, lightest to heaviest (under MEV is drawn hollow). */
+/** Steps of the legend ramp, lightest to heaviest (under MEV is the quieter
+ *  under tone below them). */
 const LEGEND_RAMP = [STATUS_INK.mev_mav, STATUS_INK.mav, STATUS_INK.approaching_mrv];
 
 interface VolumeMapProps {
@@ -45,10 +46,11 @@ interface VolumeMapProps {
 
 /**
  * This week's volume as a flat, engraved front/back figure. Untrained muscles
- * keep the body's tone and read only by their seams; trained ones deepen in
- * ink by volume status, muscles still under MEV are drawn hollow (an ink
- * outline, like the ○ status glyph), and only muscles past recoverable
- * volume turn lacquer.
+ * keep the body's tone and read only by their seams; muscles still under MEV
+ * take the quietest tone, one step past the body (trained a little, not
+ * enough), and trained ones deepen in ink by volume status from there; only
+ * muscles past recoverable volume turn lacquer. No outlines: shapes read by
+ * tone and the seams between them.
  */
 export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMuscle, className = '' }: VolumeMapProps) {
   const shades = useMemo(() => shadeMuscles(volume), [volume]);
@@ -59,7 +61,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
     const side = focus ? primarySide(focus) : 'front';
     return (
       <div className={className} aria-hidden>
-        <Figure side={side} shades={shades} intro={intro} subject={focus} line={COMPACT_LINE} seam={COMPACT_SEAM} />
+        <Figure side={side} shades={shades} intro={intro} subject={focus} seam={COMPACT_SEAM} />
       </div>
     );
   }
@@ -111,18 +113,18 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
           // figures' feet are their last ink and, 20px under them, the legend
           // can rest clear of the bar while the figures sit wholly under it.
           <figure key={side} className="m-0 flex flex-col items-center">
-            <Figure side={side} shades={shades} selected={selected} onPick={choose} intro={intro} line={LINE} seam={SEAM} className="h-[264px] w-auto" />
+            <Figure side={side} shades={shades} selected={selected} onPick={choose} intro={intro} seam={SEAM} className="h-[264px] w-auto" />
           </figure>
         ))}
       </div>
 
-      {/* The rows' own glyphs and words (a ring for under, a dot in range,
-          lacquer only past the ceiling), then the shading ramp on its own
-          line: it is a scale, not a status. */}
+      {/* The figure's own tones (the under tone, in range, lacquer only past
+          the ceiling), then the shading ramp on its own line: it is a
+          scale, not a status. */}
       <div className="flex flex-col items-center gap-2 mt-5 t-caption" aria-hidden>
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full" style={{ boxShadow: `inset 0 0 0 ${LINE}px ${HOLLOW_INK}` }} />
+            <span className="w-2 h-2 rounded-full" style={{ background: UNDER_TONE }} />
             Under
           </span>
           <span className="flex items-center gap-1.5">
@@ -147,22 +149,17 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
   );
 }
 
-/** The drawing's line weight, in screen pixels at any size: the hollow
- *  outline and, in Ivory, the seam (a gap in the page colour) around and
- *  between muscles. Two-thirds of it on Today's small figure. */
-const LINE = 1.5;
-const COMPACT_LINE = 1;
-/** The seam: the line weight, or Black's thinner `--map-seam` hairline, so a
+/** The seam, in screen pixels at any size: a gap in the page colour between
+ *  muscles, 1.5px in Ivory, or Black's thinner `--map-seam` hairline, so a
  *  gap of true black never reads as a keyline round a lighter fill. */
-const SEAM = `var(--map-seam, ${LINE}px)`;
-/** Today's small figure already draws its seam at the hairline. */
-const COMPACT_SEAM = `${COMPACT_LINE}px`;
-/** Body tone between the seam and a hollow muscle's inset outline. */
-const HOLLOW_INSET = 1;
-/** The hollow outline's ink, shared with the legend ring (70% in Black). */
-const HOLLOW_INK = 'var(--map-hollow-ink, var(--color-text))';
+const SEAM = 'var(--map-seam, 1.5px)';
+/** Today's small figure draws its seam at the hairline. */
+const COMPACT_SEAM = '1px';
 /** The silhouette's tone: a theme token, so dark mode can lift it. */
 const BODY_TONE = `var(--map-body, ${inkFill(BODY_INK)})`;
+/** Under MEV: the quietest mark, one step past the body and below every
+ *  in-range tone (`--map-under`), shared with the legend's swatch. */
+const UNDER_TONE = `var(--map-under, ${inkFill(STATUS_INK.below_mev)})`;
 /** A status ink as drawn: Black takes it a step toward the page
  *  (`--map-ink-drop`) so trained muscles stay tones, not stickers. */
 const mapInk = (fill: string) => `color-mix(in srgb, ${fill}, var(--color-base) var(--map-ink-drop, 0%))`;
@@ -174,7 +171,6 @@ function Figure({
   onPick,
   intro,
   subject = null,
-  line,
   seam: seamWidth,
   className = 'w-full h-full',
 }: {
@@ -186,14 +182,10 @@ function Figure({
   selected?: MuscleGroup | null;
   onPick?: (muscle: MuscleGroup) => void;
   intro: boolean;
-  /** Hollow outline weight in screen pixels. */
-  line: number;
   /** Seam weight, a CSS length in screen pixels. */
   seam: string;
   className?: string;
 }) {
-  // React's ids carry characters a url(#…) reference would need escaped.
-  const uid = `vm${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const regions = MAP_REGIONS.filter((region) => region.side === side);
   // Every muscle keeps the tone of its own status (lacquer only past MRV), so
   // the figure never contradicts the legend. Illustrating one sentence, only
@@ -203,23 +195,11 @@ function Figure({
   const fillFor = (muscle: MuscleGroup) => tone(subject
     ? subjectFill(shades.get(muscle), isSubjectMuscle(muscle, subject))
     : muscleFill(shades.get(muscle)));
-  // Under MEV reads hollow: the body's tone inside an inset ink outline of
-  // the same weight as the seams, clipped to the region so it never spills
-  // over a seam.
-  // Beside a sentence, its muscle uses the same hollow when the sentence is
-  // about under-stimulation.
-  const hollow = (muscle: MuscleGroup) => subject
+  // Under MEV takes the under tone, the legend's "Under". Beside a
+  // sentence, its muscle does when the sentence is about under-stimulation.
+  const under = (muscle: MuscleGroup) => subject
     ? isSubjectMuscle(muscle, subject) && isSubjectUnder(shades.get(muscle))
     : isUnderStimulated(shades.get(muscle));
-  const clipId = (index: number) => `${uid}-${side}-${index}`;
-  // Every stroke keeps its pixel weight whatever the figure's size.
-  const seam = {
-    stroke: 'var(--color-base)',
-    strokeLinejoin: 'round' as const,
-    vectorEffect: 'non-scaling-stroke' as const,
-  };
-  // Stroke widths are CSS (style), so the theme's seam token can apply.
-  const width = (extra: number) => ({ strokeWidth: `calc(${seamWidth} + ${2 * extra}px)` });
   const mirrored = (mirror: boolean, content: ReactNode) => (
     <g transform={mirror ? 'scale(-1 1)' : undefined}>{content}</g>
   );
@@ -227,44 +207,44 @@ function Figure({
   const body = BODY_PATHS.map((d, index) => (
     <path key={`b${index}`} d={d} fill={BODY_TONE} stroke={BODY_TONE} strokeWidth={0.4} />
   ));
+  // Fills only; the seams are drawn once, over all of them (below).
   const muscles = regions.map((region, index) => {
     const dimmed = selected !== null && selected !== region.muscle;
-    const isHollow = hollow(region.muscle);
     return (
-      <motion.g
+      <motion.path
         key={`m${index}`}
+        d={region.d}
         initial={intro ? { opacity: 0 } : false}
         animate={{ opacity: dimmed ? 0.4 : 1 }}
         transition={intro ? { duration: 0.5, delay: 0.1 + index * 0.025 } : { duration: 0.18 }}
-        style={{ cursor: onPick ? 'pointer' : undefined }}
+        style={{ fill: under(region.muscle) ? UNDER_TONE : fillFor(region.muscle), cursor: onPick ? 'pointer' : undefined }}
         onClick={onPick ? () => onPick(region.muscle) : undefined}
-      >
-        <path d={region.d} {...seam} style={{ ...width(0), fill: isHollow ? BODY_TONE : fillFor(region.muscle) }} />
-        {isHollow && (
-          // Clipped to the region, each stroke shows half its width inside:
-          // seam, then body tone, then the ink line, then the body again.
-          <g clipPath={`url(#${clipId(index)})`} fill="none">
-            <path d={region.d} {...seam} stroke={HOLLOW_INK} style={width(HOLLOW_INSET + line)} />
-            <path d={region.d} {...seam} stroke={BODY_TONE} style={width(HOLLOW_INSET)} />
-            <path d={region.d} {...seam} style={width(0)} />
-          </g>
-        )}
-      </motion.g>
+      />
     );
   });
-  const clips = regions.map((region, index) => hollow(region.muscle) && (
-    <clipPath key={`c${index}`} id={clipId(index)}>
-      <path d={region.d} />
-    </clipPath>
-  ));
+  // Every seam in one path over every fill, so shared edges are drawn once
+  // at one weight (no stipple where two regions' strokes overlapped), and
+  // it keeps its pixel weight whatever the figure's size.
+  const seams = (
+    <path
+      d={regions.map((region) => region.d).join(' ')}
+      fill="none"
+      stroke="var(--color-base)"
+      strokeLinejoin="round"
+      vectorEffect="non-scaling-stroke"
+      style={{ strokeWidth: seamWidth }}
+      pointerEvents="none"
+    />
+  );
 
   return (
     <svg className={className} viewBox="-46 0 92 220" preserveAspectRatio="xMidYMid meet" aria-hidden>
-      <defs>{clips}</defs>
       {mirrored(false, body)}
       {mirrored(true, body)}
       {mirrored(false, muscles)}
       {mirrored(true, muscles)}
+      {mirrored(false, seams)}
+      {mirrored(true, seams)}
     </svg>
   );
 }

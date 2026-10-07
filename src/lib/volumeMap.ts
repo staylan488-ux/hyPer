@@ -9,8 +9,8 @@ import type { MuscleGroup, MuscleVolume } from '@/types';
  * midline start at x = 0 and neighbouring regions share their edges, so the
  * drawing's one seam (a gap in the page colour) is the only line anywhere:
  * at the sternum, between muscles and around each muscle. Every region keeps
- * about a unit of body tone inside the silhouette's contour, so its outline
- * stays whole when it is drawn hollow.
+ * about a unit of body tone inside the silhouette's contour, so its seam
+ * never cuts the contour.
  */
 
 export type ViewSide = 'front' | 'back';
@@ -181,7 +181,7 @@ export function isSubjectMuscle(muscle: MuscleGroup, subject: MuscleGroup | null
 /**
  * A figure that illustrates one sentence (Today's insight) speaks the
  * Progress legend: the muscle the sentence is about keeps its own legend
- * style (hollow while under MEV, its status ink otherwise, lacquer only past
+ * style (the under tone below MEV, its status ink otherwise, lacquer only past
  * recoverable volume), and every other muscle stays at the silhouette's own
  * tone, so no other muscle competes with the story.
  */
@@ -190,13 +190,13 @@ export function subjectFill(shade: MuscleShade | undefined, isSubject: boolean):
   return muscleFill(shade);
 }
 
-/** The sentence's muscle is under MEV (trained or not): drawn hollow, the
+/** The sentence's muscle is under MEV (trained or not): the under tone, the
  * legend's "Under", never a fill that reads as more sets. */
 export function isSubjectUnder(shade: MuscleShade | undefined): boolean {
   return Boolean(shade && shade.status === 'below_mev');
 }
 
-/** Trained this week but below MEV: drawn hollow, like the ○ status glyph. */
+/** Trained this week but below MEV: the quietest mark, the ramp's lowest tone. */
 export function isUnderStimulated(shade: MuscleShade | undefined): boolean {
   return Boolean(shade && shade.sets > 0 && shade.status === 'below_mev');
 }

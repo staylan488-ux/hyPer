@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REST_BAR_CLEAR,
   REST_GAP,
+  REST_GAP_AIM,
   REST_GAP_FLEX,
   REST_PAGE_NUDGE_LIMIT,
   barDepth,
@@ -43,8 +44,20 @@ describe('two-edge rest: the tab bar', () => {
     // A header unit too tall to clear the bar anywhere in reach.
     const unit = { top: 1000, bottom: 1300 };
     const target = restNudgeTarget(380, [{ top: 470, bottom: 488 }], band, range, REST_PAGE_NUDGE_LIMIT, bar([unit]));
-    expect(target).toBe(470 - band.foot - REST_GAP - REST_GAP_FLEX);
+    expect(target).toBe(470 - band.foot - REST_GAP - REST_GAP_AIM);
     expect(barDepth(unit, target as number, bar([unit]))).toBeGreaterThan(0);
+  });
+
+  it('rests a scale whole with its labels, letting a plain line pass under instead', () => {
+    const rows = [470, 538, 606].map((top) => ({ top, bottom: top + 18 }));
+    const scale = { top: 1110, bottom: 1150, whole: true }; // ruler + labels, astride at the near gap
+    const line = { top: 1190, bottom: 1208 }; // astride at the farther gap
+    const edge = bar([scale, line]);
+    const near = { min: 73, max: 480 };
+    const target = restNudgeTarget(400, rows, band, near, REST_PAGE_NUDGE_LIMIT, edge) as number;
+    expect(barDepth(scale, 402, edge)).toBeGreaterThan(0);
+    expect(barDepth(scale, target, edge)).toBe(0);
+    expect(barDepth(line, target, edge)).toBeGreaterThan(0);
   });
 
   it('keeps a divider 20pt clear above the bar or under it', () => {
@@ -56,7 +69,8 @@ describe('two-edge rest: the tab bar', () => {
     const rows = [470, 538].map((top) => ({ top, bottom: top + 18 }));
     const rule = { top: 1114, bottom: 1115, rule: true }; // 15pt above the bar at 400
     expect(barDepth(rule, 400, bar([rule]))).toBeGreaterThan(0);
-    expect(restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]))).toBeNull();
+    const plain = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([])) ?? 400;
+    expect(barDepth(rule, plain, bar([rule]))).toBeGreaterThan(0); // the rest the lines alone would take
     const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([rule])) as number;
     expect(barDepth(rule, target, bar([rule]))).toBe(0);
   });
@@ -79,7 +93,7 @@ describe('two-edge rest: one gap under the band', () => {
     const rows = [{ top: 504, bottom: 522 }, { top: 560, bottom: 578 }];
     const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
     // The nearest offset with the first content within the gap's 12pt flex.
-    expect(target).toBe(504 - band.foot - REST_GAP - REST_GAP_FLEX);
+    expect(target).toBe(504 - band.foot - REST_GAP - REST_GAP_AIM);
     expect(straddleCount(rows, target as number, band)).toBe(0);
   });
 
@@ -87,7 +101,7 @@ describe('two-edge rest: one gap under the band', () => {
     // A title line and a slightly taller figure on one row: the figure's top is the first ink.
     const rows = [{ top: 502, bottom: 524 }, { top: 504, bottom: 522 }];
     const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
-    expect(target).toBe(502 - band.foot - REST_GAP - REST_GAP_FLEX);
+    expect(target).toBe(502 - band.foot - REST_GAP - REST_GAP_AIM);
   });
 
   it('stays at the scroll end when the band is clean there', () => {

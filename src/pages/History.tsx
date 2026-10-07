@@ -486,11 +486,13 @@ function ActivityLedgerRow({
   const typeLabel = activityTypeLabel(activity);
   const startTime = formatActivityStartTime(activity.started_at);
   const duration = formatActivityDuration(activity.duration_seconds);
+  // One order in every row: time · duration · source, then the type when a
+  // custom title hides it.
   const subtitleParts = [
-    activity.title?.trim() ? typeLabel : null,
     startTime,
     duration !== '-' ? duration : null,
     activity.source !== 'manual' ? activity.source.toUpperCase() : null,
+    activity.title?.trim() ? typeLabel : null,
   ].filter(Boolean);
   const metricsParts = [
     formatDistanceMi(activity.distance_m),

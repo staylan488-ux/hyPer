@@ -228,7 +228,9 @@ export function NutritionGroupLedger({
           <h3 className="fuel-meal-title">
             {title}
             {/* An empty meal says so once, below ("Nothing logged."). */}
-            {entries.length > 0 && <span className="fuel-meal-count">{entries.length}</span>}
+            {/* A dot keeps the count apart from a name ending in a numeral
+                ("Snack 1 · 2", never "Snack 12"). */}
+            {entries.length > 0 && <span className="fuel-meal-count"><span aria-hidden>· </span>{entries.length}</span>}
           </h3>
           {editing && group ? (
             // Fixed slots: earlier, later, delete. A meal that can't be deleted keeps its slot empty.
