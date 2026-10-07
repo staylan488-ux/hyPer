@@ -47,9 +47,42 @@ Materials live in `src/styles/materials.css` (tokens) and
   stays square and ruled.
 - **Type.** Unchanged: Fraunces titles, Geist interface, system-sans metrics.
 
+## Round two: Chrome everywhere
+
+After living with the first pass on device, the owner asked for the full
+intensity ("I want to be wowed"), so the direction moved to the card's
+"Chrome everywhere" option while keeping the serif titles and the red accent.
+The first pass is recoverable at commit e048f80. Additions, in
+`src/styles/chrome.css`:
+
+- **Light field.** `LightField` puts slow pools of light under the app
+  (moonlight, a faint ember of the accent and indigo in Black; pearl, blush
+  and cool blue in Ivory) that drift and lean with tilt. Fine grain dithers
+  them. While a session is live the viewport carries `data-live` and a
+  spectral aura rises behind the tab bar. The whole viewport is a lit
+  surface, so anything can read `--light-x/--light-y`.
+- **Glass platters.** Platters and workout movements blur the field and carry
+  a 1px chrome hairline that swings with tilt.
+- **Chrome everywhere.** Every primary has the live bezel (`metal` makes the
+  hero's heavier). Secondary buttons, segmented tracks, icon tiles and sheet
+  close buttons get the hairline; the selected segment and chips are metal
+  caps. Titles, sheet titles, movement names and hero figures are polished
+  chrome type with a horizon line that slides with tilt; glyphs in tiles and
+  secondary buttons are stroked with the `ChromeDefs` gradient.
+- **Liquid orb.** `LiquidOrb` is a glass sphere holding mercury at the level
+  of a ratio, level with the horizon as the phone tilts, in two slow waves;
+  over target it turns to red lacquer. It is the headline ratio on Today
+  (session sets, calories) and Fuel.
+- **Live glow.** `LiveGlow` adds the Siri-like aura and a flowing spectral
+  rim to the session-in-progress hero; the open movement in a session carries
+  the rim alone.
+
 ## Accessibility and fallbacks
 
-Reduced motion freezes metal at a fixed angle and stops the aura. Reduced
+Reduced motion freezes metal at a fixed angle and stops the aura, the light
+field and the orb's waves. Reduced
 transparency or increased contrast removes blur, specular rings and gradients:
-metal becomes a solid ink ring and figures solid ink. Forced colors drops the
+metal becomes a solid ink ring and figures solid ink. The light field,
+spectral rims and platter blur go away, hairlines become plain borders and
+chrome type and glyphs return to ink. Forced colors drops the
 decorative layers. Touch targets stay at least 44px.

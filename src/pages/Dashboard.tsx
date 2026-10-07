@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { Button, MetalRing, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
+import { Button, LiquidOrb, LiveGlow, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import type { SealMacro } from '@/lib/targetSeal';
@@ -178,7 +178,7 @@ export function Dashboard() {
       </header>
 
       <section className="platter mt-5 overflow-hidden">
-        {hero.kind === 'resume' && <span className="liquid-aura is-quiet" aria-hidden />}
+        {hero.kind === 'resume' && <LiveGlow />}
         <div className="relative">
           <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
         </div>
@@ -200,16 +200,15 @@ export function Dashboard() {
                 <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
                 <span className="t-caption block mt-2">kcal left today</span>
               </div>
-              <MetalRing
+              <LiquidOrb
                 progress={nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)}
                 label={`${Math.round(nutritionTotals.calories).toLocaleString()} of ${(macroTarget?.calories || DEFAULT_MACRO_TARGET.calories).toLocaleString()} kcal eaten`}
-                size={84}
-                thickness={6}
-                reveal="dash-fuel-ring"
+                size={92}
+                reveal="dash-fuel-orb"
               >
                 <span className="t-data-lg text-[var(--color-text)]">{Math.round((nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)) * 100)}%</span>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">eaten</span>
-              </MetalRing>
+                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text)] opacity-75">eaten</span>
+              </LiquidOrb>
             </div>
             <div className="space-y-4">
               <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
@@ -329,14 +328,15 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
             {programName && <p className="t-caption mt-2">{programName}</p>}
             {hero.elapsed !== '—' && <p className="t-caption mt-1">{hero.elapsed} in</p>}
           </div>
-          <MetalRing
+          <LiquidOrb
             progress={hero.totalSets > 0 ? hero.completedSets / hero.totalSets : 0}
             label={`${hero.completedSets} of ${hero.totalSets} sets complete`}
-            reveal="dash-session-ring"
+            size={112}
+            reveal="dash-session-orb"
           >
-            <span className="number-medium text-[20px]! text-[var(--color-text)]">{hero.completedSets}<span className="text-[var(--color-text-dim)]">/{hero.totalSets}</span></span>
-            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">sets</span>
-          </MetalRing>
+            <span className="number-medium text-[22px]! text-[var(--color-text)]">{hero.completedSets}<span className="opacity-70">/{hero.totalSets}</span></span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text)] opacity-75">sets</span>
+          </LiquidOrb>
         </div>
         <div className="py-5">
           <p className="t-caption mb-1">{hero.nextExercise ? `Up next · Set ${hero.nextSet}` : 'All sets logged'}</p>

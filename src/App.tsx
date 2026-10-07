@@ -12,7 +12,8 @@ import { motion } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
-import { BottomNav, RouteErrorScreen } from '@/components/shared';
+import { BottomNav, ChromeDefs, LightField, RouteErrorScreen } from '@/components/shared';
+import { useLitSurface } from '@/hooks/useLitSurface';
 import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { Button } from '@/components/shared/Button';
@@ -112,6 +113,9 @@ function PrivateLayout() {
   // local only: signing in instead never signs out, so the saved session stays
   const [signInInstead, setSignInInstead] = useState(false);
   useAppViewport();
+  // The whole app catches the motion light, so chrome anywhere answers tilt.
+  const litViewport = useLitSurface<HTMLDivElement>();
+  const sessionLive = useAppStore((state) => Boolean(state.currentWorkout && !state.currentWorkout.completed));
 
   const screen = authScreen({ initialized, user, reconnecting }, signInInstead);
   if (screen === 'boot') {
@@ -127,7 +131,9 @@ function PrivateLayout() {
   }
 
   return (
-    <div className="app-viewport">
+    <div ref={litViewport} className="app-viewport" data-live={sessionLive || undefined}>
+      <ChromeDefs />
+      <LightField />
       <main data-app-scroll-viewport className="app-scroll-viewport">
         <AnimatedOutlet />
       </main>

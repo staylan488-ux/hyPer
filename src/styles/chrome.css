@@ -1,0 +1,447 @@
+/* ═════════════════════════════════════════════════════════════
+   CHROME — round two (2026-10-06, "Chrome everywhere" direction)
+
+   Builds on liquid.css. Where that layer kept metal for one hero action,
+   this one makes the whole instrument feel machined:
+   - A light field: slow pools of light under the content, so every glass
+     surface has something to bend. During a live session a spectral aura
+     rises from the bottom edge, behind the tab bar.
+   - Glass platters: real backdrop blur with a chrome hairline edge.
+   - Chrome everywhere: hairline bezels on controls, polished metal
+     selections, chrome titles, figures and glyphs, all lit by tilt.
+   - Liquid orb: a glass sphere holding mercury at the level of a ratio.
+   - Live glow: Siri-like light inside a container while something is live.
+
+   Fallbacks for reduced motion, reduced transparency, increased contrast and
+   forced colors are at the end of the file.
+   ═════════════════════════════════════════════════════════════ */
+
+@property --aura-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --orb-p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+:root, .light {
+  /* Light field: pearl daylight with a warm and a cool reflection. */
+  --pool-a: rgba(255, 255, 255, .95);
+  --pool-b: rgba(236, 176, 164, .34);
+  --pool-c: rgba(166, 184, 232, .34);
+  --pool-live-opacity: .55;
+  --grain-opacity: .05;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 0 0 0 -.62'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* Hairline chrome: bright, cool silver on ivory. */
+  --hairline-chrome:
+    #a3a8b1 0deg, #e4e7ec 30deg, #ffffff 46deg, #c6cad1 72deg, #8c919a 118deg,
+    #a9aeb7 160deg, #eef0f3 222deg, #ffffff 238deg, #b8bcc4 266deg, #878c95 310deg, #a3a8b1 360deg;
+  --hairline-opacity: .95;
+  --hairline-quiet: .7;
+
+  /* Chrome type: graphite with a polished horizon line. */
+  --chrome-type: linear-gradient(180deg,
+    #5d636d 0%, #2b2f36 38%, #0f1114 47%, #737a85 53%, #3b3f47 70%, #1c1f23 100%);
+  --chrome-type-shadow: drop-shadow(0 3px 4px rgba(20, 22, 20, .16));
+  --glyph-a: #6a707a;
+  --glyph-b: #1c1f24;
+  --glyph-c: #7c838e;
+  --glyph-d: #2b2f35;
+
+  /* Glass platters. */
+  --platter-glass: linear-gradient(180deg, rgba(255, 255, 255, .72) 0%, rgba(255, 255, 255, .52) 100%);
+  --platter-optics: blur(30px) saturate(1.5);
+
+  /* Liquid orb. */
+  --orb-body:
+    radial-gradient(70% 40% at 50% 104%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .25), rgba(255, 255, 255, .55) 100%);
+  --orb-shadow: 0 18px 38px rgba(20, 22, 20, .16), 0 2px 6px rgba(20, 22, 20, .08);
+  --orb-rim:
+    inset 0 0 0 1px rgba(255, 255, 255, .9), inset 0 -12px 24px rgba(255, 255, 255, .7),
+    inset 0 10px 22px rgba(20, 22, 20, .07), inset 0 0 18px rgba(70, 80, 100, .12);
+  --orb-spec: rgba(255, 255, 255, .95);
+  --orb-mercury: linear-gradient(180deg,
+    #ffffff 0px, #c3c8d0 3px, #a3a9b3 14px, #8c929d 45%, #757b86 100%);
+  --orb-glint: rgba(255, 255, 255, .7);
+  --orb-text-shadow: 0 1px 0 rgba(255, 255, 255, .55);
+}
+
+.dark {
+  /* Light field: moonlight from above, an ember of hyPer red low on the
+     left, indigo on the right. Dim enough to stay a stage, not a wallpaper. */
+  --pool-a: rgba(122, 140, 196, .30);
+  --pool-b: rgba(178, 62, 50, .09);
+  --pool-c: rgba(98, 86, 214, .15);
+  --pool-live-opacity: .8;
+  --grain-opacity: .07;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1.6 0 0 0 -.62'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  --hairline-chrome:
+    #5b616f 0deg, #c9ced8 30deg, #ffffff 46deg, #8d94a3 72deg, #383c45 118deg,
+    #24272d 160deg, #6a7080 204deg, #dde1e8 228deg, #f6f7fa 240deg, #858c9b 266deg,
+    #34373f 310deg, #5b616f 360deg;
+  --hairline-opacity: .62;
+  --hairline-quiet: .42;
+
+  /* Chrome type: bright silver with a darker horizon line. */
+  --chrome-type: linear-gradient(180deg,
+    #ffffff 0%, #f3f5f9 34%, #a9afbb 47%, #e8ebf1 53%, #ffffff 64%, #c8cdd6 100%);
+  --chrome-type-shadow: drop-shadow(0 2px 8px rgba(0, 0, 0, .5));
+  --glyph-a: #ffffff;
+  --glyph-b: #9aa1ae;
+  --glyph-c: #eef1f6;
+  --glyph-d: #b9bfcb;
+
+  --platter-glass: linear-gradient(180deg, rgba(255, 255, 255, .085) 0%, rgba(255, 255, 255, .035) 100%);
+  --platter-optics: blur(34px) saturate(1.6);
+
+  --orb-body:
+    radial-gradient(70% 42% at 50% 106%, rgba(150, 168, 224, .24), rgba(150, 168, 224, 0) 70%),
+    radial-gradient(circle at 50% 46%, rgba(255, 255, 255, .015), rgba(255, 255, 255, .07) 100%);
+  --orb-shadow: 0 22px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(0, 0, 0, .6);
+  --orb-rim:
+    inset 0 0 0 1px rgba(255, 255, 255, .12), inset 0 2px 1px rgba(255, 255, 255, .16),
+    inset 0 -16px 28px rgba(160, 178, 230, .10), inset 0 0 22px rgba(255, 255, 255, .05);
+  --orb-spec: rgba(255, 255, 255, .62);
+  --orb-mercury: linear-gradient(180deg,
+    #f2f4f9 0px, #a9b0be 3px, #6c7383 14px, #464b57 45%, #2a2d35 78%, #1c1e23 100%);
+  --orb-glint: rgba(255, 255, 255, .45);
+  --orb-text-shadow: 0 1px 6px rgba(0, 0, 0, .65);
+}
+
+/* ─── Light field ───────────────────────────────────────────────
+   Pools are big radial gradients that drift on the compositor (transform
+   only) and lean against the tilt. Content scrolls above them, so the glass
+   platters pick up different light as they move. */
+html .app-viewport { isolation: isolate; }
+/* Behind everything in the viewport without reordering the app's own layers. */
+.light-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.light-field-tilt {
+  position: absolute;
+  inset: -14%;
+  transform: translate3d(calc(var(--light-x, 0) * -26px), calc(var(--light-y, 0) * 18px), 0);
+}
+.light-pool {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(28px);
+  will-change: transform;
+}
+/* Fine grain over the field dithers the soft gradients (no banding on OLED)
+   and gives the stage a photographic texture. */
+.light-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  background-image: var(--grain);
+  background-size: 160px 160px;
+}
+.light-pool-a {
+  left: -18%; top: -24%; width: 136%; height: 64%;
+  background: radial-gradient(closest-side, var(--pool-a), transparent);
+  animation: pool-a 38s ease-in-out infinite alternate;
+}
+.light-pool-b {
+  left: -42%; bottom: 4%; width: 100%; height: 56%;
+  background: radial-gradient(closest-side, var(--pool-b), transparent);
+  animation: pool-b 47s ease-in-out infinite alternate;
+}
+.light-pool-c {
+  right: -44%; top: 26%; width: 104%; height: 56%;
+  background: radial-gradient(closest-side, var(--pool-c), transparent);
+  animation: pool-c 53s ease-in-out infinite alternate;
+}
+/* Live: the spectral aura that rises behind the tab bar during a session. */
+.light-pool-live {
+  left: -10%; right: -10%; bottom: -16%; height: 42%;
+  border-radius: 50% 50% 0 0;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+  background:
+    radial-gradient(28% 56% at 18% 70%, rgba(48, 200, 214, .9), transparent 72%),
+    radial-gradient(30% 60% at 42% 64%, rgba(146, 84, 255, .9), transparent 72%),
+    radial-gradient(28% 58% at 64% 70%, rgba(255, 74, 168, .85), transparent 72%),
+    radial-gradient(26% 52% at 86% 72%, rgba(255, 156, 74, .8), transparent 72%);
+  filter: blur(18px);
+  animation: aura-drift 9s ease-in-out infinite alternate;
+}
+.app-viewport[data-live] .light-pool-live { opacity: var(--pool-live-opacity); }
+@keyframes pool-a { 0% { transform: translate3d(-6%, 0, 0) scale(1); } 100% { transform: translate3d(7%, 5%, 0) scale(1.08); } }
+@keyframes pool-b { 0% { transform: translate3d(0, 0, 0) scale(1); } 100% { transform: translate3d(14%, -10%, 0) scale(1.12); } }
+@keyframes pool-c { 0% { transform: translate3d(0, 0, 0) scale(1.06); } 100% { transform: translate3d(-16%, 12%, 0) scale(.94); } }
+
+/* ─── Glass platters ──────────────────────────────────────────── */
+html .platter, html .studio-movement {
+  background: var(--platter-glass);
+  -webkit-backdrop-filter: var(--platter-optics);
+  backdrop-filter: var(--platter-optics);
+}
+
+/* ─── Hairline chrome ───────────────────────────────────────────
+   A 1px polished edge, brightest where the light falls. Platters, controls,
+   tiles and wells all carry it; the motion light swings it as you tilt. */
+@layer components {
+  .chrome-edge, .icon-tile, .material-button-secondary, .studio-secondary-action,
+  .segmented-track, .chip-metal, .material-sheet-close, .studio-movement { position: relative; }
+}
+.platter::after,
+.studio-movement::after,
+.chrome-edge::after,
+.icon-tile::after,
+.material-button-secondary::after,
+.studio-secondary-action::after,
+.segmented-track::after,
+.material-sheet-close::after,
+.liquid-orb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  opacity: var(--hairline-opacity);
+  background: conic-gradient(
+    from calc(214deg + var(--light-x, 0) * 80deg - var(--light-y, 0) * 26deg),
+    var(--hairline-chrome)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.segmented-track::after, .icon-tile::after { opacity: var(--hairline-quiet); }
+
+/* ─── Polished selections ───────────────────────────────────────
+   The chosen segment and a selected chip become small metal caps with a
+   still bezel, the same material as the primary actions. */
+.segmented-track .material-selected,
+.chip-metal {
+  background: var(--metal-dome);
+  box-shadow: var(--metal-gap), var(--metal-dome-inner), var(--metal-dome-shadow);
+}
+.segmented-track [role='tab'][aria-selected='true'],
+.chip-metal { color: var(--metal-dome-fg); text-shadow: var(--metal-text-shadow); }
+.segmented-track .material-selected::after,
+.chip-metal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.25px;
+  pointer-events: none;
+  background:
+    conic-gradient(from calc(300deg - var(--light-y, 0) * 70deg), var(--metal-glints)),
+    conic-gradient(from calc(24deg + var(--light-x, 0) * 90deg), var(--metal-chrome));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+/* Every primary is metal now; the hero action carries a heavier bezel. */
+.liquid-metal.is-hero { --metal-width: 2.25px; }
+
+/* Inputs: the well lights up with a bright rim while you type. */
+.material-inset:focus, .material-inset:focus-within, .material-control:focus-within {
+  box-shadow: var(--material-inset-shadow), 0 0 0 1px var(--focus-chrome), 0 0 14px var(--focus-glow);
+}
+:root, .light { --focus-chrome: rgba(120, 126, 136, .7); --focus-glow: rgba(140, 150, 170, .22); }
+.dark { --focus-chrome: rgba(225, 230, 240, .7); --focus-glow: rgba(190, 205, 240, .18); }
+
+/* ─── Chrome type ───────────────────────────────────────────────
+   Titles and hero figures are polished: a horizon line runs through them
+   and slides as the phone tilts. Leaf text only, so nested spans that set
+   their own colour (the red accent) keep it. */
+.t-title:not(:has(*)),
+.t-title > :not(:has(*)):not([class*='color-accent']),
+.chrome-text:not(:has(*)),
+.chrome-text > :not(:has(*)),
+.studio-movement-name:not(:has(*)),
+.studio-movement-name-compact:not(:has(*)),
+.sheet-title:not(:has(*)),
+.number-hero:not(:has(*)),
+.number-hero :not(:has(*)),
+.t-data-hero:not(:has(*)),
+.t-data-hero :not(:has(*)) {
+  background-image: var(--chrome-type);
+  background-size: 100% 230%;
+  background-position: 50% calc(48% - var(--light-y, 0) * 32%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.t-title, .chrome-text, .number-hero, .t-data-hero, .sheet-title,
+.studio-movement-name, .studio-movement-name-compact { filter: var(--chrome-type-shadow); }
+
+/* Chrome glyphs: icons stroked with the gradient from <ChromeDefs>. */
+.chrome-glyph svg, svg.chrome-glyph, .icon-tile svg,
+.material-button-secondary svg, .studio-secondary-action svg, .material-sheet-close svg {
+  stroke: url(#chrome-glyph);
+}
+
+/* ─── Liquid orb ────────────────────────────────────────────────
+   A glass sphere holding mercury at the level of a ratio. The surface
+   keeps level as the phone tilts and moves in two slow waves. Over target
+   the mercury turns to hyPer red lacquer. */
+.liquid-orb {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  border-radius: 50%;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--orb-body);
+  box-shadow: var(--orb-shadow);
+  transition: --orb-p 1.6s cubic-bezier(.16, 1, .3, 1);
+}
+.orb-liquid {
+  position: absolute;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  top: 0;
+  transform-origin: 50% 0;
+  transform:
+    translateY(calc((1 - var(--orb-p)) * (var(--orb-size) + 14px) - 7px))
+    rotate(calc(var(--light-x, 0) * -18deg));
+}
+.liquid-orb.is-empty .orb-liquid { opacity: 0; }
+.orb-wave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% + 90px);
+  height: 100%;
+  background: var(--orb-mercury);
+  -webkit-mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4 C 22 0 23 0 45 4 S 68 8 90 4 V 8 H 0 Z'/%3E%3C/svg%3E") 0 0 / 90px 8px repeat-x,
+    linear-gradient(#000 0 0) 0 7.5px / 100% 100% no-repeat;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4 C 22 0 23 0 45 4 S 68 8 90 4 V 8 H 0 Z'/%3E%3C/svg%3E") 0 0 / 90px 8px repeat-x,
+    linear-gradient(#000 0 0) 0 7.5px / 100% 100% no-repeat;
+  will-change: transform;
+}
+.orb-wave-back { top: -3px; opacity: .5; animation: orb-wave 7.5s linear infinite reverse; }
+.orb-wave-front { animation: orb-wave 4.8s linear infinite; }
+@keyframes orb-wave { to { transform: translateX(-90px); } }
+/* A broad reflection floating on the surface, steered by the light. */
+.orb-liquid::after {
+  content: '';
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 0;
+  height: 36%;
+  background:
+    radial-gradient(42% 9% at calc(50% + var(--light-x, 0) * 14%) 6%, var(--orb-glint), transparent 72%),
+    radial-gradient(30% 22% at calc(42% - var(--light-x, 0) * 10%) 30%, rgba(255, 255, 255, .10), transparent 72%);
+  pointer-events: none;
+}
+.liquid-orb.is-over { --orb-mercury: linear-gradient(180deg,
+  #ffc2b8 0px, #e45a48 3px, #b8322a 16px, #8a1f19 50%, #5a110d 100%); }
+/* The glass in front: a specular window highlight, a lit lower edge where
+   light gathers in the sphere, and the rim. */
+.orb-glass {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: var(--orb-rim);
+  background:
+    radial-gradient(22% 9% at calc(35% + var(--light-x, 0) * 12%) calc(15% - var(--light-y, 0) * 6%),
+      var(--orb-spec), transparent 58%),
+    radial-gradient(5% 3% at calc(66% + var(--light-x, 0) * 8%) 13%, rgba(255, 255, 255, .7), transparent 70%),
+    radial-gradient(60% 36% at 42% 8%, rgba(255, 255, 255, .07), transparent 70%),
+    radial-gradient(52% 14% at 50% 95%, rgba(255, 255, 255, .18), transparent 72%);
+}
+.orb-center {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-shadow: var(--orb-text-shadow);
+}
+
+/* ─── Live glow ─────────────────────────────────────────────────
+   Siri-like light inside a container while something is live: an aura
+   pooling at the bottom and a spectral edge that flows around the lower
+   rim. Pair with .liquid-aura (liquid.css). */
+.aura-edge {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(from var(--aura-spin),
+    #36d1dc, #9254ff 22%, #ff4aa8 44%, #ff9c4a 62%, #ffe08a 74%, #36d1dc);
+  -webkit-mask:
+    linear-gradient(to top, #000 0%, rgba(0, 0, 0, .55) 28%, transparent 60%),
+    linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: source-in, xor;
+  mask:
+    linear-gradient(to top, #000 0%, rgba(0, 0, 0, .55) 28%, transparent 60%),
+    linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: intersect, exclude;
+  animation: aura-spin 8s linear infinite;
+}
+@keyframes aura-spin { to { --aura-spin: 360deg; } }
+/* Live auras are bold; .is-quiet (liquid.css) stays for ambient use. */
+.liquid-aura.is-live { opacity: .95; }
+.light .liquid-aura.is-live, :root:not(.dark) .liquid-aura.is-live { opacity: .7; }
+.liquid-aura.is-live::before { height: 92%; bottom: -52%; filter: blur(30px); }
+
+/* ─── Fallbacks ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .light-pool, .orb-wave, .aura-edge { animation: none; }
+  .liquid-orb { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .light-field, .aura-edge { display: none; }
+  html .platter, html .studio-movement {
+    background: var(--color-surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .platter::after, .studio-movement::after, .chrome-edge::after, .icon-tile::after, .material-button-secondary::after,
+  .studio-secondary-action::after, .segmented-track::after, .material-sheet-close::after,
+  .liquid-orb::after, .segmented-track .material-selected::after, .chip-metal::after {
+    background: var(--color-border-strong);
+    opacity: 1;
+  }
+  .t-title:not(:has(*)), .t-title > :not(:has(*)), .chrome-text:not(:has(*)), .chrome-text > :not(:has(*)),
+  .studio-movement-name:not(:has(*)), .studio-movement-name-compact:not(:has(*)), .sheet-title:not(:has(*)) {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .t-title, .chrome-text, .number-hero, .t-data-hero, .sheet-title,
+  .studio-movement-name, .studio-movement-name-compact { filter: none; }
+  .chrome-glyph svg, svg.chrome-glyph, .icon-tile svg, .material-button-secondary svg,
+  .studio-secondary-action svg, .material-sheet-close svg { stroke: currentColor; }
+}
+@media (forced-colors: active) {
+  .light-field, .aura-edge, .orb-glass { display: none; }
+  .t-title :not(:has(*)), .chrome-text :not(:has(*)), .t-title:not(:has(*)), .chrome-text:not(:has(*)),
+  .sheet-title:not(:has(*)), .studio-movement-name:not(:has(*)), .studio-movement-name-compact:not(:has(*)) {
+    -webkit-text-fill-color: currentColor;
+  }
+  .chrome-glyph svg, svg.chrome-glyph, .icon-tile svg, .material-button-secondary svg,
+  .studio-secondary-action svg, .material-sheet-close svg { stroke: currentColor; }
+}

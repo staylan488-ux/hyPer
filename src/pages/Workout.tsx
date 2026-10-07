@@ -2189,6 +2189,7 @@ function ExerciseCard({
   }, [isActive]);
   return (
     <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
+      {isActive && !allComplete && <span className="aura-edge" aria-hidden />}
       <div className="studio-movement-header" ref={headingRef}>
         <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
           aria-describedby={!isActive ? summaryId : undefined}

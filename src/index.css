@@ -3,6 +3,7 @@
 @import "./styles/materials.css";
 @import "./styles/kinetic.css";
 @import "./styles/liquid.css";
+@import "./styles/chrome.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */

@@ -121,7 +121,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
     {photos.length > 0 && <div className="grid grid-cols-2 gap-3">{photos.map((photo, index) => <div key={photo.preview} className="space-y-2">
       <div className="relative overflow-hidden rounded-[var(--radius-control)]">
         <img src={photo.preview} alt={`Meal photo ${index + 1}`} className="block w-full h-36 object-cover" />
-        {busy === 'analysis' && <span className="liquid-aura" aria-hidden />}
+        {busy === 'analysis' && <span className="liquid-aura is-live" aria-hidden />}
       </div>
       <Button variant="ghost" disabled={!!busy} onClick={() => { URL.revokeObjectURL(photo.preview); setPhotos((current) => current.filter((entry) => entry !== photo)); }}>Remove photo {index + 1}</Button>
     </div>)}</div>}

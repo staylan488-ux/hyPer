@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
-import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
+import { Button, EmptyState, LiquidOrb, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -485,16 +485,15 @@ export function Nutrition() {
                   <SealMark show={calorieSeal.met} label="Calorie target met" anchorRef={calorieSeal.anchorRef} />
                 </div>
               </div>
-              <MetalRing
+              <LiquidOrb
                 progress={targetKcal > 0 ? dayTotals.calories / targetKcal : 0}
                 label={`${Math.round(dayTotals.calories).toLocaleString()} of ${Math.round(targetKcal).toLocaleString()} kcal eaten`}
-                size={84}
-                thickness={6}
-                reveal="fuel-energy-ring"
+                size={100}
+                reveal="fuel-energy-orb"
               >
-                <span className={`t-data-lg ${energyOver ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>{energyPct}%</span>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">{energyOver ? 'over' : 'eaten'}</span>
-              </MetalRing>
+                <span className="t-data-lg text-[var(--color-text)]">{energyPct}%</span>
+                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text)] opacity-75">{energyOver ? 'over' : 'eaten'}</span>
+              </LiquidOrb>
             </div>
           </>
         )}
