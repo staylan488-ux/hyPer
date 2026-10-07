@@ -135,13 +135,19 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const displayReps = hasDraft.current ? reps : set.reps?.toString() ?? reps;
   const displayRpe = hasDraft.current ? rpe : set.rpe?.toString() ?? rpe;
   const setLabel = `set ${setNumber}${exerciseName ? ` of ${exerciseName}` : ''}`;
+  // Only a saved set without a pending draft is logged data. Everything else is
+  // a plan: its own numbers, or last workout's as a ghosted guide.
+  const logged = set.completed && !hasDraft.current;
+  const planned = (value: string, target: number | null | undefined) => value || (logged ? '' : target?.toString() ?? '');
 
   return <>
     <button ref={rowRef} type="button" className={`studio-set-ledger${stamp ? ' is-stamped' : ''}`} hidden={editing} onClick={chooseSet}
       aria-label={`${set.completed ? 'Edit' : 'Enter'} ${setLabel}${hasDraft.current ? ', draft' : ''}${displayWeight ? `, ${displayWeight} pounds` : ''}${displayReps ? `, ${displayReps} reps` : ''}${displayRpe ? `, ${displayRpe} RPE` : ''}`}
-      data-next={isNext && !set.completed ? true : undefined}>
+      data-next={isNext && !set.completed ? true : undefined} data-logged={logged || undefined}>
       <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
-      <span>{displayWeight || '—'}</span><span>{displayReps || '—'}</span><span>{displayRpe || '—'}</span>
+      <span className="studio-set-value">{planned(displayWeight, previousTarget?.weight) || '—'}</span>
+      <span className="studio-set-value">{planned(displayReps, previousTarget?.reps) || '—'}</span>
+      <span className="studio-set-value">{planned(displayRpe, previousTarget?.rpe) || '—'}</span>
       <span className="studio-set-state">{saveError ? 'Retry' : hasDraft.current ? 'Draft' : set.completed ? <>
         <InkCheck key={stamp?.key ?? 'settled'} />
         {performance === 'beat' && <ArrowUp size={12} strokeWidth={2.25} className="studio-set-beat" aria-hidden />}
@@ -210,7 +216,7 @@ function SetInput({ label, value, onChange, placeholder, disabled, inputMode, mi
   label: string; value: string; onChange: (value: string) => void; placeholder: string;
   disabled: boolean; inputMode: 'decimal' | 'numeric'; min: number; max?: number; step: string | number; required?: boolean;
 }) {
-  return <input className="studio-set-input material-control" type="number" aria-label={label} inputMode={inputMode}
+  return <input className="studio-set-input" type="number" aria-label={label} inputMode={inputMode}
     value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
     disabled={disabled} min={min} max={max} step={step} required={required} />;
 }

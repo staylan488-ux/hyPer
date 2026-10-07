@@ -5,46 +5,59 @@
 .studio-session-header { padding: 8px 0 4px; }
 .studio-session-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-text-dim); font-size: 12px; }
 .studio-session-top > button { display: flex; align-items: center; min-height: 44px; }
-.studio-session-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 16px 0 20px; }
+/* Finish is a navigation-bar text action: tappable, never louder than the work. */
+.studio-session-top > .studio-session-finish { justify-content: flex-end; min-width: 44px; margin-right: -2px; padding: 0 2px; font-size: 15px; font-weight: 500; letter-spacing: -.01em; color: var(--color-text); }
+.studio-session-top > .studio-session-finish:disabled { opacity: .45; }
+.studio-session-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 12px; }
 .studio-session-summary h1 { min-width: 0; font-family: var(--font-display); font-size: 34px; font-weight: 340; line-height: 1.06; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .studio-session-summary h1 > button { display: flex; align-items: center; gap: 10px; min-height: 44px; text-align: left; }
 .studio-session-summary h1 svg { flex-shrink: 0; color: var(--color-text-dim); }
 .studio-session-summary > span { flex-shrink: 0; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .studio-session-header [role="img"]:not(.metal-ring) { width: 100%; }
 .studio-session-header [role="img"]:not(.metal-ring) > span { flex: 1; height: 2px; }
-.studio-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0 2px; }
-.studio-session-actions > div { display: flex; align-items: center; gap: 12px; }
-.studio-session-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; font-size: 12px; color: var(--color-text-dim); }
-.studio-session-actions button:disabled { opacity: .5; }
+.studio-session-ring-count { font-family: var(--font-metric); font-size: 17px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.studio-session-ring-count > span { color: var(--color-text-dim); }
+/* Session tools are unboxed text actions in one row; the last sits on the gutter. */
+.studio-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 6px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
+.studio-session-actions > div { display: flex; align-items: center; gap: 4px; margin-right: -10px; }
+.studio-session-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 13px; color: var(--color-text); }
+.studio-session-actions button svg { color: var(--color-text-dim); }
+.studio-session-actions button.is-done { font-weight: 600; }
+.studio-session-actions button:disabled { opacity: .45; }
+.studio-session-finale { display: grid; gap: 12px; padding: 28px 0 8px; text-align: center; }
 
-.studio-movement { border-bottom: 1px solid var(--color-border); padding: 6px 0; }
-.studio-movement.is-active { padding-top: 22px; }
-.studio-movement-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; scroll-margin-top: 12px; }
-.studio-movement-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; min-height: 52px; text-align: left; }
-.studio-movement-heading { flex: 1; min-width: 0; }
-.studio-movement.is-active .studio-movement-toggle { align-items: flex-start; }
-.studio-movement-name { display: block; margin-top: 12px; font-family: var(--font-display); font-size: 34px; font-weight: 340; line-height: 1.06; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.studio-movement-name > svg { display: inline; margin-right: 8px; }
-.studio-movement-name-compact { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 23px; font-weight: 340; line-height: 1.18; letter-spacing: -.015em; overflow-wrap: anywhere; }
-.studio-movement-name-compact > svg { flex-shrink: 0; }
-.studio-movement:not(.is-active) { padding: 20px 0; }
-.studio-movement:not(.is-active) .studio-movement-header { align-items: center; }
-.studio-movement-summary { display: grid; gap: 7px; margin-top: 9px; font-size: 12px; line-height: 1.45; color: var(--color-text-dim); }
-.studio-movement-previous { display: flex; flex-wrap: wrap; gap: 2px 8px; }
-.studio-movement-previous > span { color: var(--color-text); font-variant-numeric: tabular-nums; }
-.studio-movement-next { display: block; margin-bottom: 10px; font-size: 11px; line-height: 1.4; letter-spacing: .08em; text-transform: uppercase; color: var(--color-accent); }
-.studio-movement.is-complete:not(.is-active) { padding: 12px 0; }
-.studio-movement.is-complete:not(.is-active) .studio-movement-name-compact { font-family: var(--font-sans); font-size: 16px; line-height: 1.45; letter-spacing: normal; color: var(--color-text-dim); }
-.studio-movement.is-complete:not(.is-active) .studio-movement-summary { margin-top: 5px; }
+/* Movements are a ruled list on the stage. One type rule: every name is the
+   display serif; collapsed rows share one size, a finished movement only dims
+   and gains a check, and the open movement's name takes the full row. */
+.studio-movement { border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); padding: 14px 0; }
+.studio-movement.is-active { padding: 10px 0 8px; }
+.studio-movement-header { display: flex; align-items: center; gap: 4px; scroll-margin-top: 12px; }
+.studio-movement.is-active .studio-movement-header { align-items: flex-start; }
+.studio-movement-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; min-height: 52px; text-align: left; }
+.studio-movement.is-active .studio-movement-toggle { flex-direction: column; align-items: stretch; gap: 2px; }
+.studio-movement-heading { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.studio-movement-eyebrow { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.studio-movement-eyebrow > .t-label { flex: 1; min-width: 0; }
+.studio-movement-name { display: block; padding-bottom: 6px; font-family: var(--font-display); font-size: 28px; font-weight: 360; line-height: 1.12; letter-spacing: -.02em; text-wrap: balance; overflow-wrap: break-word; }
+.studio-movement-name > svg { display: inline; margin: -3px 8px 0 0; vertical-align: middle; color: var(--color-text-dim); }
+.studio-movement-name-compact { display: flex; align-items: center; gap: 7px; font-family: var(--font-display); font-size: 22px; font-weight: 360; line-height: 1.2; letter-spacing: -.012em; text-wrap: balance; overflow-wrap: break-word; }
+.studio-movement-name-compact > svg { flex-shrink: 0; color: var(--color-text-dim); }
+.studio-movement.is-complete .studio-movement-name-compact { color: var(--color-text-dim); }
+.studio-movement-summary { font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.studio-movement-previous { color: var(--color-text); white-space: nowrap; }
+.studio-movement-next { display: block; font-size: 11px; line-height: 1.4; letter-spacing: .08em; text-transform: uppercase; color: var(--color-accent); }
 .studio-movement-count { flex-shrink: 0; white-space: nowrap; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .studio-movement-chevron { flex-shrink: 0; color: var(--color-text-dim); transition: transform .15s; }
 .studio-movement.is-active .studio-movement-chevron { transform: rotate(180deg); }
-.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 52px; margin-right: -10px; }
-.studio-movement.is-active .studio-movement-options { height: 44px; margin-top: -12px; }
+/* One quiet trailing column: the options glyph sits on the gutter, its 44pt
+   target overhangs into the margin. */
+.studio-movement-controls { flex-shrink: 0; width: 44px; margin-right: -13px; display: flex; flex-direction: column; align-items: center; }
+.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-muted); opacity: .8; }
+.studio-movement-options[aria-expanded="true"] { color: var(--color-text); opacity: 1; }
 .studio-movement-detail { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 4px 0 8px; }
 .studio-movement-detail svg { flex-shrink: 0; }
 .studio-movement-note-preview { font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 0 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.studio-movement-content { padding: 18px 0 2px; }
+.studio-movement-content { padding: 10px 0 2px; }
 .studio-last-workout { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding-bottom: 12px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
 .studio-last-workout span:last-child { color: var(--color-text); font-variant-numeric: tabular-nums; }
 /* The swap target overhangs the caption line so the row keeps its rhythm. */
@@ -56,16 +69,22 @@
 .studio-set-headings, .studio-set-ledger, .studio-set-entry { display: grid; grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr) 44px; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
 .studio-set-headings { padding: 6px 0 8px; font-size: 11px; line-height: 1.4; text-transform: uppercase; color: var(--color-text-dim); }
 .studio-set-headings > span:not(:first-child) { text-align: center; }
-.studio-set-ledger { width: 100%; min-height: 48px; border-bottom: 1px solid var(--color-border); color: var(--color-text-dim); font-size: 14px; text-align: center; }
-.studio-set-ledger[data-next] { color: var(--color-text); }
+/* Logged sets read in ink; anything not yet logged (planned, last-workout
+   targets or an unsaved draft) is ghosted so the two never look alike. */
+.studio-set-ledger { width: 100%; min-height: 48px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); color: var(--color-text); font-size: 14px; text-align: center; }
+.studio-set-ledger:not([data-logged]) > .studio-set-value { color: var(--color-muted); opacity: .55; }
+.studio-set-ledger[data-next] .studio-set-index, .studio-set-ledger[data-next] .studio-set-state { color: var(--color-text); }
+.studio-set-ledger:not([data-logged]) .studio-set-state { color: var(--color-muted); }
 .studio-set-index { text-align: left; font-size: 12px; color: var(--color-text-dim); }
 .studio-set-state { display: flex; align-items: center; justify-content: center; font-size: 11px; }
-.studio-set-editor { padding-top: 8px; border-bottom: 1px solid var(--color-border); }
+/* The open set is flat: quiet wells on the stage, the save key the one hero. */
+.studio-set-editor { padding-top: 8px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
+.studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
 .studio-set-entry { scroll-margin: 12px; }
-.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: var(--radius-control); font-family: var(--font-sans); font-size: 18px; font-weight: 400; line-height: 1.4; text-align: center; color: var(--color-text); appearance: textfield; }
+.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 7%, transparent); box-shadow: none; font-family: var(--font-sans); font-size: 18px; font-weight: 400; line-height: 1.4; text-align: center; color: var(--color-text); appearance: textfield; }
 .studio-set-input::-webkit-inner-spin-button { appearance: none; }
-.studio-set-input:focus-visible { outline: 1px solid var(--color-text); outline-offset: 2px; }
-.studio-set-input::placeholder { color: var(--color-muted); opacity: .7; }
+.studio-set-input:focus-visible { outline: 1.5px solid var(--color-text); outline-offset: 1px; }
+.studio-set-input::placeholder { color: var(--color-muted); opacity: .55; }
 .studio-save-set { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; border: 0; border-radius: 50%; color: var(--metal-dome-fg); font-size: 11px; transition: transform .12s; }
 .studio-save-set:active:not(:disabled) { transform: scale(.94); }
 .studio-save-set:disabled { opacity: .45; }
@@ -78,10 +97,15 @@
 .studio-note-text { padding-top: 8px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .studio-collapse-movement { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin-top: 4px; font-size: 12px; color: var(--color-text-dim); }
 
+/* Compact iPhones (SE, mini) keep common movement names on one line. */
+@media (max-width: 380px) {
+  .studio-movement-name { font-size: 25px; }
+  .studio-movement-name-compact { font-size: 20px; }
+  .studio-movement-toggle { gap: 10px; }
+}
 @media (max-width: 360px) {
   .studio-set-headings, .studio-set-ledger, .studio-set-entry { gap: 5px; }
-  .studio-movement-name { font-size: 30px; }
-  .studio-session-actions > div { gap: 6px; }
+  .studio-session-actions > div { gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .studio-workout-page * { scroll-behavior: auto; transition: none !important; animation: none !important; }
@@ -97,6 +121,7 @@
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: 12px;
   z-index: -1;
   background: color-mix(in srgb, var(--color-text) 9%, transparent);
   transform-origin: 0 50%;
@@ -150,42 +175,3 @@
   to { opacity: 1; transform: none; }
 }
 
-/* ── Liquid: movements as a ruled list ───────────────────────────────
-   Cardless: movements sit on the stage, separated by hairlines. The open
-   movement is marked by its large serif name, not a box. Sets keep their
-   ledger rhythm. */
-.studio-session-top > .material-button-secondary { min-height: 36px; padding: 0 16px; }
-.studio-session-summary { align-items: center; }
-.studio-session-ring-count { font-family: var(--font-metric); font-size: 17px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--color-text); }
-.studio-session-ring-count > span { color: var(--color-text-dim); }
-.studio-session-actions { padding-bottom: 14px; }
-.studio-session-actions > div > button {
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: var(--radius-capsule);
-  background: var(--material-secondary);
-  box-shadow: var(--material-rim);
-  color: var(--color-text);
-}
-.studio-session-actions > div > button svg { color: var(--color-text-dim); }
-
-.studio-movement {
-  margin-bottom: 0;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--platter-divider);
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-.studio-movement:not(.is-active) { padding: 12px 0; }
-.studio-movement.is-active { padding: 20px 0 16px; }
-.studio-movement.is-complete:not(.is-active) { padding: 6px 0; opacity: .78; }
-.studio-movement-name { margin-top: 6px; }
-.studio-set-ledger, .studio-set-editor { border-bottom-color: var(--platter-divider); }
-.studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
-.studio-set-editor { margin: 4px -10px 6px; padding: 10px 10px 2px; border-radius: 20px; border-bottom: 0; background: var(--material-inset); box-shadow: var(--material-inset-shadow); }
-.studio-set-input { border-radius: 12px; background: var(--material-secondary); box-shadow: var(--material-rim); }
-.studio-set-input:focus-visible { outline: 1.5px solid var(--color-text); outline-offset: 1px; }
-.studio-set-gain { box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 35%, transparent); }
-.studio-set-ledger.is-stamped::after { border-radius: 12px; }
-.studio-reorder-list.is-reordering .studio-movement { padding: 12px 0; }
