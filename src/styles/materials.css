@@ -31,8 +31,9 @@
   --material-accent: #923127;
   /* Platters: the grouped glass panels that hold page sections. */
   --platter-fill: rgba(255,255,255,.66);
-  --platter-edge: inset 0 1px 0 rgba(255,255,255,1), inset 0 0 0 1px rgba(255,255,255,.5);
-  --platter-shadow: 0 0 0 .5px rgba(20,22,20,.07), 0 1px 2px rgba(20,22,20,.04), 0 10px 30px rgba(20,22,20,.06);
+  /* Cards never carry an outline or a lit edge: fill and a soft shadow only. */
+  --platter-edge: 0 0 #0000;
+  --platter-shadow: 0 1px 2px rgba(20,22,20,.04), 0 10px 30px rgba(20,22,20,.06);
   --platter-divider: rgba(35,38,37,.09);
 }
 .dark {
@@ -46,7 +47,7 @@
   --material-inset: rgba(255,255,255,.07);
   --material-wash: linear-gradient(170deg, rgba(255,255,255,.06), rgba(255,255,255,0) 58%);
   --material-action-wash: none;
-  --material-rim: inset 0 1px 0 rgba(255,255,255,.14), inset 0 0 0 1px rgba(255,255,255,.06);
+  --material-rim: inset 0 1px 0 rgba(255,255,255,.07);
   --material-optics: saturate(1.8);
   --material-shadow: 0 14px 36px rgba(0,0,0,.5);
   --material-sheet-shadow: 0 -14px 44px rgba(0,0,0,.45);
@@ -59,7 +60,7 @@
   --material-nav-muted: #9a9a9a;
   --material-accent: #F0A092;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
-  --platter-edge: inset 0 1px 0 rgba(255,255,255,.11), inset 0 0 0 1px rgba(255,255,255,.045);
+  --platter-edge: 0 0 #0000;
   --platter-shadow: 0 10px 30px rgba(0,0,0,.35);
   --platter-divider: rgba(255,255,255,.08);
 }
