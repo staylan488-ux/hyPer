@@ -17,6 +17,7 @@ import {
   signOAuthState,
   verifyOAuthState,
 } from '../_shared/whoop.ts';
+import { PRIVATE_BETA_ERROR, isApprovedUser } from '../_shared/approval.ts';
 
 interface OAuthActionRequest {
   action?: 'start' | 'disconnect';
@@ -169,6 +170,14 @@ serve(async (req) => {
 
   /* ── POST {action:'start'} ── */
   if (body.action === 'start') {
+    // Private beta: only approved accounts may connect WHOOP. Disconnect stays
+    // open so a removed account can still revoke its tokens.
+    try {
+      const service = createClient(env.supabaseUrl, env.serviceRoleKey);
+      if (!await isApprovedUser(service, userId)) return jsonResponse(PRIVATE_BETA_ERROR, 403);
+    } catch {
+      return jsonResponse({ error: 'WHOOP connection is temporarily unavailable' }, 503);
+    }
     const returnTo = allowedReturnTo(body.returnTo, env.appBaseUrl);
     const state = await signOAuthState(env.stateSecret, userId, 10 * 60 * 1000, returnTo);
     const authorize = new URL(WHOOP_AUTH_URL);

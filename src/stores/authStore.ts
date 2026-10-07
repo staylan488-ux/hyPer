@@ -3,6 +3,7 @@ import { isAuthRetryableFetchError, type User, type Session } from '@supabase/su
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
+import { fetchBetaAccess, type BetaAccess } from '@/lib/betaAccess';
 import { supabase } from '@/lib/supabase';
 import { resetAppData } from '@/stores/appStore';
 
@@ -34,6 +35,9 @@ function isExistingAccountSignUpResponse(data: { user: User | null; session: Ses
 // skip the refetch while it runs or once the profile is loaded
 let profileRequestFor: string | null = null;
 
+// user id whose private-beta approval check is in flight
+let betaAccessRequestFor: string | null = null;
+
 // a password sign-in by an unconfirmed email emits SIGNED_IN before signIn
 // rejects it and signs out; it must not take over the device AI settings
 function isUnverifiedEmailUser(user: User) {
@@ -50,6 +54,12 @@ interface AuthState {
    * the refresh token is intact, so wait for the connection instead of
    * presenting sign-in. Ends on SIGNED_OUT or any event with a session. */
   reconnecting: boolean;
+  /** Private beta approval for the signed-in account. 'unknown' keeps the app
+   * open (still checking or offline); the server enforces access regardless. */
+  betaAccess: BetaAccess;
+  /** The account betaAccess describes, so a switch never inherits an answer. */
+  betaAccessUserId: string | null;
+  checkBetaAccess: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
   resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
@@ -68,6 +78,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   reconnecting: false,
+  betaAccess: 'unknown',
+  betaAccessUserId: null,
 
   initialize: async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -75,6 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (session) {
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
+      void get().checkBetaAccess();
       // no-op when local settings exist; restores them after storage eviction
       if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(session.user.id);
     } else if (error && isAuthRetryableFetchError(error)) {
@@ -103,11 +116,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (get().profile?.id !== userId && profileRequestFor !== userId) {
           get().fetchProfile();
         }
+        // Re-check after an account switch, or when an earlier check could not
+        // reach the server; a settled answer for this account is kept.
+        if (get().betaAccessUserId !== userId || get().betaAccess === 'unknown') {
+          void get().checkBetaAccess();
+        }
         if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(userId);
       } else {
-        set({ profile: null });
+        set({ profile: null, betaAccess: 'unknown', betaAccessUserId: null });
       }
     });
+  },
+
+  checkBetaAccess: async () => {
+    const { user } = get();
+    if (!user || isUnverifiedEmailUser(user)) return;
+    const userId = user.id;
+    if (betaAccessRequestFor === userId) return;
+    betaAccessRequestFor = userId;
+    try {
+      const access = await fetchBetaAccess(() => supabase
+        .from('approved_users')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle());
+      // a slow answer for a previous account must not land after a switch
+      if (get().user?.id === userId) set({ betaAccess: access, betaAccessUserId: userId });
+    } finally {
+      if (betaAccessRequestFor === userId) betaAccessRequestFor = null;
+    }
   },
 
   fetchProfile: async () => {
@@ -236,6 +273,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false });
+    set({ user: null, session: null, profile: null, reconnecting: false, betaAccess: 'unknown', betaAccessUserId: null });
   },
 }));

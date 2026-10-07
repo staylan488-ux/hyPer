@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ANALYSIS_VERSION, createTrialHandler, normalizeInput, validateConfig } from '../supabase/functions/analyze-food-trial/gateway';
-import type { MealInput, TrialConfig, TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
+import { ANALYSIS_VERSION, GLOBAL_QUOTA_MESSAGE, PRIVATE_BETA_MESSAGE, createTrialHandler, normalizeInput, validateConfig } from '../supabase/functions/analyze-food-trial/gateway';
+import type { GlobalQuota, MealInput, TrialConfig, TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
 import { createStorageLedger } from '../supabase/functions/analyze-food-trial/storageLedger';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const FRIEND = '22222222-2222-4222-8222-222222222222';
+const STRANGER = '44444444-4444-4444-8444-444444444444';
 const NOW = Date.parse('2026-09-05T12:00:00Z');
 const config: TrialConfig = {
-  maxAttempts: 3, allowedOrigins: ['http://localhost:5173', 'capacitor://localhost'],
+  maxAttempts: 3, maxGlobalAttempts: 100, allowedOrigins: ['http://localhost:5173', 'capacitor://localhost'],
 };
 const photo = { angle: 'top', mimeType: 'image/jpeg', imageBase64: btoa('\xff\xd8\xffmeal') };
 
@@ -24,24 +25,38 @@ function harness(overrides: Partial<TrialConfig> = {}) {
   };
   const analyze = vi.fn<(input: MealInput) => Promise<Record<string, unknown>>>(async () => ({ items: [{ name: 'Meal' }], usage: { inputTokens: 20, outputTokens: 10, thinkingTokens: 5 } }));
   const interpretServing = vi.fn(async () => ({ provider: 'gemini', interpretation: { status: 'resolved', quantity: 6, optionId: 'defined', servings: 1.2, unit: 'piece', basisQuantity: 5 } }));
-  const authenticate = vi.fn(async token => token === 'friend' ? FRIEND : token === 'valid' ? USER : token === 'other' ? '33333333-3333-4333-8333-333333333333' : null);
+  const authenticate = vi.fn(async token => token === 'friend' ? FRIEND : token === 'valid' ? USER : token === 'other' ? '33333333-3333-4333-8333-333333333333' : token === 'stranger' ? STRANGER : null);
+  // Everyone except STRANGER is on the private beta list.
+  const isApproved = vi.fn(async (userId: string) => userId !== STRANGER);
+  // In-memory stand-in for the Postgres claim_ai_request counter.
+  const globalCounts = new Map<string, number>();
+  const globalQuota: GlobalQuota = {
+    used: vi.fn(async date => globalCounts.get(date) ?? 0),
+    claim: vi.fn(async (date, max) => {
+      const used = globalCounts.get(date) ?? 0;
+      if (used >= max) return false;
+      globalCounts.set(date, used + 1);
+      return true;
+    }),
+  };
   let time = NOW;
-  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, now: () => time });
+  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, isApproved, globalQuota, now: () => time });
   const request = (body: unknown, token = 'valid', origin = 'capacitor://localhost') => handler(new Request('http://trial', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', origin }, body: JSON.stringify(body),
   }));
-  return { objects, ledger, analyze, interpretServing, authenticate, handler, request, setTime: (value: number) => { time = value; } };
+  return { objects, ledger, analyze, interpretServing, authenticate, isApproved, globalQuota, globalCounts, handler, request, setTime: (value: number) => { time = value; } };
 }
 
 describe('authenticated food analysis gateway', () => {
   it('fails closed on broad origins or excessive daily request limits', () => {
-    for (const override of [{ maxAttempts: 41 }, { maxAttempts: 0 }, { maxAttempts: 1.5 }, { allowedOrigins: ['*'] }]) {
+    for (const override of [{ maxAttempts: 41 }, { maxAttempts: 0 }, { maxAttempts: 1.5 }, { allowedOrigins: ['*'] },
+      { maxGlobalAttempts: 0 }, { maxGlobalAttempts: 1001 }, { maxGlobalAttempts: Number.NaN }, { maxGlobalAttempts: 2.5 }]) {
       expect(() => validateConfig({ ...config, ...override })).toThrow();
     }
     expect(() => validateConfig(config)).not.toThrow();
   });
 
-  it('accepts any normally authenticated user and rejects unsigned requests/origins before storage or model access', async () => {
+  it('accepts approved users and rejects unsigned requests/origins before storage or model access', async () => {
     const h = harness();
     expect((await h.request({ hint: 'six samosas' }, 'bad')).status).toBe(401);
     expect((await h.request({ hint: 'six samosas' }, 'valid', 'https://evil.example')).status).toBe(403);
@@ -251,6 +266,85 @@ describe('authenticated food analysis gateway', () => {
       'food-v1/33333333-3333-4333-8333-333333333333/2026-09-05/slots/0.json',
       `food-v1/${USER}/2026-09-06/slots/0.json`,
     ]));
+  });
+});
+
+describe('private beta and project-wide AI cap', () => {
+  it('refuses signed-in accounts that are not approved before any storage, quota or paid call', async () => {
+    const h = harness();
+    for (const body of [{ hint: 'six samosas' }, { action: 'status' }, { action: 'interpret-serving', text: 'I ate 6 pieces', food: { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' } }]) {
+      const response = await h.request(body, 'stranger');
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ code: 'not_approved', error: PRIVATE_BETA_MESSAGE });
+    }
+    expect(h.isApproved).toHaveBeenCalledWith(STRANGER);
+    expect(h.ledger.assertPrivate).not.toHaveBeenCalled();
+    expect(h.ledger.insert).not.toHaveBeenCalled();
+    expect(h.globalQuota.claim).not.toHaveBeenCalled();
+    expect(h.analyze).not.toHaveBeenCalled();
+    expect(h.interpretServing).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the approval lookup errors', async () => {
+    const h = harness();
+    h.isApproved.mockRejectedValueOnce(new Error('database unavailable'));
+    const response = await h.request({ hint: 'six samosas' });
+    expect(response.status).toBe(503);
+    expect(h.ledger.insert).not.toHaveBeenCalled();
+    expect(h.analyze).not.toHaveBeenCalled();
+  });
+
+  it('caps paid analyses across all users per UTC date, even under concurrency', async () => {
+    const h = harness({ maxAttempts: 10, maxGlobalAttempts: 3 });
+    const results = await Promise.all([
+      ...Array.from({ length: 4 }, (_, n) => h.request({ hint: `meal number ${n}` }, 'valid')),
+      ...Array.from({ length: 4 }, (_, n) => h.request({ hint: `meal number ${n}` }, 'friend')),
+    ]);
+    expect(results.filter(response => response.status === 200)).toHaveLength(3);
+    const refused = results.filter(response => response.status === 429);
+    expect(refused).toHaveLength(5);
+    for (const response of refused) expect(await response.json()).toMatchObject({ code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE });
+    expect(h.analyze).toHaveBeenCalledTimes(3);
+    expect(h.globalCounts.get('2026-09-05')).toBe(3);
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ globalLimitReached: true });
+  });
+
+  it('refuses up front without consuming a personal slot once the global cap is spent, and resets the next UTC date', async () => {
+    const h = harness({ maxAttempts: 5, maxGlobalAttempts: 1 });
+    expect((await h.request({ hint: 'six samosas' }, 'friend')).status).toBe(200);
+    const insertsBefore = vi.mocked(h.ledger.insert).mock.calls.length;
+    const refused = await h.request({ hint: 'rice and chicken' });
+    expect(refused.status).toBe(429);
+    expect((await refused.json()).code).toBe('global_quota_exhausted');
+    expect(vi.mocked(h.ledger.insert).mock.calls.length).toBe(insertsBefore);
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ attemptsUsed: 0, globalLimitReached: true });
+    h.setTime(Date.parse('2026-09-06T00:00:00Z'));
+    expect((await h.request({ hint: 'rice and chicken' })).status).toBe(200);
+    expect(h.analyze).toHaveBeenCalledTimes(2);
+  });
+
+  it('records a refused claim so the same meal never starts a paid call later that day', async () => {
+    const h = harness({ maxAttempts: 5, maxGlobalAttempts: 1 });
+    // Another instance claims the last global request between the pre-check and the claim.
+    vi.mocked(h.globalQuota.used).mockResolvedValueOnce(0);
+    h.globalCounts.set('2026-09-05', 1);
+    const first = await h.request({ hint: 'six samosas' });
+    expect(first.status).toBe(429);
+    expect((await first.json()).code).toBe('global_quota_exhausted');
+    expect((await (await h.request({ hint: 'six samosas' })).json()).replayed).toBe(true);
+    expect(h.analyze).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without a paid call when the global counter is unavailable', async () => {
+    const h = harness();
+    vi.mocked(h.globalQuota.used).mockRejectedValueOnce(new Error('rpc failed'));
+    expect((await h.request({ hint: 'six samosas' })).status).toBe(503);
+    expect(h.ledger.insert).not.toHaveBeenCalled();
+    vi.mocked(h.globalQuota.claim).mockRejectedValueOnce(new Error('rpc failed'));
+    const lost = await h.request({ hint: 'rice and chicken' });
+    expect(lost.status).toBe(503);
+    expect((await lost.json()).code).toBe('analysis_unavailable');
+    expect(h.analyze).not.toHaveBeenCalled();
   });
 });
 
