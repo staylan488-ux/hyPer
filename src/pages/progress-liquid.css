@@ -116,12 +116,9 @@
   box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--color-accent) 28%, transparent);
 }
 
-/* Weekly nutrition renders its own card: on this page it sits on a platter. */
-.progress-platter-host > .material-surface {
-  border-radius: var(--radius-platter);
-  background: var(--platter-fill);
-  box-shadow: var(--platter-edge), var(--platter-shadow);
-}
+/* Weekly nutrition renders its own surface: on this page it is a plain,
+   unboxed section like the rest. */
+.progress-platter-host > .material-surface { background: none; box-shadow: none; }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .ledger-day-lens, .ledger-field { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border-strong); }

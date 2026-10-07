@@ -177,11 +177,8 @@ export function Dashboard() {
         <h1 className="t-label mt-5">Today</h1>
       </header>
 
-      <section className="platter mt-5 overflow-hidden">
-        {hero.kind === 'resume' && <span className="liquid-aura is-quiet" aria-hidden />}
-        <div className="relative">
-          <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
-        </div>
+      <section className="platter mt-5">
+        <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
       </section>
 
       {/* ── Fuel ── */}

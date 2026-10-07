@@ -150,9 +150,10 @@
   to { opacity: 1; transform: none; }
 }
 
-/* ── Liquid: movements on platters ───────────────────────────────────
-   Each movement is a glass platter; the open one is the lit, working
-   surface. Sets keep their ledger rhythm inside it. */
+/* ── Liquid: movements as a ruled list ───────────────────────────────
+   Cardless: movements sit on the stage, separated by hairlines. The open
+   movement is marked by its large serif name, not a box. Sets keep their
+   ledger rhythm. */
 .studio-session-top > .material-button-secondary { min-height: 36px; padding: 0 16px; }
 .studio-session-summary { align-items: center; }
 .studio-session-ring-count { font-family: var(--font-metric); font-size: 17px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--color-text); }
@@ -169,17 +170,16 @@
 .studio-session-actions > div > button svg { color: var(--color-text-dim); }
 
 .studio-movement {
-  margin-bottom: 12px;
-  padding: 4px 4px 4px 18px;
-  border-bottom: 0;
-  border-radius: var(--radius-platter);
-  background: var(--platter-fill);
-  box-shadow: var(--platter-edge), var(--platter-shadow);
+  margin-bottom: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--platter-divider);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
-.studio-movement:not(.is-active) { padding: 14px 4px 14px 18px; }
-.studio-movement.is-active { padding: 18px 10px 14px 18px; }
-.studio-movement.is-complete:not(.is-active) { padding: 8px 4px 8px 18px; opacity: .78; }
-.studio-movement.is-active .studio-movement-content { padding-right: 8px; }
+.studio-movement:not(.is-active) { padding: 12px 0; }
+.studio-movement.is-active { padding: 20px 0 16px; }
+.studio-movement.is-complete:not(.is-active) { padding: 6px 0; opacity: .78; }
 .studio-movement-name { margin-top: 6px; }
 .studio-set-ledger, .studio-set-editor { border-bottom-color: var(--platter-divider); }
 .studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
@@ -188,4 +188,4 @@
 .studio-set-input:focus-visible { outline: 1.5px solid var(--color-text); outline-offset: 1px; }
 .studio-set-gain { box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 35%, transparent); }
 .studio-set-ledger.is-stamped::after { border-radius: 12px; }
-.studio-reorder-list.is-reordering .studio-movement { padding: 12px 4px 12px 18px; }
+.studio-reorder-list.is-reordering .studio-movement { padding: 12px 0; }

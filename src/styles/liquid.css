@@ -353,39 +353,40 @@
   --rail-chrome: linear-gradient(180deg, #ffffff 0%, #d9d9d9 40%, #959595 100%);
 }
 
-/* ─── Stage and platters ────────────────────────────────────────
-   The page is lit like a product shot: one soft pool of light from above.
-   Sections sit on platters, grouped glass panels with a specular top edge.
-   Platters do not blur (the stage behind them is smooth), so long lists
-   scroll as cheaply as flat content. */
+/* ─── Stage and sections ────────────────────────────────────────
+   Cardless (2026-10-07): content sits directly on the stage, grouped by type,
+   spacing and section labels. Nothing is boxed and nothing nests. A
+   `.platter` is now only a section: it keeps its inner rhythm but bleeds its
+   padding into the page gutter, so its content lines up with the page. It
+   has no fill, edge, radius or shadow. Glass is reserved for the floating
+   layer (tab bar, sheets, toasts, rest bar). */
 html .app-viewport, html .material-foundation {
   background: var(--material-ambient), var(--material-foundation);
 }
 @layer components {
   .platter {
     position: relative;
-    border-radius: var(--radius-platter);
-    background: var(--platter-fill);
-    box-shadow: var(--platter-edge), var(--platter-shadow);
+    margin-inline: -20px;
     padding: 20px;
   }
-  .platter-flush { padding: 0; overflow: hidden; }
+  .platter-flush { padding: 0; }
   .platter-row { position: relative; }
-  /* iOS-style inset dividers: they start where the row's text starts. */
+  /* iOS-style inset dividers: they start where the row's text starts and end
+     at the page gutter. */
   .platter-row + .platter-row::before {
     content: '';
     position: absolute;
     top: 0;
     left: var(--row-inset, 20px);
-    right: 0;
+    right: 20px;
     height: 1px;
     background: var(--platter-divider);
     pointer-events: none;
   }
   .platter-row.has-icon + .platter-row.has-icon::before { --row-inset: 66px; }
   .platter-gap > * + * { margin-top: 12px; }
+  .material-surface { background-color: transparent; }
 }
-.material-surface { box-shadow: var(--platter-edge), var(--platter-shadow); }
 
 /* Leading icon in grouped rows: a small glass squircle. */
 .icon-tile {

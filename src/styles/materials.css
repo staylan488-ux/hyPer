@@ -98,7 +98,7 @@
 
 /* A broad wash adds the glass body; the specular edge comes from --material-rim. */
 .material-glass, .material-toolbar, .bottom-nav, .studio-sheet, .material-toast,
-.material-surface, .material-control, .material-inset, .studio-secondary-action, .material-button-secondary {
+.material-control, .material-inset, .studio-secondary-action, .material-button-secondary {
   background-image: var(--material-wash);
 }
 .material-button-primary, .studio-save-set {
