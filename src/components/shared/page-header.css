@@ -23,6 +23,12 @@
   gap: 4px;
   margin-right: -10px;
 }
+/* Bar-row actions share the back label's size and line box, so their
+   baselines and cap tops line up across the row, as in a native bar. */
+.page-header-actions .text-action {
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
 .page-eyebrow {
   margin-top: 6px;
   min-height: 1.4em;

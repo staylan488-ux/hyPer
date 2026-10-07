@@ -905,7 +905,7 @@ export function Settings() {
     'targets/coach': 'Target suggestions',
     'targets/adaptation': 'How targets adapt',
     meals: 'Saved meals',
-    analysis: 'Food analysis',
+    analysis: 'Meal photo analysis',
     'analysis/worker': 'Mac worker setup',
     connections: 'Connections',
     'connections/whoop': 'WHOOP',
@@ -1080,8 +1080,8 @@ export function Settings() {
               onClick={() => void openManageMeals()}
             />
             <SettingsRow
-              title="Food analysis"
-              description={foodAnalysisMode === 'gemini' ? 'Hosted analysis' : 'Your Mac'}
+              title="Meal photo analysis"
+              description={foodAnalysisMode === 'gemini' ? 'Estimates nutrition online' : 'Estimates nutrition on your Mac'}
               onClick={() => go('/settings/analysis')}
             />
           </SettingsSection>
@@ -1102,11 +1102,6 @@ export function Settings() {
               title="Training"
               description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
               onClick={() => go('/settings/training')}
-            />
-            <SettingsRow
-              title="Start a run"
-              description="GPS run tracking"
-              onClick={() => go('/train/run')}
             />
           </SettingsSection>
           <SettingsGroup className="mt-7">
@@ -2041,7 +2036,7 @@ export function Settings() {
                 setHealthWeightMessage(null);
                 setWeighInDraft(e.target.value);
               }}
-              className="flex-1 min-w-0 px-0 py-1 bg-transparent border-0 text-[var(--color-text)] text-[34px]! font-medium tracking-[-0.025em] tabular-nums [font-family:var(--font-metric)] placeholder:text-[var(--color-muted)] focus:outline-none"
+              className="flex-1 min-w-0 px-0 py-1 bg-transparent border-0 text-[var(--color-text)] text-[34px]! font-medium tracking-[-0.025em] tabular-nums [font-family:var(--font-metric)] placeholder:text-[var(--color-placeholder)] focus:outline-none"
             />
             <span className="t-label shrink-0">{weightUnit}</span>
           </div>

@@ -22,7 +22,7 @@ export function SettingsSearch({ open, query, onQuery, onClose, onSelect }: {
       }}>
         <Search size={17} strokeWidth={1.75} aria-hidden="true"
           className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-[var(--color-muted)]" />
-        <Input ref={input} type="search" aria-label="Search settings and features"
+        <Input ref={input} type="search" className="search-field" aria-label="Search settings and features"
           placeholder="Search settings and features" value={query}
           autoComplete="off" autoCapitalize="none" spellCheck={false}
           onChange={(event) => onQuery(event.target.value)} />

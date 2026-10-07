@@ -7,15 +7,15 @@
    which fades into the content below — no hard toolbar edge. Fixed inside the
    (untransformed) route content, aligned with the scroll column.
 
-   Like the iOS 26 scroll edge it runs long and eased, from the status bar to
-   about 44px below the compact title: solid to 38px, then a 54px fade in
-   which content stays almost invisible for the first half (≤15% by the
-   middle) and is blurred progressively, so the tail of a pill, a rule or a
+   Solid from the status bar to 8px below the compact title row (42px), then
+   one short 26px ramp in which opacity and blur move together: content is
+   gone at the top of the ramp and only becomes legible as it sharpens, so no
+   row is ever smeared above a crisp line, and the tail of a pill, rule or
    numeral dissolves instead of showing a crisp edge at low alpha.
    PageTitle drives --band (0 → 1) as the large title passes under it. */
 .page-scroll-edge {
-  --edge-solid: 38px;
-  --edge-fade: 54px;
+  --edge-solid: 42px;
+  --edge-fade: 26px;
   position: fixed;
   top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
   left: 0;
@@ -37,44 +37,49 @@
   inset: 0;
   pointer-events: none;
 }
-/* Stage colour with an ease-in reveal: band alpha 1 → .93 → .85 → .5 → 0. */
+/* Stage colour over the ramp: content visibility follows t³ (t = 0 at the
+   solid edge, 1 at the ramp's foot), so it stays below 15% over the upper
+   half of the ramp, where the blur is strongest, and only reads as it
+   sharpens near the foot. */
 .page-scroll-edge-veil {
   background: linear-gradient(
     to bottom,
     var(--material-foundation) 0,
     var(--material-foundation) var(--edge-solid),
-    color-mix(in srgb, var(--material-foundation) 98.5%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .2),
-    color-mix(in srgb, var(--material-foundation) 93%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .4),
-    color-mix(in srgb, var(--material-foundation) 85%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .55),
-    color-mix(in srgb, var(--material-foundation) 70%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .7),
-    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .82),
-    color-mix(in srgb, var(--material-foundation) 25%, transparent) calc(var(--edge-solid) + var(--edge-fade) * .92),
+    color-mix(in srgb, var(--material-foundation) 99%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.2),
+    color-mix(in srgb, var(--material-foundation) 94%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.4),
+    color-mix(in srgb, var(--material-foundation) 83%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.55),
+    color-mix(in srgb, var(--material-foundation) 66%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.7),
+    color-mix(in srgb, var(--material-foundation) 45%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.82),
+    color-mix(in srgb, var(--material-foundation) 22%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.92),
     transparent 100%
   );
 }
-/* Progressive blur: three stacked steps, strongest nearest the title, each
-   feathered out by its own mask so no step has an edge. */
+/* Progressive blur over the upper three quarters of the ramp, where content
+   is at most 45% visible: three stacked steps, strongest at the solid edge,
+   each feathered by its own mask. The foot is opacity only, so a line
+   resting there is faded, never smudged. */
 .page-scroll-edge-blur {
   -webkit-mask-image: linear-gradient(to bottom, #000 var(--blur-hold), transparent var(--blur-end));
   mask-image: linear-gradient(to bottom, #000 var(--blur-hold), transparent var(--blur-end));
 }
 .page-scroll-edge-blur[data-step='1'] {
-  --blur-hold: 52px;
-  --blur-end: 70px;
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.1);
+  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.4);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 .page-scroll-edge-blur[data-step='2'] {
-  --blur-hold: 64px;
-  --blur-end: 82px;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.3);
+  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.6);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 .page-scroll-edge-blur[data-step='3'] {
-  --blur-hold: 74px;
-  --blur-end: 92px;
-  -webkit-backdrop-filter: blur(1.5px);
-  backdrop-filter: blur(1.5px);
+  --blur-hold: calc(var(--edge-solid) + var(--edge-fade) * 0.5);
+  --blur-end: calc(var(--edge-solid) + var(--edge-fade) * 0.78);
+  -webkit-backdrop-filter: blur(2.5px);
+  backdrop-filter: blur(2.5px);
 }
 .page-scroll-edge-title,
 .page-scroll-edge-back { z-index: 1; }

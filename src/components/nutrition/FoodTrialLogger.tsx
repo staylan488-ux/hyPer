@@ -133,7 +133,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       <FormField label="Your meal">
         <textarea value={hint} onChange={(event) => setHint(event.target.value.slice(0, 1500))} maxLength={1500} disabled={!!busy} rows={3}
           placeholder="e.g., Six Trader Joe’s chicken tikka samosas"
-          className="well w-full min-h-24 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-muted)]" />
+          className="well w-full min-h-24 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-placeholder)]" />
       </FormField>
       {photoControls}
       <p className="t-caption">Photo, text, or both. Include the amount and any added oil or sauce you know about.</p>

@@ -71,9 +71,6 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
-/** The Finish confirmation has one height and its own cancel. */
-const FINISH_SHEET_CHROME = { showGrabber: false, showClose: false };
-
 /** The rest bar's "Next ·" label is the movement name, this, and the set number. */
 const REST_NEXT_UP_SET = ' · set ';
 
@@ -2094,10 +2091,9 @@ export function Workout() {
 
       {/* Complete Confirmation */}
       {/* A single-height confirmation: no grabber, and no close, since "Keep
-          training" is the cancel. (showGrabber/showClose are the shared
-          Modal's options; spread until they land so older Modals ignore them.) */}
+          training" is the cancel. */}
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?"
-        contentClassName="pt-2!" {...(FINISH_SHEET_CHROME as object)}>
+        contentClassName="pt-2!" showGrabber={false} showClose={false}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" />

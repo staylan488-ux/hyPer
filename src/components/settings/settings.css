@@ -192,7 +192,7 @@
   outline-offset: -3px;
 }
 /* Keep shared materials; make settings actions and essential guidance readable. */
-.you-settings button:not(.you-row):not(.you-back):not(.you-text-action):not(.you-search-field) {
+.you-settings button:not(.you-row):not(.you-back):not(.you-text-action):not(.you-search-field):not([role="tab"]) {
   text-transform: none;
   letter-spacing: normal;
   font-size: 14px;

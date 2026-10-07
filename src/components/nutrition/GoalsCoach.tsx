@@ -124,7 +124,7 @@ export function GoalsCoach({
             onDraftChange?.(true);
           }}
           placeholder="For example: I want to maintain my weight while getting stronger. I lift four times a week."
-          className="well w-full min-h-32 px-3 py-3 text-[1rem] text-[var(--color-text)] resize-y placeholder:text-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-[var(--color-text)]"
+          className="well w-full min-h-32 px-3 py-3 text-[1rem] text-[var(--color-text)] resize-y placeholder:text-[var(--color-placeholder)] focus-visible:outline-2 focus-visible:outline-[var(--color-text)]"
         />
       </div>
       <div>

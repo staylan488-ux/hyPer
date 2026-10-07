@@ -448,7 +448,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                     aria-label="Custom rest time, minutes and seconds"
                     aria-invalid={customError}
                     autoFocus
-                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-transparent text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
+                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-transparent text-[var(--color-text)] placeholder:text-[var(--color-placeholder)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
                   />
                   <button
                     type="button"

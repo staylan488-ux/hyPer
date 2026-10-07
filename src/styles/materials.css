@@ -16,7 +16,9 @@
   --material-rim: inset 0 1px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.4), 0 0 0 .5px rgba(20, 20, 20,.08);
   --material-optics: saturate(1.7);
   --material-shadow: 0 1px 2px rgba(20, 20, 20,.05), 0 12px 32px rgba(20, 20, 20,.10);
-  --material-sheet-shadow: 0 -12px 44px rgba(20, 20, 20,.12);
+  /* The scrim alone separates a sheet: a shadow would grade what is behind
+     it into chrome. */
+  --material-sheet-shadow: none;
   --material-dock-shadow: 0 1px 2px rgba(20, 20, 20,.06), 0 14px 38px rgba(20, 20, 20,.14);
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
@@ -27,6 +29,7 @@
      faint shadow. */
   --nav-selection: rgba(0,0,0,.07);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
+  --nav-rim: inset 0 0 0 .5px rgba(20,20,20,.10);
   --material-blur: 26px;
   --material-nav-muted: #6a6d68;
   --material-accent: #923127;
@@ -51,7 +54,7 @@
   --material-rim: inset 0 1px 0 rgba(255,255,255,.07);
   --material-optics: saturate(1.8);
   --material-shadow: 0 14px 36px rgba(0,0,0,.5);
-  --material-sheet-shadow: 0 -14px 44px rgba(0,0,0,.45);
+  --material-sheet-shadow: none;
   --material-dock-shadow: 0 14px 40px rgba(0,0,0,.55);
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
@@ -59,7 +62,8 @@
   --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
   --nav-selection: rgba(255,255,255,.12);
-  --nav-shadow: 0 8px 24px rgba(0,0,0,.5);
+  --nav-shadow: none;
+  --nav-rim: inset 0 0 0 .5px rgba(255,255,255,.08);
   --material-nav-muted: #9a9a9a;
   --material-accent: #D9503F;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
@@ -107,7 +111,7 @@
   background-image: var(--material-action-wash);
 }
 .bottom-nav {
-  box-shadow: var(--material-rim), var(--nav-shadow);
+  box-shadow: var(--nav-rim), var(--nav-shadow);
   -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
   backdrop-filter: blur(var(--material-blur)) var(--material-optics);
 }
