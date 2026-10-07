@@ -49,7 +49,7 @@
 @media (prefers-reduced-motion: reduce) { .fuel-meal { transition: none; } }
 
 /* List tools beside the Meals label: unboxed text actions, last one on the gutter. */
-.fuel-list-actions { display: flex; align-items: center; margin-right: -10px; }
+.fuel-list-actions { display: flex; align-items: center; margin: -8px -10px -8px 0; }
 .fuel-list-actions > button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 13px; line-height: 1.4; color: var(--color-text); }
 .fuel-list-actions > button svg { color: var(--color-text-dim); }
 .fuel-list-actions > button.is-done { font-weight: 600; }

@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageHeader, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
@@ -8,6 +8,7 @@ import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
 import '@/components/nutrition/nutrition-ledger.css';
 import { supabase } from '@/lib/supabase';
+import { calendarMonthLabel } from '@/lib/calendarLabel';
 import { getSessionUserId } from '@/lib/sessionUser';
 import {
   changedGroupOrders,
@@ -460,32 +461,34 @@ export function Nutrition() {
 
       {/* ── Week strip + month jump: date navigation sits with the date ── */}
       <section className="platter mt-3 px-3 pt-1 pb-1" aria-label="Choose a day">
-        <div className="flex items-center justify-between pl-2 -mr-1.5 mb-1">
-          <span className="t-label">{format(weekStart, 'MMMM')}</span>
-          <div className="flex items-center">
+        {/* The shared calendar header (History's too): the month opens the
+            month calendar; the paging chevrons end on the trailing guide. */}
+        <div className="calendar-head mx-2 mb-1">
+          <button
+            type="button"
+            className="calendar-head-title"
+            aria-label={`${format(weekStart, 'MMMM yyyy')}, open month calendar`}
+            onClick={() => setShowMonthSheet(true)}
+          >
+            {calendarMonthLabel(weekStart)}
+            <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+          </button>
+          <div className="calendar-head-nav">
             <button
               type="button"
               aria-label="Previous week"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="calendar-nav-key"
               onClick={() => setWeekAnchor((current) => addDays(current, -7))}
             >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
+              <ChevronLeft className="w-[18px] h-[18px]" strokeWidth={1.6} />
             </button>
             <button
               type="button"
               aria-label="Next week"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="calendar-nav-key"
               onClick={() => setWeekAnchor((current) => addDays(current, 7))}
             >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
-              aria-label="Open month calendar"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => setShowMonthSheet(true)}
-            >
-              <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
+              <ChevronRight className="w-[18px] h-[18px]" strokeWidth={1.6} />
             </button>
           </div>
         </div>
@@ -575,7 +578,7 @@ export function Nutrition() {
 
       {/* Supporting macro ledger keeps energy as the single hero. */}
       <section className="platter mt-4">
-        <span className="t-label block mb-5">Macros</span>
+        <span className="t-label block mb-[22px]">Macros</span>
         {loading ? (
           <div className="space-y-5" aria-hidden>
             {[0, 1, 2].map((i) => (
@@ -622,7 +625,7 @@ export function Nutrition() {
 
       {/* ── Unified food inbox + meal groups ── */}
       <section className="mt-9">
-        <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center justify-between gap-3 min-h-7 mb-[5px]">
           <div className="flex items-baseline gap-2">
             <span className="t-label">Meals</span>
             {!loading && selectedDayLogs.length > 0 && (

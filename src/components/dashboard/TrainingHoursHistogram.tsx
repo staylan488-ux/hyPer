@@ -36,7 +36,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       key: point.weekStart,
       label: axisLabel,
       value: point.totalMinutes,
-      // Empty weeks stay empty: no bar and no caption.
+      // Empty weeks carry only a quiet zero stub: no bar and no caption.
       caption: point.totalHours > 0 ? (
         <>
           {point.totalHours}
@@ -61,6 +61,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       <BarChart
         data={data}
         height={120}
+        zeroStub
         max={Math.max(peakMinutes, 60)}
         label="Completed session time per week, last 8 weeks"
         reveal="coaching-training-hours"

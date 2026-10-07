@@ -7,15 +7,15 @@
    which fades into the content below — no hard toolbar edge. Fixed inside the
    (untransformed) route content, aligned with the scroll column.
 
-   Solid from the status bar to 8px below the compact title row (42px), then
-   one short 26px ramp in which opacity and blur move together: content is
-   gone at the top of the ramp and only becomes legible as it sharpens, so no
-   row is ever smeared above a crisp line, and the tail of a pill, rule or
-   numeral dissolves instead of showing a crisp edge at low alpha.
-   PageTitle drives --band (0 → 1) as the large title passes under it. */
+   Solid from the status bar to just below the compact title (34px), then one
+   short 16px eased ramp that ends 6px below the 44px bar row, so a row
+   resting under the bar is never split between faded and crisp, and anything
+   crossing the ramp passes it quickly. Opacity only, no blur: a blur smears
+   bright shapes into halos on true black. PageTitle drives --band (0 → 1)
+   as soon as the page leaves the top. */
 .page-scroll-edge {
-  --edge-solid: 42px;
-  --edge-fade: 26px;
+  --edge-solid: 34px;
+  --edge-fade: 16px;
   position: fixed;
   top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
   left: 0;
@@ -27,7 +27,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 13px;
+  padding-top: 11px;
   cursor: pointer;
 }
 .page-scroll-edge > * { opacity: var(--band, 0); }
@@ -36,21 +36,22 @@
   inset: 0;
   pointer-events: none;
 }
-/* Stage colour over the ramp: content visibility follows t³ (t = 0 at the
-   solid edge, 1 at the ramp's foot), so it stays below 15% over the upper
-   half of the ramp and only reads near the foot. Opacity only, no blur:
-   a blur smears bright shapes into halos on true black. */
+/* Stage colour over the ramp: content visibility follows smoothstep
+   (3t² − 2t³; t = 0 at the solid edge, 1 at the ramp's foot), so the ramp
+   has no visible start or end and its change is concentrated in the middle
+   few points. */
 .page-scroll-edge-veil {
   background: linear-gradient(
     to bottom,
     var(--material-foundation) 0,
     var(--material-foundation) var(--edge-solid),
-    color-mix(in srgb, var(--material-foundation) 99%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.2),
-    color-mix(in srgb, var(--material-foundation) 94%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.4),
-    color-mix(in srgb, var(--material-foundation) 83%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.55),
-    color-mix(in srgb, var(--material-foundation) 66%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.7),
-    color-mix(in srgb, var(--material-foundation) 45%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.82),
-    color-mix(in srgb, var(--material-foundation) 22%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.92),
+    color-mix(in srgb, var(--material-foundation) 97%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.125),
+    color-mix(in srgb, var(--material-foundation) 84%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.25),
+    color-mix(in srgb, var(--material-foundation) 68%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.375),
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.5),
+    color-mix(in srgb, var(--material-foundation) 32%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.625),
+    color-mix(in srgb, var(--material-foundation) 16%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.75),
+    color-mix(in srgb, var(--material-foundation) 4%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.875),
     transparent 100%
   );
 }

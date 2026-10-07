@@ -221,7 +221,7 @@ export function Dashboard() {
 
       {/* ── Explore: the stations behind Today ── */}
       <nav className="mt-7" aria-labelledby="today-explore-label">
-        <span id="today-explore-label" className="t-label block mb-1">Explore</span>
+        <span id="today-explore-label" className="t-label block mb-[9px]">Explore</span>
         <ul className="platter platter-flush">
           {stations.map((s) => (
             <li key={s.to} className="platter-row" style={{ '--row-inset': '54px' } as CSSProperties}>
@@ -246,7 +246,7 @@ export function Dashboard() {
       {insight && (
         <section className="platter mt-4">
           <Link to="/analysis" className="block group">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-[23px]">
               <span className="t-label">This week</span>
               <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
             </div>

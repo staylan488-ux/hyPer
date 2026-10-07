@@ -13,7 +13,8 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
-  /** Locks the choice while keeping the current selection fully readable. */
+  /** Locks the choice: the whole control dims to 40%, like a disabled
+   *  UISegmentedControl, and takes no touches. */
   disabled?: boolean;
   className?: string;
 }
@@ -36,7 +37,7 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
-      className={`segmented-track well ${className}`}
+      className={`segmented-track well ${disabled ? 'is-disabled' : ''} ${className}`}
       role="tablist"
       aria-disabled={disabled || undefined}
       onKeyDown={(event) => {
@@ -68,7 +69,7 @@ export function SegmentedControl<T extends string>({
               onChange(option.value);
             }}
             className={`relative rounded-[var(--radius-capsule)] font-medium text-[15px] tracking-[-0.01em] [font-family:var(--font-sans)] transition-colors duration-200 ${item} ${
-              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-text)] opacity-50' : 'text-[var(--color-muted)]'
+              selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{option.label}</span>

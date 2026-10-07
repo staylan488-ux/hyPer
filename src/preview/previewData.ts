@@ -70,7 +70,10 @@ export const previewSplit: Split = {
   id: 'split1', user_id: PREVIEW_USER_ID, name: 'Upper / Lower', description: 'A 4-day upper/lower hypertrophy block.', days_per_week: 4, is_active: true, days: [dayUA, dayLA, dayUB, dayLB],
 };
 
-/* ── Current (in-progress) workout — drives the "resume" hero + in-session view ── */
+/* ── Current (in-progress) workout — drives the "resume" hero + in-session view ──
+   Seeded like a real startWorkout: every Upper A exercise with its target
+   sets (4/4/3/3/3), so the live session agrees with the program. Bench is
+   complete and Barbell Row is up next. */
 let wsId = 0;
 const ws = (e: Exercise, n: number, weight: number | null, reps: number | null, rpe: number | null, completed: boolean, completedAt: Date | null): WorkoutSet =>
   ({ id: `cs${++wsId}`, workout_id: 'w_current', exercise_id: e.id, exercise: e, set_number: n, weight, reps, rpe, completed, completed_at: completedAt ? iso(completedAt) : null });
@@ -84,12 +87,20 @@ export const previewCurrentWorkout: Workout = {
     ws(exBench, 1, 100, 8, 8, true, sessionMinutesAgo(19)),
     ws(exBench, 2, 100, 8, 8.5, true, sessionMinutesAgo(15)),
     ws(exBench, 3, 102.5, 6, 9, true, sessionMinutesAgo(10)),
+    ws(exBench, 4, 100, 6, 9, true, sessionMinutesAgo(6)),
     ws(exRow, 1, 80, 10, 7, false, null),
     ws(exRow, 2, 80, 10, 7, false, null),
     ws(exRow, 3, 80, 9, 8, false, null),
+    ws(exRow, 4, 80, 8, 8.5, false, null),
     ws(exIncline, 1, 30, 12, 7, false, null),
     ws(exIncline, 2, 30, 11, 8, false, null),
     ws(exIncline, 3, 30, 10, 8.5, false, null),
+    ws(exPulldown, 1, 60, 12, 7, false, null),
+    ws(exPulldown, 2, 60, 11, 8, false, null),
+    ws(exPulldown, 3, 60, 10, 8.5, false, null),
+    ws(exLateral, 1, 10, 15, 7, false, null),
+    ws(exLateral, 2, 10, 14, 8, false, null),
+    ws(exLateral, 3, 10, 12, 8.5, false, null),
   ],
 };
 
@@ -121,7 +132,7 @@ const food = (id: string, name: string, cal: number, p: number, c: number, f: nu
   ({ id, name, calories: cal, protein: p, carbs: c, fat: f, serving_size: size, serving_unit: unit, source, fdc_id: source === 'usda' ? `fdc-${id}` : null, user_id: source === 'custom' ? PREVIEW_USER_ID : null });
 
 export const previewFoods: Food[] = [
-  food('f_serving_demo', 'Samosas (serving demo)', 250, 10, 30, 10, 5, 'pieces', 'custom'),
+  food('f_serving_demo', 'Vegetable Samosas', 250, 10, 30, 10, 5, 'pieces', 'custom'),
   food('f_oats', 'Rolled Oats', 150, 5, 27, 3, 40, 'g'),
   food('f_eggs', 'Whole Eggs', 156, 13, 1, 11, 2, 'large'),
   food('f_chicken', 'Chicken Breast, grilled', 248, 47, 0, 5, 150, 'g'),
@@ -173,6 +184,10 @@ const historyPlan: { offset: number; dayId: string; ex: Exercise[] }[] = [
   { offset: 13, dayId: 'd1', ex: [exBench, exRow, exPulldown, exLateral] },
 ];
 
+const HISTORY_LOAD: Record<string, number> = {
+  ex_bench: 100, ex_row: 80, ex_incline: 30, ex_pulldown: 60, ex_lateral: 10, ex_squat: 120, ex_rdl: 100,
+  ex_legext: 50, ex_calf: 80, ex_ohp: 50, ex_curl: 14, ex_pushdown: 30, ex_legcurl: 45,
+};
 const histWorkoutRows: Record<string, unknown>[] = [];
 const histSetRows: Record<string, unknown>[] = [];
 let hsId = 0;
@@ -185,7 +200,10 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
   p.ex.forEach((e) => {
     for (let n = 1; n <= 3; n++) {
       const done = at(d, 18, 5 + order * 4);
-      const w = 60 + ((wi + order) % 5) * 10;
+      // Plausible loads per movement (older weeks slightly lighter), so the
+      // live session's "Last" hints read like a real log.
+      const base = HISTORY_LOAD[e.id] ?? 40;
+      const w = base - Math.floor(p.offset / 7) * (base >= 20 ? 2.5 : 1);
       const set: WorkoutSet = { id: `wsh${++hsId}`, workout_id: id, exercise_id: e.id, exercise: e, set_number: n, weight: w, reps: 8 + (n % 3), rpe: 8, completed: true, completed_at: iso(done) };
       sets.push(set);
       histSetRows.push({ id: set.id, workout_id: id, exercise_id: e.id, set_number: n, weight: w, reps: set.reps, rpe: 8, completed: true, completed_at: set.completed_at, created_at: iso(start) });

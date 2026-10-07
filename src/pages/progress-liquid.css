@@ -8,10 +8,10 @@
 /* Compact month: day numbers with a dot per kind of session. The selected
    day is a filled ink disc; today is named in lacquer. */
 .ledger-day { -webkit-tap-highlight-color: transparent; }
-/* 34px: the same selected circle as Fuel's week strip. */
+/* 30px, so the day's marks keep 6px of clear space below it. */
 .ledger-day-disc {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: var(--color-text);
 }
@@ -24,18 +24,17 @@
 /* Days still to come: tertiary ink, lighter than days on record. */
 .ledger-day-future { color: var(--color-text); opacity: .55; }
 
-/* Month paging: plain chevrons with a 44px target. */
-.ledger-nav-key {
+/* The day's quiet sync key beside Add activity: an icon, 44px target. */
+.history-sync-key {
   width: 44px;
   height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--color-text-dim);
-  transition: color 160ms ease, opacity 160ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
-.ledger-nav-key:hover { color: var(--color-text); }
-.ledger-nav-key:active { opacity: .5; }
+.history-sync-key:disabled { opacity: .5; }
 
 /* ─── Grouped lists inside platters ─────────────────────────── */
 .ledger-rule { height: 1px; background: var(--platter-divider); }
