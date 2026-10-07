@@ -1487,11 +1487,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
     at.setHours(hours, Number.isFinite(minutes) ? minutes : 0, 0, 0);
     return format(at, 'h:mm a');
   })();
-  const whenSummary = [
-    `Adding to ${whenGroup ? nutritionGroupLabel(whenGroup, orderedGroups) : 'Unassigned'}`,
-    isToday(entryDate) ? null : format(entryDate, 'MMM d'),
-    whenClock || null,
-  ].filter(Boolean).join(' · ');
+  // Without a meal, the line names only when: "Adding at 7:48 AM".
+  const whenSummary = whenGroup
+    ? [
+        `Adding to ${nutritionGroupLabel(whenGroup, orderedGroups)}`,
+        isToday(entryDate) ? null : format(entryDate, 'MMM d'),
+        whenClock || null,
+      ].filter(Boolean).join(' · ')
+    : [
+        whenClock ? `Adding at ${whenClock}` : 'Adding now',
+        isToday(entryDate) ? null : format(entryDate, 'MMM d'),
+      ].filter(Boolean).join(' · ');
 
   /* ── Shared "when" row: date · time · destination ── */
   const whenRow = onAddIngredients ? (saveError && <p role="alert" className="t-caption text-[var(--color-accent)]">{saveError}</p>) : (
