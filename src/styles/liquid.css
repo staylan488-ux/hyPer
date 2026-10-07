@@ -442,9 +442,10 @@ html .app-viewport, html .material-foundation {
 .dark .studio-sheet :is(.search-field, .you-search-field) {
   background-color: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
+/* iOS 26 sheet toolbar buttons: a 44pt visible circle, glyph unchanged. */
 .material-sheet-close {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0 !important;
   display: inline-flex;
   align-items: center;
@@ -454,6 +455,21 @@ html .app-viewport, html .material-foundation {
 }
 
 .material-sheet-handle { width: 38px; height: 5px; border-radius: 5px; opacity: .32; }
+
+/* Log food: where and when "+" logs, one quiet line under the sheet title
+   that opens the date, time and meal fields in place. */
+.food-when-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.food-when-summary svg { flex-shrink: 0; transition: transform .2s ease; }
 
 /* Calendar header (CalendarHeader), one component for Fuel's week strip and
    History's month: the month in sentence case (year only when it is not this

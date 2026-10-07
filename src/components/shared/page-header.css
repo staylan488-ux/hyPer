@@ -70,6 +70,21 @@
   transition: none;
 }
 
+/* A trailing action repeated in the condensed band (Fuel's +): a bare
+   ink glyph in a 44px key whose glyph ends on the trailing accessory edge. */
+.page-scroll-edge-action {
+  position: absolute;
+  top: 0;
+  right: 11px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Quiet text action: sentence case, ink, no fill or outline, with a 44px
    target. Used for contextual actions (Sync, Add activity, New, Edit). */
 .text-action {

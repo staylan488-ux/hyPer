@@ -297,7 +297,7 @@ export function Splits() {
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          <MoreHorizontal className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          <MoreHorizontal className="trail-more w-[18px] h-[18px]" strokeWidth={1.75} />
         </button>
         <AnimatePresence>
           {open && (
@@ -357,7 +357,7 @@ export function Splits() {
                   {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                 </span>
               </span>
-              <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.tactile} className="shrink-0">
+              <motion.span animate={{ rotate: isDayExpanded ? 90 : 0 }} transition={springs.tactile} className="trail-chevron shrink-0">
                 <ChevronRight className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
               </motion.span>
             </button>

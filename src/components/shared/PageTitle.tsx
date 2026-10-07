@@ -3,8 +3,13 @@ import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/r
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
-import { restingScrollEnd, titleSnapTarget } from '@/lib/titleSnap';
+import { cleanScrollEnd, restNudgeTarget, titleSnapTarget } from '@/lib/titleSnap';
+import { measureRestBand, measureRestBlocks } from '@/lib/restBlocks';
 import './page-header.css';
+
+/** A trailing action repeated in the condensed bar once the title has
+ *  collapsed, so the page's primary action stays one tap away (Fuel's +). */
+export interface CompactAction { label: string; icon: ReactNode; onClick: () => void }
 
 /** Where a pushed screen's back control returns. */
 export type PageBack =
@@ -17,6 +22,8 @@ interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
   compactTitle?: string;
   /** Repeats the back control in the condensed bar once the title has gone. */
   back?: PageBack;
+  /** A trailing action shown in the condensed bar once collapsed. */
+  compactAction?: CompactAction;
 }
 
 // Height of the scroll-edge band's bar row: the title starts to pass under
@@ -33,24 +40,9 @@ const COMPACT_FROM = 0.8;
 const EDGE_RAMP = 6;
 // Quiet period that stands in for `scrollend` where it is unsupported.
 const SETTLE_MS = 140;
-// The band's ramp foot (kinetic.css --edge-solid + --edge-fade): content
-// starting here is wholly clear of the scroll edge.
-const EDGE_FOOT = SOLID + 24;
-// What a page's scroll may end on: a list row, a section or a marked block.
-const REST_SELECTOR = '.platter-row, section, [data-scroll-rest]';
-
-/** Top of an element's first line of text (its own top when it has none). */
-function firstTextTop(element: HTMLElement): number {
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  const range = document.createRange();
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!node.textContent?.trim()) continue;
-    range.selectNodeContents(node);
-    const rect = range.getBoundingClientRect();
-    if (rect.height > 0) return rect.top;
-  }
-  return element.getBoundingClientRect().top;
-}
+// The most a page may grow past its tab-bar clearance to end on a clean
+// rest: about one row.
+const END_SLACK = 72;
 
 const editable = (element: Element | null) =>
   element instanceof HTMLElement && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
@@ -66,23 +58,29 @@ const editable = (element: Element | null) =>
  *
  * Like UIKit, the page never rests half collapsed: when scrolling ends inside
  * the collapse range it settles fully expanded or fully collapsed
- * (immediately under reduced motion). Settling never fights a finger still on
- * the glass or a focused field, and route scroll restoration and the
- * scroll-to-top tap only ever land on settled offsets.
+ * (immediately under reduced motion). Once collapsed, it also never rests
+ * with a block split by the band: like UIKit's targetContentOffset
+ * adjustment, the rest moves by at most 32px so every block clears the band
+ * or sits wholly under its solid stage (`restNudgeTarget`). Settling never
+ * fights a finger still on the glass, a focused field or route scroll
+ * restoration, and the scroll-to-top tap lands on a settled offset.
  *
  * Scroll-linked only: the band is `position: fixed` inside the route content
  * (which is never transformed), and nothing animates on its own.
  */
 export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function PageTitle(
-  { children, compactTitle, back, className = '', ...rest },
+  { children, compactTitle, back, compactAction, className = '', ...rest },
   forwardedRef,
 ) {
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const bandRef = useRef<HTMLDivElement | null>(null);
   const progress = useMotionValue(0);
   const edge = useMotionValue(0);
   const compactOpacity = useTransform(progress, [COMPACT_FROM, 1], [0, 1]);
   const compactY = useTransform(progress, [COMPACT_FROM, 1], [3, 0]);
   const bandPointer = useTransform(edge, (value) => (value > 0.9 ? 'auto' : 'none'));
+  // The condensed bar's trailing action takes touches only once it shows.
+  const actionPointer = useTransform(progress, (value) => (value > 0.95 ? 'auto' : 'none'));
   const label = compactTitle ?? (typeof children === 'string' ? children : '');
 
   useEffect(() => {
@@ -108,12 +106,21 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       progress.set(Math.min(1, Math.max(0, (scrolled - start) / Math.max(1, end - start))));
       edge.set(Math.min(1, scrolled / EDGE_RAMP));
     };
+    // The page content the rests are judged by (everything under the header's parent).
+    const root = title.closest('header')?.parentElement ?? null;
     const settle = () => {
       settleTimer = 0;
       const focused = document.activeElement;
-      if (touching || (editable(focused) && viewport.contains(focused))) return;
-      const target = titleSnapTarget(viewport.scrollTop, collapseRange().end,viewport.scrollHeight - viewport.clientHeight);
-      if (target === null) return;
+      if (touching || (editable(focused) && viewport.contains(focused)) || viewport.hasAttribute('data-restoring-scroll')) return;
+      const max = viewport.scrollHeight - viewport.clientHeight;
+      const collapsed = Math.min(collapseRange().end, max);
+      let target = titleSnapTarget(viewport.scrollTop, collapseRange().end, max) ?? viewport.scrollTop;
+      // Collapsed: no block rests split by the band.
+      const band = bandRef.current;
+      if (root && band && target > 0.5 && target >= collapsed - 0.5) {
+        target = restNudgeTarget(target, measureRestBlocks(root, viewport), measureRestBand(band, viewport), { min: collapsed, max }) ?? target;
+      }
+      if (Math.abs(target - viewport.scrollTop) < 0.5) return;
       const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       viewport.scrollTo({ top: target, behavior: still ? 'auto' : 'smooth' });
     };
@@ -145,26 +152,30 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       // that is already still.
       if (!touching) scheduleSettle(SETTLE_MS);
     };
-    // The page's scroll ends on a rest (a row's or section's first text at
-    // the ramp's foot), with at most 30% of a screen of extra room at the
-    // bottom, so the end stop does not leave a row split under the bar.
-    // Measured with the current extra room subtracted, never by removing it,
-    // so a page resting at its end is not clamped while it is re-measured.
-    const root = title.closest('header')?.parentElement ?? null;
+    // The page's trailing space only clears the tab bar; when its natural end
+    // would rest with a block split by the band, it grows by at most about a
+    // row (END_SLACK) to end on a clean rest. Measured with the current extra
+    // room subtracted, never by removing it, so a page resting at its end is
+    // not clamped while it is re-measured.
     let extra = 0;
+    let layoutTimer = 0;
     const layoutEnd = () => {
-      if (!root) return;
+      layoutTimer = 0;
+      const band = bandRef.current;
+      if (!root || !band) return;
       const naturalEnd = viewport.scrollHeight - extra - viewport.clientHeight;
-      const columnTop = viewport.getBoundingClientRect().top - viewport.scrollTop;
-      const rests = Array.from(root.querySelectorAll<HTMLElement>(REST_SELECTOR))
-        .map((element) => firstTextTop(element) - columnTop - EDGE_FOOT);
-      const end = restingScrollEnd(naturalEnd, rests, viewport.clientHeight * 0.3);
+      const end = cleanScrollEnd(naturalEnd, measureRestBlocks(root, viewport), measureRestBand(band, viewport), END_SLACK, collapseRange().end);
       const next = Math.max(0, Math.ceil(end - naturalEnd));
       if (next === extra) return;
       extra = next;
       viewport.style.paddingBottom = extra ? `${extra}px` : '';
     };
-    const resizeObserver = typeof ResizeObserver === 'function' && root ? new ResizeObserver(layoutEnd) : null;
+    // Rows opening animate their height: measure once they have settled.
+    const scheduleLayout = () => {
+      if (layoutTimer) window.clearTimeout(layoutTimer);
+      layoutTimer = window.setTimeout(layoutEnd, 120);
+    };
+    const resizeObserver = typeof ResizeObserver === 'function' && root ? new ResizeObserver(scheduleLayout) : null;
     if (root) resizeObserver?.observe(root);
     measure();
     layoutEnd();
@@ -186,6 +197,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       window.removeEventListener('resize', onScroll);
       resizeObserver?.disconnect();
       window.clearTimeout(settledLayout);
+      window.clearTimeout(layoutTimer);
       if (extra) viewport.style.paddingBottom = '';
       if (frame) cancelAnimationFrame(frame);
       if (settleTimer) window.clearTimeout(settleTimer);
@@ -209,6 +221,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       </h1>
       {label && (
         <motion.div
+          ref={bandRef}
           className="page-scroll-edge"
           // The edge and back control follow --band; the condensed title
           // switches on its own as the large title finishes passing.
@@ -225,6 +238,24 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
           <motion.span className="page-scroll-edge-title" style={{ opacity: compactOpacity, y: compactY }}>
             {label}
           </motion.span>
+          {compactAction && (
+            // The page's own control stays the accessible one; this copy only
+            // keeps the action under the thumb while the page is collapsed.
+            <motion.button
+              type="button"
+              className="page-scroll-edge-action pressable"
+              style={{ opacity: compactOpacity, pointerEvents: actionPointer }}
+              tabIndex={-1}
+              aria-hidden
+              onClick={(event) => {
+                event.stopPropagation();
+                tapHaptic();
+                compactAction.onClick();
+              }}
+            >
+              {compactAction.icon}
+            </motion.button>
+          )}
         </motion.div>
       )}
     </>
@@ -282,6 +313,8 @@ interface PageHeaderProps {
   leading?: ReactNode;
   /** Trailing bar-row controls (a quiet text or icon action). */
   actions?: ReactNode;
+  /** The page's primary action, repeated in the condensed bar once collapsed. */
+  compactAction?: CompactAction;
   titleRef?: Ref<HTMLHeadingElement>;
   titleProps?: HTMLAttributes<HTMLHeadingElement>;
   className?: string;
@@ -302,6 +335,7 @@ export function PageHeader({
   back,
   leading,
   actions,
+  compactAction,
   titleRef,
   titleProps,
   className = '',
@@ -320,6 +354,7 @@ export function PageHeader({
         ref={titleRef}
         compactTitle={compactTitle}
         back={back}
+        compactAction={compactAction}
         {...titleProps}
         className={`page-header-title ${titleProps?.className ?? ''}`}
       >

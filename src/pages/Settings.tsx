@@ -980,7 +980,7 @@ export function Settings() {
         titleProps={{ tabIndex: -1, className: 'outline-none' }}
       >
         {page === 'home' && (
-          <button type="button" className="you-search-field pressable mt-5"
+          <button type="button" className="you-search-field pressable mt-5" data-rest-block
             aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
             <Search size={17} strokeWidth={1.75} aria-hidden="true" />
             <span>Search</span>
@@ -1032,7 +1032,7 @@ export function Settings() {
               <button
                 data-you-focus="weight"
                 onClick={() => go('/settings/weight')}
-                className="you-text-action -mt-3.5 -mr-1 flex items-center gap-0.5"
+                className="you-text-action -mt-3.5 -mr-[1.6px] flex items-center gap-0.5"
               >
                 Details
                 <ChevronRight size={16} strokeWidth={1.75} className="you-row-chevron" aria-hidden="true" />
@@ -1081,7 +1081,8 @@ export function Settings() {
             />
             <SettingsRow
               title="Meal photo analysis"
-              description={foodAnalysisMode === 'gemini' ? 'Estimates nutrition online' : 'Estimates nutrition on your Mac'}
+              // Said from the phone: where its meal photos go to be estimated.
+              description={foodAnalysisMode === 'gemini' ? 'Estimates your meal photos online' : 'Sends meal photos to your Mac to estimate'}
               onClick={() => go('/settings/analysis')}
             />
           </SettingsSection>

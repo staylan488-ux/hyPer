@@ -13,8 +13,9 @@ interface ModalProps {
   children: ReactNode;
   contentClassName?: string;
   initialFocusRef?: RefObject<HTMLInputElement | null>;
-  /** Show the drag grabber. Turn off for a single-detent confirmation sheet,
-   *  where a grabber would suggest a resize that does not exist. */
+  /** Show the drag grabber. A sheet that swipes away shows it; turning it off
+   *  also blocks swipe-to-dismiss (for a sheet that must be answered), so
+   *  the grabber always tells the truth. */
   showGrabber?: boolean;
   /** Show the close button. Turn off only when the sheet's own actions include
    *  a cancel (Escape, the scrim and a pull-down still dismiss it). */
@@ -52,10 +53,12 @@ export function Modal({
   const titleId = useId();
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const close = useEffectEvent(onClose);
-  // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked)
-  const [sheetDrag] = useState(
+  // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked),
+  // and only on a sheet that shows its grabber.
+  const [phone] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
   );
+  const sheetDrag = phone && showGrabber;
 
   useEffect(() => {
     const dialog = dialogRef.current;

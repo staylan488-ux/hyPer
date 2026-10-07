@@ -6,6 +6,10 @@ class ScrollViewport extends EventTarget {
   clientHeight = 600;
   firstElementChild = {};
   private position = 0;
+  private attributes = new Set<string>();
+  setAttribute(name: string) { this.attributes.add(name); }
+  removeAttribute(name: string) { this.attributes.delete(name); }
+  hasAttribute(name: string) { return this.attributes.has(name); }
   get scrollTop() { return this.position; }
   set scrollTop(value: number) { this.position = Math.max(0, Math.min(value, this.height - this.clientHeight)); }
   asElement() { return this as unknown as HTMLElement; }
@@ -51,9 +55,12 @@ describe('tab scroll continuity', () => {
     const cleanup = bindRouteScroll(viewport.asElement(), '/history', memory);
     viewport.dispatchEvent(new Event('scroll'));
     expect(memory.get('/history')).toBe(760);
+    // Settling (title snap, rest nudge) holds off while the position is restored.
+    expect(viewport.hasAttribute('data-restoring-scroll')).toBe(true);
     viewport.height = 1800;
     resize();
     expect(viewport.scrollTop).toBe(760);
+    expect(viewport.hasAttribute('data-restoring-scroll')).toBe(false);
     cleanup();
   });
 

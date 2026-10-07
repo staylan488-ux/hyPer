@@ -23,6 +23,8 @@ tokens; an already approved direction does not need another design exploration.
   with no light pool. Greys stay truly neutral; never a blue, grey-violet or
   purple cast, spectral glow or colored light wash.
   Positive/completed states use ink; use semantic tokens for both themes.
+  Ivory secondary text is #575757 (`--color-muted`, `--color-text-dim`);
+  Ivory future dates #6B6B69. Empty states are one style: 15px secondary.
 - `text-base` collides with the `--color-base` theme color in Tailwind v4;
   use `text-[1rem]` when a 16px font size is intended.
 
@@ -47,9 +49,19 @@ tokens; an already approved direction does not need another design exploration.
   and where the veil already hides most of the content: wide blur where
   content still shows smears bright shapes into halos on true black. The
   scroll column's `scroll-padding-top` (64px) keeps scrolled-into-view
-  content below the ramp, and a page may grow by up to 30% of a screen so
-  its end stop lands on a row rest (`restingScrollEnd`: a row's first text at
-  the ramp's foot). Reduced transparency or increased contrast use a
+  content below the ramp. Like UIKit's target content offset, a collapsed
+  page that stops scrolling is nudged by at most 32pt (`restNudgeTarget`)
+  so no block straddles the band: each block either clears the ramp's foot
+  or sits under the solid zone. Blocks are sections, figures, platters and
+  their rows, full-width buttons and anything marked `data-rest-block`
+  (calendar weeks, a key figure, a field); `data-rest-ignore` leaves a
+  subtree out (`lib/restBlocks.ts`). A tall figure may pass under the band
+  while its last 40pt still shows. The nudge never runs while a finger or a
+  focused field holds the page or while route scroll restoration runs
+  (`data-restoring-scroll`), and is instant under reduced motion; no CSS
+  scroll-snap. A page ends at the tab bar's top plus 24px (`.pb-nav`), and
+  may take at most 72pt more only when that makes its last rest clean
+  (`cleanScrollEnd`). Reduced transparency or increased contrast use a
   solid bar with no blur. The large title
   scrolls under the band and the compact title switches in over the last
   ~10px of the collapse, not a long crossfade. Like UIKit, a page never
@@ -57,7 +69,9 @@ tokens; an already approved direction does not need another design exploration.
   settles fully expanded or fully collapsed (instantly under reduced
   motion), never while a finger or a focused field holds it; opening a sheet
   never moves the page.
-  Pushed screens keep their parent tab selected (`nativeTabForPath`).
+  A page may repeat its primary action in the condensed bar once collapsed
+  (`PageHeader` `compactAction`: Fuel's +, a bare ink glyph on the trailing
+  edge). Pushed screens keep their parent tab selected (`nativeTabForPath`).
   Contextual actions are sentence-case `text-action` buttons (15px medium in
   section headers; 16px in the bar row) in the one ink tint; a disabled
   action is that tint at 30% opacity, never grey as a style.
@@ -65,9 +79,13 @@ tokens; an already approved direction does not need another design exploration.
   (`SheetHeaderAction`). Sheets sit over a uniform dim (black at 50% in
   Black, 28% in Ivory) and cast no shadow; in Black the sheet surface is
   flat #161616 at 97% with no wash or sheen, in Ivory an opaque #F7F7F3,
-  so nothing behind it shows through; a single-detent confirmation
-  sheet hides the grabber, and the close button when its own actions
-  include a cancel (`Modal` `showGrabber` / `showClose`). Tracked caps are
+  so nothing behind it shows through, including in the 8pt gap under a
+  floating sheet. The grabber shows exactly when the sheet can be swiped
+  away; a sheet hides its close button when its own actions include a
+  cancel (`Modal` `showGrabber` / `showClose`). Close is a visible 44pt
+  circle. Logging food says where it goes ("Adding to Dinner · 7:20 PM ⌄",
+  from the logger's own meal and time, opening their pickers) in one 44pt
+  line between the title and the source control. Tracked caps are
   for section labels and kickers only; status labels, disclosure rows and
   units are sentence case (units beside or under a figure at 13px
   secondary: "sets", "eaten", "of 2,600 kcal target"). Sheet titles use the
@@ -99,8 +117,8 @@ tokens; an already approved direction does not need another design exploration.
   still a button that opens the month calendar), and paging chevrons with
   44pt keys 52pt apart whose last glyph ends on the trailing guide. Both
   grids use the same weekday letters and letter-to-date spacing and a 34pt
-  selected disc; History's day marks sit just under the disc on a 56px row
-  pitch, so they read as their own date's. A section
+  selected disc; on both, a date's marks sit 6pt under its disc (History on
+  a 56px row pitch), so they read as their own date's. A section
   label sits about 40px (cap to cap) above its first row's title.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
   web fallback elsewhere. The web bar matches the native geometry: 62px tall,
@@ -110,9 +128,11 @@ tokens; an already approved direction does not need another design exploration.
   labels, no ring or directional highlight (Ivory: one faint shadow and no
   hairline; Black: a flat #161616 at 94% with a uniform 0.5px hairline and
   no wash), the current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
-  side and concentric with the bar, and a 14px opacity-only bottom fade
-  from the bar's top edge, so content dissolves before the bar and a solid
-  fill resting near it is never graded into a ball. On iOS 26 the rest bar and status toasts are also
+  side and concentric with the bar, and above the bar a veil mirroring the
+  top band: a 28px smoothstep ramp over the same small progressive blur
+  (`.bottom-nav-edge`; no blur under reduced transparency or increased
+  contrast), so content softens before the bar and a solid fill resting
+  near it is never graded into a ball. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. The live workout is a
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
@@ -124,7 +144,8 @@ tokens; an already approved direction does not need another design exploration.
   movement's content starting at the ramp's foot; the session's scroll ends
   on such a movement rest (a little extra room, at most half a screen), and
   a short session gets the room to collapse, so neither the ring nor a row
-  rests split in the fade. Live
+  rests split in the fade; collapsed, the same 32pt rest nudge applies. The
+  clock uses lining tabular figures in both header states. Live
   workouts open with the Up next movement expanded; a movement's whole
   header row is its one toggle (no chevron or trailing count), expanding its
   details and inline set entry in place, with "•••" alone at the trailing
@@ -139,10 +160,16 @@ tokens; an already approved direction does not need another design exploration.
   tabular figures (rows below one step down at 17px, sharing a baseline with
   their 15px tabular secondary index), in fields on the well tone (#1C1C1C
   in Black). The open row's planned numbers are full ink, and the bare
-  "Planned" cue naming their source (no tutorial copy) is the only sign
-  they are suggestions; it shares one full 44pt row under the fields with
-  Repeat last. Every enabled text action is ink; grey is never a style for
-  something tappable.
+  "Planned" cue naming their source (13px regular secondary, no tutorial
+  copy) is the only sign they are suggestions; it shares one 44pt row under
+  the fields with Repeat last, itself a visible 44pt capsule row about
+  180pt wide. Inline set rows have no chevron (they open in place); Add note
+  is a full-width 44pt row. Collapsed and expanded movement rows give their
+  details in one order (sets, then reps). Every enabled text action is ink;
+  grey is never a style for something tappable. Row accessories (chevrons,
+  •••, trailing values) end on one optical edge 2pt inside the gutter
+  (376pt on a 402pt phone; `.trail-chevron`, `.trail-disclosure`,
+  `.trail-more`).
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
   continues while browsing or editing. Failed saves retain numbers and Retry.
@@ -189,9 +216,15 @@ layout and makes motion, data and 3D the expressive layer.
   load only through dynamic `import()`; they share the
   [renderer host](../../../src/lib/three/host.ts) and the
   [motion light](../../../src/lib/motionLight.ts). Weekly volume is a flat,
-  matte front/back [muscle map](../../../src/lib/volumeMap.ts): ink by volume
-  status, hollow (an ink outline, like the ○ status glyph) while trained
-  but under MEV, lacquer only past MRV, no gloss or 3D. Beside a sentence
+  matte front/back [muscle map](../../../src/lib/volumeMap.ts) in one tone
+  (`--map-body`, lifted in Black so the silhouette holds) with one 1.5px line
+  weight (1px on Today's small figure): the seams between muscles and the
+  hollow outline. Ink by volume status, hollow (an inset ink outline, like
+  the ○ status glyph) while trained but under MEV, lacquer only past MRV, no
+  gloss or 3D. Progress shows the two views without captions; its legend
+  uses the rows' circles and words ("Under-stimulated", "More sets", "Over
+  ceiling"), and set counts stay ink (red is the figure, the status and the
+  rail marker). Beside a sentence
   (Today's insight) the figure draws only the sentence's muscle, in the
   same legend style as Progress (hollow when the sentence is about
   under-stimulation, its status ink otherwise, lacquer only past MRV), and

@@ -15,11 +15,11 @@
   --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #616161;
+  --color-muted: #575757;
   /* Placeholders stay at least 4.5:1 on a filled field. */
   --color-placeholder: #616161;
   --color-text: #232323;
-  --color-text-dim: #616161;
+  --color-text-dim: #575757;
 
   /* The single accent — Lacquer. Everything else is ink on paper. */
   --color-accent: #A8352A;
@@ -80,11 +80,11 @@
   --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #616161;
+  --color-muted: #575757;
   /* Placeholders stay at least 4.5:1 on a filled field. */
   --color-placeholder: #616161;
   --color-text: #232323;
-  --color-text-dim: #616161;
+  --color-text-dim: #575757;
   --color-accent: #A8352A;
   --color-accent-deep: #872A20;
   --color-sage: var(--color-text);
@@ -110,6 +110,8 @@
   --button-primary-fg: var(--color-base);
   --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
   --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
+  /* The volume map's silhouette (BODY_INK in lib/volumeMap). */
+  --map-body: color-mix(in srgb, var(--color-text) 10%, var(--color-base));
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -152,6 +154,8 @@
   --button-primary-fg: #000000;
   --button-primary-hover: #E6E6E6;
   --button-primary-active: #D9D9D9;
+  /* Lifted from 10% so the silhouette's contour holds against true black. */
+  --map-body: color-mix(in srgb, var(--color-text) 18%, var(--color-base));
 }
 
 * {
@@ -341,10 +345,21 @@ body {
 }
 .pressable:active { transform: scale(0.985); }
 
-/* Clears the tab bar (native or web, same geometry), its 48px bottom scroll
-   edge and a little air, so the last row rests fully visible. */
+/* Row accessories (chevrons, •••, trailing values) end on one optical
+   trailing edge, 2px inside the 24px gutter (376pt on a 402pt phone).
+   Lucide insets each glyph in its box by its own amount, so each shape
+   shifts by its own measure (translate: no layout change, and it composes
+   with a disclosure's rotation). */
+.trail-chevron { translate: 3.5px 0; }
+.trail-disclosure { translate: 1.4px 0; }
+.trail-more { translate: 3.3px 0; }
+
+/* Clears the tab bar (native or web, same geometry) and its bottom scroll
+   edge with 24px of air: the last row ends just above the bar, never on a
+   field of empty stage. PageTitle adds at most one row more, only when that
+   is what lets the end rest clean. */
 .pb-nav {
-  padding-bottom: calc(var(--nav-top) + 56px);
+  padding-bottom: calc(var(--nav-top) + 24px);
 }
 
 /* ═════════════════════════════════════════════════════════════
@@ -539,25 +554,63 @@ input, textarea, select, button { font-family: inherit; }
   background-color: var(--material-glass);
   overflow: hidden;
 }
-/* Bottom scroll edge: content never shows in the strip below the bar's top
-   edge, and above it dissolves over a short 14px opacity-only ramp, so a
-   solid fill resting near the bar is never graded into a ball. */
+/* Bottom scroll edge, the top band's mirror: content never shows in the
+   strip below the bar's top edge, and above it dissolves over one 28px
+   smoothstep ramp (--nav-edge-fade) that starts at the bar, over the same
+   small progressive blur as the top band (2.5px, 1.25px, then 0.75px, kept
+   in the ramp's strongest half), so text resting at the bar is softened
+   and faded, never sliced, and a solid fill is blurred where it is graded,
+   never shaded into a ball. */
 .bottom-nav-edge {
+  --nav-edge-fade: 28px;
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 35;
-  height: calc(var(--nav-top) + 14px);
+  height: calc(var(--nav-top) + var(--nav-edge-fade));
   pointer-events: none;
+}
+.bottom-nav-edge-veil,
+.bottom-nav-edge-blur {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.bottom-nav-edge-veil {
+  inset: 0;
   background: linear-gradient(
     to top,
     var(--material-foundation) 0,
     var(--material-foundation) var(--nav-top),
-    color-mix(in srgb, var(--material-foundation) 55%, transparent) calc(var(--nav-top) + 5px),
-    color-mix(in srgb, var(--material-foundation) 18%, transparent) calc(var(--nav-top) + 10px),
+    color-mix(in srgb, var(--material-foundation) 98%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 1 / 12),
+    color-mix(in srgb, var(--material-foundation) 92.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 2 / 12),
+    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 3 / 12),
+    color-mix(in srgb, var(--material-foundation) 74.1%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 4 / 12),
+    color-mix(in srgb, var(--material-foundation) 62.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 5 / 12),
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 6 / 12),
+    color-mix(in srgb, var(--material-foundation) 37.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 7 / 12),
+    color-mix(in srgb, var(--material-foundation) 25.9%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 8 / 12),
+    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 9 / 12),
+    color-mix(in srgb, var(--material-foundation) 7.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 10 / 12),
+    color-mix(in srgb, var(--material-foundation) 2%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 11 / 12),
     transparent 100%
   );
+}
+.bottom-nav-edge-blur {
+  bottom: var(--nav-top);
+  height: calc(var(--nav-edge-fade) * var(--b1));
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  -webkit-mask-image: linear-gradient(to top, #000 calc(var(--nav-edge-fade) * var(--b0)), transparent calc(var(--nav-edge-fade) * var(--b1)));
+  mask-image: linear-gradient(to top, #000 calc(var(--nav-edge-fade) * var(--b0)), transparent calc(var(--nav-edge-fade) * var(--b1)));
+}
+.bottom-nav-edge-blur[data-layer="1"] { --b: 2.5px; --b0: .3; --b1: .5; }
+.bottom-nav-edge-blur[data-layer="2"] { --b: 1.25px; --b0: .5; --b1: .64; }
+.bottom-nav-edge-blur[data-layer="3"] { --b: .75px; --b0: .66; --b1: .88; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .bottom-nav-edge-blur { display: none; }
 }
 html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }
 .studio-sheet-overlay {
@@ -581,6 +634,19 @@ html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility:
     margin: 0 8px 8px;
     width: calc(100% - 16px);
     border-radius: 34px 34px 47px 47px;
+  }
+  /* The 8px gap under the floating sheet shows only the dimmed stage, never
+     a row's hairline running through it. Painted before the sheet, so a
+     sheet sliding in or dragged down still covers it. */
+  .studio-sheet-overlay::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    background: linear-gradient(var(--overlay-backdrop), var(--overlay-backdrop)), var(--material-foundation);
+    pointer-events: none;
   }
 }
 

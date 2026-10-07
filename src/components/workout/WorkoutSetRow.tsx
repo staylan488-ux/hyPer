@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, ChevronRight, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowUp, Check, Loader2, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAppStore } from '@/stores/appStore';
 import { celebrationHaptic, tapHaptic } from '@/lib/haptics';
@@ -187,7 +187,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const entryLabel = validNumbers ? `, ${entryWeight} pounds, ${entryReps} reps${entryRpe ? `, RPE ${entryRpe}` : ''}` : '';
   // Offer last workout/last set only when it differs from what is already shown.
   const autofillAction = autofillValues && (autofillValues.weight !== entryWeight || autofillValues.reps !== entryReps || autofillValues.rpe !== entryRpe)
-    ? <button type="button" disabled={saving} onClick={() => {
+    ? <button type="button" className="studio-set-repeat pressable" disabled={saving} onClick={() => {
       tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
     }}><RotateCcw size={13} aria-hidden /><span className="studio-set-offer">{repeatOfferLabel(autofillValues)}</span></button>
     : null;
@@ -203,7 +203,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       <span className="studio-set-state">{saveError ? 'Retry' : hasDraft.current ? 'Draft' : set.completed ? <>
         <InkCheck key={stamp?.key ?? 'settled'} />
         {performance === 'beat' && <ArrowUp size={12} strokeWidth={2.25} className="studio-set-beat" aria-hidden />}
-      </> : <ChevronRight size={16} aria-hidden />}</span>
+      </> : null}</span>
       <AnimatePresence>
         {stamp?.gain && (
           <motion.span
@@ -242,7 +242,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       <div className="studio-set-editor-foot">
         {showingSuggestion && suggestion
           ? <span id={suggestionCaptionId} className="studio-set-suggestion">
-            <strong>{SUGGESTION_SOURCE[suggestion.source]}</strong>
+            {SUGGESTION_SOURCE[suggestion.source]}
             <span className="sr-only">, Save logs these numbers as shown</span>
           </span>
           : <span className="studio-set-foot-note">{!autofillAction && formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}

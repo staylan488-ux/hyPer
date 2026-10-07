@@ -141,10 +141,10 @@ describe('Train live session', () => {
     // Inputs stay empty: the plan is a placeholder until it is typed over or saved.
     expect(html).toMatch(/<input[^>]*aria-label="Weight"[^>]*data-suggested="true"[^>]*placeholder="80"/);
     expect(html).not.toMatch(/<input[^>]*value="80"/);
-    expect(html).toContain('<strong>Planned</strong>');
+    expect(html).toMatch(/<span[^>]*class="studio-set-suggestion">Planned/);
     expect(html).toContain('aria-label="Save set 1 of Barbell Row, 80 pounds, 10 reps, RPE 7"');
     // One line: the plan's source, and last workout offered as a repeat.
-    expect(html).toMatch(/<div class="studio-set-editor-foot">.*<strong>Planned<\/strong>.*Repeat last · 60 × 9.*<\/div>/s);
+    expect(html).toMatch(/<div class="studio-set-editor-foot">.*>Planned<.*Repeat last · 60 × 9.*<\/div>/s);
     // Entry closes with the movement's disclosure, not a second grey control.
     expect(html).not.toContain('Hide entry');
   });

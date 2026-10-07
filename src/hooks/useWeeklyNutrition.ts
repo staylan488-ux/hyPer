@@ -69,12 +69,14 @@ async function fetchWeeklyNutrition() {
       dailyNutritionMap.set(d, { date: d, calories: 0, protein: 0 });
     }
 
+    // Each entry rounds once, as its row on Fuel reads, before summing: the
+    // week's figures then agree with Fuel's and Today's day totals.
     if (nutritionLogs) {
       nutritionLogs.forEach(log => {
         const dayData = dailyNutritionMap.get(log.date);
         if (dayData) {
-          dayData.calories += logMacro(log, 'calories') ?? 0;
-          dayData.protein += logMacro(log, 'protein') ?? 0;
+          dayData.calories += Math.round(logMacro(log, 'calories') ?? 0);
+          dayData.protein += Math.round(logMacro(log, 'protein') ?? 0);
         }
       });
     }

@@ -192,7 +192,7 @@ export function Analysis() {
                       <span className="status-label" data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}>
                         {call.chip}
                       </span>
-                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
+                      <motion.span className="trail-disclosure" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.span>
                     </span>
@@ -200,7 +200,9 @@ export function Analysis() {
 
                   <div className="flex items-baseline justify-between gap-4 mb-4">
                     <span className="flex items-baseline gap-1.5">
-                      <span className={`number-medium ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
+                      {/* The count stays ink: the status label and the rail's
+                          marker already carry "over ceiling". */}
+                      <span className="number-medium text-[var(--color-text)]">
                         {mv.weekly_sets}
                       </span>
                       <span className="t-caption">sets</span>
@@ -291,7 +293,7 @@ export function Analysis() {
           onClick={() => setShowExplainer(!showExplainer)}
         >
           <span className="text-[15px] font-medium text-[var(--color-text)]">What the landmarks mean</span>
-          <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
+          <motion.span className="trail-disclosure" animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
             <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
           </motion.span>
         </button>

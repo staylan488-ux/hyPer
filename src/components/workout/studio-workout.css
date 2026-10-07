@@ -21,8 +21,10 @@
    is secondary ink at a legible 15pt with tabular digits. */
 .studio-session-centre { grid-column: 2; display: grid; place-items: center; min-width: 0; }
 .studio-session-centre > * { grid-area: 1 / 1; }
-.studio-session-clock { font-family: var(--font-sans); font-size: 15px; line-height: 1.2; letter-spacing: -.005em; color: var(--color-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.studio-session-compact.page-scroll-edge-title { max-width: min(62vw, 300px); font-variant-numeric: tabular-nums; }
+/* The elapsed time keeps one figure style as the bar condenses: tabular
+   lining figures, in the sans clock and in the serif compact title alike. */
+.studio-session-clock { font-family: var(--font-sans); font-size: 15px; line-height: 1.2; letter-spacing: -.005em; color: var(--color-text-dim); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.studio-session-compact.page-scroll-edge-title { max-width: min(62vw, 300px); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; }
 /* Minimise: a bare 44pt chevron, no fill or bubble; its stroke sits on the 24pt guide. */
 .studio-session-minimise { justify-self: start; justify-content: center; width: 44px; height: 44px; margin-left: -16px; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
 .studio-session-minimise:active { opacity: .5; }
@@ -124,25 +126,30 @@
    same weight as a typed one. */
 .studio-set-input::placeholder { color: var(--color-text-dim); opacity: .62; font-weight: 400; }
 .studio-set-input[data-suggested]::placeholder { color: var(--color-text); opacity: 1; font-weight: 600; }
-/* Block, not flex, so the cue's word spacing survives. */
-.studio-set-suggestion { display: block; white-space: nowrap; }
-.studio-set-suggestion strong { font-weight: 500; color: var(--color-text); }
+/* Block, not flex, so the cue's word spacing survives. The source is a
+   quiet 13px secondary note, never a heading: the fields and the actions are
+   the row's only emphasis. */
+.studio-set-suggestion { display: block; white-space: nowrap; font-size: 13px; font-weight: 400; color: var(--color-text-dim); }
 .studio-set-offer { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .studio-save-set { display: flex; align-items: center; justify-content: center; border: 0; font-size: 11px; transition: transform .12s cubic-bezier(.2,.9,.25,1); }
 .studio-save-set:active:not(:disabled) { transform: scale(.94); }
 .studio-save-set:disabled { opacity: .4; }
 .studio-save-error { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--color-text); }
 /* One full 44pt row under the fields: the numbers' source ("Planned";
-   secondary, not interactive) and the alternatives as ink text actions whose
-   44pt targets fill the row, so Repeat last never overlaps the fields. */
-.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
-.studio-set-editor-foot > div { display: flex; gap: 16px; margin-left: auto; }
-.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; color: var(--color-text); }
+   secondary, not interactive) and the alternatives. Repeat last is a flat
+   neutral capsule the row's full 44pt tall and at least 180pt wide, so what
+   shows is what takes the tap; Cancel is an ink text action. */
+.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; padding: 8px 0; font-size: 13px; line-height: 1.4; color: var(--color-text-dim); }
+.studio-set-editor-foot > div { display: flex; gap: 12px; margin-left: auto; }
+.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; font-size: 15px; font-weight: 500; color: var(--color-text); }
+.studio-set-editor-foot .studio-set-repeat { min-width: 180px; padding: 0 16px; border-radius: var(--radius-capsule); background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.dark .studio-set-editor-foot .studio-set-repeat { background: var(--color-well); }
 .studio-set-editor-foot button:disabled { opacity: .3; }
 .studio-movement-note { margin-top: 4px; }
 .studio-note-text { padding-top: 8px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Add / Edit note is a text action: ink, like every enabled action. */
-.studio-note-action { display: flex; align-items: center; gap: 4px; min-height: 44px; font-size: 13px; line-height: 1.4; color: var(--color-text); }
+/* Add / Edit note is a text action on its own full-width 44pt row: ink,
+   like every enabled action. */
+.studio-note-action { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 44px; font-size: 15px; font-weight: 500; line-height: 1.4; text-align: left; color: var(--color-text); }
 
 /* Compact iPhones (SE, mini) keep common movement names on one line. */
 @media (max-width: 380px) {

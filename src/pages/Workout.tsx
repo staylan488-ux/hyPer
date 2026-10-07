@@ -37,7 +37,7 @@ import { SessionToken } from '@/components/workout/SessionToken';
 import { LiveSessionBar } from '@/components/workout/LiveSessionBar';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { movementBlocks } from '@/components/workout/movementOrder';
-import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, movementProgressLabel, nextSetAction, nextWorkoutSet, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, movementProgressLabel, nextSetAction, nextWorkoutSet, repTargetLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -1691,7 +1691,7 @@ export function Workout() {
             <span className="ring-unit">sets</span>
           </MetalRing>
         </div>
-        <div className="studio-session-actions">
+        <div className="studio-session-actions" data-rest-block>
           <span className="t-caption">{isReorderingMovements ? 'Drag a handle to reorder' : `${focusOrder.length} ${focusOrder.length === 1 ? 'movement' : 'movements'}`}</span>
           <div>
             {isReorderingMovements ? (
@@ -1955,10 +1955,11 @@ export function Workout() {
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
                 {/* The rows are today's sets; the program's count appears only when it
-                    differs. Swap lives in the movement's options. */}
+                    differs. Sets, then reps: the closed row's order. Swap lives in
+                    the movement's options. */}
                 <p className="studio-movement-prescription">
                   {exerciseSetRanges.has(exerciseId)
-                    ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${todaySetCountLabel(sets.length, setRange.targetSets)}`
+                    ? [todaySetCountLabel(sets.length, setRange.targetSets), repTargetLabel(prescription?.target_reps_min, prescription?.target_reps_max)].filter(Boolean).join(' · ')
                     : todaySetCountLabel(sets.length)}
                 </p>
                 <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
@@ -2094,10 +2095,10 @@ export function Workout() {
       )}
 
       {/* Complete Confirmation */}
-      {/* A single-height confirmation: no grabber, and no close, since "Keep
-          training" is the cancel. */}
+      {/* It swipes away like every sheet, so it shows the grabber; no close,
+          since "Keep training" is the cancel. */}
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?"
-        contentClassName="pt-2!" showGrabber={false} showClose={false}>
+        contentClassName="pt-2!" showClose={false}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" />
@@ -2214,9 +2215,7 @@ function ExerciseCard({
   // no trailing count).
   const indexLabel = `Movement ${String(index + 1).padStart(2, '0')}${isActive && !reordering ? ` · ${movementProgressLabel(completedCount, totalCount)}` : ''}`;
   const eyebrow = `${loggingNow ? `Now · Set ${nextSetPosition} of ${totalCount}` : upNext ? 'Up next' : indexLabel}${superset}`;
-  const repTarget = targetRepsMin && targetRepsMax
-    ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
-    : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
+  const repTarget = repTargetLabel(targetRepsMin, targetRepsMax);
   const headingRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2350,7 +2349,7 @@ function MovementNote({
   return (
     <div className="studio-movement-note">
       {!editing && value.trim() && <p className="studio-note-text">{value}</p>}
-      <button type="button" className="studio-note-action" aria-expanded={editing}
+      <button type="button" className="studio-note-action pressable" aria-expanded={editing}
         aria-controls={`movement-note-${exerciseId}`} onClick={() => setEditing((open) => !open)}>
         {editing ? 'Hide note editor' : value.trim() ? 'Edit note' : 'Add note'}
       </button>

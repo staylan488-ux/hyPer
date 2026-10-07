@@ -7,9 +7,9 @@
 /* ─── Calendar ──────────────────────────────────────────────── */
 /* Month grid on Fuel's week-strip metrics: the same weekday letters and
    letter-to-date spacing, a 34px selected ink disc with the 15px day number
-   centred in it, and today named in lacquer. A day's marks sit just under
-   its disc (about 13px under the number) and well clear of the next row
-   (56px row pitch), so they read as belonging to their own date. */
+   centred in it, and today named in lacquer. A day's marks sit 6px under
+   its disc, as Fuel's dot does, and clear of the next row (56px row
+   pitch), so they read as belonging to their own date. */
 .ledger-day {
   position: relative;
   display: flex;
@@ -39,7 +39,7 @@
 }
 .ledger-day-marks {
   position: absolute;
-  top: 36px;
+  top: 40px;
   inset-inline: 0;
   display: flex;
   align-items: center;
@@ -53,21 +53,10 @@
 .ledger-mark-lift { width: 5px; height: 5px; border-radius: 50%; background: var(--color-text); }
 .ledger-mark-activity { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--color-text); }
 /* Days still to come: tertiary ink, lighter than days on record but at
-   least 4.5:1 in both themes (#75756F on Ivory, #8C8C8C on Black). */
-.ledger-day-future { color: var(--color-text); opacity: .6; }
-.dark .ledger-day-future { opacity: .55; }
+   least 4.5:1 in both themes (#6B6B69 on Ivory, #8C8C8C on Black). */
+.ledger-day-future { color: #6B6B69; }
+.dark .ledger-day-future { color: var(--color-text); opacity: .55; }
 
-/* The day's quiet sync key beside Add activity: an icon, 44px target. */
-.history-sync-key {
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-dim);
-  -webkit-tap-highlight-color: transparent;
-}
-.history-sync-key:disabled { opacity: .5; }
 
 /* ─── Grouped lists inside platters ─────────────────────────── */
 .ledger-rule { height: 1px; background: var(--platter-divider); }

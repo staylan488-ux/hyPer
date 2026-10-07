@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, CalendarHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
@@ -548,7 +548,7 @@ function ActivityLedgerRow({
           )}
           </span>
           {!hasSplits && !selectable && (
-            <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} aria-hidden />
+            <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} aria-hidden />
           )}
         </button>
 
@@ -1441,17 +1441,16 @@ export function History() {
           <div className="flex items-center justify-between gap-3 -mt-1.5 mb-1.5">
             <p className="t-caption min-w-0">{selectedDaySummary}</p>
             <div className="flex items-center shrink-0 -mr-2.5">
-              {/* Sync is a quiet icon; Add activity stays the one action. */}
+              {/* Sync says what it does: a labelled text action beside Add activity. */}
               {syncAvailable && (
                 <button
                   type="button"
-                  className="history-sync-key pressable"
+                  className="text-action"
                   aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
-                  title="Sync WHOOP"
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
-                  <RefreshCw className={`w-[17px] h-[17px] ${syncingWhoop ? 'motion-safe:animate-spin' : ''}`} strokeWidth={1.6} aria-hidden />
+                  {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
                 </button>
               )}
               <button
@@ -1544,7 +1543,7 @@ export function History() {
                       </div>
                       {/* Sets read inline in the subtitle ("3/9 sets"); the ring is
                           kept for Today's live session. */}
-                      <motion.div className="shrink-0" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
+                      <motion.div className="trail-disclosure shrink-0" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.div>
                     </button>

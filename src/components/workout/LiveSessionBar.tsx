@@ -3,6 +3,8 @@ import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { ScrollEdgeVeil } from '@/components/shared/PageTitle';
+import { restNudgeTarget } from '@/lib/titleSnap';
+import { measureRestBand, measureRestBlocks } from '@/lib/restBlocks';
 import { compactSessionTitle, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd } from './workoutFocus';
 
 // The bar row under the status bar; the session title starts to hand over to
@@ -30,7 +32,9 @@ const SETTLE_MS = 140;
  * scrolling ends part-way it settles expanded or wholly collapsed under the
  * bar's solid edge, with the first movement's content starting at the ramp's
  * foot, and the page always has room to collapse it, so neither the ring nor
- * a row rests split in the fade. Fixed inside the untransformed route content;
+ * a row rests split in the fade. Once collapsed, a rest that would leave a
+ * row split by the bar is nudged by at most 32px (`restNudgeTarget`), never
+ * under a finger or a focused field. Fixed inside the untransformed route content;
  * scroll-linked only. Its in-flow spacer keeps the header below it in place.
  */
 export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef, finishing, onMinimise, onFinish }: {
@@ -126,8 +130,17 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       if (touching) return;
       const focused = document.activeElement;
       if (focused instanceof HTMLElement && focused.matches('input, textarea, select')) return;
-      const target = liveHeaderSnapTarget(viewport.scrollTop, collapse);
-      if (target === null) return;
+      if (viewport.hasAttribute('data-restoring-scroll')) return;
+      let target = liveHeaderSnapTarget(viewport.scrollTop, collapse) ?? viewport.scrollTop;
+      // Collapsed: no movement row, set row or action rests split by the bar
+      // (the same rest nudge as every PageTitle page).
+      const page = pageRef.current;
+      const bar = barRef.current;
+      const max = viewport.scrollHeight - viewport.clientHeight;
+      if (page && bar && collapse > 1 && target >= collapse - 0.5) {
+        target = restNudgeTarget(target, measureRestBlocks(page, viewport), measureRestBand(bar, viewport), { min: Math.min(collapse, max), max }) ?? target;
+      }
+      if (Math.abs(target - viewport.scrollTop) < 0.5) return;
       viewport.scrollTo({ top: target, behavior: readMotionPolicy().reducedMotion ? 'auto' : 'smooth' });
     };
     const hasScrollEnd = 'onscrollend' in viewport;

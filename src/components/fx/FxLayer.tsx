@@ -8,7 +8,7 @@ function readColors(): BurstColors {
   return {
     ink: read('--color-text', '#232323'),
     accent: read('--color-accent', '#A8352A'),
-    paper: read('--color-text-dim', '#616161'),
+    paper: read('--color-text-dim', '#575757'),
   };
 }
 

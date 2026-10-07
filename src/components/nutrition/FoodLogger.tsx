@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Check, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { Camera, Check, ChevronDown, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button, DateField, FormField, Input, RailStrip, SegmentedControl, SelectSheet, Stepper, TimeField } from '@/components/shared';
 import { springs } from '@/lib/animations';
@@ -1476,6 +1476,23 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
     }
   };
 
+  /* ── Where and when "+" logs: the same date, time and destination state
+     the review stage saves with, said in one line under the sheet title. ── */
+  const [showWhen, setShowWhen] = useState(false);
+  const whenGroup = entryUsesSelectedDayGroups ? orderedGroups.find((group) => group.id === groupId) ?? null : null;
+  const whenClock = (() => {
+    const [hours, minutes] = timeValue.split(':').map(Number);
+    if (!Number.isFinite(hours)) return '';
+    const at = new Date(entryDate);
+    at.setHours(hours, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+    return format(at, 'h:mm a');
+  })();
+  const whenSummary = [
+    `Adding to ${whenGroup ? nutritionGroupLabel(whenGroup, orderedGroups) : 'Unassigned'}`,
+    isToday(entryDate) ? null : format(entryDate, 'MMM d'),
+    whenClock || null,
+  ].filter(Boolean).join(' · ');
+
   /* ── Shared "when" row: date · time · destination ── */
   const whenRow = onAddIngredients ? (saveError && <p role="alert" className="t-caption text-[var(--color-accent)]">{saveError}</p>) : (
     <div className="grid grid-cols-2 gap-3">
@@ -1872,6 +1889,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
 
   return (
     <div className="space-y-6 pt-1 pb-2">
+      {!onAddIngredients && !initialEntry && (
+        // Close under the title (its 44px key overhangs the gaps above and below).
+        <div className="-mt-5 mb-1">
+          <button type="button" className="food-when-summary pressable" aria-expanded={showWhen} onClick={() => setShowWhen((open) => !open)}>
+            <span>{whenSummary}</span>
+            <ChevronDown size={15} strokeWidth={1.75} aria-hidden className={showWhen ? 'rotate-180' : undefined} />
+          </button>
+          {showWhen && <div className="pt-2 pb-3">{whenRow}</div>}
+        </div>
+      )}
       <SegmentedControl
         value={mode}
         onChange={(next) => {

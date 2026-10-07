@@ -41,6 +41,8 @@
 .you-row-chevron {
   flex-shrink: 0;
   color: var(--color-muted);
+  /* On the shared trailing accessory edge (see .trail-chevron). */
+  translate: 1.8px 0;
 }
 
 /* Footer copy under a group, the way iOS explains a setting. */
@@ -115,10 +117,11 @@
   overflow-wrap: anywhere;
   color: var(--color-text);
 }
-/* Empty state: 17px secondary text, never the page's largest line. */
+/* Empty state: the app's one empty-state voice, 15px secondary text
+   (Fuel's "Nothing logged." alike), never the page's largest line. */
 .you-weight-value.is-empty {
   font-family: var(--font-sans);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 400;
   font-variant-numeric: normal;
   letter-spacing: -.005em;

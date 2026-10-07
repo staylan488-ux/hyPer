@@ -235,7 +235,7 @@ export function Dashboard() {
                   <span className="t-heading block">{s.label}</span>
                   <span className="t-caption">{s.sub}</span>
                 </span>
-                <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
+                <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
               </Link>
             </li>
           ))}
@@ -248,7 +248,7 @@ export function Dashboard() {
           <Link to="/analysis" className="block group">
             <div className="flex items-center justify-between mb-[23px]">
               <span className="t-label">This week</span>
-              <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
+              <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
             </div>
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">

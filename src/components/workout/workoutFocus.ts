@@ -144,6 +144,18 @@ export function todaySetCountLabel(todaySets: number, programSets?: number | nul
 }
 
 /**
+ * A movement's rep target ("8–10 reps", "8 reps", "8+ reps", "Up to 10
+ * reps"), or null without one. Closed and open movements say their details
+ * in one order: sets, then reps.
+ */
+export function repTargetLabel(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min && max) return `${min === max ? min : `${min}–${max}`} reps`;
+  if (min) return `${min}+ reps`;
+  if (max) return `Up to ${max} reps`;
+  return null;
+}
+
+/**
  * A closed movement's progress, stated once with today's set count: "3 sets"
  * before any is logged, "1 of 3 sets" part-way, "3 sets · Complete" when done.
  */

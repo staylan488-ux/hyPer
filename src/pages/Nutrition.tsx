@@ -457,7 +457,18 @@ export function Nutrition() {
       <Toast show={showSuccess} message="Entry saved" />
 
       {/* ── Dateline ── */}
-      <PageHeader eyebrow={format(selectedDate, 'EEEE, MMM d')} title="Fuel" />
+      <PageHeader
+        eyebrow={format(selectedDate, 'EEEE, MMM d')}
+        title="Fuel"
+        compactAction={{
+          label: 'Log food',
+          icon: <Plus className="w-[22px] h-[22px]" strokeWidth={1.75} aria-hidden />,
+          onClick: () => {
+            setEditingEntry(null);
+            setShowLogger(true);
+          },
+        }}
+      />
 
       {/* ── Week strip + month jump: date navigation sits with the date ── */}
       <section className="platter mt-3 px-3 pt-1 pb-1" aria-label="Choose a day">
@@ -540,12 +551,12 @@ export function Nutrition() {
           </>
         )}
 
-        {/* 16px under the figure keeps the first view's last macro (Fat)
-            clear of the tab bar's bottom fade. */}
+        {/* 20px under the figure: the figure row and the pill can rest one
+            under the bar's solid stage, the other clear of its ramp. */}
         <Button
           size="lg"
           metal
-          className="w-full mt-4"
+          className="w-full mt-5"
           onClick={() => {
             setEditingEntry(null);
             setShowLogger(true);
@@ -802,6 +813,7 @@ export function Nutrition() {
           setLoggerGroupId(null);
         }}
         title={editingEntry ? 'Edit entry' : 'Log food'}
+        contentClassName="pt-1!"
       >
         <MealLogger
           onBusyChange={setLoggerBusy}
