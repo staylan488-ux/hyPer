@@ -14,11 +14,15 @@ interface PreviousTarget { weight: number | null; reps: number | null; rpe: numb
 /** Numbers offered for an unlogged set, shown dimmed until typed over or confirmed. */
 interface SetSuggestion { weight: string; reps: string; rpe: string; source: 'planned' | 'last_workout' | 'last_set' }
 
+/** The cue beside ghosted numbers: where they came from. */
 const SUGGESTION_SOURCE: Record<SetSuggestion['source'], string> = {
-  planned: 'Planned for this set',
-  last_workout: 'Suggested from last workout',
-  last_set: 'Suggested from your last set',
+  planned: 'Planned',
+  last_workout: 'From last workout',
+  last_set: 'From your last set',
 };
+
+/** "60 × 9" for an autofill offer, so it can be weighed against the plan. */
+const offerNumbers = (values: AutofillSetValues) => (values.weight && values.reps ? `${values.weight} × ${values.reps}` : '');
 
 const numberText = (value: number | null | undefined) => (typeof value === 'number' && Number.isFinite(value) ? value.toString() : '');
 
@@ -190,7 +194,8 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const autofillAction = autofillValues && (autofillValues.weight !== entryWeight || autofillValues.reps !== entryReps || autofillValues.rpe !== entryRpe)
     ? <button type="button" disabled={saving} onClick={() => {
       tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
-    }}><RotateCcw size={13} aria-hidden />{autofillValues.source === 'current_workout' ? 'Use last set' : 'Use last workout'}</button>
+    }}><RotateCcw size={13} aria-hidden />{autofillValues.source === 'current_workout' ? 'Use last set' : 'Use last workout'}
+      {offerNumbers(autofillValues) && <span className="studio-set-offer">· {offerNumbers(autofillValues)}</span>}</button>
     : null;
 
   return <>
@@ -224,13 +229,13 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       {isNext && <span className="sr-only">Next set</span>}
       {performance !== 'unknown' && <span className="sr-only">{performance} previous workout</span>}
     </button>
-    <form ref={formRef} className="studio-set-editor" aria-label={`Set ${setNumber} entry${exerciseName ? ` for ${exerciseName}` : ''}`} hidden={!editing}
+    <form ref={formRef} className="studio-set-editor" data-set-id={set.id} aria-label={`Set ${setNumber} entry${exerciseName ? ` for ${exerciseName}` : ''}`} hidden={!editing}
       onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
       <div className="studio-set-entry" data-workout-set-entry>
         <span className="studio-set-index">{String(setNumber).padStart(2, '0')}</span>
-        <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={suggestion?.weight || '0'} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={0} step="any" required={!suggestion?.weight} />
-        <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={suggestion?.reps || '0'} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="numeric" min={0} step={1} required={!suggestion?.reps} />
-        <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={suggestion?.rpe || '—'} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
+        <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={suggestion?.weight || '0'} suggested={Boolean(suggestion?.weight)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={0} step="any" required={!suggestion?.weight} />
+        <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={suggestion?.reps || '0'} suggested={Boolean(suggestion?.reps)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="numeric" min={0} step={1} required={!suggestion?.reps} />
+        <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={suggestion?.rpe || '—'} suggested={Boolean(suggestion?.rpe)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
         <button ref={editing ? litSaveRef : undefined} type="submit" className="studio-save-set liquid-metal" disabled={!validNumbers || saving} aria-busy={saving}
           aria-label={saving ? `Saving ${setLabel}` : saveError ? `Retry saving ${setLabel}${entryLabel}` : set.completed ? `Save changes to ${setLabel}${entryLabel}` : `Save ${setLabel}${entryLabel}`}>
           {saving ? <Loader2 size={18} className="animate-spin" aria-hidden /> : saveError ? <span>Retry</span> : <Check size={22} strokeWidth={2.25} aria-hidden />}
@@ -238,19 +243,26 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       </div>
       {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
       <div className="studio-set-editor-foot">
+        {/* Ghosted numbers carry their source, and the save key accepts them
+            as they are in one tap. */}
         {showingSuggestion && suggestion
-          ? <span id={suggestionCaptionId} className="studio-set-suggestion">{SUGGESTION_SOURCE[suggestion.source]}</span>
+          ? <span id={suggestionCaptionId} className="studio-set-suggestion">
+            <strong>{SUGGESTION_SOURCE[suggestion.source]}</strong>
+            <span aria-hidden> · tap <Check size={12} strokeWidth={2.25} className="studio-set-suggestion-check" /> to log</span>
+            <span className="sr-only">, Save logs these numbers as shown</span>
+          </span>
           : autofillAction ?? <span>{formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
         <div>
-          {showingSuggestion && autofillAction}
           {set.completed && <button type="button" disabled={saving} onClick={() => {
             hasDraft.current = false;
             setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
             setSaveError(null); releaseEditorFocus(); onHide?.();
           }}>Cancel</button>}
-          <button type="button" onClick={() => { tapHaptic(); releaseEditorFocus(); onHide?.(); }}>Hide <ChevronUp size={13} /></button>
+          <button type="button" aria-label={`Hide entry for ${setLabel}`} onClick={() => { tapHaptic(); releaseEditorFocus(); onHide?.(); }}>Hide entry <ChevronUp size={13} aria-hidden /></button>
         </div>
       </div>
+      {/* The alternative to a suggestion sits on its own line under it. */}
+      {showingSuggestion && autofillAction && <div className="studio-set-editor-alt">{autofillAction}</div>}
       <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
     </form>
   </>;
@@ -265,11 +277,13 @@ function InkCheck() {
   );
 }
 
-function SetInput({ label, value, onChange, placeholder, describedBy, disabled, inputMode, min, max, step, required }: {
-  label: string; value: string; onChange: (value: string) => void; placeholder: string; describedBy?: string;
+function SetInput({ label, value, onChange, placeholder, suggested, describedBy, disabled, inputMode, min, max, step, required }: {
+  label: string; value: string; onChange: (value: string) => void; placeholder: string; suggested: boolean; describedBy?: string;
   disabled: boolean; inputMode: 'decimal' | 'numeric'; min: number; max?: number; step: string | number; required?: boolean;
 }) {
+  // A suggested number reads clearly (ghost ink, not a faint hint); a bare "0" or "—" stays a hint.
   return <input className="studio-set-input" type="number" aria-label={label} aria-describedby={describedBy} inputMode={inputMode}
+    data-suggested={suggested || undefined}
     value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
     disabled={disabled} min={min} max={max} step={step} required={required} />;
 }

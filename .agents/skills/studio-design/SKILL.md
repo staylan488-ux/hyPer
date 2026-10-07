@@ -30,10 +30,11 @@ tokens; an already approved direction does not need another design exploration.
 
 - The approved Liquid direction (2026-10-06, "Metal accents") is in
   [the liquid metal plan](../../../docs/plans/2026-10-06-liquid-metal.md):
-  page sections sit on `.platter` glass panels (grouped lists use
-  `platter-flush` + `platter-row`); floating chrome is liquid glass with a
-  specular edge; editorial content inside platters stays ruled. Nested cards
-  and controls never add their own backdrop filter.
+  since 2026-10-07 it is cardless. Page sections (`.platter`) sit directly
+  on the background with no fill, edge or shadow, grouped by spacing, inset
+  hairlines and section labels; never nest cards or outline rows. Liquid
+  glass is only for the floating layer (tab bar, toolbars, sheets, toasts).
+  Controls never add their own backdrop filter.
 - Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
   quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
   at the same height everywhere; it condenses into the scroll-edge band, a
@@ -46,13 +47,14 @@ tokens; an already approved direction does not need another design exploration.
   (`SheetHeaderAction`). Tracked caps are for section labels only; status
   labels and disclosure rows are sentence case. Sheet titles use the
   editorial `sheet-title`.
-- Primary actions are metal-capped capsules (`Button` primary: graphite dome in
-  Black, pearl in Ivory, still chrome bezel). Exactly one hero action per
-  screen may pass `metal` for the live, tilt-lit bezel. Secondary actions are
-  clear glass capsules; contextual row actions stay unboxed. A `MetalRing`
+- Primary actions are solid, sentence-case capsules (`Button` primary: near
+  white on Black, ink on Ivory) with no gloss, rim or chrome. Liquid metal is
+  reserved for the live workout's set save key, the app's one machined
+  control. Secondary actions are flat neutral tints; contextual row actions
+  stay unboxed. A `MetalRing`
   dial carries a screen's single headline ratio (Today's session, Fuel's
-  calories); lists state counts inline ("3/9 sets"). Bars are metal
-  `RailStrip`s; target ticks are ink at 35%, lacquer only for live and over.
+  calories); lists state counts inline ("3/9 sets"). Rings and
+  `RailStrip` bars are flat ink; target ticks are ink at 35%, lacquer only for live and over.
   Meaningful touch targets are at least 44px.
 - Segmented controls use native metrics: a 36px capsule track, 2px inset,
   equal segments and a 32px thumb, each segment's hit area extended to 44px.
@@ -64,8 +66,18 @@ tokens; an already approved direction does not need another design exploration.
   labels, the current tab a flat fill (no chip or shadow), and a bottom
   scroll-edge fade so content dissolves before it. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
-  the web keeps all timer, save and preference behavior. Live workouts open with the Up next movement expanded; tapping a movement
+  the web keeps all timer, save and preference behavior. The live workout is a
+  full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
+  to Today, the elapsed clock sits on the screen's centre line, Finish is a
+  regular-weight text action, and its session ring matches Today's. Live
+  workouts open with the Up next movement expanded; tapping a movement
   expands its details and inline set entry in place, with an explicit collapse.
+  Between sets (no entry open) a solid "Log set N · Movement" primary docks
+  above the home indicator and above the rest bar, and opens that entry. The
+  44pt save key, flush with the fields, is the screen's one metal accent
+  (pearl in Black, graphite in Ivory, smooth two-stop face, soft upper-arc
+  chamfer only). Suggested/planned numbers are ghost ink (at least 4.5:1) with
+  their source named; entered and logged numbers are full ink.
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
   continues while browsing or editing. Failed saves retain numbers and Retry.
