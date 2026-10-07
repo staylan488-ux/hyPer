@@ -147,8 +147,8 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
   if (!draft || paused) return <div className="space-y-5">
     {(paused || !initialEntry) && <SheetHeaderAction>
       {paused
-        ? <button type="button" className="text-action" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume meal</button>
-        : <button type="button" className="text-action" disabled={analysisBusy} onClick={() => start()}>Build a meal</button>}
+        ? <button type="button" className="text-action text-action-secondary" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume meal</button>
+        : <button type="button" className="text-action text-action-secondary" disabled={analysisBusy} onClick={() => start()}>Build a meal</button>}
     </SheetHeaderAction>}
     <FoodLogger {...props} onComposeMeal={paused ? undefined : start} onAnalysisBusyChange={reportAnalysisBusy} />
   </div>;

@@ -1949,22 +1949,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
             />
           </div>
 
+          {/* One quiet action on the count's line: Edit once there is a list
+              (New food then closes the list), New food before. */}
           <div className="flex min-h-11 items-center justify-between gap-4 -my-1.5">
             <span className="t-label-sm">
               {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
             <div className="flex items-center -mr-2.5">
-              <button
-                type="button"
-                className="text-action"
-                onClick={handleAddSavedMeal}
-              >
-                New food
-              </button>
-              {savedMeals.length > 0 && (
+              {savedMeals.length > 0 ? (
                 <button
                   type="button"
-                  className="text-action"
+                  className="text-action text-action-secondary"
                   onClick={() => {
                     clearSavedMealFeedback();
                     setManagingSavedMeals((current) => !current);
@@ -1972,6 +1967,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                   aria-pressed={managingSavedMeals}
                 >
                   {managingSavedMeals ? 'Done' : 'Edit'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="text-action text-action-secondary"
+                  onClick={handleAddSavedMeal}
+                >
+                  New food
                 </button>
               )}
             </div>
@@ -2031,7 +2034,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                   ) : (
                     <button
                       type="button"
-                      className="pressable group flex min-w-0 flex-1 items-center gap-3 py-3.5 pr-2.5 text-left"
+                      className="pressable group flex min-w-0 flex-1 items-center gap-3 py-3.5 pr-5 text-left"
                       onClick={() => handleLogSavedMeal(meal)}
                       aria-label={`Log ${meal.name}`}
                     >
@@ -2041,8 +2044,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center text-[var(--color-text)]" aria-hidden>
-                        <Plus className="h-5 w-5" strokeWidth={1.5} />
+                      {/* 44pt key whose glyph ends on the trailing guide, the
+                          row's 20px inset (Lucide insets the plus 3.5px). */}
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-end text-[var(--color-text)]" aria-hidden>
+                        <Plus className="h-5 w-5 -mr-[3.5px]" strokeWidth={1.5} />
                       </span>
                     </button>
                   )}
@@ -2057,6 +2062,16 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                 Add manually
               </Button>
             </div>
+          )}
+          {!showSavedMealsLoading && savedMeals.length > 0 && (
+            <button
+              type="button"
+              className="text-action text-action-secondary -ml-2.5 -mt-1.5"
+              onClick={handleAddSavedMeal}
+            >
+              <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+              New food
+            </button>
           )}
         </div>
       ) : mode === 'search' ? (

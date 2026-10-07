@@ -6,7 +6,6 @@ import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
-import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { createNoteAutosaver, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
 import { runWorkoutEdit } from '@/lib/workoutEdit';
@@ -66,6 +65,7 @@ import {
 } from 'date-fns';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
 import { calendarMonthLabel } from '@/lib/calendarLabel';
+import { useStuckHeader } from '@/hooks/useStuckHeader';
 import './progress-liquid.css';
 
 interface WorkoutWithSplit extends Workout {
@@ -724,6 +724,8 @@ export function History() {
   // late sync refetch) can never leave one month's data under another header.
   const monthRequestRef = useRef(0);
   const selectedMonthRef = useRef(selectedMonth);
+  const calendarHeadRef = useRef<HTMLDivElement | null>(null);
+  useStuckHeader(calendarHeadRef);
 
   useEffect(() => {
     selectedMonthRef.current = selectedMonth;
@@ -879,8 +881,9 @@ export function History() {
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
   const todayStart = startOfDay(new Date());
-  // sandbox always offers sync (fixture transport); production needs a connection
-  const syncAvailable = isPreviewActive() || !!whoopConnection;
+  // Sync is offered only with a WHOOP connection (the sandbox seeds one and
+  // syncs its fixture transport); without one, Connections offers Connect.
+  const syncAvailable = !!whoopConnection;
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
@@ -1147,7 +1150,7 @@ export function History() {
 
   const handleSyncWhoop = useCallback(async () => {
     if (syncingWhoop) return;
-    const runWhoop = isPreviewActive() || !!whoopConnection;
+    const runWhoop = !!whoopConnection;
 
     setSyncingWhoop(true);
     try {
@@ -1336,28 +1339,52 @@ export function History() {
     <motion.div className="px-6 pt-7 pb-nav">
       <Toast show={showSuccess} message={toastMessage} />
 
-      <PageHeader back={{ label: 'Today', to: '/' }} eyebrow="Training ledger" title="History" className="mb-2" />
+      <PageHeader
+        back={{ label: 'Today', to: '/' }}
+        eyebrow="Training ledger"
+        title="History"
+        className="mb-2"
+        // Sync belongs to the whole ledger, not the day: one quiet action in
+        // the bar row, only while WHOOP is connected.
+        actions={syncAvailable ? (
+          <button
+            type="button"
+            className="text-action text-action-secondary"
+            aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
+            disabled={syncingWhoop}
+            onClick={() => { void handleSyncWhoop(); }}
+          >
+            {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
+          </button>
+        ) : undefined}
+      />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
         <section aria-label="Calendar" className="pt-2">
-          <CalendarHeader
-            className="mb-1"
-            label={calendarMonthLabel(selectedMonth)}
-            ariaLabel={format(selectedMonth, 'MMMM yyyy')}
-            direction={monthDirection}
-            previous={{ label: 'Previous month', onClick: () => { setMonthDirection(-1); setSelectedMonth((prev) => subMonths(prev, 1)); } }}
-            next={{ label: 'Next month', onClick: () => { setMonthDirection(1); setSelectedMonth((prev) => addMonths(prev, 1)); } }}
-          />
+          {/* The month and weekday letters stay with the grid: once the page
+              collapses they hold under the bar while weeks remain in view,
+              and leave with the last week, which always shows under them. */}
+          <div className="calendar-sticky-span">
+          <div ref={calendarHeadRef} className="calendar-sticky" data-rest-band>
+            <CalendarHeader
+              className="mb-1"
+              label={calendarMonthLabel(selectedMonth)}
+              ariaLabel={format(selectedMonth, 'MMMM yyyy')}
+              direction={monthDirection}
+              previous={{ label: 'Previous month', onClick: () => { setMonthDirection(-1); setSelectedMonth((prev) => subMonths(prev, 1)); } }}
+              next={{ label: 'Next month', onClick: () => { setMonthDirection(1); setSelectedMonth((prev) => addMonths(prev, 1)); } }}
+            />
 
-          <div className="grid grid-cols-7" aria-hidden>
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="calendar-weekday">
-                {day}
-              </div>
-            ))}
+            <div className="grid grid-cols-7" aria-hidden>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <div key={`${day}-${index}`} className="calendar-weekday">
+                  {day}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 calendar-sticky-grid">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
@@ -1414,7 +1441,8 @@ export function History() {
               );
             })}
           </div>
-          <div className="mt-2 flex items-center gap-4 t-caption text-[var(--color-muted)]" aria-hidden>
+          </div>
+          <div className="calendar-sticky-after flex items-center gap-4 t-caption text-[var(--color-muted)]" aria-hidden>
             <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-lift" />Lift</span>
             <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-activity" />Activity</span>
           </div>
@@ -1436,26 +1464,14 @@ export function History() {
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
           {/* One caps eyebrow; the day's count reads as plain text under it,
-              sharing its line with the day's actions. */}
+              sharing its line with the day's one action. */}
           <span className="t-label block mt-9">{format(selectedDate, 'EEEE, MMM d')}</span>
           <div className="flex items-center justify-between gap-3 -mt-1.5 mb-1.5">
             <p className="t-caption min-w-0">{selectedDaySummary}</p>
             <div className="flex items-center shrink-0 -mr-2.5">
-              {/* Sync says what it does: a labelled text action beside Add activity. */}
-              {syncAvailable && (
-                <button
-                  type="button"
-                  className="text-action"
-                  aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
-                  disabled={syncingWhoop}
-                  onClick={() => { void handleSyncWhoop(); }}
-                >
-                  {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
-                </button>
-              )}
               <button
                 type="button"
-                className="text-action"
+                className="text-action text-action-secondary"
                 onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
               >
                 <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
@@ -1891,7 +1907,7 @@ export function History() {
                         <div className="flex items-center shrink-0 -mr-2.5 -my-2">
                           <button
                             type="button"
-                            className="text-action"
+                            className="text-action text-action-secondary"
                             onClick={() => setMergeSelection(null)}
                           >
                             Cancel
@@ -1899,7 +1915,7 @@ export function History() {
                           <button
                             type="button"
                             disabled={mergeSelection.length < 2 || merging}
-                            className="text-action"
+                            className="text-action text-action-secondary"
                             onClick={() => { void handleMergeActivities(); }}
                           >
                             {merging ? 'Merging…' : 'Merge'}
@@ -1908,7 +1924,7 @@ export function History() {
                       ) : (
                         <button
                           type="button"
-                          className="text-action -mr-2.5 -my-2"
+                          className="text-action text-action-secondary -mr-2.5 -my-2"
                           onClick={() => setMergeSelection([])}
                         >
                           Merge activities

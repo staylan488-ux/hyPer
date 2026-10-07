@@ -543,11 +543,21 @@ button.calendar-head-title:active { opacity: .5; }
   min-height: 32px;
   border-radius: var(--radius-capsule);
 }
-/* Locked (e.g. a mode that waits for the live workout): the whole control
-   dims, takes no touches, and its caption says why. */
-.segmented-track.is-disabled { opacity: .4; pointer-events: none; }
-/* A locked thumb lies flat: no shadow, so it never reads as raised. */
+/* Locked (e.g. a mode that waits for the live workout): the control steps
+   down and takes no touches, and its caption says why. Its shape survives
+   (Ivory track #EBEBE5) and the current mode still reads as current (its
+   label secondary grey, the other near 2:1); the thumb lies flat, with no
+   shadow, so it never reads as raised. */
+.segmented-track.is-disabled { pointer-events: none; }
 .segmented-track.is-disabled .material-selected { box-shadow: none; }
+.segmented-track.well.is-disabled { background-color: #EBEBE5; }
+.segmented-track.is-disabled .material-selected { background: #F9F9F5; }
+.segmented-track.is-disabled > button { color: #A6A6A2; }
+.segmented-track.is-disabled > button[aria-selected='true'] { color: #6F6F6B; }
+.dark .segmented-track.well.is-disabled { background-color: var(--color-well); }
+.dark .segmented-track.is-disabled .material-selected { background: #262626; }
+.dark .segmented-track.is-disabled > button { color: #555555; }
+.dark .segmented-track.is-disabled > button[aria-selected='true'] { color: #8C8C8C; }
 /* Ivory track: #EAEAE4, a visible groove on the #F5F5F0 page (Black keeps
    the well tone). */
 .segmented-track.well { background-color: #EAEAE4; }

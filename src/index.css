@@ -554,63 +554,31 @@ input, textarea, select, button { font-family: inherit; }
   background-color: var(--material-glass);
   overflow: hidden;
 }
-/* Bottom scroll edge, the top band's mirror: content never shows in the
-   strip below the bar's top edge, and above it dissolves over one 28px
-   smoothstep ramp (--nav-edge-fade) that starts at the bar, over the same
-   small progressive blur as the top band (2.5px, 1.25px, then 0.75px, kept
-   in the ramp's strongest half), so text resting at the bar is softened
-   and faded, never sliced, and a solid fill is blurred where it is graded,
-   never shaded into a ball. */
+/* Bottom scroll edge, like iOS 26's: content stays sharp until it reaches
+   the bar. Above the bar's top edge there is only a short opacity fade (at
+   most 8px, no blur), so a row resting just above the bar is crisp, never
+   half softened; the fade finishes 6px under the bar's top edge, and below
+   that the stage is solid beside and under the bar, so nothing shows in
+   the strip around it. */
 .bottom-nav-edge {
-  --nav-edge-fade: 28px;
+  --nav-edge-above: 8px;
+  --nav-edge-below: 6px;
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 35;
-  height: calc(var(--nav-top) + var(--nav-edge-fade));
+  height: calc(var(--nav-top) + var(--nav-edge-above));
   pointer-events: none;
-}
-.bottom-nav-edge-veil,
-.bottom-nav-edge-blur {
-  position: absolute;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-}
-.bottom-nav-edge-veil {
-  inset: 0;
   background: linear-gradient(
     to top,
     var(--material-foundation) 0,
-    var(--material-foundation) var(--nav-top),
-    color-mix(in srgb, var(--material-foundation) 98%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 1 / 12),
-    color-mix(in srgb, var(--material-foundation) 92.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 2 / 12),
-    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 3 / 12),
-    color-mix(in srgb, var(--material-foundation) 74.1%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 4 / 12),
-    color-mix(in srgb, var(--material-foundation) 62.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 5 / 12),
-    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 6 / 12),
-    color-mix(in srgb, var(--material-foundation) 37.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 7 / 12),
-    color-mix(in srgb, var(--material-foundation) 25.9%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 8 / 12),
-    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 9 / 12),
-    color-mix(in srgb, var(--material-foundation) 7.4%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 10 / 12),
-    color-mix(in srgb, var(--material-foundation) 2%, transparent) calc(var(--nav-top) + var(--nav-edge-fade) * 11 / 12),
+    var(--material-foundation) calc(var(--nav-top) - var(--nav-edge-below)),
+    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 1 / 4),
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 2 / 4),
+    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 3 / 4),
     transparent 100%
   );
-}
-.bottom-nav-edge-blur {
-  bottom: var(--nav-top);
-  height: calc(var(--nav-edge-fade) * var(--b1));
-  -webkit-backdrop-filter: blur(var(--b));
-  backdrop-filter: blur(var(--b));
-  -webkit-mask-image: linear-gradient(to top, #000 calc(var(--nav-edge-fade) * var(--b0)), transparent calc(var(--nav-edge-fade) * var(--b1)));
-  mask-image: linear-gradient(to top, #000 calc(var(--nav-edge-fade) * var(--b0)), transparent calc(var(--nav-edge-fade) * var(--b1)));
-}
-.bottom-nav-edge-blur[data-layer="1"] { --b: 2.5px; --b0: .3; --b1: .5; }
-.bottom-nav-edge-blur[data-layer="2"] { --b: 1.25px; --b0: .5; --b1: .64; }
-.bottom-nav-edge-blur[data-layer="3"] { --b: .75px; --b0: .66; --b1: .88; }
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .bottom-nav-edge-blur { display: none; }
 }
 html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }
 .studio-sheet-overlay {
@@ -635,16 +603,17 @@ html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility:
     width: calc(100% - 16px);
     border-radius: 34px 34px 47px 47px;
   }
-  /* The 8px gap under the floating sheet shows only the dimmed stage, never
-     a row's hairline running through it. Painted before the sheet, so a
-     sheet sliding in or dragged down still covers it. */
+  /* The 8px gap under the floating sheet and the corners beside its 47px
+     bottom radius show only the dimmed stage, never a row's hairline or a
+     clipped glyph of the page behind. Painted before the sheet, so a sheet
+     sliding in or dragged down still covers it. */
   .studio-sheet-overlay::before {
     content: '';
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: 8px;
+    height: 55px;
     background: linear-gradient(var(--overlay-backdrop), var(--overlay-backdrop)), var(--material-foundation);
     pointer-events: none;
   }

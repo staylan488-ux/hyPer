@@ -56,7 +56,13 @@ tokens; an already approved direction does not need another design exploration.
   their rows, full-width buttons and anything marked `data-rest-block`
   (calendar weeks, a key figure, a field); `data-rest-ignore` leaves a
   subtree out (`lib/restBlocks.ts`). A tall figure may pass under the band
-  while its last 40pt still shows. The nudge never runs while a finger or a
+  while its last 40pt still shows; `data-rest-sliver` makes a block one unit
+  that rests hidden or with at least that much showing (Progress's figures
+  with their legend, so the legend never rests alone), moving up to half its
+  split stretch to get there. History's month and weekday letters are a
+  sticky header (`data-rest-band`, `useStuckHeader`) held under the band
+  while weeks of the grid show, leaving with the last week, which always
+  shows under it; rows then rest against its foot. The nudge never runs while a finger or a
   focused field holds the page or while route scroll restoration runs
   (`data-restoring-scroll`), and is instant under reduced motion; no CSS
   scroll-snap. A page ends at the tab bar's top plus 24px (`.pb-nav`), and
@@ -71,16 +77,19 @@ tokens; an already approved direction does not need another design exploration.
   never moves the page.
   A page may repeat its primary action in the condensed bar once collapsed
   (`PageHeader` `compactAction`: Fuel's +, a bare ink glyph on the trailing
-  edge). Pushed screens keep their parent tab selected (`nativeTabForPath`).
-  Contextual actions are sentence-case `text-action` buttons (15px medium in
-  section headers; 16px in the bar row) in the one ink tint; a disabled
-  action is that tint at 30% opacity, never grey as a style.
+  edge), only once the page's own control has passed under the band
+  (`after`), so one add shows at a time. Pushed screens keep their parent tab selected (`nativeTabForPath`).
+  Contextual actions are sentence-case `text-action` buttons in the one ink
+  tint (16px medium in the bar row). Secondary header actions, a section's
+  or a sheet's (Add activity, Edit, Build a meal, Sync WHOOP), are quieter
+  (`text-action-secondary`: 15px regular, still ink), at most one per header
+  line. A disabled action is that tint at 30% opacity, never grey as a style.
   Sheet-level actions sit in the sheet header beside close
   (`SheetHeaderAction`). Sheets sit over a uniform dim (black at 50% in
   Black, 28% in Ivory) and cast no shadow; in Black the sheet surface is
   flat #161616 at 97% with no wash or sheen, in Ivory an opaque #F7F7F3,
   so nothing behind it shows through, including in the 8pt gap under a
-  floating sheet. The grabber shows exactly when the sheet can be swiped
+  floating sheet and beside its bottom corners. The grabber shows exactly when the sheet can be swiped
   away; a sheet hides its close button when its own actions include a
   cancel (`Modal` `showGrabber` / `showClose`). Close is a visible 44pt
   circle. Logging food says where it goes ("Adding to Dinner · 7:20 PM ⌄",
@@ -98,12 +107,16 @@ tokens; an already approved direction does not need another design exploration.
   dial carries a screen's single headline ratio (Today's session, Fuel's
   calories); lists state counts inline ("3/9 sets"). Rings and
   `RailStrip` bars are flat ink; target ticks are a neutral at 3:1 or more
-  (`--rail-target`), lacquer only for live and over.
+  (`--rail-target`), lacquer only for live and over. A bar measured against
+  a target ends at the target (Fuel's macros) and runs full in the over
+  tone past it.
   Meaningful touch targets are at least 44px.
-- Segmented controls use native metrics, 15px medium labels (a locked
-  control dims to 40% as a whole, takes no touches and keeps its caption;
-  its thumb loses its shadow; the light track is #EAEAE4 and the light
-  thumb warm white #FDFDF9): a 36px capsule track, 2px inset,
+- Segmented controls use native metrics, 15px medium labels (the light
+  track is #EAEAE4 and the light thumb warm white #FDFDF9; a locked control
+  takes no touches and keeps its caption, its thumb lies flat with no
+  shadow, the current mode's label turns secondary grey (#6F6F6B Ivory,
+  #8C8C8C Black) and the other dims to about 2:1, on an Ivory track of
+  #EBEBE5): a 36px capsule track, 2px inset,
   equal segments and a 32px thumb, each segment's hit area extended to 44px.
 - Search fields are flat capsule fills (`.search-field`; #1C1C1C on Black), never recessed;
   placeholders are at least 4.5:1 (`--color-placeholder`).
@@ -128,11 +141,11 @@ tokens; an already approved direction does not need another design exploration.
   labels, no ring or directional highlight (Ivory: one faint shadow and no
   hairline; Black: a flat #161616 at 94% with a uniform 0.5px hairline and
   no wash), the current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
-  side and concentric with the bar, and above the bar a veil mirroring the
-  top band: a 28px smoothstep ramp over the same small progressive blur
-  (`.bottom-nav-edge`; no blur under reduced transparency or increased
-  contrast), so content softens before the bar and a solid fill resting
-  near it is never graded into a ball. On iOS 26 the rest bar and status toasts are also
+  side and concentric with the bar. Its bottom scroll edge
+  (`.bottom-nav-edge`) is iOS 26's: content stays sharp until it reaches
+  the bar, with at most an 8px opacity fade above the bar's top edge and no
+  blur, opaque from 6px under it, so a resting row is either crisp or under
+  the glass. With the native bar there is no web edge. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. The live workout is a
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
@@ -222,8 +235,9 @@ layout and makes motion, data and 3D the expressive layer.
   hollow outline. Ink by volume status, hollow (an inset ink outline, like
   the ○ status glyph) while trained but under MEV, lacquer only past MRV, no
   gloss or 3D. Progress shows the two views without captions; its legend
-  uses the rows' circles and words ("Under-stimulated", "More sets", "Over
-  ceiling"), and set counts stay ink (red is the figure, the status and the
+  keys the rows' chips in their words ("Under", "In range", "Over ceiling":
+  one name per state in the summary, legend and chips), with the shading
+  ramp on its own line ("Stronger tone = more sets"), and set counts stay ink (red is the figure, the status and the
   rail marker). Beside a sentence
   (Today's insight) the figure draws only the sentence's muscle, in the
   same legend style as Progress (hollow when the sentence is about

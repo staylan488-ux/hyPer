@@ -56,7 +56,7 @@ export function WeeklyNutrition() {
             ))}
           </dl>
           <p className="t-caption mt-3">
-            {loggedDays} of 7 days logged. Log {MIN_CHART_DAYS} to see the daily chart.
+            {loggedDays} of 7 days logged. Log {MIN_CHART_DAYS - loggedDays} more {MIN_CHART_DAYS - loggedDays === 1 ? 'day' : 'days'} to see the daily chart.
           </p>
         </>
       ) : (

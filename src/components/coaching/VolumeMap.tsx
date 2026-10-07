@@ -21,9 +21,9 @@ import {
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 
 const STATUS_WORDS: Record<MuscleVolume['status'], string> = {
-  below_mev: 'under-stimulated',
-  mev_mav: 'effective',
-  mav: 'adaptive zone',
+  below_mev: 'under',
+  mev_mav: 'in range',
+  mav: 'in range',
   approaching_mrv: 'near ceiling',
   above_mrv: 'over ceiling',
 };
@@ -116,24 +116,31 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
         ))}
       </div>
 
-      {/* The rows' own glyphs and words: a ring for under-stimulated, dots
-          for the rest, lacquer only past the ceiling. */}
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mt-5 t-caption" aria-hidden>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ boxShadow: `inset 0 0 0 ${LINE}px var(--color-text)` }} />
-          Under-stimulated
-        </span>
+      {/* The rows' own glyphs and words (a ring for under, a dot in range,
+          lacquer only past the ceiling), then the shading ramp on its own
+          line: it is a scale, not a status. */}
+      <div className="flex flex-col items-center gap-2 mt-5 t-caption" aria-hidden>
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ boxShadow: `inset 0 0 0 ${LINE}px var(--color-text)` }} />
+            Under
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-text-dim)]" />
+            In range
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+            Over ceiling
+          </span>
+        </div>
         <span className="flex items-center gap-1.5">
           <span className="flex gap-[3px]">
             {LEGEND_RAMP.map((ink) => (
               <span key={ink} className="w-2 h-2 rounded-full" style={{ background: inkFill(ink) }} />
             ))}
           </span>
-          More sets
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
-          Over ceiling
+          Stronger tone = more sets
         </span>
       </div>
     </div>

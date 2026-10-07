@@ -100,6 +100,8 @@ export function Nutrition() {
   const [deletedId, setDeletedId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const selectedMonthRef = useRef(selectedMonth);
+  // The page's Log food pill: the condensed bar's + shows once it has gone under.
+  const logFoodRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
@@ -467,6 +469,7 @@ export function Nutrition() {
             setEditingEntry(null);
             setShowLogger(true);
           },
+          after: logFoodRef,
         }}
       />
 
@@ -554,6 +557,7 @@ export function Nutrition() {
         {/* 20px under the figure: the figure row and the pill can rest one
             under the bar's solid stage, the other clear of its ramp. */}
         <Button
+          ref={logFoodRef}
           size="lg"
           metal
           className="w-full mt-5"
@@ -585,8 +589,10 @@ export function Nutrition() {
         ) : (
           <div className="space-y-5">
             {macroFigures.map((macro) => {
-              const max = Math.max(macro.target * 1.18, macro.current);
-              const over = macro.current > macro.target;
+              // The track ends at the target, so the fill reads true at a
+              // glance; past it the bar runs full in the over-target tone.
+              const share = macro.target > 0 ? macro.current / macro.target : 0;
+              const over = macro.target > 0 && macro.current > macro.target;
               return (
                 <div key={macro.label}>
                   <div className="flex items-baseline justify-between gap-3 mb-2.5">
@@ -601,8 +607,7 @@ export function Nutrition() {
                     </span>
                   </div>
                   <RailStrip
-                    value={macro.current / max}
-                    notch={macro.target / max}
+                    value={share}
                     tone={over ? 'berry' : 'chalk'}
                     size="sm"
                     reveal={`fuel-macro-${macro.label}`}

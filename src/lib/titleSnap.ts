@@ -36,8 +36,11 @@ export function restingScrollEnd(naturalEnd: number, rests: number[], limit: num
 // REST NUDGE (UIKit's targetContentOffset adjustment)
 // ═══════════════════════════════════
 
-/** A block's visible ink in the scroll column: offsets that do not change with the scroll. */
-export interface RestBlock { top: number; bottom: number }
+/** A block's visible ink in the scroll column: offsets that do not change with the scroll.
+ *  `sliver`: a unit (a figure with its legend) that may pass under the bar
+ *  only while at least this much of it still shows, so its last part (the
+ *  legend) never rests alone; such a unit always counts as tall. */
+export interface RestBlock { top: number; bottom: number; sliver?: number }
 /** The scroll-edge band, measured down from the scroll viewport's top edge:
  *  the solid stage ends at `solid`, the ramp at `foot`. */
 export interface RestBand { solid: number; foot: number }
@@ -56,6 +59,9 @@ export const REST_SLIVER = 40;
 /** The furthest a rest is nudged, either way. */
 export const REST_NUDGE_LIMIT = 32;
 
+const sliverOf = (block: RestBlock) => block.sliver ?? REST_SLIVER;
+const isTall = (block: RestBlock) => block.sliver !== undefined || block.bottom - block.top > REST_TALL_BLOCK;
+
 /**
  * How far a block is from resting clean at this scroll offset: 0 when it is
  * hidden under the solid stage or clear of the ramp, otherwise the shorter
@@ -69,8 +75,8 @@ export function splitDepth(block: RestBlock, scrollTop: number, band: RestBand):
   const clear = band.foot - REST_CLEAR_DEPTH - top;
   // Under a pixel either way is a rounding difference, not a visible split.
   if (hidden < 1 || clear < 1) return 0;
-  if (block.bottom - block.top > REST_TALL_BLOCK) {
-    const shown = bottom - (band.foot + REST_SLIVER);
+  if (isTall(block)) {
+    const shown = bottom - (band.foot + sliverOf(block));
     return shown >= -1e-6 ? 0 : Math.min(hidden, -shown);
   }
   return Math.min(hidden, clear);
@@ -101,7 +107,7 @@ function criticalOffsets(blocks: RestBlock[], band: RestBand): number[] {
   for (const block of blocks) {
     offsets.push(Math.ceil(block.bottom - band.solid - REST_HIDDEN_DEPTH));
     offsets.push(Math.floor(block.top - band.foot + REST_CLEAR_DEPTH));
-    if (block.bottom - block.top > REST_TALL_BLOCK) offsets.push(Math.floor(block.bottom - band.foot - REST_SLIVER));
+    if (isTall(block)) offsets.push(Math.floor(block.bottom - band.foot - sliverOf(block)));
   }
   return offsets;
 }
@@ -122,8 +128,15 @@ export function restNudgeTarget(
 ): number | null {
   const now = splitCost(blocks, scrollTop, band);
   if (now === 0) return null;
-  const low = Math.max(range.min, scrollTop - limit);
-  const high = Math.min(range.max, scrollTop + limit);
+  // A split unit with a longer sliver may move as far as half its split
+  // stretch, as a large title settles, so it always reaches a clean rest.
+  const reach = blocks.reduce((most, block) => (
+    block.sliver !== undefined && straddlesBand(block, scrollTop, band)
+      ? Math.max(most, Math.ceil((band.foot - band.solid + block.sliver) / 2) + 1)
+      : most
+  ), limit);
+  const low = Math.max(range.min, scrollTop - reach);
+  const high = Math.min(range.max, scrollTop + reach);
   if (!(high >= low)) return null;
   const candidates = [...criticalOffsets(blocks, band), low, high].filter((offset) => offset >= low - 1e-6 && offset <= high + 1e-6);
   const nowCount = straddleCount(blocks, scrollTop, band);

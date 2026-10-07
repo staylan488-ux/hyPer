@@ -1,15 +1,17 @@
-import { forwardRef, useEffect, useRef, type HTMLAttributes, type ReactNode, type Ref } from 'react';
+import { forwardRef, useEffect, useRef, type HTMLAttributes, type ReactNode, type Ref, type RefObject } from 'react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
 import { cleanScrollEnd, restNudgeTarget, titleSnapTarget } from '@/lib/titleSnap';
-import { measureRestBand, measureRestBlocks } from '@/lib/restBlocks';
+import { measureRestBand, measureRestBlocks, measureStickyRest, uncovered } from '@/lib/restBlocks';
 import './page-header.css';
 
 /** A trailing action repeated in the condensed bar once the title has
- *  collapsed, so the page's primary action stays one tap away (Fuel's +). */
-export interface CompactAction { label: string; icon: ReactNode; onClick: () => void }
+ *  collapsed, so the page's primary action stays one tap away (Fuel's +).
+ *  `after`: the page's own control for the action; the bar's copy shows only
+ *  once that control has passed under the band, so one add shows at a time. */
+export interface CompactAction { label: string; icon: ReactNode; onClick: () => void; after?: RefObject<HTMLElement | null> }
 
 /** Where a pushed screen's back control returns. */
 export type PageBack =
@@ -78,9 +80,14 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
   const edge = useMotionValue(0);
   const compactOpacity = useTransform(progress, [COMPACT_FROM, 1], [0, 1]);
   const compactY = useTransform(progress, [COMPACT_FROM, 1], [3, 0]);
+  // 1 once the page's own control for the compact action is under the band.
+  const actionGate = useMotionValue(compactAction?.after ? 0 : 1);
+  const actionOpacity = useTransform([progress, actionGate], ([value, gate]: number[]) =>
+    Math.min(1, Math.max(0, (value - COMPACT_FROM) / (1 - COMPACT_FROM))) * gate);
+  const after = compactAction?.after;
   const bandPointer = useTransform(edge, (value) => (value > 0.9 ? 'auto' : 'none'));
   // The condensed bar's trailing action takes touches only once it shows.
-  const actionPointer = useTransform(progress, (value) => (value > 0.95 ? 'auto' : 'none'));
+  const actionPointer = useTransform([progress, actionGate], ([value, gate]: number[]) => (value > 0.95 && gate > 0.95 ? 'auto' : 'none'));
   const label = compactTitle ?? (typeof children === 'string' ? children : '');
 
   useEffect(() => {
@@ -105,6 +112,15 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       const { start, end } = collapseRange();
       progress.set(Math.min(1, Math.max(0, (scrolled - start) / Math.max(1, end - start))));
       edge.set(Math.min(1, scrolled / EDGE_RAMP));
+      const control = after?.current;
+      const band = bandRef.current;
+      if (control && band) {
+        // Hidden under the band's solid stage: the control's foot within
+        // the solid edge plus the ramp's first few pixels (REST_HIDDEN_DEPTH).
+        const { solid } = measureRestBand(band, viewport);
+        const foot = control.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top;
+        actionGate.set(foot <= solid + 4 ? 1 : 0);
+      } else actionGate.set(1);
     };
     // The page content the rests are judged by (everything under the header's parent).
     const root = title.closest('header')?.parentElement ?? null;
@@ -118,7 +134,11 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       // Collapsed: no block rests split by the band.
       const band = bandRef.current;
       if (root && band && target > 0.5 && target >= collapsed - 0.5) {
-        target = restNudgeTarget(target, measureRestBlocks(root, viewport), measureRestBand(band, viewport), { min: collapsed, max }) ?? target;
+        // A sticky header held under the band (History's month) moves the
+        // edge blocks rest against, or rests as a block itself.
+        const sticky = measureStickyRest(root, viewport, measureRestBand(band, viewport));
+        const blocks = [...uncovered(measureRestBlocks(root, viewport), sticky.covers), ...sticky.blocks];
+        target = restNudgeTarget(target, blocks, sticky.band, { min: collapsed, max }) ?? target;
       }
       if (Math.abs(target - viewport.scrollTop) < 0.5) return;
       const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -202,7 +222,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       if (frame) cancelAnimationFrame(frame);
       if (settleTimer) window.clearTimeout(settleTimer);
     };
-  }, [progress, edge]);
+  }, [progress, edge, actionGate, after]);
 
   const setRefs = (el: HTMLHeadingElement | null) => {
     titleRef.current = el;
@@ -244,7 +264,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
             <motion.button
               type="button"
               className="page-scroll-edge-action pressable"
-              style={{ opacity: compactOpacity, pointerEvents: actionPointer }}
+              style={{ opacity: actionOpacity, pointerEvents: actionPointer }}
               tabIndex={-1}
               aria-hidden
               onClick={(event) => {

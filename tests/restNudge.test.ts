@@ -100,3 +100,32 @@ describe('clean scroll end', () => {
     expect(cleanScrollEnd(500, [{ top: 560, bottom: 700 + 160 }], band, 72, 73)).toBe(500);
   });
 });
+
+describe('rest units: a figure that travels with its legend', () => {
+  // Progress: readout, front/back figures and the legend as one block, which
+  // may pass under the bar only while 112pt of it still shows.
+  const unit = { top: 0, bottom: 360, sliver: 112 };
+
+  it('counts the legend resting alone under the bar as split', () => {
+    // Only the legend's 64pt shows below the ramp: split.
+    expect(straddlesBand(unit, 360 - 126 - 64, band)).toBe(true);
+    // The legend with the figures' legs above it: a clean rest.
+    expect(straddlesBand(unit, 360 - 126 - 140, band)).toBe(false);
+    // Wholly under the solid stage: clean.
+    expect(straddlesBand(unit, 360 - 102, band)).toBe(false);
+  });
+
+  it('may move past the usual limit to a clean rest, at most half its split stretch', () => {
+    // Legend alone (64pt showing): 48pt back shows the legs, 66pt on hides it.
+    const at = 360 - 126 - 64;
+    const target = restNudgeTarget(at, [unit], band, range);
+    expect(target).not.toBeNull();
+    expect(Math.abs((target as number) - at)).toBeGreaterThan(REST_NUDGE_LIMIT);
+    expect(Math.abs((target as number) - at)).toBeLessThanOrEqual(Math.ceil((band.foot - band.solid + unit.sliver) / 2) + 1);
+    expect(straddlesBand(unit, target as number, band)).toBe(false);
+  });
+
+  it('leaves ordinary blocks to the usual limit', () => {
+    expect(restNudgeTarget(400, [{ top: 450, bottom: 610 }], band, range)).toBeNull();
+  });
+});

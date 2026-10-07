@@ -26,22 +26,25 @@ interface CoachingCall {
   priority: number;
 }
 
+// One name per state, the same in the summary, the figure's legend and the
+// row chips: "Under", "In range" (MEV up to the adaptive ceiling), "Near
+// ceiling", "Over ceiling". Only the words; the thresholds are volumeStatus's.
 function buildCoachingCall(mv: MuscleVolume): CoachingCall {
   const mev = mv.landmark?.mev ?? 0;
   switch (mv.status) {
     case 'below_mev': {
       const gap = Math.max(1, Math.ceil(mev - mv.weekly_sets));
-      return { chip: 'Under-stimulated', tone: 'amber', headline: `Add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`, priority: 0 };
+      return { chip: 'Under', tone: 'amber', headline: `Add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`, priority: 0 };
     }
     case 'above_mrv':
       return { chip: 'Over ceiling', tone: 'berry', headline: 'Pull back — beyond recoverable volume', priority: 1 };
     case 'approaching_mrv':
       return { chip: 'Near ceiling', tone: 'berry', headline: 'Hold here — fatigue is compounding', priority: 2 };
     case 'mav':
-      return { chip: 'Adaptive zone', tone: 'sage', headline: 'Hold volume — growth is compounding', priority: 3 };
+      return { chip: 'In range', tone: 'sage', headline: 'Hold volume — growth is compounding', priority: 3 };
     case 'mev_mav':
     default:
-      return { chip: 'Effective', tone: 'sage', headline: 'Building — room to add when ready', priority: 4 };
+      return { chip: 'In range', tone: 'sage', headline: 'Building — room to add when ready', priority: 4 };
   }
 }
 
@@ -121,6 +124,49 @@ export function Analysis() {
     return { total, inRange, detail };
   }, [weeklyVolume]);
 
+  // Supporting detail, not the primary UI. It closes the volume list (it
+  // explains the rails' landmarks), or stands alone on an empty week.
+  const explainer = (
+    <section className={weeklyVolume.length === 0 ? 'mt-12 border-t border-[var(--color-border)]' : ''} aria-label="What the landmarks mean">
+      <button
+        type="button"
+        className="w-full min-h-[56px] flex items-center justify-between text-left"
+        aria-expanded={showExplainer}
+        onClick={() => setShowExplainer(!showExplainer)}
+      >
+        <span className="text-[15px] font-medium text-[var(--color-text)]">What the landmarks mean</span>
+        <motion.span className="trail-disclosure" animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
+          <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {showExplainer && (
+          <motion.div
+            className="overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={springs.settle}
+          >
+            <dl className="pb-4 space-y-4">
+              {[
+                { label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
+                { label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
+                { label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
+                { label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className="t-heading">{item.label}</dt>
+                  <dd className="t-caption mt-1">{item.desc}</dd>
+                </div>
+              ))}
+            </dl>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+
   return (
     <Screen>
       <PageHeader
@@ -146,7 +192,9 @@ export function Analysis() {
         />
       ) : (
         <>
-        <section aria-label="This week's volume by muscle">
+        {/* The figure and its legend are one rest unit: it passes under the
+            bar only while the legend still has the figures' legs above it. */}
+        <section aria-label="This week's volume by muscle" data-rest-block data-rest-sliver="112">
           <VolumeMap
             volume={weeklyVolume}
             onSelectMuscle={(muscle) => {
@@ -193,7 +241,7 @@ export function Analysis() {
                         {call.chip}
                       </span>
                       <motion.span className="trail-disclosure" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
-                        <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
+                        <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.span>
                     </span>
                   </div>
@@ -258,6 +306,7 @@ export function Analysis() {
               </div>
             );
           })}
+          {explainer}
         </section>
         </>
       )}
@@ -284,45 +333,7 @@ export function Analysis() {
         <WeeklyNutrition />
       </section>
 
-      {/* Research explainer — supporting detail, not the primary UI */}
-      <section className="mt-12 border-t border-[var(--color-border)]">
-        <button
-          type="button"
-          className="w-full min-h-[56px] flex items-center justify-between text-left"
-          aria-expanded={showExplainer}
-          onClick={() => setShowExplainer(!showExplainer)}
-        >
-          <span className="text-[15px] font-medium text-[var(--color-text)]">What the landmarks mean</span>
-          <motion.span className="trail-disclosure" animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
-            <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
-          </motion.span>
-        </button>
-        <AnimatePresence initial={false}>
-          {showExplainer && (
-            <motion.div
-              className="overflow-hidden"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={springs.settle}
-            >
-              <dl className="pb-4 space-y-4">
-                {[
-                  { label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
-                  { label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
-                  { label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
-                  { label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
-                ].map((item) => (
-                  <div key={item.label}>
-                    <dt className="t-heading">{item.label}</dt>
-                    <dd className="t-caption mt-1">{item.desc}</dd>
-                  </div>
-                ))}
-              </dl>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
+      {weeklyVolume.length === 0 && explainer}
     </Screen>
   );
 }

@@ -1082,7 +1082,7 @@ export function Settings() {
             <SettingsRow
               title="Meal photo analysis"
               // Said from the phone: where its meal photos go to be estimated.
-              description={foodAnalysisMode === 'gemini' ? 'Estimates your meal photos online' : 'Sends meal photos to your Mac to estimate'}
+              description={foodAnalysisMode === 'gemini' ? 'Estimates your meal photos online' : 'Sends photos to your Mac for calorie estimates'}
               onClick={() => go('/settings/analysis')}
             />
           </SettingsSection>
@@ -1105,7 +1105,7 @@ export function Settings() {
               onClick={() => go('/settings/training')}
             />
           </SettingsSection>
-          <SettingsSection label="Account">
+          <SettingsSection label="General">
             <SettingsRow
               title="Account"
               description="Profile and sign-out"

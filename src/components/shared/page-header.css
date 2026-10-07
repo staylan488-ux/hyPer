@@ -105,6 +105,14 @@
   -webkit-tap-highlight-color: transparent;
   transition: opacity 160ms ease, color 160ms ease;
 }
+/* Secondary header actions (a section's or a sheet's: Add activity, Edit,
+   Build a meal, Sync WHOOP) stay ink but step down to 15px regular, so the
+   titles beside them keep the weight; at most one per header line. */
+.text-action-secondary,
+.page-header-actions .text-action-secondary {
+  font-size: 15px;
+  font-weight: 400;
+}
 .text-action:active:not(:disabled) { opacity: .5; }
 .text-action:disabled { opacity: .3; }
 .text-action[data-tone='danger'] { color: var(--color-accent); }

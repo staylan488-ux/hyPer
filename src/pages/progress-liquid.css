@@ -10,6 +10,49 @@
    centred in it, and today named in lacquer. A day's marks sit 6px under
    its disc, as Fuel's dot does, and clear of the next row (56px row
    pitch), so they read as belonging to their own date. */
+/* History's month and weekday letters hold under the collapsed bar while
+   weeks of the grid remain in view (useStuckHeader), so a week never rests
+   headless. It sticks at the band's solid edge; its 24px top padding (taken
+   back by the margin, so the layout does not move) lies under the band's
+   ramp and turns opaque only once the large title has gone, and a 16px
+   ramp (STUCK_RAMP, opaque for its first 4px like the band's hidden depth)
+   softens weeks passing under it. Unstuck it is clear. */
+/* The header's span ends 6px above the last week's row, so the last week
+   pushes it away and always shows just under its ramp: the header never
+   rests over a grid it hides. The legend takes the room back. */
+.calendar-sticky-span { display: flow-root; }
+.calendar-sticky-grid { margin-bottom: -62px; }
+.calendar-sticky-after { margin-top: calc(62px + 8px); }
+.calendar-sticky {
+  position: sticky;
+  top: 40px;
+  z-index: 2;
+  margin: -24px -24px 0;
+  padding: 24px 24px 0;
+}
+.calendar-sticky[data-stuck] {
+  background: linear-gradient(to bottom, transparent 24px, var(--material-foundation) 24px);
+}
+.calendar-sticky[data-stuck][data-covered] { background: linear-gradient(var(--material-foundation), var(--material-foundation)); }
+.calendar-sticky[data-stuck]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 16px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--material-foundation) 0,
+    var(--material-foundation) 4px,
+    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) 7px,
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) 10px,
+    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) 13px,
+    transparent 16px
+  );
+}
+
 .ledger-day {
   position: relative;
   display: flex;

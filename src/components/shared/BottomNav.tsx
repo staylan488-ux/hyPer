@@ -37,13 +37,8 @@ export function BottomNav() {
 
   return (
     <>
-    {/* Bottom scroll edge: content dissolves before it reaches the bar. */}
-    <div className="bottom-nav-edge" aria-hidden>
-      <span className="bottom-nav-edge-blur" data-layer="1" />
-      <span className="bottom-nav-edge-blur" data-layer="2" />
-      <span className="bottom-nav-edge-blur" data-layer="3" />
-      <span className="bottom-nav-edge-veil" />
-    </div>
+    {/* Bottom scroll edge: content stays sharp until it reaches the bar. */}
+    <div className="bottom-nav-edge" aria-hidden />
     <motion.nav
       ref={litRef}
       aria-label="Main navigation"

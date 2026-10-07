@@ -416,6 +416,16 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   plan_schedules: [],
   activity_sessions: previewActivitySessions.map((activity) => ({ ...activity })),
   activity_segments: previewActivitySegments.map((segment) => ({ ...segment })),
-  // start disconnected; the Settings "Connect" flows insert mock rows
-  whoop_connections: [],
+  // Connected, as the seeded WHOOP activities say, and synced just now so the
+  // foreground sync stays idle; Settings > Connections can disconnect and
+  // reconnect it with mock rows.
+  whoop_connections: [{
+    user_id: PREVIEW_USER_ID,
+    whoop_user_id: 'preview-whoop-user',
+    scopes: 'read:workout offline',
+    connected_at: iso(daysAgo(30)),
+    last_synced_at: iso(now),
+    last_sync_status: 'success',
+    updated_at: iso(now),
+  }],
 };
