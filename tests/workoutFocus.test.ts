@@ -22,6 +22,17 @@ describe('expandable workout movements', () => {
     expect(expandedWorkoutSet(rows, closed)).toBeUndefined();
   });
 
+  it('opens the next movement on arrival only when nothing is already open', () => {
+    const arrived = workoutExpansionReducer(initialWorkoutExpansion, { type: 'open-if-closed', exerciseId: 'a' });
+    expect(arrived.expandedExerciseId).toBe('a');
+    expect(expandedWorkoutSet(rows, arrived)?.id).toBe('a-2');
+    const browsing = workoutExpansionReducer(initialWorkoutExpansion, { type: 'toggle', exerciseId: 'b' });
+    expect(workoutExpansionReducer(browsing, { type: 'open-if-closed', exerciseId: 'a' })).toBe(browsing);
+    // After a reset (another workout) the arrival opens that workout's next movement.
+    const reset = workoutExpansionReducer(browsing, { type: 'reset' });
+    expect(workoutExpansionReducer(reset, { type: 'open-if-closed', exerciseId: 'a' }).expandedExerciseId).toBe('a');
+  });
+
   it('returns to the explicitly selected row after browsing or collapsing', () => {
     let state = workoutExpansionReducer(initialWorkoutExpansion, { type: 'select', exerciseId: 'a', setId: 'a-1' });
     state = workoutExpansionReducer(state, { type: 'select', exerciseId: 'b', setId: 'b-2' });

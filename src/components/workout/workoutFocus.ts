@@ -10,6 +10,8 @@ export const initialWorkoutExpansion: WorkoutExpansion = { expandedExerciseId: n
 
 type ExpansionAction =
   | { type: 'toggle'; exerciseId: string }
+  /** Opening the live workout: expand the next movement unless one is already open. */
+  | { type: 'open-if-closed'; exerciseId: string }
   | { type: 'select'; exerciseId: string; setId: string }
   | { type: 'hide'; exerciseId: string }
   | { type: 'saved'; exerciseId: string; setId: string }
@@ -21,6 +23,7 @@ export function workoutExpansionReducer(state: WorkoutExpansion, action: Expansi
   switch (action.type) {
     case 'reset': return initialWorkoutExpansion;
     case 'toggle': return { ...state, expandedExerciseId: state.expandedExerciseId === action.exerciseId ? null : action.exerciseId };
+    case 'open-if-closed': return state.expandedExerciseId === null ? { ...state, expandedExerciseId: action.exerciseId } : state;
     case 'select': return { expandedExerciseId: action.exerciseId, selectedSets: { ...state.selectedSets, [action.exerciseId]: action.setId } };
     case 'hide': return { ...state, selectedSets: { ...state.selectedSets, [action.exerciseId]: null } };
     case 'replace': {

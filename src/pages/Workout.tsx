@@ -3,7 +3,6 @@ import {
   ArrowDownUp,
   ArrowLeftRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -880,6 +879,15 @@ export function Workout() {
     setActiveExerciseId(exerciseId);
     dispatchExpansion({ type: 'toggle', exerciseId });
   };
+  // The live workout opens on its next set: the Up next movement expands once
+  // per visit, only when nothing is open. A later collapse is respected.
+  const autoOpenedWorkoutRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initializing || !currentWorkoutId || !nextMovementId || reorderingMovements) return;
+    if (autoOpenedWorkoutRef.current === currentWorkoutId) return;
+    autoOpenedWorkoutRef.current = currentWorkoutId;
+    dispatchExpansion({ type: 'open-if-closed', exerciseId: nextMovementId });
+  }, [initializing, currentWorkoutId, nextMovementId, reorderingMovements]);
 
   const handleStartFlexibleWorkout = async () => {
     const trimmed = flexibleDayLabel.trim();
@@ -2092,7 +2100,7 @@ export function Workout() {
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
         <div className="space-y-4 pt-1">
           <div className="flex items-center gap-3">
-            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="amber" size="sm" />
+            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" />
             <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
           </div>
           <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
@@ -2195,6 +2203,9 @@ function ExerciseCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const contentId = useId();
   const summaryId = useId();
+  const upNext = isNext && !allComplete;
+  const superset = supersetRole ? ` · Superset ${supersetRole}` : '';
+  const eyebrow = `${upNext ? 'Up next' : `Movement ${String(index + 1).padStart(2, '0')}`}${superset}`;
   const repTarget = targetRepsMin && targetRepsMax
     ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
     : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
@@ -2231,25 +2242,25 @@ function ExerciseCard({
           aria-describedby={!isActive ? summaryId : undefined} aria-disabled={reordering || undefined} tabIndex={reordering ? -1 : undefined}
           aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { if (!reordering) onToggle(); }}>
           {isActive && !reordering ? <>
-            {/* The open movement's name gets the full row; its controls ride the eyebrow line. */}
+            {/* The open movement's name gets the full row; its count rides the
+                eyebrow line. The eyebrow names the movement the same way open or closed. */}
             <span className="studio-movement-eyebrow">
-              <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>
-              <span className="studio-movement-count">{completedCount} / {totalCount}</span>
-              <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+              <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
+              <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />
             </span>
-            <span className="studio-movement-name">{allComplete && <Check size={18} aria-hidden />}{exerciseName}</span>
+            <span className="studio-movement-name">{exerciseName}</span>
           </> : <>
             <span className="studio-movement-heading">
-              {isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
-              <span className="studio-movement-name-compact">{allComplete && <Check size={15} aria-hidden />}{exerciseName}</span>
+              {upNext && <span className="studio-movement-kicker is-next">{eyebrow}</span>}
+              <span className="studio-movement-name-compact">{exerciseName}</span>
               <span id={summaryId} className="studio-movement-summary">
                 {totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}
                 {!allComplete && previousTargetText && <> · Last <span className="studio-movement-previous">{previousTargetText}</span></>}
               </span>
             </span>
-            {/* A finished movement's check says it all; its count would only crowd the name. */}
-            {!allComplete && <span className="studio-movement-count">{completedCount} / {totalCount}</span>}
-            <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+            {/* Progress is one trailing column: the count, or a check once every set
+                is logged, so every title keeps the same left edge. */}
+            <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />
           </>}
         </button>
         <div className="studio-movement-controls">
@@ -2297,6 +2308,13 @@ function ExerciseCard({
       </div>
     </section>
   );
+}
+
+/** A movement's trailing progress: "1 / 3" while sets remain, an ink check when done. */
+function MovementProgress({ completedCount, totalCount, allComplete }: { completedCount: number; totalCount: number; allComplete: boolean }) {
+  return allComplete
+    ? <span className="studio-movement-count is-done"><Check size={16} strokeWidth={2} aria-hidden /><span className="sr-only">All {totalCount} sets logged</span></span>
+    : <span className="studio-movement-count">{completedCount} / {totalCount}</span>;
 }
 
 function SetCountButton({

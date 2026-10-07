@@ -187,21 +187,57 @@
   text-shadow: none;
 }
 
-/* The one metal object: the save-set key, a dark (or pearl) dome under a
-   live chrome bezel, lit from above. */
+/* The one metal object: the save-set key. A single machined graphite part in
+   both themes, not a ring on a disc: a spun face (fine concentric grain and
+   the bow-tie sheen spun metal throws toward the light), one soft specular
+   from above, a polished chamfer that is bright at the top and falls into
+   shadow below, and a tight contact shadow. Every conic gradient here starts
+   and ends on the same colour, so the edge has no seam. The motion light
+   tilts the highlight; one glint drifts across the upper chamfer. */
 .studio-save-set {
-  color: var(--metal-dome-fg);
-  background-color: transparent;
-  background-image: var(--metal-dome);
-  box-shadow: var(--metal-gap), var(--metal-dome-inner), var(--metal-dome-shadow);
-  text-shadow: var(--metal-text-shadow);
+  --save-key-tilt: calc(var(--light-x, 0) * 1);
+  position: relative;
+  isolation: isolate;
+  width: 54px;
+  height: 54px;
+  min-height: 54px;
+  border-radius: 50%;
+  justify-self: center;
+  color: #f5f5f5;
+  text-shadow: none;
+  background-color: #1d1d1d;
+  background-image:
+    radial-gradient(85% 58% at calc(50% + var(--save-key-tilt) * 18%) 2%, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .07) 46%, rgba(255, 255, 255, 0) 72%),
+    conic-gradient(from calc(var(--save-key-tilt) * 30deg),
+      rgba(255, 255, 255, .07) 0deg, rgba(255, 255, 255, 0) 52deg, rgba(255, 255, 255, 0) 128deg,
+      rgba(255, 255, 255, .045) 180deg, rgba(255, 255, 255, 0) 232deg, rgba(255, 255, 255, 0) 308deg,
+      rgba(255, 255, 255, .07) 360deg),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .016) 0 .5px, rgba(0, 0, 0, .028) .5px 1.25px),
+    linear-gradient(180deg, #363636 0%, #232323 50%, #141414 100%);
+  box-shadow: inset 0 -1px 1px rgba(0, 0, 0, .45), 0 1px 1.5px rgba(0, 0, 0, .32);
 }
-.studio-save-set:hover:not(:disabled) { background-color: transparent; filter: brightness(1.04); }
-.studio-save-set:active:not(:disabled) { background-color: transparent; background-image: var(--metal-dome-press); filter: none; }
-.studio-save-set svg { filter: drop-shadow(var(--metal-text-shadow)); }
-
-/* Save set is the most-pressed control in the app: a round metal key. */
-.studio-save-set { border-radius: 50%; width: 44px; height: 44px; min-height: 44px; justify-self: center; }
+.studio-save-set.liquid-metal::after {
+  padding: 1.25px;
+  background:
+    conic-gradient(from calc(var(--metal-glint) + var(--save-key-tilt) * 50deg),
+      rgba(255, 255, 255, .9) 0deg, rgba(255, 255, 255, 0) 16deg, rgba(255, 255, 255, 0) 344deg, rgba(255, 255, 255, .9) 360deg),
+    conic-gradient(from calc(var(--save-key-tilt) * 40deg),
+      #ececec 0deg, #b4b4b4 48deg, #646464 100deg, #383838 146deg, #2a2a2a 180deg,
+      #383838 214deg, #646464 260deg, #b4b4b4 312deg, #ececec 360deg);
+  animation: studio-save-set-glint 7s ease-in-out infinite alternate;
+}
+.studio-save-set:hover:not(:disabled) { filter: brightness(1.05); }
+.studio-save-set:active:not(:disabled) { filter: brightness(.88); }
+.studio-save-set svg { filter: drop-shadow(0 -.5px 0 rgba(0, 0, 0, .6)); }
+.studio-save-set:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+@keyframes studio-save-set-glint { from { --metal-glint: -62deg; } to { --metal-glint: 48deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .studio-save-set.liquid-metal::after { animation: none; --metal-glint: -24deg; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .studio-save-set.liquid-metal::after { animation: none; background: var(--color-text); }
+  .studio-save-set { background-image: linear-gradient(180deg, #2a2a2a, #161616); }
+}
 
 /* ─── Hero figures ────────────────────────────────────────────── */
 .number-hero:not(:has(*)),
