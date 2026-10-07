@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({
@@ -147,6 +147,20 @@ describe('Train next-set action', () => {
   });
   it('offers nothing once every set is logged', () => {
     expect(nextSetAction([row('a', 1, true)], ['a'], undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('Train set-entry copy', () => {
+  it("names today's set count against the program only when they differ", () => {
+    expect(todaySetCountLabel(3, 3)).toBe('3 sets');
+    expect(todaySetCountLabel(1)).toBe('1 set');
+    expect(todaySetCountLabel(3, 4)).toBe('3 of 4 sets today');
+    expect(todaySetCountLabel(5, 4)).toBe('5 sets today · 4 planned');
+  });
+  it('offers earlier numbers as a repeat, never as an unexplained alternative plan', () => {
+    expect(repeatOfferLabel({ weight: '60', reps: '9', rpe: '', source: 'previous_workout' })).toBe('Repeat last · 60 × 9');
+    expect(repeatOfferLabel({ weight: '80', reps: '8', rpe: '8', source: 'current_workout' })).toBe('Repeat last set · 80 × 8');
+    expect(repeatOfferLabel({ weight: '', reps: '9', rpe: '', source: 'previous_workout' })).toBe('Repeat last');
   });
 });
 

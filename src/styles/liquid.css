@@ -190,7 +190,8 @@
 /* The one metal object: the save-set key. A satin machined disc, 44pt and
    flush with the fields beside it. It takes the primary's tone in each
    theme (pearl on Black, graphite on Ivory) so it reads as the primary in
-   both. One smooth two-stop face, no spun banding; a soft chamfer catches
+   both. One quiet two-stop face (a half-strength ramp, no drop shadow, so
+   it never reads as a glossy bead), no spun banding; a soft chamfer catches
    light along the upper arc only, never a full or glowing rim. The motion
    light tilts the chamfer. */
 .studio-save-set {
@@ -204,14 +205,14 @@
   justify-self: center;
   color: #f5f5f0;
   text-shadow: none;
-  background-color: #262626;
-  background-image: linear-gradient(180deg, #3b3b3b 0%, #1b1b1b 100%);
-  box-shadow: 0 1px 1.5px rgba(0, 0, 0, .2);
+  background-color: #2b2b2b;
+  background-image: linear-gradient(180deg, #333333 0%, #232323 100%);
+  box-shadow: none;
 }
 .dark .studio-save-set {
   color: #141414;
-  background-color: #dedede;
-  background-image: linear-gradient(180deg, #f4f4f4 0%, #cbcbcb 100%);
+  background-color: #dfdfdf;
+  background-image: linear-gradient(180deg, #eaeaea 0%, #d5d5d5 100%);
   box-shadow: none;
 }
 /* Upper 120° only, fading in and out, at most rgba(255,255,255,.18). */

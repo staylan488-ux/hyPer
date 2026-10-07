@@ -1,4 +1,6 @@
 import type { WorkoutSet, Workout, SplitExercise, WorkoutDayPlan } from '@/types';
+import type { AutofillSetValues } from '@/lib/setAutofill';
+import { formatWorkoutDuration } from '@/lib/workoutSessions';
 
 export interface WorkoutExpansion {
   expandedExerciseId: string | null;
@@ -126,4 +128,42 @@ export function getWorkoutResumeSet(
     pairings.set(members[1], { role: 'B', partnerExerciseId: members[0] });
   }
   return nextWorkoutSet(workout.sets, movements.map((movement) => movement.id), undefined, undefined, pairings);
+}
+
+/**
+ * A movement's set count for today. The rows are today's sets; the program's
+ * count is named only when today differs from it ("3 of 4 sets today" when
+ * sets were dropped, "5 sets today · 4 planned" when sets were added).
+ */
+export function todaySetCountLabel(todaySets: number, programSets?: number | null): string {
+  const unit = todaySets === 1 ? 'set' : 'sets';
+  if (!programSets || programSets === todaySets) return `${todaySets} ${unit}`;
+  if (todaySets < programSets) return `${todaySets} of ${programSets} sets today`;
+  return `${todaySets} ${unit} today · ${programSets} planned`;
+}
+
+/** "60 × 9" for an autofill offer, so it can be weighed against the plan. */
+const offerNumbers = (values: AutofillSetValues) => (values.weight && values.reps ? `${values.weight} × ${values.reps}` : '');
+
+/**
+ * The offer to reuse earlier numbers, named for what it does. Planned numbers
+ * carry no progression reason, so the offer never implies one: it repeats
+ * last workout's (or this session's last) set.
+ */
+export function repeatOfferLabel(values: AutofillSetValues): string {
+  const verb = values.source === 'current_workout' ? 'Repeat last set' : 'Repeat last';
+  const numbers = offerNumbers(values);
+  return numbers ? `${verb} · ${numbers}` : verb;
+}
+
+/** Elapsed session time ("24m"), or a dash before the session has a start. */
+export function formatSessionDuration(createdAt: string | null, now: number): string {
+  return createdAt
+    ? formatWorkoutDuration(Math.max(0, now - new Date(createdAt).getTime()))
+    : '—';
+}
+
+/** The compact bar title once the session title has scrolled under the bar. */
+export function compactSessionTitle(title: string, elapsed: string): string {
+  return `${title} · ${elapsed}`;
 }

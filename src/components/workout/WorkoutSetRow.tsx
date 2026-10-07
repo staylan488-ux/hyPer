@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, ChevronRight, ChevronUp, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowUp, Check, ChevronRight, Loader2, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAppStore } from '@/stores/appStore';
 import { celebrationHaptic, tapHaptic } from '@/lib/haptics';
@@ -9,6 +9,7 @@ import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isL
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 import { useLitSurface } from '@/hooks/useLitSurface';
+import { repeatOfferLabel } from './workoutFocus';
 
 interface PreviousTarget { weight: number | null; reps: number | null; rpe: number | null }
 /** Numbers offered for an unlogged set, shown dimmed until typed over or confirmed. */
@@ -20,9 +21,6 @@ const SUGGESTION_SOURCE: Record<SetSuggestion['source'], string> = {
   last_workout: 'From last workout',
   last_set: 'From your last set',
 };
-
-/** "60 × 9" for an autofill offer, so it can be weighed against the plan. */
-const offerNumbers = (values: AutofillSetValues) => (values.weight && values.reps ? `${values.weight} × ${values.reps}` : '');
 
 const numberText = (value: number | null | undefined) => (typeof value === 'number' && Number.isFinite(value) ? value.toString() : '');
 
@@ -194,8 +192,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const autofillAction = autofillValues && (autofillValues.weight !== entryWeight || autofillValues.reps !== entryReps || autofillValues.rpe !== entryRpe)
     ? <button type="button" disabled={saving} onClick={() => {
       tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
-    }}><RotateCcw size={13} aria-hidden />{autofillValues.source === 'current_workout' ? 'Use last set' : 'Use last workout'}
-      {offerNumbers(autofillValues) && <span className="studio-set-offer">· {offerNumbers(autofillValues)}</span>}</button>
+    }}><RotateCcw size={13} aria-hidden /><span className="studio-set-offer">{repeatOfferLabel(autofillValues)}</span></button>
     : null;
 
   return <>
@@ -242,27 +239,26 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         </button>
       </div>
       {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
+      {/* One line under the fields: where the numbers came from, and the
+          alternatives (repeat last, or cancel an edit). Entry closes with the
+          movement's own disclosure. */}
       <div className="studio-set-editor-foot">
-        {/* Ghosted numbers carry their source, and the save key accepts them
-            as they are in one tap. */}
         {showingSuggestion && suggestion
           ? <span id={suggestionCaptionId} className="studio-set-suggestion">
             <strong>{SUGGESTION_SOURCE[suggestion.source]}</strong>
             <span aria-hidden> · tap <Check size={12} strokeWidth={2.25} className="studio-set-suggestion-check" /> to log</span>
             <span className="sr-only">, Save logs these numbers as shown</span>
           </span>
-          : autofillAction ?? <span>{formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
-        <div>
+          : <span className="studio-set-foot-note">{!autofillAction && formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
+        {(autofillAction || set.completed) && <div>
+          {autofillAction}
           {set.completed && <button type="button" disabled={saving} onClick={() => {
             hasDraft.current = false;
             setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
             setSaveError(null); releaseEditorFocus(); onHide?.();
           }}>Cancel</button>}
-          <button type="button" aria-label={`Hide entry for ${setLabel}`} onClick={() => { tapHaptic(); releaseEditorFocus(); onHide?.(); }}>Hide entry <ChevronUp size={13} aria-hidden /></button>
-        </div>
+        </div>}
       </div>
-      {/* The alternative to a suggestion sits on its own line under it. */}
-      {showingSuggestion && autofillAction && <div className="studio-set-editor-alt">{autofillAction}</div>}
       <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
     </form>
   </>;

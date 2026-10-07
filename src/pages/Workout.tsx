@@ -4,7 +4,6 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -36,9 +35,10 @@ import { useLitSurface } from '@/hooks/useLitSurface';
 import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { SessionToken } from '@/components/workout/SessionToken';
+import { LiveSessionBar } from '@/components/workout/LiveSessionBar';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { movementBlocks } from '@/components/workout/movementOrder';
-import { expandedWorkoutSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -56,7 +56,7 @@ import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutof
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
@@ -70,6 +70,9 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
   if (!value || !Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(12, Math.round(value)));
 }
+
+/** The Finish confirmation has one height and its own cancel. */
+const FINISH_SHEET_CHROME = { showGrabber: false, showClose: false };
 
 /** The rest bar's "Next ·" label is the movement name, this, and the set number. */
 const REST_NEXT_UP_SET = ' · set ';
@@ -93,32 +96,6 @@ type CompletionSummary = {
   gains: Array<{ name: string; setNumber: number; gain: string }>;
   completedAt: number;
 };
-
-function formatSessionDuration(createdAt: string | null, now: number): string {
-  return createdAt
-    ? formatWorkoutDuration(Math.max(0, now - new Date(createdAt).getTime()))
-    : '—';
-}
-
-/**
- * Ticks on its own so the whole session page doesn't re-render every second.
- * Render with `key={createdAt}` so a new session starts from a fresh clock.
- */
-function SessionClock({ createdAt }: { createdAt: string }) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  return <>{formatSessionDuration(createdAt, now)}</>;
-}
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
   const map = new Map<string, SupersetFlow>();
@@ -211,6 +188,8 @@ export function Workout() {
   const [finishError, setFinishError] = useState<string | null>(null);
   const [noteSaveFailed, setNoteSaveFailed] = useState(false);
   const finishingRef = useRef(false);
+  // The live session's large title: the pinned bar takes over once it scrolls under.
+  const sessionTitleRef = useRef<HTMLHeadingElement>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const dirtyMovementNotesRef = useRef<Record<string, string>>({});
   const legacyWorkoutNoteRef = useRef<string | null>(null);
@@ -1695,14 +1674,8 @@ export function Workout() {
   return (
     <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}${showNextSetCta ? ' has-next-set' : ''}`}>
       <header className="studio-session-header">
-        {/* The live session is a full-screen cover, not a page pushed from
-            Today: it minimises (the session keeps running) rather than going
-            back. The clock sits on the screen's centre line. */}
-        <div className="studio-session-top">
-          <button type="button" className="studio-session-minimise pressable" aria-label="Minimise workout" onClick={() => navigate('/')}><ChevronDown size={24} strokeWidth={1.75} aria-hidden /></button>
-          <span className="studio-session-clock">{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <button type="button" className="studio-session-finish" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</button>
-        </div>
+        <LiveSessionBar title={currentSessionTitle} createdAt={currentWorkoutCreatedAt} titleRef={sessionTitleRef}
+          finishing={finishing} onMinimise={() => navigate('/')} onFinish={() => { void handleCompleteWorkout(); }} />
         {finishError && <div className="flex items-center justify-between gap-3">
           <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
           {noteSaveFailed && <Button variant="ghost" size="sm" onClick={() => {
@@ -1710,7 +1683,7 @@ export function Workout() {
           }}>Retry</Button>}
         </div>}
         <div className="studio-session-summary">
-          <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
+          <h1 ref={sessionTitleRef}>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
           {/* The same dial as Today's session ring: default size and stroke. */}
           <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} reveal="session-sets">
             <span className="number-medium text-[20px]! text-[var(--color-text)]">{completedSets}<span className="text-[var(--color-text-dim)]">/{totalSets}</span></span>
@@ -1980,21 +1953,13 @@ export function Workout() {
                 {...swapCardProps(exerciseId)}
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
-                <div className="studio-movement-prescription">
-                  {/* The rows are today's sets; the program's count appears only when it differs. */}
-                  <p className="t-caption">
-                    {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}${setRange.targetSets !== sets.length ? ` (${setRange.targetSets} in your program)` : ''}`
-                      : `${sets.length} ${sets.length === 1 ? 'set' : 'sets'}`}
-                  </p>
-                  {hasRemovableUncompletedSet && (
-                    <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
-                      aria-label={`Swap ${exerciseName} for this workout`}
-                      onClick={() => { tapHaptic(); openSwap(exerciseId); }}>
-                      <ArrowLeftRight size={14} aria-hidden />Swap
-                    </button>
-                  )}
-                </div>
+                {/* The rows are today's sets; the program's count appears only when it
+                    differs. Swap lives in the movement's options. */}
+                <p className="studio-movement-prescription">
+                  {exerciseSetRanges.has(exerciseId)
+                    ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${todaySetCountLabel(sets.length, setRange.targetSets)}`
+                    : todaySetCountLabel(sets.length)}
+                </p>
                 <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <span className="t-caption">
@@ -2128,8 +2093,12 @@ export function Workout() {
       )}
 
       {/* Complete Confirmation */}
-      <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
-        <div className="space-y-4 pt-1">
+      {/* A single-height confirmation: no grabber, and no close, since "Keep
+          training" is the cancel. (showGrabber/showClose are the shared
+          Modal's options; spread until they land so older Modals ignore them.) */}
+      <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?"
+        contentClassName="pt-2!" {...(FINISH_SHEET_CHROME as object)}>
+        <div className="space-y-4">
           <div className="flex items-center gap-3">
             <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" />
             <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
@@ -2247,7 +2216,6 @@ function ExerciseCard({
     : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
   const headingRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const reveal = revealRef.current;
     if (!reveal) return;
@@ -2274,7 +2242,7 @@ function ExerciseCard({
   return (
     <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive && !reordering ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
       <div className="studio-movement-header" ref={headingRef}>
-        <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
+        <button type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
           aria-describedby={!isActive ? summaryId : undefined} aria-disabled={reordering || undefined} tabIndex={reordering ? -1 : undefined}
           aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { if (!reordering) onToggle(); }}>
           {isActive && !reordering ? <>
@@ -2284,6 +2252,9 @@ function ExerciseCard({
               <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
               {/* "Set 1 of 3" already carries the count. */}
               {!loggingNow && <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />}
+              {/* The movement's one collapse control, a disclosure chevron in
+                  ink on its header row (the whole header is the button). */}
+              <ChevronUp className="studio-movement-disclosure" size={18} strokeWidth={1.75} aria-hidden />
             </span>
             <span className="studio-movement-name">{exerciseName}</span>
           </> : <>
@@ -2327,21 +2298,10 @@ function ExerciseCard({
       <div ref={revealRef} className="studio-movement-reveal" data-open={isActive ? 'true' : 'false'} inert={!isActive} aria-hidden={!isActive || undefined}>
       <div className="studio-movement-reveal-inner">
       <div id={contentId} className="studio-movement-content">
-        {/* Last workout's numbers live with each set's entry ("Use last
-            workout · 60 × 9"), beside whatever is planned, so the two read as
-            a choice rather than an unexplained jump. */}
+        {/* Last workout's numbers live with each set's entry ("Repeat last ·
+            60 × 9"), on the same line as whatever is planned, so the two read
+            as a choice rather than an unexplained jump. */}
         {children}
-        <button type="button" className="studio-collapse-movement" onClick={() => {
-          onToggle();
-          requestAnimationFrame(() => {
-            toggleRef.current?.focus({ preventScroll: true });
-            const heading = headingRef.current;
-            const scroller = heading?.closest<HTMLElement>('[data-app-scroll-viewport]');
-            if (!heading || !scroller) return;
-            const top = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-            if (top < 0) scroller.scrollTop += top - 12;
-          });
-        }} aria-label={`Close ${exerciseName}`}>Close movement <ChevronUp size={14} aria-hidden /></button>
       </div>
       </div>
       </div>
@@ -2402,7 +2362,7 @@ function MovementNote({
   return (
     <div className="studio-movement-note">
       {!editing && value.trim() && <p className="studio-note-text">{value}</p>}
-      <button type="button" className="t-caption min-h-11 flex items-center gap-1" aria-expanded={editing}
+      <button type="button" className="studio-note-action" aria-expanded={editing}
         aria-controls={`movement-note-${exerciseId}`} onClick={() => setEditing((open) => !open)}>
         {editing ? 'Hide note editor' : value.trim() ? 'Edit note' : 'Add note'}
       </button>

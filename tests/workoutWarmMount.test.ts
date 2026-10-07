@@ -143,7 +143,28 @@ describe('Train live session', () => {
     expect(html).not.toMatch(/<input[^>]*value="80"/);
     expect(html).toContain('<strong>Planned</strong>');
     expect(html).toContain('aria-label="Save set 1 of Barbell Row, 80 pounds, 10 reps, RPE 7"');
-    expect(html).toMatch(/Use last workout.*60 × 9/);
-    expect(html).toContain('Hide entry');
+    // One line: the plan's source, and last workout offered as a repeat.
+    expect(html).toMatch(/<div class="studio-set-editor-foot">.*<strong>Planned<\/strong>.*Repeat last · 60 × 9.*<\/div>/s);
+    // Entry closes with the movement's disclosure, not a second grey control.
+    expect(html).not.toContain('Hide entry');
+  });
+
+  it('pins chevron, clock and Finish in one bar, with the compact title ready to take over', () => {
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'w-1', user_id: USER_ID, split_day_id: 'day-1', date: '2026-10-07', notes: null, completed: false,
+        created_at: '2026-10-07T08:00:00.000Z', sets: [set(1, true), set(2, false), set(3, false)],
+      } as never,
+    });
+
+    const html = renderFirstFrame();
+    const bar = html.slice(html.indexOf('studio-live-bar'), html.indexOf('studio-live-bar-spacer'));
+
+    expect(bar).toContain('aria-label="Minimise workout"');
+    expect(bar).toContain('role="timer"');
+    expect(bar).toMatch(/class="page-scroll-edge-title studio-session-compact"[^>]*>Upper · /);
+    expect(bar).toContain('>Finish<');
+    // The single collapse control is gone from the foot of the movement.
+    expect(html).not.toContain('Close movement');
   });
 });
