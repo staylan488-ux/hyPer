@@ -93,9 +93,8 @@
   .material-button-primary:active { background-color: var(--button-primary-active); }
 }
 
-/* A broad wash adds the glass body; the specular edge comes from --material-rim. */
-.material-glass, .material-toolbar, .bottom-nav, .material-toast,
-.material-control, .material-inset, .studio-secondary-action, .material-button-secondary {
+/* Controls are flat fills; only floating glass carries the wash. */
+.material-glass, .material-toolbar, .bottom-nav, .material-toast {
   background-image: var(--material-wash);
 }
 .material-button-primary, .studio-save-set {
