@@ -33,7 +33,7 @@
   --glass-spec-hi: rgba(255, 255, 255, 1);
   --glass-spec-mid: rgba(255, 255, 255, .55);
   --glass-spec-low: rgba(255, 255, 255, .75);
-  --glass-hairline: rgba(20, 22, 20, .07);
+  --glass-hairline: rgba(20, 20, 20, .07);
 
   /* Metal: a bright, cool silver read against ivory. */
   --metal-chrome:
@@ -53,14 +53,14 @@
   --metal-width: 1.75px;
   --metal-dome: linear-gradient(180deg, #ffffff 0%, #f8f8f6 46%, #e9e9e5 100%);
   --metal-dome-press: linear-gradient(180deg, #f1f1ee 0%, #ebebe7 50%, #dfdfdb 100%);
-  --metal-dome-fg: #1b1d1d;
+  --metal-dome-fg: #1c1c1c;
   --metal-dome-inner: inset 0 1px 0 #ffffff, inset 0 -3px 6px rgba(40, 40, 30, .06);
-  --metal-dome-shadow: 0 1px 2px rgba(20, 22, 20, .10), 0 8px 22px rgba(20, 22, 20, .10);
-  --metal-text-shadow: 0 1px 1px rgba(20, 22, 20, .14);
+  --metal-dome-shadow: 0 1px 2px rgba(20, 20, 20, .10), 0 8px 22px rgba(20, 20, 20, .10);
+  --metal-text-shadow: 0 1px 1px rgba(20, 20, 20, .14);
   --metal-static-opacity: .9;
 
   /* Hero figures: graphite, lit from above. */
-  --figure-ink: linear-gradient(180deg, #1f2222 20%, #4d4d4d 100%);
+  --figure-ink: linear-gradient(180deg, #212121 20%, #4d4d4d 100%);
 }
 
 .dark {
@@ -320,7 +320,7 @@
   text-align: center;
 }
 :root, .light {
-  --ring-groove: rgba(35,38,37,.09);
+  --ring-groove: rgba(35, 35, 35,.09);
   --ring-ink: var(--color-text);
 }
 .dark {
@@ -334,8 +334,8 @@
 .rail-groove { border-radius: 99px; background: var(--rail-groove); box-shadow: var(--rail-groove-shadow); }
 .rail-metal { background-image: none; background-color: var(--color-text); }
 :root, .light {
-  --rail-groove: rgba(35,38,37,.09);
-  --rail-groove-shadow: inset 0 1px 1px rgba(20,22,20,.08);
+  --rail-groove: rgba(35, 35, 35,.09);
+  --rail-groove-shadow: inset 0 1px 1px rgba(20, 20, 20,.08);
   --rail-chrome: linear-gradient(180deg, #828282 0%, #3f3f3f 55%, #262626 100%);
 }
 .dark {

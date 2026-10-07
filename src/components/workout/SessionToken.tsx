@@ -52,7 +52,7 @@ export function SessionToken({ face, className = '' }: SessionTokenProps) {
           colors: {
             accent: styles.getPropertyValue('--color-accent').trim() || '#A8352A',
             paper: '#F5F1E8',
-            ink: styles.getPropertyValue('--color-text').trim() || '#232625',
+            ink: styles.getPropertyValue('--color-text').trim() || '#232323',
           },
           onReady: () => setReady(true),
           onContextLost: () => {

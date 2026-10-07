@@ -9,15 +9,15 @@
 
   /* Defaults (PAPER) — runtime values overridden by .light / .dark */
   --color-base: #F5F5F0;
-  --color-well: #E8E9E4;
-  --color-surface-1: #F0F1EC;
-  --color-surface-2: #E8E9E4;
-  --color-surface-3: #DCE0D9;
+  --color-well: #EAEAE5;
+  --color-surface-1: #F0F0EB;
+  --color-surface-2: #EAEAE5;
+  --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #60645F;
-  --color-text: #232625;
-  --color-text-dim: #60645F;
+  --color-muted: #616161;
+  --color-text: #232323;
+  --color-text-dim: #616161;
 
   /* The single accent — Lacquer. Everything else is ink on paper. */
   --color-accent: #A8352A;
@@ -72,15 +72,15 @@
 :root,
 .light {
   --color-base: #F5F5F0;
-  --color-well: #E8E9E4;
-  --color-surface-1: #F0F1EC;
-  --color-surface-2: #E8E9E4;
-  --color-surface-3: #DCE0D9;
+  --color-well: #EAEAE5;
+  --color-surface-1: #F0F0EB;
+  --color-surface-2: #EAEAE5;
+  --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #60645F;
-  --color-text: #232625;
-  --color-text-dim: #60645F;
+  --color-muted: #616161;
+  --color-text: #232323;
+  --color-text-dim: #616161;
   --color-accent: #A8352A;
   --color-accent-deep: #872A20;
   --color-sage: var(--color-text);
@@ -90,15 +90,15 @@
   --color-success: var(--color-text);
   --color-warning: var(--color-accent);
   --color-danger: var(--color-accent);
-  --color-border: rgba(35, 38, 37, 0.16);
-  --color-border-strong: rgba(35, 38, 37, 0.32);
-  --color-border-soft: rgba(35, 38, 37, 0.08);
-  --overlay-backdrop: rgba(24, 29, 26, 0.16);
+  --color-border: rgba(35, 35, 35, 0.16);
+  --color-border-strong: rgba(35, 35, 35, 0.32);
+  --color-border-soft: rgba(35, 35, 35, 0.08);
+  --overlay-backdrop: rgba(20, 20, 20, 0.16);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
   --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
-  --strip-track: rgba(35, 38, 37, 0.12);
+  --strip-track: rgba(35, 35, 35, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
   --button-danger-fg: #F5F5F0;

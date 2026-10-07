@@ -6,9 +6,9 @@ function readColors(): BurstColors {
   const styles = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
   return {
-    ink: read('--color-text', '#232625'),
+    ink: read('--color-text', '#232323'),
     accent: read('--color-accent', '#A8352A'),
-    paper: read('--color-text-dim', '#60645F'),
+    paper: read('--color-text-dim', '#616161'),
   };
 }
 
