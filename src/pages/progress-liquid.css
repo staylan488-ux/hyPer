@@ -166,7 +166,8 @@
   border-radius: 50%;
   background: currentColor;
 }
-.status-label[data-tone='under']::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+/* Under wears the figure's own lowest tone, as the legend swatch does. */
+.status-label[data-tone='under']::before { background: var(--map-under, currentColor); }
 .status-label[data-tone='hot'] { color: var(--color-accent); }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
