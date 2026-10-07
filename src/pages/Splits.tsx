@@ -287,6 +287,7 @@ export function Splits() {
         <div className="mt-6">
           <SegmentedControl
             size="sm"
+            distribution="equal"
             value={workoutMode}
             onChange={(mode) => {
               if (!canSwitchMode) return;

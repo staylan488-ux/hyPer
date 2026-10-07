@@ -130,7 +130,10 @@
   color: var(--color-text);
 }
 .you-weight-value.is-empty {
+  font-family: var(--font-sans);
   font-size: 22px;
+  font-variant-numeric: normal;
+  letter-spacing: -.01em;
   color: var(--color-text-dim);
 }
 .you-target-grid {
