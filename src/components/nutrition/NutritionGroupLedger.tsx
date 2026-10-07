@@ -227,7 +227,8 @@ export function NutritionGroupLedger({
         <div className="fuel-meal-head">
           <h3 className="fuel-meal-title">
             {title}
-            <span className="fuel-meal-count">{entries.length}</span>
+            {/* An empty meal says so once, below ("Nothing logged."). */}
+            {entries.length > 0 && <span className="fuel-meal-count">{entries.length}</span>}
           </h3>
           {editing && group ? (
             // Fixed slots: earlier, later, delete. A meal that can't be deleted keeps its slot empty.
@@ -256,9 +257,9 @@ export function NutritionGroupLedger({
                 </button>
               ) : <span className="fuel-tool" aria-hidden />}
             </div>
-          ) : (
+          ) : entries.length > 0 ? (
             <span className="fuel-meal-kcal">{totalCalories.toLocaleString()} kcal</span>
-          )}
+          ) : null}
         </div>
         {entries.length > 0 ? (
           <ul><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>

@@ -47,6 +47,30 @@ describe('two-edge rest: the tab bar', () => {
     expect(barDepth(unit, target as number, bar([unit]))).toBeGreaterThan(0);
   });
 
+  it('keeps a divider 20pt clear above the bar or under it', () => {
+    const edge = bar([]);
+    expect(barDepth({ top: 712, bottom: 713, rule: true }, 0, edge)).toBeGreaterThan(0); // 16pt above
+    expect(barDepth({ top: 706, bottom: 707, rule: true }, 0, edge)).toBe(0); // 22pt above
+    expect(barDepth({ top: 731, bottom: 732, rule: true }, 0, edge)).toBe(0); // under the glass
+    // At an offset that suits the lines, a divider 15pt above the bar moves the rest.
+    const rows = [470, 538].map((top) => ({ top, bottom: top + 18 }));
+    const rule = { top: 1114, bottom: 1115, rule: true }; // 15pt above the bar at 400
+    expect(barDepth(rule, 400, bar([rule]))).toBeGreaterThan(0);
+    expect(restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]))).toBeNull();
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([rule])) as number;
+    expect(barDepth(rule, target, bar([rule]))).toBe(0);
+  });
+
+  it('measures the gap to the glyphs, not the line box', () => {
+    // A line whose glyphs start 4pt into its line box rests with them at the
+    // gap: its box top may sit up to 3pt into the ramp.
+    const rows = [{ top: 466, bottom: 484, ink: 470 }, { top: 538, bottom: 556, ink: 542 }];
+    const target = restNudgeTarget(380, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([])) as number;
+    expect(straddleCount(rows, target, band)).toBe(0);
+    const gap = rows[0].ink - target - band.foot;
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(REST_GAP_FLEX);
+  });
 });
 
 describe('two-edge rest: one gap under the band', () => {

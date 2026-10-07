@@ -85,6 +85,21 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* A glyph item in the bar row (History's sync): the same 44px key and ink
+   glyph as its condensed copy, at the same place (right: 11px in the band;
+   the actions column ends 10px past the 24px guide, so 3px further). */
+.page-header-icon-action {
+  width: 44px;
+  height: 44px;
+  margin-right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+}
+.page-header-icon-action:disabled { opacity: .3; }
+
 /* Quiet text action: sentence case, ink, no fill or outline, with a 44px
    target. Used for contextual actions (Sync, Add activity, New, Edit). */
 .text-action {
@@ -106,7 +121,7 @@
   transition: opacity 160ms ease, color 160ms ease;
 }
 /* Secondary header actions (a section's or a sheet's: Add activity, Edit,
-   Build a meal, Sync WHOOP) stay ink but step down to 15px regular, so the
+   Build a meal) stay ink but step down to 15px regular, so the
    titles beside them keep the weight; at most one per header line. */
 .text-action-secondary,
 .page-header-actions .text-action-secondary {

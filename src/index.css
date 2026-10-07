@@ -580,10 +580,14 @@ input, textarea, select, button { font-family: inherit; }
 /* Bottom scroll edge, like iOS 26's: content goes under the glass capsule
    (which blurs it, materials.css) and nowhere else blurs. Outside the
    capsule there is only stage colour: an 8px opacity fade above the bar's
-   top edge, then solid beside and under the bar, so nothing smudges in the
-   corner wedges. The stage is the spread of a capsule-shaped hole
-   (.bottom-nav-edge-hole, the bar's own box and radius), so it follows the
-   bar's rounded ends exactly and leaves the capsule itself clear. */
+   top edge, eased so it is all but full stage over the last 4px (a glyph's
+   top just above the bar fades out instead of reading as sliced), then
+   solid beside and under the bar, so nothing smudges in the corner wedges.
+   The stage is the spread of a capsule-shaped hole
+   (.bottom-nav-edge-hole) that follows the bar's rounded ends 1px inside
+   its edge: the bar's antialiased edge then lies over solid stage, never
+   over two coincident antialiased edges that let crisp content through as
+   a dotted arc. */
 .bottom-nav-edge {
   --nav-edge-above: 8px;
   position: fixed;
@@ -594,18 +598,19 @@ input, textarea, select, button { font-family: inherit; }
   height: calc(var(--nav-top) + var(--nav-edge-above));
   overflow: hidden;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--nav-edge-above));
-  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--nav-edge-above));
+  --nav-edge-fade: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.45) calc(var(--nav-edge-above) * .25), rgba(0,0,0,.8) calc(var(--nav-edge-above) * .5), rgba(0,0,0,.96) calc(var(--nav-edge-above) * .75), #000 var(--nav-edge-above));
+  -webkit-mask-image: var(--nav-edge-fade);
+  mask-image: var(--nav-edge-fade);
 }
 .bottom-nav-edge-hole {
   position: absolute;
-  bottom: var(--nav-gap);
-  left: max(21px, var(--app-safe-left));
-  right: max(21px, var(--app-safe-right));
-  max-width: 478px;
-  height: var(--nav-height);
+  bottom: calc(var(--nav-gap) + 1px);
+  left: calc(max(21px, var(--app-safe-left)) + 1px);
+  right: calc(max(21px, var(--app-safe-right)) + 1px);
+  max-width: 476px;
+  height: calc(var(--nav-height) - 2px);
   margin: 0 auto;
-  border-radius: var(--radius-nav);
+  border-radius: calc(var(--radius-nav) - 1px);
   box-shadow: 0 0 0 100vmax var(--material-foundation);
 }
 html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }

@@ -314,7 +314,7 @@ export function Analysis() {
       {/* Training hours */}
       <section className="mt-14">
         <div className="flex items-baseline justify-between">
-          <span className="t-label">Training hours</span>
+          <span className="t-label">Lifting hours</span>
           <span className="t-caption">Last 8 weeks</span>
         </div>
         {hoursLoading ? (

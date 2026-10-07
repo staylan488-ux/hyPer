@@ -42,8 +42,10 @@ export function restingScrollEnd(naturalEnd: number, rests: number[], limit: num
  *  `fill`: a filled box (a capsule button, a track). Its edge is a long
  *  straight line the band's blur would smear into a ghost bar, so it counts
  *  as hidden only once it ends at the solid stage's edge, with no allowance
- *  into the ramp. */
-export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean }
+ *  into the ramp. `ink`: where a text line's glyphs start, below its line
+ *  box's top; the gap under the band is measured to it. `rule`: a hairline
+ *  at the tab bar, which rests `REST_BAR_RULE_CLEAR` clear of it. */
+export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean; ink?: number; rule?: boolean }
 /** The scroll-edge band, measured down from the scroll viewport's top edge:
  *  the solid stage ends at `solid`, the ramp at `foot`. `window`: the height
  *  between the ramp's foot and the tab bar's clear line. With it, every block
@@ -74,6 +76,12 @@ export const REST_PAGE_NUDGE_LIMIT = 64;
 /** A text line rests at least this far above the tab bar's top (clear of its
  *  8px stage fade), or wholly under it. */
 export const REST_BAR_CLEAR = 8;
+/** A hairline rule rests at least this far above the tab bar's top, or under
+ *  it: closer, it reads as a second edge drawn just above the bar. */
+export const REST_BAR_RULE_CLEAR = 20;
+const barClear = (item: RestBlock) => (item.rule ? REST_BAR_RULE_CLEAR : REST_BAR_CLEAR);
+/** Where a block's visible ink starts (a text line's glyphs, not its line box). */
+const inkTop = (block: RestBlock) => block.ink ?? block.top;
 /** Where the first content under the band rests, past the ramp's foot: on
  *  every page, the first line, graphic or filled box below the band starts
  *  at the foot, where the veil has wholly cleared, or up to `REST_GAP_FLEX`
@@ -98,7 +106,8 @@ const sliverOf = (block: RestBlock, band: RestBand) => (band.window !== undefine
  * window, a tall block) is split only while no more than a sliver shows.
  */
 export function splitDepth(block: RestBlock, scrollTop: number, band: RestBand): number {
-  const top = block.top - scrollTop;
+  // A line clears the ramp by its glyphs (`ink`), not its line box.
+  const top = inkTop(block) - scrollTop;
   const bottom = block.bottom - scrollTop;
   const hidden = bottom - (band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH));
   const clear = band.foot - (block.fill ? 0 : REST_CLEAR_DEPTH) - top;
@@ -118,10 +127,11 @@ export function straddlesBand(block: RestBlock, scrollTop: number, band: RestBan
 }
 
 /** How far a line (or header unit) is from resting clean at the tab bar: 0
- *  when it ends at least `REST_BAR_CLEAR` above the bar's top or starts
- *  under it, otherwise the shorter distance to either. */
+ *  when it ends at least `REST_BAR_CLEAR` above the bar's top (a rule
+ *  `REST_BAR_RULE_CLEAR`) or starts under it, otherwise the shorter
+ *  distance to either. */
 export function barDepth(item: RestBlock, scrollTop: number, bar: RestBar): number {
-  const clear = item.bottom - scrollTop - (bar.top - REST_BAR_CLEAR);
+  const clear = item.bottom - scrollTop - (bar.top - barClear(item));
   const under = bar.top - (item.top - scrollTop);
   if (clear < 1 || under < 1) return 0;
   return Math.min(clear, under);
@@ -148,12 +158,12 @@ function criticalOffsets(blocks: RestBlock[], band: RestBand, bar?: RestBar | nu
   const offsets: number[] = [];
   for (const block of blocks) {
     offsets.push(Math.ceil(block.bottom - band.solid - (block.fill ? 0 : REST_HIDDEN_DEPTH)));
-    offsets.push(Math.floor(block.top - band.foot + (block.fill ? 0 : REST_CLEAR_DEPTH)));
+    offsets.push(Math.floor(inkTop(block) - band.foot + (block.fill ? 0 : REST_CLEAR_DEPTH)));
     if (isTall(block, band)) offsets.push(Math.floor(block.bottom - band.foot - sliverOf(block, band)));
   }
   if (bar) {
     for (const item of bar.items) {
-      offsets.push(Math.ceil(item.bottom - bar.top + REST_BAR_CLEAR));
+      offsets.push(Math.ceil(item.bottom - bar.top + barClear(item)));
       offsets.push(Math.floor(item.top - bar.top));
     }
   }
@@ -179,11 +189,13 @@ function reachOf(block: RestBlock, band: RestBand, limit: number): number {
  * stage. Never leaves [min, max]. Null: stay.
  *
  * Given the tab bar (`null` where there is none to judge), the page rests on
- * one gap instead: the first content under the band starts at the ramp's
- * foot or up to `REST_GAP_FLEX` past it (`REST_GAP`), as UIKit pages rest
+ * one gap instead: the first ink under the band (a line's glyphs, not its
+ * line box) starts at the ramp's foot or up to `REST_GAP_FLEX` past it
+ * (`REST_GAP`), as UIKit pages rest
  * with a row's top under the navigation bar, with nothing split by the
  * band. Within that, the nearest offset (within `REST_GAP_REACH`) with no
- * line astride the tab bar's top or within `REST_BAR_CLEAR` above it wins;
+ * line astride the tab bar's top or within `REST_BAR_CLEAR` above it (a
+ * hairline rule within `REST_BAR_RULE_CLEAR`) wins;
  * only when no such offset is in reach does a line rest passing under the
  * bar (the nearest rest at the gap). The scroll end with a clean band is a
  * rest as well (its end space is the one bottom inset), and a page at its
@@ -211,21 +223,21 @@ export function restNudgeTarget(
   // The scroll end with a clean band is a rest too (its end space is the
   // one bottom inset), so a page just short of its end goes there.
   const atEnd = high >= range.max - 1e-6 && topCount(range.max) === 0 ? [range.max] : [];
-  // Where the first shown content starts past the foot (Infinity: none).
+  // Where the first shown ink starts past the foot (Infinity: none).
   const firstShown = (offset: number) => blocks.reduce((first, block) => (
-    block.bottom - offset > band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH) ? Math.min(first, block.top - offset) : first
+    block.bottom - offset > band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH) ? Math.min(first, inkTop(block) - offset) : first
   ), Infinity) - band.foot - REST_GAP;
   // The offsets where something changes: a block's top at either end of the
   // gap's flex, a block just hidden or just clear at the band, a line just
   // clear above the bar or just under it.
   const marks = new Set<number>([scrollTop, low, high, ...criticalOffsets(blocks, band)]);
   for (const block of blocks) {
-    marks.add(block.top - band.foot - REST_GAP);
-    marks.add(block.top - band.foot - REST_GAP - REST_GAP_FLEX);
+    marks.add(inkTop(block) - band.foot - REST_GAP);
+    marks.add(inkTop(block) - band.foot - REST_GAP - REST_GAP_FLEX);
   }
   if (bar) {
     for (const item of bar.items) {
-      marks.add(Math.ceil(item.bottom - bar.top + REST_BAR_CLEAR));
+      marks.add(Math.ceil(item.bottom - bar.top + barClear(item)));
       marks.add(Math.floor(item.top - bar.top));
     }
   }
@@ -264,14 +276,14 @@ export function restNudgeTarget(
   return best === null || Math.abs(best - scrollTop) < 0.5 ? null : best;
 }
 
-/** Every offset where the page rests on the gap: a block's top at the
+/** Every offset where the page rests on the gap: a block's ink at the
  *  ramp's foot (`REST_GAP`), nothing split by the band and nothing that
  *  shows starting above the foot (a taller line beside it, say). Sorted. */
 export function gapRestOffsets(blocks: RestBlock[], band: RestBand): number[] {
   const firstShown = (offset: number) => blocks.reduce((first, block) => (
-    block.bottom - offset > band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH) ? Math.min(first, block.top - offset) : first
+    block.bottom - offset > band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH) ? Math.min(first, inkTop(block) - offset) : first
   ), Infinity);
-  return [...new Set(blocks.map((block) => block.top - band.foot - REST_GAP))]
+  return [...new Set(blocks.map((block) => inkTop(block) - band.foot - REST_GAP))]
     .filter((offset) => straddleCount(blocks, offset, band) === 0 && firstShown(offset) >= band.foot + REST_GAP - 0.5)
     .sort((a, b) => a - b);
 }
@@ -335,7 +347,7 @@ export function restingScrollEndAt(lastInk: number, barTop: number, blocks: Rest
   if (!(end > 0.5) || end < floor - 0.5 || !Number.isFinite(end)) return end;
   if (straddleCount(blocks, end, band) === 0) return end;
   const within = (offset: number) => offset > end && offset <= end + REST_END_SLACK && straddleCount(blocks, offset, band) === 0;
-  const gap = blocks.map((block) => block.top - band.foot - REST_GAP).filter(within).sort((a, b) => a - b)[0];
+  const gap = blocks.map((block) => inkTop(block) - band.foot - REST_GAP).filter(within).sort((a, b) => a - b)[0];
   if (gap !== undefined) return gap;
   return criticalOffsets(blocks, band).filter(within).sort((a, b) => a - b)[0] ?? end;
 }

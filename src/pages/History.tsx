@@ -1346,10 +1346,11 @@ export function History() {
         title="History"
         className="mb-2"
         // Sync belongs to the whole ledger, not the day: one action in the
-        // bar row, only while WHOOP is connected, in the bar's one text
-        // style. Collapsed, the bar keeps it as a glyph key.
+        // bar row, only while WHOOP is connected. It keeps one form in both
+        // states, a 44pt sync glyph labelled "Sync WHOOP", at the same place
+        // expanded and collapsed, as a navigation bar's item does.
         compactAction={syncAvailable ? {
-          label: 'Sync WHOOP',
+          label: syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP',
           icon: <RefreshCw size={20} strokeWidth={1.75} aria-hidden className={syncingWhoop ? 'motion-safe:animate-spin' : undefined} />,
           onClick: () => { void handleSyncWhoop(); },
           disabled: syncingWhoop,
@@ -1357,12 +1358,12 @@ export function History() {
         actions={syncAvailable ? (
           <button
             type="button"
-            className="text-action"
+            className="page-header-icon-action pressable"
             aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
             disabled={syncingWhoop}
             onClick={() => { void handleSyncWhoop(); }}
           >
-            {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
+            <RefreshCw size={20} strokeWidth={1.75} aria-hidden className={syncingWhoop ? 'motion-safe:animate-spin' : undefined} />
           </button>
         ) : undefined}
       />

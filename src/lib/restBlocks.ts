@@ -1,3 +1,4 @@
+import { findRuleCarriers } from './ruleVeil';
 import type { RestBand, RestBar, RestBlock } from './titleSnap';
 
 /**
@@ -62,24 +63,35 @@ function createClipper(viewport: HTMLElement) {
   return clipped;
 }
 
-function createInkMeter(viewport: HTMLElement): (block: Element) => Extent | null {
+/** A block's ink extent; `glyphs`: where its first visible ink starts (a
+ *  line's glyphs, an icon's strokes), below `top`. */
+type InkExtent = Extent & { glyphs: number };
+
+function createInkMeter(viewport: HTMLElement): (block: Element) => InkExtent | null {
   const clipped = createClipper(viewport);
-  const inkOf = (block: Element): Extent | null => {
+  const glyphInset = createGlyphMeter();
+  const inkOf = (block: Element): InkExtent | null => {
     let top = Infinity;
     let bottom = -Infinity;
-    const add = (extent: Extent | null) => {
+    let glyphs = Infinity;
+    const add = (extent: Extent | null, inset = 0) => {
       if (!extent) return;
       top = Math.min(top, extent.top);
       bottom = Math.max(bottom, extent.bottom);
+      glyphs = Math.min(glyphs, Math.min(extent.bottom, extent.top + inset));
     };
     const range = document.createRange();
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const parent = node.parentElement;
       if (!node.textContent?.trim() || !parent || parent.closest('svg') || !visible(parent)) continue;
+      const inset = glyphInset(node, parent);
       range.selectNodeContents(node);
       for (const rect of Array.from(range.getClientRects())) {
-        if (rect.width > 0.5 && rect.height > 0.5) add(clipped(parent, rect));
+        if (!(rect.width > 0.5 && rect.height > 0.5)) continue;
+        const extent = clipped(parent, rect);
+        // The glyphs start `inset` below the rect (less any part clipped off).
+        add(extent, extent ? Math.max(0, rect.top + inset - extent.top) : 0);
       }
     }
     const elements = [block, ...Array.from(block.querySelectorAll('*'))];
@@ -90,10 +102,13 @@ function createInkMeter(viewport: HTMLElement): (block: Element) => Extent | nul
       if (!visible(element)) continue;
       if (graphic || filled(getComputedStyle(element))) {
         const rect = element.getBoundingClientRect();
-        if (rect.width > 1 && rect.height > 1) add(clipped(element, rect));
+        if (rect.width > 1 && rect.height > 1) {
+          const extent = clipped(element, rect);
+          add(extent, extent && graphic ? Math.max(0, rect.top + svgInkInset(element, rect) - extent.top) : 0);
+        }
       }
     }
-    return Number.isFinite(top) && bottom > top ? { top, bottom } : null;
+    return Number.isFinite(top) && bottom > top ? { top, bottom, glyphs: Number.isFinite(glyphs) ? glyphs : top } : null;
   };
   return inkOf;
 }
@@ -147,6 +162,49 @@ const BAR_GRAPHIC_MAX = 40;
 /** A header further than this above its next line is not a header of it. */
 const HEAD_REACH = 64;
 
+/**
+ * Where a text node's glyphs start below the top of its line rects: a line
+ * rect spans the font's ascent, but its glyphs reach only their own height
+ * (a cap's top, a digit's), so the gap under the band is measured to them.
+ */
+function createGlyphMeter() {
+  const context = document.createElement('canvas').getContext('2d');
+  const cache = new Map<string, number>();
+  return (node: Node, parent: Element): number => {
+    if (!context) return 0;
+    const style = getComputedStyle(parent);
+    const raw = (node.textContent ?? '').trim();
+    const text = style.textTransform === 'uppercase' ? raw.toUpperCase() : style.textTransform === 'lowercase' ? raw.toLowerCase() : raw;
+    const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const key = `${font}|${text}`;
+    const known = cache.get(key);
+    if (known !== undefined) return known;
+    context.font = font;
+    const metrics = context.measureText(text);
+    const inset = Math.max(0, metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent);
+    const value = Number.isFinite(inset) ? inset : 0;
+    cache.set(key, value);
+    return value;
+  };
+}
+
+/** How far below its box's top an svg's drawn strokes start (an icon's
+ *  glyph sits inside padding in its viewBox); 0 when unknown. */
+function svgInkInset(node: Element, rect: DOMRect): number {
+  if (!(node instanceof SVGSVGElement)) return 0;
+  try {
+    const view = node.viewBox.baseVal;
+    if (!view || !(view.height > 0) || !(view.width > 0)) return 0;
+    const box = node.getBBox();
+    const scale = Math.min(rect.width / view.width, rect.height / view.height);
+    const stroke = parseFloat(getComputedStyle(node).strokeWidth) || 0;
+    const drawn = (rect.height - view.height * scale) / 2 + (box.y - view.y - stroke / 2) * scale;
+    return Number.isFinite(drawn) ? Math.min(rect.height, Math.max(0, drawn)) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** The tab bar's top edge from the viewport's top: the web bar's own box, or
  *  the clearance a page keeps for the native bar (`.pb-nav`). */
 function measureBarTop(root: HTMLElement, viewport: HTMLElement): number | null {
@@ -169,7 +227,8 @@ export interface RestInk {
    *  their legend, a search field). */
   blocks: RestBlock[];
   /** The tab bar and what must not rest astride it: every text line, small
-   *  graphics, and each section header with its first line below it. */
+   *  graphics, each section header with its first line below it, and
+   *  hairline rules. */
   bar: RestBar | null;
 }
 
@@ -188,6 +247,7 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
   const columnTop = viewportRect.top - viewport.scrollTop;
   const clipped = createClipper(viewport);
   const inkOf = createInkMeter(viewport);
+  const glyphInset = createGlyphMeter();
   type Entry = Extent & { node: Node };
   const blocks: RestBlock[] = [];
   const entries: Entry[] = [];
@@ -214,7 +274,12 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
         const rect = node.getBoundingClientRect();
         const ink = unit ? inkOf(node) : rect.width > 1 && rect.height > 1 ? clipped(node, rect) : null;
         // A filled box hides only at the solid stage's edge (`RestBlock.fill`).
-        if (ink) blocks.push(fill ? { ...column(ink), fill: true } : column(ink));
+        // An icon's strokes start inside its box (the gap is measured to them).
+        const strokes = ink && graphic ? Math.max(0, rect.top + svgInkInset(node, rect) - ink.top) : 0;
+        const unitGlyphs = unit && ink ? (ink as InkExtent).glyphs - ink.top : 0;
+        const inset = Math.max(strokes, unitGlyphs);
+        const extent = ink ? { top: ink.top, bottom: ink.bottom } : null;
+        if (extent) blocks.push(fill ? { ...column(extent), fill: true } : inset > 0.25 ? { ...column(extent), ink: column(extent).top + inset } : column(extent));
         if (graphic && ink) entries.push({ ...column({ top: ink.top, bottom: Math.min(ink.bottom, ink.top + BAR_GRAPHIC_MAX) }), node });
       }
       if (node.matches(HEAD_SELECTOR) && !heads.some((head) => head.element.contains(node))) {
@@ -230,13 +295,16 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     // At the bar a line is its glyphs' em box, not its line box: the
     // half-leading above and below shows nothing.
     const fontSize = parseFloat(getComputedStyle(parent).fontSize) || 0;
+    const glyphs = inUnit ? 0 : glyphInset(node, parent);
     range.selectNodeContents(node);
     for (const rect of Array.from(range.getClientRects())) {
       if (rect.width < 0.5 || rect.height < 4) continue;
       const extent = clipped(parent, rect);
       if (!extent) continue;
       const line = column(extent);
-      if (!inUnit) blocks.push(line);
+      // The band's gap is measured to where the glyphs start.
+      const ink = Math.max(line.top, column({ top: rect.top + glyphs, bottom: rect.bottom }).top);
+      if (!inUnit) blocks.push(ink > line.top + 0.25 && ink < line.bottom ? { ...line, ink } : line);
       const leading = Math.max(0, (rect.height - fontSize) / 2);
       entries.push({ top: line.top + leading, bottom: Math.max(line.top + leading + 1, line.bottom - leading), node });
       const head = heads.find((candidate) => candidate.element.contains(node));
@@ -254,6 +322,12 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     // The first line under the header (not beside it on its own line).
     const next = entries.slice(head.last).find((entry) => !head.element.contains(entry.node) && entry.top > head.bottom - 2);
     if (next && next.top - head.bottom <= HEAD_REACH) items.push({ top: head.top, bottom: next.bottom });
+  }
+  // Hairline rules rest well clear of the bar or under it (`REST_BAR_RULE_CLEAR`).
+  for (const carrier of findRuleCarriers(root, columnTop)) {
+    // A scale's hairline (a figure, `role="img"`) is part of its graphic, not a divider.
+    if (carrier.element.closest('.page-header, [role="img"]')) continue;
+    items.push({ top: carrier.offset, bottom: carrier.offset + 1, rule: true });
   }
   return { blocks, bar: { top: barTop, items } };
 }

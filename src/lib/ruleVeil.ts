@@ -15,7 +15,8 @@ export const RULE_CLEAR = 8;
 export const RULE_FADE = 12;
 
 type Kind = 'top' | 'bottom' | 'before' | 'after' | 'self';
-interface Carrier { element: HTMLElement; kind: Kind; offset: number; color?: string }
+export interface RuleCarrier { element: HTMLElement; kind: Kind; offset: number; color?: string }
+type Carrier = RuleCarrier;
 
 const alphaOf = (color: string) => {
   const match = color.match(/rgba?\(([^)]+)\)/);
@@ -38,6 +39,37 @@ export function ruleVisibility(y: number, foot: number): number {
   return x * x * (3 - 2 * x);
 }
 
+/** Every hairline rule under `root`, at its offset in the scroll column
+ *  (`columnTop`: the column's top from the window's). */
+export function findRuleCarriers(root: HTMLElement, columnTop: number): RuleCarrier[] {
+  const carriers: RuleCarrier[] = [];
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
+    if (element.closest('svg, [data-rest-band], [data-rest-ignore]') || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName)) continue;
+    const style = getComputedStyle(element);
+    if (style.display === 'none') continue;
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 20) continue;
+    const top = rect.top - columnTop;
+    if (parseFloat(style.borderTopWidth) >= 0.5 && style.borderTopStyle !== 'none' && alphaOf(style.borderTopColor) > 0) {
+      carriers.push({ element, kind: 'top', offset: top, color: style.borderTopColor });
+    }
+    if (parseFloat(style.borderBottomWidth) >= 0.5 && style.borderBottomStyle !== 'none' && alphaOf(style.borderBottomColor) > 0) {
+      carriers.push({ element, kind: 'bottom', offset: rect.bottom - columnTop - 1, color: style.borderBottomColor });
+    }
+    if (rect.height <= 2 && alphaOf(style.backgroundColor) > 0) carriers.push({ element, kind: 'self', offset: top });
+    for (const kind of ['before', 'after'] as const) {
+      const pseudo = getComputedStyle(element, `::${kind}`);
+      if (pseudo.content === 'none' || pseudo.display === 'none') continue;
+      const height = parseFloat(pseudo.height);
+      if (!(height <= 2) || alphaOf(pseudo.backgroundColor) <= 0) continue;
+      const offset = pseudo.top.endsWith('px') ? top + parseFloat(pseudo.top)
+        : pseudo.bottom.endsWith('px') ? rect.bottom - columnTop - parseFloat(pseudo.bottom) - height : null;
+      if (offset !== null) carriers.push({ element, kind, offset });
+    }
+  }
+  return carriers;
+}
+
 export function createRuleVeil(root: HTMLElement, viewport: HTMLElement) {
   let carriers: Carrier[] = [];
   const applied = new Map<Carrier, number>();
@@ -56,32 +88,7 @@ export function createRuleVeil(root: HTMLElement, viewport: HTMLElement) {
 
   const collect = () => {
     for (const carrier of applied.keys()) clear(carrier);
-    carriers = [];
-    const columnTop = viewport.getBoundingClientRect().top - viewport.scrollTop;
-    for (const element of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
-      if (element.closest('svg, [data-rest-band], [data-rest-ignore]') || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName)) continue;
-      const style = getComputedStyle(element);
-      if (style.display === 'none') continue;
-      const rect = element.getBoundingClientRect();
-      if (rect.width < 20) continue;
-      const top = rect.top - columnTop;
-      if (parseFloat(style.borderTopWidth) >= 0.5 && style.borderTopStyle !== 'none' && alphaOf(style.borderTopColor) > 0) {
-        carriers.push({ element, kind: 'top', offset: top, color: style.borderTopColor });
-      }
-      if (parseFloat(style.borderBottomWidth) >= 0.5 && style.borderBottomStyle !== 'none' && alphaOf(style.borderBottomColor) > 0) {
-        carriers.push({ element, kind: 'bottom', offset: rect.bottom - columnTop - 1, color: style.borderBottomColor });
-      }
-      if (rect.height <= 2 && alphaOf(style.backgroundColor) > 0) carriers.push({ element, kind: 'self', offset: top });
-      for (const kind of ['before', 'after'] as const) {
-        const pseudo = getComputedStyle(element, `::${kind}`);
-        if (pseudo.content === 'none' || pseudo.display === 'none') continue;
-        const height = parseFloat(pseudo.height);
-        if (!(height <= 2) || alphaOf(pseudo.backgroundColor) <= 0) continue;
-        const offset = pseudo.top.endsWith('px') ? top + parseFloat(pseudo.top)
-          : pseudo.bottom.endsWith('px') ? rect.bottom - columnTop - parseFloat(pseudo.bottom) - height : null;
-        if (offset !== null) carriers.push({ element, kind, offset });
-      }
-    }
+    carriers = findRuleCarriers(root, viewport.getBoundingClientRect().top - viewport.scrollTop);
   };
 
   /** Fades the rules for a band whose ramp ends at `foot` (from the viewport's top); null: no band. */

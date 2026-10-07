@@ -536,7 +536,7 @@ export function Settings() {
     if (loadingSavedMeals) return 'Loading…';
     if (mealManagerError) return 'Could not load meals';
     if (savedMeals.length === 0) return 'None saved yet';
-    return `${savedMeals.length} saved`;
+    return `${savedMeals.length} ${savedMeals.length === 1 ? 'food' : 'foods'}`;
   }, [loadingSavedMeals, savedMeals.length, mealManagerError]);
 
   const openManageMeals = async () => {
@@ -1010,7 +1010,9 @@ export function Settings() {
             </button>
           </SettingsGroup>
 
-          <section className="platter mt-4" aria-label="Body weight">
+          {/* One unit at a rest: its header, status and Log weight show
+              together or not at all, never a lone action. */}
+          <section className="platter mt-4" aria-label="Body weight" data-rest-block>
             <div className="flex justify-between items-start gap-3">
               <div className="min-w-0">
                 <p className="t-label">Body weight</p>

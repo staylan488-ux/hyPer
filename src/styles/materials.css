@@ -27,8 +27,8 @@
   --material-selection-shadow: 0 1px 3px rgba(20, 20, 20,.10);
   /* Web tab bar: the current tab is a flat ink fill; the bar is set off by
      one faint shadow and no edge. */
-  --nav-selection: rgba(0,0,0,.07);
-  --nav-glass: rgba(251,251,247,.5);
+  --nav-selection: #E6E6E1;
+  --nav-glass: rgba(255,255,252,.6);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
   --nav-rim: 0 0 #0000;
   --material-blur: 26px;
@@ -112,8 +112,8 @@
 .material-button-primary, .studio-save-set {
   background-image: var(--material-action-wash);
 }
-/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill at 50%
-   (near-black in Black, ivory in Ivory) over a 5px backdrop blur, clipped to
+/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill (50% near-black in
+   Black, 60% near-white in Ivory) over a 5px backdrop blur, clipped to
    the capsule by its radius and overflow (the blur never paints outside it).
    Text passing under it visibly continues inside the capsule, softly blurred
    (CSS blur is a standard deviation: 5px spreads a line over ~12-15px). At

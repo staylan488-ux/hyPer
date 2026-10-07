@@ -2106,7 +2106,7 @@ export function Workout() {
             <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" className="studio-finish-tally" />
             <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
           </div>
-          <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
+          <p className="t-caption">Remaining sets won’t be logged. You can always edit this session later in History.</p>
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
               Keep training

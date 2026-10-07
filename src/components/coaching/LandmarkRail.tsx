@@ -61,6 +61,11 @@ export function LandmarkRail({ current, mev, mavLow, mavHigh, mrv, over: overSta
     <div className={className} role="img" aria-label={`${current} sets this week. MEV ${mev}, MAV ${mavLow} to ${mavHigh}, MRV ${mrv}.`}>
       <div className="relative h-4 mt-4">
         <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--color-border)]" />
+        {/* "In range" is MEV to MRV: a quiet track under the heavy MAV band. */}
+        <span
+          className="absolute top-1/2 h-[2px] -translate-y-1/2 bg-[color-mix(in_srgb,var(--color-text)_13%,transparent)]"
+          style={{ left: pos(mev), width: `calc(${pos(mrv)} - ${pos(mev)})` }}
+        />
         <span
           className="absolute top-1/2 h-[3px] -translate-y-1/2 bg-[color-mix(in_srgb,var(--color-text)_28%,transparent)]"
           style={{ left: pos(mavLow), width: `calc(${pos(mavHigh)} - ${pos(mavLow)})` }}

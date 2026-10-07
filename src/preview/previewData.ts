@@ -1,7 +1,7 @@
 // DEV-ONLY preview sample data. Pure data (no store imports) so it can be shared
 // by the mock Supabase client and the store seeder without import cycles.
 import { format } from 'date-fns';
-import { classifyVolume } from '@/lib/volumeStatus';
+import { computeWeeklyVolume, trainingWeekRange } from '@/lib/weeklyVolume';
 import type {
   Exercise,
   Split,
@@ -107,25 +107,23 @@ export const previewCurrentWorkout: Workout = {
 /* ── Macros ── */
 export const previewMacroTarget: MacroTarget = { id: 'mt1', user_id: PREVIEW_USER_ID, calories: 2600, protein: 190, carbs: 280, fat: 80 };
 
-/* ── Volume landmarks + this-week volume ── */
-// Statuses are graded by the app's own rule (classifyVolume), never typed in,
-// so the preview can't show a status its own numbers contradict.
-type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number, number];
+/* ── Volume landmarks ── */
+type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number];
 const lmSeeds: LMSeed[] = [
-  // muscle, mv, mev, mav_low, mav_high, mrv, weekly_sets
-  ['chest', 6, 10, 12, 18, 22, 15],
-  ['back', 8, 12, 14, 20, 25, 18],
-  ['quads', 6, 8, 10, 16, 20, 9],
-  ['hamstrings', 4, 6, 8, 12, 16, 5],
-  ['side_delts', 6, 10, 12, 18, 22, 23],
-  ['biceps', 6, 8, 10, 16, 20, 12],
-  ['triceps', 6, 8, 10, 16, 20, 10],
-  ['glutes', 4, 6, 8, 14, 18, 11],
+  // muscle, mv, mev, mav_low, mav_high, mrv
+  ['chest', 6, 10, 12, 18, 22],
+  ['back', 8, 12, 14, 20, 25],
+  ['quads', 6, 8, 10, 16, 20],
+  ['hamstrings', 4, 6, 8, 12, 16],
+  ['side_delts', 6, 10, 12, 18, 22],
+  ['front_delts', 0, 0, 6, 8, 12],
+  ['biceps', 6, 8, 10, 16, 20],
+  ['triceps', 6, 8, 10, 16, 20],
+  ['glutes', 4, 6, 8, 14, 18],
+  ['calves', 6, 8, 12, 16, 20],
 ];
 export const previewLandmarks: VolumeLandmark[] = lmSeeds.map(([mg, mv, mev, mavLow, mavHigh, mrv], i) =>
   ({ id: `lm${i}`, user_id: PREVIEW_USER_ID, muscle_group: mg, mv, mev, mav_low: mavLow, mav_high: mavHigh, mrv }));
-export const previewWeeklyVolume: MuscleVolume[] = lmSeeds.map(([mg, , , , , , weekly], i) =>
-  ({ muscle_group: mg, weekly_sets: weekly, status: classifyVolume(weekly, previewLandmarks[i]), landmark: previewLandmarks[i] }));
 
 /* ── Foods + today's nutrition log ── */
 const food = (id: string, name: string, cal: number, p: number, c: number, f: number, size: number, unit: string, source: Food['source'] = 'usda'): Food =>
@@ -216,6 +214,18 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
   histWorkoutRows.push({ id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start) });
   return { id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start), sets };
 });
+
+/* ── This week's volume ── */
+// Counted from the seeded sessions themselves, by the live rule (this
+// training week's completed sets, computeWeeklyVolume) and graded by it, so
+// the volume always agrees with History and the lifting hours beside it.
+const previewWeek = trainingWeekRange(now);
+export const previewWeeklyVolume: MuscleVolume[] = computeWeeklyVolume(
+  [...previewHistoryWorkouts, previewCurrentWorkout]
+    .filter((workout) => workout.date >= previewWeek.weekStart && workout.date <= previewWeek.weekEnd)
+    .map((workout) => ({ sets: (workout.sets ?? []).map((set) => ({ completed: set.completed, exercise: set.exercise ?? null })) })),
+  previewLandmarks,
+);
 
 // blank metric/bookkeeping fields for plain manual entries
 const manualActivityDefaults = {
