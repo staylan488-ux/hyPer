@@ -794,7 +794,7 @@ export function Nutrition() {
               onClick={() => void createGroup(option.kind)}
             >
               <span>
-                <span className="t-heading block">{option.title}</span>
+                <span className="t-row-title block">{option.title}</span>
                 <span className="t-caption block mt-0.5">{option.description}</span>
               </span>
               <span className="t-label-sm text-[var(--color-text-dim)] shrink-0">Add</span>

@@ -352,7 +352,7 @@ export function Splits() {
                 {String(dayIndex + 1).padStart(2, '0')}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="t-heading block break-words">{day.day_name}</span>
+                <span className="t-row-title block break-words">{day.day_name}</span>
                 <span className="t-caption">
                   {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                 </span>
@@ -487,7 +487,7 @@ export function Splits() {
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="t-heading block break-words">{template.label}</span>
+                            <span className="t-row-title block break-words">{template.label}</span>
                             <span className="t-caption">{visibleItems.length} {visibleItems.length === 1 ? 'exercise' : 'exercises'}</span>
                           </span>
                           <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="self-center shrink-0">
@@ -618,7 +618,7 @@ export function Splits() {
                           onClick={() => setExpandedSplit(isExpanded ? null : split.id)}
                         >
                           <span className="flex-1 min-w-0">
-                            <span className="t-heading block break-words">{split.name}</span>
+                            <span className="t-row-title block break-words">{split.name}</span>
                             <span className="t-caption">{programCounts(split)}</span>
                           </span>
                           <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile} className="shrink-0">

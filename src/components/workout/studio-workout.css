@@ -17,16 +17,22 @@
    line whatever the side controls measure. */
 .studio-session-top { position: absolute; z-index: 1; top: 0; left: 0; right: 0; height: 44px; padding: 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; pointer-events: auto; }
 .studio-session-top > button { display: flex; align-items: center; min-height: 44px; }
-/* The centre holds one line in the compact title's style: the clock, in
-   primary ink with tabular lining figures, and before it the "Upper A ·"
-   prefix, transparent at the top. At the top the line is shifted by half the
-   prefix so the clock sits on the screen's centre line; as the bar condenses
-   the prefix fades in while the line slides to centre the whole title. The
-   clock never changes face, colour or weight between the two states. */
+/* The centre holds two labels in the compact title's style, stacked in one
+   grid cell and each centred on the screen's centre line: the lone clock at
+   the top, and the compact "Upper A · 23m" once the bar condenses. They
+   cross-fade in place (opacity only, no sideways travel), like UIKit's
+   title hand-over. The clock keeps its face, primary ink and tabular lining
+   figures in both. */
 .studio-session-centre { grid-column: 2; display: grid; place-items: center; min-width: 0; }
-.studio-session-line.page-scroll-edge-title { display: flex; align-items: baseline; max-width: min(62vw, 300px); overflow: visible; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; transform: translateX(calc(var(--prefix-width, 0px) * (var(--condensed, 0) - 1) / 2)); }
+.studio-session-centre > .page-scroll-edge-title { grid-area: 1 / 1; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; }
+.studio-session-solo.page-scroll-edge-title { max-width: none; color: var(--color-text); }
+.studio-session-line.page-scroll-edge-title { display: flex; align-items: baseline; max-width: min(62vw, 300px); overflow: visible; }
 .studio-session-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .studio-session-clock { flex-shrink: 0; white-space: nowrap; color: var(--color-text); }
+/* The Finish sheet's set tally: on the Ivory sheet the shared 12% track
+   nearly vanishes (1.3:1), so its empty ticks take a neutral 22% (about
+   1.55:1 on #F7F7F3), level with the Black sheet's. */
+:root:not(.dark) .studio-finish-tally { --strip-track: rgba(35, 35, 35, 0.22); }
 /* Minimise: a bare 44pt chevron, no fill or bubble; its stroke sits on the 24pt guide. */
 .studio-session-minimise { justify-self: start; justify-content: center; width: 44px; height: 44px; margin-left: -16px; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
 .studio-session-minimise:active { opacity: .5; }

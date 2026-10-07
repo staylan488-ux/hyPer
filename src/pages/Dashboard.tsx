@@ -232,7 +232,7 @@ export function Dashboard() {
               >
                 <s.icon className="w-[18px] h-[18px] shrink-0 text-[var(--color-text)]" strokeWidth={1.6} aria-hidden />
                 <span className="flex-1 min-w-0">
-                  <span className="t-heading block">{s.label}</span>
+                  <span className="t-row-title block">{s.label}</span>
                   <span className="t-caption">{s.sub}</span>
                 </span>
                 <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />

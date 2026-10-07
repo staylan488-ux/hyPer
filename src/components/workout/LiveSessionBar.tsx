@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { readMotionPolicy } from '@/lib/motionPolicy';
@@ -26,8 +26,8 @@ const SETTLE_MS = 140;
  * Finish (trailing) never scroll away. It sits on the shared scroll-edge band
  * (the same blurred veil as every PageTitle), so content passing under it
  * dissolves instead of meeting a line. Once the session title has scrolled
- * under it, "Upper A ·" fades in before the clock, which keeps its place in
- * the title style throughout, giving the compact "Upper A · 24m".
+ * under it, the clock cross-fades in place to the compact title "Upper A ·
+ * 24m", centred like every compact title; nothing slides sideways.
  *
  * The session header (title and ring) behaves like a large title: when
  * scrolling ends part-way it settles expanded or wholly collapsed under the
@@ -64,24 +64,14 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
   const scrolled = useMotionValue(0);
   const covered = useMotionValue(0);
   const band = useTransform(scrolled, [0, BAND_RAMP], [0, 1]);
-  // The clock is one element in both states: as the bar condenses only the
-  // "Upper A ·" prefix fades in, and the line slides from centring the clock
-  // to centring the whole title (transform only; see .studio-session-line).
-  const condensed = useTransform(covered, [0.55, 1], [0, 1]);
-  const lineRef = useRef<HTMLSpanElement>(null);
-  const prefixRef = useRef<HTMLSpanElement>(null);
+  // Like UIKit's title hand-over, the two bar labels cross-fade in place with
+  // no sideways travel: the lone clock, centred, gives way to the compact
+  // title, centred as a whole. The fades barely overlap, so the two sets of
+  // digits never show at once, and the header settles expanded or collapsed,
+  // never between (see .studio-session-centre).
+  const soloClock = useTransform(covered, [0.55, 0.8], [1, 0]);
+  const condensed = useTransform(covered, [0.76, 1], [0, 1]);
   const prefix = compactSessionPrefix(title);
-  useLayoutEffect(() => {
-    const line = lineRef.current;
-    const prefixElement = prefixRef.current;
-    if (!line || !prefixElement) return;
-    const measurePrefix = () => line.style.setProperty('--prefix-width', `${prefixElement.getBoundingClientRect().width}px`);
-    measurePrefix();
-    // Webfonts can land after the first measure, and a long title truncates.
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measurePrefix) : null;
-    observer?.observe(prefixElement);
-    return () => observer?.disconnect();
-  }, [prefix]);
 
   useEffect(() => {
     const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
@@ -218,8 +208,9 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
           <ChevronDown size={24} strokeWidth={1.75} aria-hidden />
         </button>
         <span className="studio-session-centre">
-          <motion.span ref={lineRef} className="page-scroll-edge-title studio-session-line" style={{ '--condensed': condensed } as MotionStyle}>
-            <motion.span ref={prefixRef} className="studio-session-prefix" style={{ opacity: condensed }} aria-hidden>{prefix}</motion.span>
+          <motion.span className="page-scroll-edge-title studio-session-solo" style={{ opacity: soloClock }} aria-hidden>{elapsed}</motion.span>
+          <motion.span className="page-scroll-edge-title studio-session-line" style={{ opacity: condensed }}>
+            <span className="studio-session-prefix" aria-hidden>{prefix}</span>
             <span className="studio-session-clock" role="timer">{elapsed}</span>
           </motion.span>
         </span>

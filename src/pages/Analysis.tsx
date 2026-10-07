@@ -134,7 +134,7 @@ export function Analysis() {
         aria-expanded={showExplainer}
         onClick={() => setShowExplainer(!showExplainer)}
       >
-        <span className="text-[15px] font-medium text-[var(--color-text)]">What the landmarks mean</span>
+        <span className="t-row-title">What the landmarks mean</span>
         <motion.span className="trail-disclosure" animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
           <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
         </motion.span>
@@ -233,7 +233,7 @@ export function Analysis() {
                   onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
                 >
                   <div className="flex items-center justify-between gap-3 mb-2">
-                    <span className="t-heading">
+                    <span className="t-row-title">
                       {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
                     </span>
                     <span className="flex items-center gap-2 shrink-0">

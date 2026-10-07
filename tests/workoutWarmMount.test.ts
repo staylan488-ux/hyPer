@@ -169,9 +169,11 @@ describe('Train live session', () => {
     const bar = html.slice(html.indexOf('studio-live-bar'), html.indexOf('studio-live-bar-spacer'));
 
     expect(bar).toContain('aria-label="Minimise workout"');
-    expect(bar).toContain('role="timer"');
-    // One title line: the prefix that fades in as the bar condenses, then the
-    // clock itself, which keeps its place and style in both states.
+    // One timer for assistive tech: the lone clock shown at the top is a
+    // hidden visual copy that cross-fades in place to the compact title.
+    expect(bar.match(/role="timer"/g)).toHaveLength(1);
+    expect(bar).toMatch(/class="page-scroll-edge-title studio-session-solo"[^>]*aria-hidden="true"/);
+    expect(bar).not.toContain('translateX');
     expect(bar).toMatch(/class="page-scroll-edge-title studio-session-line"[^>]*><span class="studio-session-prefix"[^>]*aria-hidden="true"[^>]*>Upper · <\/span><span class="studio-session-clock" role="timer">/);
     expect(bar).toContain('>Finish<');
     // The single collapse control is gone from the foot of the movement.

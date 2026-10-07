@@ -534,7 +534,7 @@ function ActivityLedgerRow({
           className="pressable min-w-0 flex-1 py-4 text-left flex items-center gap-3"
         >
           <span className="block min-w-0 flex-1">
-          <span className="block t-body text-[var(--color-text)] break-words">{title}</span>
+          <span className="block t-row-title-plain break-words">{title}</span>
           <span className="block t-data-sm text-[var(--color-muted)] mt-1">
             {subtitleParts.length > 0 ? subtitleParts.join(' · ') : typeLabel}
           </span>
@@ -1549,7 +1549,7 @@ export function History() {
                   <div>
                     <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="pressable w-full text-left flex items-center justify-between gap-3 px-5 py-4 min-h-[76px]" onClick={() => { void handleToggleWorkout(workout); }}>
                       <div className="min-w-0">
-                        <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
+                        <p className="t-row-title break-words">{resolvedTitle}</p>
                         <p className="t-caption mt-1">
                           {!workout.completed && (
                             <span className="text-[var(--color-accent)]">In progress · </span>

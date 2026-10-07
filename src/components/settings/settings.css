@@ -23,10 +23,11 @@
     background-color: color-mix(in srgb, var(--color-text) 3%, transparent);
   }
 }
+/* The shared list-row title size (see .t-row-title), regular weight. */
 .you-row-title {
   display: block;
-  font-size: 16px;
-  line-height: 1.35;
+  font-size: 15px;
+  line-height: 1.4;
   color: var(--color-text);
   overflow-wrap: anywhere;
 }

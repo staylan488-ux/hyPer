@@ -16,7 +16,12 @@ tokens; an already approved direction does not need another design exploration.
   -.025em tracking. Use system sans medium with monospaced digits for native
   metric counterparts. There is no separate monospace voice.
 - Current roles are 40px/1.06 Fraunces titles, 44px/1 system-sans key figures,
-  14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
+  14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Ordinary list row
+  titles share one 15px size (`.t-row-title`, medium over a caption;
+  `.t-row-title-plain` regular): Explore, Program, History, Progress's
+  muscles, You, Fuel's foods, sheet lists and disclosure rows. Only the live
+  workout's movement rows step up (17px) as the work in hand, and You's
+  profile row stays 17px as the identity row. Adapt for readability
   and accessibility without truncating meaningful names.
 - Use the current Ivory/Black theme tokens and one restrained Lacquer red accent:
   Ivory (#F5F5F0) under a soft neutral ambient light, and true Black (#000000)
@@ -151,10 +156,9 @@ tokens; an already approved direction does not need another design exploration.
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
   to Today, the elapsed clock sits on the screen's centre line, Finish is a
   regular-weight text action, and its session ring matches Today's. That bar
-  stays pinned while the session scrolls and condenses to "Title · time"
-  (the clock is the same element in both states, so only the "Title ·"
-  prefix fades in while the line slides, by transform, from centring the
-  clock to centring the whole title);
+  stays pinned while the session scrolls and condenses to "Title · time":
+  the lone centred clock cross-fades in place to the centred compact title
+  (opacity only, the fades barely overlapping, nothing slides sideways);
   like a large title, the session header (title and ring) settles expanded
   or wholly under the bar's solid edge when scrolling ends, with the first
   movement's content starting at the ramp's foot; the session's scroll ends

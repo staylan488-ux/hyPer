@@ -2103,7 +2103,7 @@ export function Workout() {
         contentClassName="pt-2!" showClose={false}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" />
+            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" className="studio-finish-tally" />
             <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
           </div>
           <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
