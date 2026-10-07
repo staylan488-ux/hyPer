@@ -11,12 +11,12 @@ interface ChipProps {
   disabled?: boolean;
 }
 
-/** Compact choice control: a quiet well, or a polished metal cap once selected. */
+/** Compact choice control with a quiet fill and an explicit selected state. */
 export function Chip({ children, selected = false, onClick, tone = 'neutral', size = 'md', className = '', disabled }: ChipProps) {
   const toneStyles = selected
     ? tone === 'amber'
       ? 'bg-[var(--color-accent)] text-[var(--color-base)] border-[var(--color-accent)]'
-      : 'chip-metal'
+      : 'bg-[var(--color-text)] text-[var(--color-base)] border-[var(--color-text)]'
     : 'bg-[var(--color-well)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]';
 
   const sizing = size === 'sm' ? 'min-h-11 px-3 text-[12px]' : 'min-h-11 px-4 text-[12px]';

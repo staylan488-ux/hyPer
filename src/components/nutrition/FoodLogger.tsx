@@ -2444,7 +2444,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {photoAnalyzing && (
                 <>
                   <div className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-base)_55%,transparent)]" aria-hidden />
-                  <span className="liquid-aura is-live" aria-hidden />
+                  <span className="liquid-aura" aria-hidden />
                 </>
               )}
               {photoAnalyzing && (

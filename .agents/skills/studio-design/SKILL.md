@@ -26,25 +26,20 @@ tokens; an already approved direction does not need another design exploration.
 
 ## Structure and controls
 
-- The approved Liquid direction is in
-  [the liquid metal plan](../../../docs/plans/2026-10-06-liquid-metal.md),
-  now at its "Chrome everywhere" intensity (round two): a drifting light field
-  sits under the app; page sections sit on `.platter` blurred glass panels
-  with a chrome hairline (grouped lists use `platter-flush` + `platter-row`);
-  floating chrome is liquid glass with a specular edge; editorial content
-  inside platters stays ruled. Nested cards and controls never add their own
-  backdrop filter.
+- The approved Liquid direction (2026-10-06, "Metal accents") is in
+  [the liquid metal plan](../../../docs/plans/2026-10-06-liquid-metal.md):
+  page sections sit on `.platter` glass panels (grouped lists use
+  `platter-flush` + `platter-row`); floating chrome is liquid glass with a
+  specular edge; editorial content inside platters stays ruled. Nested cards
+  and controls never add their own backdrop filter.
 - Page titles use `PageTitle`, which condenses into the scroll-edge band.
   Sheet titles use the editorial `sheet-title`.
-- Primary actions are liquid-metal capsules (`Button` primary: graphite dome
-  in Black, pearl in Ivory, live tilt-lit chrome bezel). One hero action per
-  screen passes `metal` for a heavier bezel. Secondary actions are glass
-  capsules with a chrome hairline; the selected segment or chip is a small
-  metal cap; contextual row actions stay unboxed. Titles, hero figures and
-  glyphs are chrome. A screen's single headline ratio uses `LiquidOrb`;
-  compact progress uses `MetalRing` dials and metal `RailStrip` bars.
-  `LiveGlow` (Siri-like aura and spectral rim) marks something live, such as
-  the session in progress. Meaningful touch targets are at least 44px.
+- Primary actions are metal-capped capsules (`Button` primary: graphite dome in
+  Black, pearl in Ivory, still chrome bezel). Exactly one hero action per
+  screen may pass `metal` for the live, tilt-lit bezel. Secondary actions are
+  clear glass capsules; contextual row actions stay unboxed. Progress uses
+  `MetalRing` dials and metal `RailStrip` bars. Meaningful touch targets are at
+  least 44px.
 - Use the radius tokens: capsule for buttons, chips, segmented tracks and the
   web tab bar; controls/inputs 14px; platters 26px; sheets 30px.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
@@ -89,8 +84,7 @@ layout and makes motion, data and 3D the expressive layer.
 
 - [Tokens and typography](../../../src/index.css), [route shell](../../../src/App.tsx).
 - [Material tokens](../../../src/styles/materials.css),
-  [liquid glass and metal](../../../src/styles/liquid.css),
-  [light field, chrome and orb](../../../src/styles/chrome.css).
+  [liquid glass and metal](../../../src/styles/liquid.css).
 - [Shared controls and sheets](../../../src/components/shared/),
   [motion primitives](../../../src/lib/animations.ts),
   [motion policy](../../../src/lib/motionPolicy.ts),

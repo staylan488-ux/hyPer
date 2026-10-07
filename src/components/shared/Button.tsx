@@ -8,16 +8,16 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
-  /** A screen's hero action: the primary's live chrome bezel is heavier.
-   * Use for at most one action per screen. */
+  /** A screen's hero action: the primary's chrome bezel comes alive and
+   * follows the phone's tilt. Use for at most one action per screen. */
   metal?: boolean;
 }
 
-/** Studio actions: a liquid-metal primary, chrome-edged glass secondary, unboxed contextual. */
+/** Studio actions: a metal-capped primary, clear glass secondary, unboxed contextual. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, metal = false, children, onClick, ...props }, ref) => {
     const litRef = useLitSurface<HTMLButtonElement>(ref ?? undefined);
-    const live = variant === 'primary';
+    const live = metal && variant === 'primary';
     const baseStyles = `
       inline-flex items-center justify-center
       [font-family:var(--font-sans)] uppercase font-medium
@@ -30,7 +30,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary: `
-        material-button-primary liquid-metal ${metal ? 'is-hero' : ''}
+        material-button-primary ${live ? 'liquid-metal' : 'metal-static'}
         bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
         hover:bg-[var(--button-primary-hover)]
         active:bg-[var(--button-primary-active)]

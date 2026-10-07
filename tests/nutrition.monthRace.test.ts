@@ -57,7 +57,7 @@ vi.mock('react', async (original) => ({
 
 
 vi.mock('@/components/shared', () => Object.fromEntries(
-  ['Button', 'EmptyState', 'LiquidOrb', 'Modal', 'RailStrip', 'RollingNumber', 'Screen', 'Toast', 'PageTitle', 'SealMark'].map((name) => [name, name]),
+  ['Button', 'EmptyState', 'MetalRing', 'Modal', 'RailStrip', 'RollingNumber', 'Screen', 'Toast', 'PageTitle', 'SealMark'].map((name) => [name, name]),
 ));
 vi.mock('@/components/nutrition/MealLogger', () => ({ MealLogger: 'MealLogger' }));
 vi.mock('@/components/nutrition/NutritionGroupLedger', () => ({ NutritionGroupLedger: 'NutritionGroupLedger' }));
