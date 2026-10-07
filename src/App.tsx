@@ -15,6 +15,7 @@ import { useAppStore } from '@/stores/appStore';
 import { BottomNav, RouteErrorScreen } from '@/components/shared';
 import { FxLayer } from '@/components/fx/FxLayer';
 import { AuthForm } from '@/components/auth/AuthForm';
+import { PrivateBetaScreen } from '@/components/auth/PrivateBetaScreen';
 import { Button } from '@/components/shared/Button';
 import { Dashboard } from '@/pages/Dashboard';
 import { Workout } from '@/pages/Workout';
@@ -108,12 +109,14 @@ function AnimatedOutlet() {
 }
 
 function PrivateLayout() {
-  const { user, initialized, reconnecting } = useAuthStore();
+  const { user, initialized, reconnecting, betaAccess, betaAccessUserId } = useAuthStore();
   // local only: signing in instead never signs out, so the saved session stays
   const [signInInstead, setSignInInstead] = useState(false);
   useAppViewport();
 
-  const screen = authScreen({ initialized, user, reconnecting }, signInInstead);
+  // an approval answer only counts for the account it was checked for
+  const access = user && betaAccessUserId === user.id ? betaAccess : 'unknown';
+  const screen = authScreen({ initialized, user, reconnecting, betaAccess: access }, signInInstead);
   if (screen === 'boot') {
     return <BootSplash />;
   }
@@ -124,6 +127,10 @@ function PrivateLayout() {
 
   if (screen === 'sign-in') {
     return <AuthForm />;
+  }
+
+  if (screen === 'private-beta') {
+    return <PrivateBetaScreen />;
   }
 
   return (

@@ -2,6 +2,7 @@
 // Function secrets and is never shipped in the browser bundle.
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { PRIVATE_BETA_ERROR, isApprovedUser } from '../_shared/approval.ts';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
 
 type FoodLookupRequest =
@@ -128,6 +129,13 @@ serve(async (req) => {
   );
   const { data: authData, error: authError } = await authed.auth.getUser();
   if (authError || !authData.user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  // Private beta: only approved accounts may spend the USDA/FatSecret quotas.
+  // The caller's own JWT can read only its own approved_users row (RLS).
+  try {
+    if (!await isApprovedUser(authed, authData.user.id)) return jsonResponse(PRIVATE_BETA_ERROR, 403);
+  } catch {
+    return jsonResponse({ error: 'Food search is temporarily unavailable' }, 503);
+  }
 
   const body = await req.json().catch(() => ({})) as FoodLookupRequest;
 
