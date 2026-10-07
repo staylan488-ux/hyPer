@@ -6,7 +6,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Dumbbell,
   Link2,
   Loader2,
@@ -38,7 +37,7 @@ import { SessionToken } from '@/components/workout/SessionToken';
 import { LiveSessionBar } from '@/components/workout/LiveSessionBar';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { movementBlocks } from '@/components/workout/movementOrder';
-import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, movementProgressLabel, nextSetAction, nextWorkoutSet, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -187,6 +186,9 @@ export function Workout() {
   const finishingRef = useRef(false);
   // The live session's large title: the pinned bar takes over once it scrolls under.
   const sessionTitleRef = useRef<HTMLHeadingElement>(null);
+  // The live header (title and ring) collapses under the bar like a large title.
+  const sessionHeaderRef = useRef<HTMLDivElement>(null);
+  const sessionPageRef = useRef<HTMLDivElement>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const dirtyMovementNotesRef = useRef<Record<string, string>>({});
   const legacyWorkoutNoteRef = useRef<string | null>(null);
@@ -1668,10 +1670,12 @@ export function Workout() {
   const nextSetCtaName = nextSetCta ? workoutExerciseMap.get(nextSetCta.set.exercise_id)?.name
     ?? activeFlexibleItems.find((item) => item.exercise_id === nextSetCta.set.exercise_id)?.exercise_name ?? 'next movement' : '';
 
+  // Keyed: the other views' root is also a motion.div, and motion keeps the
+  // first render's ref, so a reused element would never hand over the page.
   return (
-    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}${showNextSetCta ? ' has-next-set' : ''}`}>
+    <motion.div key="live-session" ref={sessionPageRef} className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}${showNextSetCta ? ' has-next-set' : ''}`}>
       <header className="studio-session-header">
-        <LiveSessionBar title={currentSessionTitle} createdAt={currentWorkoutCreatedAt} titleRef={sessionTitleRef}
+        <LiveSessionBar title={currentSessionTitle} createdAt={currentWorkoutCreatedAt} titleRef={sessionTitleRef} headerRef={sessionHeaderRef} pageRef={sessionPageRef}
           finishing={finishing} onMinimise={() => navigate('/')} onFinish={() => { void handleCompleteWorkout(); }} />
         {finishError && <div className="flex items-center justify-between gap-3">
           <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
@@ -1679,7 +1683,7 @@ export function Workout() {
             void settleNoteWrites().then(() => setFinishError(null)).catch(() => {});
           }}>Retry</Button>}
         </div>}
-        <div className="studio-session-summary">
+        <div ref={sessionHeaderRef} className="studio-session-summary">
           <h1 ref={sessionTitleRef}>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
           {/* The same dial as Today's session ring: default size and stroke. */}
           <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} reveal="session-sets">
@@ -2206,7 +2210,10 @@ function ExerciseCard({
   // Open on the live movement, the eyebrow names the set being logged now.
   const loggingNow = upNext && isActive && !reordering && nextSetPosition > 0;
   const superset = supersetRole ? ` · Superset ${supersetRole}` : '';
-  const eyebrow = `${loggingNow ? `Now · Set ${nextSetPosition} of ${totalCount}` : upNext ? 'Up next' : `Movement ${String(index + 1).padStart(2, '0')}`}${superset}`;
+  // Open but not live, the index carries the movement's progress (there is
+  // no trailing count).
+  const indexLabel = `Movement ${String(index + 1).padStart(2, '0')}${isActive && !reordering ? ` · ${movementProgressLabel(completedCount, totalCount)}` : ''}`;
+  const eyebrow = `${loggingNow ? `Now · Set ${nextSetPosition} of ${totalCount}` : upNext ? 'Up next' : indexLabel}${superset}`;
   const repTarget = targetRepsMin && targetRepsMax
     ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
     : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
@@ -2230,9 +2237,12 @@ function ExerciseCard({
     if (!scroller) return;
     const bounds = headingRef.current.getBoundingClientRect();
     const viewport = scroller.getBoundingClientRect();
+    // The pinned live bar and its fade cover the scroller's top: the heading
+    // lands clear of them, never half-faded under the bar.
+    const top = Math.max(viewport.top, document.querySelector('.studio-live-bar')?.getBoundingClientRect().bottom ?? viewport.top) + 12;
     // Opening near an edge reveals the heading and first row in this scroller only.
-    if (bounds.top < viewport.top + 12 || bounds.bottom + 150 > viewport.bottom) {
-      scroller.scrollTop += bounds.top - viewport.top - 12;
+    if (bounds.top < top || bounds.bottom + 150 > viewport.bottom) {
+      scroller.scrollTop += bounds.top - top;
     }
   }, [isActive]);
   return (
@@ -2241,31 +2251,20 @@ function ExerciseCard({
         <button type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
           aria-describedby={!isActive ? summaryId : undefined} aria-disabled={reordering || undefined} tabIndex={reordering ? -1 : undefined}
           aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { if (!reordering) onToggle(); }}>
+          {/* The whole header is the one toggle: no separate chevron or count
+              beside the options glyph, so "•••" stands alone at the trailing
+              edge. Progress is stated once, with today's set count. */}
           {isActive && !reordering ? <>
-            {/* The open movement's name gets the full row; its count rides the
-                eyebrow line. The eyebrow names the movement the same way open or closed. */}
-            <span className="studio-movement-eyebrow">
-              <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
-              {/* "Set 1 of 3" already carries the count. */}
-              {!loggingNow && <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />}
-              {/* The movement's one collapse control, a disclosure chevron in
-                  ink on its header row (the whole header is the button). */}
-              <ChevronUp className="studio-movement-disclosure" size={18} strokeWidth={1.75} aria-hidden />
-            </span>
+            <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
             <span className="studio-movement-name">{exerciseName}</span>
-          </> : <>
-            <span className="studio-movement-heading">
-              {upNext && <span className="studio-movement-kicker is-next">{eyebrow}</span>}
-              <span className="studio-movement-name-compact">{exerciseName}</span>
-              <span id={summaryId} className="studio-movement-summary">
-                {totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}
-                {!allComplete && previousTargetText && <> · Last <span className="studio-movement-previous">{previousTargetText}</span></>}
-              </span>
+          </> : <span className="studio-movement-heading">
+            {upNext && <span className="studio-movement-kicker is-next">{eyebrow}</span>}
+            <span className="studio-movement-name-compact">{exerciseName}</span>
+            <span id={summaryId} className="studio-movement-summary">
+              {movementProgressLabel(completedCount, totalCount)}{repTarget && !allComplete ? ` · ${repTarget}` : ''}
+              {!allComplete && previousTargetText && <> · Last <span className="studio-movement-previous">{previousTargetText}</span></>}
             </span>
-            {/* Progress is one trailing column: the count, or a check once every set
-                is logged, so every title keeps the same left edge. */}
-            <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />
-          </>}
+          </span>}
         </button>
         <div className="studio-movement-controls">
         {reordering ? <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
@@ -2303,13 +2302,6 @@ function ExerciseCard({
       </div>
     </section>
   );
-}
-
-/** A movement's trailing progress: "1 / 3" while sets remain, an ink check when done. */
-function MovementProgress({ completedCount, totalCount, allComplete }: { completedCount: number; totalCount: number; allComplete: boolean }) {
-  return allComplete
-    ? <span className="studio-movement-count is-done"><Check size={16} strokeWidth={2} aria-hidden /><span className="sr-only">All {totalCount} sets logged</span></span>
-    : <span className="studio-movement-count">{completedCount} / {totalCount}</span>;
 }
 
 function SetCountButton({

@@ -51,32 +51,32 @@
    open movement. Every title shares one left edge: progress (a count, or a
    check once done) and the options glyph are trailing columns. The whole row
    is the disclosure, so it carries no chevron. */
-.studio-movement { border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); padding: 12px 0; }
-.studio-movement.is-active { padding: 6px 0 8px; }
+.studio-movement { --movement-name-size: 22px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); padding: 12px 0; }
 .studio-movement-header { display: flex; align-items: center; gap: 4px; scroll-margin-top: 12px; }
 .studio-movement.is-active .studio-movement-header { align-items: flex-start; }
+/* The whole header is the movement's one toggle (open and close); nothing
+   else in the row is tappable but the options glyph at the trailing edge. */
 .studio-movement-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; min-height: 52px; text-align: left; }
-.studio-movement.is-active .studio-movement-toggle { flex-direction: column; align-items: stretch; gap: 0; }
-.studio-movement-heading { display: grid; flex: 1; min-width: 0; gap: 3px; }
-.studio-movement-eyebrow { display: flex; align-items: center; gap: 12px; min-height: 44px; }
-.studio-movement-eyebrow > .studio-movement-kicker { flex: 1; min-width: 0; }
-/* The open movement's one collapse control: a disclosure chevron in ink on
-   its header row, beside the options glyph. */
-.studio-movement-disclosure { flex-shrink: 0; color: var(--color-text); }
+.studio-movement.is-active .studio-movement-toggle { flex-direction: column; align-items: stretch; gap: var(--movement-kicker-gap); }
+/* One label-to-title gap, open or closed (about 10pt from the eyebrow's
+   letters to the title's): the eyebrow's 16px line, then the title. */
+.studio-workout-page { --movement-kicker-gap: 0px; }
+.studio-movement-heading { display: grid; flex: 1; min-width: 0; gap: var(--movement-kicker-gap); }
+.studio-movement-heading > .studio-movement-summary { margin-top: 3px; }
 /* One eyebrow voice, open or closed: "Up next" (or, open, "Now · Set 1 of 3")
    in lacquer as the live cue, any other open movement by its plain index. */
-.studio-movement-kicker { display: block; font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-dim); }
+.studio-movement-kicker { display: block; font-size: 11px; font-weight: 500; line-height: 16px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-dim); }
 .studio-movement-kicker.is-next { color: var(--color-accent); }
-.studio-movement-name { display: block; padding-bottom: 6px; font-family: var(--font-sans); font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; color: var(--color-text); text-wrap: balance; overflow-wrap: break-word; }
+.studio-movement-name { display: block; padding-bottom: 6px; font-family: var(--font-sans); font-size: var(--movement-name-size); font-weight: 600; line-height: 1.2; letter-spacing: -.02em; color: var(--color-text); text-wrap: balance; overflow-wrap: break-word; }
 .studio-movement-name-compact { display: block; font-family: var(--font-sans); font-size: 17px; font-weight: 500; line-height: 1.3; letter-spacing: -.012em; color: var(--color-text); overflow-wrap: break-word; }
 .studio-movement.is-complete .studio-movement-name-compact { color: var(--color-text-dim); }
 .studio-movement-summary { font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .studio-movement-previous { color: var(--color-text); white-space: nowrap; }
-.studio-movement-count { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; min-width: 36px; white-space: nowrap; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.studio-movement-count.is-done { color: var(--color-text); }
-/* One quiet trailing column: the options glyph sits on the gutter, its 44pt
-   target overhangs into the margin. */
+/* The options glyph stands alone on the trailing gutter, its 44pt target
+   overhanging into the margin. Open, it sits on the title's line, not the
+   eyebrow's, as it does beside a closed "Up next" movement. */
 .studio-movement-controls { flex-shrink: 0; width: 44px; margin-right: -13px; display: flex; flex-direction: column; align-items: center; }
+.studio-movement.is-active .studio-movement-controls { margin-top: calc(16px + var(--movement-kicker-gap) + var(--movement-name-size) * .6 - 22px); }
 .studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-text-dim); opacity: .7; }
 .studio-movement-options[aria-expanded="true"] { color: var(--color-text); opacity: 1; }
 .studio-movement-detail { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 4px 0 8px; }
@@ -94,25 +94,35 @@
 .studio-set-headings > span:not(:first-child) { text-align: center; }
 /* Logged sets read in ink; anything not yet logged (planned, last-workout
    targets or an unsaved draft) is ghosted so the two never look alike. */
-.studio-set-ledger { width: 100%; min-height: 44px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); color: var(--color-text); font-size: 14px; text-align: center; }
+/* Numbers are read from the bench: the open set at 23px semibold, the rows
+   below one step down at 17px. Index, values and the open set's fields share
+   a baseline (grid baseline alignment), so "02" never floats above "80". */
+.studio-set-ledger { width: 100%; min-height: 44px; padding: 8px 0; align-items: baseline; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); color: var(--color-text); font-size: 17px; line-height: 28px; font-weight: 500; letter-spacing: -.01em; text-align: center; }
+.studio-set-ledger > .studio-set-state, .studio-set-entry > .studio-save-set { align-self: center; }
+/* The fields take their 23px from the row: the app's iOS zoom floor sets
+   every input to max(16px, 1em), which outranks a class rule. */
+.studio-set-entry { align-items: baseline; font-size: 23px; }
 .studio-set-ledger:not([data-logged]) > .studio-set-value { color: var(--color-text-dim); }
 .studio-set-ledger[data-next] .studio-set-index, .studio-set-ledger[data-next] .studio-set-state { color: var(--color-text); }
 .studio-set-ledger:not([data-logged]) .studio-set-state { color: var(--color-text-dim); }
-.studio-set-index { text-align: left; font-size: 12px; color: var(--color-text-dim); }
+.studio-set-index { text-align: left; font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--color-text-dim); }
 .studio-set-state { display: flex; align-items: center; justify-content: center; font-size: 11px; }
 /* The open set is flat: quiet wells on the stage, the save key the one hero. */
 .studio-set-editor { padding-top: 4px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
 .studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
 .studio-set-entry { scroll-margin: 12px 0 calc(var(--workout-rest-height, 0px) + 24px); }
-.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 7%, transparent); box-shadow: none; font-family: var(--font-sans); font-size: 18px; font-weight: 500; line-height: 1.4; text-align: center; color: var(--color-text); appearance: textfield; }
+.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 7%, transparent); box-shadow: none; font-family: var(--font-sans); font-weight: 600; line-height: 28px; letter-spacing: -.015em; font-variant-numeric: tabular-nums; text-align: center; color: var(--color-text); appearance: textfield; }
 .studio-set-input::-webkit-inner-spin-button { appearance: none; }
-/* Focus deepens the well instead of drawing a ring around it. */
+/* In Black the fields sit on the shared well (#1C1C1C) so they read as
+   fields on true black. Focus deepens the well instead of drawing a ring. */
+.dark .studio-set-input { background: var(--color-well); }
 .studio-set-input:focus, .studio-set-input:focus-visible { outline: none; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.dark .studio-set-input:focus, .dark .studio-set-input:focus-visible { background: color-mix(in srgb, var(--color-text) 19%, transparent); }
 @media (prefers-contrast: more) { .studio-set-input:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; } }
 /* A bare hint ("0", "—") stays faint; a planned number is full ink at the
    same weight as a typed one. */
 .studio-set-input::placeholder { color: var(--color-text-dim); opacity: .62; font-weight: 400; }
-.studio-set-input[data-suggested]::placeholder { color: var(--color-text); opacity: 1; font-weight: 500; }
+.studio-set-input[data-suggested]::placeholder { color: var(--color-text); opacity: 1; font-weight: 600; }
 /* Block, not flex, so the cue's word spacing survives. */
 .studio-set-suggestion { display: block; white-space: nowrap; }
 .studio-set-suggestion strong { font-weight: 500; color: var(--color-text); }
@@ -135,11 +145,13 @@
 
 /* Compact iPhones (SE, mini) keep common movement names on one line. */
 @media (max-width: 380px) {
-  .studio-movement-name { font-size: 20px; }
+  .studio-movement { --movement-name-size: 20px; }
   .studio-movement-toggle { gap: 10px; }
 }
 @media (max-width: 360px) {
   .studio-set-headings, .studio-set-ledger, .studio-set-entry { gap: 5px; }
+  /* Narrow fields keep "102.5" whole. */
+  .studio-set-entry { font-size: 20px; }
   .studio-session-actions > div { gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -8,7 +8,6 @@ import { springs } from '@/lib/animations';
 import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
-import { useLitSurface } from '@/hooks/useLitSurface';
 import { repeatOfferLabel } from './workoutFocus';
 
 interface PreviousTarget { weight: number | null; reps: number | null; rpe: number | null }
@@ -66,8 +65,6 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const saveInFlight = useRef(false);
   const hasDraft = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
-  // The metal key catches the motion light only while its entry is open.
-  const litSaveRef = useLitSurface<HTMLButtonElement>();
   const rowRef = useRef<HTMLButtonElement>(null);
   const focusOnOpen = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -233,7 +230,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         <SetInput label="Weight" value={weight} onChange={(value) => { hasDraft.current = true; setWeight(value); }} placeholder={suggestion?.weight || '0'} suggested={Boolean(suggestion?.weight)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={0} step="any" required={!suggestion?.weight} />
         <SetInput label="Reps" value={reps} onChange={(value) => { hasDraft.current = true; setReps(value); }} placeholder={suggestion?.reps || '0'} suggested={Boolean(suggestion?.reps)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="numeric" min={0} step={1} required={!suggestion?.reps} />
         <SetInput label="Effort (RPE, optional)" value={rpe} onChange={(value) => { hasDraft.current = true; setRpe(value); }} placeholder={suggestion?.rpe || '—'} suggested={Boolean(suggestion?.rpe)} describedBy={showingSuggestion ? suggestionCaptionId : undefined} disabled={saving} inputMode="decimal" min={1} max={10} step={0.5} />
-        <button ref={editing ? litSaveRef : undefined} type="submit" className="studio-save-set liquid-metal" disabled={!validNumbers || saving} aria-busy={saving}
+        <button type="submit" className="studio-save-set" disabled={!validNumbers || saving} aria-busy={saving}
           aria-label={saving ? `Saving ${setLabel}` : saveError ? `Retry saving ${setLabel}${entryLabel}` : set.completed ? `Save changes to ${setLabel}${entryLabel}` : `Save ${setLabel}${entryLabel}`}>
           {saving ? <Loader2 size={18} className="animate-spin" aria-hidden /> : saveError ? <span>Retry</span> : <Check size={22} strokeWidth={2.25} aria-hidden />}
         </button>
@@ -241,7 +238,7 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
       {/* One line under the fields: where the numbers came from, and the
           alternatives (repeat last, or cancel an edit). Entry closes with the
-          movement's own disclosure. */}
+          movement's header, its one toggle. */}
       <div className="studio-set-editor-foot">
         {showingSuggestion && suggestion
           ? <span id={suggestionCaptionId} className="studio-set-suggestion">

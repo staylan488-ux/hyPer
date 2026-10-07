@@ -131,15 +131,25 @@ export function getWorkoutResumeSet(
 }
 
 /**
- * A movement's set count for today. The rows are today's sets; the program's
- * count is named only when today differs from it ("3 of 4 sets today" when
- * sets were dropped, "5 sets today · 4 planned" when sets were added).
+ * A movement's set count for today. The rows are today's sets, so today's
+ * count is the one number shown; when it differs from the program the
+ * difference is said plainly once ("3 sets · 1 fewer than planned").
  */
 export function todaySetCountLabel(todaySets: number, programSets?: number | null): string {
-  const unit = todaySets === 1 ? 'set' : 'sets';
-  if (!programSets || programSets === todaySets) return `${todaySets} ${unit}`;
-  if (todaySets < programSets) return `${todaySets} of ${programSets} sets today`;
-  return `${todaySets} ${unit} today · ${programSets} planned`;
+  const count = `${todaySets} ${todaySets === 1 ? 'set' : 'sets'}`;
+  if (!programSets || programSets === todaySets) return count;
+  const difference = Math.abs(programSets - todaySets);
+  return `${count} · ${difference} ${todaySets < programSets ? 'fewer' : 'more'} than planned`;
+}
+
+/**
+ * A closed movement's progress, stated once with today's set count: "3 sets"
+ * before any is logged, "1 of 3 sets" part-way, "3 sets · Complete" when done.
+ */
+export function movementProgressLabel(completed: number, total: number): string {
+  const count = `${total} ${total === 1 ? 'set' : 'sets'}`;
+  if (total > 0 && completed >= total) return `${count} · Complete`;
+  return completed > 0 ? `${completed} of ${count}` : count;
 }
 
 /** "60 × 9" for an autofill offer, so it can be weighed against the plan. */
@@ -166,4 +176,24 @@ export function formatSessionDuration(createdAt: string | null, now: number): st
 /** The compact bar title once the session title has scrolled under the bar. */
 export function compactSessionTitle(title: string, elapsed: string): string {
   return `${title} · ${elapsed}`;
+}
+
+/**
+ * Where the live session header settles once scrolling ends. Like a large
+ * title it rests expanded (0) or collapsed under the bar (`collapse`, the
+ * scroll at which the title and ring sit wholly under the bar's solid edge),
+ * never in between where the ring would rest half-faded. Null: leave it.
+ */
+export function liveHeaderSnapTarget(scrollTop: number, collapse: number): number | null {
+  if (collapse <= 1 || scrollTop <= 0.5 || scrollTop >= collapse - 0.5) return null;
+  return scrollTop < collapse / 2 ? 0 : collapse;
+}
+
+/**
+ * The scroll at which the session header (title and ring) has gone wholly
+ * under the bar's solid edge: its bottom in the scroll column, less the
+ * band's solid height. Rounded up so the ring never peeks into the fade.
+ */
+export function liveHeaderCollapseOffset(headerBottom: number, edgeSolid: number): number {
+  return Math.max(0, Math.ceil(headerBottom - edgeSolid));
 }

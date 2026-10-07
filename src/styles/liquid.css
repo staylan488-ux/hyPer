@@ -186,17 +186,14 @@
   text-shadow: none;
 }
 
-/* The one metal object: the save-set key. A satin machined disc, 44pt and
-   flush with the fields beside it. It takes the primary's tone in each
-   theme (pearl on Black, graphite on Ivory) so it reads as the primary in
-   both. One quiet two-stop face (a half-strength ramp, no drop shadow, so
-   it never reads as a glossy bead), no spun banding; a soft chamfer catches
-   light along the upper arc only, never a full or glowing rim. The motion
-   light tilts the chamfer. */
+/* The one machined key: the save-set key, 44pt and flush with the fields
+   beside it. It takes the primary's tone in each theme (pearl on Black,
+   graphite on Ivory) so it reads as the primary in both, and it is calm: a
+   flat face with no bevel, chamfer, rim, highlight edge or shadow, so it
+   never reads as a bead. Only a tonal lift of two levels (imperceptible as
+   a gradient) separates it from a plain primary fill. */
 .studio-save-set {
-  --save-key-tilt: calc(var(--light-x, 0) * 1);
   position: relative;
-  isolation: isolate;
   width: 44px;
   height: 44px;
   min-height: 44px;
@@ -204,29 +201,20 @@
   justify-self: center;
   color: #f5f5f0;
   text-shadow: none;
-  background-color: #2b2b2b;
-  background-image: linear-gradient(180deg, #333333 0%, #232323 100%);
+  background-color: #262626;
+  background-image: linear-gradient(180deg, #272727, #252525);
   box-shadow: none;
 }
 .dark .studio-save-set {
   color: #141414;
-  background-color: #dfdfdf;
-  background-image: linear-gradient(180deg, #eaeaea 0%, #d5d5d5 100%);
+  background-color: #e6e6e6;
+  background-image: linear-gradient(180deg, #e7e7e7, #e5e5e5);
   box-shadow: none;
-}
-/* Upper 120° only, fading in and out, at most rgba(255,255,255,.18). */
-.studio-save-set.liquid-metal::after {
-  padding: 1px;
-  background: conic-gradient(from calc(-60deg + var(--save-key-tilt) * 24deg),
-    rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, .18) 34deg, rgba(255, 255, 255, .18) 86deg,
-    rgba(255, 255, 255, 0) 120deg, rgba(255, 255, 255, 0) 360deg);
-  animation: none;
 }
 .studio-save-set:hover:not(:disabled) { filter: brightness(1.05); }
 .studio-save-set:active:not(:disabled) { filter: brightness(.9); }
 .studio-save-set:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .studio-save-set.liquid-metal::after { content: none; }
   .studio-save-set, .dark .studio-save-set { background-image: none; background-color: var(--color-text); color: var(--color-base); }
 }
 

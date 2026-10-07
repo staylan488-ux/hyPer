@@ -1,7 +1,8 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
-import { compactSessionTitle, formatSessionDuration } from './workoutFocus';
+import { readMotionPolicy } from '@/lib/motionPolicy';
+import { compactSessionTitle, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget } from './workoutFocus';
 
 // The bar row under the status bar; the session title starts to hand over to
 // the compact title once it reaches the bar's bottom edge.
@@ -9,23 +10,35 @@ const BAR = 44;
 // Scroll distance over which the scroll-edge band comes in, before anything
 // but the header's top margin has reached the bar.
 const BAND_RAMP = 16;
+// The band's solid height when its stylesheet cannot be read.
+const EDGE_SOLID_FALLBACK = 42;
+// Quiet time after the last scroll event that counts as "scrolling ended"
+// where `scrollend` is unavailable (older WebKit).
+const SETTLE_MS = 140;
 
 /**
  * The live session's navigation bar, pinned under the status bar like a
  * full-screen cover's bar: minimise (leading), the elapsed clock (centre) and
  * Finish (trailing) never scroll away. It sits on the shared scroll-edge band
- * (the same veil and progressive blur as every PageTitle), so content passing
- * under it dissolves instead of meeting a line. Once the session title has
- * scrolled under it, the centre cross-fades to the compact "Upper A · 24m".
+ * (the same opacity-only veil as every PageTitle), so content passing under it
+ * dissolves instead of meeting a line. Once the session title has scrolled
+ * under it, the centre cross-fades to the compact "Upper A · 24m".
  *
- * Fixed inside the untransformed route content; scroll-linked only. Its
- * in-flow spacer keeps the header below it at the same height as before.
+ * The session header (title and ring) behaves like a large title: when
+ * scrolling ends part-way it settles expanded or wholly collapsed under the
+ * bar's solid edge, and the page always has room to collapse it, so the ring
+ * never rests in the fade. Fixed inside the untransformed route content;
+ * scroll-linked only. Its in-flow spacer keeps the header below it in place.
  */
-export function LiveSessionBar({ title, createdAt, titleRef, finishing, onMinimise, onFinish }: {
+export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef, finishing, onMinimise, onFinish }: {
   title: string;
   createdAt: string | null;
   /** The session's large title, whose passage under the bar drives the hand-over. */
   titleRef: RefObject<HTMLElement | null>;
+  /** The collapsible session header (title and ring). */
+  headerRef: RefObject<HTMLElement | null>;
+  /** The session page, given room to collapse the header however short it is. */
+  pageRef: RefObject<HTMLElement | null>;
   finishing: boolean;
   onMinimise: () => void;
   onFinish: () => void;
@@ -39,6 +52,7 @@ export function LiveSessionBar({ title, createdAt, titleRef, finishing, onMinimi
   }, [createdAt]);
   const elapsed = formatSessionDuration(createdAt, now);
 
+  const barRef = useRef<HTMLDivElement>(null);
   const scrolled = useMotionValue(0);
   const covered = useMotionValue(0);
   const band = useTransform(scrolled, [0, BAND_RAMP], [0, 1]);
@@ -50,6 +64,12 @@ export function LiveSessionBar({ title, createdAt, titleRef, finishing, onMinimi
     const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
     if (!viewport) return;
     let frame = 0;
+    let settleTimer = 0;
+    let touching = false;
+    let collapse = 0;
+    const inColumn = (element: HTMLElement, edge: 'top' | 'bottom') =>
+      element.getBoundingClientRect()[edge] - viewport.getBoundingClientRect().top + viewport.scrollTop;
+
     const measure = () => {
       frame = 0;
       const top = Math.max(0, viewport.scrollTop);
@@ -58,25 +78,84 @@ export function LiveSessionBar({ title, createdAt, titleRef, finishing, onMinimi
       if (!heading) return;
       // The title's resting place in the scroll column, independent of the
       // current scroll, as PageTitle measures it.
-      const rest = heading.getBoundingClientRect().top - viewport.getBoundingClientRect().top + top;
+      const rest = inColumn(heading, 'top');
       const start = Math.max(0, rest - BAR);
       covered.set(Math.min(1, Math.max(0, (top - start) / Math.max(1, heading.offsetHeight))));
     };
+
+    // The collapsed rest: the header wholly under the band's solid part. A
+    // short session gets just enough height to reach it.
+    const layout = () => {
+      const header = headerRef.current;
+      const page = pageRef.current;
+      if (!header || !page) return;
+      const solid = parseFloat(barRef.current ? getComputedStyle(barRef.current).getPropertyValue('--edge-solid') : '');
+      collapse = liveHeaderCollapseOffset(inColumn(header, 'bottom'), Number.isFinite(solid) ? solid : EDGE_SOLID_FALLBACK);
+      const room = Math.ceil(viewport.clientHeight + collapse - inColumn(page, 'top'));
+      page.style.minHeight = `${Math.max(0, room)}px`;
+    };
+
+    const settle = () => {
+      settleTimer = 0;
+      // Never move the page under a finger, or away from a field being typed into.
+      if (touching) return;
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused.matches('input, textarea, select')) return;
+      const target = liveHeaderSnapTarget(viewport.scrollTop, collapse);
+      if (target === null) return;
+      viewport.scrollTo({ top: target, behavior: readMotionPolicy().reducedMotion ? 'auto' : 'smooth' });
+    };
+    const hasScrollEnd = 'onscrollend' in viewport;
+    const scheduleSettle = () => {
+      if (hasScrollEnd) return;
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settle, SETTLE_MS);
+    };
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(measure);
+      scheduleSettle();
     };
+    const onTouchStart = () => { touching = true; window.clearTimeout(settleTimer); };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length > 0) return;
+      touching = false;
+      // A release without momentum fires no further scroll events.
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settle, SETTLE_MS);
+    };
+    const onResize = () => { layout(); onScroll(); };
+
+    layout();
     measure();
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(onResize) : null;
+    // The header moves when an error line appears above it; the page grows
+    // and shrinks as movements open.
+    if (headerRef.current) resizeObserver?.observe(headerRef.current);
+    if (pageRef.current) resizeObserver?.observe(pageRef.current);
+    resizeObserver?.observe(viewport);
     viewport.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
+    if (hasScrollEnd) viewport.addEventListener('scrollend', settle);
+    viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+    viewport.addEventListener('touchend', onTouchEnd, { passive: true });
+    viewport.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    window.addEventListener('resize', onResize);
+    const page = pageRef.current;
     return () => {
       viewport.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      viewport.removeEventListener('scrollend', settle);
+      viewport.removeEventListener('touchstart', onTouchStart);
+      viewport.removeEventListener('touchend', onTouchEnd);
+      viewport.removeEventListener('touchcancel', onTouchEnd);
+      window.removeEventListener('resize', onResize);
+      resizeObserver?.disconnect();
+      window.clearTimeout(settleTimer);
       if (frame) cancelAnimationFrame(frame);
+      if (page) page.style.minHeight = '';
     };
-  }, [covered, scrolled, titleRef]);
+  }, [covered, headerRef, pageRef, scrolled, titleRef]);
 
   return <>
-    <motion.div className="page-scroll-edge studio-live-bar" style={{ '--band': band } as MotionStyle}>
+    <motion.div ref={barRef} className="page-scroll-edge studio-live-bar" style={{ '--band': band } as MotionStyle}>
       <span className="page-scroll-edge-veil" aria-hidden />
       {/* The full-screen cover minimises (the session keeps running) rather
           than going back. The clock sits on the screen's centre line. */}

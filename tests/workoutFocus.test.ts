@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, liveHeaderCollapseOffset, liveHeaderSnapTarget, movementProgressLabel, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({
@@ -154,8 +154,16 @@ describe('Train set-entry copy', () => {
   it("names today's set count against the program only when they differ", () => {
     expect(todaySetCountLabel(3, 3)).toBe('3 sets');
     expect(todaySetCountLabel(1)).toBe('1 set');
-    expect(todaySetCountLabel(3, 4)).toBe('3 of 4 sets today');
-    expect(todaySetCountLabel(5, 4)).toBe('5 sets today · 4 planned');
+    // Today's count leads; the program never appears as a second total.
+    expect(todaySetCountLabel(3, 4)).toBe('3 sets · 1 fewer than planned');
+    expect(todaySetCountLabel(5, 4)).toBe('5 sets · 1 more than planned');
+    expect(todaySetCountLabel(1, 3)).toBe('1 set · 2 fewer than planned');
+  });
+  it("states a closed movement's progress with the same count", () => {
+    expect(movementProgressLabel(0, 3)).toBe('3 sets');
+    expect(movementProgressLabel(1, 3)).toBe('1 of 3 sets');
+    expect(movementProgressLabel(3, 3)).toBe('3 sets · Complete');
+    expect(movementProgressLabel(1, 1)).toBe('1 set · Complete');
   });
   it('offers earlier numbers as a repeat, never as an unexplained alternative plan', () => {
     expect(repeatOfferLabel({ weight: '60', reps: '9', rpe: '', source: 'previous_workout' })).toBe('Repeat last · 60 × 9');
@@ -190,5 +198,26 @@ describe('Dashboard resume cue', () => {
     ] };
     expect(getWorkoutResumeSet(workout, day, plan)?.id).toBe('swap-1');
     expect(getWorkoutResumeSet(workout, day, { ...plan, workout_id: 'other' })?.id).toBe('c-1');
+  });
+});
+
+describe('Live session header settling', () => {
+  it('collapses the header until the ring sits wholly under the solid edge', () => {
+    // Header bottom 162pt in the scroll column, 42pt of solid band.
+    expect(liveHeaderCollapseOffset(162, 42)).toBe(120);
+    expect(liveHeaderCollapseOffset(161.2, 42)).toBe(120);
+    expect(liveHeaderCollapseOffset(30, 42)).toBe(0);
+  });
+  it('never rests part-way: settles to the nearer of expanded or collapsed', () => {
+    expect(liveHeaderSnapTarget(12, 120)).toBe(0);
+    expect(liveHeaderSnapTarget(59, 120)).toBe(0);
+    expect(liveHeaderSnapTarget(60, 120)).toBe(120);
+    expect(liveHeaderSnapTarget(108, 120)).toBe(120);
+  });
+  it('leaves resting states and long scrolls alone', () => {
+    expect(liveHeaderSnapTarget(0, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(120, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(400, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(40, 0)).toBeNull();
   });
 });

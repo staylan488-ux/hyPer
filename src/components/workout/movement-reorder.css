@@ -6,7 +6,6 @@
 .studio-reorder-list.is-reordering .studio-movement { position: relative; padding: 4px 0; transform: translateY(var(--movement-drag-offset, 0px)); transition: transform .18s ease; }
 .studio-reorder-list.is-reordering .studio-movement-header, .studio-reorder-list.is-reordering .studio-movement-toggle { align-items: center; }
 .studio-reorder-list.is-reordering .studio-movement-toggle { cursor: default; }
-.studio-reorder-list.is-reordering .studio-movement-count,
 .studio-reorder-list.is-reordering .studio-movement-content,
 .studio-reorder-list.is-reordering .studio-movement-summary,
 .studio-reorder-list.is-reordering .studio-movement-kicker,

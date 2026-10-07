@@ -80,15 +80,24 @@ tokens; an already approved direction does not need another design exploration.
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
   to Today, the elapsed clock sits on the screen's centre line, Finish is a
   regular-weight text action, and its session ring matches Today's. That bar
-  stays pinned while the session scrolls and condenses to "Title · time". Live
-  workouts open with the Up next movement expanded; tapping a movement
-  expands its details and inline set entry in place; its header chevron is
-  the one collapse.
+  stays pinned while the session scrolls and condenses to "Title · time";
+  like a large title, the session header (title and ring) settles expanded
+  or wholly under the bar's solid edge when scrolling ends, and a short
+  session gets the room to collapse, so the ring never rests in the fade. Live
+  workouts open with the Up next movement expanded; a movement's whole
+  header row is its one toggle (no chevron or trailing count), expanding its
+  details and inline set entry in place, with "•••" alone at the trailing
+  edge. Today's set count is the one number ("Set 1 of 3", "1 of 3 sets");
+  a program difference is said once ("3 sets · 1 fewer than planned"). The
+  eyebrow sits about 10pt above its title, open or closed.
   Between sets (no entry open) a solid "Log set N · Movement" primary docks
   above the home indicator and above the rest bar, and opens that entry. The
-  44pt save key, flush with the fields, is the screen's one metal accent
-  (pearl in Black, graphite in Ivory, smooth two-stop face, soft upper-arc
-  chamfer only). The open row's planned numbers are full ink, and
+  44pt save key, flush with the fields, is the screen's one machined key
+  (pearl in Black, graphite in Ivory): a calm flat face with no bevel,
+  chamfer, rim or highlight edge. The open set's numbers are 23px semibold
+  tabular figures (rows below one step down at 17px, sharing a baseline with
+  their index), in fields on the well tone (#1C1C1C in Black). The open
+  row's planned numbers are full ink, and
   the "Planned" cue naming their source is the only sign they are
   suggestions. Every enabled text action is ink; grey is never a style for
   something tappable.
