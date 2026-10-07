@@ -2004,7 +2004,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                     <>
                       <div className="flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-2">
                         <div className="min-w-0 flex-1">
-                          <p className="t-row-title break-words">{meal.name}</p>
+                          <p className="t-row-title-plain break-words">{meal.name}</p>
                           <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
                             {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                           </p>
@@ -2039,7 +2039,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                       aria-label={`Log ${meal.name}`}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="t-row-title break-words">{meal.name}</p>
+                        <p className="t-row-title-plain break-words">{meal.name}</p>
                         <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
@@ -2144,7 +2144,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                 disabled={saving || loadingFoodId !== null}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="t-row-title break-words">{food.name}</p>
+                  <p className="t-row-title-plain break-words">{food.name}</p>
                   <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                     {Math.round(food.calories)} kcal / {food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}
                   </p>
@@ -2313,7 +2313,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                       onClick={() => handleSelectSavedMeal(meal)}
                       className="platter-row pressable w-full min-h-11 text-left px-4 py-2.5"
                     >
-                      <p className="t-row-title break-words">{meal.name}</p>
+                      <p className="t-row-title-plain break-words">{meal.name}</p>
                       <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                         {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                       </p>

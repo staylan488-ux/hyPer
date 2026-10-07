@@ -3,7 +3,7 @@ import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/r
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
-import { REST_BAR_CLEAR, REST_PAGE_NUDGE_LIMIT, cleanScrollEnd, restNudgeTarget, titleSnapTarget, type RestBand, type RestBar } from '@/lib/titleSnap';
+import { REST_BAR_CLEAR, REST_PAGE_NUDGE_LIMIT, restNudgeTarget, restingScrollEndAt, titleSnapTarget, type RestBand, type RestBar } from '@/lib/titleSnap';
 import { measureRestBand, measureRestInk, measureStickyRest, uncovered } from '@/lib/restBlocks';
 import { createRuleVeil } from '@/lib/ruleVeil';
 import './page-header.css';
@@ -45,9 +45,6 @@ const COMPACT_FROM = 0.8;
 const EDGE_RAMP = 6;
 // Quiet period that stands in for `scrollend` where it is unsupported.
 const SETTLE_MS = 140;
-// The most a page may grow past its tab-bar clearance to end on a clean
-// rest: about one row.
-const END_SLACK = 72;
 
 const editable = (element: Element | null) =>
   element instanceof HTMLElement && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
@@ -63,12 +60,13 @@ const editable = (element: Element | null) =>
  *
  * Like UIKit, the page never rests half collapsed: when scrolling ends inside
  * the collapse range it settles fully expanded or fully collapsed
- * (immediately under reduced motion). Once collapsed, it also never rests
- * with a block split by the band: like UIKit's targetContentOffset
- * adjustment, the rest moves by at most 32px so every block clears the band
- * or sits wholly under its solid stage (`restNudgeTarget`). Settling never
- * fights a finger still on the glass, a focused field or route scroll
- * restoration, and the scroll-to-top tap lands on a settled offset.
+ * (immediately under reduced motion). Once collapsed, it rests on one gap,
+ * like UIKit's targetContentOffset adjustment: the first content under the
+ * band starts at the ramp's foot, with nothing split by the band
+ * (`restNudgeTarget`). Its end rests with the last ink 24px above the tab
+ * bar (`restingScrollEndAt`). Settling never fights a finger still on the
+ * glass, a focused field or route scroll restoration, and the scroll-to-top
+ * tap lands on a settled offset.
  *
  * Scroll-linked only: the band is `position: fixed` inside the route content
  * (which is never transformed), and nothing animates on its own.
@@ -171,8 +169,8 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       const rest = collapsedRest();
       const collapsed = Math.min(rest, max);
       let target = titleSnapTarget(viewport.scrollTop, rest, max) ?? viewport.scrollTop;
-      // Collapsed: nothing rests split by the band or astride the tab bar,
-      // judged at both edges at once.
+      // Collapsed: the page rests on the gap under the band, with nothing
+      // split by it.
       const band = bandRef.current;
       if (root && band && target > 0.5 && target >= collapsed - 0.5) {
         // A sticky header held under the band (History's month) moves the
@@ -215,26 +213,43 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       // that is already still.
       if (!touching) scheduleSettle(SETTLE_MS);
     };
-    // The page's trailing space only clears the tab bar; when its natural end
-    // would rest with a block split by the band, it grows by at most about a
-    // row (END_SLACK) to end on a clean rest. Measured with the current extra
-    // room subtracted, never by removing it, so a page resting at its end is
-    // not clamped while it is re-measured.
-    let extra = 0;
+    // One bottom inset on every page: the page's trailing space (.pb-nav)
+    // is trimmed or grown (--end-trim, set on the page itself) so its last
+    // ink ends 24px above the tab bar, whatever padding its last row carries
+    // (or a few px more, to end with a clean band). The padding is never
+    // below 0, so the trim is solved from the page's content end and its
+    // untrimmed padding (`base`, kept from a measure where it showed).
+    const page = root ? root.closest<HTMLElement>('.pb-nav') ?? root.querySelector<HTMLElement>('.pb-nav') : null;
+    const trimOf = () => (page ? parseFloat(page.style.getPropertyValue('--end-trim')) || 0 : 0);
+    const setTrim = (next: number) => {
+      if (!page || next === trimOf()) return;
+      if (next) page.style.setProperty('--end-trim', `${next}px`);
+      else page.style.removeProperty('--end-trim');
+    };
+    let base = NaN;
     let layoutTimer = 0;
     const layoutEnd = () => {
       layoutTimer = 0;
       const band = bandRef.current;
-      if (!root || !band) return;
-      const naturalEnd = viewport.scrollHeight - extra - viewport.clientHeight;
+      if (!root || !band || !page) return;
+      // From the page's own box, not the viewport's scroll height: a page
+      // leaving in a route transition can still hold the scroll height up.
+      const padding = parseFloat(getComputedStyle(page).paddingBottom) || 0;
+      if (padding > 0.5 || !Number.isFinite(base)) base = padding - trimOf();
+      const contentEnd = page.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top + viewport.scrollTop - padding;
+      const naturalEnd = contentEnd + base - viewport.clientHeight;
       const { blocks, bar } = measureRestInk(root, viewport);
-      const end = cleanScrollEnd(naturalEnd, blocks, withWindow(measureRestBand(band, viewport), bar), END_SLACK, collapsedRest(), bar);
-      const next = Math.max(0, Math.ceil(end - naturalEnd));
       rules?.collect();
       measure();
-      if (next === extra) return;
-      extra = next;
-      viewport.style.paddingBottom = extra ? `${extra}px` : '';
+      const lastInk = blocks.reduce((most, block) => Math.max(most, block.bottom), -Infinity);
+      if (!bar || !Number.isFinite(lastInk) || !(naturalEnd > 0.5)) {
+        setTrim(0);
+        return;
+      }
+      const floor = collapsedRest();
+      const end = restingScrollEndAt(lastInk, bar.top, blocks, withWindow(measureRestBand(band, viewport), bar), floor);
+      // A page too short to collapse its title keeps its natural end.
+      setTrim(end >= floor - 0.5 ? Math.max(-base, Math.round(end - naturalEnd)) : 0);
     };
     // Rows opening animate their height: measure once they have settled.
     const scheduleLayout = () => {
@@ -264,7 +279,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       resizeObserver?.disconnect();
       window.clearTimeout(settledLayout);
       window.clearTimeout(layoutTimer);
-      if (extra) viewport.style.paddingBottom = '';
+      page?.style.removeProperty('--end-trim');
       rules?.dispose();
       if (frame) cancelAnimationFrame(frame);
       if (settleTimer) window.clearTimeout(settleTimer);

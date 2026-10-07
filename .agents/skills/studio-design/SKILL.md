@@ -55,23 +55,24 @@ tokens; an already approved direction does not need another design exploration.
   content still shows smears bright shapes into halos on true black. The
   scroll column's `scroll-padding-top` (64px) keeps scrolled-into-view
   content below the ramp. Like UIKit's target content offset, a collapsed
-  page that stops scrolling settles by one joint solver over both edges
-  (`restNudgeTarget` with the tab bar, `lib/titleSnap.ts`): no text line,
-  graphic or filled box rests in the band's ramp (each clears its foot or
-  sits under the solid zone), and no text line rests within 12pt above the
-  tab bar's top or astride it, nor a section header alone above it with its
-  first line under it (`measureRestInk`, `lib/restBlocks.ts`). Judged line by
-  line, so a row may rest with one line under the solid zone and the next
-  clear. A figure, ring or `data-rest-block` unit (Progress's figures with
-  their legend, You's search field) rests whole: wholly hidden or wholly
-  shown, never split, and may move as far as half its split stretch to get
-  there; only a block taller than the space between the ramp and the bar
-  passes under like a photo. The band comes first, then the bar, then an
-  even gap: the first content rests at the ramp's foot (within 8pt) rather
-  than leaving an empty shelf under the bar. A rest clean at both edges
-  within 64pt wins outright; otherwise a band split moves at most 64pt (or
-  half a unit's stretch) and a fault only at the bar at most 32pt, since the
-  bar is glass and content reads as passing under it. `data-rest-ignore`
+  page that stops scrolling settles on one gap (`restNudgeTarget`,
+  `lib/titleSnap.ts`; Train's live session too): the first content under
+  the band, a line, graphic or filled box, starts exactly at the ramp's
+  foot on every page, snapping to the nearest block top within 120pt, with
+  nothing showing above it. No text line, graphic or filled box rests in
+  the band's ramp (each clears its foot or sits under the solid zone); a
+  filled box (Fuel's Log food pill, a track) counts as hidden only once its
+  edge is at the solid zone's edge, since the band's blur smears an edge in
+  the ramp into a ghost bar (`measureRestInk`, `lib/restBlocks.ts`). Judged
+  line by line, so a row may rest with one line under the solid zone and
+  the next clear. A figure, ring or `data-rest-block` unit (Progress's
+  figures with their legend, You's search field) rests whole: wholly hidden
+  or wholly shown, never split; only a block taller than the space between
+  the ramp and the bar passes under like a photo. The tab bar is glass, so
+  the gap wins over the bottom edge: a line may rest passing under the bar,
+  and a line astride it only breaks a near tie between rests at the gap.
+  With no rest at the gap in reach, the nearest rest with a clean band.
+  `data-rest-ignore`
   leaves a subtree out; the page header collapses with its title (anything
   it holds under the title, You's search, collapses with it). Hairline rules
   leave before they reach the ramp: a rule fades out from 20pt to 8pt below
@@ -84,9 +85,12 @@ tokens; an already approved direction does not need another design exploration.
   row; rows then rest against their foot. The nudge never runs while a finger or a
   focused field holds the page or while route scroll restoration runs
   (`data-restoring-scroll`), and is instant under reduced motion; no CSS
-  scroll-snap. A page ends at the tab bar's top plus 24px (`.pb-nav`), and
-  may take at most 72pt more only when that makes its last rest clean
-  (`cleanScrollEnd`). Reduced transparency or increased contrast use a
+  scroll-snap. One bottom inset: at its scroll end a page's last ink rests
+  24px above the tab bar's top, whatever padding its last row carries
+  (`.pb-nav` plus PageTitle's `--end-trim`, `restingScrollEndAt`), or up to
+  8pt more when that ends with a clean band; a page at its end always rests
+  there, as in UIKit (Train's live session, with no tab bar, may grow by
+  about a row to end on the gap or clean). Reduced transparency or increased contrast use a
   solid bar with no blur. The large title
   scrolls under the band and the compact title switches in over the last
   ~10px of the collapse, not a long crossfade. Like UIKit, a page never
@@ -160,18 +164,19 @@ tokens; an already approved direction does not need another design exploration.
   (`TabIcons`, an upright plain dumbbell; the current tab's glyph is its
   filled variant), 10.5px semibold
   labels in the current tab's ink or a neutral secondary grey (#575757
-  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 20px
+  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 10px
   backdrop blur under a neutral fill at 72% (#1C1C1C in Black, a light
-  ivory in Ivory, where one faint shadow sets it off), with no rim, wash,
-  glow or one-sided light; the current tab a flat fill (no shadow; #333333
-  in Black) inset 5px on every side and concentric with the bar. Its bottom
-  scroll edge (`.bottom-nav-edge`) is iOS 26's: content stays sharp until
-  it reaches the bar, with at most an 8px opacity fade above the bar's top
-  edge and no blur there; below the bar's top edge a short progressive soft
-  edge (a blur growing to under 6px under a stage-colour fade) takes
-  content under the glass, so a line astride the edge reads as passing
-  beneath the bar, not cut by it. Reduced transparency or increased
-  contrast give a solid bar and an opaque edge. With the native bar there
+  ivory in Ivory, where one faint shadow sets it off), clipped to the
+  capsule, so content passing under it shows through as a soft blurred
+  shape (a 20px blur spreads a 15pt line to nothing and the bar reads as
+  an opaque slab cutting it); no rim, wash, glow or one-sided light; the
+  current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
+  side and concentric with the bar. Nothing blurs outside the capsule: its
+  bottom scroll edge (`.bottom-nav-edge`) is stage colour only, an 8px
+  opacity fade above the bar's top edge, then solid beside and under the
+  bar, cut to the capsule's rounded ends (the spread of a capsule-shaped
+  hole), so no smudge sits in the corner wedges. Reduced transparency or
+  increased contrast give a solid bar. With the native bar there
   is no web bar or edge. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. The live workout is a

@@ -38,12 +38,10 @@ export function BottomNav() {
   return (
     <>
     {/* Bottom scroll edge: content stays sharp until it reaches the bar,
-        then goes softly under the glass (a short progressive blur and fade). */}
+        then goes under the glass capsule; beside and under the capsule it
+        fades into the stage (opacity only, never blurred). */}
     <div className="bottom-nav-edge" aria-hidden>
-      <span className="bottom-nav-edge-blur" data-layer="1" />
-      <span className="bottom-nav-edge-blur" data-layer="2" />
-      <span className="bottom-nav-edge-blur" data-layer="3" />
-      <span className="bottom-nav-edge-veil" />
+      <span className="bottom-nav-edge-hole" />
     </div>
     <motion.nav
       ref={litRef}

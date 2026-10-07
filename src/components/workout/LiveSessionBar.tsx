@@ -3,9 +3,10 @@ import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { ScrollEdgeVeil } from '@/components/shared/PageTitle';
-import { restNudgeTarget } from '@/lib/titleSnap';
-import { measureRestBand, measureRestBlocks } from '@/lib/restBlocks';
-import { compactSessionPrefix, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd } from './workoutFocus';
+import { REST_PAGE_NUDGE_LIMIT, gapRestOffsets, restNudgeTarget, splitCost, straddleCount } from '@/lib/titleSnap';
+import { measureRestBand, measureRestInk } from '@/lib/restBlocks';
+import { createRuleVeil } from '@/lib/ruleVeil';
+import { compactSessionPrefix, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget } from './workoutFocus';
 
 // The bar row under the status bar; the session title starts to hand over to
 // the compact title once it reaches the bar's bottom edge.
@@ -18,6 +19,12 @@ const EDGE_SOLID_FALLBACK = 40;
 const EDGE_FADE_FALLBACK = 24;
 // Quiet time after the last scroll event that counts as "scrolling ended"
 // where `scrollend` is unavailable (older WebKit).
+// How far a live session's end may grow to rest on the gap (about a row),
+// how much trailing space it may give back, and the air it keeps under the
+// last ink.
+const END_ROW = 72;
+const END_SHRINK = 48;
+const END_AIR = 24;
 const SETTLE_MS = 140;
 
 /**
@@ -80,6 +87,9 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
     let settleTimer = 0;
     let touching = false;
     let collapse = 0;
+    let basePadding = 0;
+    // Rules leave before they reach the band's ramp, as on every PageTitle page.
+    const rules = pageRef.current ? createRuleVeil(pageRef.current, viewport) : null;
     const inColumn = (element: HTMLElement, edge: 'top' | 'bottom') =>
       element.getBoundingClientRect()[edge] - viewport.getBoundingClientRect().top + viewport.scrollTop;
 
@@ -94,6 +104,7 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       const rest = inColumn(heading, 'top');
       const start = Math.max(0, rest - BAR);
       covered.set(Math.min(1, Math.max(0, (top - start) / Math.max(1, heading.offsetHeight))));
+      if (rules && barRef.current) rules.update(top > 0.5 ? measureRestBand(barRef.current, viewport).foot : null);
     };
 
     // The collapsed rest: the header wholly under the band's solid part. A
@@ -121,13 +132,48 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       // resting at its end is never clamped upward while it is re-measured.)
       const pageTop = inColumn(page, 'top');
       const last = page.lastElementChild instanceof HTMLElement ? page.lastElementChild : null;
+      // The page's own trailing padding, not what this layout gave back.
+      if (!page.style.paddingBottom) basePadding = parseFloat(getComputedStyle(page).paddingBottom) || 0;
       const naturalHeight = last
-        ? inColumn(last, 'bottom') - pageTop + (parseFloat(getComputedStyle(page).paddingBottom) || 0)
+        ? inColumn(last, 'bottom') - pageTop + basePadding
         : page.offsetHeight;
       const after = viewport.scrollHeight - (pageTop + page.offsetHeight);
       const naturalEnd = pageTop + naturalHeight + Math.max(0, after) - viewport.clientHeight;
-      const end = liveScrollEnd(naturalEnd, collapse, rests, viewport.clientHeight * 0.5);
+      // A clean natural end stays. Otherwise the end moves to the nearest
+      // rest on the gap (the first content at the ramp's foot), growing by at
+      // most about a row or giving back trailing space down to 24px of air
+      // under the last ink; else to the first clean offset (nothing split by
+      // the band) within a row; else where the least shows split.
+      const { blocks } = measureRestInk(page, viewport);
+      const edge = { solid, foot };
+      const clean = (offset: number) => straddleCount(blocks, offset, edge) === 0;
+      const lastInk = blocks.reduce((most, block) => Math.max(most, block.bottom), -Infinity);
+      const minEnd = Math.max(naturalEnd - END_SHRINK, lastInk + END_AIR - viewport.clientHeight);
+      let end = naturalEnd;
+      if (collapse > naturalEnd + 0.5) end = Math.ceil(collapse);
+      else if (!clean(naturalEnd)) {
+        const gap = gapRestOffsets(blocks, edge)
+          .filter((offset) => offset >= Math.max(collapse, minEnd) - 0.5 && offset <= naturalEnd + END_ROW)
+          .sort((a, b) => Math.abs(a - naturalEnd) - Math.abs(b - naturalEnd))[0];
+        let fallback: number | undefined;
+        if (gap === undefined) {
+          for (let offset = Math.ceil(naturalEnd); offset <= naturalEnd + END_ROW; offset += 1) {
+            if (clean(offset)) { fallback = offset; break; }
+          }
+          if (fallback === undefined) {
+            // Dense content to the end (an open movement's set rows).
+            fallback = naturalEnd;
+            for (let offset = Math.ceil(naturalEnd); offset <= naturalEnd + END_ROW; offset += 1) {
+              if (splitCost(blocks, offset, edge) < splitCost(blocks, fallback, edge) - 2) fallback = offset;
+            }
+          }
+        }
+        end = Math.round(gap ?? fallback ?? naturalEnd);
+      }
+      // Growing takes a min-height; giving space back, less trailing padding.
       page.style.minHeight = end > naturalEnd + 0.5 ? `${Math.ceil(naturalHeight + end - naturalEnd)}px` : '';
+      page.style.paddingBottom = end < naturalEnd - 0.5 ? `${Math.max(0, Math.round(basePadding + end - naturalEnd))}px` : '';
+      rules?.collect();
     };
 
     const settle = () => {
@@ -138,13 +184,15 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       if (focused instanceof HTMLElement && focused.matches('input, textarea, select')) return;
       if (viewport.hasAttribute('data-restoring-scroll')) return;
       let target = liveHeaderSnapTarget(viewport.scrollTop, collapse) ?? viewport.scrollTop;
-      // Collapsed: no movement row, set row or action rests split by the bar
-      // (the same rest nudge as every PageTitle page).
+      // Collapsed: the page rests on the gap under the band, with nothing
+      // split by it (the same rest as every PageTitle page; no tab bar here).
       const page = pageRef.current;
       const bar = barRef.current;
       const max = viewport.scrollHeight - viewport.clientHeight;
       if (page && bar && collapse > 1 && target >= collapse - 0.5) {
-        target = restNudgeTarget(target, measureRestBlocks(page, viewport), measureRestBand(bar, viewport), { min: Math.min(collapse, max), max }) ?? target;
+        const band = measureRestBand(bar, viewport);
+        const { blocks } = measureRestInk(page, viewport);
+        target = restNudgeTarget(target, blocks, { ...band, window: viewport.clientHeight - band.foot }, { min: Math.min(collapse, max), max }, REST_PAGE_NUDGE_LIMIT, null) ?? target;
       }
       if (Math.abs(target - viewport.scrollTop) < 0.5) return;
       viewport.scrollTo({ top: target, behavior: readMotionPolicy().reducedMotion ? 'auto' : 'smooth' });
@@ -194,7 +242,11 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       resizeObserver?.disconnect();
       window.clearTimeout(settleTimer);
       if (frame) cancelAnimationFrame(frame);
-      if (page) page.style.minHeight = '';
+      if (page) {
+        page.style.minHeight = '';
+        page.style.paddingBottom = '';
+      }
+      rules?.dispose();
     };
   }, [covered, headerRef, pageRef, scrolled, titleRef]);
 

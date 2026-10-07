@@ -374,12 +374,15 @@ body {
 .trail-disclosure { translate: 1.4px 0; }
 .trail-more { translate: 3.3px 0; }
 
-/* Clears the tab bar (native or web, same geometry) and its bottom scroll
-   edge with 24px of air: the last row ends just above the bar, never on a
-   field of empty stage. PageTitle adds at most one row more, only when that
-   is what lets the end rest clean. */
+/* Clears the tab bar (native or web, same geometry) with 24px of air: the
+   last row ends just above the bar, never on a field of empty stage.
+   PageTitle sets --end-trim (on the scroll viewport) so the last ink, not
+   the last row's box, ends 24px above the bar on every page. */
 .pb-nav {
-  padding-bottom: calc(var(--nav-top) + 24px);
+  padding-bottom: calc(var(--nav-top) + 24px + var(--end-trim, 0px));
+  /* Applied at once (even under reduced motion's near-zero transitions), so
+     the end PageTitle measures is the end it set. */
+  transition-property: none;
 }
 
 /* ═════════════════════════════════════════════════════════════
@@ -574,14 +577,13 @@ input, textarea, select, button { font-family: inherit; }
   background-color: var(--nav-glass);
   overflow: hidden;
 }
-/* Bottom scroll edge, like iOS 26's: content stays sharp until it reaches
-   the bar, then goes under the glass instead of being cut. Above the bar's
-   top edge there is only a short opacity fade (8px, no blur), so a row
-   resting just above the bar stays crisp. From the bar's top edge down, a
-   short progressive soft edge: a blur that grows to under 6px (1.5, 3 and
-   4.5px layers) under a stage-colour fade, so a line astride the edge reads
-   as passing beneath the translucent bar, and the strip beside and under the
-   bar settles into the stage. */
+/* Bottom scroll edge, like iOS 26's: content goes under the glass capsule
+   (which blurs it, materials.css) and nowhere else blurs. Outside the
+   capsule there is only stage colour: an 8px opacity fade above the bar's
+   top edge, then solid beside and under the bar, so nothing smudges in the
+   corner wedges. The stage is the spread of a capsule-shaped hole
+   (.bottom-nav-edge-hole, the bar's own box and radius), so it follows the
+   bar's rounded ends exactly and leaves the capsule itself clear. */
 .bottom-nav-edge {
   --nav-edge-above: 8px;
   position: fixed;
@@ -590,51 +592,21 @@ input, textarea, select, button { font-family: inherit; }
   bottom: 0;
   z-index: 35;
   height: calc(var(--nav-top) + var(--nav-edge-above));
+  overflow: hidden;
   pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--nav-edge-above));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--nav-edge-above));
 }
-.bottom-nav-edge > span {
+.bottom-nav-edge-hole {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-.bottom-nav-edge-veil {
-  top: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent 0,
-    color-mix(in srgb, var(--material-foundation) 8%, transparent) calc(var(--nav-edge-above) / 2),
-    color-mix(in srgb, var(--material-foundation) 18%, transparent) var(--nav-edge-above),
-    color-mix(in srgb, var(--material-foundation) 44%, transparent) calc(var(--nav-edge-above) + 12px),
-    color-mix(in srgb, var(--material-foundation) 70%, transparent) calc(var(--nav-edge-above) + 28px),
-    color-mix(in srgb, var(--material-foundation) 90%, transparent) calc(var(--nav-edge-above) + 48px),
-    var(--material-foundation) 100%
-  );
-}
-/* Each blur layer starts at the bar's top edge (never above it) and fades
-   in over its own stretch, so the blur grows with depth. */
-.bottom-nav-edge-blur {
-  top: calc(var(--nav-edge-above) + var(--b0));
-  -webkit-backdrop-filter: blur(var(--b));
-  backdrop-filter: blur(var(--b));
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--b1));
-  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--b1));
-}
-.bottom-nav-edge-blur[data-layer="1"] { --b: 1.5px; --b0: 0px; --b1: 6px; }
-.bottom-nav-edge-blur[data-layer="2"] { --b: 3px; --b0: 6px; --b1: 10px; }
-.bottom-nav-edge-blur[data-layer="3"] { --b: 4.5px; --b0: 16px; --b1: 14px; }
-/* Reduced transparency or increased contrast: the bar is solid (materials.css),
-   so the edge is the old opaque one: an 8px fade above the bar, solid under it. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .bottom-nav-edge-blur { display: none; }
-  .bottom-nav-edge-veil {
-    background: linear-gradient(
-      to bottom,
-      transparent 0,
-      color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-edge-above) / 2),
-      var(--material-foundation) calc(var(--nav-edge-above) + 6px)
-    );
-  }
+  bottom: var(--nav-gap);
+  left: max(21px, var(--app-safe-left));
+  right: max(21px, var(--app-safe-right));
+  max-width: 478px;
+  height: var(--nav-height);
+  margin: 0 auto;
+  border-radius: var(--radius-nav);
+  box-shadow: 0 0 0 100vmax var(--material-foundation);
 }
 html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }
 .studio-sheet-overlay {

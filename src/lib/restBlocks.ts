@@ -154,7 +154,10 @@ function measureBarTop(root: HTMLElement, viewport: HTMLElement): number | null 
   const nav = document.querySelector('.bottom-nav');
   if (nav && visible(nav)) return nav.getBoundingClientRect().top - viewportRect.top;
   const page = root.closest('.pb-nav') ?? root.querySelector('.pb-nav');
-  const clearance = page ? parseFloat(getComputedStyle(page).paddingBottom) - NAV_AIR : NaN;
+  // PageTitle's end trim (--end-trim) is not part of the bar's clearance.
+  const style = page ? getComputedStyle(page) : null;
+  const trim = style ? parseFloat(style.getPropertyValue('--end-trim')) || 0 : 0;
+  const clearance = style ? parseFloat(style.paddingBottom) - NAV_AIR - trim : NaN;
   if (!Number.isFinite(clearance) || clearance <= 0) return null;
   return Math.min(viewportRect.height, window.innerHeight - viewportRect.top) - clearance;
 }
@@ -206,10 +209,12 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
       if (!visible(node)) continue;
       const unit = node.matches('[data-rest-block]');
       const graphic = node.matches(GRAPHIC);
-      if (unit || graphic || filled(getComputedStyle(node))) {
+      const fill = !unit && !graphic && filled(getComputedStyle(node));
+      if (unit || graphic || fill) {
         const rect = node.getBoundingClientRect();
         const ink = unit ? inkOf(node) : rect.width > 1 && rect.height > 1 ? clipped(node, rect) : null;
-        if (ink) blocks.push(column(ink));
+        // A filled box hides only at the solid stage's edge (`RestBlock.fill`).
+        if (ink) blocks.push(fill ? { ...column(ink), fill: true } : column(ink));
         if (graphic && ink) entries.push({ ...column({ top: ink.top, bottom: Math.min(ink.bottom, ink.top + BAR_GRAPHIC_MAX) }), node });
       }
       if (node.matches(HEAD_SELECTOR) && !heads.some((head) => head.element.contains(node))) {

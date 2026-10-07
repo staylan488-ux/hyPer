@@ -1432,7 +1432,7 @@ export function History() {
                   }}
                   aria-label={`${format(day, 'EEEE, MMMM d')}${isTodayDate ? ', today' : ''}${titleLabel ? ` · ${titleLabel}` : ''}`}
                   aria-pressed={isSelected}
-                  className={`ledger-day ${inMonth ? '' : 'opacity-35'}`}
+                  className={`ledger-day ${inMonth ? '' : 'ledger-day-outside'}`}
                 >
                   {isSelected && (
                     <motion.span

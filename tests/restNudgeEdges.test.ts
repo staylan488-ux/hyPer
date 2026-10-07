@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   REST_BAR_CLEAR,
+  REST_GAP,
   REST_PAGE_NUDGE_LIMIT,
   barDepth,
   restNudgeTarget,
@@ -26,28 +27,53 @@ describe('two-edge rest: the tab bar', () => {
     expect(barDepth({ top: 730, bottom: 748 }, 0, edge)).toBe(0); // wholly under the glass
   });
 
-  it('moves a line astride the bar clear of it when the band stays clean', () => {
-    const line = { top: 1100, bottom: 1118 };
-    const target = restNudgeTarget(400, [], band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
-    expect(target).not.toBeNull();
-    expect(barDepth(line, target as number, bar([line]))).toBe(0);
-    expect(Math.abs((target as number) - 400)).toBeLessThanOrEqual(32);
-  });
-
-  it('never trades a clean band for a clean bar', () => {
-    // Clearing the bar line would push this row into the ramp.
-    const row = { top: 470, bottom: 488 };
+  it('lets a line pass under the glass bar rather than leave the gap under the band', () => {
+    // Rows every 68pt; at the gap (a row's top at the foot) a line sits astride the bar.
+    const rows = [470, 538, 606].map((top) => ({ top, bottom: top + 18 }));
     const line = { top: 1130, bottom: 1148 };
-    const target = restNudgeTarget(400, [row], band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
-    if (target !== null) expect(straddleCount([row], target, band)).toBe(0);
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
+    expect(target).toBe(470 - band.foot - REST_GAP);
+    expect(barDepth(line, target as number, bar([line]))).toBeGreaterThan(0);
   });
 
-  it('keeps a header with its first line: it rests clear with it or passes under', () => {
-    // "Lunch" alone above the bar, its first entry under it: a header unit.
-    const unit = { top: 1080, bottom: 1140 };
-    const target = restNudgeTarget(400, [], band, range, REST_PAGE_NUDGE_LIMIT, bar([unit]));
-    expect(target).not.toBeNull();
-    expect(barDepth(unit, target as number, bar([unit]))).toBe(0);
+  it('breaks a near tie between rests at the gap by the bar', () => {
+    // Rests at the gap 12pt either side of here (412 and 436); at 412 a line sits astride the bar.
+    const blocks = [{ top: 476, bottom: 480 }, { top: 500, bottom: 518 }];
+    const line = { top: 1127, bottom: 1145 };
+    const target = restNudgeTarget(424, blocks, band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
+    expect(target).toBe(436);
+    expect(barDepth(line, 412, bar([line]))).toBeGreaterThan(0);
+    expect(barDepth(line, 436, bar([line]))).toBe(0);
+  });
+});
+
+describe('two-edge rest: one gap under the band', () => {
+  it('rests with the first content at the ramp foot, snapping to the nearest block top', () => {
+    // The first content sits 40pt past the foot: move so a block top lands on it.
+    const rows = [{ top: 504, bottom: 522 }, { top: 560, bottom: 578 }];
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
+    expect(target).toBe(504 - band.foot - REST_GAP);
+    expect(straddleCount(rows, target as number, band)).toBe(0);
+  });
+
+  it('never rests on a block top while a taller line beside it shows above the foot', () => {
+    // A title line and a slightly taller figure on one row: the figure's top is the first ink.
+    const rows = [{ top: 502, bottom: 524 }, { top: 504, bottom: 522 }];
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
+    expect(target).toBe(502 - band.foot - REST_GAP);
+  });
+
+  it('stays at the scroll end when the band is clean there', () => {
+    const rows = [{ top: 504, bottom: 522 }];
+    expect(restNudgeTarget(420, rows, band, { min: 73, max: 420 }, REST_PAGE_NUDGE_LIMIT, bar([]))).toBeNull();
+  });
+
+  it('hides a filled box only at the solid edge: its edge in the ramp is split', () => {
+    // Fuel's Log food pill ending 3.5pt into the ramp: a ghost bar, not hidden.
+    const pill = { top: 0, bottom: band.solid + 3.5, fill: true };
+    expect(straddlesBand(pill, 0, band)).toBe(true);
+    expect(straddlesBand({ ...pill, fill: undefined }, 0, band)).toBe(false);
+    expect(straddlesBand(pill, 3.5, band)).toBe(false);
   });
 });
 
@@ -70,17 +96,6 @@ describe('two-edge rest: units rest whole', () => {
     expect(hidden).not.toBeNull();
     expect(straddlesBand(figure, hidden as number, band)).toBe(false);
     expect(hidden as number).toBeGreaterThan(420);
-  });
-});
-
-describe('two-edge rest: an even gap under the bar', () => {
-  it('closes an empty shelf under the band when that keeps both edges clean', () => {
-    // The first content sits 40pt past the ramp's foot.
-    const rows = [{ top: 504, bottom: 522 }, { top: 560, bottom: 578 }];
-    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
-    expect(target).not.toBeNull();
-    expect(rows[0].top - (target as number)).toBeLessThanOrEqual(band.foot + 8);
-    expect(straddleCount(rows, target as number, band)).toBe(0);
   });
 });
 

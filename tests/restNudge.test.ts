@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  REST_END_AIR,
+  REST_END_SLACK,
   REST_NUDGE_LIMIT,
-  cleanScrollEnd,
+  restingScrollEndAt,
   restNudgeTarget,
   splitCost,
   splitDepth,
@@ -81,23 +83,31 @@ describe('rest nudge: where a resting page moves', () => {
   });
 });
 
-describe('clean scroll end', () => {
-  it('grows the page by at most a row so its end rests clean', () => {
-    // History: the natural end leaves the 18–24 week split; 10pt more hides it.
-    const weeks = [{ top: 443, bottom: 462 }, { top: 499, bottom: 518 }];
-    expect(straddleCount(weeks, 346, band)).toBe(1);
-    const end = cleanScrollEnd(346, weeks, band, 72, 73);
-    expect(end).toBeGreaterThan(346);
-    expect(end - 346).toBeLessThanOrEqual(72);
-    expect(straddleCount(weeks, end, band)).toBe(0);
+describe('resting scroll end: one bottom inset', () => {
+  // The tab bar's top sits 729pt below the viewport's top.
+  const barTop = 729;
+
+  it('ends with the last ink 24pt above the tab bar, whatever padding the last row has', () => {
+    // Last ink at column 1200: the end puts it at 729 − 24 = 705.
+    expect(restingScrollEndAt(1200, barTop, [{ top: 1180, bottom: 1200 }], band)).toBe(1200 - (barTop - REST_END_AIR));
   });
 
-  it('keeps a clean natural end, short pages and out-of-reach ends', () => {
-    expect(cleanScrollEnd(500, [{ top: 700, bottom: 740 }], band, 72, 73)).toBe(500);
-    expect(cleanScrollEnd(0, [{ top: 110, bottom: 140 }], band, 72, 73)).toBe(0);
-    expect(cleanScrollEnd(40, [{ top: 150, bottom: 170 }], band, 72, 73)).toBe(40);
-    // A 300pt block can be neither hidden nor cleared within one row.
-    expect(cleanScrollEnd(500, [{ top: 560, bottom: 700 + 160 }], band, 72, 73)).toBe(500);
+  it('grows by a few pt at most to end with a clean band', () => {
+    // At the plain end (495) this line ends 7pt into the ramp; 7pt more hides it.
+    const line = { top: 590, bottom: 608 };
+    const plain = 1200 - (barTop - REST_END_AIR);
+    expect(straddleCount([line], plain, band)).toBe(1);
+    const end = restingScrollEndAt(1200, barTop, [line, { top: 1180, bottom: 1200 }], band);
+    expect(end).toBeGreaterThan(plain);
+    expect(end - plain).toBeLessThanOrEqual(REST_END_SLACK);
+    expect(straddleCount([line], end, band)).toBe(0);
+  });
+
+  it('keeps the plain end for a page too short to collapse its title, or with no clean end in reach', () => {
+    expect(restingScrollEndAt(700, barTop, [{ top: 680, bottom: 700 }], band, 73)).toBe(700 - 705);
+    // A 300pt block can be neither hidden nor cleared within a few pt.
+    const tall = { top: 560, bottom: 860 };
+    expect(restingScrollEndAt(1200, barTop, [tall], band)).toBe(495);
   });
 });
 

@@ -112,17 +112,20 @@
 .material-button-primary, .studio-save-set {
   background-image: var(--material-action-wash);
 }
-/* Web tab bar: translucent liquid glass, as iOS 26's. A 20px backdrop blur
-   under a neutral fill at 72% (near-black in Black, ivory in Ivory); no rim,
-   wash, glow or one-sided light, and no saturation boost, so what passes
-   under it stays neutral. Content goes under it through the bottom scroll
-   edge (.bottom-nav-edge) rather than being cut by an opaque slab. */
+/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill at 72%
+   (near-black in Black, ivory in Ivory) over a 10px backdrop blur, clipped to
+   the capsule by its radius and overflow (the blur never paints outside it).
+   Content passing under it shows through as a soft blurred shape: at 20px a
+   15pt line spreads to under 3% contrast and the bar reads as an opaque slab
+   cutting it. No rim, wash, glow or one-sided light, and no saturation
+   boost, so what passes under it stays neutral. Beside and under the capsule
+   the stage takes over (.bottom-nav-edge, opacity only). */
 .bottom-nav {
   background-color: var(--nav-glass);
   background-image: none;
   box-shadow: var(--nav-shadow);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 .dark .studio-sheet { background-image: none; }
 .studio-secondary-action, .material-button-secondary {

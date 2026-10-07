@@ -344,21 +344,19 @@
 }
 
 /* ─── Metal rails ───────────────────────────────────────────────
-   Progress rails are capsule grooves; ink fills become a polished bar,
-   lit from above like a cylinder. Static: rails stay calm. */
-.rail-groove { border-radius: 99px; background: var(--rail-groove); box-shadow: var(--rail-groove-shadow); }
+   Progress rails are flat capsule tracks, like the rings' tracks (no inset
+   shading); the fill is flat ink. Static: rails stay calm. */
+.rail-groove { border-radius: 99px; background: var(--rail-groove); box-shadow: none; }
 .rail-metal { background-image: none; background-color: var(--color-text); }
 :root, .light {
   --rail-groove: rgba(35, 35, 35,.09);
   /* Target ticks: neutral, at least 3:1 on the stage. */
   --rail-target: #8A8A86;
-  --rail-groove-shadow: inset 0 1px 1px rgba(20, 20, 20,.08);
   --rail-chrome: linear-gradient(180deg, #828282 0%, #3f3f3f 55%, #262626 100%);
 }
 .dark {
   --rail-groove: rgba(255,255,255,.08);
   --rail-target: #7A7A7A;
-  --rail-groove-shadow: inset 0 1px 1px rgba(0,0,0,.5);
   --rail-chrome: linear-gradient(180deg, #ffffff 0%, #d9d9d9 40%, #959595 100%);
 }
 

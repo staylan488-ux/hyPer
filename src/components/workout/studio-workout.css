@@ -29,10 +29,11 @@
 .studio-session-line.page-scroll-edge-title { display: flex; align-items: baseline; max-width: min(62vw, 300px); overflow: visible; }
 .studio-session-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .studio-session-clock { flex-shrink: 0; white-space: nowrap; color: var(--color-text); }
-/* The Finish sheet's set tally: on the Ivory sheet the shared 12% track
-   nearly vanishes (1.3:1), so its empty ticks take a neutral 22% (about
-   1.55:1 on #F7F7F3), level with the Black sheet's. */
-:root:not(.dark) .studio-finish-tally { --strip-track: rgba(35, 35, 35, 0.22); }
+/* The Finish sheet's set tally: empty ticks are a neutral track at about
+   2:1 on the sheet in both themes (33% ink on Ivory's #F7F7F3, 22% white on
+   Black's #151515), so the sets still to do read at a glance. */
+:root:not(.dark) .studio-finish-tally { --strip-track: rgba(35, 35, 35, 0.33); }
+.dark .studio-finish-tally { --strip-track: rgba(255, 255, 255, 0.22); }
 /* Minimise: a bare 44pt chevron, no fill or bubble; its stroke sits on the 24pt guide. */
 .studio-session-minimise { justify-self: start; justify-content: center; width: 44px; height: 44px; margin-left: -16px; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
 .studio-session-minimise:active { opacity: .5; }
@@ -62,6 +63,8 @@
    check once done) and the options glyph are trailing columns. The whole row
    is the disclosure, so it carries no chevron. */
 .studio-movement { --movement-name-size: 22px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); padding: 12px 0; }
+/* Separators sit between rows: the list's last row has none under it. */
+.studio-reorder-list .studio-movement:last-child { border-bottom-color: transparent; }
 .studio-movement-header { display: flex; align-items: center; gap: 4px; scroll-margin-top: 12px; }
 .studio-movement.is-active .studio-movement-header { align-items: flex-start; }
 /* The whole header is the movement's one toggle (open and close); nothing

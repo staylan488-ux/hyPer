@@ -76,6 +76,10 @@
   height: 56px;
   -webkit-tap-highlight-color: transparent;
 }
+/* Days of the neighbouring months recede to the same contrast in both
+   themes (about 2.8:1 on the stage). */
+.ledger-day-outside { opacity: .35; }
+:root:not(.dark) .ledger-day-outside { opacity: .46; }
 .ledger-day-disc {
   position: absolute;
   top: 0;
