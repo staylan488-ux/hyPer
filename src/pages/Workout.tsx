@@ -25,7 +25,7 @@ import {
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, MetalRing, Modal, TickStrip, PageTitle } from '@/components/shared';
+import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, MetalRing, Modal, TickStrip, PageHeader } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -1230,13 +1230,8 @@ export function Workout() {
 
   if (initializing) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
-        </header>
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader className="mb-6" title="Train" />
         <div className="border-t border-[var(--color-border)]">
           <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
             <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
@@ -1251,13 +1246,8 @@ export function Workout() {
 
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
-        </header>
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader className="mb-6" title="Train" />
         <EmptyState
           art="program"
           title="No program yet"
@@ -1320,24 +1310,16 @@ export function Workout() {
       );
 
       return (
-        <motion.div className="px-6 pt-6 pb-nav">
-          <header className="mb-8">
-            <div className="flex items-baseline justify-between">
-              <span className="t-label-sm">Train</span>
-              <div className="flex items-baseline gap-4">
-                <button
-                  type="button"
-                  onClick={() => navigate('/train/run')}
-                  className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-                >
-                  <Footprints className="w-4 h-4" strokeWidth={1.75} />
-                  Run
-                </button>
-                <span className="t-label-sm">Flexible</span>
-              </div>
-            </div>
-            <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</PageTitle>
-          </header>
+        <motion.div className="px-6 pt-7 pb-nav">
+          <PageHeader
+            className="mb-6"
+            eyebrow="Flexible session"
+            title="Train"
+            actions={<button type="button" className="text-action" onClick={() => navigate('/train/run')}>
+                <Footprints className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Run
+              </button>}
+          />
 
           <div className="py-5">
             <Input
@@ -1399,33 +1381,24 @@ export function Workout() {
     }
 
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
-            <div className="flex items-baseline gap-4 shrink-0">
-              <button
-                type="button"
-                onClick={() => navigate('/train/run')}
-                className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-              >
-                <Footprints className="w-4 h-4" strokeWidth={1.75} />
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader
+          className="mb-6"
+          eyebrow={activeSplit?.name}
+          title="Train"
+          actions={<>
+            <button type="button" className="text-action" onClick={() => navigate('/train/run')}>
+                <Footprints className="w-4 h-4" strokeWidth={1.75} aria-hidden />
                 Run
               </button>
-              {planSchedule && (
-                <button
-                  type="button"
-                  onClick={openScheduleEditor}
-                  className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
-                >
-                  <Settings2 className="w-3 h-3" strokeWidth={1.75} />
-                  Schedule
-                </button>
-              )}
-            </div>
-          </div>
-          <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Today</PageTitle>
-        </header>
+            {planSchedule && (
+              <button type="button" className="text-action" onClick={openScheduleEditor}>
+                <Settings2 className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Schedule
+              </button>
+            )}
+          </>}
+        />
 
         {planSchedule && scheduleWorkoutsLoading ? (
           <p className="t-caption py-8">Loading workout schedule…</p>
@@ -1685,7 +1658,7 @@ export function Workout() {
     <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
       <header className="studio-session-header">
         <div className="studio-session-top">
-          <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
+          <button type="button" className="page-back pressable" aria-label="Back to Today" onClick={() => navigate('/')}><ChevronLeft size={22} strokeWidth={1.75} aria-hidden /><span>Today</span></button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
           <button type="button" className="studio-session-finish" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</button>
         </div>

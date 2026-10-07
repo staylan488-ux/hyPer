@@ -2,7 +2,7 @@
 .studio-workout-page { padding-bottom: calc(32px + var(--app-safe-bottom, 0px)); }
 .studio-workout-page.has-rest-timer { padding-bottom: calc(var(--workout-rest-height, 76px) + 28px + var(--app-safe-bottom, 0px)); }
 .studio-workout-page [hidden] { display: none; }
-.studio-session-header { padding: 8px 0 4px; }
+.studio-session-header { padding: 0 0 4px; }
 .studio-session-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-text-dim); font-size: 12px; }
 .studio-session-top > button { display: flex; align-items: center; min-height: 44px; }
 /* Finish is a navigation-bar text action: tappable, never louder than the work. */
