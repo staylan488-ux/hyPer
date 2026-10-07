@@ -1,4 +1,5 @@
 import type { WorkoutSet, Workout, SplitExercise, WorkoutDayPlan } from '@/types';
+import { restingScrollEnd } from '@/lib/titleSnap';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 
@@ -193,7 +194,34 @@ export function liveHeaderSnapTarget(scrollTop: number, collapse: number): numbe
  * The scroll at which the session header (title and ring) has gone wholly
  * under the bar's solid edge: its bottom in the scroll column, less the
  * band's solid height. Rounded up so the ring never peeks into the fade.
+ *
+ * Given where the first movement's content starts and where the band's ramp
+ * ends (its foot), the collapsed rest instead lands that content on the
+ * foot, so no row rests split under the bar. Only the header's quiet
+ * trailing edge (padding and its rule, at most half the ramp) may then sit
+ * in the ramp's strongest, blurred half; its content stays under the solid.
  */
-export function liveHeaderCollapseOffset(headerBottom: number, edgeSolid: number): number {
-  return Math.max(0, Math.ceil(headerBottom - edgeSolid));
+export function liveHeaderCollapseOffset(
+  headerBottom: number,
+  edgeSolid: number,
+  next?: { contentTop: number; edgeFoot: number },
+): number {
+  const underSolid = headerBottom - edgeSolid;
+  if (!next || !(next.edgeFoot > edgeSolid)) return Math.max(0, Math.ceil(underSolid));
+  const halfRamp = (next.edgeFoot - edgeSolid) / 2;
+  const clearOfRamp = next.contentTop - next.edgeFoot;
+  return Math.max(0, Math.ceil(Math.max(underSolid - halfRamp, Math.min(underSolid, clearOfRamp))));
+}
+
+/**
+ * Where the live session's scroll may end. Its natural end (content height
+ * less the viewport) can leave a movement split under the bar, so the page
+ * gets a little extra room to end on a rest instead: an offset where a
+ * movement's content starts at the band's ramp foot (and the row above sits
+ * wholly under the bar). Never less than the header's collapse; never more
+ * than `limit` beyond the natural end (then the natural end stands).
+ */
+export function liveScrollEnd(naturalEnd: number, collapse: number, rests: number[], limit: number): number {
+  if (collapse > naturalEnd + 0.5) return Math.ceil(collapse);
+  return Math.max(0, Math.ceil(restingScrollEnd(naturalEnd, rests, limit)));
 }

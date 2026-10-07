@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageHeader, SealMark } from '@/components/shared';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Button, CalendarHeader, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageHeader, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -22,7 +22,7 @@ import {
 } from '@/lib/nutritionGroups';
 import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
-import { sumMacros } from '@/lib/nutritionMacros';
+import { sumShownMacros } from '@/lib/nutritionMacros';
 import { createLatestRequestGate, nextMonthGroups, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
 import { DEFAULT_MACRO_TARGET, type NutritionGroup } from '@/types';
 import {
@@ -322,7 +322,7 @@ export function Nutrition() {
     };
   }, [fetchMonthLogs, loadedMonthKey, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
 
-  const dayTotals = useMemo(() => sumMacros(selectedDayLogs), [selectedDayLogs]);
+  const dayTotals = useMemo(() => sumShownMacros(selectedDayLogs), [selectedDayLogs]);
 
   const logsByDay = useMemo(() => {
     return monthLogs.reduce<Record<string, NutritionLogEntry[]>>((acc, log) => {
@@ -461,37 +461,16 @@ export function Nutrition() {
 
       {/* ── Week strip + month jump: date navigation sits with the date ── */}
       <section className="platter mt-3 px-3 pt-1 pb-1" aria-label="Choose a day">
-        {/* The shared calendar header (History's too): the month opens the
-            month calendar; the paging chevrons end on the trailing guide. */}
-        <div className="calendar-head mx-2 mb-1">
-          <button
-            type="button"
-            className="calendar-head-title"
-            aria-label={`${format(weekStart, 'MMMM yyyy')}, open month calendar`}
-            onClick={() => setShowMonthSheet(true)}
-          >
-            {calendarMonthLabel(weekStart)}
-            <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
-          </button>
-          <div className="calendar-head-nav">
-            <button
-              type="button"
-              aria-label="Previous week"
-              className="calendar-nav-key"
-              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            >
-              <ChevronLeft className="w-[18px] h-[18px]" strokeWidth={1.6} />
-            </button>
-            <button
-              type="button"
-              aria-label="Next week"
-              className="calendar-nav-key"
-              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            >
-              <ChevronRight className="w-[18px] h-[18px]" strokeWidth={1.6} />
-            </button>
-          </div>
-        </div>
+        {/* The shared calendar header (History's too); here the month opens
+            the month calendar. */}
+        <CalendarHeader
+          className="mx-2 mb-1"
+          label={calendarMonthLabel(weekStart)}
+          ariaLabel={`${format(weekStart, 'MMMM yyyy')}, open month calendar`}
+          onLabel={() => setShowMonthSheet(true)}
+          previous={{ label: 'Previous week', onClick: () => setWeekAnchor((current) => addDays(current, -7)) }}
+          next={{ label: 'Next week', onClick: () => setWeekAnchor((current) => addDays(current, 7)) }}
+        />
 
         {/* Same column guide as History's month grid: seven equal columns on the 24px page gutters. */}
         <div className="grid grid-cols-7 mx-2">
@@ -541,10 +520,9 @@ export function Nutrition() {
                   <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="t-data-sm text-[var(--color-text-dim)]">
-                    / {Math.round(targetKcal).toLocaleString()}
+                  <span className="unit-line">
+                    {calorieSeal.met ? 'On target · ' : 'of '}{Math.round(targetKcal).toLocaleString()} kcal{calorieSeal.met ? '' : ' target'}
                   </span>
-                  <span className="t-label-sm">{calorieSeal.met ? 'On target' : 'Daily target'}</span>
                   <SealMark show={calorieSeal.met} label="Calorie target met" anchorRef={calorieSeal.anchorRef} />
                 </div>
               </div>
@@ -556,16 +534,18 @@ export function Nutrition() {
                 reveal="fuel-energy-ring"
               >
                 <span className={`t-data-lg ${energyOver ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>{energyPct}%</span>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">{energyOver ? 'over' : 'eaten'}</span>
+                <span className="ring-unit">{energyOver ? 'over' : 'eaten'}</span>
               </MetalRing>
             </div>
           </>
         )}
 
+        {/* 16px under the figure keeps the first view's last macro (Fat)
+            clear of the tab bar's bottom fade. */}
         <Button
           size="lg"
           metal
-          className="w-full mt-6"
+          className="w-full mt-4"
           onClick={() => {
             setEditingEntry(null);
             setShowLogger(true);

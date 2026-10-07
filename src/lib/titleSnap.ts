@@ -17,3 +17,17 @@ export function titleSnapTarget(scrollTop: number, collapseEnd: number, maxScrol
   const target = scrollTop < end / 2 ? 0 : end;
   return Math.abs(target - scrollTop) < 0.5 ? null : target;
 }
+
+/**
+ * Where a page's scroll may end. Its natural end can leave a row split under
+ * the bar, so the page may grow a little (at most `limit`) to end on a rest
+ * instead: an offset where a row's or section's content starts at the
+ * scroll-edge ramp's foot, with what came before wholly under the bar. A
+ * page that does not scroll is left alone, as is one with no rest in reach.
+ */
+export function restingScrollEnd(naturalEnd: number, rests: number[], limit: number): number {
+  if (!(naturalEnd > 0.5)) return Math.max(0, naturalEnd);
+  const next = rests.filter((rest) => Number.isFinite(rest) && rest >= naturalEnd - 0.5).sort((a, b) => a - b)[0];
+  if (next === undefined || next - naturalEnd > limit) return naturalEnd;
+  return Math.max(naturalEnd, next);
+}

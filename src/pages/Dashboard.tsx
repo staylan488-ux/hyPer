@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
   ArrowRight,
-  ArrowUpRight,
   ChevronRight,
   CalendarDays,
   Dumbbell,
@@ -219,16 +218,17 @@ export function Dashboard() {
         )}
       </section>
 
-      {/* ── Explore: the stations behind Today ── */}
+      {/* ── Explore: the stations behind Today. Row text (and its divider)
+           sits on the same 60px column as Program's list. ── */}
       <nav className="mt-7" aria-labelledby="today-explore-label">
         <span id="today-explore-label" className="t-label block mb-[9px]">Explore</span>
         <ul className="platter platter-flush">
           {stations.map((s) => (
-            <li key={s.to} className="platter-row" style={{ '--row-inset': '54px' } as CSSProperties}>
+            <li key={s.to} className="platter-row" style={{ '--row-inset': '56px' } as CSSProperties}>
               <Link
                 to={s.to}
                 onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-3.5 px-5"
+                className="pressable group flex items-center gap-[18px] py-3.5 px-5"
               >
                 <s.icon className="w-[18px] h-[18px] shrink-0 text-[var(--color-text)]" strokeWidth={1.6} aria-hidden />
                 <span className="flex-1 min-w-0">
@@ -248,7 +248,7 @@ export function Dashboard() {
           <Link to="/analysis" className="block group">
             <div className="flex items-center justify-between mb-[23px]">
               <span className="t-label">This week</span>
-              <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+              <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
             </div>
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
@@ -320,7 +320,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
             reveal="dash-session-ring"
           >
             <span className="number-medium text-[20px]! text-[var(--color-text)]">{hero.completedSets}<span className="text-[var(--color-text-dim)]">/{hero.totalSets}</span></span>
-            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">sets</span>
+            <span className="ring-unit">sets</span>
           </MetalRing>
         </div>
         <div className="py-5">

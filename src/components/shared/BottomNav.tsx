@@ -1,5 +1,5 @@
+import type { ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, Leaf, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
@@ -7,14 +7,16 @@ import { useAppStore } from '@/stores/appStore';
 import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
 import { nativeTabForPath, type NativeTab } from '@/lib/nativeGlassNavigation';
 import { useLitSurface } from '@/hooks/useLitSurface';
+import { DumbbellGlyph, HomeGlyph, LeafGlyph, PersonGlyph, type TabIconProps } from './TabIcons';
 
 // The selected tab comes from the same mapping the native bar uses, so the
 // web fallback and iOS always agree on where a screen lives.
-const navItems: { to: string; icon: typeof Home; label: string; tab: NativeTab }[] = [
-  { to: '/', icon: Home, label: 'Today', tab: 'today' },
-  { to: '/train', icon: Dumbbell, label: 'Train', tab: 'train' },
-  { to: '/nutrition', icon: Leaf, label: 'Fuel', tab: 'fuel' },
-  { to: '/settings', icon: User, label: 'You', tab: 'you' },
+// The selected tab takes its glyph's filled variant.
+const navItems: { to: string; icon: (props: TabIconProps) => ReactElement; label: string; tab: NativeTab }[] = [
+  { to: '/', icon: HomeGlyph, label: 'Today', tab: 'today' },
+  { to: '/train', icon: DumbbellGlyph, label: 'Train', tab: 'train' },
+  { to: '/nutrition', icon: LeafGlyph, label: 'Fuel', tab: 'fuel' },
+  { to: '/settings', icon: PersonGlyph, label: 'You', tab: 'you' },
 ];
 
 export function BottomNav() {
@@ -73,10 +75,10 @@ export function BottomNav() {
                 className="relative flex flex-col items-center gap-[3px]"
               >
                 <Icon
+                  filled={isActive}
                   className={`w-6 h-6 transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
-                  strokeWidth={1.6}
                 />
                 <span
                   className={`text-[10.5px] font-semibold leading-none tracking-[0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${

@@ -452,11 +452,13 @@ html .app-viewport, html .material-foundation {
   background: var(--material-secondary);
   box-shadow: none;
 }
+
 .material-sheet-handle { width: 38px; height: 5px; border-radius: 5px; opacity: .32; }
 
-/* Calendar header, one style for Fuel's week strip and History's month:
-   the month in sentence case (year only when it is not this year), paging
-   chevrons with 44px targets whose last glyph ends on the trailing guide. */
+/* Calendar header (CalendarHeader), one component for Fuel's week strip and
+   History's month: the month in sentence case (year only when it is not this
+   year), no disclosure glyph, and paging chevrons with 44px targets 52px
+   apart (centre to centre) whose last glyph ends on the trailing guide. */
 .calendar-head {
   display: flex;
   align-items: center;
@@ -475,14 +477,23 @@ html .app-viewport, html .material-foundation {
 button.calendar-head-title {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   min-height: 44px;
   -webkit-tap-highlight-color: transparent;
 }
-button.calendar-head-title svg { color: var(--color-text-dim); }
 button.calendar-head-title:active { opacity: .5; }
 /* An 18px chevron's stroke ends 19px inside its 44px key. */
-.calendar-head-nav { display: flex; align-items: center; margin-right: -19px; }
+.calendar-head-nav { display: flex; align-items: center; gap: 8px; margin-right: -19px; }
+/* Weekday letters above a month grid, as on Fuel's week strip: 6px above
+   and below the letter line. */
+.calendar-weekday {
+  padding: 6px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: .08em;
+  color: var(--color-muted);
+}
 .calendar-nav-key {
   width: 44px;
   height: 44px;
@@ -519,6 +530,12 @@ button.calendar-head-title:active { opacity: .5; }
 /* Locked (e.g. a mode that waits for the live workout): the whole control
    dims, takes no touches, and its caption says why. */
 .segmented-track.is-disabled { opacity: .4; pointer-events: none; }
+/* A locked thumb lies flat: no shadow, so it never reads as raised. */
+.segmented-track.is-disabled .material-selected { box-shadow: none; }
+/* Ivory track: #EAEAE4, a visible groove on the #F5F5F0 page (Black keeps
+   the well tone). */
+.segmented-track.well { background-color: #EAEAE4; }
+.dark .segmented-track.well { background-color: var(--color-well); }
 .segmented-track > button::after {
   content: '';
   position: absolute;

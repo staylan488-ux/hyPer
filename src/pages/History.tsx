@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, CalendarHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
@@ -1339,50 +1339,19 @@ export function History() {
       <PageHeader back={{ label: 'Today', to: '/' }} eyebrow="Training ledger" title="History" className="mb-2" />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-        <section aria-label="Calendar">
-          <div className="calendar-head mb-3">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.h3
-                key={format(selectedMonth, 'yyyy-MM')}
-                className="calendar-head-title"
-                aria-label={format(selectedMonth, 'MMMM yyyy')}
-                initial={{ opacity: 0, x: monthDirection * 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: monthDirection * -12 }}
-                transition={{ duration: 0.18 }}
-              >
-                {calendarMonthLabel(selectedMonth)}
-              </motion.h3>
-            </AnimatePresence>
-            <div className="calendar-head-nav">
-              <button
-                type="button"
-                onClick={() => {
-                  setMonthDirection(-1);
-                  setSelectedMonth((prev) => subMonths(prev, 1));
-                }}
-                className="calendar-nav-key"
-                aria-label="Previous month"
-              >
-                <ChevronLeft className="w-[18px] h-[18px]" strokeWidth={1.6} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMonthDirection(1);
-                  setSelectedMonth((prev) => addMonths(prev, 1));
-                }}
-                className="calendar-nav-key"
-                aria-label="Next month"
-              >
-                <ChevronRight className="w-[18px] h-[18px]" strokeWidth={1.6} />
-              </button>
-            </div>
-          </div>
+        <section aria-label="Calendar" className="pt-2">
+          <CalendarHeader
+            className="mb-1"
+            label={calendarMonthLabel(selectedMonth)}
+            ariaLabel={format(selectedMonth, 'MMMM yyyy')}
+            direction={monthDirection}
+            previous={{ label: 'Previous month', onClick: () => { setMonthDirection(-1); setSelectedMonth((prev) => subMonths(prev, 1)); } }}
+            next={{ label: 'Next month', onClick: () => { setMonthDirection(1); setSelectedMonth((prev) => addMonths(prev, 1)); } }}
+          />
 
           <div className="grid grid-cols-7" aria-hidden>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="text-center pb-1 text-[10px] font-medium tracking-[0.08em] text-[var(--color-muted)]">
+              <div key={`${day}-${index}`} className="calendar-weekday">
                 {day}
               </div>
             ))}
@@ -1418,25 +1387,25 @@ export function History() {
                   }}
                   aria-label={`${format(day, 'EEEE, MMMM d')}${isTodayDate ? ', today' : ''}${titleLabel ? ` · ${titleLabel}` : ''}`}
                   aria-pressed={isSelected}
-                  className={`ledger-day relative h-11 flex items-center justify-center ${inMonth ? '' : 'opacity-35'}`}
+                  className={`ledger-day ${inMonth ? '' : 'opacity-35'}`}
                 >
                   {isSelected && (
                     <motion.span
                       aria-hidden
-                      className="ledger-day-disc absolute top-[2px] left-1/2 -ml-[15px]"
+                      className="ledger-day-disc"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
                   )}
                   <span
-                    className={`ledger-day-number relative -mt-2.5 text-[14px] leading-none tabular-nums ${
+                    className={`ledger-day-number ${
                       isTodayDate ? 'text-[var(--color-accent)] font-semibold' : isFutureDate && !isSelected ? 'ledger-day-future' : 'text-[var(--color-text)]'
                     } ${isSelected ? 'font-semibold' : ''}`}
                   >
                     {format(day, 'd')}
                   </span>
                   {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
-                    <span aria-hidden className="absolute bottom-[1px] inset-x-0 flex items-center justify-center gap-[3px]">
+                    <span aria-hidden className="ledger-day-marks">
                       {dayWorkouts.length > 0 && <span className="ledger-mark-lift" />}
                       {dayActivities.length > 0 && <span className="ledger-mark-activity" />}
                     </span>

@@ -24,3 +24,4 @@ export { SealMark } from './SealMark';
 export { BankedStamp } from './BankedStamp';
 export { RouteErrorScreen } from './RouteErrorScreen';
 export { MetalRing } from './MetalRing';
+export { CalendarHeader } from './CalendarHeader';

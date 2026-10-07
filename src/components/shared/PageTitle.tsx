@@ -3,7 +3,7 @@ import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/r
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
-import { titleSnapTarget } from '@/lib/titleSnap';
+import { restingScrollEnd, titleSnapTarget } from '@/lib/titleSnap';
 import './page-header.css';
 
 /** Where a pushed screen's back control returns. */
@@ -24,7 +24,7 @@ interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
 const BAR = 44;
 // Where the band's solid stage ends (kinetic.css --edge-solid): the title has
 // collapsed once it is wholly behind it, so none of it rests in the ramp.
-const SOLID = 34;
+const SOLID = 40;
 // The compact title switches over the last stretch of the collapse (about
 // the last 10px), not over a long crossfade.
 const COMPACT_FROM = 0.8;
@@ -33,6 +33,24 @@ const COMPACT_FROM = 0.8;
 const EDGE_RAMP = 6;
 // Quiet period that stands in for `scrollend` where it is unsupported.
 const SETTLE_MS = 140;
+// The band's ramp foot (kinetic.css --edge-solid + --edge-fade): content
+// starting here is wholly clear of the scroll edge.
+const EDGE_FOOT = SOLID + 24;
+// What a page's scroll may end on: a list row, a section or a marked block.
+const REST_SELECTOR = '.platter-row, section, [data-scroll-rest]';
+
+/** Top of an element's first line of text (its own top when it has none). */
+function firstTextTop(element: HTMLElement): number {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent?.trim()) continue;
+    range.selectNodeContents(node);
+    const rect = range.getBoundingClientRect();
+    if (rect.height > 0) return rect.top;
+  }
+  return element.getBoundingClientRect().top;
+}
 
 const editable = (element: Element | null) =>
   element instanceof HTMLElement && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
@@ -40,8 +58,9 @@ const editable = (element: Element | null) =>
 /**
  * The page's 40px Fraunces title. As soon as the page leaves the top, the
  * scroll-edge band takes the place of a navigation bar: the stage colour,
- * solid behind the bar row, then one short eased opacity ramp so content
- * dissolves instead of ending on an edge, with the back control fixed in it.
+ * solid behind the bar row, then one eased ramp over a progressive blur so
+ * content dissolves instead of ending on an edge or a shaded sliver, with the
+ * back control fixed in it.
  * The large title scrolls under the band, and the condensed title switches
  * in as the large one finishes passing. Tapping the band returns to the top.
  *
@@ -126,7 +145,32 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       // that is already still.
       if (!touching) scheduleSettle(SETTLE_MS);
     };
+    // The page's scroll ends on a rest (a row's or section's first text at
+    // the ramp's foot), with at most 30% of a screen of extra room at the
+    // bottom, so the end stop does not leave a row split under the bar.
+    // Measured with the current extra room subtracted, never by removing it,
+    // so a page resting at its end is not clamped while it is re-measured.
+    const root = title.closest('header')?.parentElement ?? null;
+    let extra = 0;
+    const layoutEnd = () => {
+      if (!root) return;
+      const naturalEnd = viewport.scrollHeight - extra - viewport.clientHeight;
+      const columnTop = viewport.getBoundingClientRect().top - viewport.scrollTop;
+      const rests = Array.from(root.querySelectorAll<HTMLElement>(REST_SELECTOR))
+        .map((element) => firstTextTop(element) - columnTop - EDGE_FOOT);
+      const end = restingScrollEnd(naturalEnd, rests, viewport.clientHeight * 0.3);
+      const next = Math.max(0, Math.ceil(end - naturalEnd));
+      if (next === extra) return;
+      extra = next;
+      viewport.style.paddingBottom = extra ? `${extra}px` : '';
+    };
+    const resizeObserver = typeof ResizeObserver === 'function' && root ? new ResizeObserver(layoutEnd) : null;
+    if (root) resizeObserver?.observe(root);
     measure();
+    layoutEnd();
+    // Again once entrance motion (a transform, which the observer does not
+    // see) has settled.
+    const settledLayout = window.setTimeout(layoutEnd, 700);
     viewport.addEventListener('scroll', onScroll, { passive: true });
     if (nativeEnd) viewport.addEventListener('scrollend', onScrollEnd);
     viewport.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -140,6 +184,9 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       viewport.removeEventListener('touchend', onTouchEnd);
       viewport.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('resize', onScroll);
+      resizeObserver?.disconnect();
+      window.clearTimeout(settledLayout);
+      if (extra) viewport.style.paddingBottom = '';
       if (frame) cancelAnimationFrame(frame);
       if (settleTimer) window.clearTimeout(settleTimer);
     };
@@ -169,7 +216,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
           aria-hidden
           onClick={scrollToTop}
         >
-          <span className="page-scroll-edge-veil" />
+          <ScrollEdgeVeil />
           {back && (
             // The header's own back control stays the accessible one; this
             // copy only keeps the way back under the thumb once it scrolls off.
@@ -183,6 +230,22 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
     </>
   );
 });
+
+/**
+ * The band's material: a progressive blur (three stacked layers, strongest
+ * where the veil already hides most of the content) under the stage-colour
+ * veil. Shared by every PageTitle band and the live session bar.
+ */
+export function ScrollEdgeVeil() {
+  return (
+    <>
+      <span className="page-scroll-edge-blur" data-layer="1" aria-hidden />
+      <span className="page-scroll-edge-blur" data-layer="2" aria-hidden />
+      <span className="page-scroll-edge-blur" data-layer="3" aria-hidden />
+      <span className="page-scroll-edge-veil" aria-hidden />
+    </>
+  );
+}
 
 function BackControl({ back, className, hidden = false }: { back: PageBack; className: string; hidden?: boolean }) {
   const navigate = useNavigate();

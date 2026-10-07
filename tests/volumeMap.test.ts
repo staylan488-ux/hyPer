@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BODY_INK, BODY_PATHS, MAP_REGIONS, STATUS_INK, inkFill, isSubjectMuscle, isUnderStimulated, muscleFill, primarySide, shadeMuscles, subjectFill } from '../src/lib/volumeMap';
+import { BODY_INK, BODY_PATHS, MAP_REGIONS, STATUS_INK, inkFill, isSubjectMuscle, isSubjectUnder, isUnderStimulated, muscleFill, primarySide, shadeMuscles, subjectFill } from '../src/lib/volumeMap';
 import { isPluralMuscle, muscleSubject } from '../src/lib/muscleCopy';
 import type { MuscleVolume } from '../src/types';
 
@@ -51,9 +51,14 @@ describe('volume map', () => {
 });
 
 describe('figure that illustrates one sentence', () => {
-  it('draws only the subject, lacquer only when the sentence is about the ceiling', () => {
-    const shades = shadeMuscles([volume('hamstrings', 5, 'below_mev'), volume('side_delts', 23, 'above_mrv')]);
-    expect(subjectFill(shades.get('hamstrings'), true)).toBe('var(--color-text)');
+  it('draws only the subject, in its legend style, lacquer only when the sentence is about the ceiling', () => {
+    const shades = shadeMuscles([volume('hamstrings', 5, 'below_mev'), volume('side_delts', 23, 'above_mrv'), volume('back', 21, 'approaching_mrv')]);
+    // Under MEV is the legend's hollow "Under": the body tone inside an outline, never a solid fill.
+    expect(isSubjectUnder(shades.get('hamstrings'))).toBe(true);
+    expect(subjectFill(shades.get('hamstrings'), true)).toBe(inkFill(BODY_INK));
+    // Nearing the ceiling keeps the legend's heaviest ink.
+    expect(isSubjectUnder(shades.get('back'))).toBe(false);
+    expect(subjectFill(shades.get('back'), true)).toBe(muscleFill(shades.get('back')));
     // Over-ceiling side delts stay silhouette when the sentence is about hamstrings.
     expect(subjectFill(shades.get('side_delts'), false)).toBe(inkFill(BODY_INK));
     expect(subjectFill(shades.get('side_delts'), true)).toBe('var(--color-accent)');

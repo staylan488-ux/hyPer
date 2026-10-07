@@ -166,14 +166,21 @@ export function isSubjectMuscle(muscle: MuscleGroup, subject: MuscleGroup | null
 }
 
 /**
- * A figure that illustrates one sentence (Today's insight): the muscle the
- * sentence is about in primary ink, lacquer only when the sentence is about
- * it being past recoverable volume, and every other muscle at the
- * silhouette's own tone, so no other muscle competes with the story.
+ * A figure that illustrates one sentence (Today's insight) speaks the
+ * Progress legend: the muscle the sentence is about keeps its own legend
+ * style (hollow while under MEV, its status ink otherwise, lacquer only past
+ * recoverable volume), and every other muscle stays at the silhouette's own
+ * tone, so no other muscle competes with the story.
  */
 export function subjectFill(shade: MuscleShade | undefined, isSubject: boolean): string {
-  if (!isSubject) return inkFill(BODY_INK);
-  return shade?.hot ? 'var(--color-accent)' : 'var(--color-text)';
+  if (!isSubject || isSubjectUnder(shade)) return inkFill(BODY_INK);
+  return muscleFill(shade);
+}
+
+/** The sentence's muscle is under MEV (trained or not): drawn hollow, the
+ * legend's "Under", never a fill that reads as more sets. */
+export function isSubjectUnder(shade: MuscleShade | undefined): boolean {
+  return Boolean(shade && shade.status === 'below_mev');
 }
 
 /** Trained this week but below MEV: drawn hollow, like the ○ status glyph. */

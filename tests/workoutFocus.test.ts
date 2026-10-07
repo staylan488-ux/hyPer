@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, liveHeaderCollapseOffset, liveHeaderSnapTarget, movementProgressLabel, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd, movementProgressLabel, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({
@@ -207,6 +207,24 @@ describe('Live session header settling', () => {
     expect(liveHeaderCollapseOffset(162, 42)).toBe(120);
     expect(liveHeaderCollapseOffset(161.2, 42)).toBe(120);
     expect(liveHeaderCollapseOffset(30, 42)).toBe(0);
+  });
+  it('lands the first movement on the ramp foot, never splitting it under the bar', () => {
+    // Header bottom 162, solid 40, ramp foot 64; the first row's content starts 12 below the header.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 174, edgeFoot: 64 })).toBe(110);
+    // The header's own content never enters the ramp's weaker half: at most half the ramp (12) of trailing edge.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 162, edgeFoot: 64 })).toBe(110);
+    // A row starting well below the header never pushes the header past the solid edge.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 240, edgeFoot: 64 })).toBe(122);
+  });
+  it('ends the session scroll on a movement rest, never a split row', () => {
+    // Natural end 300; movements' content reaches the ramp foot at 110, 186 and 342.
+    expect(liveScrollEnd(300, 110, [110, 186, 342], 437)).toBe(342);
+    // Already on a rest, or short sessions: the header collapse is the floor.
+    expect(liveScrollEnd(186, 110, [110, 186, 342], 437)).toBe(186);
+    expect(liveScrollEnd(40, 110, [110, 186], 437)).toBe(110);
+    // No rest within reach: the natural end stands.
+    expect(liveScrollEnd(300, 110, [110, 186, 900], 437)).toBe(300);
+    expect(liveScrollEnd(300, 110, [110, 186], 437)).toBe(300);
   });
   it('never rests part-way: settles to the nearer of expanded or collapsed', () => {
     expect(liveHeaderSnapTarget(12, 120)).toBe(0);

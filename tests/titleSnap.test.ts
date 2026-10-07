@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { titleSnapTarget } from '../src/lib/titleSnap';
+import { restingScrollEnd, titleSnapTarget } from '../src/lib/titleSnap';
 import { mavLabelPlacement } from '../src/lib/landmarkLabels';
 import { calendarMonthLabel } from '../src/lib/calendarLabel';
 
@@ -36,12 +36,25 @@ describe('landmark labels', () => {
     expect(placed?.text).toBe('MAV 14–20');
     const half = 'MAV 14–20'.length * 6.6 / 2;
     const mevRight = 0.4 * 354 + 'MEV 12'.length * 6.6 / 2;
-    expect(placed!.x - half).toBeGreaterThanOrEqual(mevRight + 8 - 0.01);
+    expect(placed!.x - half).toBeGreaterThanOrEqual(mevRight + 14 - 0.01);
   });
 
   it('falls back to MAV, then drops the name, when there is no room', () => {
     expect(mavLabelPlacement({ mev: 8, mavLow: 9, mavHigh: 11, mrv: 13, share: rail(20), rail: 330 })?.text).toBe('MAV');
     expect(mavLabelPlacement({ mev: 12, mavLow: 13, mavHigh: 14, mrv: 15, share: rail(18), rail: 120 })).toBeNull();
+  });
+});
+
+describe('resting scroll end', () => {
+  it('lets the end stop land on the next row rest, within half a screen', () => {
+    // Natural end 557; rows' first text reaches the ramp foot at 520, 590 and 700.
+    expect(restingScrollEnd(557, [520, 590, 700], 406)).toBe(590);
+    expect(restingScrollEnd(590, [520, 590, 700], 406)).toBe(590);
+  });
+  it('leaves short pages and out-of-reach rests alone', () => {
+    expect(restingScrollEnd(0, [120], 406)).toBe(0);
+    expect(restingScrollEnd(300, [120, 900], 406)).toBe(300);
+    expect(restingScrollEnd(300, [], 406)).toBe(300);
   });
 });
 

@@ -105,7 +105,8 @@
 .studio-set-ledger:not([data-logged]) > .studio-set-value { color: var(--color-text-dim); }
 .studio-set-ledger[data-next] .studio-set-index, .studio-set-ledger[data-next] .studio-set-state { color: var(--color-text); }
 .studio-set-ledger:not([data-logged]) .studio-set-state { color: var(--color-text-dim); }
-.studio-set-index { text-align: left; font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--color-text-dim); }
+/* The set's index: 15px tabular figures in secondary ink, on the row's baseline. */
+.studio-set-index { text-align: left; font-size: 15px; font-weight: 400; letter-spacing: 0; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .studio-set-state { display: flex; align-items: center; justify-content: center; font-size: 11px; }
 /* The open set is flat: quiet wells on the stage, the save key the one hero. */
 .studio-set-editor { padding-top: 4px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
@@ -126,17 +127,17 @@
 /* Block, not flex, so the cue's word spacing survives. */
 .studio-set-suggestion { display: block; white-space: nowrap; }
 .studio-set-suggestion strong { font-weight: 500; color: var(--color-text); }
-.studio-set-suggestion-check { display: inline-block; vertical-align: -1px; color: var(--color-text); }
 .studio-set-offer { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .studio-save-set { display: flex; align-items: center; justify-content: center; border: 0; font-size: 11px; transition: transform .12s cubic-bezier(.2,.9,.25,1); }
 .studio-save-set:active:not(:disabled) { transform: scale(.94); }
 .studio-save-set:disabled { opacity: .4; }
 .studio-save-error { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--color-text); }
-/* One 28pt line: the numbers' source (secondary, not interactive) and the
-   alternatives as ink text actions whose 44pt targets overhang the line. */
-.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 28px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
+/* One full 44pt row under the fields: the numbers' source ("Planned";
+   secondary, not interactive) and the alternatives as ink text actions whose
+   44pt targets fill the row, so Repeat last never overlaps the fields. */
+.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
 .studio-set-editor-foot > div { display: flex; gap: 16px; margin-left: auto; }
-.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; margin: -8px 0; color: var(--color-text); }
+.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; color: var(--color-text); }
 .studio-set-editor-foot button:disabled { opacity: .3; }
 .studio-movement-note { margin-top: 4px; }
 .studio-note-text { padding-top: 8px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }

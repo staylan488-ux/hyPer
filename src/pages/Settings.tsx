@@ -1104,7 +1104,7 @@ export function Settings() {
               onClick={() => go('/settings/training')}
             />
           </SettingsSection>
-          <SettingsGroup className="mt-7">
+          <SettingsSection label="Account">
             <SettingsRow
               title="Account"
               description="Profile and sign-out"
@@ -1115,7 +1115,7 @@ export function Settings() {
               description="Build information"
               onClick={() => go('/settings/about')}
             />
-          </SettingsGroup>
+          </SettingsSection>
         </>
       )}
       {page === 'account' && (

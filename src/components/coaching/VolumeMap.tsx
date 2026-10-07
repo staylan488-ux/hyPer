@@ -8,6 +8,7 @@ import {
   MAP_REGIONS,
   inkFill,
   isSubjectMuscle,
+  isSubjectUnder,
   isUnderStimulated,
   muscleFill,
   primarySide,
@@ -174,7 +175,11 @@ function Figure({
     : muscleFill(shades.get(muscle));
   // Under MEV reads hollow: the body's tone inside an ink outline that is
   // clipped to the region, so it never spills over a seam.
-  const hollow = (muscle: MuscleGroup) => !subject && isUnderStimulated(shades.get(muscle));
+  // Beside a sentence, its muscle uses the same hollow when the sentence is
+  // about under-stimulation.
+  const hollow = (muscle: MuscleGroup) => subject
+    ? isSubjectMuscle(muscle, subject) && isSubjectUnder(shades.get(muscle))
+    : isUnderStimulated(shades.get(muscle));
   const clipId = (index: number) => `${uid}-${side}-${index}`;
   const bodyFill = inkFill(BODY_INK);
   const mirrored = (mirror: boolean, content: ReactNode) => (

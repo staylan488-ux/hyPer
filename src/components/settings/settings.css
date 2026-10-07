@@ -68,7 +68,8 @@
   padding: 0 16px;
   border-radius: var(--radius-capsule);
   background: color-mix(in srgb, var(--color-text) 7%, transparent);
-  color: var(--color-text-dim);
+  /* The same placeholder token as every search input (Log food's too). */
+  color: var(--color-placeholder);
   font-size: 15px;
   text-align: left;
   transition: color 160ms ease;

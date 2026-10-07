@@ -4,18 +4,23 @@
    ═════════════════════════════════════════════════════════════ */
 
 /* Scroll-edge band: the condensed page title rests on the stage colour,
-   which fades into the content below — no hard toolbar edge. Fixed inside the
-   (untransformed) route content, aligned with the scroll column.
+   which dissolves into the content below — no hard toolbar edge. Fixed inside
+   the (untransformed) route content, aligned with the scroll column.
 
-   Solid from the status bar to just below the compact title (34px), then one
-   short 16px eased ramp that ends 6px below the 44px bar row, so a row
-   resting under the bar is never split between faded and crisp, and anything
-   crossing the ramp passes it quickly. Opacity only, no blur: a blur smears
-   bright shapes into halos on true black. PageTitle drives --band (0 → 1)
-   as soon as the page leaves the top. */
+   Solid stage from the status bar to 4px above the 44px bar row's foot
+   (--edge-solid, 40px: Train's header snap reads it and PageTitle's SOLID
+   mirrors it), then one 24px smoothstep ramp. Content is never only dimmed there:
+   while it is still mostly hidden it is also blurred, so a partial shape
+   loses its outline instead of turning into a shaded sliver. The blur is
+   progressive and stays where the veil is already strong (2.5px at full
+   strength while at most a fifth of the content shows, then 1.25px and 0.75px, gone by 88% of
+   the ramp), and each layer starts at the solid edge, so light
+   spread from a bright shape stays faint and nothing hidden in the solid
+   stage leaks into the ramp. PageTitle drives --band (0 → 1) as soon as the
+   page leaves the top. */
 .page-scroll-edge {
-  --edge-solid: 34px;
-  --edge-fade: 16px;
+  --edge-solid: 40px;
+  --edge-fade: 24px;
   position: fixed;
   top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
   left: 0;
@@ -31,27 +36,49 @@
   cursor: pointer;
 }
 .page-scroll-edge > * { opacity: var(--band, 0); }
-.page-scroll-edge-veil {
+.page-scroll-edge-veil,
+.page-scroll-edge-blur {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
   pointer-events: none;
 }
+/* Progressive blur: three stacked layers from the solid edge, each fully
+   on to --b0 and gone at --b1 (fractions of the ramp). Stacked, the first
+   zone blurs about 2.8px, the next about 1.5px, then 0.75px. Measured on every
+   page in Black: at most 20/255 of added light 2pt away from any shape. */
+.page-scroll-edge-blur {
+  top: var(--edge-solid);
+  height: calc(var(--edge-fade) * var(--b1));
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--edge-fade) * var(--b0)), transparent calc(var(--edge-fade) * var(--b1)));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--edge-fade) * var(--b0)), transparent calc(var(--edge-fade) * var(--b1)));
+}
+.page-scroll-edge-blur[data-layer="1"] { --b: 2.5px; --b0: .3; --b1: .5; }
+.page-scroll-edge-blur[data-layer="2"] { --b: 1.25px; --b0: .5; --b1: .64; }
+.page-scroll-edge-blur[data-layer="3"] { --b: .75px; --b0: .66; --b1: .88; }
 /* Stage colour over the ramp: content visibility follows smoothstep
    (3t² − 2t³; t = 0 at the solid edge, 1 at the ramp's foot), so the ramp
-   has no visible start or end and its change is concentrated in the middle
-   few points. */
+   has no visible start or end. */
 .page-scroll-edge-veil {
+  top: 0;
+  bottom: 0;
   background: linear-gradient(
     to bottom,
     var(--material-foundation) 0,
     var(--material-foundation) var(--edge-solid),
-    color-mix(in srgb, var(--material-foundation) 97%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.125),
-    color-mix(in srgb, var(--material-foundation) 84%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.25),
-    color-mix(in srgb, var(--material-foundation) 68%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.375),
-    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.5),
-    color-mix(in srgb, var(--material-foundation) 32%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.625),
-    color-mix(in srgb, var(--material-foundation) 16%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.75),
-    color-mix(in srgb, var(--material-foundation) 4%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 0.875),
+    color-mix(in srgb, var(--material-foundation) 98%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 1 / 12),
+    color-mix(in srgb, var(--material-foundation) 92.6%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 2 / 12),
+    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 3 / 12),
+    color-mix(in srgb, var(--material-foundation) 74.1%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 4 / 12),
+    color-mix(in srgb, var(--material-foundation) 62.4%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 5 / 12),
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 6 / 12),
+    color-mix(in srgb, var(--material-foundation) 37.6%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 7 / 12),
+    color-mix(in srgb, var(--material-foundation) 25.9%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 8 / 12),
+    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 9 / 12),
+    color-mix(in srgb, var(--material-foundation) 7.4%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 10 / 12),
+    color-mix(in srgb, var(--material-foundation) 2%, transparent) calc(var(--edge-solid) + var(--edge-fade) * 11 / 12),
     transparent 100%
   );
 }
@@ -72,8 +99,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Reduced transparency or increased contrast: a solid bar, no blur or ramp. */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .page-scroll-edge { height: 48px; }
+  .page-scroll-edge-blur { display: none; }
   .page-scroll-edge-veil {
     background: var(--material-foundation);
     border-bottom: 1px solid var(--color-border);

@@ -24,8 +24,9 @@ Materials live in `src/styles/materials.css` (tokens) and
   a true neutral (equal R, G and B). No blue, grey-violet or purple cast.
 - **Scroll edge.** Once a page scrolls, content fades into the stage just
   below the status bar (`.app-viewport::before`), never a hard cut. Under a
-  condensed title the band (`.page-scroll-edge`) fades over one short,
-  eased ramp without blur, and the web tab bar has a short bottom fade (current
+  condensed title the band (`.page-scroll-edge`) is solid behind the bar,
+  then one eased ramp over a small progressive blur kept where the veil is
+  already strong, and the web tab bar has a short bottom fade (current
   numbers in the studio-design skill).
 - **Platters.** Page sections sit on `.platter` panels: 26px radius, a
   translucent fill, a specular top edge and a soft shadow. They do not blur.

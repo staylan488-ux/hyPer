@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { readMotionPolicy } from '@/lib/motionPolicy';
-import { compactSessionTitle, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget } from './workoutFocus';
+import { ScrollEdgeVeil } from '@/components/shared/PageTitle';
+import { compactSessionTitle, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd } from './workoutFocus';
 
 // The bar row under the status bar; the session title starts to hand over to
 // the compact title once it reaches the bar's bottom edge.
@@ -11,7 +12,8 @@ const BAR = 44;
 // but the header's top margin has reached the bar.
 const BAND_RAMP = 16;
 // The band's solid height when its stylesheet cannot be read.
-const EDGE_SOLID_FALLBACK = 42;
+const EDGE_SOLID_FALLBACK = 40;
+const EDGE_FADE_FALLBACK = 24;
 // Quiet time after the last scroll event that counts as "scrolling ended"
 // where `scrollend` is unavailable (older WebKit).
 const SETTLE_MS = 140;
@@ -20,14 +22,15 @@ const SETTLE_MS = 140;
  * The live session's navigation bar, pinned under the status bar like a
  * full-screen cover's bar: minimise (leading), the elapsed clock (centre) and
  * Finish (trailing) never scroll away. It sits on the shared scroll-edge band
- * (the same opacity-only veil as every PageTitle), so content passing under it
+ * (the same blurred veil as every PageTitle), so content passing under it
  * dissolves instead of meeting a line. Once the session title has scrolled
  * under it, the centre cross-fades to the compact "Upper A · 24m".
  *
  * The session header (title and ring) behaves like a large title: when
  * scrolling ends part-way it settles expanded or wholly collapsed under the
- * bar's solid edge, and the page always has room to collapse it, so the ring
- * never rests in the fade. Fixed inside the untransformed route content;
+ * bar's solid edge, with the first movement's content starting at the ramp's
+ * foot, and the page always has room to collapse it, so neither the ring nor
+ * a row rests split in the fade. Fixed inside the untransformed route content;
  * scroll-linked only. Its in-flow spacer keeps the header below it in place.
  */
 export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef, finishing, onMinimise, onFinish }: {
@@ -89,10 +92,32 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
       const header = headerRef.current;
       const page = pageRef.current;
       if (!header || !page) return;
-      const solid = parseFloat(barRef.current ? getComputedStyle(barRef.current).getPropertyValue('--edge-solid') : '');
-      collapse = liveHeaderCollapseOffset(inColumn(header, 'bottom'), Number.isFinite(solid) ? solid : EDGE_SOLID_FALLBACK);
-      const room = Math.ceil(viewport.clientHeight + collapse - inColumn(page, 'top'));
-      page.style.minHeight = `${Math.max(0, room)}px`;
+      const band = barRef.current ? getComputedStyle(barRef.current) : null;
+      const solidValue = parseFloat(band?.getPropertyValue('--edge-solid') ?? '');
+      const fadeValue = parseFloat(band?.getPropertyValue('--edge-fade') ?? '');
+      const solid = Number.isFinite(solidValue) ? solidValue : EDGE_SOLID_FALLBACK;
+      const fade = Number.isFinite(fadeValue) ? fadeValue : EDGE_FADE_FALLBACK;
+      const foot = solid + fade;
+      // Each movement's content (inside its row padding) at the ramp's foot:
+      // the scroll offsets where no movement rests split under the bar.
+      const rests = Array.from(page.querySelectorAll<HTMLElement>('.studio-movement'))
+        .map((movement) => inColumn(movement, 'top') + (parseFloat(getComputedStyle(movement).paddingTop) || 0) - foot);
+      const firstRest = rests[0];
+      collapse = liveHeaderCollapseOffset(inColumn(header, 'bottom'), solid,
+        firstRest === undefined ? undefined : { contentTop: firstRest + foot, edgeFoot: foot });
+      // Measure the session's own end, then give it just enough room to
+      // collapse the header and to end on a rest (at most half a screen more; a live session has few, tall rows).
+      // (Measured from the content, without clearing min-height, so a page
+      // resting at its end is never clamped upward while it is re-measured.)
+      const pageTop = inColumn(page, 'top');
+      const last = page.lastElementChild instanceof HTMLElement ? page.lastElementChild : null;
+      const naturalHeight = last
+        ? inColumn(last, 'bottom') - pageTop + (parseFloat(getComputedStyle(page).paddingBottom) || 0)
+        : page.offsetHeight;
+      const after = viewport.scrollHeight - (pageTop + page.offsetHeight);
+      const naturalEnd = pageTop + naturalHeight + Math.max(0, after) - viewport.clientHeight;
+      const end = liveScrollEnd(naturalEnd, collapse, rests, viewport.clientHeight * 0.5);
+      page.style.minHeight = end > naturalEnd + 0.5 ? `${Math.ceil(naturalHeight + end - naturalEnd)}px` : '';
     };
 
     const settle = () => {
@@ -156,7 +181,7 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
 
   return <>
     <motion.div ref={barRef} className="page-scroll-edge studio-live-bar" style={{ '--band': band } as MotionStyle}>
-      <span className="page-scroll-edge-veil" aria-hidden />
+      <ScrollEdgeVeil />
       {/* The full-screen cover minimises (the session keeps running) rather
           than going back. The clock sits on the screen's centre line. */}
       <div className="studio-session-top">

@@ -5,15 +5,46 @@
    ═════════════════════════════════════════════════════════════ */
 
 /* ─── Calendar ──────────────────────────────────────────────── */
-/* Compact month: day numbers with a dot per kind of session. The selected
-   day is a filled ink disc; today is named in lacquer. */
-.ledger-day { -webkit-tap-highlight-color: transparent; }
-/* 30px, so the day's marks keep 6px of clear space below it. */
+/* Month grid on Fuel's week-strip metrics: the same weekday letters and
+   letter-to-date spacing, a 34px selected ink disc with the 15px day number
+   centred in it, and today named in lacquer. A day's marks sit just under
+   its disc (about 13px under the number) and well clear of the next row
+   (56px row pitch), so they read as belonging to their own date. */
+.ledger-day {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  height: 56px;
+  -webkit-tap-highlight-color: transparent;
+}
 .ledger-day-disc {
-  width: 30px;
-  height: 30px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
   border-radius: 50%;
   background: var(--color-text);
+}
+.ledger-day-number {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  font-size: 15px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-day-marks {
+  position: absolute;
+  top: 36px;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
 }
 .ledger-day[aria-pressed='true'] .ledger-day-number { color: var(--color-base); }
 .ledger-day:not([aria-pressed='true']):active .ledger-day-number { opacity: .55; }
@@ -21,8 +52,10 @@
    activity a 5px ring, in the calendar and its legend alike. */
 .ledger-mark-lift { width: 5px; height: 5px; border-radius: 50%; background: var(--color-text); }
 .ledger-mark-activity { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--color-text); }
-/* Days still to come: tertiary ink, lighter than days on record. */
-.ledger-day-future { color: var(--color-text); opacity: .55; }
+/* Days still to come: tertiary ink, lighter than days on record but at
+   least 4.5:1 in both themes (#75756F on Ivory, #8C8C8C on Black). */
+.ledger-day-future { color: var(--color-text); opacity: .6; }
+.dark .ledger-day-future { opacity: .55; }
 
 /* The day's quiet sync key beside Add activity: an icon, 44px target. */
 .history-sync-key {

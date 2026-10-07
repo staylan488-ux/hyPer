@@ -38,10 +38,19 @@ tokens; an already approved direction does not need another design exploration.
 - Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
   quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
   at the same height everywhere. Once the page leaves the top, the
-  scroll-edge band acts as the navigation bar: stage colour solid to just
-  below the compact title (34px under the status bar), then one 16px
-  smoothstep opacity ramp ending 6px below the 44px bar row, with no blur
-  (blur smears bright shapes into halos on true black). The large title
+  scroll-edge band acts as the navigation bar: stage colour solid to 4px
+  above the 44px bar row's foot (`--edge-solid`, 40px under the status
+  bar), then one 24px smoothstep ramp over a progressive backdrop blur
+  (`ScrollEdgeVeil`: 2.5px, 1.25px, then 0.75px layers that start at the solid
+  edge and are gone by 88% of the ramp), so a resting shape is hidden or
+  softened, never dimmed into a crisp, shaded sliver. Keep the blur small
+  and where the veil already hides most of the content: wide blur where
+  content still shows smears bright shapes into halos on true black. The
+  scroll column's `scroll-padding-top` (64px) keeps scrolled-into-view
+  content below the ramp, and a page may grow by up to 30% of a screen so
+  its end stop lands on a row rest (`restingScrollEnd`: a row's first text at
+  the ramp's foot). Reduced transparency or increased contrast use a
+  solid bar with no blur. The large title
   scrolls under the band and the compact title switches in over the last
   ~10px of the collapse, not a long crossfade. Like UIKit, a page never
   rests half collapsed: when scrolling ends inside the collapse range it
@@ -49,15 +58,19 @@ tokens; an already approved direction does not need another design exploration.
   motion), never while a finger or a focused field holds it; opening a sheet
   never moves the page.
   Pushed screens keep their parent tab selected (`nativeTabForPath`).
-  Contextual actions are sentence-case `text-action` buttons in the one ink
-  tint; a disabled action is that tint at 30% opacity, never grey as a style.
+  Contextual actions are sentence-case `text-action` buttons (15px medium in
+  section headers; 16px in the bar row) in the one ink tint; a disabled
+  action is that tint at 30% opacity, never grey as a style.
   Sheet-level actions sit in the sheet header beside close
   (`SheetHeaderAction`). Sheets sit over a uniform dim (black at 50% in
-  Black, 22% in Ivory) and cast no shadow; in Black the sheet surface is
-  flat #161616 at 97% with no wash or sheen; a single-detent confirmation
+  Black, 28% in Ivory) and cast no shadow; in Black the sheet surface is
+  flat #161616 at 97% with no wash or sheen, in Ivory an opaque #F7F7F3,
+  so nothing behind it shows through; a single-detent confirmation
   sheet hides the grabber, and the close button when its own actions
-  include a cancel (`Modal` `showGrabber` / `showClose`). Tracked caps are for section labels only; status
-  labels and disclosure rows are sentence case. Sheet titles use the
+  include a cancel (`Modal` `showGrabber` / `showClose`). Tracked caps are
+  for section labels and kickers only; status labels, disclosure rows and
+  units are sentence case (units beside or under a figure at 13px
+  secondary: "sets", "eaten", "of 2,600 kcal target"). Sheet titles use the
   editorial `sheet-title`.
 - Primary actions are solid, sentence-case capsules (`Button` primary: near
   white on Black, ink on Ivory) with no gloss, rim or chrome. The live workout's
@@ -71,7 +84,8 @@ tokens; an already approved direction does not need another design exploration.
   Meaningful touch targets are at least 44px.
 - Segmented controls use native metrics, 15px medium labels (a locked
   control dims to 40% as a whole, takes no touches and keeps its caption;
-  the light thumb is warm white #FDFDF9): a 36px capsule track, 2px inset,
+  its thumb loses its shadow; the light track is #EAEAE4 and the light
+  thumb warm white #FDFDF9): a 36px capsule track, 2px inset,
   equal segments and a 32px thumb, each segment's hit area extended to 44px.
 - Search fields are flat capsule fills (`.search-field`; #1C1C1C on Black), never recessed;
   placeholders are at least 4.5:1 (`--color-placeholder`).
@@ -79,13 +93,20 @@ tokens; an already approved direction does not need another design exploration.
   web tab bar; controls/inputs 14px; platters 26px; sheets 30px (floating
   phone sheets 34px at the top, 47px at the bottom, concentric with the
   display).
-- Calendar headers (Fuel's week strip, History's month) share one style:
-  the month in sentence case, the year only when it is not this year, and
-  paging chevrons whose last glyph ends on the trailing guide. A section
+- Calendar headers (Fuel's week strip, History's month) are one component
+  (`CalendarHeader`) at the same offset: the month in sentence case, the
+  year only when it is not this year, no disclosure glyph (Fuel's month is
+  still a button that opens the month calendar), and paging chevrons with
+  44pt keys 52pt apart whose last glyph ends on the trailing guide. Both
+  grids use the same weekday letters and letter-to-date spacing and a 34pt
+  selected disc; History's day marks sit just under the disc on a 56px row
+  pitch, so they read as their own date's. A section
   label sits about 40px (cap to cap) above its first row's title.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
   web fallback elsewhere. The web bar matches the native geometry: 62px tall,
-  about 21px above the screen's bottom edge, 24px icons, 10.5px semibold
+  about 21px above the screen's bottom edge, 24px icons on one 1.6px stroke
+  (`TabIcons`, an upright plain dumbbell; the current tab's glyph is its
+  filled variant), 10.5px semibold
   labels, no ring or directional highlight (Ivory: one faint shadow and no
   hairline; Black: a flat #161616 at 94% with a uniform 0.5px hairline and
   no wash), the current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
@@ -99,8 +120,11 @@ tokens; an already approved direction does not need another design exploration.
   regular-weight text action, and its session ring matches Today's. That bar
   stays pinned while the session scrolls and condenses to "Title · time";
   like a large title, the session header (title and ring) settles expanded
-  or wholly under the bar's solid edge when scrolling ends, and a short
-  session gets the room to collapse, so the ring never rests in the fade. Live
+  or wholly under the bar's solid edge when scrolling ends, with the first
+  movement's content starting at the ramp's foot; the session's scroll ends
+  on such a movement rest (a little extra room, at most half a screen), and
+  a short session gets the room to collapse, so neither the ring nor a row
+  rests split in the fade. Live
   workouts open with the Up next movement expanded; a movement's whole
   header row is its one toggle (no chevron or trailing count), expanding its
   details and inline set entry in place, with "•••" alone at the trailing
@@ -113,10 +137,11 @@ tokens; an already approved direction does not need another design exploration.
   (pearl in Black, graphite in Ivory): a calm flat face with no bevel,
   chamfer, rim or highlight edge. The open set's numbers are 23px semibold
   tabular figures (rows below one step down at 17px, sharing a baseline with
-  their index), in fields on the well tone (#1C1C1C in Black). The open
-  row's planned numbers are full ink, and
-  the "Planned" cue naming their source is the only sign they are
-  suggestions. Every enabled text action is ink; grey is never a style for
+  their 15px tabular secondary index), in fields on the well tone (#1C1C1C
+  in Black). The open row's planned numbers are full ink, and the bare
+  "Planned" cue naming their source (no tutorial copy) is the only sign
+  they are suggestions; it shares one full 44pt row under the fields with
+  Repeat last. Every enabled text action is ink; grey is never a style for
   something tappable.
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
@@ -167,9 +192,10 @@ layout and makes motion, data and 3D the expressive layer.
   matte front/back [muscle map](../../../src/lib/volumeMap.ts): ink by volume
   status, hollow (an ink outline, like the ○ status glyph) while trained
   but under MEV, lacquer only past MRV, no gloss or 3D. Beside a sentence
-  (Today's insight) the figure draws only the sentence's muscle in primary
-  ink (lacquer only when the sentence is about the ceiling) and leaves the
-  rest at the silhouette's tone.
+  (Today's insight) the figure draws only the sentence's muscle, in the
+  same legend style as Progress (hollow when the sentence is about
+  under-stimulation, its status ink otherwise, lacquer only past MRV), and
+  leaves the rest at the silhouette's tone.
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
   `/preview?previewSetSave=fail` exercises save failure and Retry;
   `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.

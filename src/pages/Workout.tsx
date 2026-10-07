@@ -1688,7 +1688,7 @@ export function Workout() {
           {/* The same dial as Today's session ring: default size and stroke. */}
           <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} reveal="session-sets">
             <span className="number-medium text-[20px]! text-[var(--color-text)]">{completedSets}<span className="text-[var(--color-text-dim)]">/{totalSets}</span></span>
-            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">sets</span>
+            <span className="ring-unit">sets</span>
           </MetalRing>
         </div>
         <div className="studio-session-actions">

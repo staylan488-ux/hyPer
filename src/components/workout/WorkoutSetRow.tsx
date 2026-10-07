@@ -243,7 +243,6 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         {showingSuggestion && suggestion
           ? <span id={suggestionCaptionId} className="studio-set-suggestion">
             <strong>{SUGGESTION_SOURCE[suggestion.source]}</strong>
-            <span aria-hidden> · tap <Check size={12} strokeWidth={2.25} className="studio-set-suggestion-check" /> to log</span>
             <span className="sr-only">, Save logs these numbers as shown</span>
           </span>
           : <span className="studio-set-foot-note">{!autofillAction && formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}

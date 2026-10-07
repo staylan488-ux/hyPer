@@ -1,4 +1,4 @@
-import { sumMacros } from '@/lib/nutritionMacros';
+import { sumShownMacros } from '@/lib/nutritionMacros';
 
 export interface NutritionLogDateLike {
   logged_at: string | null;
@@ -26,5 +26,5 @@ export function getLogDate(log: NutritionLogDateLike): Date {
 }
 
 export function sumNutritionLogCalories(logs: NutritionLogCaloriesLike[]): number {
-  return sumMacros(logs).calories;
+  return sumShownMacros(logs).calories;
 }

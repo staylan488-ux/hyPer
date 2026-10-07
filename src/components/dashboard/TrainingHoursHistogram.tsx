@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { BarChart, type BarDatum } from '@/components/shared/charts';
-import type { TrainingHoursPoint } from '@/lib/workoutSessions';
+import { hoursInTenthsTogether, type TrainingHoursPoint } from '@/lib/workoutSessions';
 
 interface TrainingHoursHistogramProps {
   points: TrainingHoursPoint[];
@@ -23,7 +23,8 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
     );
   }
 
-  const totalMinutes = points.reduce((sum, point) => sum + point.totalMinutes, 0);
+  // Bars and total are rounded together, so the captions add up to the total.
+  const hours = hoursInTenthsTogether(points.map((point) => point.totalMinutes));
   const data: BarDatum[] = points.map((point, index) => {
     const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
     const start = parseISO(point.weekStart);
@@ -37,9 +38,9 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       label: axisLabel,
       value: point.totalMinutes,
       // Empty weeks carry only a quiet zero stub: no bar and no caption.
-      caption: point.totalHours > 0 ? (
+      caption: hours.parts[index] > 0 ? (
         <>
-          {point.totalHours}
+          {hours.parts[index]}
           <span className="text-[var(--color-muted)] ml-px">h</span>
         </>
       ) : undefined,
@@ -68,7 +69,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
         summary={
           <span className="flex justify-between gap-3">
             <span className="text-[var(--color-text-dim)]">8-week total</span>
-            <span>{formatMinutes(totalMinutes)}</span>
+            <span>{hours.total} h</span>
           </span>
         }
       />

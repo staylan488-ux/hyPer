@@ -97,7 +97,7 @@
   --color-border: rgba(35, 35, 35, 0.16);
   --color-border-strong: rgba(35, 35, 35, 0.32);
   --color-border-soft: rgba(35, 35, 35, 0.08);
-  --overlay-backdrop: rgba(0, 0, 0, 0.22);
+  --overlay-backdrop: rgba(0, 0, 0, 0.28);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
@@ -188,6 +188,18 @@ body {
   line-height: 1.4;
   letter-spacing: .16em;
   text-transform: uppercase;
+}
+/* Units beside or under a figure ("sets", "eaten", "of 2,600 kcal target")
+   are sentence case at 13px secondary, never tracked caps: caps belong to
+   section labels and kickers only. */
+.ring-unit, .unit-line {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -.005em;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
 }
 .t-title {
   font-family: var(--font-display);
@@ -453,27 +465,46 @@ input, textarea, select, button { font-family: inherit; }
    below the status bar instead of meeting a hard line. The layer is a copy of
    the shell's own background, aligned to it and faded out by a mask, so the
    seam matches in every theme. Pages with a title band (PageTitle) cover it
-   with the band; elsewhere it is the whole edge: solid for 14px, then the
-   band's short 16px smoothstep ramp, opacity only. */
-.app-viewport::before {
+   with the band; elsewhere it is the whole edge, on the band's recipe: solid
+   for 14px, then the same 24px smoothstep ramp, with a light blur (::after)
+   only where the veil already hides most of the content, so a partial shape
+   softens instead of keeping a crisp, shaded outline. */
+.app-viewport::before,
+.app-viewport::after {
   content: '';
   position: absolute;
   top: var(--app-safe-top);
   left: 0;
   right: 0;
   z-index: 1;
-  height: 30px;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out-quart);
+}
+.app-viewport::before {
+  height: 38px;
   background: inherit;
   background-size: 100% var(--app-viewport-height, 100dvh);
   background-position: 0 calc(-1 * var(--app-safe-top));
   background-repeat: no-repeat;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, .84) 18px, rgba(0, 0, 0, .5) 22px, rgba(0, 0, 0, .16) 26px, transparent 30px);
-  mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, .84) 18px, rgba(0, 0, 0, .5) 22px, rgba(0, 0, 0, .16) 26px, transparent 30px);
-  opacity: 0;
-  transition: opacity 180ms var(--ease-out-quart);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, 0.98) calc(14px + 24px * 1 / 12), rgba(0, 0, 0, 0.926) calc(14px + 24px * 2 / 12), rgba(0, 0, 0, 0.844) calc(14px + 24px * 3 / 12), rgba(0, 0, 0, 0.741) calc(14px + 24px * 4 / 12), rgba(0, 0, 0, 0.624) calc(14px + 24px * 5 / 12), rgba(0, 0, 0, 0.5) calc(14px + 24px * 6 / 12), rgba(0, 0, 0, 0.376) calc(14px + 24px * 7 / 12), rgba(0, 0, 0, 0.259) calc(14px + 24px * 8 / 12), rgba(0, 0, 0, 0.156) calc(14px + 24px * 9 / 12), rgba(0, 0, 0, 0.074) calc(14px + 24px * 10 / 12), rgba(0, 0, 0, 0.02) calc(14px + 24px * 11 / 12), transparent 38px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, 0.98) calc(14px + 24px * 1 / 12), rgba(0, 0, 0, 0.926) calc(14px + 24px * 2 / 12), rgba(0, 0, 0, 0.844) calc(14px + 24px * 3 / 12), rgba(0, 0, 0, 0.741) calc(14px + 24px * 4 / 12), rgba(0, 0, 0, 0.624) calc(14px + 24px * 5 / 12), rgba(0, 0, 0, 0.5) calc(14px + 24px * 6 / 12), rgba(0, 0, 0, 0.376) calc(14px + 24px * 7 / 12), rgba(0, 0, 0, 0.259) calc(14px + 24px * 8 / 12), rgba(0, 0, 0, 0.156) calc(14px + 24px * 9 / 12), rgba(0, 0, 0, 0.074) calc(14px + 24px * 10 / 12), rgba(0, 0, 0, 0.02) calc(14px + 24px * 11 / 12), transparent 38px);
 }
-.app-viewport[data-scrolled]::before { opacity: 1; }
+.app-viewport::after {
+  top: calc(var(--app-safe-top) + 14px);
+  height: 14px;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 7px, transparent 14px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 7px, transparent 14px);
+}
+.app-viewport[data-scrolled]::before,
+.app-viewport[data-scrolled]::after { opacity: 1; }
+/* Reduced transparency or increased contrast: a solid edge, no ramp or blur. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .app-viewport::after { display: none; }
+  .app-viewport::before { height: 24px; -webkit-mask-image: none; mask-image: none; }
+}
 /* Web tab bar geometry, matched to the native iOS 26 bar: 62px tall, about
    21px above the screen's bottom edge (concentric with the display corners
    on a home-indicator phone), 21px side insets. */
@@ -490,6 +521,10 @@ input, textarea, select, button { font-family: inherit; }
   overflow-y: auto;
   overscroll-behavior-y: contain;
   background: transparent;
+  /* The scroll-edge band covers the top 64px (40px solid + 24px ramp, see
+     .page-scroll-edge): anything scrolled into view (a set entry, a focused
+     field) lands below it, never in its fade. */
+  scroll-padding-top: 64px;
 }
 .bottom-nav {
   position: fixed;

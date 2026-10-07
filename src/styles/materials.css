@@ -7,7 +7,7 @@
   /* Flat Ivory: no light pool, so the stage is one even tone edge to edge. */
   --material-ambient: none;
   --material-glass: rgba(255,255,255,.56);
-  --material-sheet: rgba(247,247,243,.97);
+  --material-sheet: #F7F7F3;
   --material-surface: rgba(255,255,255,.62);
   --material-secondary: rgba(35,35,35,.06);
   --material-inset: rgba(35, 35, 35,.055);
