@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
-import { Button, EmptyState, MetalRing, Screen, VolumeRail, PageTitle } from '@/components/shared';
+import { Button, EmptyState, Screen, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { buildWeeklyTrainingHours, TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
-import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
+import { VolumeMap } from '@/components/coaching/VolumeMap';
+import { LandmarkRail } from '@/components/coaching/LandmarkRail';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { springs } from '@/lib/animations';
@@ -119,19 +120,19 @@ export function Analysis() {
   return (
     <Screen>
       {/* Header */}
-      <header className="mb-7">
+      <header className="mb-8">
         <Link
           to="/"
-          className="studio-row-action mb-4 -ml-4"
+          className="inline-flex items-center gap-0.5 min-h-11 -ml-1 mb-2 text-[12px] text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
-          Home
+          <ChevronLeft size={14} aria-hidden />
+          Today
         </Link>
         <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">Progress</span>
+          <span className="t-label-sm">Volume coaching</span>
           <span className="t-label-sm">Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}</span>
         </div>
-        <PageTitle className="mt-3 pt-5 border-t border-[var(--color-border)]">Coaching</PageTitle>
+        <PageTitle className="mt-3 pt-5 border-t border-[var(--color-border)]">Progress</PageTitle>
       </header>
 
       {/* Per-muscle calls */}
@@ -142,7 +143,7 @@ export function Analysis() {
           body="Log a session and hyPer starts coaching your weekly volume against research landmarks."
           action={
             <Link to="/train">
-              <Button metal size="md" className="px-6">
+              <Button size="md" className="px-6">
                 Start training
               </Button>
             </Link>
@@ -150,8 +151,8 @@ export function Analysis() {
         />
       ) : (
         <>
-        <section className="platter" aria-label="This week's volume by muscle">
-          <VolumeMaquette
+        <section aria-label="This week's volume by muscle">
+          <VolumeMap
             volume={weeklyVolume}
             onSelectMuscle={(muscle) => {
               if (!muscle) return;
@@ -161,49 +162,39 @@ export function Analysis() {
             }}
           />
         </section>
-        <section className="platter platter-flush mt-4" aria-label="Volume calls">
-          <div className="platter-row flex items-center justify-between gap-4 px-5 pt-5 pb-5">
+
+        <section className="mt-12" aria-label="Volume calls">
+          <div className="flex items-end justify-between gap-4 pb-5 border-b border-[var(--color-border)]">
             <div className="min-w-0">
-              <p className="t-label">This week</p>
-              <p className="t-heading mt-2">
-                {rangeSummary.inRange} of {rangeSummary.total} {rangeSummary.total === 1 ? 'muscle' : 'muscles'} in range
-              </p>
-              {rangeSummary.detail && <p className="t-caption mt-1">{rangeSummary.detail}</p>}
+              <p className="t-label">In range</p>
+              {rangeSummary.detail && <p className="t-caption mt-2">{rangeSummary.detail}</p>}
             </div>
-            <MetalRing
-              progress={rangeSummary.total > 0 ? rangeSummary.inRange / rangeSummary.total : 0}
-              label={`${rangeSummary.inRange} of ${rangeSummary.total} muscles in their productive volume range`}
-              size={72}
-              thickness={5}
-              reveal="coaching-range-ring"
+            <p
+              className="number-large text-[var(--color-text)] tabular-nums"
+              aria-label={`${rangeSummary.inRange} of ${rangeSummary.total} muscles in their productive volume range`}
             >
-              <span className="number-medium text-[18px]! text-[var(--color-text)] tabular-nums">
-                {rangeSummary.inRange}<span className="text-[var(--color-text-dim)]">/{rangeSummary.total}</span>
-              </span>
-            </MetalRing>
+              {rangeSummary.inRange}<span className="text-[var(--color-text-dim)]">/{rangeSummary.total}</span>
+            </p>
           </div>
           {coached.map(({ mv, call }) => {
             const isExpanded = expandedMuscle === mv.muscle_group;
             const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
-            const isHot = call.tone === 'berry';
+            const isHot = mv.status === 'above_mrv';
 
             return (
-              <motion.div
-                key={mv.muscle_group}
-                className="platter-row"
-              >
+              <div key={mv.muscle_group} className="border-b border-[var(--color-border-soft)]">
                 <button
                   type="button"
-                  className="w-full text-left px-5 py-5"
+                  className="w-full text-left py-5"
                   aria-expanded={isExpanded}
                   onClick={() => setExpandedMuscle(isExpanded ? null : mv.muscle_group)}
                 >
-                  <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                    <span className="t-label">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="t-heading">
                       {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
                     </span>
-                    <span className="flex items-center gap-2.5 shrink-0">
-                      <span className="status-capsule" data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="status-label" data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}>
                         {call.chip}
                       </span>
                       <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
@@ -212,23 +203,24 @@ export function Analysis() {
                     </span>
                   </div>
 
-                  <div className="flex items-end justify-between gap-4 mb-4">
+                  <div className="flex items-baseline justify-between gap-4 mb-4">
                     <span className="flex items-baseline gap-1.5">
-                      <span className={`number-large ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
+                      <span className={`number-medium ${isHot ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
                         {mv.weekly_sets}
                       </span>
                       <span className="t-caption">sets</span>
                     </span>
-                    <p className="t-caption text-right max-w-[20ch]">{call.headline}</p>
+                    <p className="t-caption text-right">{call.headline}</p>
                   </div>
 
                   {mv.landmark ? (
-                    <VolumeRail
+                    <LandmarkRail
                       current={mv.weekly_sets}
                       mev={mv.landmark.mev}
                       mavLow={mv.landmark.mav_low}
                       mavHigh={mv.landmark.mav_high}
                       mrv={mv.landmark.mrv}
+                      over={isHot}
                       reveal={`coaching-volume-${mv.muscle_group}`}
                     />
                   ) : (
@@ -236,7 +228,7 @@ export function Analysis() {
                   )}
                 </button>
 
-                <AnimatePresence>
+                <AnimatePresence initial={false}>
                   {isExpanded && (
                     <motion.div
                       className="overflow-hidden"
@@ -245,23 +237,20 @@ export function Analysis() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={springs.settle}
                     >
-                      <div className="px-5 pb-5">
-                        <div className="ledger-well grid grid-cols-4 mb-4">
+                      <div className="pb-5">
+                        <dl className="grid grid-cols-4 mb-4">
                           {[
                             { label: 'MV', value: mv.landmark?.mv },
                             { label: 'MEV', value: mv.landmark?.mev },
                             { label: 'MAV', value: mv.landmark ? `${mv.landmark.mav_low}–${mv.landmark.mav_high}` : undefined },
                             { label: 'MRV', value: mv.landmark?.mrv },
-                          ].map((item, itemIndex) => (
-                            <div
-                              key={item.label}
-                              className={`py-3 ${itemIndex > 0 ? 'border-l border-[var(--color-border-soft)]' : ''} pl-3`}
-                            >
-                              <p className="t-label-sm">{item.label}</p>
-                              <p className="t-data text-[var(--color-text)] mt-1">{item.value ?? '—'}</p>
+                          ].map((item) => (
+                            <div key={item.label}>
+                              <dt className="t-label-sm">{item.label}</dt>
+                              <dd className="t-data text-[var(--color-text)] mt-1">{item.value ?? '—'}</dd>
                             </div>
                           ))}
-                        </div>
+                        </dl>
                         {recommendation && (
                           <p className="t-caption">{recommendation.message}</p>
                         )}
@@ -269,7 +258,7 @@ export function Analysis() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
             );
           })}
         </section>
@@ -277,50 +266,41 @@ export function Analysis() {
       )}
 
       {/* Training hours */}
-      <motion.section
-        className={`platter ${weeklyVolume.length === 0 ? 'mt-8' : 'mt-4'}`}
-      >
-        <div className="flex items-baseline justify-between mb-1">
+      <section className="mt-14">
+        <div className="flex items-baseline justify-between">
           <span className="t-label">Training hours</span>
-          <span className="t-label-sm text-[var(--color-muted)]">8 weeks</span>
+          <span className="t-label-sm">Last 8 weeks</span>
         </div>
         {hoursLoading ? (
-          <div className="flex items-end justify-around h-40 mt-11 border-b border-[var(--color-border)]">
+          <div className="flex items-end justify-around h-36 mt-11 border-b border-[var(--color-border)]">
             {Array.from({ length: 8 }).map((_, index) => (
-              <div key={index} className="shimmer w-[7%] h-[45%] rounded-t-[6px]" />
+              <div key={index} className="shimmer w-[7%] h-[45%]" />
             ))}
           </div>
         ) : (
           <TrainingHoursHistogram points={trainingHours} />
         )}
-      </motion.section>
+      </section>
 
       {/* Weekly nutrition */}
-      <motion.section
-        className="progress-platter-host mt-4"
-      >
+      <section className="mt-14">
         <WeeklyNutrition />
-      </motion.section>
+      </section>
 
       {/* Research explainer — supporting detail, not the primary UI */}
-      <motion.section
-        className="platter platter-flush mt-4"
-      >
+      <section className="mt-12 border-t border-[var(--color-border)]">
         <button
           type="button"
-          className="w-full min-h-[60px] px-5 flex items-center justify-between text-left"
+          className="w-full min-h-[56px] flex items-center justify-between text-left"
           aria-expanded={showExplainer}
           onClick={() => setShowExplainer(!showExplainer)}
         >
-          <span className="flex items-center gap-2">
-            <BookOpen className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
-            <span className="t-label">What the landmarks mean</span>
-          </span>
+          <span className="t-label">What the landmarks mean</span>
           <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
             <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
           </motion.span>
         </button>
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
           {showExplainer && (
             <motion.div
               className="overflow-hidden"
@@ -329,25 +309,23 @@ export function Analysis() {
               exit={{ height: 0, opacity: 0 }}
               transition={springs.settle}
             >
-              <div className="ledger-sets shadow-[inset_0_1px_0_var(--platter-divider)]">
+              <dl className="pb-4 space-y-4">
                 {[
-                  { tone: 'stone', label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
-                  { tone: 'amber', label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
-                  { tone: 'sage', label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
-                  { tone: 'berry', label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
+                  { label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
+                  { label: 'MEV — Minimum Effective', desc: 'The floor for growth. Below this, the stimulus is too small.' },
+                  { label: 'MAV — Maximum Adaptive', desc: 'The zone where added sets buy the most growth.' },
+                  { label: 'MRV — Maximum Recoverable', desc: 'The ceiling. Past this, recovery loses to fatigue.' },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-start gap-3 px-5 py-4">
-                    <div>
-                      <p className="t-heading">{item.label}</p>
-                      <p className="t-caption mt-1">{item.desc}</p>
-                    </div>
+                  <div key={item.label}>
+                    <dt className="t-heading">{item.label}</dt>
+                    <dd className="t-caption mt-1">{item.desc}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.section>
+      </section>
     </Screen>
   );
 }

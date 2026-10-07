@@ -38,14 +38,14 @@ interface BarChartProps {
   className?: string;
 }
 
-/** Graphite (Ivory) or titanium (Black) columns, lit from above like the hero figures. */
-const INK_FILL = 'var(--figure-ink, var(--color-text))';
-const ACCENT_FILL = 'linear-gradient(180deg, var(--color-accent) 0%, color-mix(in srgb, var(--color-accent) 82%, var(--color-base)) 100%)';
+/** Flat, matte columns: ink for data, lacquer only for an emphasised bar. */
+const INK_FILL = 'color-mix(in srgb, var(--color-text) 82%, var(--color-base))';
+const ACCENT_FILL = 'var(--color-accent)';
 
 /**
- * Editorial bar chart: rounded graphite columns on a hairline baseline. Bars
+ * Editorial bar chart: flat ink columns on a hairline baseline. Bars
  * grow by scaleY on first appearance; a finger scrubs across them with one
- * detent per bar, a soft lens marks the selected column and the readout line
+ * detent per bar, a quiet band marks the selected column and the readout line
  * above follows.
  */
 export function BarChart({
@@ -115,8 +115,8 @@ export function BarChart({
                 <motion.div
                   aria-hidden
                   layoutId={lensId}
-                  className="absolute inset-y-0 inset-x-[8%] rounded-t-[10px] pointer-events-none"
-                  style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-text) 3%, transparent), color-mix(in srgb, var(--color-text) 7%, transparent))' }}
+                  className="absolute inset-y-0 inset-x-[8%] pointer-events-none"
+                  style={{ background: 'color-mix(in srgb, var(--color-text) 5%, transparent)' }}
                   transition={springs.tactile}
                 />
               )}
@@ -134,7 +134,7 @@ export function BarChart({
               <div className="relative w-[58%] max-w-[30px] min-w-[3px] shrink-0" style={{ height: fraction * barArea }}>
                 <motion.div
                   aria-hidden
-                  className="absolute inset-0 rounded-t-[6px] rounded-b-[1.5px]"
+                  className="absolute inset-0 rounded-t-[3px]"
                   initial={firstReveal ? { scaleY: 0 } : false}
                   animate={{ scaleY: 1, opacity: selecting && !isActive ? 0.28 : 1 }}
                   transition={
