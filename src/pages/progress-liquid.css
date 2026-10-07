@@ -8,9 +8,10 @@
 /* Compact month: day numbers with a dot per kind of session. The selected
    day is a filled ink disc; today is named in lacquer. */
 .ledger-day { -webkit-tap-highlight-color: transparent; }
+/* 34px: the same selected circle as Fuel's week strip. */
 .ledger-day-disc {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--color-text);
 }
@@ -58,22 +59,22 @@
 .ledger-choice:active:not(:disabled) { transform: scale(.985); }
 
 /* ─── Progress ──────────────────────────────────────────────── */
-/* Volume status: an unboxed label led by a small mark; lacquer only when
-   volume runs past its ceiling. */
+/* Volume status: an unboxed 13px sentence-case label led by a small mark
+   (tracked caps are kept for section headers); lacquer only when volume runs
+   past its ceiling. */
 .status-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font: 500 10px/1 var(--font-sans);
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  gap: 6px;
+  font: 500 13px/1.2 var(--font-sans);
+  letter-spacing: 0;
   white-space: nowrap;
   color: var(--color-text-dim);
 }
 .status-label::before {
   content: '';
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
 }

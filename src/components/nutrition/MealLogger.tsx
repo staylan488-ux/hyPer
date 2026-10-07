@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { format, isToday } from 'date-fns';
-import { Button, DateField, Input, SelectSheet, TimeField } from '@/components/shared';
+import { Plus } from 'lucide-react';
+import { Button, DateField, Input, SelectSheet, SheetHeaderAction, TimeField } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { FoodLogger, type FoodLoggerProps, type FoodCaptureMethod } from './FoodLogger';
 import { toLocalTimeInput } from './foodLoggerUtils';
@@ -142,8 +143,14 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     } finally { setBusy(false); onBusyChange?.(false); }
   };
 
+  // Building a meal is a quiet action in the sheet's header, so the capture
+  // view leads with its sources and search.
   if (!draft || paused) return <div className="space-y-5">
-    {paused ? <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume pending meal</Button> : !initialEntry && <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => start()}>Build a meal</Button>}
+    {(paused || !initialEntry) && <SheetHeaderAction>
+      {paused
+        ? <button type="button" className="text-action" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume meal</button>
+        : <button type="button" className="text-action" disabled={analysisBusy} onClick={() => start()}><Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />Build a meal</button>}
+    </SheetHeaderAction>}
     <FoodLogger {...props} onComposeMeal={paused ? undefined : start} onAnalysisBusyChange={reportAnalysisBusy} />
   </div>;
 

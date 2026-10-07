@@ -60,6 +60,8 @@
   top: 0;
   /* With .page-back's -8px margin the chevron lands on the 24px guide. */
   left: 24px;
+  /* Follows the band's scroll-linked fade without lagging behind it. */
+  transition: none;
 }
 
 /* Quiet text action: sentence case, ink, no fill or outline, with a 44px
@@ -83,6 +85,5 @@
   transition: opacity 160ms ease, color 160ms ease;
 }
 .text-action:active:not(:disabled) { opacity: .5; }
-.text-action:disabled { opacity: .35; }
-.text-action[data-tone='quiet'] { color: var(--color-text-dim); }
+.text-action:disabled { opacity: .3; }
 .text-action[data-tone='danger'] { color: var(--color-accent); }

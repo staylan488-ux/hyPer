@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, MetalRing } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
@@ -1417,7 +1417,7 @@ export function History() {
                   {isSelected && (
                     <motion.span
                       aria-hidden
-                      className="ledger-day-disc absolute top-[2px] left-1/2 -ml-4"
+                      className="ledger-day-disc absolute top-[1px] left-1/2 -ml-[17px]"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
@@ -1462,15 +1462,15 @@ export function History() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
           <div className="flex items-end justify-between gap-4 mt-9 mb-3">
             <div className="min-w-0">
+              {/* One caps eyebrow; the day's count reads as plain text under it. */}
               <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-              <p className="t-label-sm mt-1.5 text-[var(--color-muted)]">{selectedDaySummary}</p>
+              <p className="t-caption mt-1">{selectedDaySummary}</p>
             </div>
             <div className="flex items-center shrink-0 -mr-2.5 -mb-2.5">
               {syncAvailable && (
                 <button
                   type="button"
                   className="text-action"
-                  data-tone="quiet"
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
@@ -1556,26 +1556,13 @@ export function History() {
                 >
                   <div>
                     <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="pressable w-full text-left flex items-center justify-between gap-3 px-5 py-4 min-h-[76px]" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-4 min-w-0">
-                        <MetalRing
-                          progress={progress.totalSets > 0 ? progress.completedSets / progress.totalSets : 0}
-                          label={`${progress.completedSets} of ${progress.totalSets} sets complete`}
-                          size={44}
-                          thickness={3}
-                          reveal={`history-workout-${workout.id}`}
-                        >
-                          {progress.completed ? (
-                            <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
-                          ) : (
-                            <span className="text-[10px] font-medium tabular-nums text-[var(--color-text-dim)]">{progress.percent}%</span>
-                          )}
-                        </MetalRing>
-                        <div className="min-w-0">
-                          <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
-                          <p className="t-caption mt-1">{subtitle}</p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
+                        <p className="t-caption mt-1">{subtitle}</p>
                       </div>
-                      <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
+                      {/* Sets read inline in the subtitle ("3/9 sets"); the ring is
+                          kept for Today's live session. */}
+                      <motion.div className="shrink-0" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.div>
                     </button>
@@ -1922,7 +1909,6 @@ export function History() {
                           <button
                             type="button"
                             className="text-action"
-                            data-tone="quiet"
                             onClick={() => setMergeSelection(null)}
                           >
                             Cancel
@@ -1940,7 +1926,6 @@ export function History() {
                         <button
                           type="button"
                           className="text-action -mr-2.5"
-                          data-tone="quiet"
                           onClick={() => setMergeSelection([])}
                         >
                           Merge

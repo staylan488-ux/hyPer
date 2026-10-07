@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, type HTMLAttributes, type ReactNode, type Ref } from 'react';
-import { motion, useMotionValue, useTransform } from 'motion/react';
+import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
@@ -24,9 +24,9 @@ const BAR = 44;
 
 /**
  * The page's 40px Fraunces title. As it scrolls under the top edge it eases
- * back and a condensed title settles into a scroll-edge band — a soft fade
- * of the stage like iOS 26 bars, never a hard-edged toolbar. Tapping the band
- * returns to the top.
+ * back and a condensed title settles into a scroll-edge band — a long, eased
+ * fade of the stage over a progressive blur, like iOS 26 bars, so content
+ * dissolves instead of ending on an edge. Tapping the band returns to the top.
  *
  * Scroll-linked only: the band is `position: fixed` inside the route content
  * (which is never transformed), and nothing animates on its own. At rest the
@@ -97,10 +97,16 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       {label && (
         <motion.div
           className="page-scroll-edge"
-          style={{ opacity: bandOpacity, pointerEvents: bandPointer }}
+          // Each layer fades on its own: an ancestor below full opacity would
+          // cut the blur layers off from the content behind them.
+          style={{ '--band': bandOpacity, pointerEvents: bandPointer } as MotionStyle}
           aria-hidden
           onClick={scrollToTop}
         >
+          <span className="page-scroll-edge-blur" data-step="1" />
+          <span className="page-scroll-edge-blur" data-step="2" />
+          <span className="page-scroll-edge-blur" data-step="3" />
+          <span className="page-scroll-edge-veil" />
           {back && (
             // The header's own back control stays the accessible one; this
             // copy only keeps the way back under the thumb once it scrolls off.

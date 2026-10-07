@@ -101,7 +101,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
         {(['front', 'back'] as const).map((side) => (
           <figure key={side} className="m-0 flex flex-col items-center">
             <Figure side={side} shades={shades} selected={selected} onPick={choose} intro={intro} className="h-[264px] w-auto" />
-            <figcaption className="t-label-sm mt-3">{side === 'front' ? 'Front' : 'Back'}</figcaption>
+            <figcaption className="t-caption mt-3">{side === 'front' ? 'Front' : 'Back'}</figcaption>
           </figure>
         ))}
       </div>
@@ -145,14 +145,20 @@ function Figure({
   className?: string;
 }) {
   const regions = MAP_REGIONS.filter((region) => region.side === side);
+  // A focused muscle keeps the tone of its own status, so the figure never
+  // contradicts the legend (an under-stimulated muscle is the lightest step,
+  // not the heaviest); an ink outline marks it out from the quiet body.
   const fillFor = (muscle: MuscleGroup) => {
     const shade = shades.get(muscle);
-    if (focus) {
-      if (focus !== muscle) return inkFill(BODY_INK + 0.04);
-      return shade?.hot ? 'var(--color-accent)' : inkFill(0.84);
-    }
+    if (focus && focus !== muscle) return inkFill(BODY_INK + 0.04);
     return muscleFill(shade);
   };
+  const focusShade = focus ? shades.get(focus) : undefined;
+  const focusOutline = focus && !focusShade?.hot
+    ? regions.filter((region) => region.muscle === focus).map((region, index) => (
+      <path key={`f${index}`} d={region.d} fill="none" stroke="color-mix(in srgb, var(--color-text) 72%, var(--color-base))" strokeWidth={1.2} strokeLinejoin="round" />
+    ))
+    : null;
   const bodyFill = inkFill(BODY_INK);
   const mirrored = (mirror: boolean, content: ReactNode) => (
     <g transform={mirror ? 'scale(-1 1)' : undefined}>{content}</g>
@@ -185,6 +191,8 @@ function Figure({
       {mirrored(true, body)}
       {mirrored(false, muscles)}
       {mirrored(true, muscles)}
+      {focusOutline && mirrored(false, focusOutline)}
+      {focusOutline && mirrored(true, focusOutline)}
     </svg>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
@@ -15,6 +15,19 @@ interface ModalProps {
   initialFocusRef?: RefObject<HTMLInputElement | null>;
 }
 
+// The sheet header's trailing slot, beside the close button. Undefined outside a sheet.
+const SheetHeaderSlot = createContext<HTMLElement | null | undefined>(undefined);
+
+/**
+ * A quiet header action for the sheet that contains it (a text action beside
+ * the close button). Outside a sheet it renders in place.
+ */
+export function SheetHeaderAction({ children }: { children: ReactNode }) {
+  const slot = useContext(SheetHeaderSlot);
+  if (slot === undefined) return <>{children}</>;
+  return slot ? createPortal(children, slot) : null;
+}
+
 /** An anchored sheet with a shared keyboard and focus boundary. */
 export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -22,6 +35,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
   const dialogRef = useRef<HTMLDivElement>(null);
   const litDialogRef = useLitSurface(dialogRef);
   const titleId = useId();
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const close = useEffectEvent(onClose);
   // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked)
   const [sheetDrag] = useState(
@@ -126,6 +140,8 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
               {title ? <h2 id={titleId} className="sheet-title">{title}</h2> : <span />}
+              <span className="flex items-center gap-2">
+              <span ref={setHeaderSlot} className="flex items-center empty:hidden" />
               <motion.button
                 type="button"
                 onClick={onClose}
@@ -135,6 +151,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </motion.button>
+              </span>
             </div>
             <motion.div
               className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.5rem,calc(var(--app-safe-bottom)+0.5rem))] sm:pb-6 ${contentClassName}`}
@@ -142,7 +159,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               animate={{ opacity: 1 }}
               transition={{ delay: 0.08, duration: 0.24 }}
             >
-              {children}
+              <SheetHeaderSlot.Provider value={headerSlot}>{children}</SheetHeaderSlot.Provider>
             </motion.div>
           </motion.div>
         </motion.div>

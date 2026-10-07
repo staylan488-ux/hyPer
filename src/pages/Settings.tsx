@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { ChevronRight, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageHeader } from '@/components/shared';
@@ -1032,7 +1032,7 @@ export function Settings() {
               <button
                 data-you-focus="weight"
                 onClick={() => go('/settings/weight')}
-                className="you-text-action -mt-2.5 -mr-1 flex items-center gap-0.5 text-[var(--color-text-dim)]"
+                className="you-text-action -mt-3.5 -mr-1 flex items-center gap-0.5"
               >
                 Details
                 <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -1056,7 +1056,10 @@ export function Settings() {
                 }
               />
             )}
-            <Button metal size="lg" className="mt-5 w-full" onClick={() => setWeighInOpen(true)}>
+            {/* A settings-page action stays secondary: Today and Fuel own the
+                full-width primaries. */}
+            <Button variant="secondary" className="mt-5" onClick={() => setWeighInOpen(true)}>
+              <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
               Log weight
             </Button>
             {healthWeightMessage && (

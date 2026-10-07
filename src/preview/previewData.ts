@@ -1,6 +1,7 @@
 // DEV-ONLY preview sample data. Pure data (no store imports) so it can be shared
 // by the mock Supabase client and the store seeder without import cycles.
 import { format } from 'date-fns';
+import { classifyVolume } from '@/lib/volumeStatus';
 import type {
   Exercise,
   Split,
@@ -96,22 +97,24 @@ export const previewCurrentWorkout: Workout = {
 export const previewMacroTarget: MacroTarget = { id: 'mt1', user_id: PREVIEW_USER_ID, calories: 2600, protein: 190, carbs: 280, fat: 80 };
 
 /* ── Volume landmarks + this-week volume ── */
-type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number, number, MuscleVolume['status']];
+// Statuses are graded by the app's own rule (classifyVolume), never typed in,
+// so the preview can't show a status its own numbers contradict.
+type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number, number];
 const lmSeeds: LMSeed[] = [
-  // muscle, mv, mev, mav_low, mav_high, mrv, weekly_sets, status
-  ['chest', 6, 10, 12, 18, 22, 15, 'mav'],
-  ['back', 8, 12, 14, 20, 25, 18, 'mav'],
-  ['quads', 6, 8, 10, 16, 20, 9, 'mev_mav'],
-  ['hamstrings', 4, 6, 8, 12, 16, 5, 'below_mev'],
-  ['side_delts', 6, 10, 12, 18, 22, 21, 'above_mrv'],
-  ['biceps', 6, 8, 10, 16, 20, 12, 'mav'],
-  ['triceps', 6, 8, 10, 16, 20, 10, 'mav'],
-  ['glutes', 4, 6, 8, 14, 18, 11, 'mav'],
+  // muscle, mv, mev, mav_low, mav_high, mrv, weekly_sets
+  ['chest', 6, 10, 12, 18, 22, 15],
+  ['back', 8, 12, 14, 20, 25, 18],
+  ['quads', 6, 8, 10, 16, 20, 9],
+  ['hamstrings', 4, 6, 8, 12, 16, 5],
+  ['side_delts', 6, 10, 12, 18, 22, 23],
+  ['biceps', 6, 8, 10, 16, 20, 12],
+  ['triceps', 6, 8, 10, 16, 20, 10],
+  ['glutes', 4, 6, 8, 14, 18, 11],
 ];
 export const previewLandmarks: VolumeLandmark[] = lmSeeds.map(([mg, mv, mev, mavLow, mavHigh, mrv], i) =>
   ({ id: `lm${i}`, user_id: PREVIEW_USER_ID, muscle_group: mg, mv, mev, mav_low: mavLow, mav_high: mavHigh, mrv }));
-export const previewWeeklyVolume: MuscleVolume[] = lmSeeds.map(([mg, , , , , , weekly, status], i) =>
-  ({ muscle_group: mg, weekly_sets: weekly, status, landmark: previewLandmarks[i] }));
+export const previewWeeklyVolume: MuscleVolume[] = lmSeeds.map(([mg, , , , , , weekly], i) =>
+  ({ muscle_group: mg, weekly_sets: weekly, status: classifyVolume(weekly, previewLandmarks[i]), landmark: previewLandmarks[i] }));
 
 /* ── Foods + today's nutrition log ── */
 const food = (id: string, name: string, cal: number, p: number, c: number, f: number, size: number, unit: string, source: Food['source'] = 'usda'): Food =>

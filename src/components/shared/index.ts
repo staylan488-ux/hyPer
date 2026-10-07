@@ -2,7 +2,7 @@ export { Button } from './Button';
 export { Input } from './Input';
 export { Card, CardTitle } from './Card';
 export { BottomNav } from './BottomNav';
-export { Modal } from './Modal';
+export { Modal, SheetHeaderAction } from './Modal';
 export { ThemeToggle } from './ThemeToggle';
 export { Screen } from './Screen';
 export { TickStrip, RailStrip, VolumeRail } from './TrainingStrip';

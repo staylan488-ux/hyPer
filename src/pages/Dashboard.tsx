@@ -215,13 +215,13 @@ export function Dashboard() {
         )}
 
         {!macroTarget && !loading && (
-          <Link to="/settings/targets" className="text-action -ml-2.5 mt-2" data-tone="quiet">Set targets</Link>
+          <Link to="/settings/targets" className="text-action -ml-2.5 mt-2">Set targets</Link>
         )}
       </section>
 
-      {/* ── Contents / stations ── */}
-      <nav className="mt-7" aria-labelledby="today-contents-label">
-        <span id="today-contents-label" className="t-label block mb-1">Contents</span>
+      {/* ── Explore: the stations behind Today ── */}
+      <nav className="mt-7" aria-labelledby="today-explore-label">
+        <span id="today-explore-label" className="t-label block mb-1">Explore</span>
         <ul className="platter platter-flush">
           {stations.map((s) => (
             <li key={s.to} className="platter-row" style={{ '--row-inset': '54px' } as CSSProperties}>
@@ -310,7 +310,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
         </div>
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="t-title">{hero.dayName}</h2>
+            <h2 className="t-title text-[28px]!">{hero.dayName}</h2>
             {programName && <p className="t-caption mt-2">{programName}</p>}
             {hero.elapsed !== '—' && <p className="t-caption mt-1">{hero.elapsed} in</p>}
           </div>
@@ -341,7 +341,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <HeroEyebrow>Trained today</HeroEyebrow>
           <BankedStamp date={format(new Date(), 'MMM d')} className="-mt-1 mr-1" />
         </div>
-        <p className="t-title mb-6">The work is banked.</p>
+        <p className="t-title text-[28px]! mb-6">The work is banked.</p>
         <Link to="/history">
           <Button variant="secondary" size="lg" className="w-full">Review session</Button>
         </Link>
@@ -358,7 +358,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <HeroEyebrow accent>Today · {programName}</HeroEyebrow>
           <span className="t-data-sm text-[var(--color-muted)]">{exercises.length} ex · {totalSets} sets</span>
         </div>
-        <h2 className="t-title mb-5">
+        <h2 className="t-title text-[28px]! mb-5">
           {hero.day.day_name}
         </h2>
         <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
@@ -376,7 +376,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow>Rest day</HeroEyebrow>
-        <p className="t-title mb-5">Growth happens between sessions.</p>
+        <p className="t-title text-[28px]! mb-5">Growth happens between sessions.</p>
         <Link to="/train">
           <Button variant="ghost" size="sm">Train anyway →</Button>
         </Link>
@@ -388,7 +388,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>Flexible mode</HeroEyebrow>
-        <p className="t-title mb-6">Build today as you go.</p>
+        <p className="t-title text-[28px]! mb-6">Build today as you go.</p>
         <Link to="/train">
           <Button size="lg" metal className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
@@ -403,7 +403,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>{programName}</HeroEyebrow>
-        <p className="t-title mb-2">Pick your training days.</p>
+        <p className="t-title text-[28px]! mb-2">Pick your training days.</p>
         <p className="t-caption mb-6 max-w-[34ch]">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
         <Link to="/train">
           <Button size="lg" className="w-full">Set plan start</Button>
@@ -416,7 +416,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
   return (
     <div>
       <HeroEyebrow accent>Start here</HeroEyebrow>
-      <p className="t-title mb-2">Build your program.</p>
+      <p className="t-title text-[28px]! mb-2">Build your program.</p>
       <p className="t-caption mb-5 max-w-[34ch]">
         Answer five questions and hyPer assembles an evidence-based split around your week.
       </p>

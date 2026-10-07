@@ -1894,7 +1894,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             ) : 'Photo',
           },
         ]}
-        distribution="equal"
         size="sm"
       />
 
@@ -1902,7 +1901,19 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
       {mode === 'saved' ? (
         <div className="space-y-4">
-          <div className="flex min-h-11 items-center justify-between gap-4">
+          {/* Search leads; the list's count and actions sit under it. */}
+          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
+            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
+            <input
+              type="text"
+              placeholder="Find a saved food…"
+              value={savedQuery}
+              onChange={(event) => setSavedQuery(event.target.value)}
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
+            />
+          </div>
+
+          <div className="flex min-h-11 items-center justify-between gap-4 -my-1.5">
             <span className="t-label-sm">
               {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
@@ -1910,7 +1921,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               <button
                 type="button"
                 className="text-action"
-                data-tone="quiet"
                 onClick={handleAddSavedMeal}
               >
                 Add
@@ -1929,17 +1939,6 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 </button>
               )}
             </div>
-          </div>
-
-          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
-            <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
-            <input
-              type="text"
-              placeholder="Find a saved food…"
-              value={savedQuery}
-              onChange={(event) => setSavedQuery(event.target.value)}
-              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
-            />
           </div>
 
           {savedMealMessage && (

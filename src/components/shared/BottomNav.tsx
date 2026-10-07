@@ -34,6 +34,9 @@ export function BottomNav() {
   const selectedTab = nativeTabForPath(location.pathname);
 
   return (
+    <>
+    {/* Bottom scroll edge: content dissolves before it reaches the bar. */}
+    <div className="bottom-nav-edge" aria-hidden />
     <motion.nav
       ref={litRef}
       aria-label="Main navigation"
@@ -51,7 +54,7 @@ export function BottomNav() {
               to={to}
               aria-label={label}
               aria-current={isActive ? 'page' : undefined}
-              className="relative flex flex-col items-center justify-center gap-1.5 h-[68px]"
+              className="relative flex flex-col items-center justify-center h-[60px]"
               onClick={() => {
                 if (!isActive) tapHaptic();
               }}
@@ -59,7 +62,7 @@ export function BottomNav() {
               {isActive && (
                 <motion.span
                   layoutId="material-nav-selection"
-                  className="material-nav-selection pointer-events-none absolute inset-x-1 inset-y-1.5 rounded-[16px]"
+                  className="material-nav-selection pointer-events-none absolute inset-x-0.5 inset-y-1 rounded-[var(--radius-capsule)]"
                   transition={springs.tactile}
                 />
               )}
@@ -67,16 +70,16 @@ export function BottomNav() {
                 whileTap={{ scale: 0.9 }}
                 animate={{ scale: isActive ? 1.04 : 1 }}
                 transition={springs.tactile}
-                className="relative flex flex-col items-center gap-1.5"
+                className="relative flex flex-col items-center gap-[3px]"
               >
                 <Icon
-                  className={`w-[19px] h-[19px] transition-colors duration-200 ${
+                  className={`w-6 h-6 transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
-                  strokeWidth={1.5}
+                  strokeWidth={1.6}
                 />
                 <span
-                  className={`text-[11px] font-medium tracking-[0.01em] [font-family:var(--font-sans)] transition-colors duration-200 ${
+                  className={`text-[10.5px] font-semibold leading-none tracking-[0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
                 >
@@ -88,5 +91,6 @@ export function BottomNav() {
         })}
       </div>
     </motion.nav>
+    </>
   );
 }

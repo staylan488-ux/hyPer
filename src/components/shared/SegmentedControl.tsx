@@ -13,31 +13,30 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
-  distribution?: 'content' | 'equal';
   /** Locks the choice while keeping the current selection fully readable. */
   disabled?: boolean;
   className?: string;
 }
 
 /**
- * Segmented choices: a recessed capsule track; the selection is a raised glass lens.
- * Long option groups can scroll without shrinking labels or touch targets.
+ * Segmented choices at native metrics: a 36px capsule track with a 2px inset
+ * and equal segments; the selection is a 32px thumb. Each segment keeps a
+ * 44px hit area (liquid.css). Keep option groups to about five short labels.
  */
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
   size = 'md',
-  distribution = 'content',
   disabled = false,
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const item = size === 'sm' ? 'px-2' : 'px-3';
+  const item = size === 'sm' ? 'px-1' : 'px-2';
 
   return (
     <div
-      className={`segmented-track flex gap-1 well overflow-x-auto no-scrollbar ${className}`}
+      className={`segmented-track well ${className}`}
       role="tablist"
       aria-disabled={disabled || undefined}
       onKeyDown={(event) => {
@@ -68,11 +67,11 @@ export function SegmentedControl<T extends string>({
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative min-h-11 min-w-11 shrink-0 rounded-[var(--radius-capsule)] font-medium text-[14px] tracking-[-0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
-              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-muted)] opacity-45' : 'text-[var(--color-muted)]'
+            className={`relative rounded-[var(--radius-capsule)] font-medium text-[14px] tracking-[-0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${item} ${
+              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-text)] opacity-30' : 'text-[var(--color-muted)]'
             }`}
           >
-            <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap">{option.label}</span>
+            <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{option.label}</span>
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}

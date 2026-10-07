@@ -114,11 +114,14 @@
   overflow-wrap: anywhere;
   color: var(--color-text);
 }
+/* Empty state: 17px secondary text, never the page's largest line. */
 .you-weight-value.is-empty {
   font-family: var(--font-sans);
-  font-size: 22px;
+  font-size: 17px;
+  font-weight: 400;
   font-variant-numeric: normal;
-  letter-spacing: -.01em;
+  letter-spacing: -.005em;
+  line-height: 1.35;
   color: var(--color-text-dim);
 }
 .you-target-grid {

@@ -33,7 +33,7 @@ export function WeeklyNutrition() {
     <div>
       <div className="flex items-baseline justify-between">
         <h3 className="t-label">Nutrition</h3>
-        <span className="t-label-sm">Last 7 days</span>
+        <span className="t-caption">Last 7 days</span>
       </div>
       {loading ? (
         <div className="shimmer h-24 mt-5" aria-label="Loading nutrition totals" />

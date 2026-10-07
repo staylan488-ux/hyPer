@@ -23,6 +23,10 @@
   --material-inset-shadow: inset 0 1px 2px rgba(20, 20, 20,.06);
   --material-selection: rgba(255,255,255,.95);
   --material-selection-shadow: 0 1px 3px rgba(20, 20, 20,.10);
+  /* Web tab bar: the current tab is a flat ink fill; the bar casts only a
+     faint shadow. */
+  --nav-selection: rgba(0,0,0,.07);
+  --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
   --material-blur: 26px;
   --material-nav-muted: #6a6d68;
   --material-accent: #923127;
@@ -54,6 +58,8 @@
   --material-inset-shadow: inset 0 1px 2px rgba(0,0,0,.45);
   --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
+  --nav-selection: rgba(255,255,255,.12);
+  --nav-shadow: 0 8px 24px rgba(0,0,0,.5);
   --material-nav-muted: #9a9a9a;
   --material-accent: #D9503F;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
@@ -101,13 +107,9 @@
   background-image: var(--material-action-wash);
 }
 .bottom-nav {
-  box-shadow: var(--material-rim), var(--material-shadow);
+  box-shadow: var(--material-rim), var(--nav-shadow);
   -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
   backdrop-filter: blur(var(--material-blur)) var(--material-optics);
-}
-.material-nav-selection {
-  background: var(--material-selection);
-  box-shadow: none;
 }
 .studio-secondary-action, .material-button-secondary {
   background-color: var(--material-secondary);

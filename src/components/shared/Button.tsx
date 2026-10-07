@@ -22,7 +22,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       transition-colors duration-200
       focus:outline-none
       focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
-      disabled:opacity-35 disabled:cursor-not-allowed
+      disabled:opacity-30 disabled:cursor-not-allowed
       rounded-[var(--radius-capsule)]
     `;
 

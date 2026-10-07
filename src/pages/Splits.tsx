@@ -423,7 +423,6 @@ export function Splits() {
       <div className="mt-5 mb-8">
         <SegmentedControl
           size="sm"
-          distribution="equal"
           value={workoutMode}
           disabled={!canSwitchMode}
           onChange={(mode) => {
@@ -576,12 +575,13 @@ export function Splits() {
               animate={{ opacity: 1, y: 0 }}
               transition={springs.settle}
             >
+              <span className="flex items-center gap-2 mb-2">
+                <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" aria-hidden />
+                <span className="t-label text-[var(--color-accent)]">Active</span>
+              </span>
+              {/* The ••• centres on the title's first line (44px target, 32px line). */}
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <span className="flex items-center gap-2 mb-2">
-                    <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" aria-hidden />
-                    <span className="t-label text-[var(--color-accent)]">Active</span>
-                  </span>
                   <h2 className="t-title text-[30px]! break-words">{activeProgram.name}</h2>
                   {activeProgram.description && (
                     <p className="t-caption mt-2">{activeProgram.description}</p>

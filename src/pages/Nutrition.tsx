@@ -589,7 +589,8 @@ export function Nutrition() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
+        {/* Same column guide as History's month grid: seven equal columns on the 24px page gutters. */}
+        <div className="grid grid-cols-7 mx-2">
           {weekDays.map((day) => {
             const key = getDateKey(day);
             const isSelected = isSameDay(day, selectedDate);

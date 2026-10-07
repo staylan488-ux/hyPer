@@ -138,7 +138,8 @@ export function RailStrip({ value, tone = 'chalk', notch, size = 'md', overTone 
           style={{
             left: `${notch * 100}%`,
             height: '220%',
-            backgroundColor: 'var(--color-accent)',
+            // A neutral target: ink at 35%. Lacquer is for live and over.
+            backgroundColor: 'color-mix(in srgb, var(--color-text) 35%, transparent)',
           }}
         />
       )}

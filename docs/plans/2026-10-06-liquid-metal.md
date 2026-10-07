@@ -23,7 +23,9 @@ Materials live in `src/styles/materials.css` (tokens) and
 - **Neutral greys.** Every grey in glass, metal, rings, rails and figures is
   a true neutral (equal R, G and B). No blue, grey-violet or purple cast.
 - **Scroll edge.** Once a page scrolls, content fades into the stage just
-  below the status bar (`.app-viewport::before`), never a hard cut.
+  below the status bar (`.app-viewport::before`), never a hard cut. Under a
+  condensed title the band (`.page-scroll-edge`) runs long and eased with a
+  progressive blur, and the web tab bar has a matching bottom fade.
 - **Platters.** Page sections sit on `.platter` panels: 26px radius, a
   translucent fill, a specular top edge and a soft shadow. They do not blur.
   `.platter-flush` + `.platter-row` make iOS-style grouped lists (rows padded

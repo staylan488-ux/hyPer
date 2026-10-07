@@ -36,20 +36,33 @@ tokens; an already approved direction does not need another design exploration.
   and controls never add their own backdrop filter.
 - Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
   quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
-  at the same height everywhere; it condenses into the scroll-edge band.
+  at the same height everywhere; it condenses into the scroll-edge band, a
+  long eased fade with a progressive blur (status bar to about 44px below
+  the compact title) so nothing crossing it shows a crisp edge.
   Pushed screens keep their parent tab selected (`nativeTabForPath`).
-  Contextual actions are sentence-case `text-action` buttons; tracked caps
-  are for section labels only. Sheet titles use the editorial `sheet-title`.
+  Contextual actions are sentence-case `text-action` buttons in the one ink
+  tint; a disabled action is that tint at 30% opacity, never grey as a style.
+  Sheet-level actions sit in the sheet header beside close
+  (`SheetHeaderAction`). Tracked caps are for section labels only; status
+  labels and disclosure rows are sentence case. Sheet titles use the
+  editorial `sheet-title`.
 - Primary actions are metal-capped capsules (`Button` primary: graphite dome in
   Black, pearl in Ivory, still chrome bezel). Exactly one hero action per
   screen may pass `metal` for the live, tilt-lit bezel. Secondary actions are
-  clear glass capsules; contextual row actions stay unboxed. Progress uses
-  `MetalRing` dials and metal `RailStrip` bars. Meaningful touch targets are at
-  least 44px.
+  clear glass capsules; contextual row actions stay unboxed. A `MetalRing`
+  dial carries a screen's single headline ratio (Today's session, Fuel's
+  calories); lists state counts inline ("3/9 sets"). Bars are metal
+  `RailStrip`s; target ticks are ink at 35%, lacquer only for live and over.
+  Meaningful touch targets are at least 44px.
+- Segmented controls use native metrics: a 36px capsule track, 2px inset,
+  equal segments and a 32px thumb, each segment's hit area extended to 44px.
 - Use the radius tokens: capsule for buttons, chips, segmented tracks and the
   web tab bar; controls/inputs 14px; platters 26px; sheets 30px.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
-  web fallback elsewhere. On iOS 26 the rest bar and status toasts are also
+  web fallback elsewhere. The web bar matches the native geometry: 62px tall,
+  about 21px above the screen's bottom edge, 24px icons, 10.5px semibold
+  labels, the current tab a flat fill (no chip or shadow), and a bottom
+  scroll-edge fade so content dissolves before it. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. Live workouts open with the Up next movement expanded; tapping a movement
   expands its details and inline set entry in place, with an explicit collapse.

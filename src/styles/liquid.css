@@ -460,16 +460,39 @@ html .app-viewport, html .material-foundation {
 }
 .material-sheet-handle { width: 38px; height: 5px; border-radius: 5px; opacity: .32; }
 
-/* Segmented choices: a capsule track with a raised lens for the selection. */
-.segmented-track, .segmented-track.well { border-radius: var(--radius-capsule); padding: 3px; }
-.segmented-track [role='tab'] { border-radius: var(--radius-capsule); }
+/* Segmented choices, at native metrics: a 36px capsule track with a 2px
+   inset, equal segments and a 32px thumb. No inset ring on the track. Each
+   segment's hit area reaches 44px beyond its visible 32px. */
+.segmented-track, .segmented-track.well {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 36px;
+  padding: 2px;
+  border-radius: var(--radius-capsule);
+  box-shadow: none;
+}
+.segmented-track > button {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-capsule);
+}
+.segmented-track > button::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
 
-/* Tab bar (web): a floating capsule, the current tab held in a glass lens. */
+/* Tab bar (web): a floating capsule; the current tab is a flat fill, not a
+   raised chip. */
 .bottom-nav { border-radius: var(--radius-nav); padding: 0 6px; }
 .material-nav-selection {
   border-radius: var(--radius-capsule);
-  background: var(--material-selection);
-  box-shadow: var(--material-selection-shadow);
+  background: var(--nav-selection);
+  box-shadow: none;
 }
 
 /* ─── Fallbacks ─────────────────────────────────────────────── */

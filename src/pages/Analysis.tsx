@@ -260,7 +260,7 @@ export function Analysis() {
       <section className="mt-14">
         <div className="flex items-baseline justify-between">
           <span className="t-label">Training hours</span>
-          <span className="t-label-sm">Last 8 weeks</span>
+          <span className="t-caption">Last 8 weeks</span>
         </div>
         {hoursLoading ? (
           <div className="flex items-end justify-around h-36 mt-11 border-b border-[var(--color-border)]">
@@ -286,7 +286,7 @@ export function Analysis() {
           aria-expanded={showExplainer}
           onClick={() => setShowExplainer(!showExplainer)}
         >
-          <span className="t-label">What the landmarks mean</span>
+          <span className="text-[15px] font-medium text-[var(--color-text)]">What the landmarks mean</span>
           <motion.span animate={{ rotate: showExplainer ? 180 : 0 }} transition={springs.tactile}>
             <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
           </motion.span>
