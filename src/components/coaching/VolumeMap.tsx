@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { useFirstReveal } from '@/lib/motionPolicy';
@@ -7,10 +7,13 @@ import {
   BODY_PATHS,
   MAP_REGIONS,
   inkFill,
+  isSubjectMuscle,
+  isUnderStimulated,
   muscleFill,
   primarySide,
   shadeMuscles,
   STATUS_INK,
+  subjectFill,
   type MuscleShade,
   type ViewSide,
 } from '@/lib/volumeMap';
@@ -24,15 +27,16 @@ const STATUS_WORDS: Record<MuscleVolume['status'], string> = {
   above_mrv: 'over ceiling',
 };
 
-/** Steps of the legend ramp, lightest to heaviest. */
-const LEGEND_RAMP = [STATUS_INK.below_mev, STATUS_INK.mev_mav, STATUS_INK.mav, STATUS_INK.approaching_mrv];
+/** Steps of the legend ramp, lightest to heaviest (under MEV is drawn hollow). */
+const LEGEND_RAMP = [STATUS_INK.mev_mav, STATUS_INK.mav, STATUS_INK.approaching_mrv];
 
 interface VolumeMapProps {
   volume: MuscleVolume[];
   /** Full: front and back with readout and legend. Compact: one still view. */
   variant?: 'full' | 'compact';
-  /** Compact: the muscle in question; the figure turns to the side that
-   *  shows it, toned exactly like the full map. */
+  /** Compact: the muscle the sentence beside it is about. The figure turns
+   *  to the side that shows it and draws only that muscle (primary ink, or
+   *  lacquer past MRV); every other muscle keeps the silhouette's tone. */
   focus?: MuscleGroup | null;
   onSelectMuscle?: (muscle: MuscleGroup | null) => void;
   className?: string;
@@ -41,7 +45,9 @@ interface VolumeMapProps {
 /**
  * This week's volume as a flat, engraved front/back figure. Untrained muscles
  * keep the body's tone and read only by their seams; trained ones deepen in
- * ink by volume status, and only muscles past recoverable volume turn lacquer.
+ * ink by volume status, muscles still under MEV are drawn hollow (an ink
+ * outline, like the ○ status glyph), and only muscles past recoverable
+ * volume turn lacquer.
  */
 export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMuscle, className = '' }: VolumeMapProps) {
   const shades = useMemo(() => shadeMuscles(volume), [volume]);
@@ -52,7 +58,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
     const side = focus ? primarySide(focus) : 'front';
     return (
       <div className={className} aria-hidden>
-        <Figure side={side} shades={shades} intro={intro} />
+        <Figure side={side} shades={shades} intro={intro} subject={focus} />
       </div>
     );
   }
@@ -86,7 +92,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
           ) : (
             <>
               <span className="text-[var(--color-text-dim)]">Tap a muscle</span>
-              <span>{trained.length} {trained.length === 1 ? 'muscle' : 'muscles'} trained</span>
+              <span className="text-[var(--color-text-dim)]">{trained.length} {trained.length === 1 ? 'muscle' : 'muscles'} trained</span>
             </>
           )}
         </motion.p>
@@ -107,7 +113,14 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
         ))}
       </div>
 
-      <div className="flex items-center justify-center gap-5 mt-5 t-caption" aria-hidden>
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-5 t-caption" aria-hidden>
+        <span className="flex items-center gap-2">
+          <span
+            className="w-2.5 h-2.5 rounded-[2px]"
+            style={{ background: inkFill(BODY_INK), boxShadow: 'inset 0 0 0 1.25px var(--color-text)' }}
+          />
+          Under
+        </span>
         <span className="flex items-center gap-2">
           <span className="flex gap-[2px]">
             {LEGEND_RAMP.map((ink) => (
@@ -127,6 +140,9 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
 
 /** Seam between engraved regions, in figure units. */
 const SEAM = 0.7;
+/** Hollow outline: half of it shows inside the region (about 1.3px on the
+ *  264px Progress figure). */
+const HOLLOW = 2.2;
 
 function Figure({
   side,
@@ -134,20 +150,32 @@ function Figure({
   selected = null,
   onPick,
   intro,
+  subject = null,
   className = 'w-full h-full',
 }: {
   side: ViewSide;
   shades: Map<MuscleGroup, MuscleShade>;
+  /** Illustrate one sentence: only this muscle is drawn (see subjectFill). */
+  subject?: MuscleGroup | null;
   /** The tapped muscle: the others recede. */
   selected?: MuscleGroup | null;
   onPick?: (muscle: MuscleGroup) => void;
   intro: boolean;
   className?: string;
 }) {
+  // React's ids carry characters a url(#…) reference would need escaped.
+  const uid = `vm${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const regions = MAP_REGIONS.filter((region) => region.side === side);
   // Every muscle keeps the tone of its own status (lacquer only past MRV), so
-  // the figure never contradicts the legend; no outlines.
-  const fillFor = (muscle: MuscleGroup) => muscleFill(shades.get(muscle));
+  // the figure never contradicts the legend. Illustrating one sentence, only
+  // its subject is drawn.
+  const fillFor = (muscle: MuscleGroup) => subject
+    ? subjectFill(shades.get(muscle), isSubjectMuscle(muscle, subject))
+    : muscleFill(shades.get(muscle));
+  // Under MEV reads hollow: the body's tone inside an ink outline that is
+  // clipped to the region, so it never spills over a seam.
+  const hollow = (muscle: MuscleGroup) => !subject && isUnderStimulated(shades.get(muscle));
+  const clipId = (index: number) => `${uid}-${side}-${index}`;
   const bodyFill = inkFill(BODY_INK);
   const mirrored = (mirror: boolean, content: ReactNode) => (
     <g transform={mirror ? 'scale(-1 1)' : undefined}>{content}</g>
@@ -158,24 +186,45 @@ function Figure({
   ));
   const muscles = regions.map((region, index) => {
     const dimmed = selected !== null && selected !== region.muscle;
+    const isHollow = hollow(region.muscle);
     return (
-      <motion.path
+      <motion.g
         key={`m${index}`}
-        d={region.d}
-        stroke="var(--color-base)"
-        strokeWidth={SEAM}
-        strokeLinejoin="round"
         initial={intro ? { opacity: 0 } : false}
         animate={{ opacity: dimmed ? 0.4 : 1 }}
         transition={intro ? { duration: 0.5, delay: 0.1 + index * 0.025 } : { duration: 0.18 }}
-        style={{ fill: fillFor(region.muscle), cursor: onPick ? 'pointer' : undefined }}
+        style={{ cursor: onPick ? 'pointer' : undefined }}
         onClick={onPick ? () => onPick(region.muscle) : undefined}
-      />
+      >
+        <path
+          d={region.d}
+          stroke="var(--color-base)"
+          strokeWidth={SEAM}
+          strokeLinejoin="round"
+          style={{ fill: isHollow ? bodyFill : fillFor(region.muscle) }}
+        />
+        {isHollow && (
+          <path
+            d={region.d}
+            fill="none"
+            stroke="var(--color-text)"
+            strokeWidth={HOLLOW}
+            strokeLinejoin="round"
+            clipPath={`url(#${clipId(index)})`}
+          />
+        )}
+      </motion.g>
     );
   });
+  const clips = regions.map((region, index) => hollow(region.muscle) && (
+    <clipPath key={`c${index}`} id={clipId(index)}>
+      <path d={region.d} />
+    </clipPath>
+  ));
 
   return (
     <svg className={className} viewBox="-46 0 92 220" preserveAspectRatio="xMidYMid meet" aria-hidden>
+      <defs>{clips}</defs>
       {mirrored(false, body)}
       {mirrored(true, body)}
       {mirrored(false, muscles)}

@@ -124,11 +124,16 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.workouts.find((workout) => workout.id === 'w_current')?.split_day_id).toBe(firstDay.id);
   });
 
-  it('preserves 3/9 initial state, completes it, starts real placeholder sets and resumes them', async () => {
+  it('preserves the 4/17 initial state, completes it, starts real placeholder sets and resumes them', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const initial = useAppStore.getState().currentWorkout!;
-    expect(initial.sets).toHaveLength(9);
-    expect(initial.sets.filter((set) => set.completed)).toHaveLength(3);
+    // The live preview session is seeded from the program's Upper A, like a real start.
+    const upperA = previewTables.split_exercises.filter((row) => row.split_day_id === 'd1');
+    expect(initial.sets).toHaveLength(upperA.reduce((sum, row) => sum + Number(row.target_sets), 0));
+    for (const row of upperA) {
+      expect(initial.sets.filter((set) => set.exercise_id === row.exercise_id)).toHaveLength(Number(row.target_sets));
+    }
+    expect(initial.sets.filter((set) => set.completed)).toHaveLength(4);
     await useAppStore.getState().completeWorkout();
     const started = await useAppStore.getState().startWorkout('d1');
     expect(started?.id).not.toBe(initial.id);
@@ -159,7 +164,7 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.sets.find((set) => set.id === original.id)?.completed).toBe(false);
     await useAppStore.getState().logSet(original.exercise_id, original.set_number, 82.5, 10, 7);
     const updated = useAppStore.getState().currentWorkout!.sets;
-    expect(updated).toHaveLength(9);
+    expect(updated).toHaveLength(17);
     expect(updated.find((set) => set.id === original.id)).toMatchObject({ weight: 82.5, reps: 10, completed: true });
   });
 

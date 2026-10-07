@@ -1035,7 +1035,7 @@ export function Settings() {
                 className="you-text-action -mt-3.5 -mr-1 flex items-center gap-0.5"
               >
                 Details
-                <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronRight size={16} strokeWidth={1.75} className="you-row-chevron" aria-hidden="true" />
               </button>
             </div>
             {weightTrend.fittedDayCount >= 2 && (

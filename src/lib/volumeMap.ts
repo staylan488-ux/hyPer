@@ -96,7 +96,7 @@ export const MAP_REGIONS: MapRegion[] = [
 
 /** The view a muscle is mainly read from (deltoid sides show on both). */
 export function primarySide(muscle: MuscleGroup): ViewSide {
-  const sides = new Set(MAP_REGIONS.filter((region) => region.muscle === muscle).map((region) => region.side));
+  const sides = new Set(MAP_REGIONS.filter((region) => isSubjectMuscle(region.muscle, muscle)).map((region) => region.side));
   return sides.has('front') ? 'front' : 'back';
 }
 
@@ -156,6 +156,29 @@ export function muscleFill(shade: MuscleShade | undefined): string {
   if (shade?.hot) return 'var(--color-accent)';
   const ink = shade && shade.ink > 0 ? shade.ink : BODY_INK;
   return inkFill(ink);
+}
+
+/** Whether a drawn muscle belongs to the subject of a sentence; general
+ * "shoulders" covers every deltoid head. */
+export function isSubjectMuscle(muscle: MuscleGroup, subject: MuscleGroup | null): boolean {
+  if (!subject) return false;
+  return muscle === subject || (subject === 'shoulders' && DELTS.includes(muscle));
+}
+
+/**
+ * A figure that illustrates one sentence (Today's insight): the muscle the
+ * sentence is about in primary ink, lacquer only when the sentence is about
+ * it being past recoverable volume, and every other muscle at the
+ * silhouette's own tone, so no other muscle competes with the story.
+ */
+export function subjectFill(shade: MuscleShade | undefined, isSubject: boolean): string {
+  if (!isSubject) return inkFill(BODY_INK);
+  return shade?.hot ? 'var(--color-accent)' : 'var(--color-text)';
+}
+
+/** Trained this week but below MEV: drawn hollow, like the ○ status glyph. */
+export function isUnderStimulated(shade: MuscleShade | undefined): boolean {
+  return Boolean(shade && shade.sets > 0 && shade.status === 'below_mev');
 }
 
 export function inkFill(ink: number): string {

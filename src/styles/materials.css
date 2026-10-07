@@ -23,13 +23,13 @@
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
   --material-inset-shadow: inset 0 1px 2px rgba(20, 20, 20,.06);
-  --material-selection: rgba(255,255,255,.95);
+  --material-selection: #FDFDF9;
   --material-selection-shadow: 0 1px 3px rgba(20, 20, 20,.10);
-  /* Web tab bar: the current tab is a flat ink fill; the bar casts only a
-     faint shadow. */
+  /* Web tab bar: the current tab is a flat ink fill; the bar is set off by
+     one faint shadow and no edge. */
   --nav-selection: rgba(0,0,0,.07);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
-  --nav-rim: inset 0 0 0 .5px rgba(20,20,20,.10);
+  --nav-rim: 0 0 #0000;
   --material-blur: 26px;
   --material-nav-muted: #6a6d68;
   --material-accent: #923127;
@@ -45,7 +45,7 @@
   /* True black: no tinted pool of light behind the content. */
   --material-ambient: none;
   --material-glass: rgba(30,30,30,.52);
-  --material-sheet: rgba(16,16,16,.94);
+  --material-sheet: rgba(22,22,22,.97);
   --material-surface: rgba(255,255,255,.055);
   --material-secondary: rgba(255,255,255,.10);
   --material-inset: rgba(255,255,255,.07);
@@ -61,7 +61,7 @@
   --material-inset-shadow: inset 0 1px 2px rgba(0,0,0,.45);
   --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
-  --nav-selection: rgba(255,255,255,.12);
+  --nav-selection: #333333;
   --nav-shadow: none;
   --nav-rim: inset 0 0 0 .5px rgba(255,255,255,.08);
   --material-nav-muted: #9a9a9a;
@@ -115,6 +115,14 @@
   -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
   backdrop-filter: blur(var(--material-blur)) var(--material-optics);
 }
+/* Black: floating surfaces are flat and nearly opaque (#161616), with no
+   wash or sheen, so nothing behind them grades them into a lit slab and the
+   current tab reads the same on every tab. */
+.dark .bottom-nav {
+  background-color: rgba(22,22,22,.94);
+  background-image: none;
+}
+.dark .studio-sheet { background-image: none; }
 .studio-secondary-action, .material-button-secondary {
   background-color: var(--material-secondary);
   box-shadow: none;

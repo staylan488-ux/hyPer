@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BODY_PATHS, MAP_REGIONS, STATUS_INK, muscleFill, primarySide, shadeMuscles } from '../src/lib/volumeMap';
+import { BODY_INK, BODY_PATHS, MAP_REGIONS, STATUS_INK, inkFill, isSubjectMuscle, isUnderStimulated, muscleFill, primarySide, shadeMuscles, subjectFill } from '../src/lib/volumeMap';
 import { isPluralMuscle, muscleSubject } from '../src/lib/muscleCopy';
 import type { MuscleVolume } from '../src/types';
 
@@ -47,6 +47,26 @@ describe('volume map', () => {
     expect(muscleFill(shades.get('back'))).not.toContain('accent');
     expect(muscleFill(shades.get('chest'))).toBe('color-mix(in srgb, var(--color-text) 64%, var(--color-base))');
     expect(muscleFill(shades.get('quads'))).toBe('color-mix(in srgb, var(--color-text) 10%, var(--color-base))');
+  });
+});
+
+describe('figure that illustrates one sentence', () => {
+  it('draws only the subject, lacquer only when the sentence is about the ceiling', () => {
+    const shades = shadeMuscles([volume('hamstrings', 5, 'below_mev'), volume('side_delts', 23, 'above_mrv')]);
+    expect(subjectFill(shades.get('hamstrings'), true)).toBe('var(--color-text)');
+    // Over-ceiling side delts stay silhouette when the sentence is about hamstrings.
+    expect(subjectFill(shades.get('side_delts'), false)).toBe(inkFill(BODY_INK));
+    expect(subjectFill(shades.get('side_delts'), true)).toBe('var(--color-accent)');
+    expect(isSubjectMuscle('rear_delts', 'shoulders')).toBe(true);
+    expect(isSubjectMuscle('chest', 'hamstrings')).toBe(false);
+    expect(primarySide('shoulders')).toBe('front');
+  });
+
+  it('marks trained muscles still under MEV as hollow', () => {
+    const shades = shadeMuscles([volume('hamstrings', 5, 'below_mev'), volume('calves', 0, 'below_mev'), volume('chest', 12, 'mav')]);
+    expect(isUnderStimulated(shades.get('hamstrings'))).toBe(true);
+    expect(isUnderStimulated(shades.get('calves'))).toBe(false);
+    expect(isUnderStimulated(shades.get('chest'))).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
@@ -65,6 +65,7 @@ import {
   subMonths,
 } from 'date-fns';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
+import { calendarMonthLabel } from '@/lib/calendarLabel';
 import './progress-liquid.css';
 
 interface WorkoutWithSplit extends Workout {
@@ -1339,27 +1340,28 @@ export function History() {
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
         <section aria-label="Calendar">
-          <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="calendar-head mb-3">
             <AnimatePresence mode="wait" initial={false}>
               <motion.h3
                 key={format(selectedMonth, 'yyyy-MM')}
-                className="t-heading"
+                className="calendar-head-title"
+                aria-label={format(selectedMonth, 'MMMM yyyy')}
                 initial={{ opacity: 0, x: monthDirection * 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: monthDirection * -12 }}
                 transition={{ duration: 0.18 }}
               >
-                {format(selectedMonth, 'MMMM yyyy')}
+                {calendarMonthLabel(selectedMonth)}
               </motion.h3>
             </AnimatePresence>
-            <div className="flex items-center -mr-3">
+            <div className="calendar-head-nav">
               <button
                 type="button"
                 onClick={() => {
                   setMonthDirection(-1);
                   setSelectedMonth((prev) => subMonths(prev, 1));
                 }}
-                className="ledger-nav-key"
+                className="calendar-nav-key"
                 aria-label="Previous month"
               >
                 <ChevronLeft className="w-[18px] h-[18px]" strokeWidth={1.6} />
@@ -1370,7 +1372,7 @@ export function History() {
                   setMonthDirection(1);
                   setSelectedMonth((prev) => addMonths(prev, 1));
                 }}
-                className="ledger-nav-key"
+                className="calendar-nav-key"
                 aria-label="Next month"
               >
                 <ChevronRight className="w-[18px] h-[18px]" strokeWidth={1.6} />
@@ -1421,20 +1423,20 @@ export function History() {
                   {isSelected && (
                     <motion.span
                       aria-hidden
-                      className="ledger-day-disc absolute top-[1px] left-1/2 -ml-[17px]"
+                      className="ledger-day-disc absolute top-[2px] left-1/2 -ml-[15px]"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
                   )}
                   <span
-                    className={`ledger-day-number relative -mt-1.5 text-[14px] leading-none tabular-nums ${
+                    className={`ledger-day-number relative -mt-2.5 text-[14px] leading-none tabular-nums ${
                       isTodayDate ? 'text-[var(--color-accent)] font-semibold' : isFutureDate && !isSelected ? 'ledger-day-future' : 'text-[var(--color-text)]'
                     } ${isSelected ? 'font-semibold' : ''}`}
                   >
                     {format(day, 'd')}
                   </span>
                   {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
-                    <span aria-hidden className="absolute bottom-[3px] inset-x-0 flex items-center justify-center gap-[3px]">
+                    <span aria-hidden className="absolute bottom-[1px] inset-x-0 flex items-center justify-center gap-[3px]">
                       {dayWorkouts.length > 0 && <span className="ledger-mark-lift" />}
                       {dayActivities.length > 0 && <span className="ledger-mark-activity" />}
                     </span>
@@ -1470,14 +1472,17 @@ export function History() {
           <div className="flex items-center justify-between gap-3 -mt-1.5 mb-1.5">
             <p className="t-caption min-w-0">{selectedDaySummary}</p>
             <div className="flex items-center shrink-0 -mr-2.5">
+              {/* Sync is a quiet icon; Add activity stays the one action. */}
               {syncAvailable && (
                 <button
                   type="button"
-                  className="text-action"
+                  className="history-sync-key pressable"
+                  aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
+                  title="Sync WHOOP"
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
-                  {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
+                  <RefreshCw className={`w-[17px] h-[17px] ${syncingWhoop ? 'motion-safe:animate-spin' : ''}`} strokeWidth={1.6} aria-hidden />
                 </button>
               )}
               <button
@@ -1907,13 +1912,15 @@ export function History() {
             })}
               {selectedDayActivities.length > 0 && (
                 <div className={selectedDayWorkouts.length > 0 ? 'mt-7' : ''}>
-                  <div className="flex items-center justify-between gap-3 min-h-11">
+                  {/* One header-to-first-row rhythm (Today, Fuel): the
+                      header's 44px actions overhang its 28px line. */}
+                  <div className="flex items-center justify-between gap-3 min-h-7">
                     <span className="t-label">
                       Activities <span className="text-[var(--color-muted)] tabular-nums ml-1">{selectedDayActivities.length}</span>
                     </span>
                     {selectedDayActivities.length > 1 && (
                       mergeSelection ? (
-                        <div className="flex items-center shrink-0 -mr-2.5">
+                        <div className="flex items-center shrink-0 -mr-2.5 -my-2">
                           <button
                             type="button"
                             className="text-action"
@@ -1933,10 +1940,10 @@ export function History() {
                       ) : (
                         <button
                           type="button"
-                          className="text-action -mr-2.5"
+                          className="text-action -mr-2.5 -my-2"
                           onClick={() => setMergeSelection([])}
                         >
-                          Merge
+                          Merge activities
                         </button>
                       )
                     )}
@@ -1948,7 +1955,7 @@ export function History() {
                         : `${mergeSelection.length} selected`}
                     </p>
                   )}
-                  <div className="platter platter-flush mt-2">
+                  <div className="platter platter-flush">
                   {selectedDayActivities.map((activity, activityIndex) => (
                     <motion.div
                       key={activity.id}

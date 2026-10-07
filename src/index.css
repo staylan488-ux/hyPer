@@ -97,7 +97,7 @@
   --color-border: rgba(35, 35, 35, 0.16);
   --color-border-strong: rgba(35, 35, 35, 0.32);
   --color-border-soft: rgba(35, 35, 35, 0.08);
-  --overlay-backdrop: rgba(0, 0, 0, 0.11);
+  --overlay-backdrop: rgba(0, 0, 0, 0.22);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
@@ -452,7 +452,9 @@ input, textarea, select, button { font-family: inherit; }
 /* Scroll edge: once the page scrolls, content dissolves into the stage just
    below the status bar instead of meeting a hard line. The layer is a copy of
    the shell's own background, aligned to it and faded out by a mask, so the
-   seam matches in every theme. */
+   seam matches in every theme. Pages with a title band (PageTitle) cover it
+   with the band; elsewhere it is the whole edge: solid for 14px, then the
+   band's short 16px smoothstep ramp, opacity only. */
 .app-viewport::before {
   content: '';
   position: absolute;
@@ -460,16 +462,14 @@ input, textarea, select, button { font-family: inherit; }
   left: 0;
   right: 0;
   z-index: 1;
-  height: 44px;
+  height: 30px;
   pointer-events: none;
   background: inherit;
   background-size: 100% var(--app-viewport-height, 100dvh);
   background-position: 0 calc(-1 * var(--app-safe-top));
   background-repeat: no-repeat;
-  /* Eased like the title band (PageTitle), so nothing crossing it keeps a
-     crisp edge at low alpha. */
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 30%, rgba(0, 0, 0, .9) 48%, rgba(0, 0, 0, .65) 66%, rgba(0, 0, 0, .3) 84%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 30%, rgba(0, 0, 0, .9) 48%, rgba(0, 0, 0, .65) 66%, rgba(0, 0, 0, .3) 84%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, .84) 18px, rgba(0, 0, 0, .5) 22px, rgba(0, 0, 0, .16) 26px, transparent 30px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, .84) 18px, rgba(0, 0, 0, .5) 22px, rgba(0, 0, 0, .16) 26px, transparent 30px);
   opacity: 0;
   transition: opacity 180ms var(--ease-out-quart);
 }
@@ -539,12 +539,13 @@ html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility:
 }
 @media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }
 /* iOS 26: phone sheets float inset from the screen edges with every corner
-   rounded, following the display's own curve. */
+   rounded. The bottom corners are concentric with the display's own curve
+   (about 55px, less the 8px inset). */
 @media (max-width: 639px) {
   .studio-sheet {
     margin: 0 8px 8px;
     width: calc(100% - 16px);
-    border-radius: 34px;
+    border-radius: 34px 34px 47px 47px;
   }
 }
 

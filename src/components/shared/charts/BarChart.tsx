@@ -35,6 +35,9 @@ interface BarChartProps {
   label: string;
   /** Minimum visible bar height for non-zero values, px. */
   minBar?: number;
+  /** Mark empty columns with a quiet 2px stub on the baseline, so a run of
+   *  empty weeks reads as zero rather than as missing data. */
+  zeroStub?: boolean;
   className?: string;
 }
 
@@ -57,6 +60,7 @@ export function BarChart({
   reveal,
   label,
   minBar = 3,
+  zeroStub = false,
   className = '',
 }: BarChartProps) {
   const firstReveal = useFirstReveal(reveal);
@@ -130,6 +134,13 @@ export function BarChart({
                 >
                   {d.caption}
                 </motion.span>
+              )}
+              {zeroStub && d.value <= 0 && (
+                <div
+                  aria-hidden
+                  className="w-[58%] max-w-[30px] min-w-[3px] h-[2px] shrink-0 rounded-t-[1px]"
+                  style={{ background: 'var(--color-border-strong)' }}
+                />
               )}
               <div className="relative w-[58%] max-w-[30px] min-w-[3px] shrink-0" style={{ height: fraction * barArea }}>
                 <motion.div

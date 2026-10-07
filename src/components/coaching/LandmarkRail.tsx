@@ -1,6 +1,8 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { useFirstReveal } from '@/lib/motionPolicy';
+import { LEADING_SHARE, mavLabelPlacement } from '@/lib/landmarkLabels';
 
 interface LandmarkRailProps {
   current: number;
@@ -23,24 +25,31 @@ interface LandmarkRailProps {
  */
 export function LandmarkRail({ current, mev, mavLow, mavHigh, mrv, over: overStatus, reveal, className = '' }: LandmarkRailProps) {
   const firstReveal = useFirstReveal(reveal);
+  // The rail's own width places the band's name; the phone's ~354px until
+  // it is measured.
+  const railRef = useRef<HTMLDivElement>(null);
+  const [rail, setRail] = useState(354);
+  useLayoutEffect(() => {
+    const element = railRef.current;
+    if (!element) return;
+    const sync = () => {
+      if (element.clientWidth > 0) setRail(element.clientWidth);
+    };
+    sync();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const scaleMax = Math.max(mrv * 1.2, current * 1.08, 1);
   const share = (value: number) => Math.min(1, Math.max(0, value / scaleMax));
   const pos = (value: number) => `${share(value) * 100}%`;
   const over = overStatus ?? current > mrv;
   const under = current < mev;
-  // Names sit centred under their ticks. The band's name carries its range
-  // when it clears both neighbours (estimated on the phone's ~330px rail at
-  // ~6.4px per 10px tracked character, with an 8px gap); otherwise it falls
-  // back to "MAV", or is dropped.
-  const bandCentre = (mavLow + mavHigh) / 2;
-  const RAIL = 330;
-  const labelWidth = (text: string) => text.length * 6.4;
-  const clears = (text: string) => {
-    const half = labelWidth(text) / 2;
-    return (share(bandCentre) - share(mev)) * RAIL >= half + labelWidth(`MEV ${mev}`) / 2 + 8
-      && (share(mrv) - share(bandCentre)) * RAIL >= half + labelWidth(`MRV ${mrv}`) / 2 + 8;
-  };
-  const mavLabel = [`MAV ${mavLow}–${mavHigh}`, 'MAV'].find(clears);
+  // Names sit centred under their ticks. The band's name keeps its range,
+  // sliding off the band's centre as far as it must to clear both
+  // neighbours; only without room does it fall back to "MAV", or drop.
+  const mavLabel = mavLabelPlacement({ mev, mavLow, mavHigh, mrv, share, rail });
   const currentShare = share(current);
   const markerTone = over ? 'var(--color-accent)' : under ? 'var(--color-text-dim)' : 'var(--color-text)';
   const ticks = [
@@ -84,19 +93,19 @@ export function LandmarkRail({ current, mev, mavLow, mavHigh, mrv, over: overSta
           </span>
         </motion.div>
       </div>
-      <div className="relative h-4 mt-1.5 text-[10px] leading-4 tracking-[0.08em] text-[var(--color-muted)] tabular-nums" aria-hidden>
+      <div ref={railRef} className="relative h-4 mt-1.5 text-[10px] leading-4 tracking-[0.08em] text-[var(--color-muted)] tabular-nums" aria-hidden>
         {ticks.map((tick) => (
           <span
             key={tick.key}
-            className={`absolute top-0 whitespace-nowrap ${share(tick.value) < 0.08 ? '' : '-translate-x-1/2'}`}
+            className={`absolute top-0 whitespace-nowrap ${share(tick.value) < LEADING_SHARE ? '' : '-translate-x-1/2'}`}
             style={{ left: pos(tick.value) }}
           >
             {tick.label} {tick.value}
           </span>
         ))}
         {mavLabel && (
-          <span className="absolute top-0 -translate-x-1/2 whitespace-nowrap" style={{ left: pos(bandCentre) }}>
-            {mavLabel}
+          <span className="absolute top-0 -translate-x-1/2 whitespace-nowrap" style={{ left: mavLabel.x }}>
+            {mavLabel.text}
           </span>
         )}
       </div>
