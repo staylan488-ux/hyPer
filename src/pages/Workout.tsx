@@ -1861,6 +1861,7 @@ export function Workout() {
                           })}
                           previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                           isNext={set.id === firstUncompletedSetId}
+                          planContinues={sets.slice(idx + 1).some((later) => !later.completed)}
                           editing={set.id === editorSet?.id}
                           exerciseName={exerciseName}
                           onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
@@ -2003,6 +2004,7 @@ export function Workout() {
                         })}
                         previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                         isNext={set.id === firstUncompletedSetId}
+                        planContinues={sets.slice(idx + 1).some((later) => !later.completed)}
                         editing={set.id === editorSet?.id}
                         exerciseName={exerciseName}
                         onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
@@ -2293,8 +2295,8 @@ function ExerciseCard({
       <div className="studio-movement-reveal-inner">
       <div id={contentId} className="studio-movement-content">
         {/* Last workout's numbers live with each set's entry ("Repeat last ·
-            60 × 9"), on the same line as whatever is planned, so the two read
-            as a choice rather than an unexplained jump. */}
+            60 × 9"), a text action under the fields, so they read as a choice
+            rather than an unexplained jump. */}
         {children}
       </div>
       </div>

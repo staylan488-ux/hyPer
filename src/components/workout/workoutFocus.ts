@@ -186,9 +186,10 @@ export function formatSessionDuration(createdAt: string | null, now: number): st
     : '—';
 }
 
-/** The compact bar title once the session title has scrolled under the bar. */
-export function compactSessionTitle(title: string, elapsed: string): string {
-  return `${title} · ${elapsed}`;
+/** What fades in before the clock once the session title has scrolled under
+ *  the bar, giving the compact title "Upper A · 24m". */
+export function compactSessionPrefix(title: string): string {
+  return `${title} · `;
 }
 
 /**

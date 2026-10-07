@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/react';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { ScrollEdgeVeil } from '@/components/shared/PageTitle';
 import { restNudgeTarget } from '@/lib/titleSnap';
 import { measureRestBand, measureRestBlocks } from '@/lib/restBlocks';
-import { compactSessionTitle, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd } from './workoutFocus';
+import { compactSessionPrefix, formatSessionDuration, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd } from './workoutFocus';
 
 // The bar row under the status bar; the session title starts to hand over to
 // the compact title once it reaches the bar's bottom edge.
@@ -26,7 +26,8 @@ const SETTLE_MS = 140;
  * Finish (trailing) never scroll away. It sits on the shared scroll-edge band
  * (the same blurred veil as every PageTitle), so content passing under it
  * dissolves instead of meeting a line. Once the session title has scrolled
- * under it, the centre cross-fades to the compact "Upper A · 24m".
+ * under it, "Upper A ·" fades in before the clock, which keeps its place in
+ * the title style throughout, giving the compact "Upper A · 24m".
  *
  * The session header (title and ring) behaves like a large title: when
  * scrolling ends part-way it settles expanded or wholly collapsed under the
@@ -63,9 +64,24 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
   const scrolled = useMotionValue(0);
   const covered = useMotionValue(0);
   const band = useTransform(scrolled, [0, BAND_RAMP], [0, 1]);
-  const clockOpacity = useTransform(covered, [0.4, 0.85], [1, 0]);
-  const compactOpacity = useTransform(covered, [0.55, 1], [0, 1]);
-  const compactY = useTransform(covered, [0.55, 1], [6, 0]);
+  // The clock is one element in both states: as the bar condenses only the
+  // "Upper A ·" prefix fades in, and the line slides from centring the clock
+  // to centring the whole title (transform only; see .studio-session-line).
+  const condensed = useTransform(covered, [0.55, 1], [0, 1]);
+  const lineRef = useRef<HTMLSpanElement>(null);
+  const prefixRef = useRef<HTMLSpanElement>(null);
+  const prefix = compactSessionPrefix(title);
+  useLayoutEffect(() => {
+    const line = lineRef.current;
+    const prefixElement = prefixRef.current;
+    if (!line || !prefixElement) return;
+    const measurePrefix = () => line.style.setProperty('--prefix-width', `${prefixElement.getBoundingClientRect().width}px`);
+    measurePrefix();
+    // Webfonts can land after the first measure, and a long title truncates.
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measurePrefix) : null;
+    observer?.observe(prefixElement);
+    return () => observer?.disconnect();
+  }, [prefix]);
 
   useEffect(() => {
     const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
@@ -202,10 +218,9 @@ export function LiveSessionBar({ title, createdAt, titleRef, headerRef, pageRef,
           <ChevronDown size={24} strokeWidth={1.75} aria-hidden />
         </button>
         <span className="studio-session-centre">
-          <motion.span className="studio-session-clock" style={{ opacity: clockOpacity }}
-            role="timer">{elapsed}</motion.span>
-          <motion.span className="page-scroll-edge-title studio-session-compact" style={{ opacity: compactOpacity, y: compactY }} aria-hidden>
-            {compactSessionTitle(title, elapsed)}
+          <motion.span ref={lineRef} className="page-scroll-edge-title studio-session-line" style={{ '--condensed': condensed } as MotionStyle}>
+            <motion.span ref={prefixRef} className="studio-session-prefix" style={{ opacity: condensed }} aria-hidden>{prefix}</motion.span>
+            <span className="studio-session-clock" role="timer">{elapsed}</span>
           </motion.span>
         </span>
         <button type="button" className="studio-session-finish" onClick={onFinish} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</button>

@@ -17,14 +17,16 @@
    line whatever the side controls measure. */
 .studio-session-top { position: absolute; z-index: 1; top: 0; left: 0; right: 0; height: 44px; padding: 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; pointer-events: auto; }
 .studio-session-top > button { display: flex; align-items: center; min-height: 44px; }
-/* The clock and the compact title share the centre and cross-fade. The clock
-   is secondary ink at a legible 15pt with tabular digits. */
+/* The centre holds one line in the compact title's style: the clock, in
+   primary ink with tabular lining figures, and before it the "Upper A ·"
+   prefix, transparent at the top. At the top the line is shifted by half the
+   prefix so the clock sits on the screen's centre line; as the bar condenses
+   the prefix fades in while the line slides to centre the whole title. The
+   clock never changes face, colour or weight between the two states. */
 .studio-session-centre { grid-column: 2; display: grid; place-items: center; min-width: 0; }
-.studio-session-centre > * { grid-area: 1 / 1; }
-/* The elapsed time keeps one figure style as the bar condenses: tabular
-   lining figures, in the sans clock and in the serif compact title alike. */
-.studio-session-clock { font-family: var(--font-sans); font-size: 15px; line-height: 1.2; letter-spacing: -.005em; color: var(--color-text-dim); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
-.studio-session-compact.page-scroll-edge-title { max-width: min(62vw, 300px); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; }
+.studio-session-line.page-scroll-edge-title { display: flex; align-items: baseline; max-width: min(62vw, 300px); overflow: visible; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; transform: translateX(calc(var(--prefix-width, 0px) * (var(--condensed, 0) - 1) / 2)); }
+.studio-session-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.studio-session-clock { flex-shrink: 0; white-space: nowrap; color: var(--color-text); }
 /* Minimise: a bare 44pt chevron, no fill or bubble; its stroke sits on the 24pt guide. */
 .studio-session-minimise { justify-self: start; justify-content: center; width: 44px; height: 44px; margin-left: -16px; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
 .studio-session-minimise:active { opacity: .5; }
@@ -88,7 +90,7 @@
 .studio-movement-prescription { margin: -2px 0 4px; font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 
 /* The open set's numbers are full ink, planned or typed: the "Planned"
-   label beside them is the one cue that they are a suggestion. Sets further
+   cue under them is the one sign that they are a suggestion. Sets further
    down are secondary ink (never disabled grey) until logged in full ink. */
 /* Three equal fields and the 44pt save key, flush with the 44pt fields. */
 .studio-set-headings, .studio-set-ledger, .studio-set-entry { display: grid; grid-template-columns: 22px repeat(3, minmax(0, 1fr)) 44px; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
@@ -126,24 +128,29 @@
    same weight as a typed one. */
 .studio-set-input::placeholder { color: var(--color-text-dim); opacity: .62; font-weight: 400; }
 .studio-set-input[data-suggested]::placeholder { color: var(--color-text); opacity: 1; font-weight: 600; }
-/* Block, not flex, so the cue's word spacing survives. The source is a
-   quiet 13px secondary note, never a heading: the fields and the actions are
-   the row's only emphasis. */
+/* Block, not flex, so the cue's word spacing survives. On the movement's
+   last set the source is a quiet 13px secondary note under the fields. */
 .studio-set-suggestion { display: block; white-space: nowrap; font-size: 13px; font-weight: 400; color: var(--color-text-dim); }
+/* With planned rows below, the source heads them instead: an 11pt tracked
+   label like the column headings, on its own line under the open set's
+   divider, so it never reads as a caption for Repeat last. */
+.studio-set-editor:has(> .studio-set-source-head) { border-bottom: 0; }
+.studio-set-source-head { display: block; padding: 14px 0 2px; border-top: 1px solid var(--platter-divider, var(--color-border-soft)); font-size: 11px; line-height: 1.4; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-dim); }
+.studio-set-entry + .studio-set-source-head, .studio-save-error + .studio-set-source-head { margin-top: 12px; }
 .studio-set-offer { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .studio-save-set { display: flex; align-items: center; justify-content: center; border: 0; font-size: 11px; transition: transform .12s cubic-bezier(.2,.9,.25,1); }
 .studio-save-set:active:not(:disabled) { transform: scale(.94); }
 .studio-save-set:disabled { opacity: .4; }
 .studio-save-error { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--color-text); }
-/* One full 44pt row under the fields: the numbers' source ("Planned";
-   secondary, not interactive) and the alternatives. Repeat last is a flat
-   neutral capsule the row's full 44pt tall and at least 180pt wide, so what
-   shows is what takes the tap; Cancel is an ink text action. */
-.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; padding: 8px 0; font-size: 13px; line-height: 1.4; color: var(--color-text-dim); }
-.studio-set-editor-foot > div { display: flex; gap: 12px; margin-left: auto; }
-.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; font-size: 15px; font-weight: 500; color: var(--color-text); }
-.studio-set-editor-foot .studio-set-repeat { min-width: 180px; padding: 0 16px; border-radius: var(--radius-capsule); background: color-mix(in srgb, var(--color-text) 7%, transparent); }
-.dark .studio-set-editor-foot .studio-set-repeat { background: var(--color-well); }
+/* One 44pt row under the fields for the alternatives (and, on a movement's
+   last set or a set with nothing suggested, a quiet secondary note). Repeat
+   last and Cancel are unboxed ink text actions, each a full 44pt target
+   whose glyphs end on the trailing guide: the save key stays the band's one
+   filled control. */
+.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; padding: 4px 0; font-size: 13px; line-height: 1.4; color: var(--color-text-dim); }
+.studio-set-editor-foot > div { display: flex; gap: 4px; margin-left: auto; margin-right: -10px; }
+.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 15px; font-weight: 500; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
+.studio-set-editor-foot button:active:not(:disabled) { opacity: .5; }
 .studio-set-editor-foot button:disabled { opacity: .3; }
 .studio-movement-note { margin-top: 4px; }
 .studio-note-text { padding-top: 8px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }

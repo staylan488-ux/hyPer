@@ -156,6 +156,12 @@
   --button-primary-active: #D9D9D9;
   /* Lifted from 10% so the silhouette's contour holds against true black. */
   --map-body: color-mix(in srgb, var(--color-text) 18%, var(--color-base));
+  /* The map drawn as Ivory draws it: hairline seams in the page colour (not
+     keylines), fills a step quieter, and the hollow outline at 70% ink so
+     it never glows (lib/volumeMap, VolumeMap). */
+  --map-seam: 1px;
+  --map-ink-drop: 13%;
+  --map-hollow-ink: color-mix(in srgb, var(--color-text) 70%, var(--color-base));
 }
 
 * {

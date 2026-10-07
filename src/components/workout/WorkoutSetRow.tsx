@@ -44,6 +44,8 @@ interface WorkoutSetRowProps {
   autofillValues?: AutofillSetValues | null;
   previousTarget?: PreviousTarget | null;
   isNext?: boolean;
+  /** Unlogged sets follow this one: an open suggestion's source heads them. */
+  planContinues?: boolean;
   editing?: boolean;
   exerciseName?: string;
   onSelect?: () => void;
@@ -53,7 +55,7 @@ interface WorkoutSetRowProps {
 }
 
 /** One draft per real set, retained while its row or movement is collapsed. */
-export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, isNext = false,
+export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, isNext = false, planContinues = false,
   editing = false, exerciseName, onSelect, onHide, onComplete, onBeforeComplete }: WorkoutSetRowProps) {
   const logSet = useAppStore((state) => state.logSet);
   // Inputs hold only what the user typed (or a logged set's own numbers); an
@@ -189,7 +191,24 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const autofillAction = autofillValues && (autofillValues.weight !== entryWeight || autofillValues.reps !== entryReps || autofillValues.rpe !== entryRpe)
     ? <button type="button" className="studio-set-repeat pressable" disabled={saving} onClick={() => {
       tapHaptic(); hasDraft.current = true; setWeight(autofillValues.weight); setReps(autofillValues.reps); setRpe(autofillValues.rpe);
-    }}><RotateCcw size={13} aria-hidden /><span className="studio-set-offer">{repeatOfferLabel(autofillValues)}</span></button>
+    }}><RotateCcw size={15} strokeWidth={1.9} aria-hidden /><span className="studio-set-offer">{repeatOfferLabel(autofillValues)}</span></button>
+    : null;
+  const actions = autofillAction || set.completed ? <div>
+    {autofillAction}
+    {set.completed && <button type="button" disabled={saving} onClick={() => {
+      hasDraft.current = false;
+      setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
+      setSaveError(null); releaseEditorFocus(); onHide?.();
+    }}>Cancel</button>}
+  </div> : null;
+  // The suggestion's source: a header over the planned rows below when there
+  // are any, else a quiet note under the fields (the movement's last set).
+  const sourceAsHeader = Boolean(showingSuggestion && suggestion && planContinues);
+  const sourceCue = showingSuggestion && suggestion
+    ? <span id={suggestionCaptionId} className={sourceAsHeader ? 'studio-set-source-head' : 'studio-set-suggestion'}>
+      {SUGGESTION_SOURCE[suggestion.source]}
+      <span className="sr-only">, Save logs these numbers as shown</span>
+    </span>
     : null;
 
   return <>
@@ -236,25 +255,16 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         </button>
       </div>
       {saveError && <p role="alert" className="studio-save-error">{saveError}</p>}
-      {/* One line under the fields: where the numbers came from, and the
-          alternatives (repeat last, or cancel an edit). Entry closes with the
-          movement's header, its one toggle. */}
-      <div className="studio-set-editor-foot">
-        {showingSuggestion && suggestion
-          ? <span id={suggestionCaptionId} className="studio-set-suggestion">
-            {SUGGESTION_SOURCE[suggestion.source]}
-            <span className="sr-only">, Save logs these numbers as shown</span>
-          </span>
-          : <span className="studio-set-foot-note">{!autofillAction && formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
-        {(autofillAction || set.completed) && <div>
-          {autofillAction}
-          {set.completed && <button type="button" disabled={saving} onClick={() => {
-            hasDraft.current = false;
-            setWeight(set.weight?.toString() ?? ''); setReps(set.reps?.toString() ?? ''); setRpe(set.rpe?.toString() ?? '');
-            setSaveError(null); releaseEditorFocus(); onHide?.();
-          }}>Cancel</button>}
-        </div>}
-      </div>
+      {/* Under the fields, the alternatives (repeat last, or cancel an edit)
+          as unboxed text actions, so the save key stays the band's one filled
+          control. Entry closes with the movement's header, its one toggle. */}
+      {(!sourceAsHeader || actions) && <div className="studio-set-editor-foot">
+        {sourceAsHeader ? null : sourceCue ?? <span className="studio-set-foot-note">{!autofillAction && formattedTarget ? `Last ${formattedTarget}` : 'RPE is optional'}</span>}
+        {actions}
+      </div>}
+      {/* Where the numbers came from heads the planned rows that follow, on
+          its own line under the divider, never beside an action. */}
+      {sourceAsHeader && sourceCue}
       <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
     </form>
   </>;

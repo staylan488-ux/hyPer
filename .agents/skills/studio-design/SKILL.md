@@ -151,14 +151,18 @@ tokens; an already approved direction does not need another design exploration.
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
   to Today, the elapsed clock sits on the screen's centre line, Finish is a
   regular-weight text action, and its session ring matches Today's. That bar
-  stays pinned while the session scrolls and condenses to "Title · time";
+  stays pinned while the session scrolls and condenses to "Title · time"
+  (the clock is the same element in both states, so only the "Title ·"
+  prefix fades in while the line slides, by transform, from centring the
+  clock to centring the whole title);
   like a large title, the session header (title and ring) settles expanded
   or wholly under the bar's solid edge when scrolling ends, with the first
   movement's content starting at the ramp's foot; the session's scroll ends
   on such a movement rest (a little extra room, at most half a screen), and
   a short session gets the room to collapse, so neither the ring nor a row
   rests split in the fade; collapsed, the same 32pt rest nudge applies. The
-  clock uses lining tabular figures in both header states. Live
+  clock is set in the compact title's serif style in primary ink with lining
+  tabular figures in both header states, never grey. Live
   workouts open with the Up next movement expanded; a movement's whole
   header row is its one toggle (no chevron or trailing count), expanding its
   details and inline set entry in place, with "•••" alone at the trailing
@@ -172,11 +176,16 @@ tokens; an already approved direction does not need another design exploration.
   chamfer, rim or highlight edge. The open set's numbers are 23px semibold
   tabular figures (rows below one step down at 17px, sharing a baseline with
   their 15px tabular secondary index), in fields on the well tone (#1C1C1C
-  in Black). The open row's planned numbers are full ink, and the bare
-  "Planned" cue naming their source (13px regular secondary, no tutorial
-  copy) is the only sign they are suggestions; it shares one 44pt row under
-  the fields with Repeat last, itself a visible 44pt capsule row about
-  180pt wide. Inline set rows have no chevron (they open in place); Add note
+  in Black). The save key is the band's only filled control: Repeat last
+  (and Cancel when editing a logged set) are unboxed ink text actions with
+  their icon, each a 44pt target ending on the trailing guide, on one row
+  under the fields. The open row's planned numbers are full ink, and the
+  bare cue naming their source ("Planned", no tutorial copy) is the only
+  sign they are suggestions; it never shares a line with an action: with
+  unlogged rows below, it heads them as an 11px tracked label on its own
+  line under the open set's divider, and on a movement's last set it is a
+  13px regular secondary note under the fields. Inline set rows have no
+  chevron (they open in place); Add note
   is a full-width 44pt row. Collapsed and expanded movement rows give their
   details in one order (sets, then reps). Every enabled text action is ink;
   grey is never a style for something tappable. Row accessories (chevrons,
@@ -230,9 +239,13 @@ layout and makes motion, data and 3D the expressive layer.
   [renderer host](../../../src/lib/three/host.ts) and the
   [motion light](../../../src/lib/motionLight.ts). Weekly volume is a flat,
   matte front/back [muscle map](../../../src/lib/volumeMap.ts) in one tone
-  (`--map-body`, lifted in Black so the silhouette holds) with one 1.5px line
-  weight (1px on Today's small figure): the seams between muscles and the
-  hollow outline. Ink by volume status, hollow (an inset ink outline, like
+  (`--map-body`, lifted in Black so the silhouette holds) with a 1.5px line
+  (1px on Today's small figure) for the seams between muscles and the
+  hollow outline. Ivory is the reference drawing; Black draws it the same
+  way with 1px seams in the page colour (`--map-seam`, never keylines),
+  status fills a step toward the page (`--map-ink-drop`) and the hollow
+  outline, and the legend ring with it, at 70% ink (`--map-hollow-ink`) so
+  it never glows. Ink by volume status, hollow (an inset ink outline, like
   the ○ status glyph) while trained but under MEV, lacquer only past MRV, no
   gloss or 3D. Progress shows the two views without captions; its legend
   keys the rows' chips in their words ("Under", "In range", "Over ceiling":

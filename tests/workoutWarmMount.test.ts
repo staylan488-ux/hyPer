@@ -132,21 +132,29 @@ describe('Train live session', () => {
 
   it('shows planned numbers as ghost values with their source, last workout as the alternative', () => {
     const planned = { ...set(1, false), weight: 80, reps: 10, rpe: 7 };
-    const html = renderToString(createElement(WorkoutSetRow, {
+    const props = {
       set: planned as never, setNumber: 1, editing: true, exerciseName: 'Barbell Row',
       previousTarget: { weight: 60, reps: 9, rpe: null },
       autofillValues: { weight: '60', reps: '9', rpe: '', source: 'previous_workout' as const },
-    }));
+    };
+    const html = renderToString(createElement(WorkoutSetRow, { ...props, planContinues: true }));
 
     // Inputs stay empty: the plan is a placeholder until it is typed over or saved.
     expect(html).toMatch(/<input[^>]*aria-label="Weight"[^>]*data-suggested="true"[^>]*placeholder="80"/);
     expect(html).not.toMatch(/<input[^>]*value="80"/);
-    expect(html).toMatch(/<span[^>]*class="studio-set-suggestion">Planned/);
     expect(html).toContain('aria-label="Save set 1 of Barbell Row, 80 pounds, 10 reps, RPE 7"');
-    // One line: the plan's source, and last workout offered as a repeat.
-    expect(html).toMatch(/<div class="studio-set-editor-foot">.*>Planned<.*Repeat last · 60 × 9.*<\/div>/s);
+    // Last workout is offered as a repeat under the fields, alone on its line;
+    // the plan's source heads the planned rows below it, after the foot.
+    expect(html).toMatch(/<div class="studio-set-editor-foot"><div><button[^>]*class="studio-set-repeat[^"]*"[^>]*>.*Repeat last · 60 × 9.*<\/div><span[^>]*class="studio-set-source-head">Planned/s);
+    expect(html).not.toMatch(/<div class="studio-set-editor-foot">[^]*?Planned[^]*?<\/div><span[^>]*class="studio-set-source-head"/);
     // Entry closes with the movement's disclosure, not a second grey control.
     expect(html).not.toContain('Hide entry');
+
+    // On the movement's last set nothing follows to head: the source stays a
+    // quiet note under the fields.
+    const last = renderToString(createElement(WorkoutSetRow, { ...props, planContinues: false }));
+    expect(last).toMatch(/<div class="studio-set-editor-foot"><span[^>]*class="studio-set-suggestion">Planned/);
+    expect(last).not.toContain('studio-set-source-head');
   });
 
   it('pins chevron, clock and Finish in one bar, with the compact title ready to take over', () => {
@@ -162,7 +170,9 @@ describe('Train live session', () => {
 
     expect(bar).toContain('aria-label="Minimise workout"');
     expect(bar).toContain('role="timer"');
-    expect(bar).toMatch(/class="page-scroll-edge-title studio-session-compact"[^>]*>Upper · /);
+    // One title line: the prefix that fades in as the bar condenses, then the
+    // clock itself, which keeps its place and style in both states.
+    expect(bar).toMatch(/class="page-scroll-edge-title studio-session-line"[^>]*><span class="studio-session-prefix"[^>]*aria-hidden="true"[^>]*>Upper · <\/span><span class="studio-session-clock" role="timer">/);
     expect(bar).toContain('>Finish<');
     // The single collapse control is gone from the foot of the movement.
     expect(html).not.toContain('Close movement');
