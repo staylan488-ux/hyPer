@@ -1,4 +1,4 @@
-import type { RestBand, RestBlock } from './titleSnap';
+import type { RestBand, RestBar, RestBlock } from './titleSnap';
 
 /**
  * The blocks a resting page is judged by (see `restNudgeTarget`): sections,
@@ -37,7 +37,7 @@ const filled = (style: CSSStyleDeclaration) => {
  * overflow-clipping ancestor (a rolling figure's hidden digits do not count);
  * a row's padding and hairlines do not.
  */
-function createInkMeter(viewport: HTMLElement): (block: Element) => Extent | null {
+function createClipper(viewport: HTMLElement) {
   const clips = new Map<Element, Extent | null>();
   const clipOf = (element: Element): Extent | null => {
     if (clips.has(element)) return clips.get(element)!;
@@ -59,7 +59,11 @@ function createInkMeter(viewport: HTMLElement): (block: Element) => Extent | nul
     const bottom = clip ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
     return bottom - top > 0.5 ? { top, bottom } : null;
   };
+  return clipped;
+}
 
+function createInkMeter(viewport: HTMLElement): (block: Element) => Extent | null {
+  const clipped = createClipper(viewport);
   const inkOf = (block: Element): Extent | null => {
     let top = Infinity;
     let bottom = -Infinity;
@@ -134,6 +138,117 @@ export function measureRestBand(band: Element, viewport: HTMLElement, fallback =
   return { solid: top + solid, foot: top + solid + fade };
 }
 
+/** Air between a page's last row and the tab bar (`.pb-nav`: the bar's top plus this). */
+const NAV_AIR = 24;
+/** Section headers: each rests with its first line below it, never alone above the bar. */
+const HEAD_SELECTOR = 'h2, h3, .t-label, [data-rest-head]';
+/** Graphics up to this tall are judged at the bar like a line (an icon, a scale). */
+const BAR_GRAPHIC_MAX = 40;
+/** A header further than this above its next line is not a header of it. */
+const HEAD_REACH = 64;
+
+/** The tab bar's top edge from the viewport's top: the web bar's own box, or
+ *  the clearance a page keeps for the native bar (`.pb-nav`). */
+function measureBarTop(root: HTMLElement, viewport: HTMLElement): number | null {
+  const viewportRect = viewport.getBoundingClientRect();
+  const nav = document.querySelector('.bottom-nav');
+  if (nav && visible(nav)) return nav.getBoundingClientRect().top - viewportRect.top;
+  const page = root.closest('.pb-nav') ?? root.querySelector('.pb-nav');
+  const clearance = page ? parseFloat(getComputedStyle(page).paddingBottom) - NAV_AIR : NaN;
+  if (!Number.isFinite(clearance) || clearance <= 0) return null;
+  return Math.min(viewportRect.height, window.innerHeight - viewportRect.top) - clearance;
+}
+
+export interface RestInk {
+  /** What rests whole at the top band: every text line, every graphic (an
+   *  icon, a ring, a figure), every filled box (a capsule, a selected day's
+   *  disc, a rail) and each `data-rest-block` unit (Progress's figures with
+   *  their legend, a search field). */
+  blocks: RestBlock[];
+  /** The tab bar and what must not rest astride it: every text line, small
+   *  graphics, and each section header with its first line below it. */
+  bar: RestBar | null;
+}
+
+/**
+ * Measures, in scroll column offsets, what a resting page is judged by at
+ * both edges (`restNudgeTarget`). Line by line rather than row by row: a row
+ * may rest with its first line under the band's solid stage and its second
+ * clear of the ramp, as content passes under a navigation bar, but no line,
+ * graphic or filled box rests in the ramp. `data-rest-ignore` leaves a
+ * subtree out; a sticky header (`data-rest-band`) is judged apart
+ * (`measureStickyRest`).
+ */
+export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestInk {
+  const viewportRect = viewport.getBoundingClientRect();
+  const barTop = measureBarTop(root, viewport);
+  const columnTop = viewportRect.top - viewport.scrollTop;
+  const clipped = createClipper(viewport);
+  const inkOf = createInkMeter(viewport);
+  type Entry = Extent & { node: Node };
+  const blocks: RestBlock[] = [];
+  const entries: Entry[] = [];
+  const heads: { element: Element; last: number; top: number; bottom: number }[] = [];
+  const range = document.createRange();
+  const column = (extent: Extent): Extent => ({ top: extent.top - columnTop, bottom: extent.bottom - columnTop });
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (node instanceof Element) {
+        // The page header collapses on its own (PageTitle's title snap).
+        if (node.matches('[data-rest-ignore], [data-rest-band], .page-header')) return NodeFilter.FILTER_REJECT;
+        return node.parentElement?.closest('svg') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      }
+      return node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node instanceof Element) {
+      if (!visible(node)) continue;
+      const unit = node.matches('[data-rest-block]');
+      const graphic = node.matches(GRAPHIC);
+      if (unit || graphic || filled(getComputedStyle(node))) {
+        const rect = node.getBoundingClientRect();
+        const ink = unit ? inkOf(node) : rect.width > 1 && rect.height > 1 ? clipped(node, rect) : null;
+        if (ink) blocks.push(column(ink));
+        if (graphic && ink) entries.push({ ...column({ top: ink.top, bottom: Math.min(ink.bottom, ink.top + BAR_GRAPHIC_MAX) }), node });
+      }
+      if (node.matches(HEAD_SELECTOR) && !heads.some((head) => head.element.contains(node))) {
+        heads.push({ element: node, last: entries.length, top: Infinity, bottom: -Infinity });
+      }
+      continue;
+    }
+    const parent = node.parentElement;
+    if (!parent || !visible(parent)) continue;
+    // A unit's lines rest with it.
+    const unit = parent.closest('[data-rest-block]');
+    const inUnit = Boolean(unit && root.contains(unit));
+    range.selectNodeContents(node);
+    for (const rect of Array.from(range.getClientRects())) {
+      if (rect.width < 0.5 || rect.height < 4) continue;
+      const extent = clipped(parent, rect);
+      if (!extent) continue;
+      const line = column(extent);
+      if (!inUnit) blocks.push(line);
+      entries.push({ ...line, node });
+      const head = heads.find((candidate) => candidate.element.contains(node));
+      if (head) {
+        head.top = Math.min(head.top, line.top);
+        head.bottom = Math.max(head.bottom, line.bottom);
+        head.last = entries.length;
+      }
+    }
+  }
+  if (barTop === null) return { blocks, bar: null };
+  const items: RestBlock[] = entries.map(({ top, bottom }) => ({ top, bottom }));
+  for (const head of heads) {
+    if (!Number.isFinite(head.top)) continue;
+    // The first line under the header (not beside it on its own line).
+    const next = entries.slice(head.last).find((entry) => !head.element.contains(entry.node) && entry.top > head.bottom - 2);
+    if (next && next.top - head.bottom <= HEAD_REACH) items.push({ top: head.top, bottom: next.bottom });
+  }
+  return { blocks, bar: { top: barTop, items } };
+}
+
 /** How far a stuck header's own ramp reaches below it (`.calendar-sticky::after`). */
 export const STUCK_RAMP = 16;
 
@@ -162,14 +277,21 @@ export function measureStickyRest(root: HTMLElement, viewport: HTMLElement, band
   const columnTop = viewportTop - viewport.scrollTop;
   const rect = header.getBoundingClientRect();
   const top = rect.top - viewportTop;
-  const bottom = rect.bottom - viewportTop;
+  // The selected week held right under the header (History) is part of it.
+  const week = header.hasAttribute('data-week-stuck') ? root.querySelector<HTMLElement>('[data-selected-week][data-stuck]') : null;
+  const weekRect = week?.getBoundingClientRect();
+  const held = weekRect && Math.abs(weekRect.top - rect.bottom) < 1 ? weekRect : null;
+  const bottom = (held ?? rect).bottom - viewportTop;
   if (header.hasAttribute('data-stuck') && Math.abs(top - band.solid) < 0.5 && bottom > band.solid) {
     return { band: { solid: bottom, foot: bottom + STUCK_RAMP }, blocks: [], covers: null };
   }
-  const ink = createInkMeter(viewport)(header);
-  const blocks = ink ? [{ top: ink.top - columnTop, bottom: ink.bottom - columnTop, sliver: ink.bottom - ink.top }] : [];
+  const meter = createInkMeter(viewport);
+  const ink = meter(header);
+  const weekInk = held && week ? meter(week) : null;
+  const unit = ink && weekInk ? { top: Math.min(ink.top, weekInk.top), bottom: Math.max(ink.bottom, weekInk.bottom) } : ink;
+  const blocks = unit ? [{ top: unit.top - columnTop, bottom: unit.bottom - columnTop, sliver: unit.bottom - unit.top }] : [];
   const pushed = header.hasAttribute('data-stuck') && top < band.solid - 0.5;
-  return { band, blocks, covers: pushed ? { top: rect.top - columnTop, bottom: rect.bottom - columnTop } : null };
+  return { band, blocks, covers: pushed ? { top: rect.top - columnTop, bottom: (held ?? rect).bottom - columnTop } : null };
 }
 
 /** Blocks a sticky header's box hides while it moves with its grid are left out. */

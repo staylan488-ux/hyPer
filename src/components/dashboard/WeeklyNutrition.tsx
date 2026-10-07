@@ -26,8 +26,11 @@ export function WeeklyNutrition() {
     const average = logged.length ? logged.reduce((sum, day) => sum + day[metric.key], 0) / logged.length : 0;
     return { ...metric, average, share: metric.target > 0 && average > 0 ? Math.round((average / metric.target) * 100) : null };
   });
-  const loggedDays = weeklyNutrition.filter((day) => day.calories > 0 || day.protein > 0).length;
+  const logged = weeklyNutrition.filter((day) => day.calories > 0 || day.protein > 0);
+  const loggedDays = logged.length;
   const sparse = loggedDays < MIN_CHART_DAYS;
+  // One unfinished day is not an average: say what it is.
+  const todayOnly = loggedDays === 1 && logged[0].date === format(new Date(), 'yyyy-MM-dd');
 
   return (
     <div>
@@ -47,7 +50,7 @@ export function WeeklyNutrition() {
           <dl className="mt-4">
             {metrics.map((metric) => (
               <div key={metric.key} className="flex items-baseline justify-between gap-4 py-3 border-b border-[var(--color-border-soft)]">
-                <dt className="t-caption">{metric.label} · daily average</dt>
+                <dt className="t-caption">{metric.label} · {todayOnly ? 'today so far' : 'daily average'}</dt>
                 <dd className="t-data-sm text-[var(--color-text)] tabular-nums">
                   {Math.round(metric.average).toLocaleString()} {metric.unit}
                   <span className="text-[var(--color-text-dim)]"> / {metric.target.toLocaleString()}</span>

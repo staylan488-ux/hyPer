@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, RefreshCw, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, CalendarHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
@@ -725,7 +725,7 @@ export function History() {
   const monthRequestRef = useRef(0);
   const selectedMonthRef = useRef(selectedMonth);
   const calendarHeadRef = useRef<HTMLDivElement | null>(null);
-  useStuckHeader(calendarHeadRef);
+  useStuckHeader(calendarHeadRef, `${selectedDate.getTime()}:${selectedMonth.getTime()}`);
 
   useEffect(() => {
     selectedMonthRef.current = selectedMonth;
@@ -880,6 +880,7 @@ export function History() {
 
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
+  const calendarWeeks = useMemo(() => Array.from({ length: Math.ceil(calendarDays.length / 7) }, (_, index) => calendarDays.slice(index * 7, index * 7 + 7)), [calendarDays]);
   const todayStart = startOfDay(new Date());
   // Sync is offered only with a WHOOP connection (the sandbox seeds one and
   // syncs its fixture transport); without one, Connections offers Connect.
@@ -1344,12 +1345,19 @@ export function History() {
         eyebrow="Training ledger"
         title="History"
         className="mb-2"
-        // Sync belongs to the whole ledger, not the day: one quiet action in
-        // the bar row, only while WHOOP is connected.
+        // Sync belongs to the whole ledger, not the day: one action in the
+        // bar row, only while WHOOP is connected, in the bar's one text
+        // style. Collapsed, the bar keeps it as a glyph key.
+        compactAction={syncAvailable ? {
+          label: 'Sync WHOOP',
+          icon: <RefreshCw size={20} strokeWidth={1.75} aria-hidden className={syncingWhoop ? 'motion-safe:animate-spin' : undefined} />,
+          onClick: () => { void handleSyncWhoop(); },
+          disabled: syncingWhoop,
+        } : undefined}
         actions={syncAvailable ? (
           <button
             type="button"
-            className="text-action text-action-secondary"
+            className="text-action"
             aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
             disabled={syncingWhoop}
             onClick={() => { void handleSyncWhoop(); }}
@@ -1384,8 +1392,18 @@ export function History() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 calendar-sticky-grid">
-            {calendarDays.map((day) => {
+          <div className="calendar-sticky-grid">
+            {calendarWeeks.map((week) => {
+              // The selected day's week holds under the month once the grid
+              // scrolls, as Fuel's week strip shows the selected week.
+              const selectedWeek = week.some((day) => isSameDay(day, selectedDate));
+              return (
+            <div
+              key={getDateKey(week[0])}
+              className="grid grid-cols-7 calendar-week"
+              data-selected-week={selectedWeek || undefined}
+            >
+            {week.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
               const dayActivities = sortActivitySessionsByStart(activitiesByDay[key] || []);
@@ -1438,6 +1456,9 @@ export function History() {
                     </span>
                   )}
                 </button>
+              );
+            })}
+            </div>
               );
             })}
           </div>
@@ -1845,7 +1866,7 @@ export function History() {
                                           htmlFor={`history-note-${workout.id}-${exerciseId}`}
                                           className="t-label-sm block mb-2"
                                         >
-                                          Movement Note
+                                          Exercise note
                                         </label>
                                         <textarea
                                           id={`history-note-${workout.id}-${exerciseId}`}

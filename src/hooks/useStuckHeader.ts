@@ -10,9 +10,14 @@ import { measureRestBand } from '@/lib/restBlocks';
  *   against its foot (`data-rest-band`, see `measureStuckBand`);
  * - `data-covered` once the large title has wholly collapsed, so its top
  *   padding also hides anything under the band's ramp. Before that the
- *   padding stays clear and the title passes under the band as everywhere.
+ *   padding stays clear and the title passes under the band as everywhere;
+ * - the selected week (`[data-selected-week]`, sticky right under it at
+ *   --calendar-head, the header's height): `data-stuck` on the week and
+ *   `data-week-stuck` on the header once the week is held there, so the
+ *   week takes the stage colour and the short ramp moves under it.
  */
-export function useStuckHeader(ref: RefObject<HTMLElement | null>) {
+/** `revision`: re-measures when it changes (History's selected day moves the held week). */
+export function useStuckHeader(ref: RefObject<HTMLElement | null>, revision?: unknown) {
   useEffect(() => {
     const element = ref.current;
     const viewport = document.querySelector<HTMLElement>('[data-app-scroll-viewport]');
@@ -29,6 +34,15 @@ export function useStuckHeader(ref: RefObject<HTMLElement | null>) {
       const covered = stuck && (!title || title.getBoundingClientRect().bottom - viewportTop <= solid + 0.5);
       element.toggleAttribute('data-stuck', stuck);
       element.toggleAttribute('data-covered', covered);
+      const span = element.parentElement;
+      span?.style.setProperty('--calendar-head', `${element.offsetHeight}px`);
+      const week = span?.querySelector<HTMLElement>('[data-selected-week]');
+      const weekStuck = Boolean(week && stuck && week.getBoundingClientRect().top <= element.getBoundingClientRect().bottom + 0.5);
+      for (const other of span ? Array.from(span.querySelectorAll('.calendar-week[data-stuck]')) : []) {
+        if (other !== week || !weekStuck) other.removeAttribute('data-stuck');
+      }
+      week?.toggleAttribute('data-stuck', weekStuck);
+      element.toggleAttribute('data-week-stuck', weekStuck);
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(measure);
@@ -41,5 +55,5 @@ export function useStuckHeader(ref: RefObject<HTMLElement | null>) {
       window.removeEventListener('resize', schedule);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [ref]);
+  }, [ref, revision]);
 }

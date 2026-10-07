@@ -55,19 +55,33 @@ tokens; an already approved direction does not need another design exploration.
   content still shows smears bright shapes into halos on true black. The
   scroll column's `scroll-padding-top` (64px) keeps scrolled-into-view
   content below the ramp. Like UIKit's target content offset, a collapsed
-  page that stops scrolling is nudged by at most 32pt (`restNudgeTarget`)
-  so no block straddles the band: each block either clears the ramp's foot
-  or sits under the solid zone. Blocks are sections, figures, platters and
-  their rows, full-width buttons and anything marked `data-rest-block`
-  (calendar weeks, a key figure, a field); `data-rest-ignore` leaves a
-  subtree out (`lib/restBlocks.ts`). A tall figure may pass under the band
-  while its last 40pt still shows; `data-rest-sliver` makes a block one unit
-  that rests hidden or with at least that much showing (Progress's figures
-  with their legend, so the legend never rests alone), moving up to half its
-  split stretch to get there. History's month and weekday letters are a
+  page that stops scrolling settles by one joint solver over both edges
+  (`restNudgeTarget` with the tab bar, `lib/titleSnap.ts`): no text line,
+  graphic or filled box rests in the band's ramp (each clears its foot or
+  sits under the solid zone), and no text line rests within 12pt above the
+  tab bar's top or astride it, nor a section header alone above it with its
+  first line under it (`measureRestInk`, `lib/restBlocks.ts`). Judged line by
+  line, so a row may rest with one line under the solid zone and the next
+  clear. A figure, ring or `data-rest-block` unit (Progress's figures with
+  their legend, You's search field) rests whole: wholly hidden or wholly
+  shown, never split, and may move as far as half its split stretch to get
+  there; only a block taller than the space between the ramp and the bar
+  passes under like a photo. The band comes first, then the bar, then an
+  even gap: the first content rests at the ramp's foot (within 8pt) rather
+  than leaving an empty shelf under the bar. A rest clean at both edges
+  within 64pt wins outright; otherwise a band split moves at most 64pt (or
+  half a unit's stretch) and a fault only at the bar at most 32pt, since the
+  bar is glass and content reads as passing under it. `data-rest-ignore`
+  leaves a subtree out; the page header collapses with its title (anything
+  it holds under the title, You's search, collapses with it). Hairline rules
+  leave before they reach the ramp: a rule fades out from 20pt to 8pt below
+  the ramp's foot and stays out above (`lib/ruleVeil.ts`), so no ghost
+  hairline rests under the bar. History's month and weekday letters are a
   sticky header (`data-rest-band`, `useStuckHeader`) held under the band
-  while weeks of the grid show, leaving with the last week, which always
-  shows under it; rows then rest against its foot. The nudge never runs while a finger or a
+  while the grid shows; once the grid passes under it the selected day's
+  week holds under the letters (`data-selected-week`), as Fuel's week strip
+  shows the selected week, and header and week leave with the grid's last
+  row; rows then rest against their foot. The nudge never runs while a finger or a
   focused field holds the page or while route scroll restoration runs
   (`data-restoring-scroll`), and is instant under reduced motion; no CSS
   scroll-snap. A page ends at the tab bar's top plus 24px (`.pb-nav`), and
@@ -80,13 +94,15 @@ tokens; an already approved direction does not need another design exploration.
   settles fully expanded or fully collapsed (instantly under reduced
   motion), never while a finger or a focused field holds it; opening a sheet
   never moves the page.
-  A page may repeat its primary action in the condensed bar once collapsed
-  (`PageHeader` `compactAction`: Fuel's +, a bare ink glyph on the trailing
-  edge), only once the page's own control has passed under the band
-  (`after`), so one add shows at a time. Pushed screens keep their parent tab selected (`nativeTabForPath`).
+  As UIKit keeps bar items across both title states, a page's trailing bar
+  action stays in the condensed bar once collapsed (`PageHeader`
+  `compactAction`: a bare ink glyph in a 44pt key on the trailing edge,
+  named for assistive technology while it shows; History's Sync WHOOP as a
+  sync glyph, Fuel's +). Fuel's + shows only once the page's own control has
+  passed under the band (`after`), so one add shows at a time. Pushed screens keep their parent tab selected (`nativeTabForPath`).
   Contextual actions are sentence-case `text-action` buttons in the one ink
   tint (16px medium in the bar row). Secondary header actions, a section's
-  or a sheet's (Add activity, Edit, Build a meal, Sync WHOOP), are quieter
+  or a sheet's (Add activity, Edit, Build a meal), are quieter
   (`text-action-secondary`: 15px regular, still ink), at most one per header
   line. A disabled action is that tint at 30% opacity, never grey as a style.
   Sheet-level actions sit in the sheet header beside close
@@ -143,14 +159,20 @@ tokens; an already approved direction does not need another design exploration.
   about 21px above the screen's bottom edge, 24px icons on one 1.6px stroke
   (`TabIcons`, an upright plain dumbbell; the current tab's glyph is its
   filled variant), 10.5px semibold
-  labels, no ring or directional highlight (Ivory: one faint shadow and no
-  hairline; Black: a flat #161616 at 94% with a uniform 0.5px hairline and
-  no wash), the current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
-  side and concentric with the bar. Its bottom scroll edge
-  (`.bottom-nav-edge`) is iOS 26's: content stays sharp until it reaches
-  the bar, with at most an 8px opacity fade above the bar's top edge and no
-  blur, opaque from 6px under it, so a resting row is either crisp or under
-  the glass. With the native bar there is no web edge. On iOS 26 the rest bar and status toasts are also
+  labels in the current tab's ink or a neutral secondary grey (#575757
+  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 20px
+  backdrop blur under a neutral fill at 72% (#1C1C1C in Black, a light
+  ivory in Ivory, where one faint shadow sets it off), with no rim, wash,
+  glow or one-sided light; the current tab a flat fill (no shadow; #333333
+  in Black) inset 5px on every side and concentric with the bar. Its bottom
+  scroll edge (`.bottom-nav-edge`) is iOS 26's: content stays sharp until
+  it reaches the bar, with at most an 8px opacity fade above the bar's top
+  edge and no blur there; below the bar's top edge a short progressive soft
+  edge (a blur growing to under 6px under a stage-colour fade) takes
+  content under the glass, so a line astride the edge reads as passing
+  beneath the bar, not cut by it. Reduced transparency or increased
+  contrast give a solid bar and an opaque edge. With the native bar there
+  is no web bar or edge. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. The live workout is a
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it

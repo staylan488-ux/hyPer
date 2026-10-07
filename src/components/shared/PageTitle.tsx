@@ -3,15 +3,18 @@ import { motion, useMotionValue, useTransform, type MotionStyle } from 'motion/r
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
-import { cleanScrollEnd, restNudgeTarget, titleSnapTarget } from '@/lib/titleSnap';
-import { measureRestBand, measureRestBlocks, measureStickyRest, uncovered } from '@/lib/restBlocks';
+import { REST_BAR_CLEAR, REST_PAGE_NUDGE_LIMIT, cleanScrollEnd, restNudgeTarget, titleSnapTarget, type RestBand, type RestBar } from '@/lib/titleSnap';
+import { measureRestBand, measureRestInk, measureStickyRest, uncovered } from '@/lib/restBlocks';
+import { createRuleVeil } from '@/lib/ruleVeil';
 import './page-header.css';
 
-/** A trailing action repeated in the condensed bar once the title has
- *  collapsed, so the page's primary action stays one tap away (Fuel's +).
- *  `after`: the page's own control for the action; the bar's copy shows only
- *  once that control has passed under the band, so one add shows at a time. */
-export interface CompactAction { label: string; icon: ReactNode; onClick: () => void; after?: RefObject<HTMLElement | null> }
+/** A trailing action kept in the condensed bar once the title has
+ *  collapsed, as UIKit keeps bar items across both title states (Fuel's +,
+ *  History's sync glyph). `after`: the page's own control for the action;
+ *  the bar's copy shows only once that control has passed under the band,
+ *  so one add shows at a time. The copy is a 44pt glyph key named `label`
+ *  for assistive technology while it shows. */
+export interface CompactAction { label: string; icon: ReactNode; onClick: () => void; after?: RefObject<HTMLElement | null>; disabled?: boolean }
 
 /** Where a pushed screen's back control returns. */
 export type PageBack =
@@ -75,6 +78,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
   forwardedRef,
 ) {
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const actionRef = useRef<HTMLButtonElement | null>(null);
   const bandRef = useRef<HTMLDivElement | null>(null);
   const progress = useMotionValue(0);
   const edge = useMotionValue(0);
@@ -106,6 +110,32 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       const rest = title.getBoundingClientRect().top - viewport.getBoundingClientRect().top + scrolled;
       return { start: Math.max(0, rest - BAR), end: Math.max(1, rest + title.offsetHeight - SOLID) };
     };
+    // Where the page rests collapsed. Like a search field in a UIKit
+    // navigation bar, anything the header holds under its title (You's
+    // search) collapses with it: the collapsed rest hides it too.
+    const collapsedRest = () => {
+      const { end } = collapseRange();
+      const extra = title.nextElementSibling ? title.closest('header') : null;
+      if (!extra) return end;
+      const viewportTop = viewport.getBoundingClientRect().top;
+      const scrolled = Math.max(0, viewport.scrollTop);
+      let bottom = -Infinity;
+      for (let sibling = title.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+        if (sibling.classList.contains('page-scroll-edge')) continue;
+        const rect = sibling.getBoundingClientRect();
+        if (rect.height > 0) bottom = Math.max(bottom, rect.bottom - viewportTop + scrolled);
+      }
+      return Number.isFinite(bottom) ? Math.max(end, Math.ceil(bottom - SOLID - 4)) : end;
+    };
+    // The page content the rests are judged by (everything under the header's parent).
+    const root = title.closest('header')?.parentElement ?? null;
+    const rules = root ? createRuleVeil(root, viewport) : null;
+    // Blocks rest whole (hidden or wholly shown) when they fit between the
+    // ramp's foot and the tab bar's clear line.
+    const withWindow = (band: RestBand, bar: RestBar | null): RestBand => ({
+      ...band,
+      window: (bar ? bar.top - REST_BAR_CLEAR : viewport.clientHeight) - band.foot,
+    });
     const measure = () => {
       frame = 0;
       const scrolled = Math.max(0, viewport.scrollTop);
@@ -121,24 +151,37 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
         const foot = control.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top;
         actionGate.set(foot <= solid + 4 ? 1 : 0);
       } else actionGate.set(1);
+      // The condensed bar's action is reachable only while it shows.
+      const action = actionRef.current;
+      if (action) {
+        const shown = progress.get() > 0.95 && actionGate.get() > 0.95;
+        action.toggleAttribute('aria-hidden', !shown);
+        action.tabIndex = shown ? 0 : -1;
+      }
+      // Rules leave before they reach the band's ramp (or a stuck header's).
+      if (rules && band && root) {
+        rules.update(scrolled > 0.5 ? measureStickyRest(root, viewport, measureRestBand(band, viewport)).band.foot : null);
+      }
     };
-    // The page content the rests are judged by (everything under the header's parent).
-    const root = title.closest('header')?.parentElement ?? null;
     const settle = () => {
       settleTimer = 0;
       const focused = document.activeElement;
       if (touching || (editable(focused) && viewport.contains(focused)) || viewport.hasAttribute('data-restoring-scroll')) return;
       const max = viewport.scrollHeight - viewport.clientHeight;
-      const collapsed = Math.min(collapseRange().end, max);
-      let target = titleSnapTarget(viewport.scrollTop, collapseRange().end, max) ?? viewport.scrollTop;
-      // Collapsed: no block rests split by the band.
+      const rest = collapsedRest();
+      const collapsed = Math.min(rest, max);
+      let target = titleSnapTarget(viewport.scrollTop, rest, max) ?? viewport.scrollTop;
+      // Collapsed: nothing rests split by the band or astride the tab bar,
+      // judged at both edges at once.
       const band = bandRef.current;
       if (root && band && target > 0.5 && target >= collapsed - 0.5) {
         // A sticky header held under the band (History's month) moves the
         // edge blocks rest against, or rests as a block itself.
         const sticky = measureStickyRest(root, viewport, measureRestBand(band, viewport));
-        const blocks = [...uncovered(measureRestBlocks(root, viewport), sticky.covers), ...sticky.blocks];
-        target = restNudgeTarget(target, blocks, sticky.band, { min: collapsed, max }) ?? target;
+        const ink = measureRestInk(root, viewport);
+        const blocks = [...uncovered(ink.blocks, sticky.covers), ...sticky.blocks];
+        const { bar } = ink;
+        target = restNudgeTarget(target, blocks, withWindow(sticky.band, bar), { min: collapsed, max }, REST_PAGE_NUDGE_LIMIT, bar) ?? target;
       }
       if (Math.abs(target - viewport.scrollTop) < 0.5) return;
       const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -184,8 +227,11 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       const band = bandRef.current;
       if (!root || !band) return;
       const naturalEnd = viewport.scrollHeight - extra - viewport.clientHeight;
-      const end = cleanScrollEnd(naturalEnd, measureRestBlocks(root, viewport), measureRestBand(band, viewport), END_SLACK, collapseRange().end);
+      const { blocks, bar } = measureRestInk(root, viewport);
+      const end = cleanScrollEnd(naturalEnd, blocks, withWindow(measureRestBand(band, viewport), bar), END_SLACK, collapsedRest(), bar);
       const next = Math.max(0, Math.ceil(end - naturalEnd));
+      rules?.collect();
+      measure();
       if (next === extra) return;
       extra = next;
       viewport.style.paddingBottom = extra ? `${extra}px` : '';
@@ -219,6 +265,7 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
       window.clearTimeout(settledLayout);
       window.clearTimeout(layoutTimer);
       if (extra) viewport.style.paddingBottom = '';
+      rules?.dispose();
       if (frame) cancelAnimationFrame(frame);
       if (settleTimer) window.clearTimeout(settleTimer);
     };
@@ -246,7 +293,6 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
           // The edge and back control follow --band; the condensed title
           // switches on its own as the large title finishes passing.
           style={{ '--band': edge, pointerEvents: bandPointer } as MotionStyle}
-          aria-hidden
           onClick={scrollToTop}
         >
           <ScrollEdgeVeil />
@@ -255,18 +301,21 @@ export const PageTitle = forwardRef<HTMLHeadingElement, PageTitleProps>(function
             // copy only keeps the way back under the thumb once it scrolls off.
             <BackControl back={back} className="page-scroll-edge-back" hidden />
           )}
-          <motion.span className="page-scroll-edge-title" style={{ opacity: compactOpacity, y: compactY }}>
+          <motion.span className="page-scroll-edge-title" style={{ opacity: compactOpacity, y: compactY }} aria-hidden>
             {label}
           </motion.span>
           {compactAction && (
-            // The page's own control stays the accessible one; this copy only
-            // keeps the action under the thumb while the page is collapsed.
+            // Kept under the thumb while the page is collapsed; named and
+            // focusable only while it shows (measure toggles both).
             <motion.button
+              ref={actionRef}
               type="button"
               className="page-scroll-edge-action pressable"
               style={{ opacity: actionOpacity, pointerEvents: actionPointer }}
               tabIndex={-1}
               aria-hidden
+              aria-label={compactAction.label}
+              disabled={compactAction.disabled}
               onClick={(event) => {
                 event.stopPropagation();
                 tapHaptic();

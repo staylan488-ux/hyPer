@@ -39,9 +39,9 @@ function buildCoachingCall(mv: MuscleVolume): CoachingCall {
     case 'above_mrv':
       return { chip: 'Over ceiling', tone: 'berry', headline: 'Pull back — beyond recoverable volume', priority: 1 };
     case 'approaching_mrv':
-      return { chip: 'Near ceiling', tone: 'berry', headline: 'Hold here — fatigue is compounding', priority: 2 };
+      return { chip: 'Near ceiling', tone: 'berry', headline: 'Hold here — close to your ceiling', priority: 2 };
     case 'mav':
-      return { chip: 'In range', tone: 'sage', headline: 'Hold volume — growth is compounding', priority: 3 };
+      return { chip: 'In range', tone: 'sage', headline: 'Hold volume — you’re in the productive range', priority: 3 };
     case 'mev_mav':
     default:
       return { chip: 'In range', tone: 'sage', headline: 'Building — room to add when ready', priority: 4 };
@@ -192,9 +192,9 @@ export function Analysis() {
         />
       ) : (
         <>
-        {/* The figure and its legend are one rest unit: it passes under the
-            bar only while the legend still has the figures' legs above it. */}
-        <section aria-label="This week's volume by muscle" data-rest-block data-rest-sliver="112">
+        {/* The figure and its legend are one rest unit: it rests wholly
+            hidden under the bar or wholly shown, never split. */}
+        <section aria-label="This week's volume by muscle" data-rest-block>
           <VolumeMap
             volume={weeklyVolume}
             onSelectMuscle={(muscle) => {

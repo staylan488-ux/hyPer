@@ -505,7 +505,7 @@ export function Settings() {
       );
 
       if (error) {
-        setMealManagerError('Could not load saved meals.');
+        setMealManagerError('Could not load saved foods.');
         setSavedMeals([]);
         return;
       }
@@ -533,10 +533,10 @@ export function Settings() {
   }, [fetchSavedMeals]);
 
   const savedMealsCountLabel = useMemo(() => {
-    if (loadingSavedMeals) return 'Loading meals…';
+    if (loadingSavedMeals) return 'Loading…';
     if (mealManagerError) return 'Could not load meals';
-    if (savedMeals.length === 0) return 'No meals saved yet';
-    return `${savedMeals.length} meal${savedMeals.length === 1 ? '' : 's'} saved`;
+    if (savedMeals.length === 0) return 'None saved yet';
+    return `${savedMeals.length} saved`;
   }, [loadingSavedMeals, savedMeals.length, mealManagerError]);
 
   const openManageMeals = async () => {
@@ -612,10 +612,10 @@ export function Settings() {
 
       if (retireError) {
         setMealManagerError(
-          'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.',
+          'Your edited meal was saved, but the original is still in saved foods. Remove the original when your connection is restored. Past logs are unchanged.',
         );
       } else {
-        setMealManagerMessage('Saved meal updated for future logs.');
+        setMealManagerMessage('Saved food updated for future logs.');
       }
       setEditingMealId(null);
       await fetchSavedMeals();
@@ -625,7 +625,7 @@ export function Settings() {
   };
 
   const removeSavedMeal = async (meal: SavedMeal) => {
-    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`))
+    if (!confirm(`Delete ${meal.name} from saved foods? Past logged entries will stay unchanged.`))
       return;
 
     clearMealManagerFeedback();
@@ -637,7 +637,7 @@ export function Settings() {
     const { error } = await retireSavedMeal(user.id, meal.id);
 
     if (error) {
-      setMealManagerError('Could not delete saved meal.');
+      setMealManagerError('Could not delete saved food.');
       return;
     }
 
@@ -645,7 +645,7 @@ export function Settings() {
       setEditingMealId(null);
     }
 
-    setMealManagerMessage('Saved meal deleted. Past logs were not changed.');
+    setMealManagerMessage('Saved food deleted. Past logs were not changed.');
     await fetchSavedMeals();
   };
 
@@ -904,7 +904,7 @@ export function Settings() {
     'targets/calculate': 'Calculate targets',
     'targets/coach': 'Target suggestions',
     'targets/adaptation': 'How targets adapt',
-    meals: 'Saved meals',
+    meals: 'Saved foods',
     analysis: 'Meal photo analysis',
     'analysis/worker': 'Mac worker setup',
     connections: 'Connections',
@@ -1075,7 +1075,7 @@ export function Settings() {
               onClick={() => go('/settings/targets')}
             />
             <SettingsRow
-              title="Saved meals"
+              title="Saved foods"
               description={savedMealsCountLabel}
               onClick={() => void openManageMeals()}
             />
@@ -1086,11 +1086,11 @@ export function Settings() {
               onClick={() => go('/settings/analysis')}
             />
           </SettingsSection>
-          <SettingsSection label="App & connections">
+          <SettingsSection label="Preferences">
             <SettingsRow
-              title="Connections"
-              description={`WHOOP ${whoopConnection ? 'connected' : 'not connected'}${isNativeIOS() ? ` · Health ${healthWeightEnabled ? 'on' : 'off'}` : ''}`}
-              onClick={() => go('/settings/connections')}
+              title="Training"
+              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
+              onClick={() => go('/settings/training')}
             />
             <SettingsRow
               title="Appearance"
@@ -1098,14 +1098,12 @@ export function Settings() {
               onClick={() => go('/settings/appearance')}
             />
           </SettingsSection>
-          <SettingsSection label="Activity">
-            <SettingsRow
-              title="Training"
-              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
-              onClick={() => go('/settings/training')}
-            />
-          </SettingsSection>
           <SettingsSection label="General">
+            <SettingsRow
+              title="Connections"
+              description={`WHOOP ${whoopConnection ? 'connected' : 'not connected'}${isNativeIOS() ? ` · Health ${healthWeightEnabled ? 'on' : 'off'}` : ''}`}
+              onClick={() => go('/settings/connections')}
+            />
             <SettingsRow
               title="Account"
               description="Profile and sign-out"
@@ -1592,7 +1590,7 @@ export function Settings() {
                             disabled={savingMealEdit}
                             onClick={() => beginEditingMeal(meal)}
                             className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
-                            aria-label={`Edit saved meal ${meal.name}`}
+                            aria-label={`Edit saved food ${meal.name}`}
                           >
                             <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                           </button>
@@ -1601,7 +1599,7 @@ export function Settings() {
                             disabled={savingMealEdit}
                             onClick={() => removeSavedMeal(meal)}
                             className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
-                            aria-label={`Delete saved meal ${meal.name}`}
+                            aria-label={`Delete saved food ${meal.name}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                           </button>
@@ -2001,7 +1999,7 @@ export function Settings() {
             onBusyChange={setSavingMealEdit}
             onComplete={() => {
               setEditingComposedMeal(null);
-              setMealManagerMessage('Saved meal updated for future logs.');
+              setMealManagerMessage('Saved food updated for future logs.');
               void fetchSavedMeals();
             }}
           />

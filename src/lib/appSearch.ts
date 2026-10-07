@@ -27,7 +27,7 @@ export const APP_SEARCH_ENTRIES: readonly AppSearchEntry[] = [
   setting('calculate-targets', 'Calculate targets', 'Nutrition targets', 'targets/calculate', ['nutrition calculator', 'calorie calculator', 'macro calculator', 'lose weight', 'gain muscle', 'cutting', 'bulking', 'maintenance']),
   setting('target-suggestions', 'Get target suggestions', 'Nutrition targets', 'targets/coach', ['nutrition coach', 'diet advice', 'macro recommendations', 'target recommendations']),
   setting('target-adaptation', 'How targets adapt', 'Nutrition targets', 'targets/adaptation', ['adaptive targets', 'automatic adjustments', 'automatically adjust calories', 'automatic updates', 'adaptation']),
-  setting('saved-meals', 'Saved meals', 'Nutrition', 'meals', ['edit saved meals', 'delete saved meals', 'favorite foods', 'meal library', 'manage meals']),
+  setting('saved-meals', 'Saved foods', 'Nutrition', 'meals', ['edit saved foods', 'delete saved foods', 'favorite foods', 'meal library', 'manage meals']),
   setting('food-analysis', 'Meal photo analysis', 'Nutrition', 'analysis', ['food analysis', 'food photo setup', 'meal photo setup', 'food recognition', 'photo analysis settings', 'check analysis usage', 'analysis limits']),
   setting('analysis-mode', 'Meal analysis method', 'Meal photo analysis', 'analysis', ['hosted analysis', 'gemini', 'your mac', 'analysis mode', 'food analysis method'], true),
   setting('worker-setup', 'Mac worker setup', 'Meal photo analysis', 'analysis/worker', ['food photo connection', 'local worker', 'connect mac', 'coach setup', 'test worker connection']),

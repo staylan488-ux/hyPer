@@ -48,7 +48,7 @@ const FOCUS_OPTIONS: Option<ProgramFocus>[] = [
 
 const EQUIPMENT_OPTIONS: Option<EquipmentProfile>[] = [
   { value: 'full_gym', label: 'Full Gym', hint: 'Barbells, machines, cables' },
-  { value: 'dumbbell_only', label: 'Dumbbell Only', hint: 'Dumbbells + bodyweight movements' },
+  { value: 'dumbbell_only', label: 'Dumbbell Only', hint: 'Dumbbells + bodyweight exercises' },
 ];
 
 const SESSION_OPTIONS: Option<SessionLength>[] = [
@@ -137,7 +137,7 @@ type GuidedStageKey = 'daysPerWeek' | 'focus' | 'equipment' | 'sessionLength' | 
 const GUIDED_STAGES: Array<{ key: GuidedStageKey; question: string; caption: string }> = [
   { key: 'daysPerWeek', question: 'How many days can you train?', caption: 'Be honest — consistency beats ambition.' },
   { key: 'focus', question: 'Any area you want to emphasize?', caption: 'Focus shifts volume, it never abandons the rest.' },
-  { key: 'equipment', question: 'What equipment do you have?', caption: 'Movements adapt to what you can actually load.' },
+  { key: 'equipment', question: 'What equipment do you have?', caption: 'Exercises adapt to what you can actually load.' },
   { key: 'sessionLength', question: 'How long is a typical session?', caption: 'Sets per day scale to the clock.' },
   { key: 'experience', question: 'How long have you been lifting?', caption: 'Experience calibrates starting volume.' },
 ];

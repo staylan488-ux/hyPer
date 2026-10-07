@@ -181,7 +181,7 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
           className="w-[18px] h-[18px] shrink-0 accent-[var(--color-text)]" />
         <span>
           <span className="t-label block">Save as reusable meal</span>
-          <span className="t-caption block mt-1">{items.length > 1 ? 'Also add these foods to Saved meals for future logging.' : 'Also add this food to Saved meals for future logging.'}</span>
+          <span className="t-caption block mt-1">{items.length > 1 ? 'Also add these foods to Saved foods for future logging.' : 'Also add this food to Saved foods for future logging.'}</span>
         </span>
       </label>}
       <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" size="lg" metal={!addingIngredients} loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{addingIngredients ? 'Add ingredients' : editingEntry ? 'Save changes' : 'Log meal'}</Button></div>

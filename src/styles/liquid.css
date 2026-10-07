@@ -393,6 +393,10 @@ html .app-viewport, html .material-foundation {
     pointer-events: none;
   }
   .platter-row.has-icon + .platter-row.has-icon::before { --row-inset: 66px; }
+  /* A thin rule nearing the scroll-edge band fades out before it reaches the
+     ramp (lib/ruleVeil.ts), so no ghost hairline rests under the bar. */
+  [data-rule-veil='before']::before,
+  [data-rule-veil='after']::after { opacity: var(--rule-veil, 1); }
   .platter-gap > * + * { margin-top: 12px; }
   .material-surface { background-color: transparent; }
 }

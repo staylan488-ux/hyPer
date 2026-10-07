@@ -17,12 +17,24 @@
    ramp and turns opaque only once the large title has gone, and a 16px
    ramp (STUCK_RAMP, opaque for its first 4px like the band's hidden depth)
    softens weeks passing under it. Unstuck it is clear. */
-/* The header's span ends 6px above the last week's row, so the last week
-   pushes it away and always shows just under its ramp: the header never
-   rests over a grid it hides. The legend takes the room back. */
+/* The header's span ends at the top of the last week's row, so header and
+   grid leave together: the header never rests over a grid it hides. Once
+   the grid passes under it, the selected day's week holds under the month
+   letters (`data-selected-week`, sticky under the header's measured height,
+   --calendar-head), as Fuel's week strip shows the selected week, and the
+   short ramp moves under that week. The legend takes the room back. */
 .calendar-sticky-span { display: flow-root; }
-.calendar-sticky-grid { margin-bottom: -62px; }
-.calendar-sticky-after { margin-top: calc(62px + 8px); }
+.calendar-sticky-grid { margin-bottom: -56px; }
+.calendar-sticky-after { margin-top: calc(56px + 14px); }
+.calendar-week[data-selected-week] {
+  position: sticky;
+  top: calc(40px + var(--calendar-head, 0px));
+  z-index: 1;
+}
+.calendar-week[data-stuck] {
+  background: var(--material-foundation);
+  box-shadow: -24px 0 0 var(--material-foundation), 24px 0 0 var(--material-foundation);
+}
 .calendar-sticky {
   position: sticky;
   top: 40px;
@@ -34,7 +46,8 @@
   background: linear-gradient(to bottom, transparent 24px, var(--material-foundation) 24px);
 }
 .calendar-sticky[data-stuck][data-covered] { background: linear-gradient(var(--material-foundation), var(--material-foundation)); }
-.calendar-sticky[data-stuck]::after {
+.calendar-sticky[data-stuck]::after,
+.calendar-week[data-stuck]::after {
   content: '';
   position: absolute;
   left: 0;
@@ -52,6 +65,9 @@
     transparent 16px
   );
 }
+.calendar-week[data-stuck]::after { left: -24px; right: -24px; }
+/* The ramp sits under the held week instead. */
+.calendar-sticky[data-week-stuck]::after { content: none; }
 
 .ledger-day {
   position: relative;

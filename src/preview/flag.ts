@@ -44,6 +44,27 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   }
 }
 
+// The preview's clock reads 9:41 when the page loads, as the status bar in
+// screenshots does, and runs on from there, so "now" agrees with the sample
+// day (food logged before now, the live lift begun after the morning's
+// activities). The sandbox keeps the real clock.
+if (import.meta.env.DEV && typeof window !== 'undefined' && window.__HYPER_PREVIEW__ && !window.__HYPER_SANDBOX__) {
+  const RealDate = Date;
+  const anchor = new RealDate();
+  anchor.setHours(9, 41, 0, 0);
+  const offset = anchor.getTime() - RealDate.now();
+  class PreviewDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(RealDate.now() + offset);
+      else super(...(args as [string | number | Date]));
+    }
+    static now() {
+      return RealDate.now() + offset;
+    }
+  }
+  window.Date = PreviewDate as DateConstructor;
+}
+
 export const isPreviewActive = () =>
   import.meta.env.DEV && typeof window !== 'undefined' && window.__HYPER_PREVIEW__ === true;
 

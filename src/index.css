@@ -571,18 +571,19 @@ input, textarea, select, button { font-family: inherit; }
   height: var(--nav-height);
   margin: auto;
   border-radius: var(--radius-nav);
-  background-color: var(--material-glass);
+  background-color: var(--nav-glass);
   overflow: hidden;
 }
 /* Bottom scroll edge, like iOS 26's: content stays sharp until it reaches
-   the bar. Above the bar's top edge there is only a short opacity fade (at
-   most 8px, no blur), so a row resting just above the bar is crisp, never
-   half softened; the fade finishes 6px under the bar's top edge, and below
-   that the stage is solid beside and under the bar, so nothing shows in
-   the strip around it. */
+   the bar, then goes under the glass instead of being cut. Above the bar's
+   top edge there is only a short opacity fade (8px, no blur), so a row
+   resting just above the bar stays crisp. From the bar's top edge down, a
+   short progressive soft edge: a blur that grows to under 6px (1.5, 3 and
+   4.5px layers) under a stage-colour fade, so a line astride the edge reads
+   as passing beneath the translucent bar, and the strip beside and under the
+   bar settles into the stage. */
 .bottom-nav-edge {
   --nav-edge-above: 8px;
-  --nav-edge-below: 6px;
   position: fixed;
   left: 0;
   right: 0;
@@ -590,15 +591,50 @@ input, textarea, select, button { font-family: inherit; }
   z-index: 35;
   height: calc(var(--nav-top) + var(--nav-edge-above));
   pointer-events: none;
+}
+.bottom-nav-edge > span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.bottom-nav-edge-veil {
+  top: 0;
   background: linear-gradient(
-    to top,
-    var(--material-foundation) 0,
-    var(--material-foundation) calc(var(--nav-top) - var(--nav-edge-below)),
-    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 1 / 4),
-    color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 2 / 4),
-    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) calc(var(--nav-top) - var(--nav-edge-below) + (var(--nav-edge-above) + var(--nav-edge-below)) * 3 / 4),
-    transparent 100%
+    to bottom,
+    transparent 0,
+    color-mix(in srgb, var(--material-foundation) 8%, transparent) calc(var(--nav-edge-above) / 2),
+    color-mix(in srgb, var(--material-foundation) 18%, transparent) var(--nav-edge-above),
+    color-mix(in srgb, var(--material-foundation) 44%, transparent) calc(var(--nav-edge-above) + 12px),
+    color-mix(in srgb, var(--material-foundation) 70%, transparent) calc(var(--nav-edge-above) + 28px),
+    color-mix(in srgb, var(--material-foundation) 90%, transparent) calc(var(--nav-edge-above) + 48px),
+    var(--material-foundation) 100%
   );
+}
+/* Each blur layer starts at the bar's top edge (never above it) and fades
+   in over its own stretch, so the blur grows with depth. */
+.bottom-nav-edge-blur {
+  top: calc(var(--nav-edge-above) + var(--b0));
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--b1));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--b1));
+}
+.bottom-nav-edge-blur[data-layer="1"] { --b: 1.5px; --b0: 0px; --b1: 6px; }
+.bottom-nav-edge-blur[data-layer="2"] { --b: 3px; --b0: 6px; --b1: 10px; }
+.bottom-nav-edge-blur[data-layer="3"] { --b: 4.5px; --b0: 16px; --b1: 14px; }
+/* Reduced transparency or increased contrast: the bar is solid (materials.css),
+   so the edge is the old opaque one: an 8px fade above the bar, solid under it. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .bottom-nav-edge-blur { display: none; }
+  .bottom-nav-edge-veil {
+    background: linear-gradient(
+      to bottom,
+      transparent 0,
+      color-mix(in srgb, var(--material-foundation) 50%, transparent) calc(var(--nav-edge-above) / 2),
+      var(--material-foundation) calc(var(--nav-edge-above) + 6px)
+    );
+  }
 }
 html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }
 .studio-sheet-overlay {

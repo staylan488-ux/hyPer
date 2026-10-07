@@ -28,10 +28,11 @@
   /* Web tab bar: the current tab is a flat ink fill; the bar is set off by
      one faint shadow and no edge. */
   --nav-selection: rgba(0,0,0,.07);
+  --nav-glass: rgba(251,251,247,.72);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
   --nav-rim: 0 0 #0000;
   --material-blur: 26px;
-  --material-nav-muted: #6a6d68;
+  --material-nav-muted: #575757;
   --material-accent: #923127;
   /* Platters: the grouped glass panels that hold page sections. */
   --platter-fill: rgba(255,255,255,.66);
@@ -62,8 +63,9 @@
   --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
   --nav-selection: #333333;
+  --nav-glass: rgba(28,28,28,.72);
   --nav-shadow: none;
-  --nav-rim: inset 0 0 0 .5px rgba(255,255,255,.08);
+  --nav-rim: 0 0 #0000;
   --material-nav-muted: #9a9a9a;
   --material-accent: #D9503F;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
@@ -104,23 +106,23 @@
 }
 
 /* Controls are flat fills; only floating glass carries the wash. */
-.material-glass, .material-toolbar, .bottom-nav, .material-toast {
+.material-glass, .material-toolbar, .material-toast {
   background-image: var(--material-wash);
 }
 .material-button-primary, .studio-save-set {
   background-image: var(--material-action-wash);
 }
+/* Web tab bar: translucent liquid glass, as iOS 26's. A 20px backdrop blur
+   under a neutral fill at 72% (near-black in Black, ivory in Ivory); no rim,
+   wash, glow or one-sided light, and no saturation boost, so what passes
+   under it stays neutral. Content goes under it through the bottom scroll
+   edge (.bottom-nav-edge) rather than being cut by an opaque slab. */
 .bottom-nav {
-  box-shadow: var(--nav-rim), var(--nav-shadow);
-  -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
-  backdrop-filter: blur(var(--material-blur)) var(--material-optics);
-}
-/* Black: floating surfaces are flat and nearly opaque (#161616), with no
-   wash or sheen, so nothing behind them grades them into a lit slab and the
-   current tab reads the same on every tab. */
-.dark .bottom-nav {
-  background-color: rgba(22,22,22,.94);
+  background-color: var(--nav-glass);
   background-image: none;
+  box-shadow: var(--nav-shadow);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 .dark .studio-sheet { background-image: none; }
 .studio-secondary-action, .material-button-secondary {

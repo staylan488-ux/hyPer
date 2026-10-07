@@ -260,7 +260,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
   const [foodDescriptionBusy, setFoodDescriptionBusy] = useState(false);
   const [foodDescriptionError, setFoodDescriptionError] = useState<string | null>(null);
   const [foodDescriptionResult, setFoodDescriptionResult] = useState<FoodDescriptionResult | null>(null);
-  // set when the user edited the fields or picked a saved meal while a describe
+  // set when the user edited the fields or picked a saved food while a describe
   // ran: the estimate waits for "Fill fields" instead of replacing their input
   const [pendingDescribeFill, setPendingDescribeFill] = useState(false);
   const [describeRequests] = useState(createRequestGate);
@@ -691,26 +691,26 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
   };
 
   const handleDeleteSavedMeal = async (meal: Food) => {
-    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`)) return;
+    if (!confirm(`Delete ${meal.name} from saved foods? Past logged entries will stay unchanged.`)) return;
 
     clearSavedMealFeedback();
     setDeletingSavedMealId(meal.id);
     try {
       const userId = await getSessionUserId();
       if (!userId) {
-        setSavedMealError('Please sign in again to delete saved meals.');
+        setSavedMealError('Please sign in again to delete saved foods.');
         return;
       }
 
       const { error } = await retireSavedMeal(userId, meal.id);
 
       if (error) {
-        setSavedMealError('Could not delete saved meal. Please try again.');
+        setSavedMealError('Could not delete saved food. Please try again.');
         return;
       }
 
       if (selectedSavedMealId === meal.id) setSelectedSavedMealId(null);
-      setSavedMealMessage('Saved meal deleted. Past logs were not changed.');
+      setSavedMealMessage('Saved food deleted. Past logs were not changed.');
       await fetchSavedMeals();
     } finally {
       setDeletingSavedMealId(null);
@@ -1318,7 +1318,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
     try {
       const userId = await getSessionUserId();
       if (!userId) {
-        setSavedMealError('Please sign in again to update saved meals.');
+        setSavedMealError('Please sign in again to update saved foods.');
         return;
       }
 
@@ -1329,7 +1329,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
       );
 
       if (!nextSavedMealId) {
-        setSavedMealError('Could not update saved meal. Please try again.');
+        setSavedMealError('Could not update saved food. Please try again.');
         return;
       }
 
@@ -1340,10 +1340,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
       setSaveAsReusableMeal(false);
       if (retireError) {
         setSavedMealError(
-          'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.',
+          'Your edited meal was saved, but the original is still in saved foods. Remove the original when your connection is restored. Past logs are unchanged.',
         );
       } else {
-        setSavedMealMessage('Saved meal updated for future logs.');
+        setSavedMealMessage('Saved food updated for future logs.');
       }
       await fetchSavedMeals();
     } finally {
@@ -2015,7 +2015,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                         className="pressable flex w-11 shrink-0 items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
                         onClick={() => handleEditSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
-                        aria-label={`Edit saved meal ${meal.name}`}
+                        aria-label={`Edit saved food ${meal.name}`}
                       >
                         <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
                       </button>
@@ -2024,7 +2024,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                         className="pressable mr-1.5 flex w-11 shrink-0 items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
                         onClick={() => void handleDeleteSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
-                        aria-label={`Delete saved meal ${meal.name}`}
+                        aria-label={`Delete saved food ${meal.name}`}
                       >
                         {deletingSavedMealId === meal.id
                           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2302,7 +2302,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
 
           {manualNameFocused && manualNameQuery.length >= 2 && (
             <div>
-              <p className="t-label-sm mb-2.5">{showSavedMealsLoading ? 'Loading saved meals…' : 'Saved meals'}</p>
+              <p className="t-label-sm mb-2.5">{showSavedMealsLoading ? 'Loading saved foods…' : 'Saved foods'}</p>
               {!showSavedMealsLoading && manualSuggestions.length > 0 ? (
                 <div className="platter platter-flush max-h-44 overflow-y-auto">
                   {manualSuggestions.map((meal) => (
@@ -2321,14 +2321,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, init
                   ))}
                 </div>
               ) : !showSavedMealsLoading ? (
-                <p className="t-caption">No saved meal matches yet.</p>
+                <p className="t-caption">No saved food matches yet.</p>
               ) : null}
             </div>
           )}
 
           {!onAddIngredients && selectedSavedMealId && (
             <p className="t-label-sm text-[var(--color-text)]">
-              {isSelectedSavedMealMatch ? 'Using saved meal values' : 'Editing saved meal values'}
+              {isSelectedSavedMealMatch ? 'Using saved food values' : 'Editing saved food values'}
             </p>
           )}
 

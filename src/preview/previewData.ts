@@ -150,10 +150,10 @@ const logSeeds: LogSeed[] = [
   ['f_oats', 1.5, 'breakfast', 7, 30],
   ['f_eggs', 1.5, 'breakfast', 7, 35],
   ['f_yogurt', 1, 'breakfast', 7, 40],
-  ['f_chicken', 1.2, 'lunch', 12, 45],
-  ['f_rice', 1, 'lunch', 12, 50],
-  ['f_banana', 1, 'snack', 15, 10],
-  ['f_whey', 1, 'snack', 15, 12],
+  // After the 8:10 ride and before the 9:18 lift; the preview's clock reads
+  // 9:41, so nothing is logged later than now.
+  ['f_banana', 1, 'snack', 9, 6],
+  ['f_whey', 1, 'snack', 9, 8],
 ];
 export const previewNutritionGroups = [
   { id: 'ng-breakfast', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'breakfast', sort_order: 0 },
