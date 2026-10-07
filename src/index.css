@@ -93,11 +93,11 @@
   --color-border: rgba(35, 35, 35, 0.16);
   --color-border-strong: rgba(35, 35, 35, 0.32);
   --color-border-soft: rgba(35, 35, 35, 0.08);
-  --overlay-backdrop: rgba(20, 20, 20, 0.16);
+  --overlay-backdrop: rgba(0, 0, 0, 0.18);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
+  --sheet-shadow: var(--material-sheet-shadow);
   --strip-track: rgba(35, 35, 35, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
@@ -122,8 +122,8 @@
   --color-muted: #A8A8A8;
   --color-text: #F2F2F2;
   --color-text-dim: #A8A8A8;
-  --color-accent: #E58477;
-  --color-accent-deep: #F0A092;
+  --color-accent: #D9503F;
+  --color-accent-deep: #E2604F;
   --color-sage: var(--color-text);
   --color-sage-deep: var(--color-text);
   --color-rose: var(--color-accent);
@@ -134,11 +134,11 @@
   --color-border: rgba(255, 255, 255, 0.16);
   --color-border-strong: rgba(255, 255, 255, 0.30);
   --color-border-soft: rgba(255, 255, 255, 0.07);
-  --overlay-backdrop: rgba(0, 0, 0, 0.34);
+  --overlay-backdrop: rgba(0, 0, 0, 0.5);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
+  --sheet-shadow: var(--material-sheet-shadow);
   --strip-track: rgba(255, 255, 255, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
@@ -454,14 +454,14 @@ input, textarea, select, button { font-family: inherit; }
   left: 0;
   right: 0;
   z-index: 1;
-  height: 30px;
+  height: 44px;
   pointer-events: none;
   background: inherit;
   background-size: 100% var(--app-viewport-height, 100dvh);
   background-position: 0 calc(-1 * var(--app-safe-top));
   background-repeat: no-repeat;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, .55) 45%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, .55) 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 30%, rgba(0, 0, 0, .6) 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 30%, rgba(0, 0, 0, .6) 62%, transparent 100%);
   opacity: 0;
   transition: opacity 180ms var(--ease-out-quart);
 }
@@ -501,6 +501,15 @@ html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events
   background-color: var(--material-sheet);
 }
 @media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }
+/* iOS 26: phone sheets float inset from the screen edges with every corner
+   rounded, following the display's own curve. */
+@media (max-width: 639px) {
+  .studio-sheet {
+    margin: 0 8px 8px;
+    width: calc(100% - 16px);
+    border-radius: 34px;
+  }
+}
 
 /* iOS focuses small editable text by zooming the entire WKWebView. Keep an
    explicit floor even when compact display typography is reused on controls.

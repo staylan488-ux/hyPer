@@ -137,7 +137,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               </motion.button>
             </div>
             <motion.div
-              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
+              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.5rem,calc(var(--app-safe-bottom)+0.5rem))] sm:pb-6 ${contentClassName}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.08, duration: 0.24 }}

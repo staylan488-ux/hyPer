@@ -7,9 +7,9 @@
   /* Flat Ivory: no light pool, so the stage is one even tone edge to edge. */
   --material-ambient: none;
   --material-glass: rgba(255,255,255,.56);
-  --material-sheet: rgba(250,250,247,.80);
+  --material-sheet: rgba(247,247,243,.97);
   --material-surface: rgba(255,255,255,.62);
-  --material-secondary: rgba(255,255,255,.66);
+  --material-secondary: rgba(35,35,35,.06);
   --material-inset: rgba(35, 35, 35,.055);
   --material-wash: linear-gradient(170deg, rgba(255,255,255,.55), rgba(255,255,255,0) 58%);
   --material-action-wash: none;
@@ -22,7 +22,7 @@
   --material-control-shadow: none;
   --material-inset-shadow: inset 0 1px 2px rgba(20, 20, 20,.06);
   --material-selection: rgba(255,255,255,.95);
-  --material-selection-shadow: 0 1px 2px rgba(20, 20, 20,.10), 0 4px 14px rgba(20, 20, 20,.08), inset 0 0 0 .5px rgba(20, 20, 20,.06);
+  --material-selection-shadow: 0 1px 3px rgba(20, 20, 20,.10);
   --material-blur: 26px;
   --material-nav-muted: #6a6d68;
   --material-accent: #923127;
@@ -52,10 +52,10 @@
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
   --material-inset-shadow: inset 0 1px 2px rgba(0,0,0,.45);
-  --material-selection: rgba(255,255,255,.14);
-  --material-selection-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.05);
+  --material-selection: rgba(255,255,255,.16);
+  --material-selection-shadow: none;
   --material-nav-muted: #9a9a9a;
-  --material-accent: #F0A092;
+  --material-accent: #D9503F;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
   --platter-edge: 0 0 #0000;
   --platter-shadow: 0 10px 30px rgba(0,0,0,.35);

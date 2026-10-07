@@ -25,8 +25,8 @@
   background: linear-gradient(
     to bottom,
     var(--material-foundation) 0%,
-    var(--material-foundation) 52%,
-    color-mix(in srgb, var(--material-foundation) 70%, transparent) 72%,
+    var(--material-foundation) 70%,
+    color-mix(in srgb, var(--material-foundation) 60%, transparent) 86%,
     transparent 100%
   );
 }

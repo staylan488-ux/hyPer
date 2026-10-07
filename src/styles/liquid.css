@@ -51,16 +51,17 @@
     transparent 230deg, rgba(255,255,255,.75) 252deg, rgba(255,255,255,0) 274deg, transparent 360deg;
   --metal-gap: 0 0 0 0 transparent;
   --metal-width: 1.75px;
-  --metal-dome: linear-gradient(180deg, #ffffff 0%, #f8f8f6 46%, #e9e9e5 100%);
-  --metal-dome-press: linear-gradient(180deg, #f1f1ee 0%, #ebebe7 50%, #dfdfdb 100%);
-  --metal-dome-fg: #1c1c1c;
-  --metal-dome-inner: inset 0 1px 0 #ffffff, inset 0 -3px 6px rgba(40, 40, 30, .06);
-  --metal-dome-shadow: 0 1px 2px rgba(20, 20, 20, .10), 0 8px 22px rgba(20, 20, 20, .10);
-  --metal-text-shadow: 0 1px 1px rgba(20, 20, 20, .14);
+  /* The save-set key is a graphite dome in both themes: one metal face. */
+  --metal-dome: linear-gradient(180deg, #3a3a3a 0%, #232323 44%, #0a0a0a 100%);
+  --metal-dome-press: linear-gradient(180deg, #2f2f2f 0%, #1c1c1c 48%, #070707 100%);
+  --metal-dome-fg: #f2f2f2;
+  --metal-dome-inner: inset 0 1px 0 rgba(255, 255, 255, .13), inset 0 -4px 10px rgba(0, 0, 0, .55);
+  --metal-dome-shadow: none;
+  --metal-text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
   --metal-static-opacity: .9;
 
   /* Hero figures: graphite, lit from above. */
-  --figure-ink: linear-gradient(180deg, #212121 20%, #4d4d4d 100%);
+  --figure-ink: linear-gradient(var(--color-text), var(--color-text));
 }
 
 .dark {
@@ -94,7 +95,7 @@
   --metal-static-opacity: .62;
 
   /* Hero figures: brushed titanium. */
-  --figure-ink: linear-gradient(180deg, #ffffff 18%, #b6b6b6 100%);
+  --figure-ink: linear-gradient(var(--color-text), var(--color-text));
 }
 
 /* ─── Liquid glass ─────────────────────────────────────────────
@@ -105,7 +106,6 @@
   .studio-sheet, .material-toast, .glass-edge { position: relative; }
 }
 .bottom-nav::before,
-.studio-sheet::before,
 .material-toast::before,
 .studio-rest-bar::before,
 .glass-edge::before {
@@ -389,8 +389,8 @@ html .app-viewport, html .material-foundation {
   height: 34px;
   border-radius: 11px;
   color: var(--color-text);
-  background: var(--material-secondary);
-  box-shadow: var(--material-rim);
+  background: none;
+  box-shadow: none;
 }
 
 /* Sheet titles speak in the editorial voice. */
