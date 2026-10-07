@@ -106,33 +106,40 @@ interface RailStripProps {
   className?: string;
 }
 
-/** Continuous rail with an optional target notch — macros, generic progress. */
+/** Continuous rail with an optional target notch — macros, generic progress.
+ * Ink tones fill the groove with a polished metal bar; over and accent
+ * tones stay lacquer. */
 export function RailStrip({ value, tone = 'chalk', notch, size = 'md', overTone = 'berry', reveal, className = '' }: RailStripProps) {
   const firstReveal = useFirstReveal(reveal);
-  const heights = { sm: 'h-[2px]', md: 'h-[3px]', lg: 'h-1' };
+  const heights = { sm: 'h-[4px]', md: 'h-[5px]', lg: 'h-[6px]' };
   const clamped = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   const over = value > 1.001;
+  const fillTone = over ? overTone : tone;
+  const metal = fillTone === 'chalk' || fillTone === 'sage';
 
   return (
-    <div className={`relative ${heights[size]} overflow-visible ${className}`} style={{ backgroundColor: EMPTY }}>
-      <motion.div
-        className="absolute inset-0"
-        initial={firstReveal ? { scaleX: 0 } : false}
-        animate={{ scaleX: clamped }}
-        transition={firstReveal ? { ...springs.heavy, bounce: 0, delay: 0.12 } : springs.settle}
-        style={{
-          backgroundColor: over ? TONE[overTone] : TONE[tone],
-          transformOrigin: '0% 50%',
-          transition: 'background-color 380ms var(--ease-out-quart)',
-        }}
-      />
+    <div className={`relative ${heights[size]} overflow-visible ${className}`}>
+      <div className="rail-groove absolute inset-0 overflow-hidden">
+        <motion.div
+          className={`absolute inset-0 ${metal ? 'rail-metal' : ''}`}
+          initial={firstReveal ? { scaleX: 0 } : false}
+          animate={{ scaleX: clamped }}
+          transition={firstReveal ? { ...springs.heavy, bounce: 0, delay: 0.12 } : springs.settle}
+          style={{
+            backgroundColor: metal ? undefined : TONE[fillTone],
+            transformOrigin: '0% 50%',
+            transition: 'background-color 380ms var(--ease-out-quart)',
+          }}
+        />
+      </div>
       {notch !== undefined && notch > 0 && notch <= 1 && (
         <span
           className="absolute top-1/2 -translate-y-1/2 w-px"
           style={{
             left: `${notch * 100}%`,
-            height: '260%',
-            backgroundColor: 'var(--color-accent)',
+            height: '220%',
+            // A neutral target tick at 3:1 or more. Lacquer is for live and over.
+            backgroundColor: 'var(--rail-target)',
           }}
         />
       )}
@@ -161,14 +168,13 @@ export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, reveal, classNa
   return (
     <div className={`relative h-5 ${className}`}>
       {/* base rail */}
-      <div className="absolute top-1/2 -translate-y-1/2 inset-x-0 h-px" style={{ backgroundColor: EMPTY }} />
+      <div className="rail-groove absolute top-1/2 -translate-y-1/2 inset-x-0 h-[4px]" />
       {/* MAV band — the adaptive zone */}
       <div
-        className="absolute top-1/2 -translate-y-1/2 h-[3px]"
+        className="rail-metal absolute top-1/2 -translate-y-1/2 h-[4px] rounded-full opacity-45"
         style={{
           left: pos(mavLow),
           width: `calc(${pos(mavHigh)} - ${pos(mavLow)})`,
-          backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
         }}
       />
       {/* landmark notches */}
@@ -188,7 +194,7 @@ export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, reveal, classNa
         transition={firstReveal ? { ...springs.heavy, delay: 0.1 } : springs.settle}
       >
         <span
-          className="absolute left-0 top-1/2 w-[2px] h-5 -translate-x-1/2 -translate-y-1/2"
+          className="absolute left-0 top-1/2 w-[3px] h-5 rounded-full -translate-x-1/2 -translate-y-1/2"
           style={{
             backgroundColor:
               current > mrv ? 'var(--color-accent)' : current < mev ? 'var(--color-text-dim)' : 'var(--color-text)',

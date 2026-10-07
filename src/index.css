@@ -2,21 +2,24 @@
 @import "./styles/fonts.css";
 @import "./styles/materials.css";
 @import "./styles/kinetic.css";
+@import "./styles/liquid.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */
 
   /* Defaults (PAPER) — runtime values overridden by .light / .dark */
   --color-base: #F5F5F0;
-  --color-well: #E8E9E4;
-  --color-surface-1: #F0F1EC;
-  --color-surface-2: #E8E9E4;
-  --color-surface-3: #DCE0D9;
+  --color-well: #EAEAE5;
+  --color-surface-1: #F0F0EB;
+  --color-surface-2: #EAEAE5;
+  --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #60645F;
-  --color-text: #232625;
-  --color-text-dim: #60645F;
+  --color-muted: #575757;
+  /* Placeholders stay at least 4.5:1 on a filled field. */
+  --color-placeholder: #616161;
+  --color-text: #232323;
+  --color-text-dim: #575757;
 
   /* The single accent — Lacquer. Everything else is ink on paper. */
   --color-accent: #A8352A;
@@ -49,9 +52,11 @@
   --radius-xl: 0px;
   --radius-2xl: 0px;
   --radius-full: 9999px;
-  --radius-control: 11px;
-  --radius-sheet: 20px;
-  --radius-nav: 22px;
+  --radius-control: 14px;
+  --radius-capsule: 999px;
+  --radius-platter: 26px;
+  --radius-sheet: 30px;
+  --radius-nav: 999px;
 
   /* Typography */
   --font-sans: 'Geist', 'Helvetica Neue', Arial, system-ui, sans-serif;
@@ -69,15 +74,17 @@
 :root,
 .light {
   --color-base: #F5F5F0;
-  --color-well: #E8E9E4;
-  --color-surface-1: #F0F1EC;
-  --color-surface-2: #E8E9E4;
-  --color-surface-3: #DCE0D9;
+  --color-well: #EAEAE5;
+  --color-surface-1: #F0F0EB;
+  --color-surface-2: #EAEAE5;
+  --color-surface-3: #DEDED8;
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
-  --color-muted: #60645F;
-  --color-text: #232625;
-  --color-text-dim: #60645F;
+  --color-muted: #575757;
+  /* Placeholders stay at least 4.5:1 on a filled field. */
+  --color-placeholder: #616161;
+  --color-text: #232323;
+  --color-text-dim: #575757;
   --color-accent: #A8352A;
   --color-accent-deep: #872A20;
   --color-sage: var(--color-text);
@@ -87,15 +94,15 @@
   --color-success: var(--color-text);
   --color-warning: var(--color-accent);
   --color-danger: var(--color-accent);
-  --color-border: rgba(35, 38, 37, 0.16);
-  --color-border-strong: rgba(35, 38, 37, 0.32);
-  --color-border-soft: rgba(35, 38, 37, 0.08);
-  --overlay-backdrop: rgba(24, 29, 26, 0.16);
+  --color-border: rgba(35, 35, 35, 0.16);
+  --color-border-strong: rgba(35, 35, 35, 0.32);
+  --color-border-soft: rgba(35, 35, 35, 0.08);
+  --overlay-backdrop: rgba(0, 0, 0, 0.28);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
-  --strip-track: rgba(35, 38, 37, 0.12);
+  --sheet-shadow: var(--material-sheet-shadow);
+  --strip-track: rgba(35, 35, 35, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
   --button-danger-fg: #F5F5F0;
@@ -103,6 +110,11 @@
   --button-primary-fg: var(--color-base);
   --button-primary-hover: color-mix(in srgb, var(--color-text) 88%, var(--color-base));
   --button-primary-active: color-mix(in srgb, var(--color-text) 78%, var(--color-base));
+  /* The volume map's silhouette (BODY_INK in lib/volumeMap). */
+  --map-body: color-mix(in srgb, var(--color-text) 10%, var(--color-base));
+  /* Under MEV: a clear step past the body (≥1.6:1, so it never reads as
+     not trained) and ≥2:1 under every in-range tone. */
+  --map-under: color-mix(in srgb, var(--color-text) 32%, var(--color-base));
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -117,10 +129,11 @@
   --color-surface: var(--color-surface-1);
   --color-surface-high: var(--color-surface-2);
   --color-muted: #A8A8A8;
+  --color-placeholder: #8C8C8C;
   --color-text: #F2F2F2;
   --color-text-dim: #A8A8A8;
-  --color-accent: #E58477;
-  --color-accent-deep: #F0A092;
+  --color-accent: #D9503F;
+  --color-accent-deep: #E2604F;
   --color-sage: var(--color-text);
   --color-sage-deep: var(--color-text);
   --color-rose: var(--color-accent);
@@ -131,19 +144,28 @@
   --color-border: rgba(255, 255, 255, 0.16);
   --color-border-strong: rgba(255, 255, 255, 0.30);
   --color-border-soft: rgba(255, 255, 255, 0.07);
-  --overlay-backdrop: rgba(0, 0, 0, 0.34);
+  --overlay-backdrop: rgba(0, 0, 0, 0.5);
   --surface-atmosphere: none;
   --well-shadow: none;
   --raised-shadow: none;
-  --sheet-shadow: var(--material-rim), var(--material-sheet-shadow);
+  --sheet-shadow: var(--material-sheet-shadow);
   --strip-track: rgba(255, 255, 255, 0.12);
   --button-danger-bg: #A8352A;
   --button-danger-hover: #872A20;
   --button-danger-fg: #F5F5F0;
-  --button-primary-bg: #303030;
-  --button-primary-fg: #EAEAEA;
-  --button-primary-hover: #363636;
-  --button-primary-active: #3B3B3B;
+  --button-primary-bg: #F2F2F2;
+  --button-primary-fg: #000000;
+  --button-primary-hover: #E6E6E6;
+  --button-primary-active: #D9D9D9;
+  /* Lifted from 10% so the silhouette's contour holds against true black. */
+  --map-body: color-mix(in srgb, var(--color-text) 18%, var(--color-base));
+  /* The map drawn as Ivory draws it: hairline seams in the page colour (not
+     keylines), fills a step quieter, and under MEV one step past the body
+     (at least 2:1 under the first in-range tone, so it stays the quietest mark;
+     lib/volumeMap, VolumeMap). */
+  --map-seam: 1px;
+  --map-ink-drop: 13%;
+  --map-under: color-mix(in srgb, var(--color-text) 33%, var(--color-base));
 }
 
 * {
@@ -181,6 +203,18 @@ body {
   letter-spacing: .16em;
   text-transform: uppercase;
 }
+/* Units beside or under a figure ("sets", "eaten", "of 2,600 kcal target")
+   are sentence case at 13px secondary, never tracked caps: caps belong to
+   section labels and kickers only. */
+.ring-unit, .unit-line {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -.005em;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}
 .t-title {
   font-family: var(--font-display);
   font-size: 40px;
@@ -195,6 +229,20 @@ body {
   line-height: 1.4;
   letter-spacing: 0;
 }
+/* One title size for ordinary list rows (Today's Explore, Program, History,
+   Progress's muscles, You, Fuel's foods, disclosure rows), the app's
+   body-equivalent at 15px. Titles over a caption are medium; plain rows
+   (settings, foods, activities) are regular. Only the live workout's
+   movement rows step up (17px), as the work in hand. */
+.t-row-title, .t-row-title-plain {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--color-text);
+}
+.t-row-title { font-weight: 500; }
+.t-row-title-plain { font-weight: 400; }
 .t-body {
   font-family: var(--font-sans);
   font-size: 14px;
@@ -275,7 +323,10 @@ body {
 .studio-row-action { background: transparent; border-radius: 0; }
 .studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
 }
-:where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+/* Layered so a control's own outline utility (a well that rings itself) wins. */
+@layer base {
+  :where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+}
 
 /* ═════════════════════════════════════════════════════════════
    CONTENT — calm, readable surfaces beneath the glass control layer.
@@ -318,9 +369,24 @@ body {
 }
 .pressable:active { transform: scale(0.985); }
 
-/* Clears the bottom nav + safe area */
+/* Row accessories (chevrons, •••, trailing values) end on one optical
+   trailing edge, 2px inside the 24px gutter (376pt on a 402pt phone).
+   Lucide insets each glyph in its box by its own amount, so each shape
+   shifts by its own measure (translate: no layout change, and it composes
+   with a disclosure's rotation). */
+.trail-chevron { translate: 3.5px 0; }
+.trail-disclosure { translate: 1.4px 0; }
+.trail-more { translate: 3.3px 0; }
+
+/* Clears the tab bar (native or web, same geometry) with 24px of air: the
+   last row ends just above the bar, never on a field of empty stage.
+   PageTitle sets --end-trim (on the scroll viewport) so the last ink, not
+   the last row's box, ends 24px above the bar on every page. */
 .pb-nav {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--nav-top) + 24px + var(--end-trim, 0px));
+  /* Applied at once (even under reduced motion's near-zero transitions), so
+     the end PageTitle measures is the end it set. */
+  transition-property: none;
 }
 
 /* ═════════════════════════════════════════════════════════════
@@ -348,8 +414,8 @@ input[type="number"] { -moz-appearance: textfield; }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--color-muted);
-  opacity: 0.7;
+  color: var(--color-placeholder);
+  opacity: 1;
 }
 
 input, textarea, select, button { font-family: inherit; }
@@ -437,6 +503,59 @@ input, textarea, select, button { font-family: inherit; }
   padding: var(--app-safe-top) var(--app-safe-right) 0 var(--app-safe-left);
   background: var(--material-foundation);
 }
+/* Scroll edge: once the page scrolls, content dissolves into the stage just
+   below the status bar instead of meeting a hard line. The layer is a copy of
+   the shell's own background, aligned to it and faded out by a mask, so the
+   seam matches in every theme. Pages with a title band (PageTitle) cover it
+   with the band; elsewhere it is the whole edge, on the band's recipe: solid
+   for 14px, then the same 24px smoothstep ramp, with a light blur (::after)
+   only where the veil already hides most of the content, so a partial shape
+   softens instead of keeping a crisp, shaded outline. */
+.app-viewport::before,
+.app-viewport::after {
+  content: '';
+  position: absolute;
+  top: var(--app-safe-top);
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out-quart);
+}
+.app-viewport::before {
+  height: 38px;
+  background: inherit;
+  background-size: 100% var(--app-viewport-height, 100dvh);
+  background-position: 0 calc(-1 * var(--app-safe-top));
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, 0.98) calc(14px + 24px * 1 / 12), rgba(0, 0, 0, 0.926) calc(14px + 24px * 2 / 12), rgba(0, 0, 0, 0.844) calc(14px + 24px * 3 / 12), rgba(0, 0, 0, 0.741) calc(14px + 24px * 4 / 12), rgba(0, 0, 0, 0.624) calc(14px + 24px * 5 / 12), rgba(0, 0, 0, 0.5) calc(14px + 24px * 6 / 12), rgba(0, 0, 0, 0.376) calc(14px + 24px * 7 / 12), rgba(0, 0, 0, 0.259) calc(14px + 24px * 8 / 12), rgba(0, 0, 0, 0.156) calc(14px + 24px * 9 / 12), rgba(0, 0, 0, 0.074) calc(14px + 24px * 10 / 12), rgba(0, 0, 0, 0.02) calc(14px + 24px * 11 / 12), transparent 38px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 14px, rgba(0, 0, 0, 0.98) calc(14px + 24px * 1 / 12), rgba(0, 0, 0, 0.926) calc(14px + 24px * 2 / 12), rgba(0, 0, 0, 0.844) calc(14px + 24px * 3 / 12), rgba(0, 0, 0, 0.741) calc(14px + 24px * 4 / 12), rgba(0, 0, 0, 0.624) calc(14px + 24px * 5 / 12), rgba(0, 0, 0, 0.5) calc(14px + 24px * 6 / 12), rgba(0, 0, 0, 0.376) calc(14px + 24px * 7 / 12), rgba(0, 0, 0, 0.259) calc(14px + 24px * 8 / 12), rgba(0, 0, 0, 0.156) calc(14px + 24px * 9 / 12), rgba(0, 0, 0, 0.074) calc(14px + 24px * 10 / 12), rgba(0, 0, 0, 0.02) calc(14px + 24px * 11 / 12), transparent 38px);
+}
+.app-viewport::after {
+  top: calc(var(--app-safe-top) + 14px);
+  height: 14px;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 7px, transparent 14px);
+  mask-image: linear-gradient(to bottom, #000 0, #000 7px, transparent 14px);
+}
+.app-viewport[data-scrolled]::before,
+.app-viewport[data-scrolled]::after { opacity: 1; }
+/* Reduced transparency or increased contrast: a solid edge, no ramp or blur. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .app-viewport::after { display: none; }
+  .app-viewport::before { height: 24px; -webkit-mask-image: none; mask-image: none; }
+}
+/* Web tab bar geometry, matched to the native iOS 26 bar: 62px tall, about
+   21px above the screen's bottom edge (concentric with the display corners
+   on a home-indicator phone), 21px side insets. */
+:root {
+  --nav-height: 62px;
+  --nav-gap: max(12px, calc(var(--app-safe-bottom) - 13px));
+  /* Where the bar's top edge sits, measured from the bottom of the screen. */
+  --nav-top: calc(var(--nav-gap) + var(--nav-height));
+}
 .app-scroll-viewport {
   height: 100%;
   max-width: 32rem;
@@ -444,21 +563,61 @@ input, textarea, select, button { font-family: inherit; }
   overflow-y: auto;
   overscroll-behavior-y: contain;
   background: transparent;
+  /* The scroll-edge band covers the top 64px (40px solid + 24px ramp, see
+     .page-scroll-edge): anything scrolled into view (a set entry, a focused
+     field) lands below it, never in its fade. */
+  scroll-padding-top: 64px;
 }
 .bottom-nav {
   position: fixed;
-  bottom: calc(12px + var(--app-safe-bottom));
-  left: max(17px, var(--app-safe-left));
-  right: max(17px, var(--app-safe-right));
+  bottom: var(--nav-gap);
+  left: max(21px, var(--app-safe-left));
+  right: max(21px, var(--app-safe-right));
   z-index: 40;
   max-width: 478px;
+  height: var(--nav-height);
   margin: auto;
-  border: 1px solid transparent;
   border-radius: var(--radius-nav);
-  background-color: var(--material-glass);
+  background-color: var(--nav-glass);
   overflow: hidden;
 }
-html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events: none; }
+/* Bottom scroll edge, like iOS 26's: content goes under the glass capsule
+   (which blurs it, materials.css) and nowhere else blurs. Outside the
+   capsule there is only stage colour: an 8px opacity fade above the bar's
+   top edge, eased so it is all but full stage over the last 4px (a glyph's
+   top just above the bar fades out instead of reading as sliced), then
+   solid beside and under the bar, so nothing smudges in the corner wedges.
+   The stage is the spread of a capsule-shaped hole
+   (.bottom-nav-edge-hole) that follows the bar's rounded ends 1px inside
+   its edge: the bar's antialiased edge then lies over solid stage, never
+   over two coincident antialiased edges that let crisp content through as
+   a dotted arc. */
+.bottom-nav-edge {
+  --nav-edge-above: 8px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  height: calc(var(--nav-top) + var(--nav-edge-above));
+  overflow: hidden;
+  pointer-events: none;
+  --nav-edge-fade: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.45) calc(var(--nav-edge-above) * .25), rgba(0,0,0,.8) calc(var(--nav-edge-above) * .5), rgba(0,0,0,.96) calc(var(--nav-edge-above) * .75), #000 var(--nav-edge-above));
+  -webkit-mask-image: var(--nav-edge-fade);
+  mask-image: var(--nav-edge-fade);
+}
+.bottom-nav-edge-hole {
+  position: absolute;
+  bottom: calc(var(--nav-gap) + 1px);
+  left: calc(max(21px, var(--app-safe-left)) + 1px);
+  right: calc(max(21px, var(--app-safe-right)) + 1px);
+  max-width: 476px;
+  height: calc(var(--nav-height) - 2px);
+  margin: 0 auto;
+  border-radius: calc(var(--radius-nav) - 1px);
+  box-shadow: 0 0 0 100vmax var(--material-foundation);
+}
+html[data-keyboard-open='true'] :is(.bottom-nav, .bottom-nav-edge) { visibility: hidden; pointer-events: none; }
 .studio-sheet-overlay {
   top: var(--app-viewport-top, 0px);
   height: var(--app-viewport-height, 100dvh);
@@ -472,6 +631,30 @@ html[data-keyboard-open='true'] .bottom-nav { visibility: hidden; pointer-events
   background-color: var(--material-sheet);
 }
 @media (min-width: 640px) { .studio-sheet { border-radius: var(--radius-sheet); max-height: 90%; } }
+/* iOS 26: phone sheets float inset from the screen edges with every corner
+   rounded. The bottom corners are concentric with the display's own curve
+   (about 55px, less the 8px inset). */
+@media (max-width: 639px) {
+  .studio-sheet {
+    margin: 0 8px 8px;
+    width: calc(100% - 16px);
+    border-radius: 34px 34px 47px 47px;
+  }
+  /* The 8px gap under the floating sheet and the corners beside its 47px
+     bottom radius show only the dimmed stage, never a row's hairline or a
+     clipped glyph of the page behind. Painted before the sheet, so a sheet
+     sliding in or dragged down still covers it. */
+  .studio-sheet-overlay::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 55px;
+    background: linear-gradient(var(--overlay-backdrop), var(--overlay-backdrop)), var(--material-foundation);
+    pointer-events: none;
+  }
+}
 
 /* iOS focuses small editable text by zooming the entire WKWebView. Keep an
    explicit floor even when compact display typography is reused on controls.

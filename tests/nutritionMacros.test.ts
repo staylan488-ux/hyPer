@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { logMacro, sumMacros } from '@/lib/nutritionMacros';
+import { logMacro, sumMacros, sumShownMacros } from '@/lib/nutritionMacros';
 import { sumNutritionLogCalories } from '@/components/nutrition/nutritionLogUtils';
 
 interface Food { calories: number; protein: number; carbs: number; fat: number }
@@ -53,15 +53,15 @@ describe('shared macro totals', () => {
     ])).toEqual({ calories: 125, protein: 6, carbs: 5, fat: 0 });
   });
 
-  it('keeps the meal-group calorie total identical when built on the shared helper', () => {
-    const previousGroupTotal = (logs: typeof day) => logs.reduce((total, log) => {
-      const calories = Number(log.food?.calories);
-      const servings = Number(log.servings);
-      if (!Number.isFinite(calories) || !Number.isFinite(servings)) return total;
-      return total + calories * servings;
+  it('totals what the rows show: each entry rounded once, then summed', () => {
+    const rowsShown = (macro: 'calories' | 'protein') => day.reduce((total, log) => {
+      const value = Number(log.food?.[macro]);
+      return Number.isFinite(value) ? total + Math.round(value * log.servings) : total;
     }, 0);
-
-    expect(sumNutritionLogCalories(day)).toBe(previousGroupTotal(day));
-    expect(sumNutritionLogCalories(day)).toBe(sumMacros(day).calories);
+    // Rows read 26 g, 0 g, 25 g, 0 g, 4 g of protein: the header says their sum, 55 g.
+    expect(sumShownMacros(day).protein).toBe(rowsShown('protein'));
+    expect(sumShownMacros(day).protein).toBe(55);
+    expect(sumNutritionLogCalories(day)).toBe(rowsShown('calories'));
+    expect(sumShownMacros([{ servings: 1, food: null }])).toEqual({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   });
 });

@@ -1,17 +1,22 @@
-import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Dumbbell, Leaf, User } from 'lucide-react';
+import type { ReactElement } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
+import { nativeTabForPath, type NativeTab } from '@/lib/nativeGlassNavigation';
 import { useLitSurface } from '@/hooks/useLitSurface';
+import { DumbbellGlyph, HomeGlyph, LeafGlyph, PersonGlyph, type TabIconProps } from './TabIcons';
 
-const navItems = [
-  { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
-  { to: '/train', icon: Dumbbell, label: 'Train', matchPaths: ['/train', '/workout', '/splits'] },
-  { to: '/nutrition', icon: Leaf, label: 'Fuel', matchPaths: ['/nutrition'] },
-  { to: '/settings', icon: User, label: 'You', matchPaths: ['/settings', '/history', '/analysis'] },
+// The selected tab comes from the same mapping the native bar uses, so the
+// web fallback and iOS always agree on where a screen lives.
+// The selected tab takes its glyph's filled variant.
+const navItems: { to: string; icon: (props: TabIconProps) => ReactElement; label: string; tab: NativeTab }[] = [
+  { to: '/', icon: HomeGlyph, label: 'Today', tab: 'today' },
+  { to: '/train', icon: DumbbellGlyph, label: 'Train', tab: 'train' },
+  { to: '/nutrition', icon: LeafGlyph, label: 'Fuel', tab: 'fuel' },
+  { to: '/settings', icon: PersonGlyph, label: 'You', tab: 'you' },
 ];
 
 export function BottomNav() {
@@ -28,15 +33,16 @@ export function BottomNav() {
     return null;
   }
 
-  const isPathMatch = (pathname: string, target: string) => {
-    if (target === '/') {
-      return pathname === '/';
-    }
-
-    return pathname === target || pathname.startsWith(`${target}/`);
-  };
+  const selectedTab = nativeTabForPath(location.pathname);
 
   return (
+    <>
+    {/* Bottom scroll edge: content stays sharp until it reaches the bar,
+        then goes under the glass capsule; beside and under the capsule it
+        fades into the stage (opacity only, never blurred). */}
+    <div className="bottom-nav-edge" aria-hidden>
+      <span className="bottom-nav-edge-hole" />
+    </div>
     <motion.nav
       ref={litRef}
       aria-label="Main navigation"
@@ -45,15 +51,16 @@ export function BottomNav() {
       transition={springs.settle}
     >
       <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4">
-        {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
-          const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
+        {navItems.map(({ to, icon: Icon, label, tab }) => {
+          const isActive = tab === selectedTab;
 
           return (
-            <NavLink
+            <Link
               key={to}
               to={to}
               aria-label={label}
-              className="relative flex flex-col items-center justify-center gap-1.5 h-[68px]"
+              aria-current={isActive ? 'page' : undefined}
+              className="relative flex flex-col items-center justify-center h-[62px]"
               onClick={() => {
                 if (!isActive) tapHaptic();
               }}
@@ -61,7 +68,7 @@ export function BottomNav() {
               {isActive && (
                 <motion.span
                   layoutId="material-nav-selection"
-                  className="material-nav-selection pointer-events-none absolute inset-x-1 inset-y-1.5 rounded-[16px]"
+                  className="material-nav-selection pointer-events-none absolute inset-x-0 inset-y-[5px] rounded-[var(--radius-capsule)]"
                   transition={springs.tactile}
                 />
               )}
@@ -69,26 +76,27 @@ export function BottomNav() {
                 whileTap={{ scale: 0.9 }}
                 animate={{ scale: isActive ? 1.04 : 1 }}
                 transition={springs.tactile}
-                className="relative flex flex-col items-center gap-1.5"
+                className="relative flex flex-col items-center gap-[3px]"
               >
                 <Icon
-                  className={`w-[19px] h-[19px] transition-colors duration-200 ${
+                  filled={isActive}
+                  className={`w-6 h-6 transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
-                  strokeWidth={1.5}
                 />
                 <span
-                  className={`text-[11px] font-medium uppercase tracking-[0.12em] [font-family:var(--font-sans)] transition-colors duration-200 ${
+                  className={`text-[10.5px] font-semibold leading-none tracking-[0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
                 >
                   {label}
                 </span>
               </motion.span>
-            </NavLink>
+            </Link>
           );
         })}
       </div>
     </motion.nav>
+    </>
   );
 }

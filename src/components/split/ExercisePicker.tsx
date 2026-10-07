@@ -136,18 +136,18 @@ function ExercisePickerContent({
       {intro}
       {/* Search bar */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search exercises..."
-          className="pl-9"
+          className="pl-11 rounded-[var(--radius-capsule)]!"
         />
       </div>
 
       {/* Muscle group filter — tracked-caps chips on a hairline */}
       <div>
-        <p className="t-label mb-3">Muscle group</p>
+        <p className="t-label px-1 mb-3">Muscle group</p>
         <div
           ref={filterScrollRef}
           className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar"
@@ -205,16 +205,16 @@ function ExercisePickerContent({
           <div key={selectedMuscle} className="space-y-7">
             {groupedExercises.map(([group, groupExercises]) => (
               <section key={group}>
-                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
-                  <span className="t-heading">{MUSCLE_GROUP_LABELS[group]}</span>
+                <div className="flex items-baseline justify-between px-1 mb-3">
+                  <span className="t-label">{MUSCLE_GROUP_LABELS[group]}</span>
                   <span className="t-data-sm text-[var(--color-muted)]">{groupExercises.length}</span>
                 </div>
-                <ul>
+                <ul className="platter platter-flush">
                   {groupExercises.map((exercise) => (
-                    <li key={exercise.id} className="border-t border-[var(--color-border)] first:border-t-0">
+                    <li key={exercise.id} className="platter-row">
                       <button
                         onClick={() => handleSelect(exercise)}
-                        className="pressable group w-full text-left py-3 flex items-baseline gap-3"
+                        className="pressable group w-full min-h-[52px] text-left px-5 py-3 flex items-baseline gap-3"
                         type="button"
                       >
                         <span className="flex-1 min-w-0">

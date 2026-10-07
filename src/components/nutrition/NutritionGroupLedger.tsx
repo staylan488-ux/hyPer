@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Plus, Trash2, X } from 'lucide-react';
+import './nutrition-ledger.css';
 import { Modal } from '@/components/shared';
 import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
 import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
@@ -33,11 +34,15 @@ interface NutritionGroupLedgerProps {
   groups: NutritionGroup[];
   deletedId: string | null;
   onEdit: (entry: NutritionLedgerEntry) => void;
+  /** Edit mode reveals move, reorder and delete controls; rows stay tappable to edit. */
+  editing?: boolean;
   onDelete: (id: string) => void;
   onMove: (id: string, groupId: string | null) => void;
   /** Present only on entries eligible for it; absent hides the control. */
   onMoveToPreviousDay?: (id: string) => void;
   onReorderGroup: (groupId: string, direction: -1 | 1) => void;
+  /** Log food straight into a meal from its empty row. */
+  onAddToGroup?: (groupId: string) => void;
   onDeleteGroup: (group: NutritionGroup) => void;
 }
 
@@ -70,12 +75,14 @@ export function NutritionGroupLedger({
   logs,
   groups,
   deletedId,
+  editing = false,
   onEdit,
   onDelete,
   onMove,
   onMoveToPreviousDay,
   onReorderGroup,
   onDeleteGroup,
+  onAddToGroup,
 }: NutritionGroupLedgerProps) {
   const [movingEntry, setMovingEntry] = useState<NutritionLedgerEntry | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -92,9 +99,19 @@ export function NutritionGroupLedger({
     setActiveDropId(null);
   };
 
+  const confirmDelete = (log: NutritionLedgerEntry) => {
+    if (!window.confirm(`Delete ${log.food?.name || 'this entry'} from your log?`)) return;
+    onDelete(log.id);
+  };
+
   const renderEntry = (log: NutritionLedgerEntry, index: number) => {
     const provenance = sourceLabel(log.source);
+    const showProvenance = provenance !== 'Manual';
     const composition = decodeMealComposition(log.food?.description);
+    const name = log.food?.name || 'Unknown Food';
+    const calories = Math.round((log.food?.calories || 0) * log.servings);
+    const protein = Math.round((log.food?.protein || 0) * log.servings);
+    const time = format(getLogDate(log), 'h:mm a');
     return (
       <motion.li
         key={log.id}
@@ -109,7 +126,8 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-start py-2 border-t border-[var(--color-border)] ${draggedId === log.id ? 'opacity-45' : ''}`}
+        className="fuel-entry"
+        data-dragging={draggedId === log.id || undefined}
         initial={{ opacity: 0, y: 8 }}
         animate={{
           opacity: deletedId === log.id ? 0 : 1,
@@ -120,82 +138,61 @@ export function NutritionGroupLedger({
         exit={{ opacity: 0, x: 60, height: 0 }}
         transition={{ ...springs.settle, delay: deletedId === log.id ? 0 : Math.min(index * 0.025, 0.2) }}
       >
-        <button
-          type="button"
-          className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] cursor-grab active:cursor-grabbing"
-          aria-label={`Move ${log.food?.name || 'entry'}`}
-          onClick={() => setMovingEntry(log)}
-        >
-          <GripVertical className="w-4 h-4" strokeWidth={1.5} />
-        </button>
-
-        <div className="min-w-0">
-          <div className="flex items-center justify-between min-h-11">
-            <span className="t-data-sm text-[var(--color-muted)]">
-              {format(getLogDate(log), 'h:mm a')}
+        <div className="fuel-entry-row">
+          {/* The whole row opens the editor; move and delete live in Edit mode. */}
+          <button type="button" className="fuel-entry-main" onClick={() => onEdit(log)}
+            aria-label={`Edit ${name}, ${calories} kcal, ${time}`}>
+            <span className="fuel-entry-line">
+              <span className="fuel-entry-name">{name}</span>
+              {!editing && <span className="fuel-entry-kcal">{calories}<span> kcal</span></span>}
             </span>
-            <div className="flex shrink-0">
+            <span className="fuel-entry-caption">
+              {time} · {servingLabel(log)} · <span className="whitespace-nowrap">{protein}g P</span>
+              {showProvenance && <> · <span className="whitespace-nowrap">{provenance}</span></>}
+            </span>
+          </button>
+          {editing && (
+            <div className="fuel-tools">
               {onMoveToPreviousDay && (
-                <button
-                  type="button"
-                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]"
-                  onClick={() => onMoveToPreviousDay(log.id)}
-                  aria-label="Move to yesterday"
-                  title="Move to yesterday"
-                >
-                  <MoveLeft className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <button type="button" className="fuel-tool" onClick={() => onMoveToPreviousDay(log.id)}
+                  aria-label={`Move ${name} to yesterday`} title="Move to yesterday">
+                  <MoveLeft size={15} strokeWidth={1.5} aria-hidden />
                 </button>
               )}
-              <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)]" onClick={() => onEdit(log)} aria-label="Edit entry">
-                <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <button type="button" className="fuel-tool cursor-grab active:cursor-grabbing" aria-label={`Move ${name}`}
+                onClick={() => setMovingEntry(log)}>
+                <GripVertical size={15} strokeWidth={1.5} aria-hidden />
               </button>
-              <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDelete(log.id)} aria-label="Remove entry">
-                <X className="w-3.5 h-3.5" strokeWidth={1.5} />
+              <button type="button" className="fuel-tool" onClick={() => confirmDelete(log)} aria-label={`Delete ${name}`}>
+                <X size={15} strokeWidth={1.5} aria-hidden />
               </button>
             </div>
-          </div>
-
-          <div className="flex items-start justify-between gap-3 pb-3">
-            <div className="min-w-0">
-              <p className="t-body font-medium leading-snug text-[var(--color-text)] break-words">{log.food?.name || 'Unknown Food'}</p>
-              <p className="t-data-sm leading-relaxed text-[var(--color-muted)] mt-1">
-                {servingLabel(log)} <span className="whitespace-nowrap">· {Math.round((log.food?.protein || 0) * log.servings)}g P</span>
-                <span className="text-[var(--color-text-dim)] whitespace-nowrap"> · {provenance}</span>
-              </p>
-            </div>
-            <span className="flex items-baseline gap-1 shrink-0">
-              <span className="t-data text-[var(--color-text)]">{Math.round((log.food?.calories || 0) * log.servings)}</span>
-              <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
-            </span>
-          </div>
-          {composition && (
-            <details className="group border-t border-[var(--color-border)]">
-              <summary className="pressable flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[var(--color-muted)] [&::-webkit-details-marker]:hidden">
-                <span className="t-caption">{composition.ingredients.length} ingredient{composition.ingredients.length === 1 ? '' : 's'}</span>
-                <ChevronDown className="h-4 w-4 shrink-0 group-open:rotate-180" strokeWidth={1.5} />
-              </summary>
-              <ul className="pb-2">
-                {composition.ingredients.map((ingredient) => {
-                  const servings = ingredient.servings * log.servings;
-                  return (
-                    <li key={ingredient.id} className="flex items-start justify-between gap-3 border-t border-[var(--color-border)] py-3">
-                      <div className="min-w-0">
-                        <p className="t-body break-words text-[var(--color-text)]">{ingredient.food.name}</p>
-                        <p className="t-data-sm mt-1 text-[var(--color-muted)]">
-                          {servingLabel({ food: ingredient.food, servings })}
-                        </p>
-                        <p className="t-data-sm mt-1 text-[var(--color-text-dim)]">
-                          {Math.round(ingredient.food.protein * servings)}g P · {Math.round(ingredient.food.carbs * servings)}g C · {Math.round(ingredient.food.fat * servings)}g F
-                        </p>
-                      </div>
-                      <span className="t-data-sm shrink-0 text-[var(--color-muted)]">{Math.round(ingredient.food.calories * servings)} kcal</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
           )}
         </div>
+        {composition && (
+          <details className="fuel-entry-composition group">
+            <summary>
+              <span>{composition.ingredients.length} ingredient{composition.ingredients.length === 1 ? '' : 's'}</span>
+              <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 group-open:rotate-180" aria-hidden />
+            </summary>
+            <ul>
+              {composition.ingredients.map((ingredient) => {
+                const servings = ingredient.servings * log.servings;
+                return (
+                  <li key={ingredient.id}>
+                    <div className="min-w-0">
+                      <p className="fuel-ingredient-name">{ingredient.food.name}</p>
+                      <p className="fuel-entry-caption">
+                        {servingLabel({ food: ingredient.food, servings })} · {Math.round(ingredient.food.protein * servings)}g P · {Math.round(ingredient.food.carbs * servings)}g C · {Math.round(ingredient.food.fat * servings)}g F
+                      </p>
+                    </div>
+                    <span className="fuel-entry-caption shrink-0">{Math.round(ingredient.food.calories * servings)} kcal</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        )}
       </motion.li>
     );
   };
@@ -207,6 +204,7 @@ export function NutritionGroupLedger({
     return (
       <section
         key={dropId}
+        aria-label={title}
         onDragOver={(event) => {
           event.preventDefault();
           event.dataTransfer.dropEffect = 'move';
@@ -223,55 +221,65 @@ export function NutritionGroupLedger({
           setDraggedId(null);
           setActiveDropId(null);
         }}
-        className={`mt-6 border-t ${activeDropId === dropId ? 'border-[var(--color-border)] material-surface' : 'border-[var(--color-border)]'} transition-colors`}
+        className="fuel-meal"
+        data-drop-active={activeDropId === dropId || undefined}
       >
-        <div className="flex items-center justify-between gap-2 py-3">
-          <div className="min-w-0">
-            <span className="t-heading">{title}</span>
-            <span className="t-data-sm text-[var(--color-muted)] ml-2">{entries.length}</span>
-          </div>
-          <div className="flex shrink-0 items-center">
-            {group && (
-              <div className="flex items-center">
-                <button
-                  type="button"
-                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] disabled:opacity-25"
-                  disabled={!moveNutritionGroup(orderedGroups, group.id, -1)}
-                  onClick={() => onReorderGroup(group.id, -1)}
-                  aria-label={`Move ${title} earlier`}
-                >
-                  <ArrowUp className="w-3.5 h-3.5" strokeWidth={1.5} />
+        <div className="fuel-meal-head">
+          <h3 className="fuel-meal-title">
+            {title}
+            {/* An empty meal says so once, below ("Nothing logged."). */}
+            {/* A dot keeps the count apart from a name ending in a numeral
+                ("Snack 1 · 2", never "Snack 12"). */}
+            {entries.length > 0 && <span className="fuel-meal-count"><span aria-hidden>· </span>{entries.length}</span>}
+          </h3>
+          {editing && group ? (
+            // Fixed slots: earlier, later, delete. A meal that can't be deleted keeps its slot empty.
+            <div className="fuel-tools">
+              <button
+                type="button"
+                className="fuel-tool"
+                disabled={!moveNutritionGroup(orderedGroups, group.id, -1)}
+                onClick={() => onReorderGroup(group.id, -1)}
+                aria-label={`Move ${title} earlier`}
+              >
+                <ArrowUp size={15} strokeWidth={1.5} aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="fuel-tool"
+                disabled={!moveNutritionGroup(orderedGroups, group.id, 1)}
+                onClick={() => onReorderGroup(group.id, 1)}
+                aria-label={`Move ${title} later`}
+              >
+                <ArrowDown size={15} strokeWidth={1.5} aria-hidden />
+              </button>
+              {!group.label ? (
+                <button type="button" className="fuel-tool" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
+                  <Trash2 size={15} strokeWidth={1.5} aria-hidden />
                 </button>
-                <button
-                  type="button"
-                  className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] disabled:opacity-25"
-                  disabled={!moveNutritionGroup(orderedGroups, group.id, 1)}
-                  onClick={() => onReorderGroup(group.id, 1)}
-                  aria-label={`Move ${title} later`}
-                >
-                  <ArrowDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-                </button>
-                {!group.label && (
-                  <button type="button" className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-accent)]" onClick={() => onDeleteGroup(group)} aria-label={`Delete ${title}`}>
-                    <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                  </button>
-                )}
-              </div>
-            )}
-            <span className="t-data-sm min-w-[4.5rem] text-right text-[var(--color-text-dim)] whitespace-nowrap">
-              {totalCalories.toLocaleString()} kcal
-            </span>
-          </div>
+              ) : <span className="fuel-tool" aria-hidden />}
+            </div>
+          ) : entries.length > 0 ? (
+            <span className="fuel-meal-kcal">{totalCalories.toLocaleString()} kcal</span>
+          ) : null}
         </div>
         {entries.length > 0 ? (
           <ul><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>
+        ) : group && onAddToGroup && !editing && !draggedId ? (
+          <div className="fuel-meal-empty fuel-meal-empty-add">
+            <span>Nothing logged.</span>
+            <button type="button" className="text-action" onClick={() => onAddToGroup(group.id)}>
+              <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+              Add to {title}
+            </button>
+          </div>
         ) : (
           <button
             type="button"
-            className="w-full py-5 border-t border-[var(--color-border)] t-caption text-left"
+            className="fuel-meal-empty"
             onClick={() => draggedId && dropInto(group?.id || null)}
           >
-            Drag food here or use its move handle.
+            {editing || draggedId ? 'Move food here with its handle.' : 'Nothing logged.'}
           </button>
         )}
       </section>
@@ -282,11 +290,13 @@ export function NutritionGroupLedger({
 
   return (
     <>
-      {(unassigned.length > 0 || draggedId) && renderDropSection(null, unassigned)}
-      {orderedGroups.map((group) => renderDropSection(group, logs.filter((log) => log.group_id === group.id)))}
+      <div className="fuel-ledger">
+        {(unassigned.length > 0 || draggedId) && renderDropSection(null, unassigned)}
+        {orderedGroups.map((group) => renderDropSection(group, logs.filter((log) => log.group_id === group.id)))}
+      </div>
 
       <Modal isOpen={!!movingEntry} onClose={() => setMovingEntry(null)} title="Move food">
-        <div className="space-y-px">
+        <div className="platter platter-flush mb-2">
           {[
             { id: null, label: 'Unassigned' },
             ...orderedGroups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, orderedGroups) })),
@@ -294,14 +304,14 @@ export function NutritionGroupLedger({
             <button
               key={destination.id || 'inbox'}
               type="button"
-              className="pressable w-full flex items-center justify-between py-4 border-t border-[var(--color-border)] text-left"
+              className="platter-row pressable w-full min-h-11 flex items-center justify-between gap-4 px-5 py-4 text-left"
               onClick={() => {
                 if (movingEntry) onMove(movingEntry.id, destination.id);
                 setMovingEntry(null);
               }}
             >
               <span className="t-heading">{destination.label}</span>
-              <span className="t-data-sm text-[var(--color-muted)]">
+              <span className={`t-label-sm shrink-0 ${(movingEntry?.group_id || null) === destination.id ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
                 {(movingEntry?.group_id || null) === destination.id ? 'Current' : 'Move'}
               </span>
             </button>

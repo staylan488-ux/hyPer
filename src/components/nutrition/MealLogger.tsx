@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { format, isToday } from 'date-fns';
-import { Button, DateField, Input, SelectSheet, TimeField } from '@/components/shared';
+import { Button, DateField, Input, SelectSheet, SheetHeaderAction, TimeField } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { FoodLogger, type FoodLoggerProps, type FoodCaptureMethod } from './FoodLogger';
 import { toLocalTimeInput } from './foodLoggerUtils';
@@ -18,7 +18,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
 }) {
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
-  return <div className="space-y-3 py-4 border-t border-[var(--color-border)]">
+  return <div className="platter-row space-y-3 px-4 py-4">
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0"><p className="t-heading break-words">{item.food.name}</p><p className="t-caption mt-1">{Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g</p></div>
       <Button variant="ghost" disabled={disabled} onClick={onRemove} aria-label={`Remove ${item.food.name}`}>Remove</Button>
@@ -56,7 +56,7 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     name: food?.name || '', ingredients: food ? scaleMealIngredients(decodeMealComposition(food.description)!.ingredients, servings) : [],
     date: initialEntry?.date || format(selectedDate, 'yyyy-MM-dd'),
     time: toLocalTimeInput(initialEntry?.logged_at || null, isToday(selectedDate) ? new Date() : selectedDate),
-    groupId: initialEntry?.group_id || null, method: 'barcode', entryId: crypto.randomUUID(), saveAsReusableMeal: !!initialSavedMeal, locked: false,
+    groupId: initialEntry?.group_id || (initialEntry ? null : props.initialGroupId) || null, method: 'barcode', entryId: crypto.randomUUID(), saveAsReusableMeal: !!initialSavedMeal, locked: false,
   });
   const [draft, setDraft] = useState<MealDraft | null>(() => loadMealDraft(userId, draftKey)
     || (initialSavedMeal ? makeDraft(initialSavedMeal) : decodeMealComposition(initialEntry?.food?.description) ? makeDraft(initialEntry!.food!, initialEntry!.servings) : null));
@@ -142,8 +142,14 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     } finally { setBusy(false); onBusyChange?.(false); }
   };
 
+  // Building a meal is a quiet action in the sheet's header, so the capture
+  // view leads with its sources and search.
   if (!draft || paused) return <div className="space-y-5">
-    {paused ? <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume pending meal</Button> : !initialEntry && <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => start()}>Build a meal</Button>}
+    {(paused || !initialEntry) && <SheetHeaderAction>
+      {paused
+        ? <button type="button" className="text-action text-action-secondary" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume meal</button>
+        : <button type="button" className="text-action text-action-secondary" disabled={analysisBusy} onClick={() => start()}>Build a meal</button>}
+    </SheetHeaderAction>}
     <FoodLogger {...props} onComposeMeal={paused ? undefined : start} onAnalysisBusyChange={reportAnalysisBusy} />
   </div>;
 
@@ -161,10 +167,10 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     {review ? <>
       <Input label="Meal name" placeholder="e.g., Protein shake" value={draft.name} maxLength={500} disabled={busy || draft.locked} onChange={(event) => update({ name: event.target.value })} />
       <div><h3 className="flex flex-wrap items-baseline gap-x-2"><span className="number-hero">{Math.round(totals.calories)}</span>{' '}<span className="t-caption">kcal</span></h3><p className="t-data-sm mt-2">P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g</p></div>
-      <div>{draft.ingredients.map((item) => <IngredientRow key={item.id} item={item} disabled={busy || draft.locked}
+      {draft.ingredients.length > 0 && <div className="platter platter-flush">{draft.ingredients.map((item) => <IngredientRow key={item.id} item={item} disabled={busy || draft.locked}
         onChange={(servings) => update({ ingredients: draft.ingredients.map((part) => part.id === item.id ? { ...part, servings } : part) })}
         onInvalid={(invalid) => setInvalidRows((rows) => invalid ? [...new Set([...rows, item.id])] : rows.filter((id) => id !== item.id))}
-        onRemove={() => { update({ ingredients: draft.ingredients.filter((part) => part.id !== item.id) }); setInvalidRows((rows) => rows.filter((id) => id !== item.id)); }} />)}</div>
+        onRemove={() => { update({ ingredients: draft.ingredients.filter((part) => part.id !== item.id) }); setInvalidRows((rows) => rows.filter((id) => id !== item.id)); }} />)}</div>}
       {!draft.locked && <Button variant="secondary" className="w-full" disabled={busy || !!invalidRows.length} onClick={() => setReview(false)}>Add ingredients</Button>}
       {!savedTarget && <>
         <fieldset disabled={busy || draft.locked} className="grid grid-cols-2 gap-3">
@@ -175,10 +181,10 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
           options={[{ value: '', label: 'Unassigned' }, ...orderedGroups.map((group) => ({ value: group.id, label: nutritionGroupLabel(group, orderedGroups) }))]} />
         <label className="min-h-11 flex items-center gap-3"><input type="checkbox" className="w-[18px] h-[18px] accent-[var(--color-text)]" checked={draft.saveAsReusableMeal} disabled={busy || draft.locked} onChange={(event) => update({ saveAsReusableMeal: event.target.checked })} /><span className="t-label">Save as reusable meal</span></label>
       </>}
-      <Button className="w-full" size="lg" disabled={!valid || busy} loading={busy} onClick={() => void save()}>{draft.locked ? 'Retry save' : savedTarget || initialEntry ? 'Save changes' : 'Log meal'}</Button>
+      <Button className="w-full" size="lg" metal disabled={!valid || busy} loading={busy} onClick={() => void save()}>{draft.locked ? 'Retry save' : savedTarget || initialEntry ? 'Save changes' : 'Log meal'}</Button>
     </> : <>
       <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} onAnalysisBusyChange={reportAnalysisBusy} onUnreviewedResultChange={props.onUnreviewedResultChange} />
-      <div className="sticky bottom-0 bg-[var(--color-base)] border-t border-[var(--color-border)] pt-3 pb-2 flex items-center gap-3">
+      <div className="material-toolbar sticky z-20 -mx-6 px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] flex items-center gap-3" style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}>
         <div className="flex-1"><p className="t-label">{draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}</p><p className="t-caption mt-1">{Math.round(totals.calories)} kcal</p></div>
         <Button disabled={!draft.ingredients.length || analysisBusy} onClick={() => setReview(true)}>Review meal</Button>
       </div>

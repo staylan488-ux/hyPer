@@ -1,17 +1,21 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
   ArrowRight,
-  ArrowUpRight,
+  ChevronRight,
+  CalendarDays,
   Dumbbell,
+  History as HistoryIcon,
   Plus,
+  TrendingUp,
+  type LucideIcon,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
-import { useTargetSeal } from '@/hooks/useTargetSeal';
-import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
-import type { SealMacro } from '@/lib/targetSeal';
+import { Button, MetalRing, PageHeader, RollingNumber, Screen, TickStrip, BankedStamp } from '@/components/shared';
+import { VolumeMap } from '@/components/coaching/VolumeMap';
+import { LandmarkRail } from '@/components/coaching/LandmarkRail';
+import { pickInsight } from '@/lib/volumeInsight';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
@@ -23,7 +27,7 @@ import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
-import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
+import { DEFAULT_MACRO_TARGET, type SplitDay } from '@/types';
 
 type HeroState =
   | { kind: 'loading' }
@@ -153,91 +157,85 @@ export function Dashboard() {
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
   }, [heroLoading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
 
-  const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
+  const targetKcal = macroTarget?.calories || DEFAULT_MACRO_TARGET.calories;
+  const targetProtein = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
+  const remainingKcal = Math.max(0, Math.round(targetKcal - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
 
-  const stations: { to: string; index: string; label: string; sub: string }[] = [
-    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan' },
-    { to: '/history', index: '02', label: 'History', sub: 'Past sessions' },
-    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results' },
+  const stations: { to: string; index: string; label: string; sub: string; icon: LucideIcon }[] = [
+    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan', icon: CalendarDays },
+    { to: '/history', index: '02', label: 'History', sub: 'Past sessions', icon: HistoryIcon },
+    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results', icon: TrendingUp },
   ];
 
   return (
     <Screen>
-      <header>
-        <div className="flex items-baseline justify-between gap-3">
-          <BrandWordmark variant="dashboard" />
-          <span className="t-caption">{format(parseISO(dayKey), 'EEE · MMM d')}</span>
-        </div>
-        <h1 className="t-label mt-5">Today</h1>
-      </header>
+      <PageHeader
+        leading={<BrandWordmark variant="dashboard" />}
+        eyebrow={format(parseISO(dayKey), 'EEEE, MMM d')}
+        title="Today"
+      />
 
-      <section className="mt-5">
+      <section className="platter mt-4">
         <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
       </section>
 
-      {/* ── Fuel ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <h2 className="t-label mb-4">Fuel</h2>
+      {/* ── Fuel: one figure, one line of macros, one action. The detail
+           (ring, macro rails) lives on the Fuel page. ── */}
+      <section className="platter mt-4" aria-labelledby="today-fuel-label">
+        <div className="flex items-center justify-between gap-3 -mt-3 -mb-1">
+          <h2 id="today-fuel-label" className="t-label">Fuel</h2>
+          <Link to="/nutrition" className="text-action -mr-2.5" onClick={() => tapHaptic()}>
+            <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+            Log food
+          </Link>
+        </div>
 
         {fuelLoading ? (
-          <div className="space-y-4">
-            <div className="shimmer h-12 w-40" />
-            <div className="shimmer h-px w-full" />
+          <div className="space-y-3 mt-3">
+            <div className="shimmer h-11 w-40" />
+            <div className="shimmer h-3 w-56" />
           </div>
         ) : hasAnyNutrition ? (
-          <>
-            <div className="mb-4">
-              <div className="flex items-baseline gap-2">
-                <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                <span className="t-caption">kcal left</span>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
-              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" dayKey={dayKey} />
-            </div>
-          </>
+          <Link to="/nutrition" className="block mt-2" aria-label={`${remainingKcal.toLocaleString()} kcal left today. Open Fuel`}>
+            <span className="flex items-baseline gap-2">
+              <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
+              <span className="t-caption">kcal left</span>
+            </span>
+            <span className="t-data-sm block mt-2.5 text-[var(--color-text-dim)]">
+              {Math.round(nutritionTotals.calories).toLocaleString()} / {targetKcal.toLocaleString()} kcal
+              <span aria-hidden> · </span>
+              {Math.round(nutritionTotals.protein)} / {targetProtein} g protein
+            </span>
+          </Link>
         ) : (
-          <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
+          <p className="text-editorial mt-2">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
         )}
 
-        <div className="mt-4 flex gap-3">
-          <Link to="/nutrition" className="flex-1">
-            <Button variant="secondary" size="md" className="w-full">
-              <Plus className="w-4 h-4" strokeWidth={1.75} />
-              Log food
-            </Button>
-          </Link>
-          {!macroTarget && !loading && (
-            <Link to="/settings" className="flex-1">
-              <Button variant="ghost" size="md" className="w-full">Set targets</Button>
-            </Link>
-          )}
-        </div>
+        {!macroTarget && !loading && (
+          <Link to="/settings/targets" className="text-action -ml-2.5 mt-2">Set targets</Link>
+        )}
       </section>
 
-      {/* ── Contents / stations ── */}
-      <nav
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <span className="t-label block mb-3">Contents</span>
-        <ul>
+      {/* ── Explore: the stations behind Today. Row text (and its divider)
+           sits on the same 60px column as Program's list. ── */}
+      <nav className="mt-7" aria-labelledby="today-explore-label">
+        <span id="today-explore-label" className="t-label block mb-[9px]">Explore</span>
+        <ul className="platter platter-flush">
           {stations.map((s) => (
-            <li key={s.to}>
+            <li key={s.to} className="platter-row" style={{ '--row-inset': '56px' } as CSSProperties}>
               <Link
                 to={s.to}
                 onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]"
+                className="pressable group flex items-center gap-[18px] py-3.5 px-5"
               >
+                <s.icon className="w-[18px] h-[18px] shrink-0 text-[var(--color-text)]" strokeWidth={1.6} aria-hidden />
                 <span className="flex-1 min-w-0">
-                  <span className="t-heading block">{s.label}</span>
+                  <span className="t-row-title block">{s.label}</span>
                   <span className="t-caption">{s.sub}</span>
                 </span>
-                <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+                <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
               </Link>
             </li>
           ))}
@@ -246,33 +244,32 @@ export function Dashboard() {
 
       {/* ── One insight, only when it exists ── */}
       {insight && (
-        <section
-          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-        >
+        <section className="platter mt-4">
           <Link to="/analysis" className="block group">
-            <div className="flex items-baseline justify-between mb-3">
+            <div className="flex items-center justify-between mb-[23px]">
               <span className="t-label">This week</span>
-              <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+              <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
             </div>
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <p className="t-heading mb-2">{insight.headline}</p>
                 <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
               </div>
-              <VolumeMaquette
+              <VolumeMap
                 variant="compact"
                 volume={weeklyVolume}
                 focus={insight.volume.muscle_group}
-                className="w-[76px] h-[132px] shrink-0 -mt-3 -mr-1"
+                className="w-[60px] h-[132px] shrink-0 -mt-1"
               />
             </div>
             {insight.landmark && (
-              <VolumeRail
+              <LandmarkRail
                 current={insight.volume.weekly_sets}
                 mev={insight.landmark.mev}
                 mavLow={insight.landmark.mav_low}
                 mavHigh={insight.landmark.mav_high}
                 mrv={insight.landmark.mrv}
+                over={insight.volume.status === 'above_mrv'}
                 reveal={`dash-volume-${insight.volume.muscle_group}`}
               />
             )}
@@ -311,19 +308,27 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" />
           <span className="t-label">{hero.title}</span>
         </div>
-        <h2 className="t-title">{hero.dayName}</h2>
-        {programName && <p className="t-caption mt-2">{programName}</p>}
-        <div className="flex items-baseline gap-2 mt-5">
-          <span className="t-data">{hero.completedSets} <span className="text-[var(--color-text-dim)]">/ {hero.totalSets}</span></span>
-          <span className="t-caption">sets complete{hero.elapsed !== '—' ? ` · ${hero.elapsed}` : ''}</span>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="t-title text-[28px]!">{hero.dayName}</h2>
+            {programName && <p className="t-caption mt-2">{programName}</p>}
+            {hero.elapsed !== '—' && <p className="t-caption mt-1">{hero.elapsed} in</p>}
+          </div>
+          <MetalRing
+            progress={hero.totalSets > 0 ? hero.completedSets / hero.totalSets : 0}
+            label={`${hero.completedSets} of ${hero.totalSets} sets complete`}
+            reveal="dash-session-ring"
+          >
+            <span className="number-medium text-[20px]! text-[var(--color-text)]">{hero.completedSets}<span className="text-[var(--color-text-dim)]">/{hero.totalSets}</span></span>
+            <span className="ring-unit">sets</span>
+          </MetalRing>
         </div>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="sm" className="mt-3 w-full [&>span]:flex-1" />
-        <div className="py-4">
+        <div className="py-5">
           <p className="t-caption mb-1">{hero.nextExercise ? `Up next · Set ${hero.nextSet}` : 'All sets logged'}</p>
           <p className="t-body">{hero.nextExercise ?? 'Review and finish your session'}</p>
         </div>
         <Link to="/train">
-          <Button size="lg" className="w-full justify-between!">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
+          <Button size="lg" metal className="w-full justify-between! px-6">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
         </Link>
       </div>
     );
@@ -336,7 +341,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <HeroEyebrow>Trained today</HeroEyebrow>
           <BankedStamp date={format(new Date(), 'MMM d')} className="-mt-1 mr-1" />
         </div>
-        <p className="t-title mb-6">The work is banked.</p>
+        <p className="t-title text-[28px]! mb-6">The work is banked.</p>
         <Link to="/history">
           <Button variant="secondary" size="lg" className="w-full">Review session</Button>
         </Link>
@@ -353,12 +358,12 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
           <HeroEyebrow accent>Today · {programName}</HeroEyebrow>
           <span className="t-data-sm text-[var(--color-muted)]">{exercises.length} ex · {totalSets} sets</span>
         </div>
-        <h2 className="t-title mb-5">
+        <h2 className="t-title text-[28px]! mb-5">
           {hero.day.day_name}
         </h2>
         <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
         <Link to="/train">
-          <Button size="lg" className="w-full">
+          <Button size="lg" metal className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start workout
           </Button>
@@ -371,7 +376,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow>Rest day</HeroEyebrow>
-        <p className="t-title mb-5">Growth happens between sessions.</p>
+        <p className="t-title text-[28px]! mb-5">Growth happens between sessions.</p>
         <Link to="/train">
           <Button variant="ghost" size="sm">Train anyway →</Button>
         </Link>
@@ -383,9 +388,9 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>Flexible mode</HeroEyebrow>
-        <p className="t-title mb-6">Build today as you go.</p>
+        <p className="t-title text-[28px]! mb-6">Build today as you go.</p>
         <Link to="/train">
-          <Button size="lg" className="w-full">
+          <Button size="lg" metal className="w-full">
             <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
             Start session
           </Button>
@@ -398,7 +403,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
     return (
       <div>
         <HeroEyebrow accent>{programName}</HeroEyebrow>
-        <p className="t-title mb-2">Pick your training days.</p>
+        <p className="t-title text-[28px]! mb-2">Pick your training days.</p>
         <p className="t-caption mb-6 max-w-[34ch]">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
         <Link to="/train">
           <Button size="lg" className="w-full">Set plan start</Button>
@@ -411,7 +416,7 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
   return (
     <div>
       <HeroEyebrow accent>Start here</HeroEyebrow>
-      <p className="t-title mb-2">Build your program.</p>
+      <p className="t-title text-[28px]! mb-2">Build your program.</p>
       <p className="t-caption mb-5 max-w-[34ch]">
         Answer five questions and hyPer assembles an evidence-based split around your week.
       </p>
@@ -433,83 +438,4 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 function activeWorkoutIdOf(workout: { id: string; completed: boolean } | null) {
   return workout && !workout.completed ? workout.id : null;
-}
-
-function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string; current: number; target: number; unit: string; seal: SealMacro; dayKey: string }) {
-  const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
-  const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey, live: true });
-  const over = target > 0 && current > target;
-  const maxScale = Math.max(target * 1.18, current);
-
-  return (
-    <div>
-      <div className="flex items-baseline justify-between mb-2">
-        <span className="t-label-sm flex items-center gap-2">
-          {label}
-          <SealMark show={met} label={`${label} target met`} anchorRef={anchorRef} />
-        </span>
-        <span className="flex items-baseline gap-1.5">
-          <span className="number-medium text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
-          <span className="t-data-sm text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
-        </span>
-      </div>
-      <RailStrip
-        value={current / maxScale}
-        notch={target / maxScale}
-        tone={over ? 'berry' : 'chalk'}
-        size="sm"
-        reveal={`dash-fuel-${label}`}
-      />
-      <span className="sr-only">{pct}% of target</span>
-    </div>
-  );
-}
-
-function pickInsight(weeklyVolume: MuscleVolume[]) {
-  if (!weeklyVolume || weeklyVolume.length === 0) return null;
-
-  const labeled = (mv: MuscleVolume) => MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group;
-
-  const below = weeklyVolume
-    .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => a.weekly_sets - b.weekly_sets)[0];
-  if (below?.landmark) {
-    const gap = Math.max(1, Math.ceil(below.landmark.mev - below.weekly_sets));
-    return {
-      volume: below,
-      landmark: below.landmark,
-      headline: `${labeled(below)} is under-stimulated`,
-      detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-    };
-  }
-
-  const over = weeklyVolume
-    .filter((mv) => (mv.status === 'above_mrv' || mv.status === 'approaching_mrv') && mv.landmark)
-    .sort((a, b) => b.weekly_sets - a.weekly_sets)[0];
-  if (over?.landmark) {
-    return {
-      volume: over,
-      landmark: over.landmark,
-      headline:
-        over.status === 'above_mrv'
-          ? `${labeled(over)} is past recoverable volume`
-          : `${labeled(over)} is nearing its ceiling`,
-      detail:
-        over.status === 'above_mrv'
-          ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
-          : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-    };
-  }
-
-  const inZone = weeklyVolume.filter((mv) => mv.status === 'mav' && mv.landmark)[0];
-  if (inZone?.landmark) {
-    return {
-      volume: inZone,
-      landmark: inZone.landmark,
-      headline: `${labeled(inZone)} is in the adaptive zone`,
-      detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-    };
-  }
-
-  return null;
 }

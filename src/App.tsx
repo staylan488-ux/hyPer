@@ -107,11 +107,39 @@ function AnimatedOutlet() {
   );
 }
 
+/**
+ * Marks the app shell once its page has scrolled, so the edge under the status
+ * bar softens instead of cutting content with a hard line.
+ */
+function useScrollEdge(scroller: HTMLElement | null) {
+  useEffect(() => {
+    const shell = scroller?.parentElement;
+    if (!scroller || !shell) return;
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      shell.toggleAttribute('data-scrolled', scroller.scrollTop > 1);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(sync);
+    };
+    sync();
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+      shell.removeAttribute('data-scrolled');
+    };
+  }, [scroller]);
+}
+
 function PrivateLayout() {
   const { user, initialized, reconnecting } = useAuthStore();
   // local only: signing in instead never signs out, so the saved session stays
   const [signInInstead, setSignInInstead] = useState(false);
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
   useAppViewport();
+  useScrollEdge(scroller);
 
   const screen = authScreen({ initialized, user, reconnecting }, signInInstead);
   if (screen === 'boot') {
@@ -128,7 +156,7 @@ function PrivateLayout() {
 
   return (
     <div className="app-viewport">
-      <main data-app-scroll-viewport className="app-scroll-viewport">
+      <main ref={setScroller} data-app-scroll-viewport className="app-scroll-viewport">
         <AnimatedOutlet />
       </main>
       <BottomNav />

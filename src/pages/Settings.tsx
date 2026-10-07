@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { ArrowLeft, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, LogOut, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageTitle } from '@/components/shared';
+import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageHeader } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -18,7 +18,7 @@ import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
 import { DEFAULT_MACRO_TARGET, type Food, type MacroTargetSource } from '@/types';
 import { SettingsSearch } from '@/components/settings/SettingsSearch';
-import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
+import { SettingsGroup, SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
 import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { shouldBlockSettingsExit, targetModeLabel, targetSummaryLabel } from '@/lib/settingsUx';
@@ -483,7 +483,7 @@ export function Settings() {
         : whoopAction === 'disconnect'
           ? 'Disconnecting WHOOP…'
           : whoopConnection
-            ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+            ? `Connected${whoopConnection.last_synced_at ? ` · synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' · never synced'}`
             : 'Not connected';
 
   const clearMealManagerFeedback = () => {
@@ -505,7 +505,7 @@ export function Settings() {
       );
 
       if (error) {
-        setMealManagerError('Could not load saved meals.');
+        setMealManagerError('Could not load saved foods.');
         setSavedMeals([]);
         return;
       }
@@ -533,10 +533,10 @@ export function Settings() {
   }, [fetchSavedMeals]);
 
   const savedMealsCountLabel = useMemo(() => {
-    if (loadingSavedMeals) return 'Loading meals…';
+    if (loadingSavedMeals) return 'Loading…';
     if (mealManagerError) return 'Could not load meals';
-    if (savedMeals.length === 0) return 'No meals saved yet';
-    return `${savedMeals.length} meal${savedMeals.length === 1 ? '' : 's'} saved`;
+    if (savedMeals.length === 0) return 'None saved yet';
+    return `${savedMeals.length} ${savedMeals.length === 1 ? 'food' : 'foods'}`;
   }, [loadingSavedMeals, savedMeals.length, mealManagerError]);
 
   const openManageMeals = async () => {
@@ -612,10 +612,10 @@ export function Settings() {
 
       if (retireError) {
         setMealManagerError(
-          'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.',
+          'Your edited meal was saved, but the original is still in saved foods. Remove the original when your connection is restored. Past logs are unchanged.',
         );
       } else {
-        setMealManagerMessage('Saved meal updated for future logs.');
+        setMealManagerMessage('Saved food updated for future logs.');
       }
       setEditingMealId(null);
       await fetchSavedMeals();
@@ -625,7 +625,7 @@ export function Settings() {
   };
 
   const removeSavedMeal = async (meal: SavedMeal) => {
-    if (!confirm(`Delete ${meal.name} from saved meals? Past logged entries will stay unchanged.`))
+    if (!confirm(`Delete ${meal.name} from saved foods? Past logged entries will stay unchanged.`))
       return;
 
     clearMealManagerFeedback();
@@ -637,7 +637,7 @@ export function Settings() {
     const { error } = await retireSavedMeal(user.id, meal.id);
 
     if (error) {
-      setMealManagerError('Could not delete saved meal.');
+      setMealManagerError('Could not delete saved food.');
       return;
     }
 
@@ -645,7 +645,7 @@ export function Settings() {
       setEditingMealId(null);
     }
 
-    setMealManagerMessage('Saved meal deleted. Past logs were not changed.');
+    setMealManagerMessage('Saved food deleted. Past logs were not changed.');
     await fetchSavedMeals();
   };
 
@@ -904,8 +904,8 @@ export function Settings() {
     'targets/calculate': 'Calculate targets',
     'targets/coach': 'Target suggestions',
     'targets/adaptation': 'How targets adapt',
-    meals: 'Saved meals',
-    analysis: 'Food analysis',
+    meals: 'Saved foods',
+    analysis: 'Meal photo analysis',
     'analysis/worker': 'Mac worker setup',
     connections: 'Connections',
     'connections/whoop': 'WHOOP',
@@ -961,47 +961,71 @@ export function Settings() {
           setSearchOpen(false);
           go(href);
         }} />
-      <header className="mb-5">
-        {page !== 'home' && (
-          <button type="button" onClick={() => go(backPath)} className="you-back">
-            <ArrowLeft size={18} />
-            {backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')]}
-          </button>
-        )}
-        <div className="flex items-center justify-between gap-3">
-          <PageTitle ref={pageHeading} tabIndex={-1} className="outline-none" compactTitle={titles[page] || 'You'}>
-            {titles[page] || 'You'}
-          </PageTitle>
-          <button type="button" className="you-text-action flex items-center justify-center gap-2 px-2 shrink-0"
+      <PageHeader
+        className="mb-5"
+        back={page !== 'home' ? {
+          label: backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')],
+          onClick: () => go(backPath),
+        } : undefined}
+        actions={page !== 'home' ? (
+          <button type="button" className="you-search-icon pressable"
             aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
-            <Search size={20} aria-hidden="true" /><span>Search</span>
+            <Search size={19} strokeWidth={1.75} aria-hidden="true" />
           </button>
-        </div>
+        ) : undefined}
+        eyebrow={page === 'home' ? 'Profile and settings' : undefined}
+        title={titles[page] || 'You'}
+        compactTitle={titles[page] || 'You'}
+        titleRef={pageHeading}
+        titleProps={{ tabIndex: -1, className: 'outline-none' }}
+      >
         {page === 'home' && (
-          <div className="flex items-center justify-between gap-3 mt-2">
-            <p className="t-body break-words min-w-0">
-              {profile?.display_name || 'Your personal space'}
-            </p>
-            <button
-              data-you-focus="profile"
-              className="you-text-action shrink-0"
-              onClick={() => go('/settings/account')}
-            >
-              Edit profile
-            </button>
-          </div>
+          <button type="button" className="you-search-field pressable mt-5" data-rest-block
+            aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
+            <Search size={17} strokeWidth={1.75} aria-hidden="true" />
+            <span>Search</span>
+          </button>
         )}
-      </header>
+      </PageHeader>
 
       {page === 'home' && (
         <>
-          <section className="you-weight-hero" aria-label="Body weight">
+          <SettingsGroup>
+            <button
+              type="button"
+              data-you-focus="profile"
+              className="you-row"
+              onClick={() => go('/settings/account')}
+            >
+              <span className="you-monogram" aria-hidden="true">
+                {(profile?.display_name || 'You').trim().charAt(0).toUpperCase() || 'Y'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="you-row-title t-heading text-[17px]! break-words">
+                  {profile?.display_name || 'Your personal space'}
+                </span>
+                <span className="you-row-description">Edit profile</span>
+              </span>
+              <ChevronRight size={17} strokeWidth={1.75} className="you-row-chevron" aria-hidden="true" />
+            </button>
+          </SettingsGroup>
+
+          {/* One unit at a rest: its header, status and Log weight show
+              together or not at all, never a lone action. */}
+          <section className="platter mt-4" aria-label="Body weight" data-rest-block>
             <div className="flex justify-between items-start gap-3">
-              <div>
-                <p className="t-label-sm">Body weight</p>
-                <p className="you-weight-value mt-2">{weightSummary}</p>
+              <div className="min-w-0">
+                <p className="t-label">Body weight</p>
+                {latestBodyWeight && !weightLoading && !bodyWeightError ? (
+                  <p className="mt-3 flex items-baseline gap-1.5">
+                    <span className="number-hero">{formatWeight(latestBodyWeight.kilograms, weightUnit)}</span>
+                    <span className="t-caption">{weightUnit}</span>
+                  </p>
+                ) : (
+                  <p className="you-weight-value is-empty mt-3">{weightSummary}</p>
+                )}
                 {latestBodyWeight && (
-                  <p className="t-caption mt-1">
+                  <p className="t-caption mt-2">
                     {format(new Date(latestBodyWeight.measured_at), 'MMM d')} ·{' '}
                     {latestBodyWeight.source_name}
                   </p>
@@ -1010,9 +1034,10 @@ export function Settings() {
               <button
                 data-you-focus="weight"
                 onClick={() => go('/settings/weight')}
-                className="you-text-action"
+                className="you-text-action -mt-3.5 -mr-[1.6px] flex items-center gap-0.5"
               >
                 Details
+                <ChevronRight size={16} strokeWidth={1.75} className="you-row-chevron" aria-hidden="true" />
               </button>
             </div>
             {weightTrend.fittedDayCount >= 2 && (
@@ -1033,7 +1058,10 @@ export function Settings() {
                 }
               />
             )}
-            <Button className="mt-4 w-full" onClick={() => setWeighInOpen(true)}>
+            {/* A settings-page action stays secondary: Today and Fuel own the
+                full-width primaries. */}
+            <Button variant="secondary" className="mt-5" onClick={() => setWeighInOpen(true)}>
+              <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
               Log weight
             </Button>
             {healthWeightMessage && (
@@ -1049,21 +1077,22 @@ export function Settings() {
               onClick={() => go('/settings/targets')}
             />
             <SettingsRow
-              title="Saved meals"
+              title="Saved foods"
               description={savedMealsCountLabel}
               onClick={() => void openManageMeals()}
             />
             <SettingsRow
-              title="Food analysis"
-              description={foodAnalysisMode === 'gemini' ? 'Hosted analysis' : 'Your Mac'}
+              title="Meal photo analysis"
+              // Said from the phone: where its meal photos go to be estimated.
+              description={foodAnalysisMode === 'gemini' ? 'Estimates your meal photos online' : 'Sends photos to your Mac for calorie estimates'}
               onClick={() => go('/settings/analysis')}
             />
           </SettingsSection>
-          <SettingsSection label="App & connections">
+          <SettingsSection label="Preferences">
             <SettingsRow
-              title="Connections"
-              description={`WHOOP ${whoopConnection ? 'connected' : 'not connected'}${isNativeIOS() ? ` · Health ${healthWeightEnabled ? 'on' : 'off'}` : ''}`}
-              onClick={() => go('/settings/connections')}
+              title="Training"
+              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
+              onClick={() => go('/settings/training')}
             />
             <SettingsRow
               title="Appearance"
@@ -1071,19 +1100,12 @@ export function Settings() {
               onClick={() => go('/settings/appearance')}
             />
           </SettingsSection>
-          <SettingsSection label="Activity">
+          <SettingsSection label="General">
             <SettingsRow
-              title="Training"
-              description={`Adaptive split scheduling ${adaptiveSchedulingEnabled ? 'on' : 'off'}`}
-              onClick={() => go('/settings/training')}
+              title="Connections"
+              description={`WHOOP ${whoopConnection ? 'connected' : 'not connected'}${isNativeIOS() ? ` · Health ${healthWeightEnabled ? 'on' : 'off'}` : ''}`}
+              onClick={() => go('/settings/connections')}
             />
-            <SettingsRow
-              title="Start a run"
-              description="GPS run tracking"
-              onClick={() => go('/train/run')}
-            />
-          </SettingsSection>
-          <div className="mt-4">
             <SettingsRow
               title="Account"
               description="Profile and sign-out"
@@ -1094,64 +1116,71 @@ export function Settings() {
               description="Build information"
               onClick={() => go('/settings/about')}
             />
-          </div>
+          </SettingsSection>
         </>
       )}
       {page === 'account' && (
         <>
-          <Input
-            id="search-display-name"
-            label="Display name"
-            value={displayName}
-            onChange={(e) => {
-              clearNameFeedback();
-              setDisplayNameDraft(e.target.value);
-            }}
-            placeholder="Your name"
-          />
-          {displayNameChanged && (
-            <Button className="w-full mt-5" onClick={handleSaveDisplayName} loading={savingName}>
-              Save name
-            </Button>
-          )}
-          {nameMessage && (
-            <p role="status" className="mt-4 t-body">
-              {nameMessage}
-            </p>
-          )}
-          {nameError && (
-            <p role="alert" className="mt-4 t-body">
-              {nameError}
-            </p>
-          )}
+          <div className="platter">
+            <Input
+              id="search-display-name"
+              label="Display name"
+              value={displayName}
+              onChange={(e) => {
+                clearNameFeedback();
+                setDisplayNameDraft(e.target.value);
+              }}
+              placeholder="Your name"
+            />
+            {displayNameChanged && (
+              <Button metal size="lg" className="w-full mt-5" onClick={handleSaveDisplayName} loading={savingName}>
+                Save name
+              </Button>
+            )}
+            {nameMessage && (
+              <p role="status" className="mt-4 t-body">
+                {nameMessage}
+              </p>
+            )}
+            {nameError && (
+              <p role="alert" className="mt-4 t-body">
+                {nameError}
+              </p>
+            )}
+          </div>
 
           <div id="search-sign-out" tabIndex={-1}>
             <SettingsSection label="Sign out">
-              <p className="t-body mb-3">Sign out of your account on this device.</p>
-              <Button variant="danger" disabled={busy} onClick={handleSignOut}>
-                <LogOut size={16} />
-                Sign out
-              </Button>
+              <button
+                type="button"
+                className="you-row justify-center gap-2 text-[var(--color-accent)] disabled:opacity-40"
+                disabled={busy}
+                onClick={handleSignOut}
+              >
+                <LogOut size={17} strokeWidth={1.75} aria-hidden="true" />
+                <span className="text-[16px]">Sign out</span>
+              </button>
             </SettingsSection>
+            <p className="you-footnote">Sign out of your account on this device.</p>
           </div>
         </>
       )}
       {page === 'training' && <div id="search-adaptive-scheduling" tabIndex={-1}><AdaptiveSplitSchedulingSetting /></div>}
       {page === 'appearance' && (
         <>
-          <p className="t-body mb-5">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>{' '}
-          <div id="search-appearance" className="flex flex-col items-start gap-4">
+          <div id="search-appearance" className="platter flex flex-col items-start gap-4">
             <div>
               <p className="t-heading">Theme</p>
               <p className="t-caption mt-1">{appearanceLabel}</p>
             </div>
             <ThemeToggle />
           </div>
+          <p className="you-footnote">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>
         </>
       )}
       {page === 'targets' && (
         <>
-          <p className="t-body mb-4">
+          <p className="t-label mb-3">
             {targetLoadState === 'loading' && !macroTarget
               ? 'Loading targets…'
               : macroTarget
@@ -1159,37 +1188,43 @@ export function Settings() {
                 : 'Starting defaults — not saved'}
           </p>
           {targetLoadState === 'error' && (
-            <div role="alert">
-              <p>Could not load targets. Any previously loaded values are kept.</p>
+            <div role="alert" className="platter mb-4">
+              <p className="t-body mb-4">Could not load targets. Any previously loaded values are kept.</p>
               <Button variant="secondary" onClick={() => void loadTargets()}>
                 Retry targets
               </Button>
             </div>
           )}
-          <dl className="you-target-grid">
-            {[
-              { label: 'Calories', value: baseMacros.calories, unit: 'kcal' },
-              { label: 'Protein', value: baseMacros.protein, unit: 'g' },
-              { label: 'Carbs', value: baseMacros.carbs, unit: 'g' },
-              { label: 'Fat', value: baseMacros.fat, unit: 'g' },
-            ].map((item) => (
-              <div key={item.label}>
-                <dt className="t-body">{item.label}</dt>
-                <dd>
-                  <span className="you-target-value">{item.value.toLocaleString()}</span>{' '}
-                  <span className="t-caption">{item.unit}</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <Button
-            data-you-focus="edit-targets"
-            className="w-full mt-5"
-            disabled={targetLoadState !== 'ready'}
-            onClick={() => go('/settings/targets/edit')}
-          >
-            {macrosChanged ? 'Continue editing targets' : 'Edit targets'}
-          </Button>
+          <div className="platter platter-flush">
+            <dl className="you-target-grid">
+              {[
+                { label: 'Calories', value: baseMacros.calories, unit: 'kcal' },
+                { label: 'Protein', value: baseMacros.protein, unit: 'g' },
+                { label: 'Carbs', value: baseMacros.carbs, unit: 'g' },
+                { label: 'Fat', value: baseMacros.fat, unit: 'g' },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className="t-label">{item.label}</dt>
+                  <dd className="mt-1.5">
+                    <span className="you-target-value">{item.value.toLocaleString()}</span>{' '}
+                    <span className="t-caption">{item.unit}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <div className="px-5 pb-5 pt-1">
+              <Button
+                data-you-focus="edit-targets"
+                metal
+                size="lg"
+                className="w-full"
+                disabled={targetLoadState !== 'ready'}
+                onClick={() => go('/settings/targets/edit')}
+              >
+                {macrosChanged ? 'Continue editing targets' : 'Edit targets'}
+              </Button>
+            </div>
+          </div>
           {macroMessage && (
             <p role="status" className="t-body mt-3">
               {macroMessage}
@@ -1213,33 +1248,39 @@ export function Settings() {
             />
           </SettingsSection>
           {nutritionProfile && (
-            <SettingsSection label="Automatic adjustments">
-              <p className="t-body">
-                Estimated daily burn{' '}
-                <strong>
-                  {expenditureDisplay.value}
-                  {expenditureDisplay.value !== '—' ? ' kcal' : ''}
-                </strong>
-              </p>
-              <p className="t-caption mt-1">
-                {nutritionProfile.expenditure_confidence === 'measured'
-                  ? 'Inferred from logs and weight trend'
-                  : nutritionProfile.expenditure_confidence === 'learning'
-                    ? 'Learning from your logs'
-                    : 'Estimated from your profile'}
-              </p>
-              <SettingsRow
-                title="How targets adapt"
-                onClick={() => go('/settings/targets/adaptation')}
-              />
+            <section className="mt-7">
+              <h2 className="t-label mb-3">Automatic adjustments</h2>
+              <SettingsGroup>
+                <div className="platter-row px-5 py-4">
+                  <p className="t-body">
+                    Estimated daily burn{' '}
+                    <strong>
+                      {expenditureDisplay.value}
+                      {expenditureDisplay.value !== '—' ? ' kcal' : ''}
+                    </strong>
+                  </p>
+                  <p className="t-caption mt-1">
+                    {nutritionProfile.expenditure_confidence === 'measured'
+                      ? 'Inferred from logs and weight trend'
+                      : nutritionProfile.expenditure_confidence === 'learning'
+                        ? 'Learning from your logs'
+                        : 'Estimated from your profile'}
+                  </p>
+                </div>
+                <SettingsRow
+                  title="How targets adapt"
+                  onClick={() => go('/settings/targets/adaptation')}
+                />
+              </SettingsGroup>
               {baseMacros.source === 'manual' && (
                 <>
-                  <p className="t-body my-3">
+                  <p className="you-footnote mb-3">
                     Manual targets stay fixed. Resume automatic management to request a
                     recalculation when enough data is available.
                   </p>
                   <Button
                     variant="secondary"
+                    className="w-full"
                     loading={resumingAdaptive}
                     onClick={() =>
                       macrosChanged
@@ -1254,47 +1295,47 @@ export function Settings() {
                   </Button>
                 </>
               )}
-            </SettingsSection>
+            </section>
           )}
         </>
       )}
       {page === 'targets/adaptation' && (
         <>
-          <p className="t-body">{expenditureDisplay.explanation}</p>
-          <p className="t-body mt-4">
-            These values are estimates, not direct measurements. Automatic targets use your saved
-            nutrition profile, food logs and weight trend. Manual targets stay fixed until you
-            resume automatic management.
-          </p>
-          <SettingsRow
-            title="Body weight"
-            description="Record a weigh-in or review your trend"
-            onClick={() => go('/settings/weight')}
-          />
+          <div className="platter">
+            <p className="t-body">{expenditureDisplay.explanation}</p>
+            <p className="t-body mt-4 text-[var(--color-text-dim)]">
+              These values are estimates, not direct measurements. Automatic targets use your saved
+              nutrition profile, food logs and weight trend. Manual targets stay fixed until you
+              resume automatic management.
+            </p>
+          </div>
+          <SettingsGroup className="mt-4">
+            <SettingsRow
+              title="Body weight"
+              description="Record a weigh-in or review your trend"
+              onClick={() => go('/settings/weight')}
+            />
+          </SettingsGroup>
         </>
       )}
       {page === 'targets/edit' && (
         <>
           {targetLoadState !== 'ready' && (
-            <p role="status" className="t-body">
+            <p role="status" className="t-body mb-2">
               {targetLoadState === 'loading'
                 ? targetSummary
                 : 'Targets could not be loaded. Return to Nutrition targets to retry.'}
             </p>
           )}
-          <p className="t-body">
+          <p className="t-body mb-3 text-[var(--color-text-dim)]">
             {macrosChanged
               ? 'Unsaved targets'
               : macroTarget
                 ? 'Edit your saved daily targets.'
                 : 'Starting defaults — save to make these your targets.'}
           </p>
-          <p className="t-body mt-2">
-            {macros.source === 'manual'
-              ? 'Saving sets manual targets. They stay fixed until you resume adaptive targets.'
-              : 'Calculated targets can adapt when automatic adjustments are enabled.'}
-          </p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-4">
+          <div className="platter">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <Input
               id="search-calories"
               label="Calories"
@@ -1342,7 +1383,7 @@ export function Settings() {
                 ? Math.round((Math.abs(macros.calories - kcalFromMacros) / macros.calories) * 100)
                 : 0;
             return driftPct > 5 ? (
-              <p className="t-caption mt-3 text-[var(--color-accent)]">
+              <p className="t-caption mt-4 text-[var(--color-accent)]">
                 These macros total {kcalFromMacros.toLocaleString()} kcal; your calorie target is{' '}
                 {macros.calories.toLocaleString()} kcal. Review the values before saving.
               </p>
@@ -1351,7 +1392,9 @@ export function Settings() {
 
           {(macrosChanged || !macroTarget) && (
             <Button
-              className="w-full mt-6"
+              metal
+              size="lg"
+              className="w-full mt-5"
               onClick={handleSaveMacros}
               loading={savingMacros}
               disabled={targetLoadState !== 'ready'}
@@ -1359,6 +1402,12 @@ export function Settings() {
               Save targets
             </Button>
           )}
+          </div>
+          <p className="you-footnote">
+            {macros.source === 'manual'
+              ? 'Saving sets manual targets. They stay fixed until you resume adaptive targets.'
+              : 'Calculated targets can adapt when automatic adjustments are enabled.'}
+          </p>
           {macroMessage && (
             <p role="status" className="mt-4 t-body">
               {macroMessage}
@@ -1371,7 +1420,7 @@ export function Settings() {
           )}
 
           {coachRecommendation && macros.source === 'manual' && (
-            <section className="mt-5">
+            <section className="platter mt-4">
               <h2 className="t-heading">Latest coach suggestion</h2>
               {pendingTargets?.source === 'manual' && (
                 <p className="t-body mt-2">
@@ -1432,7 +1481,7 @@ export function Settings() {
               </p>
             )}
             {mealManagerError && (
-              <div role="alert">
+              <div role="alert" className="mb-4">
                 <p className="mb-4 t-body">{mealManagerError}</p>
                 <Button
                   variant="secondary"
@@ -1447,21 +1496,21 @@ export function Settings() {
             )}
 
             {loadingSavedMeals ? (
-              <div className="space-y-px">
-                <div className="h-[64px] shimmer" />
-                <div className="h-[64px] shimmer" />
-                <div className="h-[64px] shimmer" />
+              <div className="platter platter-flush">
+                <div className="platter-row h-[72px] shimmer" />
+                <div className="platter-row h-[72px] shimmer" />
+                <div className="platter-row h-[72px] shimmer" />
               </div>
             ) : savedMeals.length === 0 ? (
-              <p className="text-editorial py-8">
+              <p className="platter text-editorial">
                 Meals you save from the food logger will appear here.
               </p>
             ) : (
-              <ul>
+              <ul className="platter platter-flush">
                 {savedMeals.map((meal) => (
                   <li
                     key={meal.id}
-                    className="py-4 border-t border-[var(--color-border)] first:border-t-0"
+                    className={`platter-row ${editingMealId === meal.id ? 'p-5' : 'py-3 pl-5 pr-2'}`}
                   >
                     {editingMealId === meal.id ? (
                       <div className="space-y-5">
@@ -1527,12 +1576,12 @@ export function Settings() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex min-w-0 items-stretch justify-between overflow-hidden">
+                      <div className="flex min-w-0 items-center justify-between overflow-hidden">
                         <div className="min-w-0">
-                          <p className="t-heading break-words pr-2 normal-case tracking-normal text-[var(--color-text)]">
+                          <p className="you-row-title break-words pr-2">
                             {meal.name}
                           </p>
-                          <p className="t-data-sm mt-1.5 break-words pr-2 leading-5 text-[var(--color-muted)]">
+                          <p className="t-data-sm mt-1 break-words pr-2 leading-5 text-[var(--color-text-dim)]">
                             {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C{' '}
                             {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                           </p>
@@ -1543,7 +1592,7 @@ export function Settings() {
                             disabled={savingMealEdit}
                             onClick={() => beginEditingMeal(meal)}
                             className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
-                            aria-label={`Edit saved meal ${meal.name}`}
+                            aria-label={`Edit saved food ${meal.name}`}
                           >
                             <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                           </button>
@@ -1552,7 +1601,7 @@ export function Settings() {
                             disabled={savingMealEdit}
                             onClick={() => removeSavedMeal(meal)}
                             className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
-                            aria-label={`Delete saved meal ${meal.name}`}
+                            aria-label={`Delete saved food ${meal.name}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                           </button>
@@ -1569,10 +1618,10 @@ export function Settings() {
       {page === 'analysis' && (
         <>
           {' '}
-          <div id="search-analysis-mode" className="space-y-4 mb-6">
-            <label className="t-body block mb-2" id="analysis-method-label">
-              Meal analysis method
-            </label>
+          <label className="t-label block mb-3" id="analysis-method-label">
+            Meal analysis method
+          </label>
+          <div id="search-analysis-mode" className="platter space-y-4">
             <SelectSheet
               title="Meal analysis"
               ariaLabelledBy="analysis-method-label"
@@ -1618,22 +1667,26 @@ export function Settings() {
               </>
             )}
           </div>
-          <SettingsRow
-            title="Mac worker setup"
-            description="Connection and photo provider · also used by the coach"
-            onClick={() => go('/settings/analysis/worker')}
-          />
+          <SettingsGroup className="mt-4">
+            <SettingsRow
+              title="Mac worker setup"
+              description="Connection and photo provider · also used by the coach"
+              onClick={() => go('/settings/analysis/worker')}
+            />
+          </SettingsGroup>
         </>
       )}
       {page === 'analysis/worker' && (
         <>
           {' '}
-          <p className="t-heading">Your Mac</p>
-          <p className="t-caption mt-1 mb-5">
-            This connection also runs target suggestions, even when meals use hosted analysis. Uses
-            your local Codex or Claude login. On a phone, enter the worker’s Tailscale HTTPS URL.
-          </p>
-          <div className="space-y-4">
+          <div className="platter space-y-5">
+            <div>
+              <p className="t-heading">Your Mac</p>
+              <p className="t-caption mt-1">
+                This connection also runs target suggestions, even when meals use hosted analysis. Uses
+                your local Codex or Claude login. On a phone, enter the worker’s Tailscale HTTPS URL.
+              </p>
+            </div>
             <Input
               id="search-worker-url"
               label="Worker URL"
@@ -1644,7 +1697,7 @@ export function Settings() {
               placeholder="http://127.0.0.1:8788"
             />
             <div id="search-analysis-provider">
-            <label id="photo-provider-label" className="t-body block">
+            <label id="photo-provider-label" className="t-label block mb-2">
               Photo-analysis provider
             </label>
             <SelectSheet
@@ -1685,21 +1738,24 @@ export function Settings() {
       )}
       {page === 'connections' && (
         <>
-          <SettingsRow
-            title="WHOOP"
-            description={whoopStatusLabel}
-            onClick={() => go('/settings/connections/whoop')}
-          />
-          {isNativeIOS() ? (
+          <SettingsGroup>
             <SettingsRow
-              title="Apple Health"
-              description={
-                healthWeightEnabled ? 'Automatic weight sync on' : 'Connect weight measurements'
-              }
-              onClick={() => go('/settings/connections/health')}
+              title="WHOOP"
+              description={whoopStatusLabel}
+              onClick={() => go('/settings/connections/whoop')}
             />
-          ) : (
-            <p className="t-body mt-5">
+            {isNativeIOS() && (
+              <SettingsRow
+                title="Apple Health"
+                description={
+                  healthWeightEnabled ? 'Automatic weight sync on' : 'Connect weight measurements'
+                }
+                onClick={() => go('/settings/connections/health')}
+              />
+            )}
+          </SettingsGroup>
+          {!isNativeIOS() && (
+            <p className="you-footnote">
               Apple Health weight sync is available in the iPhone app. You can log weight manually
               here.
             </p>
@@ -1709,7 +1765,7 @@ export function Settings() {
       {page === 'connections/whoop' && (
         <>
           {' '}
-          <div className="flex flex-col gap-4">
+          <div className="platter flex flex-col gap-5">
             <div>
               <p className="t-heading">WHOOP</p>
               <p className="t-caption mt-1" aria-live="polite">
@@ -1768,155 +1824,167 @@ export function Settings() {
       )}
       {page === 'connections/health' && (
         <>
-          <p className="t-body mb-4">
+          <div className="platter">
+          <p className="t-body mb-5">
             Import body-weight measurements from Apple Health. Stopping automatic sync keeps
             measurements already imported.
           </p>
           {isNativeIOS() ? (
             <>
-              <Button loading={healthWeightBusy} onClick={() => void handleHealthWeightSync()}>
+              <Button metal size="lg" className="w-full" loading={healthWeightBusy} onClick={() => void handleHealthWeightSync()}>
                 {healthWeightEnabled ? 'Sync now' : 'Connect Apple Health'}
               </Button>{' '}
               {isNativeIOS() && healthWeightEnabled && (
                 <button
                   type="button"
                   onClick={handleDisableHealthWeightSync}
-                  className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
+                  className="mt-3 min-h-11 w-full t-label-sm text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                 >
                   Stop automatic sync
                 </button>
               )}
             </>
           ) : (
-            <p className="t-body">Open the iPhone app to connect Apple Health.</p>
+            <p className="t-body text-[var(--color-text-dim)]">Open the iPhone app to connect Apple Health.</p>
           )}
+          </div>
           {feedback}
         </>
       )}
       {page === 'weight' && (
         <>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <Button id="search-log-weight" onClick={() => setWeighInOpen(true)}>Log weight</Button>
-            <button
-              id="search-weight-units"
-              className="you-text-action"
-              aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
-              onClick={handleToggleWeightUnit}
-            >
-              {weightUnit === 'lb' ? 'lb / kg' : 'kg / lb'}
-            </button>
-          </div>
-          {weightLoading ? (
-            <p role="status">Loading weight history…</p>
-          ) : (
-            <>
-              {' '}
-              {latestBodyWeight ? (
-                <div className="mt-4">
-                  <div className="flex items-baseline gap-2">
-                    <span className="number-medium text-[var(--color-text)]">
-                      {formatWeight(latestBodyWeight.kilograms, weightUnit)}
-                    </span>
-                    <span className="t-caption text-[var(--color-text-dim)]">{weightUnit}</span>
-                    {weeklyWeightChange && (
-                      <span className="t-data-sm text-[var(--color-text-dim)]">
-                        {weeklyWeightChange} · 3-wk rate
+          <section className="platter" aria-label="Latest weigh-in">
+            <div className="flex items-start justify-between gap-3">
+              <p className="t-label">Latest</p>
+              <button
+                id="search-weight-units"
+                className="you-text-action -mt-3 -mr-2 px-2 text-[var(--color-text-dim)]"
+                aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
+                onClick={handleToggleWeightUnit}
+              >
+                {weightUnit === 'lb' ? 'lb / kg' : 'kg / lb'}
+              </button>
+            </div>
+            {weightLoading ? (
+              <p role="status" className="t-body mt-2">Loading weight history…</p>
+            ) : (
+              <>
+                {' '}
+                {latestBodyWeight ? (
+                  <div>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="number-hero">
+                        {formatWeight(latestBodyWeight.kilograms, weightUnit)}
                       </span>
+                      <span className="t-caption text-[var(--color-text-dim)]">{weightUnit}</span>
+                      {weeklyWeightChange && (
+                        <span className="t-data-sm text-[var(--color-text-dim)] ml-auto">
+                          {weeklyWeightChange} · 3-wk rate
+                        </span>
+                      )}
+                    </div>
+                    <p className="t-caption mt-2">
+                      {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} ·{' '}
+                      {latestBodyWeight.source_name}
+                    </p>
+                    {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
+                      <p className="t-caption mt-1">
+                        Trend {formatWeight(weightTrend.latestEwmaKg, weightUnit)} {weightUnit} ·
+                        smoothed over {weightTrend.observedDayCount} weigh-in
+                        {weightTrend.observedDayCount === 1 ? '' : 's'}
+                      </p>
+                    )}
+                    {weightTrend.fittedDayCount >= 2 && (
+                      <WeightTrendChart
+                        className="mt-5"
+                        days={90}
+                        height={168}
+                        points={weightTrend.points}
+                        toUnit={weightToUnit}
+                        unit={weightUnit}
+                        reveal="you-weight-trend"
+                        summary={
+                          <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
+                            <span>Drag to read any day</span>
+                            {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
+                          </span>
+                        }
+                      />
                     )}
                   </div>
-                  <p className="t-caption mt-1.5">
-                    {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} ·{' '}
-                    {latestBodyWeight.source_name}
+                ) : (
+                  <p className="t-body mt-2 text-[var(--color-text-dim)]">
+                    {bodyWeightError
+                      ? bodyWeightError
+                      : 'Record your first weight. If adaptive targets are enabled, regular weigh-ins help refine them.'}
                   </p>
-                  {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
-                    <p className="t-caption mt-1">
-                      Trend {formatWeight(weightTrend.latestEwmaKg, weightUnit)} {weightUnit} ·
-                      smoothed over {weightTrend.observedDayCount} weigh-in
-                      {weightTrend.observedDayCount === 1 ? '' : 's'}
-                    </p>
-                  )}
-                  {weightTrend.fittedDayCount >= 2 && (
-                    <WeightTrendChart
-                      className="mt-5"
-                      days={90}
-                      height={168}
-                      points={weightTrend.points}
-                      toUnit={weightToUnit}
-                      unit={weightUnit}
-                      reveal="you-weight-trend"
-                      summary={
-                        <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
-                          <span>Drag to read any day</span>
-                          {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
-                        </span>
-                      }
-                    />
-                  )}
-                  {bodyWeightHistory.length > 1 && (
-                    <ul className="mt-4 border-t border-[var(--color-border)]">
-                      {bodyWeightHistory.slice(1, 6).map((entry) => (
-                        <li
-                          key={entry.id}
-                          className="flex items-baseline justify-between gap-4 py-2 border-b border-[var(--color-border)]"
-                        >
-                          <span className="t-caption">
-                            {format(new Date(entry.measured_at), 'MMM d')}
-                          </span>
-                          <span className="t-data-sm text-[var(--color-text)]">
-                            {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <p className="t-caption mt-3">
-                  {bodyWeightError
-                    ? bodyWeightError
-                    : 'Record your first weight. If adaptive targets are enabled, regular weigh-ins help refine them.'}
-                </p>
-              )}
-            </>
+                )}
+              </>
+            )}
+            <Button id="search-log-weight" metal size="lg" className="w-full mt-5" onClick={() => setWeighInOpen(true)}>Log weight</Button>
+          </section>
+          {!weightLoading && latestBodyWeight && bodyWeightHistory.length > 1 && (
+            <section className="mt-7">
+              <h2 className="t-label mb-3">Earlier</h2>
+              <ul className="platter platter-flush">
+                {bodyWeightHistory.slice(1, 6).map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="platter-row flex items-baseline justify-between gap-4 px-5 py-3.5"
+                  >
+                    <span className="t-body text-[var(--color-text-dim)]">
+                      {format(new Date(entry.measured_at), 'MMM d')}
+                    </span>
+                    <span className="t-data text-[var(--color-text)]">
+                      {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
-          {feedback}
+          <div>{feedback}</div>
           {isNativeIOS() && (
-            <SettingsRow
-              title="Apple Health sync"
-              description={
-                healthWeightEnabled ? 'Automatic sync on' : 'Connect your weight measurements'
-              }
-              onClick={() => go('/settings/connections/health')}
-            />
+            <SettingsGroup className="mt-4">
+              <SettingsRow
+                title="Apple Health sync"
+                description={
+                  healthWeightEnabled ? 'Automatic sync on' : 'Connect your weight measurements'
+                }
+                onClick={() => go('/settings/connections/health')}
+              />
+            </SettingsGroup>
           )}
         </>
       )}
       {page === 'about' && (
         <>
           {' '}
-          <footer className="mt-12 pt-8 border-t border-[var(--color-border)]">
-            <div className="flex items-baseline justify-between">
-              <h2 className="t-display-italic text-[21px] text-[var(--color-text-dim)]">
-                hy<span className="italic text-[var(--color-accent)]">P</span>er
-              </h2>
-              {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
-              <button
-                type="button"
-                aria-label={`Build ${__BUILD_ID__}. Tap to test haptics on a supported device.`}
-                onClick={() => tapHaptic()}
-                className="t-data-sm text-[var(--color-muted)] min-h-11 py-2"
-              >
-                build {__BUILD_ID__}
-              </button>
-            </div>
-            <p className="t-label-sm mt-3">Built on peer-reviewed research</p>
+          <footer className="platter flex flex-col items-center text-center px-6 pt-10 pb-6">
+            <h2 className="t-display-italic text-[44px] leading-none text-[var(--color-text)]">
+              hy<span className="italic text-[var(--color-accent)]">P</span>er
+            </h2>
+            <p className="t-label-sm mt-4">Built on peer-reviewed research</p>
+            {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
+            <button
+              type="button"
+              aria-label={`Build ${__BUILD_ID__}. Tap to test haptics on a supported device.`}
+              onClick={() => tapHaptic()}
+              className="t-data-sm text-[var(--color-muted)] min-h-11 py-2 mt-5"
+            >
+              build {__BUILD_ID__}
+            </button>
           </footer>
-          <p className="t-body mt-4">
+          <p className="you-footnote">
             Tap the build information to test haptics on a supported device.
           </p>
         </>
       )}
-      {!titles[page] && <SettingsRow title="Back to You" onClick={() => go('/settings')} />}
+      {!titles[page] && (
+        <SettingsGroup>
+          <SettingsRow title="Back to You" onClick={() => go('/settings')} />
+        </SettingsGroup>
+      )}
       <Modal
         isOpen={editingComposedMeal !== null}
         title="Edit saved meal"
@@ -1933,7 +2001,7 @@ export function Settings() {
             onBusyChange={setSavingMealEdit}
             onComplete={() => {
               setEditingComposedMeal(null);
-              setMealManagerMessage('Saved meal updated for future logs.');
+              setMealManagerMessage('Saved food updated for future logs.');
               void fetchSavedMeals();
             }}
           />
@@ -1953,46 +2021,45 @@ export function Settings() {
         }}
         title="Log weight"
       >
-        <button className="you-text-action" onClick={handleToggleWeightUnit}>
-          Unit: {weightUnit} · switch to {weightUnit === 'lb' ? 'kg' : 'lb'}
-        </button>
-        <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
-          <label className="t-label-sm block mb-2" htmlFor="weigh-in">
+        <div className="pt-1">
+          <label className="t-label block mb-3" htmlFor="weigh-in">
             Record a weigh-in
           </label>
-          <div className="flex items-end gap-4">
-            <div className="material-inset flex-1 min-w-0 flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
-              <input
-                id="weigh-in"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                value={weighInDraft}
-                placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
-                onChange={(e) => {
-                  setHealthWeightMessage(null);
-                  setWeighInDraft(e.target.value);
-                }}
-                className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
-              />
-              <span className="t-label-sm shrink-0">{weightUnit}</span>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={weighInBusy}
-              disabled={weighInBusy || weighInDraft.trim() === ''}
-              onClick={() => {
-                void handleRecordWeighIn();
+          <div className="material-inset flex items-baseline gap-2 px-5 py-3 rounded-[var(--radius-control)]">
+            <input
+              id="weigh-in"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={weighInDraft}
+              placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
+              onChange={(e) => {
+                setHealthWeightMessage(null);
+                setWeighInDraft(e.target.value);
               }}
-            >
-              Save
-            </Button>
+              className="flex-1 min-w-0 px-0 py-1 bg-transparent border-0 text-[var(--color-text)] text-[34px]! font-medium tracking-[-0.025em] tabular-nums [font-family:var(--font-metric)] placeholder:text-[var(--color-placeholder)] focus:outline-none"
+            />
+            <span className="t-label shrink-0">{weightUnit}</span>
           </div>
+          <button className="you-text-action mt-2 text-[var(--color-text-dim)]" onClick={handleToggleWeightUnit}>
+            Unit: {weightUnit} · switch to {weightUnit === 'lb' ? 'kg' : 'lb'}
+          </button>
+          <Button
+            metal
+            size="lg"
+            className="w-full mt-4"
+            loading={weighInBusy}
+            disabled={weighInBusy || weighInDraft.trim() === ''}
+            onClick={() => {
+              void handleRecordWeighIn();
+            }}
+          >
+            Save
+          </Button>
         </div>
 
         {healthWeightMessage && (
-          <p role="status" className="t-body">
+          <p role="status" className="t-body mt-3">
             {healthWeightMessage}
           </p>
         )}

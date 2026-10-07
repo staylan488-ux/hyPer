@@ -44,6 +44,31 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   }
 }
 
+// The preview's clock stands at 9:41, as the status bar in screenshots does,
+// so "now" agrees with the sample day (food logged before now, the live lift
+// begun after the morning's activities) and every capture shows the same
+// minutes (the live session reads 23m however long a capture run takes).
+// It still moves forward by a millisecond per real second, so time stays
+// monotonic for keys and ordering. The sandbox keeps the real clock, for
+// trying timers and live behaviour.
+if (import.meta.env.DEV && typeof window !== 'undefined' && window.__HYPER_PREVIEW__ && !window.__HYPER_SANDBOX__) {
+  const RealDate = Date;
+  const anchor = new RealDate();
+  anchor.setHours(9, 41, 0, 0);
+  const start = RealDate.now();
+  const previewNow = () => anchor.getTime() + Math.floor((RealDate.now() - start) / 1000);
+  class PreviewDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(previewNow());
+      else super(...(args as [string | number | Date]));
+    }
+    static now() {
+      return previewNow();
+    }
+  }
+  window.Date = PreviewDate as DateConstructor;
+}
+
 export const isPreviewActive = () =>
   import.meta.env.DEV && typeof window !== 'undefined' && window.__HYPER_PREVIEW__ === true;
 

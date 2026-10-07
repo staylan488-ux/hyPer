@@ -115,13 +115,14 @@ export function WeightTrendChart({
           <svg width={width} height={height} className="absolute inset-0 overflow-visible" aria-hidden>
             <defs>
               <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="var(--color-text)" stopOpacity={compact ? 0.08 : 0.1} />
+                <stop offset="0%" stopColor="var(--color-text)" stopOpacity={compact ? 0.08 : 0.12} />
+                <stop offset="70%" stopColor="var(--color-text)" stopOpacity={compact ? 0.02 : 0.03} />
                 <stop offset="100%" stopColor="var(--color-text)" stopOpacity={0} />
               </linearGradient>
             </defs>
 
             {!compact && (
-              <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="var(--color-border-strong)" strokeWidth={1} />
+              <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="var(--color-border)" strokeWidth={1} />
             )}
 
             <motion.path
@@ -160,7 +161,21 @@ export function WeightTrendChart({
               transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
             />
 
-            {/* latest point marker */}
+            {/* latest point marker: a lacquer bead with a soft halo */}
+            {active === null && !compact && (
+              <motion.circle
+                cx={geometry.line[geometry.line.length - 1].x}
+                cy={geometry.line[geometry.line.length - 1].y}
+                r={8}
+                fill="var(--color-accent)"
+                initial={firstReveal ? { scale: 0, opacity: 0 } : false}
+                animate={{ scale: 1, opacity: 0.16 }}
+                transition={{ ...springs.lift, delay: firstReveal ? 1.1 : 0 }}
+                style={{
+                  transformOrigin: `${geometry.line[geometry.line.length - 1].x}px ${geometry.line[geometry.line.length - 1].y}px`,
+                }}
+              />
+            )}
             {active === null && (
               <motion.circle
                 cx={geometry.line[geometry.line.length - 1].x}
@@ -185,8 +200,10 @@ export function WeightTrendChart({
                   y2={height}
                   stroke="var(--color-border-strong)"
                   strokeWidth={1}
+                  strokeDasharray="2 3"
                 />
-                <circle cx={activePoint.x} cy={activePoint.y} r={4} fill="var(--color-base)" stroke="var(--color-text)" strokeWidth={2} />
+                <circle cx={activePoint.x} cy={activePoint.y} r={9} fill="var(--color-text)" opacity={0.08} />
+                <circle cx={activePoint.x} cy={activePoint.y} r={4.5} fill="var(--color-base)" stroke="var(--color-text)" strokeWidth={2} />
               </g>
             )}
           </svg>
@@ -194,7 +211,7 @@ export function WeightTrendChart({
       </div>
 
       {!compact && geometry && (
-        <div className="flex justify-between mt-2 t-caption" aria-hidden>
+        <div className="flex justify-between mt-2.5 text-[11px] leading-[1.3] tabular-nums text-[var(--color-muted)]" aria-hidden>
           <span>{format(parseISO(series[0].date), 'MMM d')}</span>
           <span>
             {geometry.domain[0].toFixed(0)}–{geometry.domain[1].toFixed(0)} {unit}

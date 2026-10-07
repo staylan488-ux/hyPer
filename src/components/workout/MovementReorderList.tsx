@@ -46,10 +46,15 @@ function dragPosition(session: DragSession) {
   return session.order.indexOf(first) + 1;
 }
 
-/** Drag only from a handle: scrolling, text entry and movement disclosure stay independent. */
-export function MovementReorderList({ items, onReorder, children }: {
+/**
+ * Drag only from a handle: scrolling, text entry and movement disclosure stay
+ * independent. Handles appear only in reorder mode (`editing`), which also
+ * compacts the rows the same way an active drag does.
+ */
+export function MovementReorderList({ items, onReorder, editing = false, children }: {
   items: ReorderMovement[];
   onReorder: (ids: string[]) => Promise<void>;
+  editing?: boolean;
   children: ReactNode;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -271,6 +276,12 @@ export function MovementReorderList({ items, onReorder, children }: {
     const frame = requestAnimationFrame(() => finish(true));
     return () => cancelAnimationFrame(frame);
   }, [membership, finish]);
+  // Leaving reorder mode mid-pick-up (keyboard) drops the pending move.
+  useEffect(() => {
+    if (editing || !sessionRef.current || busyRef.current) return;
+    const frame = requestAnimationFrame(() => finish(true));
+    return () => cancelAnimationFrame(frame);
+  }, [editing, finish]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -311,7 +322,7 @@ export function MovementReorderList({ items, onReorder, children }: {
       event.currentTarget.setPointerCapture(event.pointerId);
       begin(id, event.currentTarget, event.pointerId, event.clientY);
     } }}>
-      <div ref={listRef} className={`studio-reorder-list${activeId ? ' is-reordering' : ''}`} aria-busy={busy}>
+      <div ref={listRef} className={`studio-reorder-list${activeId || editing ? ' is-reordering' : ''}${editing ? ' is-editing' : ''}`} aria-busy={busy}>
         <p id={instructionsId} className="sr-only">Drag to reorder. With a keyboard, press Space to pick up, arrow keys to move, Space to drop, or Escape to cancel. Supersets move together.</p>
         <p className={error ? 'studio-reorder-error' : 'sr-only'} role={error ? 'alert' : 'status'} aria-live="polite">{message}</p>
         {children}

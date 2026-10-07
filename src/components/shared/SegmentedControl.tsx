@@ -13,29 +13,33 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
-  distribution?: 'content' | 'equal';
+  /** Locks the choice: the whole control dims to 40%, like a disabled
+   *  UISegmentedControl, and takes no touches. */
+  disabled?: boolean;
   className?: string;
 }
 
 /**
- * Studio segmented choices: one quiet well with a neutral selected surface.
- * Long option groups can scroll without shrinking labels or touch targets.
+ * Segmented choices at native metrics: a 36px capsule track with a 2px inset
+ * and equal segments; the selection is a 32px thumb. Each segment keeps a
+ * 44px hit area (liquid.css). Keep option groups to about five short labels.
  */
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
   size = 'md',
-  distribution = 'content',
+  disabled = false,
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const item = size === 'sm' ? 'px-2' : 'px-3';
+  const item = size === 'sm' ? 'px-1' : 'px-2';
 
   return (
     <div
-      className={`flex gap-1 p-1 well overflow-x-auto no-scrollbar ${className}`}
+      className={`segmented-track well ${disabled ? 'is-disabled' : ''} ${className}`}
       role="tablist"
+      aria-disabled={disabled || undefined}
       onKeyDown={(event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -57,19 +61,22 @@ export function SegmentedControl<T extends string>({
             role="tab"
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
+            disabled={disabled && !selected}
+            aria-disabled={disabled || undefined}
             onClick={() => {
+              if (disabled) return;
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative min-h-11 min-w-11 shrink-0 rounded-[var(--radius-control)] uppercase font-medium text-[11px] tracking-[0.16em] [font-family:var(--font-sans)] transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
+            className={`relative rounded-[var(--radius-capsule)] font-medium text-[15px] tracking-[-0.01em] [font-family:var(--font-sans)] transition-colors duration-200 ${item} ${
               selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}
           >
-            <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap">{option.label}</span>
+            <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{option.label}</span>
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}
-                className="material-selected absolute inset-0 rounded-[var(--radius-control)]"
+                className="material-selected absolute inset-0 rounded-[var(--radius-capsule)]"
                 transition={springs.tactile}
               />
             )}

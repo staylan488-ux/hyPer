@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls, type PanInfo } from 'motion/react';
@@ -13,20 +13,52 @@ interface ModalProps {
   children: ReactNode;
   contentClassName?: string;
   initialFocusRef?: RefObject<HTMLInputElement | null>;
+  /** Show the drag grabber. A sheet that swipes away shows it; turning it off
+   *  also blocks swipe-to-dismiss (for a sheet that must be answered), so
+   *  the grabber always tells the truth. */
+  showGrabber?: boolean;
+  /** Show the close button. Turn off only when the sheet's own actions include
+   *  a cancel (Escape, the scrim and a pull-down still dismiss it). */
+  showClose?: boolean;
+}
+
+// The sheet header's trailing slot, beside the close button. Undefined outside a sheet.
+const SheetHeaderSlot = createContext<HTMLElement | null | undefined>(undefined);
+
+/**
+ * A quiet header action for the sheet that contains it (a text action beside
+ * the close button). Outside a sheet it renders in place.
+ */
+export function SheetHeaderAction({ children }: { children: ReactNode }) {
+  const slot = useContext(SheetHeaderSlot);
+  if (slot === undefined) return <>{children}</>;
+  return slot ? createPortal(children, slot) : null;
 }
 
 /** An anchored sheet with a shared keyboard and focus boundary. */
-export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  contentClassName = '',
+  initialFocusRef,
+  showGrabber = true,
+  showClose = true,
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
   const litDialogRef = useLitSurface(dialogRef);
   const titleId = useId();
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const close = useEffectEvent(onClose);
-  // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked)
-  const [sheetDrag] = useState(
+  // Sheet drag is a thumb gesture — phones only (below sm the sheet is docked),
+  // and only on a sheet that shows its grabber.
+  const [phone] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches
   );
+  const sheetDrag = phone && showGrabber;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -114,35 +146,42 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
             onDragEnd={handleDragEnd}
           >
             {/* grab rule — the sheet's drag handle on phones */}
-            <div
-              className={`flex justify-center pt-3 pb-1 sm:hidden ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
-              aria-hidden
-              onPointerDown={sheetDrag ? startSheetDrag : undefined}
-            >
-              <span className="material-sheet-handle" />
-            </div>
-            <div
-              className={`material-sheet-header flex items-center justify-between pl-6 pr-5 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
-              onPointerDown={sheetDrag ? startSheetDrag : undefined}
-            >
-              {title ? <h2 id={titleId} className="t-heading">{title}</h2> : <span />}
-              <motion.button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="material-sheet-close p-3 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                whileTap={{ scale: 0.9 }}
+            {showGrabber && (
+              <div
+                className={`flex justify-center pt-3 pb-1 sm:hidden ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+                aria-hidden
+                onPointerDown={sheetDrag ? startSheetDrag : undefined}
               >
-                <X className="w-4 h-4" strokeWidth={1.5} />
-              </motion.button>
+                <span className="material-sheet-handle" />
+              </div>
+            )}
+            <div
+              className={`material-sheet-header flex items-center justify-between pl-6 pr-6 ${showGrabber ? 'pt-3' : 'pt-7'} sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+              onPointerDown={sheetDrag ? startSheetDrag : undefined}
+            >
+              {title ? <h2 id={titleId} className="sheet-title">{title}</h2> : <span />}
+              <span className="flex items-center gap-2">
+              <span ref={setHeaderSlot} className="flex items-center empty:hidden" />
+              {showClose && (
+                <motion.button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="material-sheet-close relative p-3 after:absolute after:-inset-1 after:content-[''] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <X className="w-4 h-4" strokeWidth={1.5} />
+                </motion.button>
+              )}
+              </span>
             </div>
             <motion.div
-              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
+              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.5rem,calc(var(--app-safe-bottom)+0.5rem))] sm:pb-6 ${contentClassName}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.08, duration: 0.24 }}
             >
-              {children}
+              <SheetHeaderSlot.Provider value={headerSlot}>{children}</SheetHeaderSlot.Provider>
             </motion.div>
           </motion.div>
         </motion.div>

@@ -10,7 +10,7 @@ import {
   Link2,
   Unlink2,
 } from 'lucide-react';
-import { Button, Input, Card } from '@/components/shared';
+import { Button, Input } from '@/components/shared';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import {
   springs,
@@ -65,8 +65,10 @@ const ExerciseRow = memo(function ExerciseRow({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
       transition={springs.settle}
-      className={`relative border-t border-[var(--color-border)] py-3 space-y-3 ${
-        exercise.superset_group_id ? 'material-surface px-3' : ''
+      className={`relative space-y-3 ${
+        exercise.superset_group_id
+          ? 'material-inset rounded-[var(--radius-control)] px-3 py-3 my-2'
+          : 'border-t border-[var(--color-border-soft)] py-4 first:border-t-0'
       }`}
     >
       {/* ── Top row: index + name + actions ── */}
@@ -97,7 +99,8 @@ const ExerciseRow = memo(function ExerciseRow({
         </button>
 
         {/* Reorder + remove */}
-        <div className="flex items-center justify-end shrink-0 basis-full ml-auto">
+        <div className="flex justify-end shrink-0 basis-full ml-auto">
+        <div className="inline-flex items-center rounded-[var(--radius-capsule)] bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)]">
           {exercise.superset_group_id ? (
             <motion.button
               type="button"
@@ -153,6 +156,7 @@ const ExerciseRow = memo(function ExerciseRow({
             <X className="w-3.5 h-3.5" strokeWidth={1.5} />
           </motion.button>
         </div>
+        </div>
       </div>
 
       {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
@@ -205,9 +209,9 @@ const DayCard = memo(function DayCard({
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.2 } }}
       transition={springs.settle}
     >
-      <Card variant="slab" animated={false} className="material-surface space-y-5">
+      <div className="platter space-y-4">
         {/* ── Day header ── */}
-        <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-[var(--color-border)]">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Day index */}
           <span className="t-data-sm text-[var(--color-text-dim)] shrink-0 w-5">
             {String(index + 1).padStart(2, '0')}
@@ -224,7 +228,8 @@ const DayCard = memo(function DayCard({
           </div>
 
           {/* Day actions: reorder + delete */}
-          <div className="flex items-center justify-end shrink-0 basis-full">
+          <div className="flex justify-end shrink-0 basis-full">
+          <div className="inline-flex items-center rounded-[var(--radius-capsule)] bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)]">
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
@@ -257,10 +262,11 @@ const DayCard = memo(function DayCard({
               <Trash2 className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
           </div>
+          </div>
         </div>
 
         {/* ── Exercises section label ── */}
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between pt-4 shadow-[inset_0_1px_0_var(--platter-divider)]">
           <span className="t-label">Exercises</span>
           <span className="t-data-sm text-[var(--color-muted)]">
             {day.exercises.length} total
@@ -276,7 +282,7 @@ const DayCard = memo(function DayCard({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="t-caption py-3 border-t border-[var(--color-border)]"
+                className="t-caption py-3"
               >
                 No exercises yet. Tap below to add.
               </motion.p>
@@ -298,14 +304,14 @@ const DayCard = memo(function DayCard({
         {/* ── Add exercise button ── */}
         <motion.button
           type="button"
-          className="pressable studio-row-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
+          className="pressable studio-secondary-action material-button-secondary w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
           onClick={() => onPickExercise(day.id, 'add')}
           whileTap={{ scale: 0.99 }}
         >
           <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
           Add exercise
         </motion.button>
-      </Card>
+      </div>
     </motion.div>
   );
 });
@@ -368,11 +374,12 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.settle, delay: 0.05 }}
-        className="space-y-4"
+        className="space-y-3"
       >
-        <p className="t-label pb-3 border-b border-[var(--color-border)]">
+        <p className="t-label px-1">
           Program details
         </p>
+        <div className="platter space-y-5">
         <Input
           label="Program name"
           value={draft.name}
@@ -385,6 +392,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
           onChange={(e) => updateDescription(e.target.value)}
           placeholder="Optional description…"
         />
+        </div>
       </motion.div>
 
       {/* ═══════════════════════════════════ */}
@@ -396,7 +404,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
         animate="visible"
         className="space-y-4"
       >
-        <div className="flex items-baseline justify-between pb-3 border-b border-[var(--color-border)]">
+        <div className="flex items-baseline justify-between px-1 -mb-1">
           <p className="t-label">
             Training days
           </p>
@@ -443,7 +451,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
       {/* STICKY BOTTOM BAR                   */}
       {/* ═══════════════════════════════════ */}
       <div
-        className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        className="material-toolbar sticky z-20 -mx-6 rounded-t-[var(--radius-platter)] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
         style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
       >
         <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
@@ -475,6 +483,7 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
             <Button
               variant="primary"
               size="md"
+              metal
               className="flex-1"
               onClick={handleSave}
               loading={saving}

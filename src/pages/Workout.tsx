@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import {
+  ArrowDownUp,
   ArrowLeftRight,
+  ArrowRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Dumbbell,
   Link2,
   Loader2,
@@ -25,7 +25,7 @@ import {
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
+import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, MetalRing, Modal, TickStrip, PageHeader } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -34,8 +34,10 @@ import { useLitSurface } from '@/hooks/useLitSurface';
 import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { SessionToken } from '@/components/workout/SessionToken';
+import { LiveSessionBar } from '@/components/workout/LiveSessionBar';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
-import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { movementBlocks } from '@/components/workout/movementOrder';
+import { expandedWorkoutSet, formatSessionDuration, initialWorkoutExpansion, movementProgressLabel, nextSetAction, nextWorkoutSet, repTargetLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -53,7 +55,7 @@ import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutof
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
 import type { Exercise, SplitDay, Workout, WorkoutSet } from '@/types';
@@ -90,32 +92,6 @@ type CompletionSummary = {
   gains: Array<{ name: string; setNumber: number; gain: string }>;
   completedAt: number;
 };
-
-function formatSessionDuration(createdAt: string | null, now: number): string {
-  return createdAt
-    ? formatWorkoutDuration(Math.max(0, now - new Date(createdAt).getTime()))
-    : '—';
-}
-
-/**
- * Ticks on its own so the whole session page doesn't re-render every second.
- * Render with `key={createdAt}` so a new session starts from a fresh clock.
- */
-function SessionClock({ createdAt }: { createdAt: string }) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  return <>{formatSessionDuration(createdAt, now)}</>;
-}
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
   const map = new Map<string, SupersetFlow>();
@@ -203,9 +179,16 @@ export function Workout() {
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [finishing, setFinishing] = useState(false);
+  // Reordering is an explicit mode, so movement rows carry no drag chrome at rest.
+  const [reorderingMovements, setReorderingMovements] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [noteSaveFailed, setNoteSaveFailed] = useState(false);
   const finishingRef = useRef(false);
+  // The live session's large title: the pinned bar takes over once it scrolls under.
+  const sessionTitleRef = useRef<HTMLHeadingElement>(null);
+  // The live header (title and ring) collapses under the bar like a large title.
+  const sessionHeaderRef = useRef<HTMLDivElement>(null);
+  const sessionPageRef = useRef<HTMLDivElement>(null);
   const movementNotesRef = useRef<Record<string, string>>({});
   const dirtyMovementNotesRef = useRef<Record<string, string>>({});
   const legacyWorkoutNoteRef = useRef<string | null>(null);
@@ -217,6 +200,10 @@ export function Workout() {
   const planScheduleRequestRef = useRef(0);
   const previousTargetsFailedRef = useRef(false);
   const previousTargetsContextRef = useRef<string | null>(null);
+  // The workout whose Up next movement has opened on arrival (once per visit).
+  const autoOpenedWorkoutRef = useRef<string | null>(null);
+  // The set the bottom "Log set" action opened, to bring into view once shown.
+  const revealEntryForSetRef = useRef<string | null>(null);
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
@@ -361,6 +348,9 @@ export function Workout() {
     setFlexibleTargetSetDrafts({});
     setActiveExerciseId(null);
     dispatchExpansion({ type: 'reset' });
+    // A reset closes every movement, so the arrival may open one again. (In
+    // development StrictMode replays this effect after the arrival opened one.)
+    autoOpenedWorkoutRef.current = null;
     setSetAdjustmentExerciseId(null);
     setSubstitutionSource(null);
     setSwapError(null);
@@ -869,6 +859,33 @@ export function Workout() {
     ? activeExerciseId
     : nextMovementId ?? focusOrder[0] ?? null;
   const editorSet = expandedWorkoutSet(orderedSets, expansion);
+  // Between sets the next one is the screen's primary action; while a set
+  // entry is open its save key is.
+  const nextSetCta = nextSetAction(orderedSets, focusOrder, supersetFlowMap, editorSet);
+  const openNextSet = () => {
+    if (!nextSetCta) return;
+    const { set } = nextSetCta;
+    tapHaptic();
+    revealEntryForSetRef.current = set.id;
+    setActiveExerciseId(set.exercise_id);
+    dispatchExpansion({ type: 'select', exerciseId: set.exercise_id, setId: set.id });
+  };
+  const editorSetId = editorSet?.id ?? null;
+  useEffect(() => {
+    if (!editorSetId || revealEntryForSetRef.current !== editorSetId) return;
+    let frame = 0;
+    // The movement may still be growing open; settle on the entry once it has.
+    const reveal = () => {
+      const form = document.querySelector<HTMLFormElement>(`.studio-workout-page form[data-set-id="${CSS.escape(editorSetId)}"]`);
+      if (!form) return;
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      form.querySelector('[data-workout-set-entry]')?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+      form.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus({ preventScroll: true });
+    };
+    frame = requestAnimationFrame(reveal);
+    const settled = window.setTimeout(() => { revealEntryForSetRef.current = null; reveal(); }, 440);
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(settled); };
+  }, [editorSetId]);
   const selectMovement = (exerciseId: string) => {
     tapHaptic();
     const focused = document.activeElement;
@@ -876,6 +893,14 @@ export function Workout() {
     setActiveExerciseId(exerciseId);
     dispatchExpansion({ type: 'toggle', exerciseId });
   };
+  // The live workout opens on its next set: the Up next movement expands once
+  // per visit, only when nothing is open. A later collapse is respected.
+  useEffect(() => {
+    if (initializing || !currentWorkoutId || !nextMovementId || reorderingMovements) return;
+    if (autoOpenedWorkoutRef.current === currentWorkoutId) return;
+    autoOpenedWorkoutRef.current = currentWorkoutId;
+    dispatchExpansion({ type: 'open-if-closed', exerciseId: nextMovementId });
+  }, [initializing, currentWorkoutId, nextMovementId, reorderingMovements]);
 
   const handleStartFlexibleWorkout = async () => {
     const trimmed = flexibleDayLabel.trim();
@@ -1218,13 +1243,8 @@ export function Workout() {
 
   if (initializing) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
-        </header>
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader className="mb-6" title="Train" />
         <div className="border-t border-[var(--color-border)]">
           <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
             <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
@@ -1239,13 +1259,8 @@ export function Workout() {
 
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
-        </header>
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader className="mb-6" title="Train" />
         <EmptyState
           art="program"
           title="No program yet"
@@ -1308,24 +1323,16 @@ export function Workout() {
       );
 
       return (
-        <motion.div className="px-6 pt-6 pb-nav">
-          <header className="mb-8">
-            <div className="flex items-baseline justify-between">
-              <span className="t-label-sm">Train</span>
-              <div className="flex items-baseline gap-4">
-                <button
-                  type="button"
-                  onClick={() => navigate('/train/run')}
-                  className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-                >
-                  <Footprints className="w-4 h-4" strokeWidth={1.75} />
-                  Run
-                </button>
-                <span className="t-label-sm">Flexible</span>
-              </div>
-            </div>
-            <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</PageTitle>
-          </header>
+        <motion.div className="px-6 pt-7 pb-nav">
+          <PageHeader
+            className="mb-6"
+            eyebrow="Flexible session"
+            title="Train"
+            actions={<button type="button" className="text-action" onClick={() => navigate('/train/run')}>
+                <Footprints className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Run
+              </button>}
+          />
 
           <div className="py-5">
             <Input
@@ -1387,33 +1394,24 @@ export function Workout() {
     }
 
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
-            <div className="flex items-baseline gap-4 shrink-0">
-              <button
-                type="button"
-                onClick={() => navigate('/train/run')}
-                className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-              >
-                <Footprints className="w-4 h-4" strokeWidth={1.75} />
+      <motion.div className="px-6 pt-7 pb-nav">
+        <PageHeader
+          className="mb-6"
+          eyebrow={activeSplit?.name}
+          title="Train"
+          actions={<>
+            <button type="button" className="text-action" onClick={() => navigate('/train/run')}>
+                <Footprints className="w-4 h-4" strokeWidth={1.75} aria-hidden />
                 Run
               </button>
-              {planSchedule && (
-                <button
-                  type="button"
-                  onClick={openScheduleEditor}
-                  className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
-                >
-                  <Settings2 className="w-3 h-3" strokeWidth={1.75} />
-                  Schedule
-                </button>
-              )}
-            </div>
-          </div>
-          <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Today</PageTitle>
-        </header>
+            {planSchedule && (
+              <button type="button" className="text-action" onClick={openScheduleEditor}>
+                <Settings2 className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Schedule
+              </button>
+            )}
+          </>}
+        />
 
         {planSchedule && scheduleWorkoutsLoading ? (
           <p className="t-caption py-8">Loading workout schedule…</p>
@@ -1658,39 +1656,57 @@ export function Workout() {
   /* ═══════════════ In session ═══════════════ */
 
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
+  const reorderItems = focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }));
+  const canReorderMovements = movementBlocks(reorderItems).length > 1;
+  const isReorderingMovements = reorderingMovements && canReorderMovements;
+  const startReorderingMovements = () => {
+    tapHaptic();
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea') && focused.closest('.studio-workout-page')) focused.blur();
+    setReorderingMovements(true);
+  };
+  const allSetsLogged = totalSets > 0 && completedSets === totalSets;
+  const showNextSetCta = Boolean(nextSetCta) && !isReorderingMovements;
+  const nextSetCtaName = nextSetCta ? workoutExerciseMap.get(nextSetCta.set.exercise_id)?.name
+    ?? activeFlexibleItems.find((item) => item.exercise_id === nextSetCta.set.exercise_id)?.exercise_name ?? 'next movement' : '';
 
+  // Keyed: the other views' root is also a motion.div, and motion keeps the
+  // first render's ref, so a reused element would never hand over the page.
   return (
-    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
+    <motion.div key="live-session" ref={sessionPageRef} className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}${showNextSetCta ? ' has-next-set' : ''}`}>
       <header className="studio-session-header">
-        <div className="studio-session-top">
-          <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
-          <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
-        </div>
+        <LiveSessionBar title={currentSessionTitle} createdAt={currentWorkoutCreatedAt} titleRef={sessionTitleRef} headerRef={sessionHeaderRef} pageRef={sessionPageRef}
+          finishing={finishing} onMinimise={() => navigate('/')} onFinish={() => { void handleCompleteWorkout(); }} />
         {finishError && <div className="flex items-center justify-between gap-3">
           <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
           {noteSaveFailed && <Button variant="ghost" size="sm" onClick={() => {
             void settleNoteWrites().then(() => setFinishError(null)).catch(() => {});
           }}>Retry</Button>}
         </div>}
-        <div className="studio-session-summary">
-          <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
-          <span>{completedSets} / {totalSets} sets</span>
+        <div ref={sessionHeaderRef} className="studio-session-summary">
+          <h1 ref={sessionTitleRef}>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
+          {/* The same dial as Today's session ring: default size and stroke. */}
+          <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} reveal="session-sets">
+            <span className="number-medium text-[20px]! text-[var(--color-text)]">{completedSets}<span className="text-[var(--color-text-dim)]">/{totalSets}</span></span>
+            <span className="ring-unit">sets</span>
+          </MetalRing>
         </div>
-        {totalSets > 0 && totalSets <= 40 ? (
-          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" reveal="session-sets" />
-        ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
-        <div className="studio-session-actions">
-          <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
+        <div className="studio-session-actions" data-rest-block>
+          <span className="t-caption">{isReorderingMovements ? 'Drag a handle to reorder' : `${focusOrder.length} ${focusOrder.length === 1 ? 'movement' : 'movements'}`}</span>
           <div>
-            <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
-            {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add movement</button>}
+            {isReorderingMovements ? (
+              <button type="button" className="is-done" onClick={() => { tapHaptic(); setReorderingMovements(false); }}>Done</button>
+            ) : <>
+              {canReorderMovements && <button type="button" onClick={startReorderingMovements}><ArrowDownUp size={15} aria-hidden />Reorder</button>}
+              {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add</button>}
+              <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
+            </>}
           </div>
         </div>
       </header>
 
-      <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements}
-        items={focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }))}>
+      <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements} editing={isReorderingMovements}
+        items={reorderItems}>
       {isFlexibleSession ? (
         <div className="space-y-3">
           <Modal isOpen={showSessionDetails} onClose={() => setShowSessionDetails(false)} title="Workout name">
@@ -1745,6 +1761,7 @@ export function Workout() {
                   exerciseName={exerciseName}
                   previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                   completedCount={completedInExercise}
+                  nextSetPosition={sets.findIndex((set) => !set.completed) + 1}
                   totalCount={sets.length || flexibleTargetSet}
                   allComplete={allComplete}
                   isActive={isActive}
@@ -1752,6 +1769,8 @@ export function Workout() {
                   targetRepsMin={item.target_reps_min}
                   targetRepsMax={item.target_reps_max}
                   onToggle={() => selectMovement(exerciseId)}
+                  reordering={isReorderingMovements}
+                  onStartReorder={canReorderMovements ? startReorderingMovements : undefined}
                   supersetRole={supersetRole}
                   supersetLabel={
                     supersetPartner
@@ -1842,6 +1861,7 @@ export function Workout() {
                           })}
                           previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                           isNext={set.id === firstUncompletedSetId}
+                          planContinues={sets.slice(idx + 1).some((later) => !later.completed)}
                           editing={set.id === editorSet?.id}
                           exerciseName={exerciseName}
                           onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
@@ -1917,6 +1937,7 @@ export function Workout() {
                 exerciseName={exerciseName}
                 previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                 completedCount={completedInExercise}
+                nextSetPosition={sets.findIndex((set) => !set.completed) + 1}
                 totalCount={sets.length}
                 allComplete={allComplete}
                 isActive={isActive}
@@ -1924,6 +1945,8 @@ export function Workout() {
                 targetRepsMin={prescription?.target_reps_min}
                 targetRepsMax={prescription?.target_reps_max}
                 onToggle={() => selectMovement(exerciseId)}
+                reordering={isReorderingMovements}
+                onStartReorder={canReorderMovements ? startReorderingMovements : undefined}
                 supersetRole={supersetRole}
                 supersetLabel={
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
@@ -1932,20 +1955,14 @@ export function Workout() {
                 {...swapCardProps(exerciseId)}
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
-                <div className="studio-movement-prescription">
-                  <p className="t-caption">
-                    {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
-                      : `${sets.length} sets`}
-                  </p>
-                  {hasRemovableUncompletedSet && (
-                    <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
-                      aria-label={`Swap ${exerciseName} for this workout`}
-                      onClick={() => { tapHaptic(); openSwap(exerciseId); }}>
-                      <ArrowLeftRight size={14} aria-hidden />Swap
-                    </button>
-                  )}
-                </div>
+                {/* The rows are today's sets; the program's count appears only when it
+                    differs. Sets, then reps: the closed row's order. Swap lives in
+                    the movement's options. */}
+                <p className="studio-movement-prescription">
+                  {exerciseSetRanges.has(exerciseId)
+                    ? [todaySetCountLabel(sets.length, setRange.targetSets), repTargetLabel(prescription?.target_reps_min, prescription?.target_reps_max)].filter(Boolean).join(' · ')
+                    : todaySetCountLabel(sets.length)}
+                </p>
                 <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
                 <div className="flex items-center justify-between gap-2 mb-2.5">
                   <span className="t-caption">
@@ -1987,6 +2004,7 @@ export function Workout() {
                         })}
                         previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
                         isNext={set.id === firstUncompletedSetId}
+                        planContinues={sets.slice(idx + 1).some((later) => !later.completed)}
                         editing={set.id === editorSet?.id}
                         exerciseName={exerciseName}
                         onSelect={() => { dispatchExpansion({ type: 'select', exerciseId, setId: set.id }); setActiveExerciseId(exerciseId); }}
@@ -2013,6 +2031,14 @@ export function Workout() {
       )}
 
       </MovementReorderList>
+      {allSetsLogged && !isReorderingMovements && (
+        <div className="studio-session-finale">
+          <p className="t-caption">Every set is logged.</p>
+          <Button size="lg" className="w-full" onClick={handleCompleteWorkout} disabled={finishing}>
+            {finishing ? 'Finishing…' : 'Finish workout'}
+          </Button>
+        </div>
+      )}
       <ExercisePicker
         isOpen={substitutionSource !== null}
         onClose={() => setSubstitutionSource(null)}
@@ -2037,6 +2063,19 @@ export function Workout() {
         }}
       />
 
+      {/* Between sets, the next set is the one primary action: it opens that
+          set's entry. It docks above the home indicator, and above the rest bar
+          while rest runs. */}
+      {showNextSetCta && nextSetCta && (
+        <div className="studio-next-set-dock">
+          <Button size="lg" className="studio-next-set-cta w-full justify-between! px-6" onClick={openNextSet}
+            aria-label={`Log set ${nextSetCta.position} of ${nextSetCtaName}`}>
+            <span className="studio-next-set-label">Log set {nextSetCta.position} · {nextSetCtaName}</span>
+            <ArrowRight className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+          </Button>
+        </div>
+      )}
+
       {/* Rest is independent of movement expansion and set entry. */}
       {showRestTimer && (
         <RestTimerPill
@@ -2058,18 +2097,21 @@ export function Workout() {
       )}
 
       {/* Complete Confirmation */}
-      <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
-        <div className="space-y-4 pt-1">
+      {/* It swipes away like every sheet, so it shows the grabber; no close,
+          since "Keep training" is the cancel. */}
+      <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?"
+        contentClassName="pt-2!" showClose={false}>
+        <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="amber" size="sm" />
+            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="chalk" size="sm" className="studio-finish-tally" />
             <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
           </div>
-          <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
+          <p className="t-caption">Remaining sets won’t be logged. You can always edit this session later in History.</p>
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
               Keep training
             </Button>
-            <Button className="flex-1" onClick={handleConfirmComplete} disabled={finishing}>
+            <Button metal className="flex-1" onClick={handleConfirmComplete} disabled={finishing}>
               Finish
             </Button>
           </div>
@@ -2120,6 +2162,7 @@ function ExerciseCard({
   exerciseName,
   previousTargetText,
   completedCount,
+  nextSetPosition,
   totalCount,
   allComplete,
   isActive,
@@ -2127,6 +2170,8 @@ function ExerciseCard({
   targetRepsMin,
   targetRepsMax,
   onToggle,
+  reordering = false,
+  onStartReorder,
   supersetRole,
   supersetLabel,
   notePreview,
@@ -2140,6 +2185,8 @@ function ExerciseCard({
   exerciseName: string;
   previousTargetText: string | null;
   completedCount: number;
+  /** 1-based position of the movement's first unlogged set; 0 when none. */
+  nextSetPosition: number;
   totalCount: number;
   allComplete: boolean;
   isActive: boolean;
@@ -2147,6 +2194,9 @@ function ExerciseCard({
   targetRepsMin?: number | null;
   targetRepsMax?: number | null;
   onToggle: () => void;
+  /** Reorder mode: the row shows only its name and a drag handle. */
+  reordering?: boolean;
+  onStartReorder?: () => void;
   supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
   notePreview: string | null;
@@ -2159,12 +2209,17 @@ function ExerciseCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const contentId = useId();
   const summaryId = useId();
-  const repTarget = targetRepsMin && targetRepsMax
-    ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
-    : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
+  const upNext = isNext && !allComplete;
+  // Open on the live movement, the eyebrow names the set being logged now.
+  const loggingNow = upNext && isActive && !reordering && nextSetPosition > 0;
+  const superset = supersetRole ? ` · Superset ${supersetRole}` : '';
+  // Open but not live, the index carries the movement's progress (there is
+  // no trailing count).
+  const indexLabel = `Movement ${String(index + 1).padStart(2, '0')}${isActive && !reordering ? ` · ${movementProgressLabel(completedCount, totalCount)}` : ''}`;
+  const eyebrow = `${loggingNow ? `Now · Set ${nextSetPosition} of ${totalCount}` : upNext ? 'Up next' : indexLabel}${superset}`;
+  const repTarget = repTargetLabel(targetRepsMin, targetRepsMax);
   const headingRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const reveal = revealRef.current;
     if (!reveal) return;
@@ -2183,45 +2238,49 @@ function ExerciseCard({
     if (!scroller) return;
     const bounds = headingRef.current.getBoundingClientRect();
     const viewport = scroller.getBoundingClientRect();
+    // The pinned live bar and its fade cover the scroller's top: the heading
+    // lands clear of them, never half-faded under the bar.
+    const top = Math.max(viewport.top, document.querySelector('.studio-live-bar')?.getBoundingClientRect().bottom ?? viewport.top) + 12;
     // Opening near an edge reveals the heading and first row in this scroller only.
-    if (bounds.top < viewport.top + 12 || bounds.bottom + 150 > viewport.bottom) {
-      scroller.scrollTop += bounds.top - viewport.top - 12;
+    if (bounds.top < top || bounds.bottom + 150 > viewport.bottom) {
+      scroller.scrollTop += bounds.top - top;
     }
   }, [isActive]);
   return (
-    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
+    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive && !reordering ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
       <div className="studio-movement-header" ref={headingRef}>
-        <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
-          aria-describedby={!isActive ? summaryId : undefined}
-          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={onToggle}>
-          <span className="studio-movement-heading">
-            {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
-            {!isActive && isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
-            <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
-              {allComplete && <Check size={14} aria-hidden />}{exerciseName}
+        <button type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
+          aria-describedby={!isActive ? summaryId : undefined} aria-disabled={reordering || undefined} tabIndex={reordering ? -1 : undefined}
+          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { if (!reordering) onToggle(); }}>
+          {/* The whole header is the one toggle: no separate chevron or count
+              beside the options glyph, so "•••" stands alone at the trailing
+              edge. Progress is stated once, with today's set count. */}
+          {isActive && !reordering ? <>
+            <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
+            <span className="studio-movement-name">{exerciseName}</span>
+          </> : <span className="studio-movement-heading">
+            {upNext && <span className="studio-movement-kicker is-next">{eyebrow}</span>}
+            <span className="studio-movement-name-compact">{exerciseName}</span>
+            <span id={summaryId} className="studio-movement-summary">
+              {movementProgressLabel(completedCount, totalCount)}{repTarget && !allComplete ? ` · ${repTarget}` : ''}
+              {!allComplete && previousTargetText && <> · Last <span className="studio-movement-previous">{previousTargetText}</span></>}
             </span>
-            {!isActive && <span id={summaryId} className="studio-movement-summary">
-              <span>{totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}</span>
-              {!allComplete && previousTargetText && <span className="studio-movement-previous">Last workout <span>{previousTargetText}</span></span>}
-            </span>}
-          </span>
-          <span className="studio-movement-count">{completedCount} / {totalCount}</span>
-          <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+          </span>}
         </button>
         <div className="studio-movement-controls">
-        {menuActions.length > 0 && <div className="relative">
+        {reordering ? <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
+          : menuActions.length > 0 && <div className="relative">
           <button ref={optionsRef} type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
-            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} aria-hidden /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
-            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
-              {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
+            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-52 p-1 rounded-xl material-glass">
+              {[...menuActions, ...(onStartReorder ? [{ label: 'Reorder movements', icon: <ArrowDownUp className="w-4 h-4" />, onClick: onStartReorder }] : [])].map((action: CardMenuAction) => <button key={action.label} type="button" disabled={action.disabled}
                 className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
                 onClick={() => { setMenuOpen(false); optionsRef.current?.focus({ preventScroll: true }); action.onClick(); }}>{action.icon}{action.label}</button>)}
             </div>
           </>}
         </div>}
-        <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
         </div>
       </div>
       {substitutionLabel && <p className="studio-movement-detail"><ArrowLeftRight size={13} aria-hidden />{substitutionLabel}</p>}
@@ -2235,19 +2294,10 @@ function ExerciseCard({
       <div ref={revealRef} className="studio-movement-reveal" data-open={isActive ? 'true' : 'false'} inert={!isActive} aria-hidden={!isActive || undefined}>
       <div className="studio-movement-reveal-inner">
       <div id={contentId} className="studio-movement-content">
-        {previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
+        {/* Last workout's numbers live with each set's entry ("Repeat last ·
+            60 × 9"), a text action under the fields, so they read as a choice
+            rather than an unexplained jump. */}
         {children}
-        <button type="button" className="studio-collapse-movement" onClick={() => {
-          onToggle();
-          requestAnimationFrame(() => {
-            toggleRef.current?.focus({ preventScroll: true });
-            const heading = headingRef.current;
-            const scroller = heading?.closest<HTMLElement>('[data-app-scroll-viewport]');
-            if (!heading || !scroller) return;
-            const top = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-            if (top < 0) scroller.scrollTop += top - 12;
-          });
-        }}>All movements <ChevronUp size={14} aria-hidden /></button>
       </div>
       </div>
       </div>
@@ -2301,7 +2351,7 @@ function MovementNote({
   return (
     <div className="studio-movement-note">
       {!editing && value.trim() && <p className="studio-note-text">{value}</p>}
-      <button type="button" className="t-caption min-h-11 flex items-center gap-1" aria-expanded={editing}
+      <button type="button" className="studio-note-action pressable" aria-expanded={editing}
         aria-controls={`movement-note-${exerciseId}`} onClick={() => setEditing((open) => !open)}>
         {editing ? 'Hide note editor' : value.trim() ? 'Edit note' : 'Add note'}
       </button>

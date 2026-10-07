@@ -5,6 +5,7 @@ import {
   canResumeWorkout,
   formatWorkoutDuration,
   getWorkoutDurationMs,
+  hoursInTenthsTogether,
   isAbandonedSplitStart,
   resolveEditedSetCompletedAt,
   resolveWorkoutTitle,
@@ -210,5 +211,19 @@ describe('isAbandonedSplitStart', () => {
     expect(isAbandonedSplitStart({ split_day_id: null, notes: null, sets: [] })).toBe(false);
     // Sets that were not loaded are not the same as no sets.
     expect(isAbandonedSplitStart({ split_day_id: 'day-1', notes: null, sets: undefined as unknown as [] })).toBe(false);
+  });
+});
+
+describe('hoursInTenthsTogether', () => {
+  it('rounds weekly hours once, so the parts add up to the total shown', () => {
+    const { parts, total } = hoursInTenthsTogether([0, 130, 0, 195, 65, 0]);
+    expect(total).toBe(6.5);
+    expect(parts).toEqual([0, 2.2, 0, 3.2, 1.1, 0]);
+    expect(Math.round(parts.reduce((sum, value) => sum + value, 0) * 10) / 10).toBe(total);
+  });
+
+  it('keeps exact tenths and empty weeks as they are', () => {
+    expect(hoursInTenthsTogether([90, 0, 180])).toEqual({ parts: [1.5, 0, 3], total: 4.5 });
+    expect(hoursInTenthsTogether([0, 0])).toEqual({ parts: [0, 0], total: 0 });
   });
 });

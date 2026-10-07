@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, liveHeaderCollapseOffset, liveHeaderSnapTarget, liveScrollEnd, movementProgressLabel, nextSetAction, nextWorkoutSet, repeatOfferLabel, todaySetCountLabel, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({
@@ -20,6 +20,17 @@ describe('expandable workout movements', () => {
     expect(expandedWorkoutSet(rows, open)?.id).toBe('a-2');
     const closed = workoutExpansionReducer(open, { type: 'toggle', exerciseId: 'a' });
     expect(expandedWorkoutSet(rows, closed)).toBeUndefined();
+  });
+
+  it('opens the next movement on arrival only when nothing is already open', () => {
+    const arrived = workoutExpansionReducer(initialWorkoutExpansion, { type: 'open-if-closed', exerciseId: 'a' });
+    expect(arrived.expandedExerciseId).toBe('a');
+    expect(expandedWorkoutSet(rows, arrived)?.id).toBe('a-2');
+    const browsing = workoutExpansionReducer(initialWorkoutExpansion, { type: 'toggle', exerciseId: 'b' });
+    expect(workoutExpansionReducer(browsing, { type: 'open-if-closed', exerciseId: 'a' })).toBe(browsing);
+    // After a reset (another workout) the arrival opens that workout's next movement.
+    const reset = workoutExpansionReducer(browsing, { type: 'reset' });
+    expect(workoutExpansionReducer(reset, { type: 'open-if-closed', exerciseId: 'a' }).expandedExerciseId).toBe('a');
   });
 
   it('returns to the explicitly selected row after browsing or collapsing', () => {
@@ -121,6 +132,46 @@ describe('Studio workout focus', () => {
   });
 });
 
+describe('Train next-set action', () => {
+  it('offers the next set with its position in the movement, in display order', () => {
+    const rows = [row('a', 1, true), row('a', 2, true), row('b', 2), row('b', 1), row('b', 3)];
+    expect(nextSetAction(rows, ['a', 'b'], undefined, undefined)).toEqual({ set: rows[3], position: 1, total: 3 });
+  });
+  it('steps aside while a set entry is open, so the save key stays the one primary', () => {
+    const rows = [row('a', 1), row('a', 2)];
+    expect(nextSetAction(rows, ['a'], undefined, rows[1])).toBeUndefined();
+  });
+  it('follows superset rounds: B1 after A1, not a blocked A2', () => {
+    const rows = [row('a', 1, true), row('a', 2), row('b', 1), row('b', 2)];
+    expect(nextSetAction(rows, ['a', 'b'], pairings, undefined)).toMatchObject({ set: { id: 'b-1' }, position: 1 });
+  });
+  it('offers nothing once every set is logged', () => {
+    expect(nextSetAction([row('a', 1, true)], ['a'], undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('Train set-entry copy', () => {
+  it("names today's set count against the program only when they differ", () => {
+    expect(todaySetCountLabel(3, 3)).toBe('3 sets');
+    expect(todaySetCountLabel(1)).toBe('1 set');
+    // Today's count leads; the program never appears as a second total.
+    expect(todaySetCountLabel(3, 4)).toBe('3 sets · 1 fewer than planned');
+    expect(todaySetCountLabel(5, 4)).toBe('5 sets · 1 more than planned');
+    expect(todaySetCountLabel(1, 3)).toBe('1 set · 2 fewer than planned');
+  });
+  it("states a closed movement's progress with the same count", () => {
+    expect(movementProgressLabel(0, 3)).toBe('3 sets');
+    expect(movementProgressLabel(1, 3)).toBe('1 of 3 sets');
+    expect(movementProgressLabel(3, 3)).toBe('3 sets · Complete');
+    expect(movementProgressLabel(1, 1)).toBe('1 set · Complete');
+  });
+  it('offers earlier numbers as a repeat, never as an unexplained alternative plan', () => {
+    expect(repeatOfferLabel({ weight: '60', reps: '9', rpe: '', source: 'previous_workout' })).toBe('Repeat last · 60 × 9');
+    expect(repeatOfferLabel({ weight: '80', reps: '8', rpe: '8', source: 'current_workout' })).toBe('Repeat last set · 80 × 8');
+    expect(repeatOfferLabel({ weight: '', reps: '9', rpe: '', source: 'previous_workout' })).toBe('Repeat last');
+  });
+});
+
 describe('Dashboard resume cue', () => {
   it('uses the split exercise order and set number instead of response array order', () => {
     const workout = { id: 'workout', split_day_id: 'day', sets: [row('b', 1), row('a', 2), row('a', 1)] };
@@ -147,5 +198,44 @@ describe('Dashboard resume cue', () => {
     ] };
     expect(getWorkoutResumeSet(workout, day, plan)?.id).toBe('swap-1');
     expect(getWorkoutResumeSet(workout, day, { ...plan, workout_id: 'other' })?.id).toBe('c-1');
+  });
+});
+
+describe('Live session header settling', () => {
+  it('collapses the header until the ring sits wholly under the solid edge', () => {
+    // Header bottom 162pt in the scroll column, 42pt of solid band.
+    expect(liveHeaderCollapseOffset(162, 42)).toBe(120);
+    expect(liveHeaderCollapseOffset(161.2, 42)).toBe(120);
+    expect(liveHeaderCollapseOffset(30, 42)).toBe(0);
+  });
+  it('lands the first movement on the ramp foot, never splitting it under the bar', () => {
+    // Header bottom 162, solid 40, ramp foot 64; the first row's content starts 12 below the header.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 174, edgeFoot: 64 })).toBe(110);
+    // The header's own content never enters the ramp's weaker half: at most half the ramp (12) of trailing edge.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 162, edgeFoot: 64 })).toBe(110);
+    // A row starting well below the header never pushes the header past the solid edge.
+    expect(liveHeaderCollapseOffset(162, 40, { contentTop: 240, edgeFoot: 64 })).toBe(122);
+  });
+  it('ends the session scroll on a movement rest, never a split row', () => {
+    // Natural end 300; movements' content reaches the ramp foot at 110, 186 and 342.
+    expect(liveScrollEnd(300, 110, [110, 186, 342], 437)).toBe(342);
+    // Already on a rest, or short sessions: the header collapse is the floor.
+    expect(liveScrollEnd(186, 110, [110, 186, 342], 437)).toBe(186);
+    expect(liveScrollEnd(40, 110, [110, 186], 437)).toBe(110);
+    // No rest within reach: the natural end stands.
+    expect(liveScrollEnd(300, 110, [110, 186, 900], 437)).toBe(300);
+    expect(liveScrollEnd(300, 110, [110, 186], 437)).toBe(300);
+  });
+  it('never rests part-way: settles to the nearer of expanded or collapsed', () => {
+    expect(liveHeaderSnapTarget(12, 120)).toBe(0);
+    expect(liveHeaderSnapTarget(59, 120)).toBe(0);
+    expect(liveHeaderSnapTarget(60, 120)).toBe(120);
+    expect(liveHeaderSnapTarget(108, 120)).toBe(120);
+  });
+  it('leaves resting states and long scrolls alone', () => {
+    expect(liveHeaderSnapTarget(0, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(120, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(400, 120)).toBeNull();
+    expect(liveHeaderSnapTarget(40, 0)).toBeNull();
   });
 });

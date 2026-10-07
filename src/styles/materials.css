@@ -1,49 +1,79 @@
-/* Diffuse browser materials: broad tonal light and background translucency.
-   Apple Liquid Glass remains a separate native navigation implementation. */
+/* Browser materials: clear, saturated liquid glass over an ambient studio
+   light, with grouped glass platters for content. Specular edges and liquid
+   metal live in liquid.css. Native iOS glass remains a separate
+   implementation for the tab bar, rest bar and toasts. */
 :root, .light {
   --material-foundation: #F5F5F0;
-  --material-glass: rgba(250,250,247,.58);
-  --material-sheet: rgba(250,250,247,.82);
-  --material-surface: rgba(233,235,229,.72);
-  --material-secondary: rgba(221,224,217,.64);
-  --material-inset: rgba(220,224,216,.52);
-  --material-wash: linear-gradient(125deg, rgba(255,255,255,.24), rgba(255,255,255,0) 68%);
-  --material-action-wash: linear-gradient(125deg, rgba(255,255,255,.045), rgba(255,255,255,0) 68%);
-  --material-rim: 0 0 0 0 transparent;
-  --material-optics: saturate(1.12);
-  --material-shadow: 0 10px 30px rgba(24,28,24,.10);
-  --material-sheet-shadow: 0 -10px 40px rgba(24,28,24,.10);
-  --material-dock-shadow: 0 12px 36px rgba(24,28,24,.12);
+  /* Flat Ivory: no light pool, so the stage is one even tone edge to edge. */
+  --material-ambient: none;
+  --material-glass: rgba(255,255,255,.56);
+  --material-sheet: #F7F7F3;
+  --material-surface: rgba(255,255,255,.62);
+  --material-secondary: rgba(35,35,35,.06);
+  --material-inset: rgba(35, 35, 35,.055);
+  --material-wash: linear-gradient(170deg, rgba(255,255,255,.55), rgba(255,255,255,0) 58%);
+  --material-action-wash: none;
+  --material-rim: inset 0 1px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.4), 0 0 0 .5px rgba(20, 20, 20,.08);
+  --material-optics: saturate(1.7);
+  --material-shadow: 0 1px 2px rgba(20, 20, 20,.05), 0 12px 32px rgba(20, 20, 20,.10);
+  /* The scrim alone separates a sheet: a shadow would grade what is behind
+     it into chrome. */
+  --material-sheet-shadow: none;
+  --material-dock-shadow: 0 1px 2px rgba(20, 20, 20,.06), 0 14px 38px rgba(20, 20, 20,.14);
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
-  --material-inset-shadow: none;
-  --material-selection: rgba(0,0,0,.07);
-  --material-selection-shadow: none;
-  --material-blur: 22px;
-  --material-nav-muted: #626262;
+  --material-inset-shadow: inset 0 1px 2px rgba(20, 20, 20,.06);
+  --material-selection: #FDFDF9;
+  --material-selection-shadow: 0 1px 3px rgba(20, 20, 20,.10);
+  /* Web tab bar: the current tab is a flat ink fill; the bar is set off by
+     one faint shadow and no edge. */
+  --nav-selection: #E6E6E1;
+  --nav-glass: rgba(255,255,252,.6);
+  --nav-veil: rgb(255,255,252);
+  --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
+  --nav-rim: 0 0 #0000;
+  --material-blur: 26px;
+  --material-nav-muted: #575757;
   --material-accent: #923127;
+  /* Platters: the grouped glass panels that hold page sections. */
+  --platter-fill: rgba(255,255,255,.66);
+  /* Cards never carry an outline or a lit edge: fill and a soft shadow only. */
+  --platter-edge: 0 0 #0000;
+  --platter-shadow: 0 1px 2px rgba(20, 20, 20,.04), 0 10px 30px rgba(20, 20, 20,.06);
+  --platter-divider: rgba(35, 35, 35,.09);
 }
 .dark {
   --material-foundation: #000000;
-  --material-glass: rgba(24,24,24,.62);
-  --material-sheet: rgba(22,22,22,.84);
-  --material-surface: rgba(27,27,27,.76);
-  --material-secondary: rgba(42,42,42,.66);
-  --material-inset: rgba(255,255,255,.075);
-  --material-wash: linear-gradient(125deg, rgba(255,255,255,.055), rgba(255,255,255,0) 68%);
-  --material-action-wash: linear-gradient(125deg, rgba(255,255,255,.025), rgba(255,255,255,0) 68%);
-  --material-rim: 0 0 0 0 transparent;
-  --material-optics: saturate(1.12);
-  --material-shadow: 0 12px 32px rgba(0,0,0,.32);
-  --material-sheet-shadow: 0 -12px 40px rgba(0,0,0,.28);
-  --material-dock-shadow: 0 12px 36px rgba(0,0,0,.36);
+  /* True black: no tinted pool of light behind the content. */
+  --material-ambient: none;
+  --material-glass: rgba(30,30,30,.52);
+  --material-sheet: rgba(22,22,22,.97);
+  --material-surface: rgba(255,255,255,.055);
+  --material-secondary: rgba(255,255,255,.10);
+  --material-inset: rgba(255,255,255,.07);
+  --material-wash: linear-gradient(170deg, rgba(255,255,255,.06), rgba(255,255,255,0) 58%);
+  --material-action-wash: none;
+  --material-rim: inset 0 1px 0 rgba(255,255,255,.07);
+  --material-optics: saturate(1.8);
+  --material-shadow: 0 14px 36px rgba(0,0,0,.5);
+  --material-sheet-shadow: none;
+  --material-dock-shadow: 0 14px 40px rgba(0,0,0,.55);
   --material-control: var(--button-primary-bg);
   --material-control-shadow: none;
-  --material-inset-shadow: none;
-  --material-selection: rgba(255,255,255,.10);
+  --material-inset-shadow: inset 0 1px 2px rgba(0,0,0,.45);
+  --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
-  --material-nav-muted: #B3B3B3;
-  --material-accent: #F0A092;
+  --nav-selection: #333333;
+  --nav-glass: rgba(28,28,28,.6);
+  --nav-veil: rgb(28,28,28);
+  --nav-shadow: none;
+  --nav-rim: 0 0 #0000;
+  --material-nav-muted: #9a9a9a;
+  --material-accent: #D9503F;
+  --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
+  --platter-edge: 0 0 #0000;
+  --platter-shadow: 0 10px 30px rgba(0,0,0,.35);
+  --platter-divider: rgba(255,255,255,.08);
 }
 
 @layer components {
@@ -77,23 +107,40 @@
   .material-button-primary:active { background-color: var(--button-primary-active); }
 }
 
-/* A single broad wash adds a diffuse finish. No bright rim or inset highlight. */
-.material-glass, .material-toolbar, .bottom-nav, .studio-sheet, .material-toast,
-.material-surface, .material-control, .material-inset, .studio-secondary-action, .material-button-secondary {
+/* Controls are flat fills; only floating glass carries the wash. */
+.material-glass, .material-toolbar, .material-toast {
   background-image: var(--material-wash);
 }
 .material-button-primary, .studio-save-set {
   background-image: var(--material-action-wash);
 }
+/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill at 60%
+   (near-black in Black, near-white in Ivory) over a 2.5px backdrop blur,
+   clipped to the capsule by its radius and overflow (the blur never paints
+   outside it). What passes under it keeps its shape, softened and quieted
+   by the fill, so it reads as content going under glass. A heavier blur
+   turns a header into a shapeless bright blob (a lit corner in Black), and
+   at 12px a 15pt line is gone and the bar reads as a solid slab. Labels and
+   icons stay legible over busy content (Fuel, History, Progress and You
+   checked). No rim, wash, glow or one-sided light, and no saturation boost,
+   so what passes under it stays neutral. The same fill thickens where a
+   ghost would smudge: behind the label row (about 84% there, so a header
+   under a label stays within ~15 levels) and over the top 12px, where
+   content fades in instead of showing a cut edge. Beside and under the
+   capsule the stage takes over (.bottom-nav-edge, opacity only). */
 .bottom-nav {
-  box-shadow: var(--material-rim), var(--material-shadow);
-  -webkit-backdrop-filter: blur(var(--material-blur)) var(--material-optics);
-  backdrop-filter: blur(var(--material-blur)) var(--material-optics);
+  background-color: var(--nav-glass);
+  background-image: linear-gradient(to bottom,
+    color-mix(in srgb, var(--nav-veil) 90%, transparent) 0,
+    color-mix(in srgb, var(--nav-veil) 50%, transparent) 6px,
+    transparent 12px,
+    transparent 30px,
+    color-mix(in srgb, var(--nav-veil) 60%, transparent) 38px);
+  box-shadow: var(--nav-shadow);
+  -webkit-backdrop-filter: blur(2.5px);
+  backdrop-filter: blur(2.5px);
 }
-.material-nav-selection {
-  background: var(--material-selection);
-  box-shadow: none;
-}
+.dark .studio-sheet { background-image: none; }
 .studio-secondary-action, .material-button-secondary {
   background-color: var(--material-secondary);
   box-shadow: none;
@@ -179,4 +226,5 @@
     box-shadow: inset 0 0 0 1px var(--color-border-strong) !important;
   }
   .app-viewport, .material-foundation { background: var(--color-base) !important; }
+  .material-nav-selection { box-shadow: none !important; }
 }

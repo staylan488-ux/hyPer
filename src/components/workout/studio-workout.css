@@ -1,88 +1,189 @@
 /* Movement details and set entry belong to the list; only active rest floats. */
-.studio-workout-page { padding-bottom: calc(32px + var(--app-safe-bottom, 0px)); }
+/* The session ends with its last ink 24pt above the home indicator's safe area
+   (the last row's own 12px padding plus this), as tab pages end 24pt above
+   the tab bar. */
+.studio-workout-page { padding-bottom: calc(12px + var(--app-safe-bottom, 0px)); }
 .studio-workout-page.has-rest-timer { padding-bottom: calc(var(--workout-rest-height, 76px) + 28px + var(--app-safe-bottom, 0px)); }
+/* The docked "Log set" action keeps the last rows clear of it (and of rest). */
+.studio-workout-page.has-next-set { padding-bottom: calc(52px + 40px + var(--app-safe-bottom, 0px)); }
+.studio-workout-page.has-next-set.has-rest-timer { padding-bottom: calc(52px + 50px + var(--workout-rest-height, 76px) + var(--app-safe-bottom, 0px)); }
 .studio-workout-page [hidden] { display: none; }
-.studio-session-header { padding: 8px 0 4px; }
-.studio-session-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-text-dim); font-size: 12px; }
+.studio-session-header { padding: 0 0 4px; }
+/* The live bar is pinned under the status bar on the shared scroll-edge band
+   (PageTitle's veil and progressive blur, faded in by --band once the page
+   moves), so the controls never scroll away and nothing passes under them
+   with an edge. Only the band layers fade; the bar row is always present. */
+.page-scroll-edge.studio-live-bar { display: block; padding: 0; cursor: auto; pointer-events: none; }
+.page-scroll-edge.studio-live-bar > .studio-session-top { opacity: 1; }
+.studio-live-bar-spacer { height: 44px; }
+/* Three columns with equal sides, so the clock sits on the screen's centre
+   line whatever the side controls measure. */
+.studio-session-top { position: absolute; z-index: 1; top: 0; left: 0; right: 0; height: 44px; padding: 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; pointer-events: auto; }
 .studio-session-top > button { display: flex; align-items: center; min-height: 44px; }
-.studio-session-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 16px 0 20px; }
+/* The centre holds two labels in the compact title's style, stacked in one
+   grid cell and each centred on the screen's centre line: the lone clock at
+   the top, and the compact "Upper A · 23m" once the bar condenses. They
+   cross-fade in place (opacity only, no sideways travel), like UIKit's
+   title hand-over. The clock keeps its face, primary ink and tabular lining
+   figures in both. */
+.studio-session-centre { grid-column: 2; display: grid; place-items: center; min-width: 0; }
+.studio-session-centre > .page-scroll-edge-title { grid-area: 1 / 1; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: 'lnum' 1, 'tnum' 1; }
+.studio-session-solo.page-scroll-edge-title { max-width: none; color: var(--color-text); }
+.studio-session-line.page-scroll-edge-title { display: flex; align-items: baseline; max-width: min(62vw, 300px); overflow: visible; }
+.studio-session-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.studio-session-clock { flex-shrink: 0; white-space: nowrap; color: var(--color-text); }
+/* The Finish sheet's set tally: empty ticks are a neutral track at about
+   2:1 on the sheet in both themes (33% ink on Ivory's #F7F7F3, 22% white on
+   Black's #151515), so the sets still to do read at a glance. */
+:root:not(.dark) .studio-finish-tally { --strip-track: rgba(35, 35, 35, 0.33); }
+.dark .studio-finish-tally { --strip-track: rgba(255, 255, 255, 0.22); }
+/* Minimise: a bare 44pt chevron, no fill or bubble; its stroke sits on the 24pt guide. */
+.studio-session-minimise { justify-self: start; justify-content: center; width: 44px; height: 44px; margin-left: -16px; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
+.studio-session-minimise:active { opacity: .5; }
+/* Finish is a navigation-bar text action in regular weight: easy to reach,
+   never louder than the work. */
+.studio-session-top > .studio-session-finish { justify-self: end; justify-content: flex-end; min-width: 44px; margin-right: -2px; padding: 0 2px; font-size: 16px; font-weight: 400; letter-spacing: -.01em; color: var(--color-text); }
+.studio-session-top > .studio-session-finish:disabled { opacity: .45; }
+.studio-session-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 12px; }
 .studio-session-summary h1 { min-width: 0; font-family: var(--font-display); font-size: 34px; font-weight: 340; line-height: 1.06; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .studio-session-summary h1 > button { display: flex; align-items: center; gap: 10px; min-height: 44px; text-align: left; }
 .studio-session-summary h1 svg { flex-shrink: 0; color: var(--color-text-dim); }
 .studio-session-summary > span { flex-shrink: 0; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.studio-session-header [role="img"] { width: 100%; }
-.studio-session-header [role="img"] > span { flex: 1; height: 2px; }
-.studio-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0 2px; }
-.studio-session-actions > div { display: flex; align-items: center; gap: 12px; }
-.studio-session-actions button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; font-size: 12px; color: var(--color-text-dim); }
-.studio-session-actions button:disabled { opacity: .5; }
+.studio-session-header [role="img"]:not(.metal-ring) { width: 100%; }
+.studio-session-header [role="img"]:not(.metal-ring) > span { flex: 1; height: 2px; }
+/* Session tools are unboxed text actions in one row; the last sits on the gutter. */
+.studio-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 6px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
+.studio-session-actions > div { display: flex; align-items: center; gap: 4px; margin-right: -10px; }
+.studio-session-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 13px; color: var(--color-text); }
+.studio-session-actions button svg { color: var(--color-text-dim); }
+.studio-session-actions button.is-done { font-weight: 600; }
+.studio-session-actions button:disabled { opacity: .45; }
+.studio-session-finale { display: grid; gap: 12px; padding: 28px 0 8px; text-align: center; }
 
-.studio-movement { border-bottom: 1px solid var(--color-border); padding: 6px 0; }
-.studio-movement.is-active { padding-top: 22px; }
-.studio-movement-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; scroll-margin-top: 12px; }
-.studio-movement-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; min-height: 52px; text-align: left; }
-.studio-movement-heading { flex: 1; min-width: 0; }
-.studio-movement.is-active .studio-movement-toggle { align-items: flex-start; }
-.studio-movement-name { display: block; margin-top: 12px; font-family: var(--font-display); font-size: 34px; font-weight: 340; line-height: 1.06; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.studio-movement-name > svg { display: inline; margin-right: 8px; }
-.studio-movement-name-compact { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 23px; font-weight: 340; line-height: 1.18; letter-spacing: -.015em; overflow-wrap: anywhere; }
-.studio-movement-name-compact > svg { flex-shrink: 0; }
-.studio-movement:not(.is-active) { padding: 20px 0; }
-.studio-movement:not(.is-active) .studio-movement-header { align-items: center; }
-.studio-movement-summary { display: grid; gap: 7px; margin-top: 9px; font-size: 12px; line-height: 1.45; color: var(--color-text-dim); }
-.studio-movement-previous { display: flex; flex-wrap: wrap; gap: 2px 8px; }
-.studio-movement-previous > span { color: var(--color-text); font-variant-numeric: tabular-nums; }
-.studio-movement-next { display: block; margin-bottom: 10px; font-size: 11px; line-height: 1.4; letter-spacing: .08em; text-transform: uppercase; color: var(--color-accent); }
-.studio-movement.is-complete:not(.is-active) { padding: 12px 0; }
-.studio-movement.is-complete:not(.is-active) .studio-movement-name-compact { font-family: var(--font-sans); font-size: 16px; line-height: 1.45; letter-spacing: normal; color: var(--color-text-dim); }
-.studio-movement.is-complete:not(.is-active) .studio-movement-summary { margin-top: 5px; }
-.studio-movement-count { flex-shrink: 0; white-space: nowrap; font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.studio-movement-chevron { flex-shrink: 0; color: var(--color-text-dim); transition: transform .15s; }
-.studio-movement.is-active .studio-movement-chevron { transform: rotate(180deg); }
-.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 52px; margin-right: -10px; }
-.studio-movement.is-active .studio-movement-options { height: 44px; margin-top: -12px; }
+/* Movements are a ruled list on the stage. Collapsed rows are interface
+   text (system-list sans); the serif belongs to the screen title and the one
+   open movement. Every title shares one left edge: progress (a count, or a
+   check once done) and the options glyph are trailing columns. The whole row
+   is the disclosure, so it carries no chevron. */
+.studio-movement { --movement-name-size: 22px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); padding: 12px 0; }
+/* Separators sit between rows: the list's last row has none under it. */
+.studio-reorder-list .studio-movement:last-child { border-bottom-color: transparent; }
+.studio-movement-header { display: flex; align-items: center; gap: 4px; scroll-margin-top: 12px; }
+.studio-movement.is-active .studio-movement-header { align-items: flex-start; }
+/* The whole header is the movement's one toggle (open and close); nothing
+   else in the row is tappable but the options glyph at the trailing edge. */
+.studio-movement-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; min-height: 52px; text-align: left; }
+.studio-movement.is-active .studio-movement-toggle { flex-direction: column; align-items: stretch; gap: var(--movement-kicker-gap); }
+/* One label-to-title gap, open or closed (about 10pt from the eyebrow's
+   letters to the title's): the eyebrow's 16px line, then the title. */
+.studio-workout-page { --movement-kicker-gap: 0px; }
+.studio-movement-heading { display: grid; flex: 1; min-width: 0; gap: var(--movement-kicker-gap); }
+.studio-movement-heading > .studio-movement-summary { margin-top: 3px; }
+/* One eyebrow voice, open or closed: "Up next" (or, open, "Now · Set 1 of 3")
+   in lacquer as the live cue, any other open movement by its plain index. */
+.studio-movement-kicker { display: block; font-size: 11px; font-weight: 500; line-height: 16px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-dim); }
+.studio-movement-kicker.is-next { color: var(--color-accent); }
+.studio-movement-name { display: block; padding-bottom: 6px; font-family: var(--font-sans); font-size: var(--movement-name-size); font-weight: 600; line-height: 1.2; letter-spacing: -.02em; color: var(--color-text); text-wrap: balance; overflow-wrap: break-word; }
+.studio-movement-name-compact { display: block; font-family: var(--font-sans); font-size: 17px; font-weight: 500; line-height: 1.3; letter-spacing: -.012em; color: var(--color-text); overflow-wrap: break-word; }
+.studio-movement.is-complete .studio-movement-name-compact { color: var(--color-text-dim); }
+.studio-movement-summary { font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+/* Kept together on one line, in the subtitle's own tone (one tone per subtitle). */
+.studio-movement-previous { white-space: nowrap; }
+/* The options glyph stands alone on the trailing gutter, its 44pt target
+   overhanging into the margin. Open, it sits on the title's line, not the
+   eyebrow's, as it does beside a closed "Up next" movement. */
+.studio-movement-controls { flex-shrink: 0; width: 44px; margin-right: -13px; display: flex; flex-direction: column; align-items: center; }
+.studio-movement.is-active .studio-movement-controls { margin-top: calc(16px + var(--movement-kicker-gap) + var(--movement-name-size) * .6 - 22px); }
+/* The options glyph at the same contrast in both themes (about 4.7:1): Ivory
+   takes the tertiary ink outright, Black its secondary at 70%. */
+.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: #6B6B69; }
+.dark .studio-movement-options { color: var(--color-text-dim); opacity: .7; }
+.studio-movement-options[aria-expanded="true"] { color: var(--color-text); opacity: 1; }
 .studio-movement-detail { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 4px 0 8px; }
 .studio-movement-detail svg { flex-shrink: 0; }
 .studio-movement-note-preview { font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 0 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.studio-movement-content { padding: 18px 0 2px; }
-.studio-last-workout { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding-bottom: 12px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
-.studio-last-workout span:last-child { color: var(--color-text); font-variant-numeric: tabular-nums; }
-/* The swap target overhangs the caption line so the row keeps its rhythm. */
-.studio-movement-prescription { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.studio-movement-swap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 44px; margin: -13px 0; padding-left: 12px; font-size: 12px; line-height: 1.4; color: var(--color-text); }
-.studio-movement-swap svg { color: var(--color-text-dim); }
-.studio-movement-swap:disabled { opacity: .5; }
+.studio-movement-content { padding: 0 0 2px; }
+.studio-movement-prescription { margin: -2px 0 4px; font-size: 12px; line-height: 1.45; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 
-.studio-set-headings, .studio-set-ledger, .studio-set-entry { display: grid; grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr) 44px; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
-.studio-set-headings { padding: 6px 0 8px; font-size: 11px; line-height: 1.4; text-transform: uppercase; color: var(--color-text-dim); }
+/* The open set's numbers are full ink, planned or typed: the "Planned"
+   cue under them is the one sign that they are a suggestion. Sets further
+   down are secondary ink (never disabled grey) until logged in full ink. */
+/* Three equal fields and the 44pt save key, flush with the 44pt fields. */
+.studio-set-headings, .studio-set-ledger, .studio-set-entry { display: grid; grid-template-columns: 22px repeat(3, minmax(0, 1fr)) 44px; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.studio-set-headings { padding: 4px 0 6px; font-size: 11px; line-height: 1.4; text-transform: uppercase; color: var(--color-text-dim); }
 .studio-set-headings > span:not(:first-child) { text-align: center; }
-.studio-set-ledger { width: 100%; min-height: 48px; border-bottom: 1px solid var(--color-border); color: var(--color-text-dim); font-size: 14px; text-align: center; }
-.studio-set-ledger[data-next] { color: var(--color-text); }
-.studio-set-index { text-align: left; font-size: 12px; color: var(--color-text-dim); }
+/* Logged sets read in ink; anything not yet logged (planned, last-workout
+   targets or an unsaved draft) is ghosted so the two never look alike. */
+/* Numbers are read from the bench: the open set at 23px semibold, the rows
+   below one step down at 17px. Index, values and the open set's fields share
+   a baseline (grid baseline alignment), so "02" never floats above "80". */
+.studio-set-ledger { width: 100%; min-height: 44px; padding: 8px 0; align-items: baseline; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); color: var(--color-text); font-size: 17px; line-height: 28px; font-weight: 500; letter-spacing: -.01em; text-align: center; }
+.studio-set-ledger > .studio-set-state, .studio-set-entry > .studio-save-set { align-self: center; }
+/* The fields take their 23px from the row: the app's iOS zoom floor sets
+   every input to max(16px, 1em), which outranks a class rule. */
+.studio-set-entry { align-items: baseline; font-size: 23px; }
+.studio-set-ledger:not([data-logged]) > .studio-set-value { color: var(--color-text-dim); }
+.studio-set-ledger[data-next] .studio-set-index, .studio-set-ledger[data-next] .studio-set-state { color: var(--color-text); }
+.studio-set-ledger:not([data-logged]) .studio-set-state { color: var(--color-text-dim); }
+/* The set's index: 15px tabular figures in secondary ink, on the row's baseline. */
+.studio-set-index { text-align: left; font-size: 15px; font-weight: 400; letter-spacing: 0; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .studio-set-state { display: flex; align-items: center; justify-content: center; font-size: 11px; }
-.studio-set-editor { padding-top: 8px; border-bottom: 1px solid var(--color-border); }
-.studio-set-entry { scroll-margin: 12px; }
-.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: var(--radius-control); font-family: var(--font-sans); font-size: 18px; font-weight: 400; line-height: 1.4; text-align: center; color: var(--color-text); appearance: textfield; }
+/* The open set is flat: quiet wells on the stage, the save key the one hero. */
+.studio-set-editor { padding-top: 4px; border-bottom: 1px solid var(--platter-divider, var(--color-border-soft)); }
+.studio-set-slot:last-child .studio-set-ledger, .studio-set-slot:last-child .studio-set-editor { border-bottom: 0; }
+.studio-set-entry { scroll-margin: 12px 0 calc(var(--workout-rest-height, 0px) + 24px); }
+.studio-set-input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 3px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 7%, transparent); box-shadow: none; font-family: var(--font-sans); font-weight: 600; line-height: 28px; letter-spacing: -.015em; font-variant-numeric: tabular-nums; text-align: center; color: var(--color-text); appearance: textfield; }
 .studio-set-input::-webkit-inner-spin-button { appearance: none; }
-.studio-set-input:focus-visible { outline: 1px solid var(--color-text); outline-offset: 2px; }
-.studio-set-input::placeholder { color: var(--color-muted); opacity: .7; }
-.studio-save-set { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; border: 0; border-radius: var(--radius-control); color: var(--button-primary-fg); font-size: 11px; transition: transform .12s; }
-.studio-save-set:hover:not(:disabled) { background-color: var(--button-primary-hover); }
-.studio-save-set:active:not(:disabled) { background-color: var(--button-primary-active); transform: scale(.985); }
-.studio-save-set:disabled { opacity: .45; }
+/* In Black the fields sit on the shared well (#1C1C1C) so they read as
+   fields on true black. Focus deepens the well instead of drawing a ring. */
+.dark .studio-set-input { background: var(--color-well); }
+.studio-set-input:focus, .studio-set-input:focus-visible { outline: none; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.dark .studio-set-input:focus, .dark .studio-set-input:focus-visible { background: color-mix(in srgb, var(--color-text) 19%, transparent); }
+@media (prefers-contrast: more) { .studio-set-input:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; } }
+/* A bare hint ("0", "—") stays faint; a planned number is full ink at the
+   same weight as a typed one. */
+.studio-set-input::placeholder { color: var(--color-text-dim); opacity: .62; font-weight: 400; }
+.studio-set-input[data-suggested]::placeholder { color: var(--color-text); opacity: 1; font-weight: 600; }
+/* Block, not flex, so the cue's word spacing survives. On the movement's
+   last set the source is a quiet 13px secondary note under the fields. */
+.studio-set-suggestion { display: block; white-space: nowrap; font-size: 13px; font-weight: 400; color: var(--color-text-dim); }
+/* With planned rows below, the source heads them instead: an 11pt tracked
+   label like the column headings, on its own line under the open set's
+   divider, so it never reads as a caption for Repeat last. */
+.studio-set-editor:has(> .studio-set-source-head) { border-bottom: 0; }
+.studio-set-source-head { display: block; padding: 14px 0 2px; border-top: 1px solid var(--platter-divider, var(--color-border-soft)); font-size: 11px; line-height: 1.4; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-dim); }
+.studio-set-entry + .studio-set-source-head, .studio-save-error + .studio-set-source-head { margin-top: 12px; }
+.studio-set-offer { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.studio-save-set { display: flex; align-items: center; justify-content: center; border: 0; font-size: 11px; transition: transform .12s cubic-bezier(.2,.9,.25,1); }
+.studio-save-set:active:not(:disabled) { transform: scale(.94); }
+.studio-save-set:disabled { opacity: .4; }
 .studio-save-error { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--color-text); }
-.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px; font-size: 12px; color: var(--color-text-dim); }
-.studio-set-editor-foot > div { display: flex; gap: 6px; margin-left: auto; }
-.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; }
-.studio-set-editor-foot button:disabled { opacity: .5; }
-.studio-movement-note { margin-top: 8px; }
+/* One 44pt row under the fields for the alternatives (and, on a movement's
+   last set or a set with nothing suggested, a quiet secondary note). Repeat
+   last and Cancel are unboxed ink text actions, each a full 44pt target
+   whose glyphs end on the trailing guide: the save key stays the band's one
+   filled control. */
+.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; min-height: 44px; padding: 4px 0; font-size: 13px; line-height: 1.4; color: var(--color-text-dim); }
+.studio-set-editor-foot > div { display: flex; gap: 4px; margin-left: auto; margin-right: -10px; }
+.studio-set-editor-foot button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 15px; font-weight: 500; color: var(--color-text); -webkit-tap-highlight-color: transparent; }
+.studio-set-editor-foot button:active:not(:disabled) { opacity: .5; }
+.studio-set-editor-foot button:disabled { opacity: .3; }
+.studio-movement-note { margin-top: 4px; }
 .studio-note-text { padding-top: 8px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-.studio-collapse-movement { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin-top: 4px; font-size: 12px; color: var(--color-text-dim); }
+/* Add / Edit note is a text action on its own full-width 44pt row: ink,
+   like every enabled action. */
+.studio-note-action { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 44px; font-size: 15px; font-weight: 500; line-height: 1.4; text-align: left; color: var(--color-text); }
 
+/* Compact iPhones (SE, mini) keep common movement names on one line. */
+@media (max-width: 380px) {
+  .studio-movement { --movement-name-size: 20px; }
+  .studio-movement-toggle { gap: 10px; }
+}
 @media (max-width: 360px) {
   .studio-set-headings, .studio-set-ledger, .studio-set-entry { gap: 5px; }
-  .studio-movement-name { font-size: 30px; }
-  .studio-session-actions > div { gap: 6px; }
+  /* Narrow fields keep "102.5" whole. */
+  .studio-set-entry { font-size: 20px; }
+  .studio-session-actions > div { gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .studio-workout-page * { scroll-behavior: auto; transition: none !important; animation: none !important; }
@@ -98,16 +199,17 @@
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: 12px;
   z-index: -1;
   background: color-mix(in srgb, var(--color-text) 9%, transparent);
   transform-origin: 0 50%;
   animation: studio-ink-wash 1.1s cubic-bezier(.16,1,.3,1) both;
   pointer-events: none;
 }
-.studio-set-beat { color: var(--color-accent); }
+.studio-set-beat { color: var(--color-text); }
 .studio-set-gain {
   position: absolute;
-  right: 50px;
+  right: 52px;
   top: 50%;
   margin-top: -12px;
   height: 24px;
@@ -115,7 +217,7 @@
   align-items: center;
   padding: 0 9px;
   border-radius: 999px;
-  background: var(--color-accent);
+  background: var(--color-text);
   color: var(--color-base);
   font-size: 12px;
   font-weight: 500;
@@ -141,7 +243,6 @@
 .studio-movement-reveal-inner { min-height: 0; overflow: hidden; }
 .studio-movement-reveal[data-settled='true'] > .studio-movement-reveal-inner { overflow: visible; }
 .studio-movement-reveal[data-open='true'] .studio-set-slot,
-.studio-movement-reveal[data-open='true'] .studio-last-workout,
 .studio-movement-reveal[data-open='true'] .studio-set-headings {
   animation: studio-row-rise .42s cubic-bezier(.16,1,.3,1) both;
   animation-delay: calc(40ms + var(--i, 0) * 32ms);
@@ -150,3 +251,28 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
+
+
+/* ── Between sets: the docked next-set action ────────────────────────── */
+/* Above the home indicator, and above the rest bar while rest runs; a soft
+   fade (never a line) lets the list pass beneath it. */
+.studio-next-set-dock {
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 24px calc(var(--app-safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--color-base) 0%, transparent), var(--color-base) 26px);
+  pointer-events: none;
+}
+.studio-workout-page.has-rest-timer .studio-next-set-dock {
+  padding-bottom: calc(var(--app-safe-bottom, env(safe-area-inset-bottom, 0px)) + 12px + var(--workout-rest-height, 76px) + 10px);
+}
+.studio-next-set-dock > * { pointer-events: auto; max-width: 488px; margin: 0 auto; }
+.studio-next-set-label { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+html[data-keyboard-open="true"] .studio-next-set-dock { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .studio-next-set-dock > * { animation: studio-next-set-in .36s cubic-bezier(.16, 1, .3, 1) both; }
+}
+@keyframes studio-next-set-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

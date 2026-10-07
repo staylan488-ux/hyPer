@@ -1,12 +1,11 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, RefreshCw, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, CalendarHeader } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
-import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { createNoteAutosaver, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
 import { runWorkoutEdit } from '@/lib/workoutEdit';
@@ -28,7 +27,6 @@ import {
   sortActivitySessionsByStart,
 } from '@/lib/activitySessions';
 import {
-  activityTypeLabel,
   customActivityTypeSuggestions,
   formatClockDuration,
   formatDistanceMi,
@@ -42,6 +40,7 @@ import {
   type ActivitySegment,
   type ActivitySession,
   type ActivitySessionInput,
+  type ActivitySource,
   type ActivityType,
   type Exercise,
   type FlexiblePlanItem,
@@ -59,11 +58,15 @@ import {
   isSameMonth,
   isToday,
   parseISO,
+  startOfDay,
   startOfMonth,
   startOfWeek,
   subMonths,
 } from 'date-fns';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
+import { calendarMonthLabel } from '@/lib/calendarLabel';
+import { useStuckHeader } from '@/hooks/useStuckHeader';
+import './progress-liquid.css';
 
 interface WorkoutWithSplit extends Workout {
   split_day?: {
@@ -145,6 +148,8 @@ interface ActivityEditorProps {
   saving: boolean;
   onSave: (input: ActivitySessionInput) => void;
   onCancel: () => void;
+  /** Saved activities only: asks for confirmation before anything is removed. */
+  onDelete?: () => void;
 }
 
 interface ActivityLedgerRowProps {
@@ -153,11 +158,18 @@ interface ActivityLedgerRowProps {
   expanded: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
-  onDelete: () => void;
   selectable?: boolean;
   selected?: boolean;
   onToggleSelected?: () => void;
 }
+
+/** Where an activity came from, as its row's last metadata field. */
+const ACTIVITY_SOURCE_LABEL: Record<ActivitySource, string> = {
+  manual: 'Manual',
+  whoop: 'WHOOP',
+  strava: 'Strava',
+  gps: 'GPS',
+};
 
 function formatSegmentDistance(distanceM: number | null): string | null {
   if (distanceM == null || distanceM <= 0) return null;
@@ -210,7 +222,7 @@ function isDateKeyInMonth(dateKey: string, month: Date): boolean {
   return !Number.isNaN(parsed.getTime()) && isSameMonth(parsed, month);
 }
 
-function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel }: ActivityEditorProps) {
+function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel, onDelete }: ActivityEditorProps) {
   const [activityType, setActivityType] = useState<ActivityType>(activity?.activity_type || 'bike_ride');
   const [customType, setCustomType] = useState(activity?.custom_type || '');
   const [title, setTitle] = useState(activity?.title || '');
@@ -312,7 +324,7 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           rows={3}
           maxLength={280}
           placeholder="Optional"
-          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
+          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-placeholder)] focus:outline-none transition-colors resize-none"
         />
       </div>
 
@@ -324,6 +336,13 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           Save
         </Button>
       </div>
+      {onDelete && (
+        <div className="flex justify-center">
+          <button type="button" className="text-action" data-tone="danger" disabled={saving} onClick={onDelete}>
+            Delete activity
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -385,13 +404,13 @@ function WorkoutActivityPanel({
   };
 
   return (
-    <div className="border-t border-[var(--color-border)] pt-4 mb-4">
-      <div className="flex items-baseline justify-between gap-3">
+    <div className="px-5 py-4">
+      <div className="flex items-center justify-between gap-3">
         <p className="t-label">Activity stats</p>
         {attached ? (
           <button
             type="button"
-            className="t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            className="pressable min-h-11 -mr-2 px-2 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
             disabled={busyId != null}
             onClick={() => void run(workout.id, () => onDetach(workout))}
           >
@@ -410,7 +429,7 @@ function WorkoutActivityPanel({
       </div>
 
       {attached ? (
-        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 gap-2 mt-3 p-3">
+        <div className="ledger-well grid grid-cols-4 gap-2 mt-3 px-4 py-3.5">
           {([
             ['strain', workout.strain != null ? workout.strain.toFixed(1) : '—'],
             ['avg hr', workout.avg_hr != null ? String(workout.avg_hr) : '—'],
@@ -434,7 +453,7 @@ function WorkoutActivityPanel({
               key={activity.id}
               type="button"
               disabled={busyId != null}
-              className="studio-secondary-action w-full text-left px-3 py-2.5 disabled:opacity-50 active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+              className="ledger-choice disabled:opacity-50"
               onClick={() => void run(activity.id, () => onAttach(workout, activity))}
             >
               <span className="t-body block">
@@ -464,7 +483,7 @@ function WorkoutActivityPanel({
 }
 
 function ActivityLedgerRow({
-  activity, segments, expanded, onToggleExpand, onEdit, onDelete,
+  activity, segments, expanded, onToggleExpand, onEdit,
   selectable = false, selected = false, onToggleSelected,
 }: ActivityLedgerRowProps) {
   // cross-source sessions carry enrichment segments (e.g. a WHOOP record
@@ -472,14 +491,14 @@ function ActivityLedgerRow({
   // recording's laps — foreign-source segments contribute metrics, not rows
   const primarySegments = segments.filter((segment) => segment.source === activity.source);
   const title = resolveActivityTitle(activity);
-  const typeLabel = activityTypeLabel(activity);
   const startTime = formatActivityStartTime(activity.started_at);
   const duration = formatActivityDuration(activity.duration_seconds);
+  // One order in every row: time · duration · source, the source always
+  // last (a manual entry says so); the type is the title or left out.
   const subtitleParts = [
-    activity.title?.trim() ? typeLabel : null,
     startTime,
     duration !== '-' ? duration : null,
-    activity.source !== 'manual' ? activity.source.toUpperCase() : null,
+    ACTIVITY_SOURCE_LABEL[activity.source] ?? activity.source,
   ].filter(Boolean);
   const metricsParts = [
     formatDistanceMi(activity.distance_m),
@@ -489,9 +508,13 @@ function ActivityLedgerRow({
   // one segment = the whole workout; a splits table only means something for 2+
   const hasSplits = primarySegments.length >= 2;
 
+  // The row itself opens the editor (where it can also be deleted); while
+  // merging, it toggles the activity's selection instead.
+  const onRowPress = selectable ? onToggleSelected : onEdit;
+
   return (
-    <div className="border-t border-[var(--color-border)] py-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className="px-5">
+      <div className="flex items-stretch gap-3">
         {selectable && (
           <button
             type="button"
@@ -499,60 +522,58 @@ function ActivityLedgerRow({
             aria-checked={selected}
             aria-label={`Select ${title} to merge`}
             onClick={onToggleSelected}
-            className="pressable h-11 w-11 shrink-0 rounded-[11px] material-control flex items-center justify-center"
+            className="pressable -ml-2.5 w-11 shrink-0 flex items-center justify-center"
           >
-            {selected && <span className="h-2.5 w-2.5 bg-[var(--color-text)]" />}
+            <span
+              aria-hidden
+              className={`h-[22px] w-[22px] rounded-full flex items-center justify-center transition-colors ${
+                selected ? 'bg-[var(--color-text)] text-[var(--color-base)]' : 'shadow-[inset_0_0_0_1.5px_var(--color-muted)]'
+              }`}
+            >
+              {selected && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+            </span>
           </button>
         )}
-        <div className="min-w-0">
-          <p className="t-label-sm">Activity</p>
-          <p className="mt-1 t-body text-[var(--color-text)] break-words">{title}</p>
-          <p className="t-data-sm text-[var(--color-muted)] mt-1">
-            {subtitleParts.length > 0 ? subtitleParts.join(' • ') : typeLabel}
-          </p>
+        <button
+          type="button"
+          onClick={onRowPress}
+          tabIndex={selectable ? -1 : undefined}
+          aria-label={selectable ? undefined : `Edit ${title}`}
+          className="pressable min-w-0 flex-1 py-4 text-left flex items-center gap-3"
+        >
+          <span className="block min-w-0 flex-1">
+          <span className="block t-row-title-plain break-words">{title}</span>
+          <span className="block t-data-sm text-[var(--color-muted)] mt-1">
+            {subtitleParts.join(' · ')}
+          </span>
           {metricsParts.length > 0 && (
-            <p className="t-data-sm text-[var(--color-text-dim)] mt-1">
-              {metricsParts.join(' • ')}
-            </p>
+            <span className="block t-data-sm text-[var(--color-text-dim)] mt-0.5">
+              {metricsParts.join(' · ')}
+            </span>
           )}
           {activity.notes && (
-            <p className="t-caption mt-2 line-clamp-2">{activity.notes}</p>
+            <span className="block t-caption mt-2 line-clamp-2">{activity.notes}</span>
           )}
-        </div>
+          </span>
+          {!hasSplits && !selectable && (
+            <ChevronRight className="trail-chevron w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} aria-hidden />
+          )}
+        </button>
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          {hasSplits && (
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              title={expanded ? 'Hide splits' : 'Show splits'}
-              aria-label={expanded ? 'Hide splits' : 'Show splits'}
-            >
-              {expanded
-                ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-                : <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />}
-            </button>
-          )}
+        {hasSplits && (
           <button
             type="button"
-            onClick={onEdit}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-            title="Edit activity"
-            aria-label="Edit activity"
+            onClick={onToggleExpand}
+            className="pressable -mr-3 flex items-center justify-center w-11 shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            title={expanded ? 'Hide splits' : 'Show splits'}
+            aria-label={expanded ? 'Hide splits' : 'Show splits'}
+            aria-expanded={expanded}
           >
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {expanded
+              ? <ChevronUp className="w-4 h-4" strokeWidth={1.5} />
+              : <ChevronDown className="w-4 h-4" strokeWidth={1.5} />}
           </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
-            title="Delete activity"
-            aria-label="Delete activity"
-          >
-            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
+        )}
       </div>
 
       <AnimatePresence initial={false}>
@@ -564,7 +585,7 @@ function ActivityLedgerRow({
             transition={springs.settle}
             className="overflow-hidden"
           >
-            <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+            <div className="mt-3 pt-3 shadow-[inset_0_1px_0_var(--platter-divider)]">
               <LapPaceChart
                 className="mb-4"
                 laps={primarySegments.map((segment) => ({
@@ -711,6 +732,8 @@ export function History() {
   // late sync refetch) can never leave one month's data under another header.
   const monthRequestRef = useRef(0);
   const selectedMonthRef = useRef(selectedMonth);
+  const calendarHeadRef = useRef<HTMLDivElement | null>(null);
+  useStuckHeader(calendarHeadRef, `${selectedDate.getTime()}:${selectedMonth.getTime()}`);
 
   useEffect(() => {
     selectedMonthRef.current = selectedMonth;
@@ -865,8 +888,11 @@ export function History() {
 
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
-  // sandbox always offers sync (fixture transport); production needs a connection
-  const syncAvailable = isPreviewActive() || !!whoopConnection;
+  const calendarWeeks = useMemo(() => Array.from({ length: Math.ceil(calendarDays.length / 7) }, (_, index) => calendarDays.slice(index * 7, index * 7 + 7)), [calendarDays]);
+  const todayStart = startOfDay(new Date());
+  // Sync is offered only with a WHOOP connection (the sandbox seeds one and
+  // syncs its fixture transport); without one, Connections offers Connect.
+  const syncAvailable = !!whoopConnection;
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
@@ -1013,7 +1039,7 @@ export function History() {
     if (selectedDayActivities.length > 0) {
       parts.push(`${selectedDayActivities.length} activit${selectedDayActivities.length !== 1 ? 'ies' : 'y'}`);
     }
-    return parts.length > 0 ? parts.join(' • ') : '0 sessions';
+    return parts.length > 0 ? parts.join(' · ') : '0 sessions';
   }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
   const refreshWorkout = useCallback(async (workoutId: string, syncCompletion = true) => {
@@ -1133,7 +1159,7 @@ export function History() {
 
   const handleSyncWhoop = useCallback(async () => {
     if (syncingWhoop) return;
-    const runWhoop = isPreviewActive() || !!whoopConnection;
+    const runWhoop = !!whoopConnection;
 
     setSyncingWhoop(true);
     try {
@@ -1154,7 +1180,7 @@ export function History() {
       await fetchMonthWorkouts(selectedMonthRef.current);
 
       const changes = whoop.created + whoop.updated;
-      showToast(changes > 0 ? `Synced • ${whoop.created} new • ${whoop.updated} updated` : 'Up to date');
+      showToast(changes > 0 ? `Synced · ${whoop.created} new · ${whoop.updated} updated` : 'Up to date');
     } catch (error) {
       console.error('Error syncing activities:', error);
       showToast('Sync failed');
@@ -1319,168 +1345,145 @@ export function History() {
   };
 
   return (
-    <motion.div className="px-6 pt-6 pb-nav">
+    <motion.div className="px-6 pt-7 pb-nav">
       <Toast show={showSuccess} message={toastMessage} />
 
-      <header className="mb-7">
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">Training ledger</span>
-          <span className="t-label-sm">{format(new Date(), 'yyyy')}</span>
-        </div>
-        <PageTitle className="mt-5">History</PageTitle>
-      </header>
+      <PageHeader
+        back={{ label: 'Today', to: '/' }}
+        eyebrow="Training ledger"
+        title="History"
+        className="mb-2"
+        // Sync belongs to the whole ledger, not the day: one action in the
+        // bar row, only while WHOOP is connected. It keeps one form in both
+        // states, a 44pt sync glyph labelled "Sync WHOOP", at the same place
+        // expanded and collapsed, as a navigation bar's item does.
+        compactAction={syncAvailable ? {
+          label: syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP',
+          icon: <RefreshCw size={20} strokeWidth={1.75} aria-hidden className={syncingWhoop ? 'motion-safe:animate-spin' : undefined} />,
+          onClick: () => { void handleSyncWhoop(); },
+          disabled: syncingWhoop,
+        } : undefined}
+        actions={syncAvailable ? (
+          <button
+            type="button"
+            className="page-header-icon-action pressable"
+            aria-label={syncingWhoop ? 'Syncing WHOOP' : 'Sync WHOOP'}
+            disabled={syncingWhoop}
+            onClick={() => { void handleSyncWhoop(); }}
+          >
+            <RefreshCw size={20} strokeWidth={1.75} aria-hidden className={syncingWhoop ? 'motion-safe:animate-spin' : undefined} />
+          </button>
+        ) : undefined}
+      />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-        <div className="mb-9">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--color-border)]">
-            <motion.button
-              onClick={() => {
-                setMonthDirection(-1);
-                setSelectedMonth((prev) => subMonths(prev, 1));
-              }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: -2 }}
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-            <AnimatePresence mode="wait">
-              <motion.h3
-                key={format(selectedMonth, 'yyyy-MM')}
-                className="t-label"
-                initial={{ opacity: 0, x: monthDirection * 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: monthDirection * -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                {format(selectedMonth, 'MMMM yyyy')}
-              </motion.h3>
-            </AnimatePresence>
-            <motion.button
-              onClick={() => {
-                setMonthDirection(1);
-                setSelectedMonth((prev) => addMonths(prev, 1));
-              }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: 2 }}
-              aria-label="Next month"
-            >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
+        <section aria-label="Calendar" className="pt-2">
+          {/* The month and weekday letters stay with the grid: once the page
+              collapses they hold under the bar while weeks remain in view,
+              and leave with the last week, which always shows under them. */}
+          <div className="calendar-sticky-span">
+          <div ref={calendarHeadRef} className="calendar-sticky" data-rest-band>
+            <CalendarHeader
+              className="mb-1"
+              label={calendarMonthLabel(selectedMonth)}
+              ariaLabel={format(selectedMonth, 'MMMM yyyy')}
+              direction={monthDirection}
+              previous={{ label: 'Previous month', onClick: () => { setMonthDirection(-1); setSelectedMonth((prev) => subMonths(prev, 1)); } }}
+              next={{ label: 'Next month', onClick: () => { setMonthDirection(1); setSelectedMonth((prev) => addMonths(prev, 1)); } }}
+            />
+
+            <div className="grid grid-cols-7" aria-hidden>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <div key={`${day}-${index}`} className="calendar-weekday">
+                  {day}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-7">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="t-label-sm text-center pb-2">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day) => {
+          <div className="calendar-sticky-grid">
+            {calendarWeeks.map((week) => {
+              // The selected day's week holds under the month once the grid
+              // scrolls, as Fuel's week strip shows the selected week.
+              const selectedWeek = week.some((day) => isSameDay(day, selectedDate));
+              return (
+            <div
+              key={getDateKey(week[0])}
+              className="grid grid-cols-7 calendar-week"
+              data-selected-week={selectedWeek || undefined}
+            >
+            {week.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
               const dayActivities = sortActivitySessionsByStart(activitiesByDay[key] || []);
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
-              const firstWorkout = dayWorkouts[0] || null;
-              const firstActivity = dayActivities[0] || null;
-              const firstWorkoutTitle = firstWorkout
-                ? resolveWorkoutTitle({
-                    splitDayName: firstWorkout.split_day?.day_name,
-                    dayLabel: firstWorkout.day_label || null,
-                    exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
-                  })
-                : '';
-              const workoutSummaryLabel = dayWorkouts.length > 1
-                ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
-                : firstWorkoutTitle;
-              const firstActivityTitle = firstActivity ? resolveActivityTitle(firstActivity) : '';
-              const activitySummaryLabel = dayActivities.length > 1
-                ? `${firstActivityTitle} +${dayActivities.length - 1}`
-                : firstActivityTitle;
-              const daySummaryLabel = workoutSummaryLabel;
-              const titleLabel = [workoutSummaryLabel, activitySummaryLabel].filter(Boolean).join(' / ');
+              // Days still to come read lighter than days on record.
+              const isFutureDate = day > todayStart;
+              const workoutTitles = dayWorkouts.map((workout) => resolveWorkoutTitle({
+                splitDayName: workout.split_day?.day_name,
+                dayLabel: workout.day_label || null,
+                exerciseNames: workout.sets.map((set) => set.exercise?.name || null),
+              }));
+              const activityTitles = dayActivities.map((activity) => resolveActivityTitle(activity));
+              const titleLabel = [...workoutTitles, ...activityTitles].join(', ');
 
               return (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => {
                     setSelectedDate(day);
                     if (!isSameMonth(day, selectedMonth)) {
                       setSelectedMonth(startOfMonth(day));
                     }
                   }}
-                  title={titleLabel || undefined}
-                  aria-label={`${format(day, 'EEEE, MMMM d')}${titleLabel ? ` · ${titleLabel}` : ''}`}
+                  aria-label={`${format(day, 'EEEE, MMMM d')}${isTodayDate ? ', today' : ''}${titleLabel ? ` · ${titleLabel}` : ''}`}
                   aria-pressed={isSelected}
-                  className={`min-h-20 rounded-[11px] transition-colors relative px-1.5 py-1.5 ${
-                    isSelected
-                      ? 'text-[var(--color-base)]'
-                      : inMonth
-                        ? 'text-[var(--color-text)] active:bg-[var(--color-surface-2)]'
-                        : 'text-[var(--color-muted)] active:bg-[var(--color-surface-2)]'
-                  }`}
+                  className={`ledger-day ${inMonth ? '' : 'ledger-day-outside'}`}
                 >
                   {isSelected && (
-                    <motion.div
-                      className="absolute inset-0 rounded-[11px] bg-[var(--color-text)]"
+                    <motion.span
+                      aria-hidden
+                      className="ledger-day-disc"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
                   )}
-                  {isTodayDate && !isSelected && (
-                    <span className="absolute top-1.5 right-1.5 w-1 h-1 bg-[var(--color-accent)] z-10" />
-                  )}
-                  <div className="relative z-10 flex h-full flex-col items-start">
-                    <span className={`t-data-sm ${isSelected ? 'font-medium' : ''}`}>{format(day, 'd')}</span>
-                    {daySummaryLabel && (
-                      <span
-                        className={`mt-1 line-clamp-2 text-left text-[11px] leading-tight font-sans ${
-                          isSelected ? 'text-[color-mix(in_srgb,var(--color-base)_85%,transparent)]' : 'text-[var(--color-text-dim)]'
-                        }`}
-                      >
-                        {daySummaryLabel}
-                      </span>
-                    )}
-                  </div>
+                  <span
+                    className={`ledger-day-number ${
+                      isTodayDate ? 'text-[var(--color-accent)] font-semibold' : isFutureDate && !isSelected ? 'ledger-day-future' : 'text-[var(--color-text)]'
+                    } ${isSelected ? 'font-semibold' : ''}`}
+                  >
+                    {format(day, 'd')}
+                  </span>
                   {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
-                    <motion.div
-                      className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={springs.lift}
-                    >
-                      {dayWorkouts.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 ${
-                            isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
-                      {dayActivities.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 border ${
-                            isSelected ? 'border-[var(--color-base)]' : 'border-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
-                    </motion.div>
+                    <span aria-hidden className="ledger-day-marks">
+                      {dayWorkouts.length > 0 && <span className="ledger-mark-lift" />}
+                      {dayActivities.length > 0 && <span className="ledger-mark-activity" />}
+                    </span>
                   )}
                 </button>
               );
             })}
+            </div>
+              );
+            })}
           </div>
-        </div>
+          </div>
+          <div className="calendar-sticky-after flex items-center gap-4 t-caption text-[var(--color-muted)]" aria-hidden>
+            <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-lift" />Lift</span>
+            <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-activity" />Activity</span>
+          </div>
+        </section>
       </motion.div>
 
       {loading ? (
-        <div className="space-y-4 pt-8 border-t border-[var(--color-border)]">
+        <div className="platter mt-7 space-y-4">
           {[1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3">
-              <div className="shimmer h-10 w-10" />
+              <div className="shimmer h-10 w-10 rounded-full" />
               <div className="flex-1 space-y-1.5">
                 <div className="shimmer h-3.5 w-1/2" />
                 <div className="shimmer h-2.5 w-1/3" />
@@ -1490,34 +1493,25 @@ export function History() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-          <div className="flex items-center justify-between gap-4 mb-4 pt-8 border-t border-[var(--color-border)]">
-            <div>
-              <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-              <p className="t-label-sm mt-1">{selectedDaySummary}</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {syncAvailable && (
-                <button
-                  type="button"
-                  className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40"
-                  disabled={syncingWhoop}
-                  onClick={() => { void handleSyncWhoop(); }}
-                >
-                  {syncingWhoop ? 'Syncing…' : 'Sync'}
-                </button>
-              )}
+          {/* One caps eyebrow; the day's count reads as plain text under it,
+              sharing its line with the day's one action. */}
+          <span className="t-label block mt-9">{format(selectedDate, 'EEEE, MMM d')}</span>
+          <div className="flex items-center justify-between gap-3 -mt-1.5 mb-1.5">
+            <p className="t-caption min-w-0">{selectedDaySummary}</p>
+            <div className="flex items-center shrink-0 -mr-2.5">
               <button
                 type="button"
-                className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
+                className="text-action text-action-secondary"
                 onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
               >
-                + Activity
+                <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Add activity
               </button>
             </div>
           </div>
 
           {selectedDayWorkouts.length === 0 && selectedDayActivities.length === 0 ? (
-            <div className="py-12">
+            <div className="platter py-10 text-center">
               <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">No sessions recorded.</p>
             </div>
           ) : (
@@ -1535,7 +1529,7 @@ export function History() {
               const durationLabel = formatWorkoutDuration(getWorkoutDurationMs(workout));
               const subtitle = durationLabel === '—'
                 ? `${progress.completedSets}/${progress.totalSets} sets`
-                : `${durationLabel} • ${progress.completedSets}/${progress.totalSets} sets`;
+                : `${durationLabel} · ${progress.completedSets}/${progress.totalSets} sets`;
 
               const plannedVisible = plan
                 ? plan.items.filter((item) => !item.hidden).sort((a, b) => a.order - b.order)
@@ -1580,24 +1574,22 @@ export function History() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: workoutIndex * 0.06, ...springs.settle }}
-                  className="border-t border-[var(--color-border)] first:border-t-0"
+                  className={`platter platter-flush ${workoutIndex > 0 ? 'mt-3' : ''}`}
                 >
-                  <div className="overflow-hidden">
-                    <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="w-full text-left flex items-center justify-between gap-3 py-4" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 material-surface rounded-[11px] flex items-center justify-center shrink-0">
-                          {progress.completed ? (
-                            <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
-                          ) : (
-                            <span className="t-data-sm text-[var(--color-muted)]">{progress.percent}%</span>
+                  <div>
+                    <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="pressable w-full text-left flex items-center justify-between gap-3 px-5 py-4 min-h-[76px]" onClick={() => { void handleToggleWorkout(workout); }}>
+                      <div className="min-w-0">
+                        <p className="t-row-title break-words">{resolvedTitle}</p>
+                        <p className="t-caption mt-1">
+                          {!workout.completed && (
+                            <span className="text-[var(--color-accent)]">In progress · </span>
                           )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
-                          <p className="t-caption mt-1.5">{subtitle}</p>
-                        </div>
+                          {subtitle}
+                        </p>
                       </div>
-                      <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
+                      {/* Sets read inline in the subtitle ("3/9 sets"); the ring is
+                          kept for Today's live session. */}
+                      <motion.div className="trail-disclosure shrink-0" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
                         <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
                       </motion.div>
                     </button>
@@ -1605,12 +1597,13 @@ export function History() {
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div
-                          className="pb-4 pt-1"
+                          className="overflow-hidden"
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={springs.settle}
                         >
+                          <div className="ledger-rule mx-5" />
                           <WorkoutActivityPanel
                             workout={workout}
                             dayActivities={selectedDayActivities}
@@ -1618,7 +1611,8 @@ export function History() {
                             onAttach={handleAttachActivity}
                             onDetach={handleDetachActivity}
                           />
-                          <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
+                          <div className="ledger-rule mx-5" />
+                          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2">
                             <p className="t-label">Exercises</p>
                             <Button
                               size="sm"
@@ -1672,13 +1666,13 @@ export function History() {
                             return (
                               <motion.div
                                 key={exerciseId}
-                                className="mb-3"
+                                className="platter-row px-5 pb-1"
                                 initial={{ opacity: 0, x: -8 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: exIndex * 0.04, ...springs.settle }}
                               >
                                 <div
-                                  className="flex flex-wrap items-center justify-between gap-y-2 py-3 px-2 -mx-2"
+                                  className="flex flex-wrap items-center justify-between pt-2.5"
                                 >
                                   <button
                                     type="button"
@@ -1686,8 +1680,14 @@ export function History() {
                                     onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
                                     className="pressable flex items-center gap-3 min-w-0 w-full min-h-11 text-left"
                                   >
-                                    <div className="w-7 h-7 flex items-center justify-center t-data-sm text-[var(--color-muted)] shrink-0">
-                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5 text-[var(--color-text)]" strokeWidth={2} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
+                                    <div
+                                      className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-medium tabular-nums shrink-0 ${
+                                        exerciseProgress.completed
+                                          ? 'bg-[var(--color-text)] text-[var(--color-base)]'
+                                          : 'shadow-[inset_0_0_0_1px_var(--color-border)] text-[var(--color-muted)]'
+                                      }`}
+                                    >
+                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5" strokeWidth={2.25} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
                                     </div>
                                     <div className="min-w-0">
                                       <span className="t-body text-[var(--color-text)]">{exerciseName}</span>
@@ -1703,7 +1703,7 @@ export function History() {
                                     </div>
                                   </button>
 
-                                  <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(event) => event.stopPropagation()}>
+                                  <div className="flex items-center shrink-0 ml-auto -mr-3" onClick={(event) => event.stopPropagation()}>
                                     <button
                                       type="button"
                                       disabled={!canMoveUp}
@@ -1770,7 +1770,7 @@ export function History() {
                                     <button
                                       type="button"
                                       onClick={() => { void handleRemoveExercise(workout.id, exerciseId); }}
-                                      className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+                                      className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                       title="Remove exercise"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -1792,13 +1792,14 @@ export function History() {
                                 <AnimatePresence>
                                   {isExerciseExpanded && (
                                     <motion.div
-                                      className="ml-4 mt-2 space-y-px"
+                                      className="overflow-hidden"
                                       initial={{ height: 0, opacity: 0 }}
                                       animate={{ height: 'auto', opacity: 1 }}
                                       exit={{ height: 0, opacity: 0 }}
                                       transition={springs.settle}
                                     >
-                                      <div className="flex items-center justify-between gap-2 py-2.5 border-t border-[var(--color-border)]">
+                                      <div className="ledger-well ledger-sets mt-1 px-4">
+                                      <div className="flex items-center justify-between gap-2 py-2.5">
                                         <p className="t-label-sm">Target Sets</p>
                                         <div className="flex items-center gap-2">
                                           <input
@@ -1814,7 +1815,7 @@ export function History() {
                                             }}
                                             onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId); }}
                                             aria-label="Target sets"
-                                            className="w-14 min-h-11 px-2 py-1 well t-data-sm text-[var(--color-text)] text-center focus:outline-none"
+                                            className="ledger-field w-14 min-h-11 px-2 py-1 t-data-sm text-[var(--color-text)] text-center focus:outline-none"
                                           />
                                           <button
                                             type="button"
@@ -1829,7 +1830,7 @@ export function History() {
                                       {sets.map((set) => (
                                         <motion.div
                                           key={set.id}
-                                          className="flex items-center justify-between py-2.5 border-t border-[var(--color-border)]"
+                                          className="flex items-center justify-between py-0.5"
                                           initial={{ opacity: 0, y: 4 }}
                                           animate={{ opacity: 1, y: 0 }}
                                           transition={springs.settle}
@@ -1841,7 +1842,7 @@ export function History() {
                                               {set.rpe ? <span className="text-[var(--color-muted)]"> @ {set.rpe}</span> : ''}
                                             </span>
                                           </div>
-                                          <div className="flex items-center gap-0.5">
+                                          <div className="flex items-center -mr-3">
                                             <motion.button
                                               onClick={(event) => {
                                                 event.stopPropagation();
@@ -1859,7 +1860,7 @@ export function History() {
                                                 void handleRemoveSet(workout.id, exerciseId, set.id);
                                               }}
                                               aria-label={`Remove set ${set.set_number}`}
-                                              className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+                                              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                               whileTap={{ scale: 0.985 }}
                                             >
                                               <X className="w-3 h-3" strokeWidth={1.5} />
@@ -1867,13 +1868,14 @@ export function History() {
                                           </div>
                                         </motion.div>
                                       ))}
+                                      </div>
 
-                                      <div className="pt-4 border-t border-[var(--color-border)]">
+                                      <div className="pt-4 pb-4">
                                         <label
                                           htmlFor={`history-note-${workout.id}-${exerciseId}`}
                                           className="t-label-sm block mb-2"
                                         >
-                                          Movement Note
+                                          Exercise note
                                         </label>
                                         <textarea
                                           id={`history-note-${workout.id}-${exerciseId}`}
@@ -1883,7 +1885,7 @@ export function History() {
                                           rows={2}
                                           maxLength={200}
                                           placeholder="Note - technique, feel, cues..."
-                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
+                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-placeholder)] focus:outline-none transition-colors resize-none"
                                         />
                                         <div className="mt-2 flex items-center justify-between">
                                           <div>
@@ -1905,14 +1907,16 @@ export function History() {
                             );
                           })}
 
-                          <motion.button
-                            onClick={() => setShowDeleteConfirm(workout.id)}
-                            className="w-full mt-5 studio-secondary-action text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                            Delete session
-                          </motion.button>
+                          <div className="px-5 pt-3 pb-5">
+                            <motion.button
+                              onClick={() => setShowDeleteConfirm(workout.id)}
+                              className="w-full studio-row-action text-[var(--color-text-dim)] t-label hover:text-[var(--color-text)] transition-colors flex items-center justify-center gap-2"
+                              whileTap={{ scale: 0.98 }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              Delete session
+                            </motion.button>
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1921,52 +1925,55 @@ export function History() {
               );
             })}
               {selectedDayActivities.length > 0 && (
-                <div className={selectedDayWorkouts.length > 0 ? 'mt-6 pt-6 border-t border-[var(--color-border)]' : ''}>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="t-label-sm">Activities</span>
-                    <span className="t-label-sm">{selectedDayActivities.length}</span>
-                  </div>
-                  {selectedDayActivities.length > 1 && (
-                    <div className="flex items-center justify-between gap-3 pb-2">
-                      {mergeSelection ? (
-                        <>
-                          <span className="t-label-sm">
-                            {mergeSelection.length < 2
-                              ? 'Pick the activities that were really one'
-                              : `${mergeSelection.length} selected`}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)]"
-                              onClick={() => setMergeSelection(null)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              disabled={mergeSelection.length < 2 || merging}
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)] disabled:opacity-40"
-                              onClick={() => { void handleMergeActivities(); }}
-                            >
-                              {merging ? 'Merging…' : 'Merge'}
-                            </button>
-                          </div>
-                        </>
+                <div className={selectedDayWorkouts.length > 0 ? 'mt-7' : ''}>
+                  {/* One header-to-first-row rhythm (Today, Fuel): the
+                      header's 44px actions overhang its 28px line. */}
+                  <div className="flex items-center justify-between gap-3 min-h-7">
+                    <span className="t-label">
+                      Activities <span className="text-[var(--color-muted)] tabular-nums ml-1">{selectedDayActivities.length}</span>
+                    </span>
+                    {selectedDayActivities.length > 1 && (
+                      mergeSelection ? (
+                        <div className="flex items-center shrink-0 -mr-2.5 -my-2">
+                          <button
+                            type="button"
+                            className="text-action text-action-secondary"
+                            onClick={() => setMergeSelection(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={mergeSelection.length < 2 || merging}
+                            className="text-action text-action-secondary"
+                            onClick={() => { void handleMergeActivities(); }}
+                          >
+                            {merging ? 'Merging…' : 'Merge'}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           type="button"
-                          className="pressable min-h-11 t-label-sm text-[var(--color-muted)] ml-auto"
+                          className="text-action text-action-secondary -mr-2.5 -my-2"
                           onClick={() => setMergeSelection([])}
                         >
                           Merge activities
                         </button>
-                      )}
-                    </div>
+                      )
+                    )}
+                  </div>
+                  {selectedDayActivities.length > 1 && mergeSelection && (
+                    <p className="t-caption -mt-1 mb-1" aria-live="polite">
+                      {mergeSelection.length < 2
+                        ? 'Pick the activities that were really one'
+                        : `${mergeSelection.length} selected`}
+                    </p>
                   )}
+                  <div className="platter platter-flush">
                   {selectedDayActivities.map((activity, activityIndex) => (
                     <motion.div
                       key={activity.id}
+                      className="platter-row"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.settle }}
@@ -1985,10 +1992,10 @@ export function History() {
                         expanded={expandedActivity === activity.id}
                         onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
                         onEdit={() => setActivityEditor({ activity, defaultDate: parseDateKey(getActivitySessionDateKey(activity) || selectedDateKey) })}
-                        onDelete={() => setShowActivityDeleteConfirm(activity)}
                       />
                     </motion.div>
                   ))}
+                  </div>
                 </div>
               )}
             </>
@@ -1996,7 +2003,7 @@ export function History() {
         </motion.div>
       )}
 
-      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit Set">
+      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit set">
         {editingSet && (
           <SetEditor
             workoutSet={editingSet}
@@ -2009,7 +2016,7 @@ export function History() {
       <Modal
         isOpen={!!activityEditor}
         onClose={() => setActivityEditor(null)}
-        title={activityEditor?.activity ? 'Edit Activity' : 'Add Activity'}
+        title={activityEditor?.activity ? 'Edit activity' : 'Add activity'}
       >
         {activityEditor && (
           <ActivityEditor
@@ -2020,11 +2027,16 @@ export function History() {
             saving={savingActivity}
             onSave={(input) => { void handleSaveActivity(input); }}
             onCancel={() => setActivityEditor(null)}
+            onDelete={activityEditor.activity ? () => {
+              const target = activityEditor.activity;
+              setActivityEditor(null);
+              setShowActivityDeleteConfirm(target);
+            } : undefined}
           />
         )}
       </Modal>
 
-      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete Session">
+      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete session">
         <div className="space-y-5">
           <p className="t-body text-[var(--color-text-dim)]">
             Are you sure you want to delete this session? This action cannot be undone.
@@ -2044,7 +2056,7 @@ export function History() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete Activity">
+      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete activity">
         <div className="space-y-5">
           <p className="t-body text-[var(--color-text-dim)]">
             Delete this activity from your calendar?

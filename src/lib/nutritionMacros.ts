@@ -35,3 +35,19 @@ export function sumMacros(logs: readonly MacroLogLike[]): MacroTotals {
   }
   return totals;
 }
+
+/**
+ * Totals as the day's list shows them: each entry rounded to a whole unit
+ * first (as its row reads), then summed, so a header never disagrees with
+ * the rows beneath it (rows of 20 g, 56 g, 24 g … add up to the total shown).
+ */
+export function sumShownMacros(logs: readonly MacroLogLike[]): MacroTotals {
+  const totals: MacroTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const log of logs) {
+    for (const macro of MACRO_KEYS) {
+      const amount = logMacro(log, macro);
+      if (amount !== null) totals[macro] += Math.round(amount);
+    }
+  }
+  return totals;
+}

@@ -1,0 +1,133 @@
+/* ═════════════════════════════════════════════════════════════
+   Page header — the one title system (PageHeader in PageTitle.tsx).
+   A 44px bar row sits where an iOS navigation bar would, directly under
+   the status bar: the back control on pushed screens, trailing actions on
+   the right. Below it one small eyebrow line (its slot kept when empty),
+   then the large serif title, so every title rests at the same height.
+   ═════════════════════════════════════════════════════════════ */
+
+.page-header {
+  /* Takes the place of the Screen's 28px top padding. */
+  margin-top: -1.75rem;
+}
+.page-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 44px;
+}
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: -10px;
+}
+/* Bar-row actions share the back label's size and line box, so their
+   baselines and cap tops line up across the row, as in a native bar. */
+.page-header-actions .text-action {
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
+.page-eyebrow {
+  margin-top: 6px;
+  min-height: 1.4em;
+  overflow-wrap: anywhere;
+}
+.page-header-title {
+  margin-top: 6px;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* Back: chevron and the destination's name, in ink. The chevron's stroke
+   sits on the page's 24px guide. */
+.page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 44px;
+  margin-left: -8px;
+  padding-right: 12px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -.01em;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 160ms ease;
+}
+.page-back:active { opacity: .5; }
+
+/* The same control repeated in the condensed band. */
+.page-scroll-edge-back {
+  position: absolute;
+  top: 0;
+  /* With .page-back's -8px margin the chevron lands on the 24px guide. */
+  left: 24px;
+  /* Follows the band's scroll-linked fade without lagging behind it. */
+  transition: none;
+}
+
+/* A trailing action repeated in the condensed band (Fuel's +): a bare
+   ink glyph in a 44px key whose glyph ends on the trailing accessory edge. */
+.page-scroll-edge-action {
+  position: absolute;
+  top: 0;
+  right: 11px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A glyph item in the bar row (History's sync): the same 44px key and ink
+   glyph as its condensed copy, at the same place (right: 11px in the band;
+   the actions column ends 10px past the 24px guide, so 3px further). */
+.page-header-icon-action {
+  width: 44px;
+  height: 44px;
+  margin-right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+}
+.page-header-icon-action:disabled { opacity: .3; }
+
+/* Quiet text action: sentence case, ink, no fill or outline, with a 44px
+   target. Used for contextual actions (Sync, Add activity, New, Edit). */
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 160ms ease, color 160ms ease;
+}
+/* Secondary header actions (a section's or a sheet's: Add activity, Edit,
+   Build a meal) stay ink but step down to 15px regular, so the
+   titles beside them keep the weight; at most one per header line. */
+.text-action-secondary,
+.page-header-actions .text-action-secondary {
+  font-size: 15px;
+  font-weight: 400;
+}
+.text-action:active:not(:disabled) { opacity: .5; }
+.text-action:disabled { opacity: .3; }
+.text-action[data-tone='danger'] { color: var(--color-accent); }

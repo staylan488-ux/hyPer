@@ -1,0 +1,177 @@
+/* ═════════════════════════════════════════════════════════════
+   History and Progress — page details. Everything here sits flat on the
+   page: no glass, rims, wells or capsules. Section rhythm comes from
+   src/styles/liquid.css; this file only holds what these pages add.
+   ═════════════════════════════════════════════════════════════ */
+
+/* ─── Calendar ──────────────────────────────────────────────── */
+/* Month grid on Fuel's week-strip metrics: the same weekday letters and
+   letter-to-date spacing, a 34px selected ink disc with the 15px day number
+   centred in it, and today named in lacquer. A day's marks sit 6px under
+   its disc, as Fuel's dot does, and clear of the next row (56px row
+   pitch), so they read as belonging to their own date. */
+/* History's month and weekday letters hold under the collapsed bar while
+   weeks of the grid remain in view (useStuckHeader), so a week never rests
+   headless. It sticks at the band's solid edge; its 24px top padding (taken
+   back by the margin, so the layout does not move) lies under the band's
+   ramp and turns opaque only once the large title has gone, and a 16px
+   ramp (STUCK_RAMP, opaque for its first 4px like the band's hidden depth)
+   softens weeks passing under it. Unstuck it is clear. */
+/* The header's span ends at the top of the last week's row, so header and
+   grid leave together: the header never rests over a grid it hides. Once
+   the grid passes under it, the selected day's week holds under the month
+   letters (`data-selected-week`, sticky under the header's measured height,
+   --calendar-head), as Fuel's week strip shows the selected week, and the
+   short ramp moves under that week. The legend takes the room back. */
+.calendar-sticky-span { display: flow-root; }
+.calendar-sticky-grid { margin-bottom: -56px; }
+.calendar-sticky-after { margin-top: calc(56px + 14px); }
+.calendar-week[data-selected-week] {
+  position: sticky;
+  top: calc(40px + var(--calendar-head, 0px));
+  z-index: 1;
+}
+.calendar-week[data-stuck] {
+  background: var(--material-foundation);
+  box-shadow: -24px 0 0 var(--material-foundation), 24px 0 0 var(--material-foundation);
+}
+.calendar-sticky {
+  position: sticky;
+  top: 40px;
+  z-index: 2;
+  margin: -24px -24px 0;
+  padding: 24px 24px 0;
+}
+.calendar-sticky[data-stuck] {
+  background: linear-gradient(to bottom, transparent 24px, var(--material-foundation) 24px);
+}
+.calendar-sticky[data-stuck][data-covered] { background: linear-gradient(var(--material-foundation), var(--material-foundation)); }
+.calendar-sticky[data-stuck]::after,
+.calendar-week[data-stuck]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 16px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--material-foundation) 0,
+    var(--material-foundation) 4px,
+    color-mix(in srgb, var(--material-foundation) 84.4%, transparent) 7px,
+    color-mix(in srgb, var(--material-foundation) 50%, transparent) 10px,
+    color-mix(in srgb, var(--material-foundation) 15.6%, transparent) 13px,
+    transparent 16px
+  );
+}
+.calendar-week[data-stuck]::after { left: -24px; right: -24px; }
+/* The ramp sits under the held week instead. */
+.calendar-sticky[data-week-stuck]::after { content: none; }
+
+.ledger-day {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  height: 56px;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Days of the neighbouring months recede to the same contrast in both
+   themes (about 2.8:1 on the stage). */
+.ledger-day-outside { opacity: .35; }
+:root:not(.dark) .ledger-day-outside { opacity: .46; }
+.ledger-day-disc {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  border-radius: 50%;
+  background: var(--color-text);
+}
+.ledger-day-number {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  font-size: 15px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-day-marks {
+  position: absolute;
+  top: 40px;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.ledger-day[aria-pressed='true'] .ledger-day-number { color: var(--color-base); }
+.ledger-day:not([aria-pressed='true']):active .ledger-day-number { opacity: .55; }
+/* Day marks differ by shape, not tone: a lift is a filled 5px dot, an
+   activity a 5px ring, in the calendar and its legend alike. */
+.ledger-mark-lift { width: 5px; height: 5px; border-radius: 50%; background: var(--color-text); }
+.ledger-mark-activity { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--color-text); }
+/* Days still to come: tertiary ink, lighter than days on record but at
+   least 4.5:1 in both themes (#6B6B69 on Ivory, #8C8C8C on Black). */
+.ledger-day-future { color: #6B6B69; }
+.dark .ledger-day-future { color: var(--color-text); opacity: .55; }
+
+
+/* ─── Grouped lists inside platters ─────────────────────────── */
+.ledger-rule { height: 1px; background: var(--platter-divider); }
+.ledger-sets > * + * { box-shadow: inset 0 1px 0 var(--platter-divider); }
+
+/* The sets of an open movement: grouped by indentation and hairlines, not a box. */
+.ledger-well { border-radius: 0; }
+/* An editable field: a quiet flat fill. */
+.ledger-field {
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* Two-line choices (attach an activity): a quiet flat key, not a capsule. */
+.ledger-choice {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 12px 16px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  transition: transform 110ms ease, opacity 160ms ease;
+}
+.ledger-choice:active:not(:disabled) { transform: scale(.985); }
+
+/* ─── Progress ──────────────────────────────────────────────── */
+/* Volume status: an unboxed 13px sentence-case label led by a small mark
+   (tracked caps are kept for section headers); lacquer only when volume runs
+   past its ceiling. */
+.status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 13px/1.2 var(--font-sans);
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--color-text-dim);
+}
+.status-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-mark, currentColor);
+}
+/* In range wears the muscle's own ramp tone (`--status-mark`); Under wears the figure's own lowest tone, as the legend swatch does. */
+.status-label[data-tone='under']::before { background: var(--map-under, currentColor); }
+.status-label[data-tone='hot'] { color: var(--color-accent); }
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .ledger-field { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+  .ledger-choice { background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+  .ledger-well { box-shadow: inset 0 0 0 1px var(--color-border); }
+}

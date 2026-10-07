@@ -191,3 +191,26 @@ export function buildWeeklyTrainingHours(
     totalHours: Number((bucket.totalMinutes / 60).toFixed(1)),
   }));
 }
+
+/**
+ * Rounds weekly minutes to tenths of an hour once, together, so the parts
+ * shown always add up to the total shown (largest remainder): 130, 195 and
+ * 65 minutes read 2.2 + 3.2 + 1.1 = 6.5 h, never 2.2 + 3.3 + 1.1 beside a
+ * 6.5 h total. Weeks with no time stay 0.
+ */
+export function hoursInTenthsTogether(minutes: number[]): { parts: number[]; total: number } {
+  const exact = minutes.map((value) => Math.max(0, value) / 6);
+  const totalTenths = Math.round(exact.reduce((sum, value) => sum + value, 0));
+  const parts = exact.map((value) => Math.floor(value));
+  let missing = totalTenths - parts.reduce((sum, value) => sum + value, 0);
+  const order = exact
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .filter(({ remainder }) => remainder > 0)
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (const { index } of order) {
+    if (missing <= 0) break;
+    parts[index] += 1;
+    missing -= 1;
+  }
+  return { parts: parts.map((tenths) => tenths / 10), total: totalTenths / 10 };
+}

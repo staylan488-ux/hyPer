@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { BarChart, type BarDatum } from '@/components/shared/charts';
-import type { TrainingHoursPoint } from '@/lib/workoutSessions';
+import { hoursInTenthsTogether, type TrainingHoursPoint } from '@/lib/workoutSessions';
 
 interface TrainingHoursHistogramProps {
   points: TrainingHoursPoint[];
@@ -19,35 +19,38 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
 
   if (!hasTraining) {
     return (
-      <div className="py-12 text-center">
-        <p className="t-heading">No training hours yet.</p>
-        <p className="t-caption mt-3">Complete a workout to chart your weekly time</p>
-      </div>
+      <p className="t-caption mt-3">No completed sessions yet. Finish a workout to chart your weekly time.</p>
     );
   }
 
-  const totalMinutes = points.reduce((sum, point) => sum + point.totalMinutes, 0);
-  const data: BarDatum[] = points.map((point) => {
+  // Bars and total are rounded together, so the captions add up to the total.
+  const hours = hoursInTenthsTogether(points.map((point) => point.totalMinutes));
+  const data: BarDatum[] = points.map((point, index) => {
     const isPeak = point.totalMinutes > 0 && point.totalMinutes === peakMinutes;
-    const week = format(parseISO(point.weekStart), 'MMM d');
+    const start = parseISO(point.weekStart);
+    const week = format(start, 'MMM d');
+    // Axis labels name the month only where it changes, so eight weeks fit
+    // on one crisp line ("Aug 17 · 24 · 31 · Sep 7 …").
+    const previous = index > 0 ? parseISO(points[index - 1].weekStart) : null;
+    const axisLabel = !previous || previous.getMonth() !== start.getMonth() ? week : format(start, 'd');
     return {
       key: point.weekStart,
-      label: point.label,
+      label: axisLabel,
       value: point.totalMinutes,
-      emphasis: isPeak,
-      caption: (
+      // Empty weeks draw nothing above the axis: no bar, stub or caption.
+      caption: hours.parts[index] > 0 ? (
         <>
-          {point.totalHours > 0 ? point.totalHours : '0'}
-          <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
+          {hours.parts[index]}
+          <span className="text-[var(--color-muted)] ml-px">h</span>
         </>
-      ),
+      ) : undefined,
       ariaLabel: `Week of ${week}: ${formatMinutes(point.totalMinutes)}${isPeak ? ', peak week' : ''}`,
       readout: (
         <span className="flex justify-between gap-3">
           <span>Week of {week}</span>
           <span>
             {formatMinutes(point.totalMinutes)}
-            {isPeak && <span className="text-[var(--color-accent)]"> · peak</span>}
+            {isPeak && <span className="text-[var(--color-text-dim)]"> · peak</span>}
           </span>
         </span>
       ),
@@ -55,23 +58,20 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   });
 
   return (
-    <div className="space-y-4">
+    <div>
       <BarChart
         data={data}
-        height={144}
+        height={120}
         max={Math.max(peakMinutes, 60)}
         label="Completed session time per week, last 8 weeks"
         reveal="coaching-training-hours"
         summary={
           <span className="flex justify-between gap-3">
             <span className="text-[var(--color-text-dim)]">8-week total</span>
-            <span>{formatMinutes(totalMinutes)}</span>
+            <span>{hours.total} h</span>
           </span>
         }
       />
-      <p className="t-label-sm pt-2 border-t border-[var(--color-border)]">
-        Completed session time · last 8 weeks
-      </p>
     </div>
   );
 }

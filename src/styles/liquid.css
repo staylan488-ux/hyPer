@@ -1,0 +1,613 @@
+/* ═════════════════════════════════════════════════════════════
+   LIQUID — glass and metal (2026-10-06, "Metal accents" direction)
+
+   Two materials sit on Studio's editorial content:
+   - Liquid glass: floating chrome (tab bar, sheets, toasts, rest bar, menus).
+     Clear, saturated, with a specular edge that catches the motion light.
+   - Liquid metal: a polished chrome bezel whose reflections drift and turn
+     with the phone. Reserved for primary and hero actions, so each screen
+     has at most one or two metal objects.
+
+   Content stays flat, square and ruled. Increased contrast, reduced
+   transparency and reduced motion each fall back (see the end of the file).
+   ═════════════════════════════════════════════════════════════ */
+
+@property --metal-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --metal-glint {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --metal-sheen {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+:root, .light {
+  /* Glass */
+  --glass-spec-hi: rgba(255, 255, 255, 1);
+  --glass-spec-mid: rgba(255, 255, 255, .55);
+  --glass-spec-low: rgba(255, 255, 255, .75);
+  --glass-hairline: rgba(20, 20, 20, .07);
+
+  /* Metal: a bright, cool silver read against ivory. */
+  --metal-chrome:
+    #9b9b9b 0deg, #cdcdcd 26deg, #ffffff 52deg, #f6f6f6 66deg, #b8b8b8 92deg,
+    #8a8a8a 124deg, #a8a8a8 150deg, #eeeeee 182deg, #ffffff 200deg, #d5d5d5 226deg,
+    #979797 262deg, #848484 292deg, #c0c0c0 326deg, #9b9b9b 360deg;
+  --metal-glints:
+    transparent 0deg, transparent 38deg,
+    rgba(255, 255, 255, .5) 40deg, rgba(255, 255, 255, .95) 42deg, rgba(255, 255, 255, .5) 44deg,
+    transparent 47deg, transparent 196deg,
+    rgba(255, 255, 255, .5) 198deg, rgba(255, 255, 255, .9) 200deg, rgba(255, 255, 255, .5) 202deg,
+    transparent 205deg, transparent 360deg;
+  --metal-sheen-stops:
+    transparent 0deg, rgba(255,255,255,.0) 70deg, rgba(255,255,255,.9) 92deg, rgba(255,255,255,0) 118deg,
+    transparent 230deg, rgba(255,255,255,.75) 252deg, rgba(255,255,255,0) 274deg, transparent 360deg;
+  --metal-gap: 0 0 0 0 transparent;
+  --metal-width: 1.75px;
+  /* The save-set key is a graphite dome in both themes: one metal face. */
+  --metal-dome: linear-gradient(180deg, #3a3a3a 0%, #232323 44%, #0a0a0a 100%);
+  --metal-dome-press: linear-gradient(180deg, #2f2f2f 0%, #1c1c1c 48%, #070707 100%);
+  --metal-dome-fg: #f2f2f2;
+  --metal-dome-inner: inset 0 1px 0 rgba(255, 255, 255, .13), inset 0 -4px 10px rgba(0, 0, 0, .55);
+  --metal-dome-shadow: none;
+  --metal-text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
+  --metal-static-opacity: .9;
+
+  /* Hero figures: graphite, lit from above. */
+  --figure-ink: linear-gradient(var(--color-text), var(--color-text));
+}
+
+.dark {
+  --glass-spec-hi: rgba(255, 255, 255, .2);
+  --glass-spec-mid: rgba(255, 255, 255, .06);
+  --glass-spec-low: rgba(255, 255, 255, .08);
+  --glass-hairline: rgba(255, 255, 255, .06);
+
+  /* Metal: the reference ring. Bright silver bands, smoky gaps. */
+  --metal-chrome:
+    #4e4e4e 0deg, #949494 26deg, #ebebeb 52deg, #ffffff 66deg, #bcbcbc 92deg,
+    #626262 122deg, #2c2c2c 150deg, #757575 182deg, #e6e6e6 208deg, #f8f8f8 224deg,
+    #aaaaaa 250deg, #5b5b5b 286deg, #353535 318deg, #4e4e4e 360deg;
+  --metal-glints:
+    transparent 0deg, transparent 38deg,
+    rgba(255, 255, 255, .5) 40deg, rgba(255, 255, 255, 1) 42deg, rgba(255, 255, 255, .5) 44deg,
+    transparent 47deg, transparent 196deg,
+    rgba(255, 255, 255, .5) 198deg, rgba(255, 255, 255, .95) 200deg, rgba(255, 255, 255, .5) 202deg,
+    transparent 205deg, transparent 360deg;
+  --metal-sheen-stops:
+    transparent 0deg, rgba(255,255,255,0) 70deg, rgba(255,255,255,.85) 92deg, rgba(255,255,255,0) 116deg,
+    transparent 230deg, rgba(255,255,255,.7) 252deg, rgba(255,255,255,0) 272deg, transparent 360deg;
+  --metal-gap: inset 0 0 0 calc(var(--metal-width) + 1px) rgba(0, 0, 0, .7);
+  --metal-width: 1.75px;
+  --metal-dome: linear-gradient(180deg, #3a3a3a 0%, #232323 44%, #0a0a0b 100%);
+  --metal-dome-press: linear-gradient(180deg, #2f2f2f 0%, #1c1c1c 48%, #070708 100%);
+  --metal-dome-fg: #ececec;
+  --metal-dome-inner: inset 0 1px 0 rgba(255, 255, 255, .13), inset 0 -4px 10px rgba(0, 0, 0, .55);
+  --metal-dome-shadow: 0 0 0 1px #000000, 0 8px 22px rgba(0, 0, 0, .55);
+  --metal-text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
+  --metal-static-opacity: .62;
+
+  /* Hero figures: brushed titanium. */
+  --figure-ink: linear-gradient(var(--color-text), var(--color-text));
+}
+
+/* ─── Liquid glass ─────────────────────────────────────────────
+   The specular edge is a 1px gradient ring masked to the border box. It is
+   brightest where the light falls, and swings with --light-x / --light-y. */
+@layer components {
+  .bottom-nav, .studio-sheet, .material-toast, .studio-rest-bar, .glass-edge { isolation: isolate; }
+  .studio-sheet, .material-toast, .glass-edge { position: relative; }
+}
+.material-toast::before,
+.studio-rest-bar::before,
+.glass-edge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    calc(168deg + var(--light-x, 0) * 46deg),
+    var(--glass-spec-hi) 0%,
+    var(--glass-spec-mid) 16%,
+    transparent 38%,
+    transparent 64%,
+    var(--glass-spec-low) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+/* Sheets are open at the bottom edge on phones: the ring fades out downward. */
+.studio-sheet::before {
+  background: linear-gradient(
+    calc(172deg + var(--light-x, 0) * 30deg),
+    var(--glass-spec-hi) 0%,
+    var(--glass-spec-mid) 6%,
+    transparent 22%
+  );
+}
+.studio-rest-bar > *, .material-toast > * { position: relative; z-index: 1; }
+
+/* ─── Liquid metal ──────────────────────────────────────────────
+   A chrome bezel in two layers: broad reflections turning one way and
+   white glints (the sharp highlights where light meets shadow)
+   turning the other, at unrelated speeds so the ring never visibly loops.
+   The motion light adds tilt: on iOS the bezel answers the phone's attitude. */
+@layer components {
+  .liquid-metal, .metal-static { position: relative; isolation: isolate; }
+}
+.liquid-metal::after,
+.metal-static::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: var(--metal-width);
+  pointer-events: none;
+  background:
+    conic-gradient(from calc(var(--metal-glint) - var(--light-y, 0) * 70deg), var(--metal-glints)),
+    conic-gradient(from calc(var(--metal-sheen) + var(--light-x, 0) * 40deg), var(--metal-sheen-stops)),
+    conic-gradient(from calc(var(--metal-spin) + var(--light-x, 0) * 90deg), var(--metal-chrome));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+/* Three layers at unrelated periods: highlights merge and split like light
+   on moving mercury instead of a rigid spin. */
+.liquid-metal::after {
+  animation:
+    metal-spin 17s linear infinite,
+    metal-glint 11s linear infinite reverse,
+    metal-sheen 23s linear infinite;
+}
+/* Ordinary primaries keep a quieter, still bezel: metal without the show. */
+.metal-static::after { opacity: var(--metal-static-opacity); --metal-spin: 24deg; --metal-glint: 300deg; --metal-sheen: 200deg; }
+@keyframes metal-spin { to { --metal-spin: 360deg; } }
+@keyframes metal-glint { to { --metal-glint: 360deg; } }
+@keyframes metal-sheen { to { --metal-sheen: 360deg; } }
+
+/* Primaries are solid, quiet and confident: ink on Ivory, ivory on Black.
+   No bezel, dome or text shadow. */
+.material-button-primary {
+  color: var(--button-primary-fg);
+  background-image: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+/* The one machined key: the save-set key, 44pt and flush with the fields
+   beside it. It takes the primary's tone in each theme (pearl on Black,
+   graphite on Ivory) so it reads as the primary in both, and it is calm: a
+   flat face with no bevel, chamfer, rim, highlight edge or shadow, so it
+   never reads as a bead. Only a tonal lift of two levels (imperceptible as
+   a gradient) separates it from a plain primary fill. */
+.studio-save-set {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  justify-self: center;
+  color: #f5f5f0;
+  text-shadow: none;
+  background-color: #262626;
+  background-image: linear-gradient(180deg, #272727, #252525);
+  box-shadow: none;
+}
+.dark .studio-save-set {
+  color: #141414;
+  background-color: #e6e6e6;
+  background-image: linear-gradient(180deg, #e7e7e7, #e5e5e5);
+  box-shadow: none;
+}
+.studio-save-set:hover:not(:disabled) { filter: brightness(1.05); }
+.studio-save-set:active:not(:disabled) { filter: brightness(.9); }
+.studio-save-set:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .studio-save-set, .dark .studio-save-set { background-image: none; background-color: var(--color-text); color: var(--color-base); }
+}
+
+/* ─── Hero figures ────────────────────────────────────────────── */
+.number-hero:not(:has(*)),
+.number-hero :not(:has(*)),
+.t-data-hero:not(:has(*)),
+.t-data-hero :not(:has(*)) {
+  background-image: var(--figure-ink);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ─── Live aura ─────────────────────────────────────────────────
+   Silver light pooling at the bottom edge while something is thinking
+   (photo analysis). Neutral on purpose, never a spectral or violet wash.
+   Transform and opacity only, so it stays on the GPU. */
+.liquid-aura { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.liquid-aura.is-quiet { opacity: .42; }
+.light .liquid-aura.is-quiet, :root:not(.dark) .liquid-aura.is-quiet { opacity: .3; }
+.liquid-aura::before, :root:not(.dark) .liquid-aura::before {
+  background:
+    radial-gradient(42% 60% at 26% 60%, rgba(40, 40, 40, .30), transparent 70%),
+    radial-gradient(36% 60% at 52% 54%, rgba(80, 80, 80, .36), transparent 70%),
+    radial-gradient(38% 60% at 76% 60%, rgba(40, 40, 40, .28), transparent 70%);
+}
+.liquid-aura::after {
+  content: '';
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  bottom: -46%;
+  height: 80%;
+  border-radius: 50%;
+  filter: blur(26px);
+  opacity: .9;
+  background:
+    radial-gradient(42% 60% at 26% 60%, rgba(255, 255, 255, .55), transparent 70%),
+    radial-gradient(36% 60% at 52% 54%, rgba(214, 214, 214, .7), transparent 70%),
+    radial-gradient(38% 60% at 76% 60%, rgba(255, 255, 255, .5), transparent 70%);
+  animation: aura-drift 6.5s ease-in-out infinite alternate;
+}
+.liquid-aura::after {
+  bottom: -60%;
+  height: 70%;
+  opacity: .55;
+  filter: blur(14px);
+  background: radial-gradient(50% 50% at 50% 50%, rgba(255, 255, 255, .9), transparent 70%);
+  animation: aura-breathe 3.2s ease-in-out infinite alternate;
+}
+@keyframes aura-drift {
+  0% { transform: translateX(-7%) scaleY(.92); }
+  100% { transform: translateX(7%) scaleY(1.08); }
+}
+@keyframes aura-breathe {
+  0% { transform: scale(.82); opacity: .35; }
+  100% { transform: scale(1.06); opacity: .6; }
+}
+
+/* ─── Progress ring ─────────────────────────────────────────────
+   A quiet groove with a flat ink arc and round caps; lacquer red over
+   target. Chrome is reserved for the save-set key. */
+@property --ring-p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+.metal-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  isolation: isolate;
+  transition: --ring-p 1.1s cubic-bezier(.16, 1, .3, 1);
+  --ring-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-w) - .5px), #000 calc(100% - var(--ring-w)));
+  /* Round caps: one dot where the arc starts (12 o'clock) and one riding
+     its end, placed with trig so they follow the animated --ring-p. */
+  --ring-mid: calc(var(--ring-size) / 2 - var(--ring-w) / 2);
+  --ring-cap: calc(var(--ring-w) / 2 * min(1, var(--ring-p) * 400));
+  --ring-cap-start: radial-gradient(circle at 50% calc(var(--ring-w) / 2), #000 calc(var(--ring-cap) - .5px), transparent var(--ring-cap));
+  --ring-cap-end: radial-gradient(circle at
+      calc(var(--ring-size) / 2 + var(--ring-mid) * sin(var(--ring-p) * 1turn))
+      calc(var(--ring-size) / 2 - var(--ring-mid) * cos(var(--ring-p) * 1turn)),
+    #000 calc(var(--ring-cap) - .5px), transparent var(--ring-cap));
+}
+.metal-ring-track, .metal-ring-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.metal-ring-track {
+  background: var(--ring-groove);
+  -webkit-mask: var(--ring-mask);
+  mask: var(--ring-mask);
+}
+.metal-ring-fill {
+  background: var(--ring-ink);
+  -webkit-mask:
+    var(--ring-cap-end), var(--ring-cap-start),
+    conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0), var(--ring-mask);
+  -webkit-mask-composite: source-over, source-over, source-in, source-over;
+  mask:
+    var(--ring-cap-end), var(--ring-cap-start),
+    conic-gradient(#000 calc(var(--ring-p) * 1turn), transparent 0), var(--ring-mask);
+  mask-composite: add, add, intersect, add;
+}
+/* Over target: the arc turns lacquer red. */
+.metal-ring.is-over .metal-ring-fill { background: var(--color-accent); }
+.metal-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+:root, .light {
+  --ring-groove: rgba(35, 35, 35,.09);
+  --ring-ink: var(--color-text);
+}
+.dark {
+  --ring-groove: rgba(255,255,255,.10);
+  --ring-ink: var(--color-text);
+}
+
+/* ─── Metal rails ───────────────────────────────────────────────
+   Progress rails are flat capsule tracks, like the rings' tracks (no inset
+   shading); the fill is flat ink. Static: rails stay calm. */
+.rail-groove { border-radius: 99px; background: var(--rail-groove); box-shadow: none; }
+.rail-metal { background-image: none; background-color: var(--color-text); }
+:root, .light {
+  --rail-groove: rgba(35, 35, 35,.09);
+  /* Target ticks: neutral, at least 3:1 on the stage. */
+  --rail-target: #8A8A86;
+  --rail-chrome: linear-gradient(180deg, #828282 0%, #3f3f3f 55%, #262626 100%);
+}
+.dark {
+  --rail-groove: rgba(255,255,255,.08);
+  --rail-target: #7A7A7A;
+  --rail-chrome: linear-gradient(180deg, #ffffff 0%, #d9d9d9 40%, #959595 100%);
+}
+
+/* ─── Stage and sections ────────────────────────────────────────
+   Cardless (2026-10-07): content sits directly on the stage, grouped by type,
+   spacing and section labels. Nothing is boxed and nothing nests. A
+   `.platter` is now only a section: it keeps its inner rhythm but bleeds its
+   padding into the page gutter, so its content lines up with the page. It
+   has no fill, edge, radius or shadow. Glass is reserved for the floating
+   layer (tab bar, sheets, toasts, rest bar). */
+html .app-viewport, html .material-foundation {
+  background: var(--material-ambient), var(--material-foundation);
+}
+@layer components {
+  .platter {
+    position: relative;
+    margin-inline: -20px;
+    padding: 20px;
+  }
+  .platter-flush { padding: 0; }
+  .platter-row { position: relative; }
+  /* iOS-style inset dividers: they start where the row's text starts and end
+     at the page gutter. */
+  .platter-row + .platter-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--row-inset, 20px);
+    right: 20px;
+    height: 1px;
+    background: var(--platter-divider);
+    pointer-events: none;
+  }
+  .platter-row.has-icon + .platter-row.has-icon::before { --row-inset: 66px; }
+  /* A thin rule nearing the scroll-edge band fades out before it reaches the
+     ramp (lib/ruleVeil.ts), so no ghost hairline rests under the bar. */
+  [data-rule-veil='before']::before,
+  [data-rule-veil='after']::after { opacity: var(--rule-veil, 1); }
+  .platter-gap > * + * { margin-top: 12px; }
+  .material-surface { background-color: transparent; }
+}
+
+/* Leading icon in grouped rows: a small glass squircle. */
+.icon-tile {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  color: var(--color-text);
+  background: none;
+  box-shadow: none;
+}
+
+/* Sheet titles speak in the editorial voice. */
+.sheet-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 360;
+  line-height: 1.12;
+  letter-spacing: -.02em;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* ─── Controls ──────────────────────────────────────────────────
+   Buttons and chips are capsules. Secondary actions are clear glass with
+   a lit top edge; inputs are softly recessed wells. */
+.material-button-secondary, .studio-secondary-action {
+  box-shadow: none;
+}
+.studio-secondary-action { border-radius: var(--radius-capsule); }
+.material-inset, .material-control { box-shadow: var(--material-inset-shadow); }
+/* Search fields are flat fills, like iOS: no recess, capsule ends. */
+.search-field {
+  background-color: color-mix(in srgb, var(--color-text) 7%, transparent);
+  box-shadow: none;
+  border-radius: var(--radius-capsule);
+}
+/* On true black a 7% tint is too faint to read as a field: iOS's tertiary
+   fill, #1C1C1C. Sheets keep the relative tint over their own surface. */
+.dark :is(.search-field, .you-search-field) { background-color: #1C1C1C; }
+.dark .studio-sheet :is(.search-field, .you-search-field) {
+  background-color: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+/* iOS 26 sheet toolbar buttons: a 44pt visible circle, glyph unchanged. */
+.material-sheet-close {
+  width: 44px;
+  height: 44px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--material-secondary);
+  box-shadow: none;
+}
+
+.material-sheet-handle { width: 38px; height: 5px; border-radius: 5px; opacity: .32; }
+
+/* Log food: where and when "+" logs, one quiet line under the sheet title
+   that opens the date, time and meal fields in place. */
+.food-when-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.food-when-summary svg { flex-shrink: 0; transition: transform .2s ease; }
+
+/* Calendar header (CalendarHeader), one component for Fuel's week strip and
+   History's month: the month in sentence case (year only when it is not this
+   year), no disclosure glyph, and paging chevrons with 44px targets 52px
+   apart (centre to centre) whose last glyph ends on the trailing guide. */
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+.calendar-head-title {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -.005em;
+  color: var(--color-text);
+}
+button.calendar-head-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+button.calendar-head-title:active { opacity: .5; }
+/* An 18px chevron's stroke ends 19px inside its 44px key. */
+.calendar-head-nav { display: flex; align-items: center; gap: 8px; margin-right: -19px; }
+/* Weekday letters above a month grid, as on Fuel's week strip: 6px above
+   and below the letter line. */
+.calendar-weekday {
+  padding: 6px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: .08em;
+  color: var(--color-muted);
+}
+.calendar-nav-key {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+  -webkit-tap-highlight-color: transparent;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+.calendar-nav-key:hover { color: var(--color-text); }
+.calendar-nav-key:active { opacity: .5; }
+
+/* Segmented choices, at native metrics: a 36px capsule track with a 2px
+   inset, equal segments and a 32px thumb. No inset ring on the track. Each
+   segment's hit area reaches 44px beyond its visible 32px. */
+.segmented-track, .segmented-track.well {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 36px;
+  padding: 2px;
+  border-radius: var(--radius-capsule);
+  box-shadow: none;
+}
+.segmented-track > button {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-capsule);
+}
+/* Locked (e.g. a mode that waits for the live workout): the control steps
+   down and takes no touches, and its caption says why. Its shape survives
+   (Ivory track #EBEBE5) and the current mode still reads as current (its
+   label secondary grey, the other near 2:1); the thumb lies flat, with no
+   shadow, so it never reads as raised. */
+.segmented-track.is-disabled { pointer-events: none; }
+.segmented-track.is-disabled .material-selected { box-shadow: none; }
+.segmented-track.well.is-disabled { background-color: #EBEBE5; }
+.segmented-track.is-disabled .material-selected { background: #F9F9F5; }
+.segmented-track.is-disabled > button { color: #A6A6A2; }
+.segmented-track.is-disabled > button[aria-selected='true'] { color: #6F6F6B; }
+.dark .segmented-track.well.is-disabled { background-color: var(--color-well); }
+.dark .segmented-track.is-disabled .material-selected { background: #262626; }
+.dark .segmented-track.is-disabled > button { color: #555555; }
+.dark .segmented-track.is-disabled > button[aria-selected='true'] { color: #8C8C8C; }
+/* Ivory track: #EAEAE4, a visible groove on the #F5F5F0 page (Black keeps
+   the well tone). */
+.segmented-track.well { background-color: #EAEAE4; }
+.dark .segmented-track.well { background-color: var(--color-well); }
+.segmented-track > button::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+
+/* Tab bar (web): a floating capsule edged by one uniform hairline (no
+   specular ring or directional highlight); the current tab is a flat fill
+   inset 5px on every side, concentric with the bar. */
+.bottom-nav { border-radius: var(--radius-nav); padding: 0 5px; }
+/* Around it, a soft halo in the glass's own tone over the page (between its
+   60% and its label-row fill, within a few levels of both), so a ghost
+   passing under the bar never lights one shoulder of the pill. */
+.material-nav-selection {
+  border-radius: var(--radius-capsule);
+  background: var(--nav-selection);
+  box-shadow: 0 0 8px 4px color-mix(in srgb, var(--nav-veil, transparent) 70%, var(--color-base));
+}
+
+/* ─── Fallbacks ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .liquid-metal::after { animation: none; --metal-spin: 24deg; --metal-glint: 300deg; --metal-sheen: 200deg; }
+  .metal-ring { transition: none; }
+  .liquid-aura::before, .liquid-aura::after { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .studio-sheet::before, .material-toast::before,
+  .studio-rest-bar::before, .glass-edge::before { content: none; }
+  .liquid-metal::after, .metal-static::after, .metal-ring-fill {
+    animation: none;
+    opacity: 1;
+    background: var(--color-text);
+    filter: none;
+  }
+  .material-button-primary, .studio-save-set { text-shadow: none; }
+  .number-hero:not(:has(*)), .number-hero :not(:has(*)),
+  .t-data-hero:not(:has(*)), .t-data-hero :not(:has(*)) {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .liquid-aura { display: none; }
+  .rail-metal { background-image: none; background-color: var(--color-text); }
+}
+@media (forced-colors: active) {
+  .liquid-metal::after, .metal-static::after, .liquid-aura { display: none; }
+  .number-hero :not(:has(*)), .t-data-hero :not(:has(*)) { -webkit-text-fill-color: currentColor; }
+}
