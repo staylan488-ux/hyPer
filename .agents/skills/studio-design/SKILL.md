@@ -94,9 +94,9 @@ layout and makes motion, data and 3D the expressive layer.
 - 3D scenes live in [src/components/three](../../../src/components/three/) and
   load only through dynamic `import()`; they share the
   [renderer host](../../../src/lib/three/host.ts) and the
-  [motion light](../../../src/lib/motionLight.ts). The
-  [volume maquette geometry](../../../src/lib/maquette.ts) drives both the 3D
-  figure and its flat fallback.
+  [motion light](../../../src/lib/motionLight.ts). Weekly volume is a flat,
+  matte front/back [muscle map](../../../src/lib/volumeMap.ts): ink by volume
+  status, lacquer only past MRV, no gloss or 3D.
 - [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
   `/preview?previewSetSave=fail` exercises save failure and Retry;
   `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.

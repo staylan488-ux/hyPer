@@ -19,10 +19,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
 
   if (!hasTraining) {
     return (
-      <div className="py-10 text-center">
-        <p className="t-heading">No training hours yet.</p>
-        <p className="t-caption mt-3">Complete a workout to chart your weekly time</p>
-      </div>
+      <p className="t-caption mt-3">No completed sessions yet. Finish a workout to chart your weekly time.</p>
     );
   }
 
@@ -39,22 +36,20 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       key: point.weekStart,
       label: axisLabel,
       value: point.totalMinutes,
-      emphasis: isPeak,
+      // Empty weeks stay empty: no bar and no caption.
       caption: point.totalHours > 0 ? (
         <>
           {point.totalHours}
           <span className="text-[var(--color-muted)] ml-px">h</span>
         </>
-      ) : (
-        <span className="opacity-60">0</span>
-      ),
+      ) : undefined,
       ariaLabel: `Week of ${week}: ${formatMinutes(point.totalMinutes)}${isPeak ? ', peak week' : ''}`,
       readout: (
         <span className="flex justify-between gap-3">
           <span>Week of {week}</span>
           <span>
             {formatMinutes(point.totalMinutes)}
-            {isPeak && <span className="text-[var(--color-accent)]"> · peak</span>}
+            {isPeak && <span className="text-[var(--color-text-dim)]"> · peak</span>}
           </span>
         </span>
       ),
@@ -62,10 +57,10 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   });
 
   return (
-    <div className="space-y-3">
+    <div>
       <BarChart
         data={data}
-        height={144}
+        height={120}
         max={Math.max(peakMinutes, 60)}
         label="Completed session time per week, last 8 weeks"
         reveal="coaching-training-hours"
@@ -76,9 +71,6 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
           </span>
         }
       />
-      <p className="t-label-sm text-[var(--color-muted)]">
-        Completed session time · last 8 weeks
-      </p>
     </div>
   );
 }

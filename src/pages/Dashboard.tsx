@@ -12,9 +12,11 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { Button, MetalRing, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
+import { Button, MetalRing, RailStrip, RollingNumber, Screen, TickStrip, SealMark, BankedStamp } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
-import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
+import { VolumeMap } from '@/components/coaching/VolumeMap';
+import { LandmarkRail } from '@/components/coaching/LandmarkRail';
+import { muscleSubject } from '@/lib/muscleCopy';
 import type { SealMacro } from '@/lib/targetSeal';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
@@ -27,7 +29,7 @@ import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
-import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
+import { DEFAULT_MACRO_TARGET, type MuscleVolume, type SplitDay } from '@/types';
 
 type HeroState =
   | { kind: 'loading' }
@@ -268,20 +270,21 @@ export function Dashboard() {
                 <p className="t-heading mb-2">{insight.headline}</p>
                 <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
               </div>
-              <VolumeMaquette
+              <VolumeMap
                 variant="compact"
                 volume={weeklyVolume}
                 focus={insight.volume.muscle_group}
-                className="w-[76px] h-[132px] shrink-0 -mt-3 -mr-1"
+                className="w-[60px] h-[132px] shrink-0 -mt-1"
               />
             </div>
             {insight.landmark && (
-              <VolumeRail
+              <LandmarkRail
                 current={insight.volume.weekly_sets}
                 mev={insight.landmark.mev}
                 mavLow={insight.landmark.mav_low}
                 mavHigh={insight.landmark.mav_high}
                 mrv={insight.landmark.mrv}
+                over={insight.volume.status === 'above_mrv'}
                 reveal={`dash-volume-${insight.volume.muscle_group}`}
               />
             )}
@@ -485,7 +488,7 @@ function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string
 function pickInsight(weeklyVolume: MuscleVolume[]) {
   if (!weeklyVolume || weeklyVolume.length === 0) return null;
 
-  const labeled = (mv: MuscleVolume) => MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group;
+  const subject = (mv: MuscleVolume) => muscleSubject(mv.muscle_group);
 
   const below = weeklyVolume
     .filter((mv) => mv.status === 'below_mev' && mv.landmark)
@@ -495,7 +498,7 @@ function pickInsight(weeklyVolume: MuscleVolume[]) {
     return {
       volume: below,
       landmark: below.landmark,
-      headline: `${labeled(below)} is under-stimulated`,
+      headline: `${subject(below).name} ${subject(below).is} under-stimulated`,
       detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
     };
   }
@@ -509,8 +512,8 @@ function pickInsight(weeklyVolume: MuscleVolume[]) {
       landmark: over.landmark,
       headline:
         over.status === 'above_mrv'
-          ? `${labeled(over)} is past recoverable volume`
-          : `${labeled(over)} is nearing its ceiling`,
+          ? `${subject(over).name} ${subject(over).is} past recoverable volume`
+          : `${subject(over).name} ${subject(over).is} nearing ${subject(over).its} ceiling`,
       detail:
         over.status === 'above_mrv'
           ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
@@ -523,7 +526,7 @@ function pickInsight(weeklyVolume: MuscleVolume[]) {
     return {
       volume: inZone,
       landmark: inZone.landmark,
-      headline: `${labeled(inZone)} is in the adaptive zone`,
+      headline: `${subject(inZone).name} ${subject(inZone).is} in the adaptive zone`,
       detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
     };
   }

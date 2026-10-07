@@ -392,7 +392,7 @@ function WorkoutActivityPanel({
         {attached ? (
           <button
             type="button"
-            className="pressable min-h-11 -mr-2 px-2 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            className="pressable min-h-11 -mr-2 px-2 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
             disabled={busyId != null}
             onClick={() => void run(workout.id, () => onDetach(workout))}
           >
@@ -549,7 +549,7 @@ function ActivityLedgerRow({
           <button
             type="button"
             onClick={onDelete}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
             title="Delete activity"
             aria-label="Delete activity"
           >
@@ -1334,55 +1334,55 @@ export function History() {
       </header>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-        <section className="platter px-3 pt-3 pb-3" aria-label="Calendar">
-          <div className="flex items-center justify-between gap-2 pl-2 pb-3">
-            <AnimatePresence mode="wait">
+        <section aria-label="Calendar">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <AnimatePresence mode="wait" initial={false}>
               <motion.h3
                 key={format(selectedMonth, 'yyyy-MM')}
-                className="t-display text-[1.375rem] text-[var(--color-text)]"
-                initial={{ opacity: 0, x: monthDirection * 20 }}
+                className="t-heading"
+                initial={{ opacity: 0, x: monthDirection * 12 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: monthDirection * -20 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, x: monthDirection * -12 }}
+                transition={{ duration: 0.18 }}
               >
                 {format(selectedMonth, 'MMMM yyyy')}
               </motion.h3>
             </AnimatePresence>
-            <div className="flex items-center gap-2">
-              <motion.button
+            <div className="flex items-center -mr-3">
+              <button
+                type="button"
                 onClick={() => {
                   setMonthDirection(-1);
                   setSelectedMonth((prev) => subMonths(prev, 1));
                 }}
                 className="ledger-nav-key"
-                whileTap={{ scale: 0.9, x: -2 }}
                 aria-label="Previous month"
               >
-                <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
-              </motion.button>
-              <motion.button
+                <ChevronLeft className="w-[18px] h-[18px]" strokeWidth={1.6} />
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setMonthDirection(1);
                   setSelectedMonth((prev) => addMonths(prev, 1));
                 }}
                 className="ledger-nav-key"
-                whileTap={{ scale: 0.9, x: 2 }}
                 aria-label="Next month"
               >
-                <ChevronRight className="w-4 h-4" strokeWidth={1.75} />
-              </motion.button>
+                <ChevronRight className="w-[18px] h-[18px]" strokeWidth={1.6} />
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-[3px]">
+          <div className="grid grid-cols-7" aria-hidden>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="t-label-sm text-center pb-2 text-[var(--color-muted)]">
+              <div key={`${day}-${index}`} className="text-center pb-1 text-[10px] font-medium tracking-[0.08em] text-[var(--color-muted)]">
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-[3px]">
+          <div className="grid grid-cols-7">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const dayWorkouts = workoutsByDay[key] || [];
@@ -1390,76 +1390,48 @@ export function History() {
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
-              const firstWorkout = dayWorkouts[0] || null;
-              const firstActivity = dayActivities[0] || null;
-              const firstWorkoutTitle = firstWorkout
-                ? resolveWorkoutTitle({
-                    splitDayName: firstWorkout.split_day?.day_name,
-                    dayLabel: firstWorkout.day_label || null,
-                    exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
-                  })
-                : '';
-              const workoutSummaryLabel = dayWorkouts.length > 1
-                ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
-                : firstWorkoutTitle;
-              const firstActivityTitle = firstActivity ? resolveActivityTitle(firstActivity) : '';
-              const activitySummaryLabel = dayActivities.length > 1
-                ? `${firstActivityTitle} +${dayActivities.length - 1}`
-                : firstActivityTitle;
-              const daySummaryLabel = workoutSummaryLabel;
-              const titleLabel = [workoutSummaryLabel, activitySummaryLabel].filter(Boolean).join(' / ');
+              const workoutTitles = dayWorkouts.map((workout) => resolveWorkoutTitle({
+                splitDayName: workout.split_day?.day_name,
+                dayLabel: workout.day_label || null,
+                exerciseNames: workout.sets.map((set) => set.exercise?.name || null),
+              }));
+              const activityTitles = dayActivities.map((activity) => resolveActivityTitle(activity));
+              const titleLabel = [...workoutTitles, ...activityTitles].join(', ');
 
               return (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => {
                     setSelectedDate(day);
                     if (!isSameMonth(day, selectedMonth)) {
                       setSelectedMonth(startOfMonth(day));
                     }
                   }}
-                  title={titleLabel || undefined}
-                  aria-label={`${format(day, 'EEEE, MMMM d')}${titleLabel ? ` · ${titleLabel}` : ''}`}
+                  aria-label={`${format(day, 'EEEE, MMMM d')}${isTodayDate ? ', today' : ''}${titleLabel ? ` · ${titleLabel}` : ''}`}
                   aria-pressed={isSelected}
-                  className={`ledger-day min-h-[72px] rounded-[var(--radius-control)] transition-colors relative px-1 pt-1.5 pb-1.5 ${
-                    inMonth ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)] opacity-55'
-                  }`}
+                  className={`ledger-day relative h-11 flex items-center justify-center ${inMonth ? '' : 'opacity-35'}`}
                 >
                   {isSelected && (
-                    <motion.div
-                      className="ledger-day-lens absolute inset-0"
+                    <motion.span
+                      aria-hidden
+                      className="ledger-day-disc absolute top-[2px] left-1/2 -ml-4"
                       layoutId="history-day-selected"
                       transition={springs.settle}
                     />
                   )}
-                  <div className="relative z-10 flex h-full flex-col items-center">
-                    <span
-                      className={`t-data-sm leading-none tabular-nums ${isSelected ? 'font-semibold' : ''} ${
-                        isTodayDate ? 'text-[var(--color-accent)] font-semibold' : ''
-                      }`}
-                    >
-                      {format(day, 'd')}
-                    </span>
-                    {daySummaryLabel && (
-                      <span
-                        className={`mt-1.5 line-clamp-2 text-center text-[10.5px] leading-[1.2] font-sans ${
-                          isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'
-                        }`}
-                      >
-                        {daySummaryLabel}
-                      </span>
-                    )}
-                  </div>
+                  <span
+                    className={`ledger-day-number relative -mt-1.5 text-[14px] leading-none tabular-nums ${
+                      isTodayDate ? 'text-[var(--color-accent)] font-semibold' : 'text-[var(--color-text)]'
+                    } ${isSelected ? 'font-semibold' : ''}`}
+                  >
+                    {format(day, 'd')}
+                  </span>
                   {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
-                    <motion.div
-                      className="absolute bottom-2 inset-x-0 z-10 flex items-center justify-center gap-[3px]"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={springs.lift}
-                    >
+                    <span aria-hidden className="absolute bottom-[3px] inset-x-0 flex items-center justify-center gap-[3px]">
                       {dayWorkouts.length > 0 && <span className="ledger-mark-lift" />}
                       {dayActivities.length > 0 && <span className="ledger-mark-activity" />}
-                    </motion.div>
+                    </span>
                   )}
                 </button>
               );
@@ -1482,7 +1454,7 @@ export function History() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-          <div className="flex items-end justify-between gap-4 mt-8 mb-3 px-1">
+          <div className="flex items-end justify-between gap-4 mt-9 mb-3">
             <div className="min-w-0">
               <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
               <p className="t-label-sm mt-1.5 text-[var(--color-muted)]">{selectedDaySummary}</p>
@@ -1690,7 +1662,7 @@ export function History() {
                                       className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-medium tabular-nums shrink-0 ${
                                         exerciseProgress.completed
                                           ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                                          : 'ledger-well text-[var(--color-muted)]'
+                                          : 'shadow-[inset_0_0_0_1px_var(--color-border)] text-[var(--color-muted)]'
                                       }`}
                                     >
                                       {exerciseProgress.completed ? <Check className="w-3.5 h-3.5" strokeWidth={2.25} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
@@ -1776,7 +1748,7 @@ export function History() {
                                     <button
                                       type="button"
                                       onClick={() => { void handleRemoveExercise(workout.id, exerciseId); }}
-                                      className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+                                      className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                       title="Remove exercise"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -1866,7 +1838,7 @@ export function History() {
                                                 void handleRemoveSet(workout.id, exerciseId, set.id);
                                               }}
                                               aria-label={`Remove set ${set.set_number}`}
-                                              className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+                                              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                                               whileTap={{ scale: 0.985 }}
                                             >
                                               <X className="w-3 h-3" strokeWidth={1.5} />
@@ -1916,7 +1888,7 @@ export function History() {
                           <div className="px-5 pt-3 pb-5">
                             <motion.button
                               onClick={() => setShowDeleteConfirm(workout.id)}
-                              className="w-full studio-secondary-action text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
+                              className="w-full studio-row-action text-[var(--color-text-dim)] t-label hover:text-[var(--color-text)] transition-colors flex items-center justify-center gap-2"
                               whileTap={{ scale: 0.98 }}
                             >
                               <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -1932,7 +1904,7 @@ export function History() {
             })}
               {selectedDayActivities.length > 0 && (
                 <div className={selectedDayWorkouts.length > 0 ? 'mt-7' : ''}>
-                  <div className="flex items-center justify-between gap-3 px-1 min-h-11">
+                  <div className="flex items-center justify-between gap-3 min-h-11">
                     <span className="t-label">
                       Activities <span className="text-[var(--color-muted)] tabular-nums ml-1">{selectedDayActivities.length}</span>
                     </span>
@@ -1967,7 +1939,7 @@ export function History() {
                     )}
                   </div>
                   {selectedDayActivities.length > 1 && mergeSelection && (
-                    <p className="t-caption px-1 -mt-1 mb-1" aria-live="polite">
+                    <p className="t-caption -mt-1 mb-1" aria-live="polite">
                       {mergeSelection.length < 2
                         ? 'Pick the activities that were really one'
                         : `${mergeSelection.length} selected`}

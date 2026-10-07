@@ -1,53 +1,50 @@
 /* ═════════════════════════════════════════════════════════════
-   History and Progress — page details for the liquid direction.
-   Platters, glass and metal come from src/styles/liquid.css; this file only
-   holds what these two pages need on top of them.
+   History and Progress — page details. Everything here sits flat on the
+   page: no glass, rims, wells or capsules. Section rhythm comes from
+   src/styles/liquid.css; this file only holds what these pages add.
    ═════════════════════════════════════════════════════════════ */
 
 /* ─── Calendar ──────────────────────────────────────────────── */
-/* The selected day is held in a glass lens, like the tab bar's selection. */
-.ledger-day-lens {
-  border-radius: var(--radius-control);
-  background: var(--material-selection);
-  box-shadow: var(--material-selection-shadow), inset 0 1px 0 var(--glass-spec-mid, transparent);
+/* Compact month: day numbers with a dot per kind of session. The selected
+   day is a filled ink disc; today is named in lacquer. */
+.ledger-day { -webkit-tap-highlight-color: transparent; }
+.ledger-day-disc {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-text);
 }
-.ledger-day:not([aria-pressed='true']):active { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
-.ledger-mark-lift { width: 5px; height: 5px; border-radius: 50%; background: var(--color-text); }
-.ledger-mark-activity { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--color-text); }
+.ledger-day[aria-pressed='true'] .ledger-day-number { color: var(--color-base); }
+.ledger-day:not([aria-pressed='true']):active .ledger-day-number { opacity: .55; }
+.ledger-mark-lift { width: 4px; height: 4px; border-radius: 50%; background: var(--color-text); }
+.ledger-mark-activity { width: 4px; height: 4px; border-radius: 50%; background: var(--color-muted); }
 
-/* Round glass keys for month paging. */
+/* Month paging: plain chevrons with a 44px target. */
 .ledger-nav-key {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--color-text-dim);
-  background: color-mix(in srgb, var(--color-text) 5%, transparent);
-  box-shadow: inset 0 1px 0 var(--glass-spec-mid, transparent);
-  transition: color 160ms ease, background-color 160ms ease;
+  transition: color 160ms ease, opacity 160ms ease;
 }
 .ledger-nav-key:hover { color: var(--color-text); }
+.ledger-nav-key:active { opacity: .5; }
 
 /* ─── Grouped lists inside platters ─────────────────────────── */
 .ledger-rule { height: 1px; background: var(--platter-divider); }
 .ledger-sets > * + * { box-shadow: inset 0 1px 0 var(--platter-divider); }
 
-/* A recessed well for the sets of an open movement. */
-.ledger-well {
-  border-radius: var(--radius-control);
-  background: var(--material-inset);
-  box-shadow: var(--material-inset-shadow);
-}
-/* A raised field sitting in a well. */
+/* The sets of an open movement: grouped by indentation and hairlines, not a box. */
+.ledger-well { border-radius: 0; }
+/* An editable field: a quiet flat fill. */
 .ledger-field {
-  border-radius: 12px;
-  background: var(--material-selection);
-  box-shadow: var(--material-selection-shadow);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
 
-/* Two-line choices (attach an activity): a rounded glass key, not a capsule. */
+/* Two-line choices (attach an activity): a quiet flat key, not a capsule. */
 .ledger-choice {
   display: block;
   width: 100%;
@@ -55,73 +52,57 @@
   text-align: left;
   padding: 12px 16px;
   border-radius: var(--radius-control);
-  background: var(--material-secondary);
-  box-shadow: var(--material-rim);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
   transition: transform 110ms ease, opacity 160ms ease;
 }
 .ledger-choice:active:not(:disabled) { transform: scale(.985); }
 
-/* Compact capsule actions (Sync, + Activity, Merge). */
+/* Compact day actions (Sync, + Activity, Merge): quiet flat fills. */
 .ledger-capsule {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 14px;
-  border-radius: var(--radius-capsule);
+  border-radius: var(--radius-control);
   font: 500 11px/1 var(--font-sans);
-  letter-spacing: .14em;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--color-text);
-  background: var(--material-secondary);
-  box-shadow: var(--material-rim);
-  transition: transform 110ms ease, opacity 160ms ease;
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  transition: transform 110ms ease, opacity 160ms ease, background-color 160ms ease;
   position: relative;
 }
-/* Keep a 44px hit area around the 36px visual capsule. */
-.ledger-capsule::after { content: ''; position: absolute; inset: -4px -2px; }
+/* Keep a 44px hit area around the 34px visual key. */
+.ledger-capsule::after { content: ''; position: absolute; inset: -5px -2px; }
 .ledger-capsule:active:not(:disabled) { transform: scale(.97); }
 .ledger-capsule:disabled { opacity: .4; }
 
 /* ─── Progress ──────────────────────────────────────────────── */
-/* Status capsule: quiet glass; lacquer only when volume runs hot. */
-.status-capsule {
+/* Volume status: an unboxed label led by a small mark; lacquer only when
+   volume runs past its ceiling. */
+.status-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: var(--radius-capsule);
+  gap: 7px;
   font: 500 10px/1 var(--font-sans);
   letter-spacing: .14em;
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--color-text-dim);
-  background: var(--material-inset);
-  box-shadow: var(--material-inset-shadow);
 }
-.status-capsule::before {
+.status-label::before {
   content: '';
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: currentColor;
-  opacity: .7;
 }
-.status-capsule[data-tone='under'] { color: var(--color-text); }
-.status-capsule[data-tone='under']::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; opacity: 1; }
-.status-capsule[data-tone='hot'] {
-  color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--color-accent) 28%, transparent);
-}
-
-/* Weekly nutrition renders its own surface: on this page it is a plain,
-   unboxed section like the rest. */
-.progress-platter-host > .material-surface { background: none; box-shadow: none; }
+.status-label[data-tone='under']::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+.status-label[data-tone='hot'] { color: var(--color-accent); }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .ledger-day-lens, .ledger-field { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
-  .ledger-capsule, .ledger-choice, .ledger-nav-key { background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
-  .ledger-well, .status-capsule { box-shadow: inset 0 0 0 1px var(--color-border); }
+  .ledger-field { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+  .ledger-capsule, .ledger-choice { background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+  .ledger-well { box-shadow: inset 0 0 0 1px var(--color-border); }
 }
