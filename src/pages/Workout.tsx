@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import {
+  ArrowDownUp,
   ArrowLeftRight,
   Check,
   ChevronDown,
@@ -35,6 +36,7 @@ import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutS
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { SessionToken } from '@/components/workout/SessionToken';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
+import { movementBlocks } from '@/components/workout/movementOrder';
 import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
@@ -203,6 +205,8 @@ export function Workout() {
   const [flexibleTargetSetDrafts, setFlexibleTargetSetDrafts] = useState<Record<string, string>>({});
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
   const [finishing, setFinishing] = useState(false);
+  // Reordering is an explicit mode, so movement rows carry no drag chrome at rest.
+  const [reorderingMovements, setReorderingMovements] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [noteSaveFailed, setNoteSaveFailed] = useState(false);
   const finishingRef = useRef(false);
@@ -1658,6 +1662,16 @@ export function Workout() {
   /* ═══════════════ In session ═══════════════ */
 
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
+  const reorderItems = focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }));
+  const canReorderMovements = movementBlocks(reorderItems).length > 1;
+  const isReorderingMovements = reorderingMovements && canReorderMovements;
+  const startReorderingMovements = () => {
+    tapHaptic();
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea') && focused.closest('.studio-workout-page')) focused.blur();
+    setReorderingMovements(true);
+  };
+  const allSetsLogged = totalSets > 0 && completedSets === totalSets;
 
   return (
     <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
@@ -1665,7 +1679,7 @@ export function Workout() {
         <div className="studio-session-top">
           <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
-          <Button variant="secondary" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
+          <button type="button" className="studio-session-finish" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</button>
         </div>
         {finishError && <div className="flex items-center justify-between gap-3">
           <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
@@ -1680,16 +1694,21 @@ export function Workout() {
           </MetalRing>
         </div>
         <div className="studio-session-actions">
-          <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
+          <span className="t-caption">{isReorderingMovements ? 'Drag a handle to reorder' : `${focusOrder.length} ${focusOrder.length === 1 ? 'movement' : 'movements'}`}</span>
           <div>
-            <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
-            {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add movement</button>}
+            {isReorderingMovements ? (
+              <button type="button" className="is-done" onClick={() => { tapHaptic(); setReorderingMovements(false); }}>Done</button>
+            ) : <>
+              {canReorderMovements && <button type="button" onClick={startReorderingMovements}><ArrowDownUp size={15} aria-hidden />Reorder</button>}
+              {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add</button>}
+              <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
+            </>}
           </div>
         </div>
       </header>
 
-      <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements}
-        items={focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }))}>
+      <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements} editing={isReorderingMovements}
+        items={reorderItems}>
       {isFlexibleSession ? (
         <div className="space-y-3">
           <Modal isOpen={showSessionDetails} onClose={() => setShowSessionDetails(false)} title="Workout name">
@@ -1751,6 +1770,8 @@ export function Workout() {
                   targetRepsMin={item.target_reps_min}
                   targetRepsMax={item.target_reps_max}
                   onToggle={() => selectMovement(exerciseId)}
+                  reordering={isReorderingMovements}
+                  onStartReorder={canReorderMovements ? startReorderingMovements : undefined}
                   supersetRole={supersetRole}
                   supersetLabel={
                     supersetPartner
@@ -1923,6 +1944,8 @@ export function Workout() {
                 targetRepsMin={prescription?.target_reps_min}
                 targetRepsMax={prescription?.target_reps_max}
                 onToggle={() => selectMovement(exerciseId)}
+                reordering={isReorderingMovements}
+                onStartReorder={canReorderMovements ? startReorderingMovements : undefined}
                 supersetRole={supersetRole}
                 supersetLabel={
                   supersetPartnerName ? `${supersetRole ?? ''}${supersetRole ? ' · ' : ''}with ${supersetPartnerName}` : null
@@ -1932,10 +1955,11 @@ export function Workout() {
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
                 <div className="studio-movement-prescription">
+                  {/* The rows are today's sets; the program count appears only when it differs. */}
                   <p className="t-caption">
                     {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
-                      : `${sets.length} sets`}
+                      ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}${setRange.targetSets !== sets.length ? ` (program ${setRange.targetSets})` : ''}`
+                      : `${sets.length} ${sets.length === 1 ? 'set' : 'sets'}`}
                   </p>
                   {hasRemovableUncompletedSet && (
                     <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
@@ -2012,6 +2036,14 @@ export function Workout() {
       )}
 
       </MovementReorderList>
+      {allSetsLogged && !isReorderingMovements && (
+        <div className="studio-session-finale">
+          <p className="t-caption">Every set is logged.</p>
+          <Button size="lg" className="w-full" onClick={handleCompleteWorkout} disabled={finishing}>
+            {finishing ? 'Finishing…' : 'Finish workout'}
+          </Button>
+        </div>
+      )}
       <ExercisePicker
         isOpen={substitutionSource !== null}
         onClose={() => setSubstitutionSource(null)}
@@ -2126,6 +2158,8 @@ function ExerciseCard({
   targetRepsMin,
   targetRepsMax,
   onToggle,
+  reordering = false,
+  onStartReorder,
   supersetRole,
   supersetLabel,
   notePreview,
@@ -2146,6 +2180,9 @@ function ExerciseCard({
   targetRepsMin?: number | null;
   targetRepsMax?: number | null;
   onToggle: () => void;
+  /** Reorder mode: the row shows only its name and a drag handle. */
+  reordering?: boolean;
+  onStartReorder?: () => void;
   supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
   notePreview: string | null;
@@ -2188,39 +2225,47 @@ function ExerciseCard({
     }
   }, [isActive]);
   return (
-    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
+    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive && !reordering ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
       <div className="studio-movement-header" ref={headingRef}>
         <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
-          aria-describedby={!isActive ? summaryId : undefined}
-          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={onToggle}>
-          <span className="studio-movement-heading">
-            {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
-            {!isActive && isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
-            <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
-              {allComplete && <Check size={14} aria-hidden />}{exerciseName}
+          aria-describedby={!isActive ? summaryId : undefined} aria-disabled={reordering || undefined} tabIndex={reordering ? -1 : undefined}
+          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { if (!reordering) onToggle(); }}>
+          {isActive && !reordering ? <>
+            {/* The open movement's name gets the full row; its controls ride the eyebrow line. */}
+            <span className="studio-movement-eyebrow">
+              <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>
+              <span className="studio-movement-count">{completedCount} / {totalCount}</span>
+              <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
             </span>
-            {!isActive && <span id={summaryId} className="studio-movement-summary">
-              <span>{totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}</span>
-              {!allComplete && previousTargetText && <span className="studio-movement-previous">Last workout <span>{previousTargetText}</span></span>}
-            </span>}
-          </span>
-          <span className="studio-movement-count">{completedCount} / {totalCount}</span>
-          <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+            <span className="studio-movement-name">{allComplete && <Check size={18} aria-hidden />}{exerciseName}</span>
+          </> : <>
+            <span className="studio-movement-heading">
+              {isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
+              <span className="studio-movement-name-compact">{allComplete && <Check size={15} aria-hidden />}{exerciseName}</span>
+              <span id={summaryId} className="studio-movement-summary">
+                {totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}
+                {!allComplete && previousTargetText && <> · Last <span className="studio-movement-previous">{previousTargetText}</span></>}
+              </span>
+            </span>
+            {/* A finished movement's check says it all; its count would only crowd the name. */}
+            {!allComplete && <span className="studio-movement-count">{completedCount} / {totalCount}</span>}
+            <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+          </>}
         </button>
         <div className="studio-movement-controls">
-        {menuActions.length > 0 && <div className="relative">
+        {reordering ? <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
+          : menuActions.length > 0 && <div className="relative">
           <button ref={optionsRef} type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
-            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={18} aria-hidden /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
-            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
-              {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
+            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-52 p-1 rounded-xl material-glass">
+              {[...menuActions, ...(onStartReorder ? [{ label: 'Reorder movements', icon: <ArrowDownUp className="w-4 h-4" />, onClick: onStartReorder }] : [])].map((action: CardMenuAction) => <button key={action.label} type="button" disabled={action.disabled}
                 className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
                 onClick={() => { setMenuOpen(false); optionsRef.current?.focus({ preventScroll: true }); action.onClick(); }}>{action.icon}{action.label}</button>)}
             </div>
           </>}
         </div>}
-        <MovementDragHandle exerciseId={exerciseId} name={exerciseName} onIntent={() => setMenuOpen(false)} />
         </div>
       </div>
       {substitutionLabel && <p className="studio-movement-detail"><ArrowLeftRight size={13} aria-hidden />{substitutionLabel}</p>}

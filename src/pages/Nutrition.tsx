@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
+import '@/components/nutrition/nutrition-ledger.css';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import {
@@ -104,6 +105,8 @@ export function Nutrition() {
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
+  // Move, reorder and delete controls stay hidden until the list is in Edit mode.
+  const [editingMeals, setEditingMeals] = useState(false);
   const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
   const loadedMonthKeyRef = useRef<string | null>(null);
   const [requestGate] = useState(createLatestRequestGate);
@@ -562,7 +565,7 @@ export function Nutrition() {
 
       {/* ── Week strip + month jump ── */}
       <section className="platter mt-4 px-3 pt-3 pb-3">
-        <div className="flex items-center justify-between pl-2 mb-1">
+        <div className="flex items-center justify-between pl-2 -mr-1.5 mb-1">
           <span className="t-label">{format(weekStart, 'MMMM')}</span>
           <div className="flex items-center">
             <button
@@ -604,25 +607,14 @@ export function Nutrition() {
                 key={key}
                 type="button"
                 onClick={() => pickDate(day)}
-                aria-label={format(day, 'EEEE, MMMM d')}
+                aria-label={`${format(day, 'EEEE, MMMM d')}${dayIsToday ? ', today' : ''}${hasLogs ? ', has entries' : ''}`}
                 aria-pressed={isSelected}
-                className={`relative rounded-[var(--radius-capsule)] flex flex-col items-center gap-1.5 py-3 transition-[background-color,box-shadow] duration-200 ${
-                  isSelected ? 'material-selected' : 'pressable'
-                }`}
+                className="fuel-day pressable"
+                data-today={dayIsToday || undefined}
               >
-                {dayIsToday && !isSelected && (
-                  <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
-                )}
-                <span className={`t-label-sm ${isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
-                  {format(day, 'EEEEE')}
-                </span>
-                <span className={`t-data ${isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
-                  {format(day, 'd')}
-                </span>
-                <span
-                  className={`w-1 h-1 rounded-full ${hasLogs ? '' : 'opacity-0'}`}
-                  style={{ backgroundColor: isSelected ? 'var(--color-text)' : 'var(--color-text-dim)' }}
-                />
+                <span className="fuel-day-letter">{format(day, 'EEEEE')}</span>
+                <span className="fuel-day-number">{format(day, 'd')}</span>
+                <span className="fuel-day-dot" data-on={hasLogs || undefined} />
               </button>
             );
           })}
@@ -630,8 +622,8 @@ export function Nutrition() {
       </section>
 
       {/* ── Unified food inbox + meal groups ── */}
-      <section className="mt-7">
-        <div className="flex items-center justify-between gap-3 pl-1 mb-2">
+      <section className="mt-9">
+        <div className="flex items-center justify-between gap-3 mb-1">
           <div className="flex items-baseline gap-2">
             <span className="t-label">Meals</span>
             {!loading && selectedDayLogs.length > 0 && (
@@ -640,10 +632,19 @@ export function Nutrition() {
             </span>
             )}
           </div>
-          <Button variant="ghost" size="sm" className="-mr-2" onClick={() => setShowGroupSheet(true)}>
-            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
-            Add meal
-          </Button>
+          <div className="fuel-list-actions">
+            {editingMeals ? (
+              <button type="button" className="is-done" onClick={() => setEditingMeals(false)}>Done</button>
+            ) : <>
+              <button type="button" onClick={() => setShowGroupSheet(true)}>
+                <Layers3 className="w-4 h-4" strokeWidth={1.5} aria-hidden />
+                Add meal
+              </button>
+              {!loading && (selectedDayLogs.length > 0 || selectedDayGroups.length > 0) && (
+                <button type="button" onClick={() => setEditingMeals(true)}>Edit</button>
+              )}
+            </>}
+          </div>
         </div>
 
         {loading ? (
@@ -683,6 +684,7 @@ export function Nutrition() {
             logs={selectedDayLogs}
             groups={selectedDayGroups}
             deletedId={deletedId}
+            editing={editingMeals}
             onEdit={(entry) => {
               const fullEntry = selectedDayLogs.find((candidate) => candidate.id === entry.id);
               if (!fullEntry) return;
@@ -757,7 +759,7 @@ export function Nutrition() {
                   }}
                   className={`relative mx-auto w-11 h-11 rounded-[var(--radius-capsule)] t-data transition-[background-color,box-shadow] duration-200 ${
                     isSelected
-                      ? 'material-selected text-[var(--color-text)] font-medium'
+                      ? 'bg-[var(--color-text)] text-[var(--color-base)] font-semibold'
                       : inMonth
                         ? 'text-[var(--color-text-dim)] active:bg-[var(--material-inset)]'
                         : 'text-[var(--color-muted)] opacity-50'

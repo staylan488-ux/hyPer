@@ -1,0 +1,63 @@
+/* Fuel ledger: meals are sections on the stage, foods are two-line rows.
+   Nothing is boxed. Row actions appear only in Edit mode, in one trailing
+   column of 44pt targets whose glyphs sit on the page gutter. */
+.fuel-ledger { display: grid; gap: 28px; }
+.fuel-meal { transition: background-color .2s ease; }
+.fuel-meal[data-drop-active] { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+.fuel-meal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--platter-divider, var(--color-border-soft));
+}
+.fuel-meal-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -.005em; color: var(--color-text); }
+.fuel-meal-count { font-size: 12px; font-weight: 400; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.fuel-meal-kcal { flex-shrink: 0; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fuel-meal-empty { display: block; width: 100%; min-height: 44px; padding: 12px 0; text-align: left; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
+
+.fuel-entry { position: relative; }
+.fuel-entry + .fuel-entry { border-top: 1px solid var(--platter-divider, var(--color-border-soft)); }
+.fuel-entry[data-dragging] { opacity: .45; }
+.fuel-entry-row { display: flex; align-items: center; gap: 4px; }
+.fuel-entry-main { display: grid; flex: 1; min-width: 0; gap: 3px; padding: 11px 0; text-align: left; -webkit-tap-highlight-color: transparent; }
+.fuel-entry-main:active { opacity: .6; }
+.fuel-entry-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.fuel-entry-name { min-width: 0; font-size: 15px; font-weight: 400; line-height: 1.35; color: var(--color-text); overflow-wrap: break-word; }
+.fuel-entry-kcal { flex-shrink: 0; font-size: 15px; line-height: 1.35; color: var(--color-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fuel-entry-kcal > span { font-size: 12px; color: var(--color-text-dim); }
+.fuel-entry-caption { font-size: 12px; line-height: 1.4; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+
+.fuel-tools { display: flex; flex-shrink: 0; align-items: center; margin-right: -14px; }
+.fuel-tool { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-muted); }
+.fuel-tool:disabled { opacity: .3; }
+.fuel-tool:not(:disabled):active { color: var(--color-text); }
+
+/* A saved meal's ingredients: a quiet disclosure under its caption. */
+.fuel-entry-composition { margin-top: -6px; padding-bottom: 6px; }
+.fuel-entry-composition > summary { display: flex; align-items: center; gap: 4px; min-height: 36px; list-style: none; cursor: pointer; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
+.fuel-entry-composition > summary::-webkit-details-marker { display: none; }
+.fuel-entry-composition > ul { padding-left: 12px; border-left: 1px solid var(--platter-divider, var(--color-border-soft)); margin-bottom: 6px; }
+.fuel-entry-composition li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.fuel-ingredient-name { font-size: 14px; line-height: 1.4; color: var(--color-text); overflow-wrap: break-word; }
+
+@media (prefers-reduced-motion: reduce) { .fuel-meal { transition: none; } }
+
+/* List tools beside the Meals label: unboxed text actions, last one on the gutter. */
+.fuel-list-actions { display: flex; align-items: center; margin-right: -10px; }
+.fuel-list-actions > button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 13px; line-height: 1.4; color: var(--color-text); }
+.fuel-list-actions > button svg { color: var(--color-text-dim); }
+.fuel-list-actions > button.is-done { font-weight: 600; }
+
+/* Week strip: the selected day is a flat ink disc; today, when not selected,
+   is set in the accent. No capsule, no lift. */
+.fuel-day { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 44px; padding: 6px 0 4px; }
+.fuel-day-letter { font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: .08em; color: var(--color-muted); }
+.fuel-day-number { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; font-size: 15px; line-height: 1; color: var(--color-text); font-variant-numeric: tabular-nums; transition: background-color .2s ease, color .2s ease; }
+.fuel-day[data-today] .fuel-day-number { color: var(--color-accent); font-weight: 600; }
+.fuel-day[aria-pressed="true"] .fuel-day-number { background: var(--color-text); color: var(--color-base); font-weight: 600; }
+.fuel-day-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--color-text-dim); opacity: 0; }
+.fuel-day-dot[data-on] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .fuel-day-number { transition: none; } }
