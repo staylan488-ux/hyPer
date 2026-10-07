@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({
@@ -129,6 +129,24 @@ describe('Studio workout focus', () => {
   it('ignores removed movements while preserving real unfinished sets', () => {
     expect(nextWorkoutSet([row('a', 2)], ['a'])?.id).toBe('a-2');
     expect(nextWorkoutSet([], ['a'])).toBeUndefined();
+  });
+});
+
+describe('Train next-set action', () => {
+  it('offers the next set with its position in the movement, in display order', () => {
+    const rows = [row('a', 1, true), row('a', 2, true), row('b', 2), row('b', 1), row('b', 3)];
+    expect(nextSetAction(rows, ['a', 'b'], undefined, undefined)).toEqual({ set: rows[3], position: 1, total: 3 });
+  });
+  it('steps aside while a set entry is open, so the save key stays the one primary', () => {
+    const rows = [row('a', 1), row('a', 2)];
+    expect(nextSetAction(rows, ['a'], undefined, rows[1])).toBeUndefined();
+  });
+  it('follows superset rounds: B1 after A1, not a blocked A2', () => {
+    const rows = [row('a', 1, true), row('a', 2), row('b', 1), row('b', 2)];
+    expect(nextSetAction(rows, ['a', 'b'], pairings, undefined)).toMatchObject({ set: { id: 'b-1' }, position: 1 });
+  });
+  it('offers nothing once every set is logged', () => {
+    expect(nextSetAction([row('a', 1, true)], ['a'], undefined, undefined)).toBeUndefined();
   });
 });
 

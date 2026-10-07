@@ -2,7 +2,9 @@ import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } 
 import {
   ArrowDownUp,
   ArrowLeftRight,
+  ArrowRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -36,7 +38,7 @@ import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { SessionToken } from '@/components/workout/SessionToken';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { movementBlocks } from '@/components/workout/movementOrder';
-import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, initialWorkoutExpansion, nextSetAction, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
 import '@/components/workout/studio-workout.css';
 import { ScheduleEditor } from '@/components/workout/ScheduleEditor';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -220,6 +222,10 @@ export function Workout() {
   const planScheduleRequestRef = useRef(0);
   const previousTargetsFailedRef = useRef(false);
   const previousTargetsContextRef = useRef<string | null>(null);
+  // The workout whose Up next movement has opened on arrival (once per visit).
+  const autoOpenedWorkoutRef = useRef<string | null>(null);
+  // The set the bottom "Log set" action opened, to bring into view once shown.
+  const revealEntryForSetRef = useRef<string | null>(null);
 
   const [setupStartDate, setSetupStartDate] = useState(defaultStartDate());
   const [setupStartChoice, setSetupStartChoice] = useState<'today' | 'tomorrow' | 'pick'>('today');
@@ -364,6 +370,9 @@ export function Workout() {
     setFlexibleTargetSetDrafts({});
     setActiveExerciseId(null);
     dispatchExpansion({ type: 'reset' });
+    // A reset closes every movement, so the arrival may open one again. (In
+    // development StrictMode replays this effect after the arrival opened one.)
+    autoOpenedWorkoutRef.current = null;
     setSetAdjustmentExerciseId(null);
     setSubstitutionSource(null);
     setSwapError(null);
@@ -872,6 +881,33 @@ export function Workout() {
     ? activeExerciseId
     : nextMovementId ?? focusOrder[0] ?? null;
   const editorSet = expandedWorkoutSet(orderedSets, expansion);
+  // Between sets the next one is the screen's primary action; while a set
+  // entry is open its save key is.
+  const nextSetCta = nextSetAction(orderedSets, focusOrder, supersetFlowMap, editorSet);
+  const openNextSet = () => {
+    if (!nextSetCta) return;
+    const { set } = nextSetCta;
+    tapHaptic();
+    revealEntryForSetRef.current = set.id;
+    setActiveExerciseId(set.exercise_id);
+    dispatchExpansion({ type: 'select', exerciseId: set.exercise_id, setId: set.id });
+  };
+  const editorSetId = editorSet?.id ?? null;
+  useEffect(() => {
+    if (!editorSetId || revealEntryForSetRef.current !== editorSetId) return;
+    let frame = 0;
+    // The movement may still be growing open; settle on the entry once it has.
+    const reveal = () => {
+      const form = document.querySelector<HTMLFormElement>(`.studio-workout-page form[data-set-id="${CSS.escape(editorSetId)}"]`);
+      if (!form) return;
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      form.querySelector('[data-workout-set-entry]')?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+      form.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus({ preventScroll: true });
+    };
+    frame = requestAnimationFrame(reveal);
+    const settled = window.setTimeout(() => { revealEntryForSetRef.current = null; reveal(); }, 440);
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(settled); };
+  }, [editorSetId]);
   const selectMovement = (exerciseId: string) => {
     tapHaptic();
     const focused = document.activeElement;
@@ -881,7 +917,6 @@ export function Workout() {
   };
   // The live workout opens on its next set: the Up next movement expands once
   // per visit, only when nothing is open. A later collapse is respected.
-  const autoOpenedWorkoutRef = useRef<string | null>(null);
   useEffect(() => {
     if (initializing || !currentWorkoutId || !nextMovementId || reorderingMovements) return;
     if (autoOpenedWorkoutRef.current === currentWorkoutId) return;
@@ -1653,13 +1688,19 @@ export function Workout() {
     setReorderingMovements(true);
   };
   const allSetsLogged = totalSets > 0 && completedSets === totalSets;
+  const showNextSetCta = Boolean(nextSetCta) && !isReorderingMovements;
+  const nextSetCtaName = nextSetCta ? workoutExerciseMap.get(nextSetCta.set.exercise_id)?.name
+    ?? activeFlexibleItems.find((item) => item.exercise_id === nextSetCta.set.exercise_id)?.exercise_name ?? 'next movement' : '';
 
   return (
-    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
+    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}${showNextSetCta ? ' has-next-set' : ''}`}>
       <header className="studio-session-header">
+        {/* The live session is a full-screen cover, not a page pushed from
+            Today: it minimises (the session keeps running) rather than going
+            back. The clock sits on the screen's centre line. */}
         <div className="studio-session-top">
-          <button type="button" className="page-back pressable" aria-label="Back to Today" onClick={() => navigate('/')}><ChevronLeft size={22} strokeWidth={1.75} aria-hidden /><span>Today</span></button>
-          <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
+          <button type="button" className="studio-session-minimise pressable" aria-label="Minimise workout" onClick={() => navigate('/')}><ChevronDown size={24} strokeWidth={1.75} aria-hidden /></button>
+          <span className="studio-session-clock">{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
           <button type="button" className="studio-session-finish" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</button>
         </div>
         {finishError && <div className="flex items-center justify-between gap-3">
@@ -1670,8 +1711,10 @@ export function Workout() {
         </div>}
         <div className="studio-session-summary">
           <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
-          <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} size={64} thickness={5} reveal="session-sets">
-            <span className="studio-session-ring-count">{completedSets}<span>/{totalSets}</span></span>
+          {/* The same dial as Today's session ring: default size and stroke. */}
+          <MetalRing progress={progress / 100} label={`${completedSets} of ${totalSets} sets complete`} reveal="session-sets">
+            <span className="number-medium text-[20px]! text-[var(--color-text)]">{completedSets}<span className="text-[var(--color-text-dim)]">/{totalSets}</span></span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">sets</span>
           </MetalRing>
         </div>
         <div className="studio-session-actions">
@@ -1744,6 +1787,7 @@ export function Workout() {
                   exerciseName={exerciseName}
                   previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                   completedCount={completedInExercise}
+                  nextSetPosition={sets.findIndex((set) => !set.completed) + 1}
                   totalCount={sets.length || flexibleTargetSet}
                   allComplete={allComplete}
                   isActive={isActive}
@@ -1918,6 +1962,7 @@ export function Workout() {
                 exerciseName={exerciseName}
                 previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                 completedCount={completedInExercise}
+                nextSetPosition={sets.findIndex((set) => !set.completed) + 1}
                 totalCount={sets.length}
                 allComplete={allComplete}
                 isActive={isActive}
@@ -1936,10 +1981,10 @@ export function Workout() {
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
                 <div className="studio-movement-prescription">
-                  {/* The rows are today's sets; the program count appears only when it differs. */}
+                  {/* The rows are today's sets; the program's count appears only when it differs. */}
                   <p className="t-caption">
                     {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}${setRange.targetSets !== sets.length ? ` (program ${setRange.targetSets})` : ''}`
+                      ? `Target ${prescription?.target_reps_min ?? '—'}–${prescription?.target_reps_max ?? '—'} reps · ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}${setRange.targetSets !== sets.length ? ` (${setRange.targetSets} in your program)` : ''}`
                       : `${sets.length} ${sets.length === 1 ? 'set' : 'sets'}`}
                   </p>
                   {hasRemovableUncompletedSet && (
@@ -2049,6 +2094,19 @@ export function Workout() {
         }}
       />
 
+      {/* Between sets, the next set is the one primary action: it opens that
+          set's entry. It docks above the home indicator, and above the rest bar
+          while rest runs. */}
+      {showNextSetCta && nextSetCta && (
+        <div className="studio-next-set-dock">
+          <Button size="lg" className="studio-next-set-cta w-full justify-between! px-6" onClick={openNextSet}
+            aria-label={`Log set ${nextSetCta.position} of ${nextSetCtaName}`}>
+            <span className="studio-next-set-label">Log set {nextSetCta.position} · {nextSetCtaName}</span>
+            <ArrowRight className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+          </Button>
+        </div>
+      )}
+
       {/* Rest is independent of movement expansion and set entry. */}
       {showRestTimer && (
         <RestTimerPill
@@ -2132,6 +2190,7 @@ function ExerciseCard({
   exerciseName,
   previousTargetText,
   completedCount,
+  nextSetPosition,
   totalCount,
   allComplete,
   isActive,
@@ -2154,6 +2213,8 @@ function ExerciseCard({
   exerciseName: string;
   previousTargetText: string | null;
   completedCount: number;
+  /** 1-based position of the movement's first unlogged set; 0 when none. */
+  nextSetPosition: number;
   totalCount: number;
   allComplete: boolean;
   isActive: boolean;
@@ -2177,8 +2238,10 @@ function ExerciseCard({
   const contentId = useId();
   const summaryId = useId();
   const upNext = isNext && !allComplete;
+  // Open on the live movement, the eyebrow names the set being logged now.
+  const loggingNow = upNext && isActive && !reordering && nextSetPosition > 0;
   const superset = supersetRole ? ` · Superset ${supersetRole}` : '';
-  const eyebrow = `${upNext ? 'Up next' : `Movement ${String(index + 1).padStart(2, '0')}`}${superset}`;
+  const eyebrow = `${loggingNow ? `Now · Set ${nextSetPosition} of ${totalCount}` : upNext ? 'Up next' : `Movement ${String(index + 1).padStart(2, '0')}`}${superset}`;
   const repTarget = targetRepsMin && targetRepsMax
     ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
     : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
@@ -2219,7 +2282,8 @@ function ExerciseCard({
                 eyebrow line. The eyebrow names the movement the same way open or closed. */}
             <span className="studio-movement-eyebrow">
               <span className={`studio-movement-kicker${upNext ? ' is-next' : ''}`}>{eyebrow}</span>
-              <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />
+              {/* "Set 1 of 3" already carries the count. */}
+              {!loggingNow && <MovementProgress completedCount={completedCount} totalCount={totalCount} allComplete={allComplete} />}
             </span>
             <span className="studio-movement-name">{exerciseName}</span>
           </> : <>
@@ -2263,7 +2327,9 @@ function ExerciseCard({
       <div ref={revealRef} className="studio-movement-reveal" data-open={isActive ? 'true' : 'false'} inert={!isActive} aria-hidden={!isActive || undefined}>
       <div className="studio-movement-reveal-inner">
       <div id={contentId} className="studio-movement-content">
-        {previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
+        {/* Last workout's numbers live with each set's entry ("Use last
+            workout · 60 × 9"), beside whatever is planned, so the two read as
+            a choice rather than an unexplained jump. */}
         {children}
         <button type="button" className="studio-collapse-movement" onClick={() => {
           onToggle();
@@ -2275,7 +2341,7 @@ function ExerciseCard({
             const top = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
             if (top < 0) scroller.scrollTop += top - 12;
           });
-        }}>All movements <ChevronUp size={14} aria-hidden /></button>
+        }} aria-label={`Close ${exerciseName}`}>Close movement <ChevronUp size={14} aria-hidden /></button>
       </div>
       </div>
       </div>

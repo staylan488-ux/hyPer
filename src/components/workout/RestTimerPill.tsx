@@ -115,7 +115,9 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
   useLayoutEffect(() => {
     if (!bar) return;
     const root = document.documentElement;
-    const measure = () => root.style.setProperty('--workout-rest-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    // Layout height, not the box mid-way through the bar's rising scale, so
+    // whatever docks above the bar clears its settled size.
+    const measure = () => root.style.setProperty('--workout-rest-height', `${Math.ceil(bar.offsetHeight || bar.getBoundingClientRect().height)}px`);
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(bar);

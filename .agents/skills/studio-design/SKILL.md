@@ -51,8 +51,18 @@ tokens; an already approved direction does not need another design exploration.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
   web fallback elsewhere. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
-  the web keeps all timer, save and preference behavior. Live workouts open with the Up next movement expanded; tapping a movement
+  the web keeps all timer, save and preference behavior. The live workout is a
+  full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it
+  to Today, the elapsed clock sits on the screen's centre line, Finish is a
+  regular-weight text action, and its session ring matches Today's. Live
+  workouts open with the Up next movement expanded; tapping a movement
   expands its details and inline set entry in place, with an explicit collapse.
+  Between sets (no entry open) a solid "Log set N · Movement" primary docks
+  above the home indicator and above the rest bar, and opens that entry. The
+  44pt save key, flush with the fields, is the screen's one metal accent
+  (pearl in Black, graphite in Ivory, smooth two-stop face, soft upper-arc
+  chamfer only). Suggested/planned numbers are ghost ink (at least 4.5:1) with
+  their source named; entered and logged numbers are full ink.
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
   continues while browsing or editing. Failed saves retain numbers and Retry.

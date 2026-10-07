@@ -39,6 +39,7 @@ vi.mock('zustand', async () => {
 });
 
 import { Workout } from '@/pages/Workout';
+import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -100,5 +101,49 @@ describe('Train on a warm return', () => {
 
     expect(html).not.toContain('Start Plan');
     expect(html).toContain('Loading saved plan setup');
+  });
+});
+
+describe('Train live session', () => {
+  const row = { id: 'ex-row', name: 'Barbell Row', muscle_group: 'back' };
+  const set = (n: number, completed: boolean) => ({
+    id: `row-${n}`, workout_id: 'w-1', exercise_id: row.id, exercise: row, set_number: n,
+    weight: completed ? 60 : null, reps: completed ? 9 : null, rpe: null, completed,
+    completed_at: completed ? '2026-10-07T08:05:00.000Z' : null,
+  });
+
+  it('minimises instead of going back, and docks the next set as the primary action', () => {
+    useAppStore.setState({
+      currentWorkout: {
+        id: 'w-1', user_id: USER_ID, split_day_id: 'day-1', date: '2026-10-07', notes: null, completed: false,
+        created_at: '2026-10-07T08:00:00.000Z', sets: [set(1, true), set(2, false), set(3, false)],
+      } as never,
+    });
+
+    const html = renderFirstFrame();
+
+    expect(html).toContain('aria-label="Minimise workout"');
+    expect(html).not.toContain('Back to Today');
+    // No set entry is open in the first frame, so the next set is offered.
+    expect(html).toContain('aria-label="Log set 2 of Barbell Row"');
+    expect(html).toMatch(/Log set (<!-- -->)?2(<!-- -->)? · (<!-- -->)?Barbell Row/);
+    expect(html).toContain('>Finish<');
+  });
+
+  it('shows planned numbers as ghost values with their source, last workout as the alternative', () => {
+    const planned = { ...set(1, false), weight: 80, reps: 10, rpe: 7 };
+    const html = renderToString(createElement(WorkoutSetRow, {
+      set: planned as never, setNumber: 1, editing: true, exerciseName: 'Barbell Row',
+      previousTarget: { weight: 60, reps: 9, rpe: null },
+      autofillValues: { weight: '60', reps: '9', rpe: '', source: 'previous_workout' as const },
+    }));
+
+    // Inputs stay empty: the plan is a placeholder until it is typed over or saved.
+    expect(html).toMatch(/<input[^>]*aria-label="Weight"[^>]*data-suggested="true"[^>]*placeholder="80"/);
+    expect(html).not.toMatch(/<input[^>]*value="80"/);
+    expect(html).toContain('<strong>Planned</strong>');
+    expect(html).toContain('aria-label="Save set 1 of Barbell Row, 80 pounds, 10 reps, RPE 7"');
+    expect(html).toMatch(/Use last workout.*60 × 9/);
+    expect(html).toContain('Hide entry');
   });
 });

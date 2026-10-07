@@ -83,6 +83,25 @@ export function nextWorkoutSet(
   })[0];
 }
 
+/**
+ * The bottom primary action between sets: the session's next set and its
+ * position within its movement. Nothing while a set entry is already open,
+ * since the open entry's save key is then the primary action.
+ */
+export function nextSetAction(
+  sets: WorkoutSet[],
+  exerciseOrder: string[],
+  pairings: ReadonlyMap<string, { role: 'A' | 'B'; partnerExerciseId: string }> | undefined,
+  openSet: WorkoutSet | undefined,
+): { set: WorkoutSet; position: number; total: number } | undefined {
+  if (openSet) return undefined;
+  const set = nextWorkoutSet(sets, exerciseOrder, undefined, undefined, pairings);
+  if (!set) return undefined;
+  const movementSets = sets.filter((candidate) => candidate.exercise_id === set.exercise_id)
+    .sort((a, b) => a.set_number - b.set_number);
+  return { set, position: movementSets.findIndex((candidate) => candidate.id === set.id) + 1, total: movementSets.length };
+}
+
 /** Dashboard resume cue uses the same round-aware selection as the training screen. */
 export function getWorkoutResumeSet(
   workout: Pick<Workout, 'id' | 'split_day_id' | 'sets'>,
