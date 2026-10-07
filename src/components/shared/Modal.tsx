@@ -13,6 +13,12 @@ interface ModalProps {
   children: ReactNode;
   contentClassName?: string;
   initialFocusRef?: RefObject<HTMLInputElement | null>;
+  /** Show the drag grabber. Turn off for a single-detent confirmation sheet,
+   *  where a grabber would suggest a resize that does not exist. */
+  showGrabber?: boolean;
+  /** Show the close button. Turn off only when the sheet's own actions include
+   *  a cancel (Escape, the scrim and a pull-down still dismiss it). */
+  showClose?: boolean;
 }
 
 // The sheet header's trailing slot, beside the close button. Undefined outside a sheet.
@@ -29,7 +35,16 @@ export function SheetHeaderAction({ children }: { children: ReactNode }) {
 }
 
 /** An anchored sheet with a shared keyboard and focus boundary. */
-export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  contentClassName = '',
+  initialFocusRef,
+  showGrabber = true,
+  showClose = true,
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -128,29 +143,33 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
             onDragEnd={handleDragEnd}
           >
             {/* grab rule — the sheet's drag handle on phones */}
+            {showGrabber && (
+              <div
+                className={`flex justify-center pt-3 pb-1 sm:hidden ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+                aria-hidden
+                onPointerDown={sheetDrag ? startSheetDrag : undefined}
+              >
+                <span className="material-sheet-handle" />
+              </div>
+            )}
             <div
-              className={`flex justify-center pt-3 pb-1 sm:hidden ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
-              aria-hidden
-              onPointerDown={sheetDrag ? startSheetDrag : undefined}
-            >
-              <span className="material-sheet-handle" />
-            </div>
-            <div
-              className={`material-sheet-header flex items-center justify-between pl-6 pr-6 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+              className={`material-sheet-header flex items-center justify-between pl-6 pr-6 ${showGrabber ? 'pt-3' : 'pt-7'} sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
               {title ? <h2 id={titleId} className="sheet-title">{title}</h2> : <span />}
               <span className="flex items-center gap-2">
               <span ref={setHeaderSlot} className="flex items-center empty:hidden" />
-              <motion.button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="material-sheet-close relative p-3 after:absolute after:-inset-1 after:content-[''] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                whileTap={{ scale: 0.9 }}
-              >
-                <X className="w-4 h-4" strokeWidth={1.5} />
-              </motion.button>
+              {showClose && (
+                <motion.button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="material-sheet-close relative p-3 after:absolute after:-inset-1 after:content-[''] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <X className="w-4 h-4" strokeWidth={1.5} />
+                </motion.button>
+              )}
               </span>
             </div>
             <motion.div

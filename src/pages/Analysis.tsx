@@ -109,10 +109,14 @@ export function Analysis() {
     const total = weeklyVolume.length;
     const inRange = weeklyVolume.filter((mv) => mv.status === 'mev_mav' || mv.status === 'mav').length;
     const under = weeklyVolume.filter((mv) => mv.status === 'below_mev').length;
-    const high = weeklyVolume.filter((mv) => mv.status === 'approaching_mrv' || mv.status === 'above_mrv').length;
+    // Named exactly as each muscle's own status label: near and over are
+    // counted apart.
+    const near = weeklyVolume.filter((mv) => mv.status === 'approaching_mrv').length;
+    const over = weeklyVolume.filter((mv) => mv.status === 'above_mrv').length;
     const detail = [
       under > 0 ? `${under} under` : null,
-      high > 0 ? `${high} near or over ceiling` : null,
+      near > 0 ? `${near} near ceiling` : null,
+      over > 0 ? `${over} over ceiling` : null,
     ].filter(Boolean).join(' · ');
     return { total, inRange, detail };
   }, [weeklyVolume]);

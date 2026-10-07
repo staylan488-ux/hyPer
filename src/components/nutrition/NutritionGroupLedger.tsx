@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Plus, Trash2, X } from 'lucide-react';
 import './nutrition-ledger.css';
 import { Modal } from '@/components/shared';
 import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
@@ -41,6 +41,8 @@ interface NutritionGroupLedgerProps {
   /** Present only on entries eligible for it; absent hides the control. */
   onMoveToPreviousDay?: (id: string) => void;
   onReorderGroup: (groupId: string, direction: -1 | 1) => void;
+  /** Log food straight into a meal from its empty row. */
+  onAddToGroup?: (groupId: string) => void;
   onDeleteGroup: (group: NutritionGroup) => void;
 }
 
@@ -80,6 +82,7 @@ export function NutritionGroupLedger({
   onMoveToPreviousDay,
   onReorderGroup,
   onDeleteGroup,
+  onAddToGroup,
 }: NutritionGroupLedgerProps) {
   const [movingEntry, setMovingEntry] = useState<NutritionLedgerEntry | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -103,6 +106,7 @@ export function NutritionGroupLedger({
 
   const renderEntry = (log: NutritionLedgerEntry, index: number) => {
     const provenance = sourceLabel(log.source);
+    const showProvenance = provenance !== 'Manual';
     const composition = decodeMealComposition(log.food?.description);
     const name = log.food?.name || 'Unknown Food';
     const calories = Math.round((log.food?.calories || 0) * log.servings);
@@ -143,7 +147,8 @@ export function NutritionGroupLedger({
               {!editing && <span className="fuel-entry-kcal">{calories}<span> kcal</span></span>}
             </span>
             <span className="fuel-entry-caption">
-              {time} · {servingLabel(log)} · <span className="whitespace-nowrap">{protein}g P</span> · <span className="whitespace-nowrap">{provenance}</span>
+              {time} · {servingLabel(log)} · <span className="whitespace-nowrap">{protein}g P</span>
+              {showProvenance && <> · <span className="whitespace-nowrap">{provenance}</span></>}
             </span>
           </button>
           {editing && (
@@ -257,6 +262,14 @@ export function NutritionGroupLedger({
         </div>
         {entries.length > 0 ? (
           <ul><AnimatePresence>{sortedLogs(entries).map(renderEntry)}</AnimatePresence></ul>
+        ) : group && onAddToGroup && !editing && !draggedId ? (
+          <div className="fuel-meal-empty fuel-meal-empty-add">
+            <span>Nothing logged.</span>
+            <button type="button" className="text-action" onClick={() => onAddToGroup(group.id)}>
+              <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+              Add to {title}
+            </button>
+          </div>
         ) : (
           <button
             type="button"

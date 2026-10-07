@@ -67,8 +67,8 @@ export function SegmentedControl<T extends string>({
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative rounded-[var(--radius-capsule)] font-medium text-[14px] tracking-[-0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${item} ${
-              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-text)] opacity-30' : 'text-[var(--color-muted)]'
+            className={`relative rounded-[var(--radius-capsule)] font-medium text-[15px] tracking-[-0.01em] [font-family:var(--font-sans)] transition-colors duration-200 ${item} ${
+              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-text)] opacity-50' : 'text-[var(--color-muted)]'
             }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">{option.label}</span>

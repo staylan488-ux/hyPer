@@ -54,7 +54,7 @@ export function BottomNav() {
               to={to}
               aria-label={label}
               aria-current={isActive ? 'page' : undefined}
-              className="relative flex flex-col items-center justify-center h-[60px]"
+              className="relative flex flex-col items-center justify-center h-[62px]"
               onClick={() => {
                 if (!isActive) tapHaptic();
               }}
@@ -62,7 +62,7 @@ export function BottomNav() {
               {isActive && (
                 <motion.span
                   layoutId="material-nav-selection"
-                  className="material-nav-selection pointer-events-none absolute inset-x-0.5 inset-y-1 rounded-[var(--radius-capsule)]"
+                  className="material-nav-selection pointer-events-none absolute inset-x-0 inset-y-[5px] rounded-[var(--radius-capsule)]"
                   transition={springs.tactile}
                 />
               )}

@@ -31,7 +31,8 @@ interface VolumeMapProps {
   volume: MuscleVolume[];
   /** Full: front and back with readout and legend. Compact: one still view. */
   variant?: 'full' | 'compact';
-  /** Compact: the muscle to emphasise. */
+  /** Compact: the muscle in question; the figure turns to the side that
+   *  shows it, toned exactly like the full map. */
   focus?: MuscleGroup | null;
   onSelectMuscle?: (muscle: MuscleGroup | null) => void;
   className?: string;
@@ -51,7 +52,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
     const side = focus ? primarySide(focus) : 'front';
     return (
       <div className={className} aria-hidden>
-        <Figure side={side} shades={shades} focus={focus} intro={intro} />
+        <Figure side={side} shades={shades} intro={intro} />
       </div>
     );
   }
@@ -130,7 +131,6 @@ const SEAM = 0.7;
 function Figure({
   side,
   shades,
-  focus = null,
   selected = null,
   onPick,
   intro,
@@ -138,27 +138,16 @@ function Figure({
 }: {
   side: ViewSide;
   shades: Map<MuscleGroup, MuscleShade>;
-  focus?: MuscleGroup | null;
+  /** The tapped muscle: the others recede. */
   selected?: MuscleGroup | null;
   onPick?: (muscle: MuscleGroup) => void;
   intro: boolean;
   className?: string;
 }) {
   const regions = MAP_REGIONS.filter((region) => region.side === side);
-  // A focused muscle keeps the tone of its own status, so the figure never
-  // contradicts the legend (an under-stimulated muscle is the lightest step,
-  // not the heaviest); an ink outline marks it out from the quiet body.
-  const fillFor = (muscle: MuscleGroup) => {
-    const shade = shades.get(muscle);
-    if (focus && focus !== muscle) return inkFill(BODY_INK + 0.04);
-    return muscleFill(shade);
-  };
-  const focusShade = focus ? shades.get(focus) : undefined;
-  const focusOutline = focus && !focusShade?.hot
-    ? regions.filter((region) => region.muscle === focus).map((region, index) => (
-      <path key={`f${index}`} d={region.d} fill="none" stroke="color-mix(in srgb, var(--color-text) 72%, var(--color-base))" strokeWidth={1.2} strokeLinejoin="round" />
-    ))
-    : null;
+  // Every muscle keeps the tone of its own status (lacquer only past MRV), so
+  // the figure never contradicts the legend; no outlines.
+  const fillFor = (muscle: MuscleGroup) => muscleFill(shades.get(muscle));
   const bodyFill = inkFill(BODY_INK);
   const mirrored = (mirror: boolean, content: ReactNode) => (
     <g transform={mirror ? 'scale(-1 1)' : undefined}>{content}</g>
@@ -191,8 +180,6 @@ function Figure({
       {mirrored(true, body)}
       {mirrored(false, muscles)}
       {mirrored(true, muscles)}
-      {focusOutline && mirrored(false, focusOutline)}
-      {focusOutline && mirrored(true, focusOutline)}
     </svg>
   );
 }

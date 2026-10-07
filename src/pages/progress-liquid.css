@@ -17,8 +17,12 @@
 }
 .ledger-day[aria-pressed='true'] .ledger-day-number { color: var(--color-base); }
 .ledger-day:not([aria-pressed='true']):active .ledger-day-number { opacity: .55; }
-.ledger-mark-lift { width: 4px; height: 4px; border-radius: 50%; background: var(--color-text); }
-.ledger-mark-activity { width: 4px; height: 4px; border-radius: 50%; background: var(--color-muted); }
+/* Day marks differ by shape, not tone: a lift is a filled 5px dot, an
+   activity a 5px ring, in the calendar and its legend alike. */
+.ledger-mark-lift { width: 5px; height: 5px; border-radius: 50%; background: var(--color-text); }
+.ledger-mark-activity { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px var(--color-text); }
+/* Days still to come: tertiary ink, lighter than days on record. */
+.ledger-day-future { color: var(--color-text); opacity: .55; }
 
 /* Month paging: plain chevrons with a 44px target. */
 .ledger-nav-key {

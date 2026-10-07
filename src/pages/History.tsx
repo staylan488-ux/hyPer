@@ -59,6 +59,7 @@ import {
   isSameMonth,
   isToday,
   parseISO,
+  startOfDay,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -314,7 +315,7 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           rows={3}
           maxLength={280}
           placeholder="Optional"
-          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
+          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-placeholder)] focus:outline-none transition-colors resize-none"
         />
       </div>
 
@@ -876,6 +877,7 @@ export function History() {
 
   const selectedDateKey = getDateKey(selectedDate);
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth), [selectedMonth]);
+  const todayStart = startOfDay(new Date());
   // sandbox always offers sync (fixture transport); production needs a connection
   const syncAvailable = isPreviewActive() || !!whoopConnection;
 
@@ -1392,6 +1394,8 @@ export function History() {
               const isSelected = isSameDay(day, selectedDate);
               const inMonth = isSameMonth(day, selectedMonth);
               const isTodayDate = isToday(day);
+              // Days still to come read lighter than days on record.
+              const isFutureDate = day > todayStart;
               const workoutTitles = dayWorkouts.map((workout) => resolveWorkoutTitle({
                 splitDayName: workout.split_day?.day_name,
                 dayLabel: workout.day_label || null,
@@ -1424,7 +1428,7 @@ export function History() {
                   )}
                   <span
                     className={`ledger-day-number relative -mt-1.5 text-[14px] leading-none tabular-nums ${
-                      isTodayDate ? 'text-[var(--color-accent)] font-semibold' : 'text-[var(--color-text)]'
+                      isTodayDate ? 'text-[var(--color-accent)] font-semibold' : isFutureDate && !isSelected ? 'ledger-day-future' : 'text-[var(--color-text)]'
                     } ${isSelected ? 'font-semibold' : ''}`}
                   >
                     {format(day, 'd')}
@@ -1460,13 +1464,12 @@ export function History() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-          <div className="flex items-end justify-between gap-4 mt-9 mb-3">
-            <div className="min-w-0">
-              {/* One caps eyebrow; the day's count reads as plain text under it. */}
-              <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-              <p className="t-caption mt-1">{selectedDaySummary}</p>
-            </div>
-            <div className="flex items-center shrink-0 -mr-2.5 -mb-2.5">
+          {/* One caps eyebrow; the day's count reads as plain text under it,
+              sharing its line with the day's actions. */}
+          <span className="t-label block mt-9">{format(selectedDate, 'EEEE, MMM d')}</span>
+          <div className="flex items-center justify-between gap-3 -mt-1.5 mb-1.5">
+            <p className="t-caption min-w-0">{selectedDaySummary}</p>
+            <div className="flex items-center shrink-0 -mr-2.5">
               {syncAvailable && (
                 <button
                   type="button"
@@ -1474,7 +1477,7 @@ export function History() {
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
-                  {syncingWhoop ? 'Syncing…' : 'Sync'}
+                  {syncingWhoop ? 'Syncing…' : 'Sync WHOOP'}
                 </button>
               )}
               <button
@@ -1558,7 +1561,12 @@ export function History() {
                     <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="pressable w-full text-left flex items-center justify-between gap-3 px-5 py-4 min-h-[76px]" onClick={() => { void handleToggleWorkout(workout); }}>
                       <div className="min-w-0">
                         <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
-                        <p className="t-caption mt-1">{subtitle}</p>
+                        <p className="t-caption mt-1">
+                          {!workout.completed && (
+                            <span className="text-[var(--color-accent)]">In progress · </span>
+                          )}
+                          {subtitle}
+                        </p>
                       </div>
                       {/* Sets read inline in the subtitle ("3/9 sets"); the ring is
                           kept for Today's live session. */}
@@ -1858,7 +1866,7 @@ export function History() {
                                           rows={2}
                                           maxLength={200}
                                           placeholder="Note - technique, feel, cues..."
-                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
+                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-placeholder)] focus:outline-none transition-colors resize-none"
                                         />
                                         <div className="mt-2 flex items-center justify-between">
                                           <div>

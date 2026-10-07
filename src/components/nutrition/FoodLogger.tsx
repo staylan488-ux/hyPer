@@ -143,6 +143,8 @@ export interface FoodLoggerProps {
   selectedDate: Date;
   onComplete: () => void;
   initialEntry?: EditableNutritionEntry | null;
+  /** The meal a new entry goes to, when it was started from that meal. */
+  initialGroupId?: string | null;
   groups?: NutritionGroup[];
   onAddIngredients?: (ingredients: MealIngredient[]) => void;
   initialMethod?: FoodCaptureMethod;
@@ -154,7 +156,7 @@ export interface FoodLoggerProps {
   onUnreviewedResultChange?: (waiting: boolean) => void;
 }
 
-export function FoodLogger({ selectedDate, onComplete, initialEntry = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange, onUnreviewedResultChange }: FoodLoggerProps) {
+export function FoodLogger({ selectedDate, onComplete, initialEntry = null, initialGroupId: presetGroupId = null, groups = [], onAddIngredients, initialMethod, onMethodChange, onComposeMeal, onAnalysisBusyChange, onUnreviewedResultChange }: FoodLoggerProps) {
   const initialLogDate = useMemo(() => {
     if (initialEntry?.date) {
       const parsed = new Date(`${initialEntry.date}T12:00:00`);
@@ -206,6 +208,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
   );
   const orderedGroups = useMemo(() => sortNutritionGroups(groups), [groups]);
   const initialGroupId = initialEntry?.group_id
+    || (!initialEntry && presetGroupId && orderedGroups.some((group) => group.id === presetGroupId) ? presetGroupId : '')
     || orderedGroups.find((group) => group.label === initialEntry?.meal_type)?.id
     || '';
   const [groupId, setGroupId] = useState<string>(initialGroupId);
@@ -1902,14 +1905,14 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
       {mode === 'saved' ? (
         <div className="space-y-4">
           {/* Search leads; the list's count and actions sit under it. */}
-          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
+          <div className="search-field flex items-center gap-3 pl-4 pr-3 min-h-11 focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-text)_45%,transparent)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
               placeholder="Find a saved food…"
               value={savedQuery}
               onChange={(event) => setSavedQuery(event.target.value)}
-              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-placeholder)]"
             />
           </div>
 
@@ -1923,7 +1926,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 className="text-action"
                 onClick={handleAddSavedMeal}
               >
-                Add
+                New food
               </button>
               {savedMeals.length > 0 && (
                 <button
@@ -1959,14 +1962,11 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
             </div>
           ) : filteredSavedMeals.length > 0 ? (
             <div className="platter platter-flush max-h-72 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
-              {filteredSavedMeals.map((meal, index) => (
+              {filteredSavedMeals.map((meal) => (
                 <div key={meal.id} className="platter-row flex min-w-0 items-stretch overflow-hidden pl-5">
                   {managingSavedMeals ? (
                     <>
                       <div className="flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-2">
-                        <span className="t-data-sm w-6 shrink-0 pt-1 text-[var(--color-muted)]">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
                         <div className="min-w-0 flex-1">
                           <p className="t-body break-words font-medium text-[var(--color-text)]">{meal.name}</p>
                           <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
@@ -1998,20 +1998,19 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   ) : (
                     <button
                       type="button"
-                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-5 text-left"
+                      className="pressable group flex min-w-0 flex-1 items-center gap-3 py-3.5 pr-2.5 text-left"
                       onClick={() => handleLogSavedMeal(meal)}
                       aria-label={`Log ${meal.name}`}
                     >
-                      <span className="t-data-sm w-6 shrink-0 pt-1 text-[var(--color-muted)]">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="t-body break-words font-medium text-[var(--color-text)]">{meal.name}</p>
                         <p className="t-data-sm mt-0.5 break-words leading-5 text-[var(--color-muted)]">
                           {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
                         </p>
                       </div>
-                      <Plus className="h-3.5 w-3.5 shrink-0 self-center text-[var(--color-muted)]" strokeWidth={1.75} />
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center text-[var(--color-text)]" aria-hidden>
+                        <Plus className="h-5 w-5" strokeWidth={1.5} />
+                      </span>
                     </button>
                   )}
                 </div>
@@ -2029,7 +2028,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
         </div>
       ) : mode === 'search' ? (
         <>
-          <div className="material-inset flex items-center gap-3 px-3 min-h-11 rounded-[var(--radius-control)] focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]">
+          <div className="search-field flex items-center gap-3 pl-4 pr-3 min-h-11 focus-within:ring-[1.5px] focus-within:ring-[color-mix(in_srgb,var(--color-text)_45%,transparent)]">
             <Search className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} />
             <input
               type="text"
@@ -2037,7 +2036,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && searchUSDA(searchQuery)}
-              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-muted)]"
+              className="flex-1 min-w-0 bg-transparent text-[1rem] text-[var(--color-text)] outline-none! placeholder:text-[var(--color-placeholder)]"
             />
             <button
               type="button"
@@ -2096,20 +2095,17 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                 transition={{ delay: Math.min(index * 0.03, 0.25), ...springs.settle }}
                 disabled={saving || loadingFoodId !== null}
               >
-                <span className="t-data-sm text-[var(--color-muted)] w-6 shrink-0 pt-1">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
                 <div className="flex-1 min-w-0">
                   <p className="t-body font-medium text-[var(--color-text)] break-words">{food.name}</p>
                   <p className="t-data-sm text-[var(--color-muted)] mt-0.5">
                     {Math.round(food.calories)} kcal / {food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}
                   </p>
                 </div>
-                <span className="flex items-center justify-center w-8 h-8 shrink-0 self-center text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors">
+                <span className="flex items-center justify-center w-11 h-11 shrink-0 self-center text-[var(--color-text)]" aria-hidden>
                   {loadingFoodId === food.fdc_id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
+                    <Plus className="w-5 h-5" strokeWidth={1.5} />
                   )}
                 </span>
               </motion.button>
@@ -2183,7 +2179,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                     }}
                     rows={4}
                     placeholder="e.g., One restaurant chicken burrito bowl with white rice, black beans, cheese, salsa, no guacamole"
-                    className="well w-full min-h-28 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-muted)]"
+                    className="well w-full min-h-28 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-placeholder)]"
                   />
                 </FormField>
                 <p className="t-caption">Include brand or restaurant, amount, raw/cooked state, sauces, oils, and excluded ingredients.</p>

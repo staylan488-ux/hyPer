@@ -17,6 +17,9 @@
 .fuel-meal-count { font-size: 12px; font-weight: 400; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .fuel-meal-kcal { flex-shrink: 0; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fuel-meal-empty { display: block; width: 100%; min-height: 44px; padding: 12px 0; text-align: left; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); }
+/* An empty meal offers its own add, in line with the empty note. */
+.fuel-meal-empty-add { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0; }
+.fuel-meal-empty-add .text-action { margin-right: -10px; }
 
 .fuel-entry { position: relative; }
 .fuel-entry + .fuel-entry { border-top: 1px solid var(--platter-divider, var(--color-border-soft)); }

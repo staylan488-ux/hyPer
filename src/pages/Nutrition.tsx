@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageHeader, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
@@ -103,6 +103,8 @@ export function Nutrition() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
+  // A meal picked from its own empty row, preset as the logger's destination.
+  const [loggerGroupId, setLoggerGroupId] = useState<string | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
   // Move, reorder and delete controls stay hidden until the list is in Edit mode.
@@ -190,6 +192,7 @@ export function Nutrition() {
   const handleLogComplete = () => {
     setShowLogger(false);
     setEditingEntry(null);
+    setLoggerGroupId(null);
     fetchMonthLogs(selectedMonthRef.current);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
@@ -455,6 +458,66 @@ export function Nutrition() {
       {/* ── Dateline ── */}
       <PageHeader eyebrow={format(selectedDate, 'EEEE, MMM d')} title="Fuel" />
 
+      {/* ── Week strip + month jump: date navigation sits with the date ── */}
+      <section className="platter mt-3 px-3 pt-1 pb-1" aria-label="Choose a day">
+        <div className="flex items-center justify-between pl-2 -mr-1.5 mb-1">
+          <span className="t-label">{format(weekStart, 'MMMM')}</span>
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-label="Previous week"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
+            >
+              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next week"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
+            >
+              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              aria-label="Open month calendar"
+              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              onClick={() => setShowMonthSheet(true)}
+            >
+              <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+
+        {/* Same column guide as History's month grid: seven equal columns on the 24px page gutters. */}
+        <div className="grid grid-cols-7 mx-2">
+          {weekDays.map((day) => {
+            const key = getDateKey(day);
+            const isSelected = isSameDay(day, selectedDate);
+            const hasLogs = (logsByDay[key] || []).length > 0;
+            const dayIsToday = isToday(day);
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => pickDate(day)}
+                aria-label={`${format(day, 'EEEE, MMMM d')}${dayIsToday ? ', today' : ''}${hasLogs ? ', has entries' : ''}`}
+                aria-pressed={isSelected}
+                className="fuel-day pressable"
+                data-today={dayIsToday || undefined}
+              >
+                <span className="fuel-day-letter">{format(day, 'EEEEE')}</span>
+                <span className="fuel-day-number">{format(day, 'd')}</span>
+                <span className="fuel-day-dot" data-on={hasLogs || undefined} />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+
       {/* ── Energy hero — the day's calories, big, with the page's one metal action ── */}
       <section className="platter mt-4">
         {loading ? (
@@ -557,65 +620,6 @@ export function Nutrition() {
         )}
       </section>
 
-      {/* ── Week strip + month jump ── */}
-      <section className="platter mt-4 px-3 pt-3 pb-3">
-        <div className="flex items-center justify-between pl-2 -mr-1.5 mb-1">
-          <span className="t-label">{format(weekStart, 'MMMM')}</span>
-          <div className="flex items-center">
-            <button
-              type="button"
-              aria-label="Previous week"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
-              aria-label="Next week"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
-              aria-label="Open month calendar"
-              className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => setShowMonthSheet(true)}
-            >
-              <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-
-        {/* Same column guide as History's month grid: seven equal columns on the 24px page gutters. */}
-        <div className="grid grid-cols-7 mx-2">
-          {weekDays.map((day) => {
-            const key = getDateKey(day);
-            const isSelected = isSameDay(day, selectedDate);
-            const hasLogs = (logsByDay[key] || []).length > 0;
-            const dayIsToday = isToday(day);
-
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => pickDate(day)}
-                aria-label={`${format(day, 'EEEE, MMMM d')}${dayIsToday ? ', today' : ''}${hasLogs ? ', has entries' : ''}`}
-                aria-pressed={isSelected}
-                className="fuel-day pressable"
-                data-today={dayIsToday || undefined}
-              >
-                <span className="fuel-day-letter">{format(day, 'EEEEE')}</span>
-                <span className="fuel-day-number">{format(day, 'd')}</span>
-                <span className="fuel-day-dot" data-on={hasLogs || undefined} />
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       {/* ── Unified food inbox + meal groups ── */}
       <section className="mt-9">
         <div className="flex items-center justify-between gap-3 mb-1">
@@ -628,15 +632,14 @@ export function Nutrition() {
             )}
           </div>
           <div className="fuel-list-actions">
-            {editingMeals ? (
+            {editingMeals ? <>
+              <button type="button" onClick={() => setShowGroupSheet(true)}>New meal</button>
               <button type="button" className="is-done" onClick={() => setEditingMeals(false)}>Done</button>
-            ) : <>
-              <button type="button" onClick={() => setShowGroupSheet(true)}>
-                <Layers3 className="w-4 h-4" strokeWidth={1.5} aria-hidden />
-                Add meal
-              </button>
-              {!loading && (selectedDayLogs.length > 0 || selectedDayGroups.length > 0) && (
+            </> : <>
+              {!loading && (selectedDayLogs.length > 0 || selectedDayGroups.length > 0) ? (
                 <button type="button" onClick={() => setEditingMeals(true)}>Edit</button>
+              ) : (
+                <button type="button" onClick={() => setShowGroupSheet(true)}>New meal</button>
               )}
             </>}
           </div>
@@ -693,6 +696,11 @@ export function Nutrition() {
                 ? (id) => void moveEntryToPreviousDay(id)
                 : undefined
             }
+            onAddToGroup={(groupId) => {
+              setEditingEntry(null);
+              setLoggerGroupId(groupId);
+              setShowLogger(true);
+            }}
             onReorderGroup={(groupId, direction) => void reorderGroup(groupId, direction)}
             onDeleteGroup={(group) => void deleteGroup(group)}
           />
@@ -774,7 +782,7 @@ export function Nutrition() {
         </div>
       </Modal>
 
-      <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
+      <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="New meal or snack">
         <div className="platter platter-flush mb-2">
           {[
             { kind: 'meal' as const, title: 'Meal', description: 'Inserted by time and numbered by its place in the day' },
@@ -808,6 +816,7 @@ export function Nutrition() {
           setLoggerResultWaiting(false);
           setShowLogger(false);
           setEditingEntry(null);
+          setLoggerGroupId(null);
         }}
         title={editingEntry ? 'Edit entry' : 'Log food'}
       >
@@ -815,9 +824,10 @@ export function Nutrition() {
           onBusyChange={setLoggerBusy}
           onAnalysisBusyChange={setLoggerAnalysisBusy}
           onUnreviewedResultChange={setLoggerResultWaiting}
-          onCancel={() => { setShowLogger(false); setEditingEntry(null); }}
+          onCancel={() => { setShowLogger(false); setEditingEntry(null); setLoggerGroupId(null); }}
           selectedDate={selectedDate}
           initialEntry={editingEntry}
+          initialGroupId={editingEntry ? null : loggerGroupId}
           groups={selectedDayGroups}
           onComplete={handleLogComplete}
         />

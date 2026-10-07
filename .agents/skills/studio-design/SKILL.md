@@ -37,14 +37,18 @@ tokens; an already approved direction does not need another design exploration.
   Controls never add their own backdrop filter.
 - Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
   quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
-  at the same height everywhere; it condenses into the scroll-edge band, a
-  long eased fade with a progressive blur (status bar to about 44px below
-  the compact title) so nothing crossing it shows a crisp edge.
+  at the same height everywhere; it condenses into the scroll-edge band:
+  solid to 8px below the compact title row, then one 26px ramp in which
+  opacity (eased, t³) and a progressive blur move together, so content is
+  gone before it can smear and nothing crossing it shows a crisp edge.
   Pushed screens keep their parent tab selected (`nativeTabForPath`).
   Contextual actions are sentence-case `text-action` buttons in the one ink
   tint; a disabled action is that tint at 30% opacity, never grey as a style.
   Sheet-level actions sit in the sheet header beside close
-  (`SheetHeaderAction`). Tracked caps are for section labels only; status
+  (`SheetHeaderAction`). Sheets sit over a uniform dim (black at 50% in
+  Black, 11% in Ivory) and cast no shadow; a single-detent confirmation
+  sheet hides the grabber, and the close button when its own actions
+  include a cancel (`Modal` `showGrabber` / `showClose`). Tracked caps are for section labels only; status
   labels and disclosure rows are sentence case. Sheet titles use the
   editorial `sheet-title`.
 - Primary actions are solid, sentence-case capsules (`Button` primary: near
@@ -56,15 +60,21 @@ tokens; an already approved direction does not need another design exploration.
   calories); lists state counts inline ("3/9 sets"). Rings and
   `RailStrip` bars are flat ink; target ticks are ink at 35%, lacquer only for live and over.
   Meaningful touch targets are at least 44px.
-- Segmented controls use native metrics: a 36px capsule track, 2px inset,
+- Segmented controls use native metrics, 15px medium labels (a locked
+  segment is ink at 50%, about 3:1): a 36px capsule track, 2px inset,
   equal segments and a 32px thumb, each segment's hit area extended to 44px.
+- Search fields are flat capsule fills (`.search-field`), never recessed;
+  placeholders are at least 4.5:1 (`--color-placeholder`).
 - Use the radius tokens: capsule for buttons, chips, segmented tracks and the
   web tab bar; controls/inputs 14px; platters 26px; sheets 30px.
 - Preserve the inset four-tab navigation: native iOS 26 glass when available,
   web fallback elsewhere. The web bar matches the native geometry: 62px tall,
   about 21px above the screen's bottom edge, 24px icons, 10.5px semibold
-  labels, the current tab a flat fill (no chip or shadow), and a bottom
-  scroll-edge fade so content dissolves before it. On iOS 26 the rest bar and status toasts are also
+  labels, one uniform 0.5px hairline edge (no ring or directional
+  highlight), the current tab a flat fill (no shadow) inset 5px on every
+  side and concentric with the bar, and a 14px opacity-only bottom fade
+  from the bar's top edge, so content dissolves before the bar and a solid
+  fill resting near it is never graded into a ball. On iOS 26 the rest bar and status toasts are also
   native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
   the web keeps all timer, save and preference behavior. The live workout is a
   full-screen cover, not a pushed page: a bare 44pt chevron-down minimises it

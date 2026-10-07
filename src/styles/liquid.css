@@ -105,7 +105,6 @@
   .bottom-nav, .studio-sheet, .material-toast, .studio-rest-bar, .glass-edge { isolation: isolate; }
   .studio-sheet, .material-toast, .glass-edge { position: relative; }
 }
-.bottom-nav::before,
 .material-toast::before,
 .studio-rest-bar::before,
 .glass-edge::before {
@@ -439,6 +438,12 @@ html .app-viewport, html .material-foundation {
 }
 .studio-secondary-action { border-radius: var(--radius-capsule); }
 .material-inset, .material-control { box-shadow: var(--material-inset-shadow); }
+/* Search fields are flat fills, like iOS: no recess, capsule ends. */
+.search-field {
+  background-color: color-mix(in srgb, var(--color-text) 7%, transparent);
+  box-shadow: none;
+  border-radius: var(--radius-capsule);
+}
 .material-sheet-close {
   width: 36px;
   height: 36px;
@@ -477,9 +482,10 @@ html .app-viewport, html .material-foundation {
   inset: -6px 0;
 }
 
-/* Tab bar (web): a floating capsule; the current tab is a flat fill, not a
-   raised chip. */
-.bottom-nav { border-radius: var(--radius-nav); padding: 0 6px; }
+/* Tab bar (web): a floating capsule edged by one uniform hairline (no
+   specular ring or directional highlight); the current tab is a flat fill
+   inset 5px on every side, concentric with the bar. */
+.bottom-nav { border-radius: var(--radius-nav); padding: 0 5px; }
 .material-nav-selection {
   border-radius: var(--radius-capsule);
   background: var(--nav-selection);
@@ -493,7 +499,7 @@ html .app-viewport, html .material-foundation {
   .liquid-aura::before, .liquid-aura::after { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .bottom-nav::before, .studio-sheet::before, .material-toast::before,
+  .studio-sheet::before, .material-toast::before,
   .studio-rest-bar::before, .glass-edge::before { content: none; }
   .liquid-metal::after, .metal-static::after, .metal-ring-fill {
     animation: none;
