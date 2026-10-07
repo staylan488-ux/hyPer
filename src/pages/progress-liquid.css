@@ -164,9 +164,9 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: currentColor;
+  background: var(--status-mark, currentColor);
 }
-/* Under wears the figure's own lowest tone, as the legend swatch does. */
+/* In range wears the muscle's own ramp tone (`--status-mark`); Under wears the figure's own lowest tone, as the legend swatch does. */
 .status-label[data-tone='under']::before { background: var(--map-under, currentColor); }
 .status-label[data-tone='hot'] { color: var(--color-accent); }
 

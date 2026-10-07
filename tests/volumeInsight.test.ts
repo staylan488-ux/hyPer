@@ -11,10 +11,16 @@ const under = (muscle_group: VolumeLandmark['muscle_group'], sets: number, mev: 
 });
 
 describe("Today's volume insight", () => {
-  it('names the muscle furthest under its MEV (sets / MEV), not the one with the fewest sets', () => {
+  it('names the muscle needing the most sets to reach MEV, as Progress counts them', () => {
     const insight = pickInsight([under('glutes', 3, 6), under('calves', 3, 8), under('chest', 4, 10)]);
-    expect(insight?.volume.muscle_group).toBe('calves'); // 38% of MEV, before chest 40% and glutes 50%
-    expect(insight?.detail).toBe('3 sets this week — about 5 more to clear your minimum effective volume.');
+    expect(insight?.volume.muscle_group).toBe('chest'); // add 6, before calves 5 and glutes 3
+    expect(insight?.headline).toBe('Chest is under-stimulated');
+    expect(insight?.detail).toBe('4 sets this week — about 6 more to reach your minimum effective volume.');
+  });
+
+  it('breaks a tie in sets needed by the lowest share of MEV', () => {
+    const insight = pickInsight([under('glutes', 1, 6), under('calves', 3, 8)]);
+    expect(insight?.volume.muscle_group).toBe('glutes'); // both add 5: 17% of MEV before 38%
   });
 
   it('still prefers an under-MEV muscle over one past its ceiling', () => {

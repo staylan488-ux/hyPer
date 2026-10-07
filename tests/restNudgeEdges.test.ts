@@ -4,6 +4,7 @@ import {
   REST_GAP,
   REST_GAP_AIM,
   REST_GAP_FLEX,
+  REST_GAP_HARD_GIVE,
   REST_PAGE_NUDGE_LIMIT,
   barDepth,
   restNudgeTarget,
@@ -58,6 +59,18 @@ describe('two-edge rest: the tab bar', () => {
     expect(barDepth(scale, 402, edge)).toBeGreaterThan(0);
     expect(barDepth(scale, target, edge)).toBe(0);
     expect(barDepth(line, target, edge)).toBeGreaterThan(0);
+  });
+
+  it('never rests a row title cut by the bar, opening the gap a little if it must', () => {
+    const rows = [{ top: 470, bottom: 488 }]; // the only gap in reach
+    const title = { top: 1120, bottom: 1137 }; // cut by the bar at every rest in the flex (394–406)
+    const edge = bar([title, { ...title, whole: true, clear: 0 }]);
+    expect(barDepth({ ...title, clear: 0 }, 400, edge)).toBeGreaterThan(0);
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, edge) as number;
+    expect(barDepth({ ...title, clear: 0 }, target, edge)).toBe(0);
+    const gap = rows[0].top - target - band.foot;
+    expect(gap).toBeGreaterThan(REST_GAP_FLEX);
+    expect(gap).toBeLessThanOrEqual(REST_GAP_FLEX + REST_GAP_HARD_GIVE);
   });
 
   it('keeps a divider 20pt clear above the bar or under it', () => {

@@ -79,19 +79,23 @@ export const MAP_REGIONS: MapRegion[] = [
   // ── Back ──
   ...back(
     'traps',
-    'M0,29.2 L6.8,29.2 C7.4,32.6 9.2,35.2 12.4,36.6 C18.2,38.6 24,39.6 28,41 C22,44.6 15.8,50.2 11.2,57.4 C7.2,63.8 3.4,71 0,78.6 Z',
+    // Its lower edge ends on the rear delt's corner, never crossing the cap.
+    'M0,29.2 L6.8,29.2 C7.4,32.6 9.2,35.2 12.4,36.6 C18.2,38.6 22,39.6 24.2,41.4 C19.6,45 15.2,50.6 11.2,57.4 C7.2,63.8 3.4,71 0,78.6 Z',
   ),
   ...back('rear_delts', DELT_INNER),
   ...back('side_delts', DELT_OUTER),
   ...back(
     'back',
-    // Over the shoulder blade, under the traps' edge
-    'M11.2,57.4 C15.8,50.2 22,44.6 28,41 C28.8,47 29,53 28,59.6 C22.4,61.6 16.4,61 11.2,57.4 Z',
+    // Over the shoulder blade, between the traps' edge and the rear delt's
+    // (its lower edge meets the delt's in a T, at (27.57, 55.31))
+    'M11.2,57.4 C15.2,50.6 19.6,45 24.2,41.4 C25.8,45.56 26.89,50.23 27.57,55.31 C22.6,60.4 16,60.6 11.2,57.4 Z',
     // Latissimus: from the traps' tip and the shoulder blade, tapering along
-    // the flank to the waist; the spine between the two stays body.
-    'M0,78.6 C3.4,71 7.2,63.8 11.2,57.4 C16.4,61 22.4,61.6 28,59.6 L27.2,62.4 C24.8,73 22.4,85 20.4,94 C15.6,98.8 9.4,101.4 3.6,102.2 C2.2,94 1,86 0,78.6 Z',
+    // the flank to the waist; the spine between the two stays body. Its top
+    // follows the delt's edge to the delt's corner, where the flank starts.
+    'M0,78.6 C3.4,71 7.2,63.8 11.2,57.4 C16,60.6 22.6,60.4 27.57,55.31 C27.74,56.58 27.88,57.88 28,59.2 L27.2,62.4 C24.8,73 22.4,85 20.4,94 C15.6,98.8 9.4,101.4 3.6,102.2 C2.2,94 1,86 0,78.6 Z',
   ),
-  ...back('triceps', 'M28.6,62.2 C30,57.4 33.8,56.6 36.6,59.2 C38.8,65.6 39.8,75.4 39,84.6 C37.6,88.6 34.6,89.2 33.2,86.8 C31,80 29.4,70.8 28.6,62.2 Z'),
+  // Its top is the delt's lower edge (from a T on it), no arc of its own.
+  ...back('triceps', 'M28.71,60.09 C29.53,60.83 30.65,61.05 32,60.6 L33.6,60.4 C35,59.4 36,59 36.6,59.2 C38.8,65.6 39.8,75.4 39,84.6 C37.6,88.6 34.6,89.2 33.2,86.8 C31,80 29.4,70.8 28.71,60.09 Z'),
   ...back('glutes', 'M0,112.4 C7,107.8 16.6,107.6 22.8,111.4 C25.4,117.6 25.8,125.6 24,131.8 C19.4,136.6 11.2,137.8 4.6,135.4 C1.8,133.2 0.4,130 0,127 Z'),
   ...back(
     'hamstrings',
@@ -116,13 +120,15 @@ export function primarySide(muscle: MuscleGroup): ViewSide {
 // SHADING
 // ═══════════════════════════════════
 
-/** Ink share per volume status, lightest (under MEV) to heaviest (near MRV). */
+/** Ink share per volume status, lightest (under MEV) to heaviest (near MRV).
+ * The first in-range step sits at least 2:1 from the under tone in both
+ * themes, so a muscle in range never reads as one more under it. */
 export const STATUS_INK: Record<MuscleVolume['status'], number> = {
   below_mev: 0.26,
-  mev_mav: 0.44,
-  mav: 0.64,
-  approaching_mrv: 0.86,
-  above_mrv: 0.86,
+  mev_mav: 0.56,
+  mav: 0.72,
+  approaching_mrv: 0.9,
+  above_mrv: 0.9,
 };
 
 export interface MuscleShade {
@@ -203,4 +209,16 @@ export function isUnderStimulated(shade: MuscleShade | undefined): boolean {
 
 export function inkFill(ink: number): string {
   return `color-mix(in srgb, var(--color-text) ${Math.round(ink * 1000) / 10}%, var(--color-base))`;
+}
+
+/** A status ink as the figure draws it: Black takes it a step toward the page
+ * (`--map-ink-drop`) so trained muscles stay tones, not stickers. The legend
+ * and the row chips use the same tone. */
+export function mapInk(fill: string): string {
+  return `color-mix(in srgb, ${fill}, var(--color-base) var(--map-ink-drop, 0%))`;
+}
+
+/** The figure's own tone for a trained muscle in range (its row chip's mark). */
+export function inRangeTone(status: MuscleVolume['status']): string {
+  return mapInk(inkFill(STATUS_INK[status]));
 }

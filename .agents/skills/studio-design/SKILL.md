@@ -29,7 +29,8 @@ tokens; an already approved direction does not need another design exploration.
   purple cast, spectral glow or colored light wash.
   Positive/completed states use ink; use semantic tokens for both themes.
   Ivory secondary text is #575757 (`--color-muted`, `--color-text-dim`);
-  Ivory future dates #6B6B69. Empty states are one style: 15px secondary.
+  Ivory future dates #6B6B69 (History's month and Fuel's week alike). Empty
+  states are one style: 15px secondary.
 - `text-base` collides with the `--color-base` theme color in Tailwind v4;
   use `text-[1rem]` when a 16px font size is intended.
 
@@ -78,8 +79,11 @@ tokens; an already approved direction does not need another design exploration.
   offset in the flex is clean does a line rest passing under the glass. A
   scale is one unit at the bar (`data-rest-bar-unit`: a landmark rail's
   ruler with its labels, never the ruler above the glass and its labels
-  under it), and it and dividers stay clear wherever any rest in reach
-  allows, then the one least astride. With no rest at the gap in reach, the nearest rest with a
+  under it), and so is a row title (`.t-row-title`: never cut by the bar,
+  letters above the glass and the rest under it). These and dividers stay
+  clear wherever any rest in reach allows, the gap opening up to 6pt past
+  its flex for one (`REST_GAP_HARD_GIVE`), then the one least astride.
+  With no rest at the gap in reach, the nearest rest with a
   clean band.
   `data-rest-ignore`
   leaves a subtree out; the page header collapses with its title (anything
@@ -178,7 +182,9 @@ tokens; an already approved direction does not need another design exploration.
   backdrop blur (CSS standard deviation, so what passes under reads as soft
   texture, never a bright blob) under a
   neutral fill (#1C1C1C at 60% in Black; near-white at 60% in Ivory, about
-  6 levels over the ivory, with one faint shadow), clipped to the capsule, so text passing under
+  6 levels over the ivory, with one faint shadow), thickened to about 84%
+  behind the label row and over the top 12px (`--nav-veil`), so a ghost stays
+  within ~15 levels of the fill and content fades in at the edge, clipped to the capsule, so text passing under
   it visibly continues inside the capsule, softly blurred, while labels and
   icons stay legible (a 12px blur takes a 15pt line under ~4% contrast at
   1x and the bar reads as a solid slab cutting it); no rim, wash, glow or
@@ -288,18 +294,23 @@ layout and makes motion, data and 3D the expressive layer.
   [motion light](../../../src/lib/motionLight.ts). Weekly volume is a flat,
   matte front/back [muscle map](../../../src/lib/volumeMap.ts) in one tone
   (`--map-body`, lifted in Black so the silhouette holds) with 1.5px seams
-  between muscles (1px on Today's small figure) in the page colour, drawn
-  once over every fill as one path so shared edges never double or stipple
-  and a narrow muscle never carries two strokes; no outlines or keylines.
+  between muscles (half that on Today's half-size figure) in the page
+  colour, drawn once over every fill as one path so shared edges never
+  double or stipple and a narrow muscle never carries two strokes; seams
+  meet in T-junctions and end on an outline, never crossing; no outlines
+  or keylines.
   Ivory is the reference drawing; Black draws it the same way with 1px
   seams (`--map-seam`) and status fills a step toward the page
   (`--map-ink-drop`). Ink by volume status: trained but under MEV is the
   quietest mark, the ramp's lowest tone (`--map-under`), never heavier than
-  an in-range fill, and the legend's "Under" swatch is that same tone;
-  lacquer only past MRV, no gloss or 3D. Progress shows the two views without captions; its legend
-  keys the rows' chips in their words ("Under", "In range", "Over ceiling":
-  one name per state in the summary, legend and chips), with the shading
-  ramp on its own line ("Stronger tone = more sets"), and set counts stay ink (red is the figure, the status and the
+  an in-range fill (the first in-range step at least 2:1 from it in both
+  themes), and the legend's "Under" swatch is that same tone; lacquer only
+  past MRV, no gloss or 3D. Progress shows the two views without captions;
+  its legend shows only tones the figure draws and keys the rows' chips in
+  their words ("Under", "In range", "Over ceiling": one name per state in
+  the summary, legend and chips; In range's swatch is the ramp itself and
+  a chip's mark is its muscle's own tone), captioned truthfully ("Stronger
+  tone = further into range": tone tracks status, not raw sets), and set counts stay ink (red is the figure, the status and the
   rail marker). Beside a sentence
   (Today's insight) the figure draws only the sentence's muscle, in the
   same legend style as Progress (the under tone when the sentence is about

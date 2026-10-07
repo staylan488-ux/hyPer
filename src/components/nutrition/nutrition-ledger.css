@@ -22,9 +22,9 @@
 .fuel-meal-empty { display: block; width: 100%; min-height: 44px; padding: 12px 0; text-align: left; font-size: 15px; line-height: 1.35; color: var(--color-text-dim); }
 /* An empty meal offers its own add, in line with the empty note. */
 .fuel-meal-empty-add { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0; }
-/* Every meal's add sits in one fixed trailing column, its "+" on one guide
-   whatever the meal's name ("Add to Lunch", "Add to Dinner"). */
-.fuel-meal-empty-add .text-action { margin-right: -10px; min-width: 148px; justify-content: flex-start; }
+/* Its label ends on the trailing guide, as Today's "+ Log food" does (the
+   44px target's padding hangs past it); a right edge outranks a "+" guide. */
+.fuel-meal-empty-add .text-action { margin-right: -10px; }
 
 .fuel-entry { position: relative; }
 .fuel-entry + .fuel-entry { border-top: 1px solid var(--platter-divider, var(--color-border-soft)); }
@@ -65,6 +65,9 @@
 .fuel-day-letter { font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: .08em; color: var(--color-muted); }
 .fuel-day-number { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; font-size: 15px; line-height: 1; color: var(--color-text); font-variant-numeric: tabular-nums; transition: background-color .2s ease, color .2s ease; }
 .fuel-day[data-today] .fuel-day-number { color: var(--color-accent); font-weight: 600; }
+/* Days still to come: History's tertiary ink (.ledger-day-future). */
+.fuel-day[data-future]:not([aria-pressed="true"]) .fuel-day-number { color: #6B6B69; }
+.dark .fuel-day[data-future]:not([aria-pressed="true"]) .fuel-day-number { color: color-mix(in srgb, var(--color-text) 55%, var(--color-base)); }
 .fuel-day[aria-pressed="true"] .fuel-day-number { background: var(--color-text); color: var(--color-base); font-weight: 600; }
 .fuel-day-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--color-text-dim); opacity: 0; }
 .fuel-day-dot[data-on] { opacity: 1; }

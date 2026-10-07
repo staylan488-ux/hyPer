@@ -45,7 +45,7 @@ describe('volume map', () => {
     const shades = shadeMuscles([volume('chest', 12, 'mav'), volume('side_delts', 26, 'above_mrv'), volume('back', 22, 'approaching_mrv')]);
     expect(muscleFill(shades.get('side_delts'))).toBe('var(--color-accent)');
     expect(muscleFill(shades.get('back'))).not.toContain('accent');
-    expect(muscleFill(shades.get('chest'))).toBe('color-mix(in srgb, var(--color-text) 64%, var(--color-base))');
+    expect(muscleFill(shades.get('chest'))).toBe('color-mix(in srgb, var(--color-text) 72%, var(--color-base))');
     expect(muscleFill(shades.get('quads'))).toBe('color-mix(in srgb, var(--color-text) 10%, var(--color-base))');
   });
 });
@@ -84,5 +84,20 @@ describe('muscle copy', () => {
     expect(muscleSubject('shoulders')).toEqual({ name: 'Shoulders', is: 'are', its: 'their' });
     expect(isPluralMuscle('back')).toBe(false);
     expect(isPluralMuscle('calves')).toBe(true);
+  });
+});
+
+describe('figure tones', () => {
+  // Theme tokens from index.css: Ivory #232323 on #F5F5F0 (under 24%), Black
+  // #F2F2F2 on #000000 (under 29%, status inks 13% toward the page).
+  const lum = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const ratio = (a: number, b: number) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const mix = (text: number, base: number, ink: number) => text * ink + base * (1 - ink);
+
+  it('keeps the first in-range step at least 2:1 from the under tone in both themes', () => {
+    const lightUnder = mix(0x23, 0xF5, 0.24);
+    const darkUnder = mix(0xF2, 0, 0.29);
+    expect(ratio(mix(0x23, 0xF5, STATUS_INK.mev_mav), lightUnder)).toBeGreaterThanOrEqual(2);
+    expect(ratio(mix(0xF2, 0, STATUS_INK.mev_mav) * 0.87, darkUnder)).toBeGreaterThanOrEqual(2);
   });
 });

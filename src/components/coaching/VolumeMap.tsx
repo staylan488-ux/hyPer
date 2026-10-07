@@ -10,6 +10,7 @@ import {
   isSubjectMuscle,
   isSubjectUnder,
   isUnderStimulated,
+  mapInk,
   muscleFill,
   primarySide,
   shadeMuscles,
@@ -118,9 +119,9 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
         ))}
       </div>
 
-      {/* The figure's own tones (the under tone, in range, lacquer only past
-          the ceiling), then the shading ramp on its own line: it is a
-          scale, not a status. */}
+      {/* Only tones the figure draws: the under tone, in range as its ramp
+          (tone tracks how far into its range a muscle is, not raw sets),
+          lacquer only past the ceiling. */}
       <div className="flex flex-col items-center gap-2 mt-5 t-caption" aria-hidden>
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           <span className="flex items-center gap-1.5">
@@ -128,7 +129,11 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
             Under
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-text-dim)]" />
+            <span className="flex gap-[3px]">
+              {LEGEND_RAMP.map((ink) => (
+                <span key={ink} className="w-2 h-2 rounded-full" style={{ background: mapInk(inkFill(ink)) }} />
+              ))}
+            </span>
             In range
           </span>
           <span className="flex items-center gap-1.5">
@@ -136,14 +141,7 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
             Over ceiling
           </span>
         </div>
-        <span className="flex items-center gap-1.5">
-          <span className="flex gap-[3px]">
-            {LEGEND_RAMP.map((ink) => (
-              <span key={ink} className="w-2 h-2 rounded-full" style={{ background: mapInk(inkFill(ink)) }} />
-            ))}
-          </span>
-          Stronger tone = more sets
-        </span>
+        <span>Stronger tone = further into range</span>
       </div>
     </div>
   );
@@ -153,16 +151,13 @@ export function VolumeMap({ volume, variant = 'full', focus = null, onSelectMusc
  *  muscles, 1.5px in Ivory, or Black's thinner `--map-seam` hairline, so a
  *  gap of true black never reads as a keyline round a lighter fill. */
 const SEAM = 'var(--map-seam, 1.5px)';
-/** Today's small figure draws its seam at the hairline. */
-const COMPACT_SEAM = '1px';
+/** Today's small figure is about half the size: its seam scales with it. */
+const COMPACT_SEAM = 'calc(var(--map-seam, 1.5px) * 0.5)';
 /** The silhouette's tone: a theme token, so dark mode can lift it. */
 const BODY_TONE = `var(--map-body, ${inkFill(BODY_INK)})`;
 /** Under MEV: the quietest mark, one step past the body and below every
  *  in-range tone (`--map-under`), shared with the legend's swatch. */
 const UNDER_TONE = `var(--map-under, ${inkFill(STATUS_INK.below_mev)})`;
-/** A status ink as drawn: Black takes it a step toward the page
- *  (`--map-ink-drop`) so trained muscles stay tones, not stickers. */
-const mapInk = (fill: string) => `color-mix(in srgb, ${fill}, var(--color-base) var(--map-ink-drop, 0%))`;
 
 function Figure({
   side,

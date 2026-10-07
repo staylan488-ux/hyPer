@@ -28,6 +28,8 @@ export function WeeklyNutrition() {
   });
   const logged = weeklyNutrition.filter((day) => day.calories > 0 || day.protein > 0);
   const loggedDays = logged.length;
+  // The hook returns one row per day of the week so far.
+  const daysSoFar = Math.max(loggedDays, weeklyNutrition.length);
   const sparse = loggedDays < MIN_CHART_DAYS;
   // One unfinished day is not an average: say what it is.
   const todayOnly = loggedDays === 1 && logged[0].date === format(new Date(), 'yyyy-MM-dd');
@@ -37,7 +39,7 @@ export function WeeklyNutrition() {
       <div className="flex items-baseline justify-between">
         <h3 className="t-label">Nutrition</h3>
         {/* The header names the span the rows show: one unfinished day is "Today". */}
-        <span className="t-caption">{todayOnly && !loading && !error ? 'Today' : 'Last 7 days'}</span>
+        <span className="t-caption">{todayOnly && !loading && !error ? 'Today' : 'This week'}</span>
       </div>
       {loading ? (
         <div className="shimmer h-24 mt-5" aria-label="Loading nutrition totals" />
@@ -61,7 +63,8 @@ export function WeeklyNutrition() {
             ))}
           </dl>
           <p className="t-caption mt-3">
-            {loggedDays} of 7 days logged. Log {MIN_CHART_DAYS - loggedDays} more {MIN_CHART_DAYS - loggedDays === 1 ? 'day' : 'days'} to see the daily chart.
+            {/* Counted against the week's days so far (Wednesday: 3), not 7. */}
+            {loggedDays} of {daysSoFar} {daysSoFar === 1 ? 'day' : 'days'} so far. Log {MIN_CHART_DAYS - loggedDays} more {MIN_CHART_DAYS - loggedDays === 1 ? 'day' : 'days'} to see the daily chart.
           </p>
         </>
       ) : (

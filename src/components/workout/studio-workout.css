@@ -94,7 +94,10 @@
    eyebrow's, as it does beside a closed "Up next" movement. */
 .studio-movement-controls { flex-shrink: 0; width: 44px; margin-right: -13px; display: flex; flex-direction: column; align-items: center; }
 .studio-movement.is-active .studio-movement-controls { margin-top: calc(16px + var(--movement-kicker-gap) + var(--movement-name-size) * .6 - 22px); }
-.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-text-dim); opacity: .7; }
+/* The options glyph at the same contrast in both themes (about 4.7:1): Ivory
+   takes the tertiary ink outright, Black its secondary at 70%. */
+.studio-movement-options { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: #6B6B69; }
+.dark .studio-movement-options { color: var(--color-text-dim); opacity: .7; }
 .studio-movement-options[aria-expanded="true"] { color: var(--color-text); opacity: 1; }
 .studio-movement-detail { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--color-text-dim); margin: 4px 0 8px; }
 .studio-movement-detail svg { flex-shrink: 0; }

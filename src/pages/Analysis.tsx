@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,6 +11,7 @@ import { buildWeeklyTrainingHours, TRAINING_WEEK, type TrainingHoursPoint } from
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { VolumeMap } from '@/components/coaching/VolumeMap';
+import { inRangeTone } from '@/lib/volumeMap';
 import { LandmarkRail } from '@/components/coaching/LandmarkRail';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
@@ -237,7 +238,11 @@ export function Analysis() {
                       {MUSCLE_GROUP_LABELS[mv.muscle_group] || mv.muscle_group.replace('_', ' ')}
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
-                      <span className="status-label" data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}>
+                      <span
+                        className="status-label"
+                        data-tone={isHot ? 'hot' : call.tone === 'amber' ? 'under' : undefined}
+                        style={!isHot && call.tone !== 'amber' ? { '--status-mark': inRangeTone(mv.status) } as CSSProperties : undefined}
+                      >
                         {call.chip}
                       </span>
                       <motion.span className="trail-disclosure" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
@@ -311,8 +316,9 @@ export function Analysis() {
         </>
       )}
 
-      {/* Training hours */}
-      <section className="mt-14">
+      {/* Training hours, after the explainer's 56px row (its own ~18px under the
+          title): the shared section gap. */}
+      <section className="mt-[38px]">
         <div className="flex items-baseline justify-between">
           <span className="t-label">Lifting hours</span>
           <span className="t-caption">Last 8 weeks</span>

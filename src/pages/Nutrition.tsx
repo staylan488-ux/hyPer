@@ -493,6 +493,8 @@ export function Nutrition() {
             const isSelected = isSameDay(day, selectedDate);
             const hasLogs = (logsByDay[key] || []).length > 0;
             const dayIsToday = isToday(day);
+            // Days still to come read dimmer, as History's month grid draws them.
+            const dayIsFuture = !dayIsToday && day.getTime() > Date.now();
 
             return (
               <button
@@ -503,6 +505,7 @@ export function Nutrition() {
                 aria-pressed={isSelected}
                 className="fuel-day pressable"
                 data-today={dayIsToday || undefined}
+                data-future={dayIsFuture || undefined}
               >
                 <span className="fuel-day-letter">{format(day, 'EEEEE')}</span>
                 <span className="fuel-day-number">{format(day, 'd')}</span>

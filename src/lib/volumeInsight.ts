@@ -1,7 +1,9 @@
 import { muscleSubject } from '@/lib/muscleCopy';
 import type { MuscleVolume } from '@/types';
 
-/** A muscle's weekly sets as a share of its MEV (0 without a positive MEV). */
+/** Sets still needed to reach MEV: the "Add ~N" Progress shows. */
+const mevDeficit = (mv: MuscleVolume) => (mv.landmark ? mv.landmark.mev - mv.weekly_sets : 0);
+/** A muscle's weekly sets as a share of its MEV (1 without a positive MEV). */
 const mevShare = (mv: MuscleVolume) => (mv.landmark && mv.landmark.mev > 0 ? mv.weekly_sets / mv.landmark.mev : 1);
 
 /**
@@ -14,18 +16,19 @@ export function pickInsight(weeklyVolume: MuscleVolume[]) {
 
   const subject = (mv: MuscleVolume) => muscleSubject(mv.muscle_group);
 
-  // The muscle furthest under its minimum: the lowest share of its MEV
-  // (sets / MEV), so 3 of 8 comes before 3 of 6.
+  // The muscle furthest under its minimum by the sets it still needs, as
+  // Progress's rows count them ("Add ~6" before "Add ~5"); on a tie, the
+  // lowest share of its MEV, so 3 of 8 comes before 1 of 6.
   const below = weeklyVolume
     .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => mevShare(a) - mevShare(b))[0];
+    .sort((a, b) => mevDeficit(b) - mevDeficit(a) || mevShare(a) - mevShare(b))[0];
   if (below?.landmark) {
-    const gap = Math.max(1, Math.ceil(below.landmark.mev - below.weekly_sets));
+    const gap = Math.max(1, Math.ceil(mevDeficit(below)));
     return {
       volume: below,
       landmark: below.landmark,
       headline: `${subject(below).name} ${subject(below).is} under-stimulated`,
-      detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
+      detail: `${below.weekly_sets} sets this week — about ${gap} more to reach your minimum effective volume.`,
     };
   }
 

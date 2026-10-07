@@ -45,9 +45,10 @@ export function restingScrollEnd(naturalEnd: number, rests: number[], limit: num
  *  into the ramp. `ink`: where a text line's glyphs start, below its line
  *  box's top; the gap under the band is measured to it. `rule`: a hairline
  *  at the tab bar, which rests `REST_BAR_RULE_CLEAR` clear of it. `whole`:
- *  a unit at the tab bar (a scale with its labels) that rests astride it
- *  only when every rest in reach would. */
-export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean; ink?: number; rule?: boolean; whole?: boolean }
+ *  a unit at the tab bar (a scale with its labels, a row title) that rests
+ *  astride it only when every rest in reach would. `clear`: the air it needs
+ *  above the bar, in place of `REST_BAR_CLEAR` (0: only a cut counts). */
+export interface RestBlock { top: number; bottom: number; sliver?: number; fill?: boolean; ink?: number; rule?: boolean; whole?: boolean; clear?: number }
 /** The scroll-edge band, measured down from the scroll viewport's top edge:
  *  the solid stage ends at `solid`, the ramp at `foot`. `window`: the height
  *  between the ramp's foot and the tab bar's clear line. With it, every block
@@ -81,7 +82,7 @@ export const REST_BAR_CLEAR = 8;
 /** A hairline rule rests at least this far above the tab bar's top, or under
  *  it: closer, it reads as a second edge drawn just above the bar. */
 export const REST_BAR_RULE_CLEAR = 20;
-const barClear = (item: RestBlock) => (item.rule ? REST_BAR_RULE_CLEAR : REST_BAR_CLEAR);
+const barClear = (item: RestBlock) => item.clear ?? (item.rule ? REST_BAR_RULE_CLEAR : REST_BAR_CLEAR);
 /** Where a block's visible ink starts (a text line's glyphs, not its line box). */
 const inkTop = (block: RestBlock) => block.ink ?? block.top;
 /** Where the first content under the band rests, past the ramp's foot: on
@@ -96,6 +97,9 @@ export const REST_GAP_FLEX = 12;
  *  against a point of gap (`restNudgeTarget`). */
 export const REST_GAP_AIM = 4;
 export const REST_GAP_TRAVEL = 0.2;
+/** How much further than its flex the gap may open when every rest in the
+ *  flex leaves a scale, a row title or a divider astride the bar. */
+export const REST_GAP_HARD_GIVE = 6;
 /** The furthest a rest moves to reach that gap (about one and a half rows;
  *  half a long figure's height). */
 export const REST_GAP_REACH = 120;
@@ -248,11 +252,12 @@ export function restNudgeTarget(
       marks.add(Math.floor(item.top - bar.top));
     }
   }
-  const atGap = [...marks].filter((offset) => {
+  const gapWithin = (flex: number) => [...marks].filter((offset) => {
     if (offset < low - 1e-6 || offset > high + 1e-6 || topCount(offset) !== 0) return false;
     const gap = firstShown(offset);
-    return gap >= -0.5 && gap <= REST_GAP_FLEX + 0.5;
+    return gap >= -0.5 && gap <= flex + 0.5;
   });
+  const atGap = gapWithin(REST_GAP_FLEX);
   // Nearest first, but a rest nearer one gap (`REST_GAP_AIM` past the foot)
   // is worth a little more travel, so pages rest alike (the scroll end, whose
   // gap is what it is, by distance alone).
@@ -267,7 +272,16 @@ export function restNudgeTarget(
   const hardItems = bar ? bar.items.filter((item) => item.whole || item.rule) : [];
   const hard = (offset: number) => hardItems.reduce((count, item) => count + (barDepth(item, offset, bar as RestBar) > 0 ? 1 : 0), 0);
   const hardDepth = (offset: number) => hardItems.reduce((sum, item) => sum + barDepth(item, offset, bar as RestBar), 0);
-  const fewestHard = Math.min(...pool.map(hard));
+  let fewestHard = Math.min(...pool.map(hard));
+  // A whole unit outranks the gap's flex: it may open a little further
+  // (`REST_GAP_HARD_GIVE`) for a rest with none astride.
+  if (fewestHard > 0) {
+    const wider = gapWithin(REST_GAP_FLEX + REST_GAP_HARD_GIVE).filter((offset) => hard(offset) === 0);
+    if (wider.length) {
+      pool.push(...wider.filter((offset) => !pool.includes(offset)));
+      fewestHard = 0;
+    }
+  }
   const fallback = pool.filter((offset) => hard(offset) === fewestHard);
   const leastHard = Math.min(...fallback.map(hardDepth));
   const target = nearest(pool.filter((offset) => barCount(offset) === 0))

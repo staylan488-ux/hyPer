@@ -160,7 +160,7 @@
   --map-body: color-mix(in srgb, var(--color-text) 18%, var(--color-base));
   /* The map drawn as Ivory draws it: hairline seams in the page colour (not
      keylines), fills a step quieter, and under MEV one step past the body
-     (midway to the first in-range tone, so it stays the quietest mark;
+     (at least 2:1 under the first in-range tone, so it stays the quietest mark;
      lib/volumeMap, VolumeMap). */
   --map-seam: 1px;
   --map-ink-drop: 13%;

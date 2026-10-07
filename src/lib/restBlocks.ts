@@ -157,6 +157,8 @@ export function measureRestBand(band: Element, viewport: HTMLElement, fallback =
 const NAV_AIR = 24;
 /** Section headers: each rests with its first line below it, never alone above the bar. */
 const HEAD_SELECTOR = 'h2, h3, .t-label, [data-rest-head]';
+/** Lines judged whole at the bar, like a scale: row titles. */
+const BAR_WHOLE_LINE = '.t-row-title, [data-rest-bar-line]';
 /** Graphics up to this tall are judged at the bar like a line (an icon, a scale). */
 const BAR_GRAPHIC_MAX = 40;
 /** A header further than this above its next line is not a header of it. */
@@ -248,7 +250,7 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
   const clipped = createClipper(viewport);
   const inkOf = createInkMeter(viewport);
   const glyphInset = createGlyphMeter();
-  type Entry = Extent & { node: Node };
+  type Entry = Extent & { node: Node; whole?: boolean };
   const blocks: RestBlock[] = [];
   const entries: Entry[] = [];
   const heads: { element: Element; last: number; top: number; bottom: number }[] = [];
@@ -302,6 +304,9 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     // half-leading above and below shows nothing.
     const fontSize = parseFloat(getComputedStyle(parent).fontSize) || 0;
     const glyphs = inUnit ? 0 : glyphInset(node, parent);
+    // A row title rests at the bar as a unit too: clear above it or under it,
+    // never a title with its letter tops showing over the glass.
+    const title = Boolean(parent.closest(BAR_WHOLE_LINE));
     range.selectNodeContents(node);
     for (const rect of Array.from(range.getClientRects())) {
       if (rect.width < 0.5 || rect.height < 4) continue;
@@ -312,7 +317,7 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
       const ink = Math.max(line.top, column({ top: rect.top + glyphs, bottom: rect.bottom }).top);
       if (!inUnit) blocks.push(ink > line.top + 0.25 && ink < line.bottom ? { ...line, ink } : line);
       const leading = Math.max(0, (rect.height - fontSize) / 2);
-      entries.push({ top: line.top + leading, bottom: Math.max(line.top + leading + 1, line.bottom - leading), node });
+      entries.push({ top: line.top + leading, bottom: Math.max(line.top + leading + 1, line.bottom - leading), node, whole: title || undefined });
       const head = heads.find((candidate) => candidate.element.contains(node));
       if (head) {
         head.top = Math.min(head.top, line.top);
@@ -322,7 +327,12 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     }
   }
   if (barTop === null) return { blocks, bar: null };
-  const items: RestBlock[] = entries.map(({ top, bottom }) => ({ top, bottom }));
+  // A row title is a line like any other (8pt of air, or under the glass),
+  // and also a unit the bar must never cut: letters above the glass and the
+  // rest under it (`clear: 0`).
+  const items: RestBlock[] = entries.flatMap(({ top, bottom, whole }) => (
+    whole ? [{ top, bottom }, { top, bottom, whole, clear: 0 }] : [{ top, bottom }]
+  ));
   for (const head of heads) {
     if (!Number.isFinite(head.top)) continue;
     // The first line under the header (not beside it on its own line).

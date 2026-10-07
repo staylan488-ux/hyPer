@@ -29,6 +29,7 @@
      one faint shadow and no edge. */
   --nav-selection: #E6E6E1;
   --nav-glass: rgba(255,255,252,.6);
+  --nav-veil: rgb(255,255,252);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
   --nav-rim: 0 0 #0000;
   --material-blur: 26px;
@@ -64,6 +65,7 @@
   --material-selection-shadow: none;
   --nav-selection: #333333;
   --nav-glass: rgba(28,28,28,.6);
+  --nav-veil: rgb(28,28,28);
   --nav-shadow: none;
   --nav-rim: 0 0 #0000;
   --material-nav-muted: #9a9a9a;
@@ -121,11 +123,19 @@
    at 12px a 15pt line is gone and the bar reads as a solid slab. Labels and
    icons stay legible over busy content (Fuel, History, Progress and You
    checked). No rim, wash, glow or one-sided light, and no saturation boost,
-   so what passes under it stays neutral. Beside and under the capsule the
-   stage takes over (.bottom-nav-edge, opacity only). */
+   so what passes under it stays neutral. The same fill thickens where a
+   ghost would smudge: behind the label row (about 84% there, so a header
+   under a label stays within ~15 levels) and over the top 12px, where
+   content fades in instead of showing a cut edge. Beside and under the
+   capsule the stage takes over (.bottom-nav-edge, opacity only). */
 .bottom-nav {
   background-color: var(--nav-glass);
-  background-image: none;
+  background-image: linear-gradient(to bottom,
+    color-mix(in srgb, var(--nav-veil) 90%, transparent) 0,
+    color-mix(in srgb, var(--nav-veil) 50%, transparent) 6px,
+    transparent 12px,
+    transparent 30px,
+    color-mix(in srgb, var(--nav-veil) 60%, transparent) 38px);
   box-shadow: var(--nav-shadow);
   -webkit-backdrop-filter: blur(2.5px);
   backdrop-filter: blur(2.5px);

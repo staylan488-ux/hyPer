@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { logMacro } from '@/lib/nutritionMacros';
-import { subDays, format } from 'date-fns';
+import { differenceInCalendarDays, subDays, format, startOfWeek } from 'date-fns';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 
 export interface DailyNutrition {
   date: string;
@@ -49,12 +50,15 @@ async function fetchWeeklyNutrition() {
     const userId = await getSessionUserId();
     if (!userId) return;
 
+    // Progress's week ("Week of …"), from its first day through today: the
+    // days so far, never days that have not happened yet.
     const today = new Date();
-    const sevenDaysAgo = subDays(today, 6);
-    const startDateStr = format(sevenDaysAgo, 'yyyy-MM-dd');
+    const weekStart = startOfWeek(today, TRAINING_WEEK);
+    const daysSoFar = differenceInCalendarDays(today, weekStart) + 1;
+    const startDateStr = format(weekStart, 'yyyy-MM-dd');
     const endDateStr = format(today, 'yyyy-MM-dd');
 
-    // Fetch nutrition logs for the last 7 days, each with its food
+    // Fetch nutrition logs for the week so far, each with its food
     const { data: nutritionLogs, error: logsError } = await fetchNutritionLogsWithFoods<
       { date: string; servings: number; food_id: string },
       { id: string; calories: number; protein: number }
@@ -64,7 +68,7 @@ async function fetchWeeklyNutrition() {
 
     // Aggregate daily nutrition
     const dailyNutritionMap = new Map<string, DailyNutrition>();
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < daysSoFar; i++) {
       const d = format(subDays(today, i), 'yyyy-MM-dd');
       dailyNutritionMap.set(d, { date: d, calories: 0, protein: 0 });
     }
