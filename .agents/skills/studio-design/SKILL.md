@@ -19,7 +19,9 @@ tokens; an already approved direction does not need another design exploration.
   14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
   and accessibility without truncating meaningful names.
 - Use the current Ivory/Black theme tokens and one restrained Lacquer red accent:
-  Ivory (#F5F5F0) and true Black (#000000) under a soft neutral ambient light.
+  Ivory (#F5F5F0) under a soft neutral ambient light, and true Black (#000000)
+  with no light pool. Greys stay truly neutral; never a blue, grey-violet or
+  purple cast, spectral glow or colored light wash.
   Positive/completed states use ink; use semantic tokens for both themes.
 - `text-base` collides with the `--color-base` theme color in Tailwind v4;
   use `text-[1rem]` when a 16px font size is intended.

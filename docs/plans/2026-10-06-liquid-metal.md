@@ -4,8 +4,7 @@
 
 On 2026-10-06 the owner asked for a drastic jump in premium feel inspired by
 Apple's iOS/macOS Liquid Glass and Brett's "liquid metal" study (a dark domed
-send button whose thin chrome bezel carries drifting highlights with orange
-and blue dispersion at their edges). Of three directions the owner chose
+send button whose thin chrome bezel carries drifting highlights). Of three directions the owner chose
 **Metal accents**, and then asked for the change to be a drastic jump rather
 than a reskin.
 
@@ -18,8 +17,13 @@ typography and Ivory/Black foundations remain.
 Materials live in `src/styles/materials.css` (tokens) and
 `src/styles/liquid.css` (glass edges, metal, rings, rails, platters).
 
-- **Stage.** Ivory `#F5F5F0` or true Black, lit by one soft neutral pool of
-  light from above (`--material-ambient`). Never a colored page wash.
+- **Stage.** Ivory `#F5F5F0`, lit by one soft neutral pool of light from
+  above (`--material-ambient`), or true Black with no light pool at all.
+  Never a colored page wash.
+- **Neutral greys.** Every grey in glass, metal, rings, rails and figures is
+  a true neutral (equal R, G and B). No blue, grey-violet or purple cast.
+- **Scroll edge.** Once a page scrolls, content fades into the stage just
+  below the status bar (`.app-viewport::before`), never a hard cut.
 - **Platters.** Page sections sit on `.platter` panels: 26px radius, a
   translucent fill, a specular top edge and a soft shadow. They do not blur.
   `.platter-flush` + `.platter-row` make iOS-style grouped lists (rows padded
@@ -38,9 +42,9 @@ Materials live in `src/styles/materials.css` (tokens) and
   capsule grooves; over-target stays lacquer.
 - **Hero figures.** `.number-hero` / `.t-data-hero` are titanium (Black) or
   graphite (Ivory) gradients.
-- **Live aura.** `.liquid-aura` is spectral light pooling at a bottom edge,
-  only while something is live or thinking (session in progress, photo
-  analysis). `.is-quiet` for ambient use.
+- **Live aura.** `.liquid-aura` is neutral silver light (graphite in Ivory)
+  pooling at a bottom edge, only while something is live or thinking
+  (session in progress, photo analysis). Never spectral or violet. `.is-quiet` for ambient use.
 - **Shape.** Buttons, chips, segmented tracks and the web tab bar are
   capsules (`--radius-capsule`). Inputs and wells use `--radius-control`
   (14px). Sheets 30px. Platters 26px. Editorial content inside platters
@@ -53,3 +57,16 @@ Reduced motion freezes metal at a fixed angle and stops the aura. Reduced
 transparency or increased contrast removes blur, specular rings and gradients:
 metal becomes a solid ink ring and figures solid ink. Forced colors drops the
 decorative layers. Touch targets stay at least 44px.
+
+## Round two, reverted (2026-10-07)
+
+A "Chrome everywhere" pass (371d1c6) put chrome type, chrome hairlines on
+every card, live metal on every primary, liquid-filled spheres, a drifting
+colored light field and a spectral live glow across the app. On the phone the
+owner judged it a clear step backwards: the chrome looked cheap, card outlines
+did too much, metal lost its elegance through repetition, the spheres read as
+tacky bubbles, the colored light read as default "AI" purple, dark mode was no
+longer real black, and content met a hard line under the Dynamic Island when
+scrolling. It was reverted, and round one was refined instead: true black,
+neutral greys and white glints only, a neutral aura and a soft scroll edge.
+Premium feel comes from restraint and craft, not more effects.

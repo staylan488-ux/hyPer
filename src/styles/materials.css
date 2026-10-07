@@ -37,11 +37,10 @@
 }
 .dark {
   --material-foundation: #000000;
-  --material-ambient:
-    radial-gradient(110% 52% at 50% -14%, rgba(150,158,176,.20) 0%, rgba(150,158,176,0) 64%),
-    radial-gradient(80% 45% at 0% 108%, rgba(120,124,136,.10) 0%, rgba(120,124,136,0) 70%);
-  --material-glass: rgba(30,30,33,.52);
-  --material-sheet: rgba(22,22,24,.78);
+  /* True black: no tinted pool of light behind the content. */
+  --material-ambient: none;
+  --material-glass: rgba(30,30,30,.52);
+  --material-sheet: rgba(22,22,22,.78);
   --material-surface: rgba(255,255,255,.055);
   --material-secondary: rgba(255,255,255,.10);
   --material-inset: rgba(255,255,255,.07);
@@ -57,7 +56,7 @@
   --material-inset-shadow: inset 0 1px 2px rgba(0,0,0,.45);
   --material-selection: rgba(255,255,255,.14);
   --material-selection-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.05);
-  --material-nav-muted: #9a9a9f;
+  --material-nav-muted: #9a9a9a;
   --material-accent: #F0A092;
   --platter-fill: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.045) 100%);
   --platter-edge: inset 0 1px 0 rgba(255,255,255,.11), inset 0 0 0 1px rgba(255,255,255,.045);

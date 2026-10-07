@@ -37,14 +37,14 @@
 
   /* Metal: a bright, cool silver read against ivory. */
   --metal-chrome:
-    #969ba5 0deg, #c9cdd5 26deg, #ffffff 52deg, #f4f6f9 66deg, #b3b8c1 92deg,
-    #858a94 124deg, #a3a8b2 150deg, #eceef2 182deg, #ffffff 200deg, #d2d5dc 226deg,
-    #9297a1 262deg, #7f848e 292deg, #bcc0c8 326deg, #969ba5 360deg;
+    #9b9b9b 0deg, #cdcdcd 26deg, #ffffff 52deg, #f6f6f6 66deg, #b8b8b8 92deg,
+    #8a8a8a 124deg, #a8a8a8 150deg, #eeeeee 182deg, #ffffff 200deg, #d5d5d5 226deg,
+    #979797 262deg, #848484 292deg, #c0c0c0 326deg, #9b9b9b 360deg;
   --metal-glints:
     transparent 0deg, transparent 38deg,
-    rgba(255, 166, 77, .85) 40deg, rgba(255, 255, 255, .95) 42deg, rgba(92, 150, 255, .85) 44deg,
+    rgba(255, 255, 255, .5) 40deg, rgba(255, 255, 255, .95) 42deg, rgba(255, 255, 255, .5) 44deg,
     transparent 47deg, transparent 196deg,
-    rgba(92, 150, 255, .7) 198deg, rgba(255, 255, 255, .9) 200deg, rgba(255, 140, 92, .7) 202deg,
+    rgba(255, 255, 255, .5) 198deg, rgba(255, 255, 255, .9) 200deg, rgba(255, 255, 255, .5) 202deg,
     transparent 205deg, transparent 360deg;
   --metal-sheen-stops:
     transparent 0deg, rgba(255,255,255,.0) 70deg, rgba(255,255,255,.9) 92deg, rgba(255,255,255,0) 118deg,
@@ -60,7 +60,7 @@
   --metal-static-opacity: .9;
 
   /* Hero figures: graphite, lit from above. */
-  --figure-ink: linear-gradient(180deg, #1f2222 20%, #4a4e50 100%);
+  --figure-ink: linear-gradient(180deg, #1f2222 20%, #4d4d4d 100%);
 }
 
 .dark {
@@ -71,30 +71,30 @@
 
   /* Metal: the reference ring. Bright silver bands, smoky gaps. */
   --metal-chrome:
-    #4a4e5a 0deg, #8e94a5 26deg, #e8ebf2 52deg, #ffffff 66deg, #b6bccb 92deg,
-    #5d6270 122deg, #2a2c33 150deg, #6f7585 182deg, #e2e6ee 208deg, #f7f8fb 224deg,
-    #a4aaba 250deg, #565b68 286deg, #33353d 318deg, #4a4e5a 360deg;
+    #4e4e4e 0deg, #949494 26deg, #ebebeb 52deg, #ffffff 66deg, #bcbcbc 92deg,
+    #626262 122deg, #2c2c2c 150deg, #757575 182deg, #e6e6e6 208deg, #f8f8f8 224deg,
+    #aaaaaa 250deg, #5b5b5b 286deg, #353535 318deg, #4e4e4e 360deg;
   --metal-glints:
     transparent 0deg, transparent 38deg,
-    rgba(255, 170, 84, .95) 40deg, rgba(255, 255, 255, 1) 42deg, rgba(96, 156, 255, .95) 44deg,
+    rgba(255, 255, 255, .5) 40deg, rgba(255, 255, 255, 1) 42deg, rgba(255, 255, 255, .5) 44deg,
     transparent 47deg, transparent 196deg,
-    rgba(96, 156, 255, .85) 198deg, rgba(255, 255, 255, .95) 200deg, rgba(255, 128, 96, .8) 202deg,
+    rgba(255, 255, 255, .5) 198deg, rgba(255, 255, 255, .95) 200deg, rgba(255, 255, 255, .5) 202deg,
     transparent 205deg, transparent 360deg;
   --metal-sheen-stops:
     transparent 0deg, rgba(255,255,255,0) 70deg, rgba(255,255,255,.85) 92deg, rgba(255,255,255,0) 116deg,
     transparent 230deg, rgba(255,255,255,.7) 252deg, rgba(255,255,255,0) 272deg, transparent 360deg;
   --metal-gap: inset 0 0 0 calc(var(--metal-width) + 1px) rgba(0, 0, 0, .7);
   --metal-width: 1.75px;
-  --metal-dome: linear-gradient(180deg, #3a3a3e 0%, #232326 44%, #0a0a0b 100%);
-  --metal-dome-press: linear-gradient(180deg, #2f2f33 0%, #1c1c1f 48%, #070708 100%);
-  --metal-dome-fg: #ececee;
+  --metal-dome: linear-gradient(180deg, #3a3a3a 0%, #232323 44%, #0a0a0b 100%);
+  --metal-dome-press: linear-gradient(180deg, #2f2f2f 0%, #1c1c1c 48%, #070708 100%);
+  --metal-dome-fg: #ececec;
   --metal-dome-inner: inset 0 1px 0 rgba(255, 255, 255, .13), inset 0 -4px 10px rgba(0, 0, 0, .55);
   --metal-dome-shadow: 0 0 0 1px #000000, 0 8px 22px rgba(0, 0, 0, .55);
   --metal-text-shadow: 0 1px 1px rgba(0, 0, 0, .6);
   --metal-static-opacity: .62;
 
   /* Hero figures: brushed titanium. */
-  --figure-ink: linear-gradient(180deg, #ffffff 18%, #b4b6bd 100%);
+  --figure-ink: linear-gradient(180deg, #ffffff 18%, #b6b6b6 100%);
 }
 
 /* ─── Liquid glass ─────────────────────────────────────────────
@@ -141,7 +141,7 @@
 
 /* ─── Liquid metal ──────────────────────────────────────────────
    A chrome bezel in two layers: broad reflections turning one way and
-   dispersion glints (the orange/blue flecks where light meets shadow)
+   white glints (the sharp highlights where light meets shadow)
    turning the other, at unrelated speeds so the ring never visibly loops.
    The motion light adds tilt: on iOS the bezel answers the phone's attitude. */
 @layer components {
@@ -208,12 +208,19 @@
 }
 
 /* ─── Live aura ─────────────────────────────────────────────────
-   Spectral light pooling at the bottom edge while something is thinking
-   (photo analysis). Transform and opacity only, so it stays on the GPU. */
+   Silver light pooling at the bottom edge while something is thinking
+   (photo analysis). Neutral on purpose, never a spectral or violet wash.
+   Transform and opacity only, so it stays on the GPU. */
 .liquid-aura { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
 .liquid-aura.is-quiet { opacity: .42; }
 .light .liquid-aura.is-quiet, :root:not(.dark) .liquid-aura.is-quiet { opacity: .3; }
-.liquid-aura::before, .liquid-aura::after {
+.liquid-aura::before, :root:not(.dark) .liquid-aura::before {
+  background:
+    radial-gradient(42% 60% at 26% 60%, rgba(40, 40, 40, .30), transparent 70%),
+    radial-gradient(36% 60% at 52% 54%, rgba(80, 80, 80, .36), transparent 70%),
+    radial-gradient(38% 60% at 76% 60%, rgba(40, 40, 40, .28), transparent 70%);
+}
+.liquid-aura::after {
   content: '';
   position: absolute;
   left: -30%;
@@ -224,10 +231,9 @@
   filter: blur(26px);
   opacity: .9;
   background:
-    radial-gradient(40% 60% at 22% 60%, rgba(48, 200, 214, .85), transparent 70%),
-    radial-gradient(38% 60% at 46% 52%, rgba(146, 84, 255, .85), transparent 70%),
-    radial-gradient(36% 60% at 66% 58%, rgba(255, 74, 168, .85), transparent 70%),
-    radial-gradient(34% 56% at 84% 62%, rgba(255, 156, 74, .8), transparent 70%);
+    radial-gradient(42% 60% at 26% 60%, rgba(255, 255, 255, .55), transparent 70%),
+    radial-gradient(36% 60% at 52% 54%, rgba(214, 214, 214, .7), transparent 70%),
+    radial-gradient(38% 60% at 76% 60%, rgba(255, 255, 255, .5), transparent 70%);
   animation: aura-drift 6.5s ease-in-out infinite alternate;
 }
 .liquid-aura::after {
@@ -319,15 +325,15 @@
 :root, .light {
   --ring-groove: linear-gradient(180deg, rgba(35,38,37,.13), rgba(35,38,37,.06));
   --ring-chrome:
-    #50555e 0deg, #80858f 40deg, #b3b7bf 70deg, #7d828c 104deg, #3e424a 140deg, #656a74 180deg,
-    #a5a9b2 214deg, #c3c7ce 230deg, #737882 262deg, #454952 300deg, #50555e 360deg;
+    #555555 0deg, #858585 40deg, #b7b7b7 70deg, #828282 104deg, #424242 140deg, #6a6a6a 180deg,
+    #a9a9a9 214deg, #c7c7c7 230deg, #787878 262deg, #494949 300deg, #555555 360deg;
   --ring-glow: rgba(255,255,255,.0);
 }
 .dark {
   --ring-groove: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.10));
   --ring-chrome:
-    #7a8090 0deg, #b9bfcd 34deg, #f4f6fb 60deg, #ffffff 72deg, #aab0bf 100deg, #6a7080 140deg,
-    #8c92a2 176deg, #e6e9f0 206deg, #ffffff 220deg, #9ca2b2 252deg, #646a7a 300deg, #7a8090 360deg;
+    #808080 0deg, #bfbfbf 34deg, #f6f6f6 60deg, #ffffff 72deg, #b0b0b0 100deg, #707070 140deg,
+    #929292 176deg, #e9e9e9 206deg, #ffffff 220deg, #a2a2a2 252deg, #6a6a6a 300deg, #808080 360deg;
   --ring-glow: rgba(200,210,235,.16);
 }
 
@@ -339,12 +345,12 @@
 :root, .light {
   --rail-groove: rgba(35,38,37,.09);
   --rail-groove-shadow: inset 0 1px 1px rgba(20,22,20,.08);
-  --rail-chrome: linear-gradient(180deg, #7d828b 0%, #3b3f45 55%, #23262a 100%);
+  --rail-chrome: linear-gradient(180deg, #828282 0%, #3f3f3f 55%, #262626 100%);
 }
 .dark {
   --rail-groove: rgba(255,255,255,.08);
   --rail-groove-shadow: inset 0 1px 1px rgba(0,0,0,.5);
-  --rail-chrome: linear-gradient(180deg, #ffffff 0%, #d6d9e0 40%, #8f95a2 100%);
+  --rail-chrome: linear-gradient(180deg, #ffffff 0%, #d9d9d9 40%, #959595 100%);
 }
 
 /* ─── Stage and platters ────────────────────────────────────────

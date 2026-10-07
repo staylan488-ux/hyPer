@@ -443,6 +443,29 @@ input, textarea, select, button { font-family: inherit; }
   padding: var(--app-safe-top) var(--app-safe-right) 0 var(--app-safe-left);
   background: var(--material-foundation);
 }
+/* Scroll edge: once the page scrolls, content dissolves into the stage just
+   below the status bar instead of meeting a hard line. The layer is a copy of
+   the shell's own background, aligned to it and faded out by a mask, so the
+   seam matches in every theme. */
+.app-viewport::before {
+  content: '';
+  position: absolute;
+  top: var(--app-safe-top);
+  left: 0;
+  right: 0;
+  z-index: 1;
+  height: 30px;
+  pointer-events: none;
+  background: inherit;
+  background-size: 100% var(--app-viewport-height, 100dvh);
+  background-position: 0 calc(-1 * var(--app-safe-top));
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, .55) 45%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, .55) 45%, transparent 100%);
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out-quart);
+}
+.app-viewport[data-scrolled]::before { opacity: 1; }
 .app-scroll-viewport {
   height: 100%;
   max-width: 32rem;
