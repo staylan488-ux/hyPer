@@ -57,9 +57,9 @@ tokens; an already approved direction does not need another design exploration.
   content below the ramp. Like UIKit's target content offset, a collapsed
   page that stops scrolling settles on one gap (`restNudgeTarget`,
   `lib/titleSnap.ts`; Train's live session too): the first content under
-  the band, a line, graphic or filled box, starts exactly at the ramp's
-  foot on every page, snapping to the nearest block top within 120pt, with
-  nothing showing above it. No text line, graphic or filled box rests in
+  the band, a line, graphic or filled box, starts at the ramp's foot or up
+  to 12pt past it (`REST_GAP_FLEX`) on every page, snapping within 120pt,
+  with nothing showing above it. No text line, graphic or filled box rests in
   the band's ramp (each clears its foot or sits under the solid zone); a
   filled box (Fuel's Log food pill, a track) counts as hidden only once its
   edge is at the solid zone's edge, since the band's blur smears an edge in
@@ -68,10 +68,12 @@ tokens; an already approved direction does not need another design exploration.
   the next clear. A figure, ring or `data-rest-block` unit (Progress's
   figures with their legend, You's search field) rests whole: wholly hidden
   or wholly shown, never split; only a block taller than the space between
-  the ramp and the bar passes under like a photo. The tab bar is glass, so
-  the gap wins over the bottom edge: a line may rest passing under the bar,
-  and a line astride it only breaks a near tie between rests at the gap.
-  With no rest at the gap in reach, the nearest rest with a clean band.
+  the ramp and the bar passes under like a photo. Within the gap's flex the
+  page takes the nearest offset with no line astride the tab bar's top edge
+  or within 8pt above it (`REST_BAR_CLEAR`, judged by the glyphs' em box);
+  only when no offset in the flex is clean does a line rest passing under
+  the glass. With no rest at the gap in reach, the nearest rest with a
+  clean band.
   `data-rest-ignore`
   leaves a subtree out; the page header collapses with its title (anything
   it holds under the title, You's search, collapses with it). Hairline rules
@@ -164,12 +166,14 @@ tokens; an already approved direction does not need another design exploration.
   (`TabIcons`, an upright plain dumbbell; the current tab's glyph is its
   filled variant), 10.5px semibold
   labels in the current tab's ink or a neutral secondary grey (#575757
-  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 10px
-  backdrop blur under a neutral fill at 72% (#1C1C1C in Black, a light
-  ivory in Ivory, where one faint shadow sets it off), clipped to the
-  capsule, so content passing under it shows through as a soft blurred
-  shape (a 20px blur spreads a 15pt line to nothing and the bar reads as
-  an opaque slab cutting it); no rim, wash, glow or one-sided light; the
+  Ivory, #9A9A9A Black). The web bar is translucent liquid glass: a 5px
+  backdrop blur (CSS standard deviation, a ~12-15px visible spread) under a
+  neutral fill at 50% (#1C1C1C in Black, a light ivory in Ivory, where one
+  faint shadow sets it off), clipped to the capsule, so text passing under
+  it visibly continues inside the capsule, softly blurred, while labels and
+  icons stay legible (a 12px blur takes a 15pt line under ~4% contrast at
+  1x and the bar reads as a solid slab cutting it); no rim, wash, glow or
+  one-sided light; the
   current tab a flat fill (no shadow; #333333 in Black) inset 5px on every
   side and concentric with the bar. Nothing blurs outside the capsule: its
   bottom scroll edge (`.bottom-nav-edge`) is stage colour only, an 8px

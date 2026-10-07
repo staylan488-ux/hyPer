@@ -71,19 +71,20 @@ export const REST_SLIVER = 40;
 export const REST_NUDGE_LIMIT = 32;
 /** A page judged at both edges moves up to this far to clear the band. */
 export const REST_PAGE_NUDGE_LIMIT = 64;
-/** A text line rests at least this far above the tab bar's top, or under it. */
-export const REST_BAR_CLEAR = 12;
+/** A text line rests at least this far above the tab bar's top (clear of its
+ *  8px stage fade), or wholly under it. */
+export const REST_BAR_CLEAR = 8;
 /** Where the first content under the band rests, past the ramp's foot: on
  *  every page, the first line, graphic or filled box below the band starts
- *  exactly at the foot, where the veil has wholly cleared. */
+ *  at the foot, where the veil has wholly cleared, or up to `REST_GAP_FLEX`
+ *  past it. */
 export const REST_GAP = 0;
+/** How far past the foot the first content may rest, so the page can also
+ *  rest with no line astride the tab bar. */
+export const REST_GAP_FLEX = 12;
 /** The furthest a rest moves to reach that gap (about one and a half rows;
  *  half a long figure's height). */
 export const REST_GAP_REACH = 120;
-/** Among rests at the gap, one with a line astride the tab bar loses to one
- *  without by this much distance: the bar is glass, so a line passing under
- *  it is only a tie-breaker. */
-export const REST_BAR_PENALTY = 6;
 
 const isTall = (block: RestBlock, band: RestBand) => (band.window !== undefined
   ? block.bottom - block.top > band.window
@@ -179,14 +180,15 @@ function reachOf(block: RestBlock, band: RestBand, limit: number): number {
  *
  * Given the tab bar (`null` where there is none to judge), the page rests on
  * one gap instead: the first content under the band starts at the ramp's
- * foot (`REST_GAP`), as UIKit pages rest with a row's top under the
- * navigation bar. The candidates are the offsets where a line's, graphic's
- * or filled box's top lands there with nothing split by the band; the
- * nearest within `REST_GAP_REACH` wins. The tab bar is glass, so a line
- * passing under it only breaks a near tie (`REST_BAR_PENALTY`). The scroll
- * end with a clean band is a rest as well (its end space is the one bottom
- * inset), and a page at its end always stays. With no rest at the gap in reach, the
- * nearest rest with a clean band, then the fewest splits.
+ * foot or up to `REST_GAP_FLEX` past it (`REST_GAP`), as UIKit pages rest
+ * with a row's top under the navigation bar, with nothing split by the
+ * band. Within that, the nearest offset (within `REST_GAP_REACH`) with no
+ * line astride the tab bar's top or within `REST_BAR_CLEAR` above it wins;
+ * only when no such offset is in reach does a line rest passing under the
+ * bar (the nearest rest at the gap). The scroll end with a clean band is a
+ * rest as well (its end space is the one bottom inset), and a page at its
+ * end always stays. With no rest at the gap in reach, the nearest rest
+ * with a clean band, then the fewest splits.
  */
 export function restNudgeTarget(
   scrollTop: number,
@@ -209,10 +211,32 @@ export function restNudgeTarget(
   // The scroll end with a clean band is a rest too (its end space is the
   // one bottom inset), so a page just short of its end goes there.
   const atEnd = high >= range.max - 1e-6 && topCount(range.max) === 0 ? [range.max] : [];
-  const gap = [...gapRestOffsets(blocks, band).filter((offset) => offset >= low - 1e-6 && offset <= high + 1e-6), ...atEnd]
-    .map((offset) => ({ offset, key: Math.abs(offset - scrollTop) + (barCount(offset) > 0 ? REST_BAR_PENALTY : 0) }))
-    .sort((a, b) => a.key - b.key)[0];
-  if (gap !== undefined) return Math.abs(gap.offset - scrollTop) < 0.5 ? null : gap.offset;
+  // Where the first shown content starts past the foot (Infinity: none).
+  const firstShown = (offset: number) => blocks.reduce((first, block) => (
+    block.bottom - offset > band.solid + (block.fill ? 0 : REST_HIDDEN_DEPTH) ? Math.min(first, block.top - offset) : first
+  ), Infinity) - band.foot - REST_GAP;
+  // The offsets where something changes: a block's top at either end of the
+  // gap's flex, a block just hidden or just clear at the band, a line just
+  // clear above the bar or just under it.
+  const marks = new Set<number>([scrollTop, low, high, ...criticalOffsets(blocks, band)]);
+  for (const block of blocks) {
+    marks.add(block.top - band.foot - REST_GAP);
+    marks.add(block.top - band.foot - REST_GAP - REST_GAP_FLEX);
+  }
+  if (bar) {
+    for (const item of bar.items) {
+      marks.add(Math.ceil(item.bottom - bar.top + REST_BAR_CLEAR));
+      marks.add(Math.floor(item.top - bar.top));
+    }
+  }
+  const atGap = [...marks].filter((offset) => {
+    if (offset < low - 1e-6 || offset > high + 1e-6 || topCount(offset) !== 0) return false;
+    const gap = firstShown(offset);
+    return gap >= -0.5 && gap <= REST_GAP_FLEX + 0.5;
+  });
+  const nearest = (offsets: number[]) => offsets.sort((a, b) => Math.abs(a - scrollTop) - Math.abs(b - scrollTop))[0];
+  const target = nearest([...atGap, ...atEnd].filter((offset) => barCount(offset) === 0)) ?? nearest([...atGap, ...atEnd]);
+  if (target !== undefined) return Math.abs(target - scrollTop) < 0.5 ? null : target;
   if (nowTop === 0) return null;
   const reach = blocks.reduce((most, block) => (straddlesBand(block, scrollTop, band) ? Math.max(most, reachOf(block, band, limit)) : most), limit);
   const from = Math.max(range.min, scrollTop - reach);

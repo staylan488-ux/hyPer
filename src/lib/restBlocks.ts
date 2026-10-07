@@ -227,6 +227,9 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
     // A unit's lines rest with it.
     const unit = parent.closest('[data-rest-block]');
     const inUnit = Boolean(unit && root.contains(unit));
+    // At the bar a line is its glyphs' em box, not its line box: the
+    // half-leading above and below shows nothing.
+    const fontSize = parseFloat(getComputedStyle(parent).fontSize) || 0;
     range.selectNodeContents(node);
     for (const rect of Array.from(range.getClientRects())) {
       if (rect.width < 0.5 || rect.height < 4) continue;
@@ -234,7 +237,8 @@ export function measureRestInk(root: HTMLElement, viewport: HTMLElement): RestIn
       if (!extent) continue;
       const line = column(extent);
       if (!inUnit) blocks.push(line);
-      entries.push({ ...line, node });
+      const leading = Math.max(0, (rect.height - fontSize) / 2);
+      entries.push({ top: line.top + leading, bottom: Math.max(line.top + leading + 1, line.bottom - leading), node });
       const head = heads.find((candidate) => candidate.element.contains(node));
       if (head) {
         head.top = Math.min(head.top, line.top);

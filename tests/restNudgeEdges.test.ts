@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REST_BAR_CLEAR,
   REST_GAP,
+  REST_GAP_FLEX,
   REST_PAGE_NUDGE_LIMIT,
   barDepth,
   restNudgeTarget,
@@ -19,40 +20,42 @@ const range = { min: 73, max: 2000 };
 const bar = (items: RestBar['items']): RestBar => ({ top: 729, items });
 
 describe('two-edge rest: the tab bar', () => {
-  it('counts a line within 12pt above the bar or astride it, not one clear above or under it', () => {
+  it('counts a line within 8pt above the bar or astride it, not one clear above or under it', () => {
     const edge = bar([]);
-    expect(barDepth({ top: 698, bottom: 716 }, 0, edge)).toBe(0); // ends 13pt above: clear
+    expect(barDepth({ top: 698, bottom: 716 }, 0, edge)).toBe(0); // ends 13pt above: clear (8pt needed)
     expect(barDepth({ top: 705, bottom: 723 }, 0, edge)).toBeGreaterThan(0); // ends 6pt above
     expect(barDepth({ top: 720, bottom: 738 }, 0, edge)).toBeGreaterThan(0); // cut by the bar
     expect(barDepth({ top: 730, bottom: 748 }, 0, edge)).toBe(0); // wholly under the glass
   });
 
-  it('lets a line pass under the glass bar rather than leave the gap under the band', () => {
-    // Rows every 68pt; at the gap (a row's top at the foot) a line sits astride the bar.
+  it('flexes the gap (up to 12pt past the foot) to rest with no line astride the bar', () => {
     const rows = [470, 538, 606].map((top) => ({ top, bottom: top + 18 }));
-    const line = { top: 1130, bottom: 1148 };
-    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
-    expect(target).toBe(470 - band.foot - REST_GAP);
-    expect(barDepth(line, target as number, bar([line]))).toBeGreaterThan(0);
+    const line = { top: 1125, bottom: 1143 }; // astride the bar at 400
+    expect(barDepth(line, 400, bar([line]))).toBeGreaterThan(0);
+    const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([line])) as number;
+    expect(barDepth(line, target, bar([line]))).toBe(0);
+    const gap = rows[0].top - target - band.foot;
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(REST_GAP_FLEX);
   });
 
-  it('breaks a near tie between rests at the gap by the bar', () => {
-    // Rests at the gap 12pt either side of here (412 and 436); at 412 a line sits astride the bar.
-    const blocks = [{ top: 476, bottom: 480 }, { top: 500, bottom: 518 }];
-    const line = { top: 1127, bottom: 1145 };
-    const target = restNudgeTarget(424, blocks, band, range, REST_PAGE_NUDGE_LIMIT, bar([line]));
-    expect(target).toBe(436);
-    expect(barDepth(line, 412, bar([line]))).toBeGreaterThan(0);
-    expect(barDepth(line, 436, bar([line]))).toBe(0);
+  it('lets a line pass under the bar only when no offset at the gap is clear of it', () => {
+    // A header unit too tall to clear the bar anywhere in reach.
+    const unit = { top: 1000, bottom: 1300 };
+    const target = restNudgeTarget(380, [{ top: 470, bottom: 488 }], band, range, REST_PAGE_NUDGE_LIMIT, bar([unit]));
+    expect(target).toBe(470 - band.foot - REST_GAP - REST_GAP_FLEX);
+    expect(barDepth(unit, target as number, bar([unit]))).toBeGreaterThan(0);
   });
+
 });
 
 describe('two-edge rest: one gap under the band', () => {
-  it('rests with the first content at the ramp foot, snapping to the nearest block top', () => {
+  it('rests with the first content at the ramp foot (within its flex), snapping to the nearest block top', () => {
     // The first content sits 40pt past the foot: move so a block top lands on it.
     const rows = [{ top: 504, bottom: 522 }, { top: 560, bottom: 578 }];
     const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
-    expect(target).toBe(504 - band.foot - REST_GAP);
+    // The nearest offset with the first content within the gap's 12pt flex.
+    expect(target).toBe(504 - band.foot - REST_GAP - REST_GAP_FLEX);
     expect(straddleCount(rows, target as number, band)).toBe(0);
   });
 
@@ -60,7 +63,7 @@ describe('two-edge rest: one gap under the band', () => {
     // A title line and a slightly taller figure on one row: the figure's top is the first ink.
     const rows = [{ top: 502, bottom: 524 }, { top: 504, bottom: 522 }];
     const target = restNudgeTarget(400, rows, band, range, REST_PAGE_NUDGE_LIMIT, bar([]));
-    expect(target).toBe(502 - band.foot - REST_GAP);
+    expect(target).toBe(502 - band.foot - REST_GAP - REST_GAP_FLEX);
   });
 
   it('stays at the scroll end when the band is clean there', () => {

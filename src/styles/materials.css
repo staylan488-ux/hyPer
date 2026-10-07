@@ -28,7 +28,7 @@
   /* Web tab bar: the current tab is a flat ink fill; the bar is set off by
      one faint shadow and no edge. */
   --nav-selection: rgba(0,0,0,.07);
-  --nav-glass: rgba(251,251,247,.72);
+  --nav-glass: rgba(251,251,247,.5);
   --nav-shadow: 0 8px 24px rgba(0,0,0,.06);
   --nav-rim: 0 0 #0000;
   --material-blur: 26px;
@@ -63,7 +63,7 @@
   --material-selection: rgba(255,255,255,.16);
   --material-selection-shadow: none;
   --nav-selection: #333333;
-  --nav-glass: rgba(28,28,28,.72);
+  --nav-glass: rgba(28,28,28,.5);
   --nav-shadow: none;
   --nav-rim: 0 0 #0000;
   --material-nav-muted: #9a9a9a;
@@ -112,20 +112,23 @@
 .material-button-primary, .studio-save-set {
   background-image: var(--material-action-wash);
 }
-/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill at 72%
-   (near-black in Black, ivory in Ivory) over a 10px backdrop blur, clipped to
+/* Web tab bar: translucent liquid glass, as iOS 26's. A neutral fill at 50%
+   (near-black in Black, ivory in Ivory) over a 5px backdrop blur, clipped to
    the capsule by its radius and overflow (the blur never paints outside it).
-   Content passing under it shows through as a soft blurred shape: at 20px a
-   15pt line spreads to under 3% contrast and the bar reads as an opaque slab
-   cutting it. No rim, wash, glow or one-sided light, and no saturation
-   boost, so what passes under it stays neutral. Beside and under the capsule
-   the stage takes over (.bottom-nav-edge, opacity only). */
+   Text passing under it visibly continues inside the capsule, softly blurred
+   (CSS blur is a standard deviation: 5px spreads a line over ~12-15px). At
+   12px a 15pt line falls under ~4% contrast at 1x and the bar reads as a
+   solid slab cutting it. Labels and icons stay legible over busy content
+   (history, analysis and You tops checked). No rim, wash, glow or one-sided
+   light, and no saturation boost, so what passes under it stays neutral.
+   Beside and under the capsule the stage takes over (.bottom-nav-edge,
+   opacity only). */
 .bottom-nav {
   background-color: var(--nav-glass);
   background-image: none;
   box-shadow: var(--nav-shadow);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
 }
 .dark .studio-sheet { background-image: none; }
 .studio-secondary-action, .material-button-secondary {
