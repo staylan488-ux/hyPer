@@ -82,9 +82,16 @@ export function connectGlassNavigation(
   };
 }
 
+const within = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+
+/**
+ * The tab a route lives under, for the native bar and the web bar alike.
+ * Program, History and Progress are pushed from Today's contents and go back
+ * to Today, so Today stays selected while they are open.
+ */
 export function nativeTabForPath(path: string): NativeTab {
-  if (['/train', '/workout', '/splits'].some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return 'train';
-  if (path === '/nutrition' || path.startsWith('/nutrition/')) return 'fuel';
-  if (path === '/') return 'today';
+  if (path === '/' || ['/train/program', '/splits', '/history', '/analysis'].some((prefix) => within(path, prefix))) return 'today';
+  if (['/train', '/workout'].some((prefix) => within(path, prefix))) return 'train';
+  if (within(path, '/nutrition')) return 'fuel';
   return 'you';
 }

@@ -57,27 +57,6 @@
 }
 .ledger-choice:active:not(:disabled) { transform: scale(.985); }
 
-/* Compact day actions (Sync, + Activity, Merge): quiet flat fills. */
-.ledger-capsule {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: var(--radius-control);
-  font: 500 11px/1 var(--font-sans);
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--color-text);
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
-  transition: transform 110ms ease, opacity 160ms ease, background-color 160ms ease;
-  position: relative;
-}
-/* Keep a 44px hit area around the 34px visual key. */
-.ledger-capsule::after { content: ''; position: absolute; inset: -5px -2px; }
-.ledger-capsule:active:not(:disabled) { transform: scale(.97); }
-.ledger-capsule:disabled { opacity: .4; }
-
 /* ─── Progress ──────────────────────────────────────────────── */
 /* Volume status: an unboxed label led by a small mark; lacquer only when
    volume runs past its ceiling. */
@@ -103,6 +82,6 @@
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .ledger-field { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
-  .ledger-capsule, .ledger-choice { background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+  .ledger-choice { background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
   .ledger-well { box-shadow: inset 0 0 0 1px var(--color-border); }
 }

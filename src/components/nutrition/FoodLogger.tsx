@@ -1742,7 +1742,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               </div>
             ))}
           </div>
-          <p className="t-caption mt-3 px-1">
+          <p className="t-caption mt-3">
             {selectedFood.serving_label
               ? `per ${selectedFood.serving_label} (${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'g'})`
               : `per ${formatMeasurementAmount(selectedFood.serving_size || 1)} ${selectedFood.serving_unit || 'serving'}`}
@@ -1902,14 +1902,15 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
       {mode === 'saved' ? (
         <div className="space-y-4">
-          <div className="flex min-h-11 items-center justify-between gap-4 pl-1">
+          <div className="flex min-h-11 items-center justify-between gap-4">
             <span className="t-label-sm">
               {showSavedMealsLoading ? 'Loading' : `${savedMeals.length} saved`}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center -mr-2.5">
               <button
                 type="button"
-                className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                className="text-action"
+                data-tone="quiet"
                 onClick={handleAddSavedMeal}
               >
                 Add
@@ -1917,7 +1918,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               {savedMeals.length > 0 && (
                 <button
                   type="button"
-                  className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)]"
+                  className="text-action"
                   onClick={() => {
                     clearSavedMealFeedback();
                     setManagingSavedMeals((current) => !current);
@@ -1958,9 +1959,9 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
               Loading saved foods…
             </div>
           ) : filteredSavedMeals.length > 0 ? (
-            <div className="platter platter-flush max-h-72 w-full max-w-full overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
+            <div className="platter platter-flush max-h-72 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y">
               {filteredSavedMeals.map((meal, index) => (
-                <div key={meal.id} className="platter-row flex w-full max-w-full min-w-0 items-stretch overflow-hidden pl-4">
+                <div key={meal.id} className="platter-row flex min-w-0 items-stretch overflow-hidden pl-5">
                   {managingSavedMeals ? (
                     <>
                       <div className="flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-2">
@@ -1976,7 +1977,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       </div>
                       <button
                         type="button"
-                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--platter-divider)] text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
+                        className="pressable flex w-11 shrink-0 items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
                         onClick={() => handleEditSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
                         aria-label={`Edit saved meal ${meal.name}`}
@@ -1985,7 +1986,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                       </button>
                       <button
                         type="button"
-                        className="pressable flex w-11 shrink-0 items-center justify-center border-l border-[var(--platter-divider)] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
+                        className="pressable mr-1.5 flex w-11 shrink-0 items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40"
                         onClick={() => void handleDeleteSavedMeal(meal)}
                         disabled={deletingSavedMealId === meal.id}
                         aria-label={`Delete saved meal ${meal.name}`}
@@ -1998,7 +1999,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
                   ) : (
                     <button
                       type="button"
-                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-4 text-left"
+                      className="pressable group flex min-w-0 flex-1 items-baseline gap-3 py-3.5 pr-5 text-left"
                       onClick={() => handleLogSavedMeal(meal)}
                       aria-label={`Log ${meal.name}`}
                     >

@@ -1,0 +1,88 @@
+/* ═════════════════════════════════════════════════════════════
+   Page header — the one title system (PageHeader in PageTitle.tsx).
+   A 44px bar row sits where an iOS navigation bar would, directly under
+   the status bar: the back control on pushed screens, trailing actions on
+   the right. Below it one small eyebrow line (its slot kept when empty),
+   then the large serif title, so every title rests at the same height.
+   ═════════════════════════════════════════════════════════════ */
+
+.page-header {
+  /* Takes the place of the Screen's 28px top padding. */
+  margin-top: -1.75rem;
+}
+.page-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 44px;
+}
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: -10px;
+}
+.page-eyebrow {
+  margin-top: 6px;
+  min-height: 1.4em;
+  overflow-wrap: anywhere;
+}
+.page-header-title {
+  margin-top: 6px;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* Back: chevron and the destination's name, in ink. The chevron's stroke
+   sits on the page's 24px guide. */
+.page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 44px;
+  margin-left: -8px;
+  padding-right: 12px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -.01em;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 160ms ease;
+}
+.page-back:active { opacity: .5; }
+
+/* The same control repeated in the condensed band. */
+.page-scroll-edge-back {
+  position: absolute;
+  top: 0;
+  /* With .page-back's -8px margin the chevron lands on the 24px guide. */
+  left: 24px;
+}
+
+/* Quiet text action: sentence case, ink, no fill or outline, with a 44px
+   target. Used for contextual actions (Sync, Add activity, New, Edit). */
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 160ms ease, color 160ms ease;
+}
+.text-action:active:not(:disabled) { opacity: .5; }
+.text-action:disabled { opacity: .35; }
+.text-action[data-tone='quiet'] { color: var(--color-text-dim); }
+.text-action[data-tone='danger'] { color: var(--color-accent); }

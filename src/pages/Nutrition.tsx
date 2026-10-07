@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
-import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
+import { Button, EmptyState, MetalRing, Modal, RailStrip, RollingNumber, Screen, Toast, PageHeader, SealMark } from '@/components/shared';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -453,16 +453,10 @@ export function Nutrition() {
       <Toast show={showSuccess} message="Entry saved" />
 
       {/* ── Dateline ── */}
-      <header>
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">{isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE')}</span>
-          <span className="t-label-sm">{format(selectedDate, 'MMM d')}</span>
-        </div>
-        <PageTitle className="mt-5">Fuel</PageTitle>
-      </header>
+      <PageHeader eyebrow={format(selectedDate, 'EEEE, MMM d')} title="Fuel" />
 
       {/* ── Energy hero — the day's calories, big, with the page's one metal action ── */}
-      <section className="platter mt-5">
+      <section className="platter mt-4">
         {loading ? (
           <div className="space-y-4" aria-hidden>
             <div className="shimmer h-3 w-24" />

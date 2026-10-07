@@ -128,9 +128,17 @@ describe('native glass navigation', () => {
 
   it('matches route sections without matching unrelated prefixes', () => {
     expect(nativeTabForPath('/')).toBe('today');
-    expect(nativeTabForPath('/train/program')).toBe('train');
+    expect(nativeTabForPath('/train')).toBe('train');
+    expect(nativeTabForPath('/train/session')).toBe('train');
     expect(nativeTabForPath('/nutrition')).toBe('fuel');
-    expect(nativeTabForPath('/history')).toBe('you');
+    expect(nativeTabForPath('/settings/targets')).toBe('you');
     expect(nativeTabForPath('/training')).toBe('you');
+  });
+
+  it('keeps Today selected on the screens pushed from Today', () => {
+    expect(nativeTabForPath('/train/program')).toBe('today');
+    expect(nativeTabForPath('/history')).toBe('today');
+    expect(nativeTabForPath('/analysis')).toBe('today');
+    expect(nativeTabForPath('/historyx')).toBe('you');
   });
 });

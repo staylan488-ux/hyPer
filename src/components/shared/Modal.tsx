@@ -122,7 +122,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               <span className="material-sheet-handle" />
             </div>
             <div
-              className={`material-sheet-header flex items-center justify-between pl-6 pr-5 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
+              className={`material-sheet-header flex items-center justify-between pl-6 pr-6 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
               {title ? <h2 id={titleId} className="sheet-title">{title}</h2> : <span />}
@@ -130,7 +130,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="material-sheet-close p-3 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                className="material-sheet-close relative p-3 after:absolute after:-inset-1 after:content-[''] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />

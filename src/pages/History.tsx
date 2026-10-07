@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle, MetalRing } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageHeader, MetalRing } from '@/components/shared';
 import { LapPaceChart } from '@/components/shared/charts';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
@@ -146,6 +146,8 @@ interface ActivityEditorProps {
   saving: boolean;
   onSave: (input: ActivitySessionInput) => void;
   onCancel: () => void;
+  /** Saved activities only: asks for confirmation before anything is removed. */
+  onDelete?: () => void;
 }
 
 interface ActivityLedgerRowProps {
@@ -154,7 +156,6 @@ interface ActivityLedgerRowProps {
   expanded: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
-  onDelete: () => void;
   selectable?: boolean;
   selected?: boolean;
   onToggleSelected?: () => void;
@@ -211,7 +212,7 @@ function isDateKeyInMonth(dateKey: string, month: Date): boolean {
   return !Number.isNaN(parsed.getTime()) && isSameMonth(parsed, month);
 }
 
-function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel }: ActivityEditorProps) {
+function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, onSave, onCancel, onDelete }: ActivityEditorProps) {
   const [activityType, setActivityType] = useState<ActivityType>(activity?.activity_type || 'bike_ride');
   const [customType, setCustomType] = useState(activity?.custom_type || '');
   const [title, setTitle] = useState(activity?.title || '');
@@ -325,6 +326,13 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           Save
         </Button>
       </div>
+      {onDelete && (
+        <div className="flex justify-center">
+          <button type="button" className="text-action" data-tone="danger" disabled={saving} onClick={onDelete}>
+            Delete activity
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -465,7 +473,7 @@ function WorkoutActivityPanel({
 }
 
 function ActivityLedgerRow({
-  activity, segments, expanded, onToggleExpand, onEdit, onDelete,
+  activity, segments, expanded, onToggleExpand, onEdit,
   selectable = false, selected = false, onToggleSelected,
 }: ActivityLedgerRowProps) {
   // cross-source sessions carry enrichment segments (e.g. a WHOOP record
@@ -490,9 +498,13 @@ function ActivityLedgerRow({
   // one segment = the whole workout; a splits table only means something for 2+
   const hasSplits = primarySegments.length >= 2;
 
+  // The row itself opens the editor (where it can also be deleted); while
+  // merging, it toggles the activity's selection instead.
+  const onRowPress = selectable ? onToggleSelected : onEdit;
+
   return (
-    <div className="px-5 py-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="px-5">
+      <div className="flex items-stretch gap-3">
         {selectable && (
           <button
             type="button"
@@ -500,62 +512,58 @@ function ActivityLedgerRow({
             aria-checked={selected}
             aria-label={`Select ${title} to merge`}
             onClick={onToggleSelected}
-            className={`pressable h-11 w-11 shrink-0 rounded-[var(--radius-control)] flex items-center justify-center transition-colors ${
-              selected ? 'bg-[var(--color-text)] text-[var(--color-base)]' : 'material-control'
-            }`}
+            className="pressable -ml-2.5 w-11 shrink-0 flex items-center justify-center"
           >
-            {selected && <Check className="h-4 w-4" strokeWidth={2.25} />}
+            <span
+              aria-hidden
+              className={`h-[22px] w-[22px] rounded-full flex items-center justify-center transition-colors ${
+                selected ? 'bg-[var(--color-text)] text-[var(--color-base)]' : 'shadow-[inset_0_0_0_1.5px_var(--color-muted)]'
+              }`}
+            >
+              {selected && <Check className="h-3.5 w-3.5" strokeWidth={2.5} />}
+            </span>
           </button>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="t-label-sm">Activity</p>
-          <p className="mt-1 t-body text-[var(--color-text)] break-words">{title}</p>
-          <p className="t-data-sm text-[var(--color-muted)] mt-1">
-            {subtitleParts.length > 0 ? subtitleParts.join(' • ') : typeLabel}
-          </p>
+        <button
+          type="button"
+          onClick={onRowPress}
+          tabIndex={selectable ? -1 : undefined}
+          aria-label={selectable ? undefined : `Edit ${title}`}
+          className="pressable min-w-0 flex-1 py-4 text-left flex items-center gap-3"
+        >
+          <span className="block min-w-0 flex-1">
+          <span className="block t-body text-[var(--color-text)] break-words">{title}</span>
+          <span className="block t-data-sm text-[var(--color-muted)] mt-1">
+            {subtitleParts.length > 0 ? subtitleParts.join(' · ') : typeLabel}
+          </span>
           {metricsParts.length > 0 && (
-            <p className="t-data-sm text-[var(--color-text-dim)] mt-1">
-              {metricsParts.join(' • ')}
-            </p>
+            <span className="block t-data-sm text-[var(--color-text-dim)] mt-0.5">
+              {metricsParts.join(' · ')}
+            </span>
           )}
           {activity.notes && (
-            <p className="t-caption mt-2 line-clamp-2">{activity.notes}</p>
+            <span className="block t-caption mt-2 line-clamp-2">{activity.notes}</span>
           )}
-        </div>
+          </span>
+          {!hasSplits && !selectable && (
+            <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={1.5} aria-hidden />
+          )}
+        </button>
 
-        <div className="flex shrink-0 items-center -mr-3 -mt-2.5">
-          {hasSplits && (
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              title={expanded ? 'Hide splits' : 'Show splits'}
-              aria-label={expanded ? 'Hide splits' : 'Show splits'}
-            >
-              {expanded
-                ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-                : <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />}
-            </button>
-          )}
+        {hasSplits && (
           <button
             type="button"
-            onClick={onEdit}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-            title="Edit activity"
-            aria-label="Edit activity"
+            onClick={onToggleExpand}
+            className="pressable -mr-3 flex items-center justify-center w-11 shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            title={expanded ? 'Hide splits' : 'Show splits'}
+            aria-label={expanded ? 'Hide splits' : 'Show splits'}
+            aria-expanded={expanded}
           >
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {expanded
+              ? <ChevronUp className="w-4 h-4" strokeWidth={1.5} />
+              : <ChevronDown className="w-4 h-4" strokeWidth={1.5} />}
           </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-            title="Delete activity"
-            aria-label="Delete activity"
-          >
-            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
+        )}
       </div>
 
       <AnimatePresence initial={false}>
@@ -1016,7 +1024,7 @@ export function History() {
     if (selectedDayActivities.length > 0) {
       parts.push(`${selectedDayActivities.length} activit${selectedDayActivities.length !== 1 ? 'ies' : 'y'}`);
     }
-    return parts.length > 0 ? parts.join(' • ') : '0 sessions';
+    return parts.length > 0 ? parts.join(' · ') : '0 sessions';
   }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
   const refreshWorkout = useCallback(async (workoutId: string, syncCompletion = true) => {
@@ -1157,7 +1165,7 @@ export function History() {
       await fetchMonthWorkouts(selectedMonthRef.current);
 
       const changes = whoop.created + whoop.updated;
-      showToast(changes > 0 ? `Synced • ${whoop.created} new • ${whoop.updated} updated` : 'Up to date');
+      showToast(changes > 0 ? `Synced · ${whoop.created} new · ${whoop.updated} updated` : 'Up to date');
     } catch (error) {
       console.error('Error syncing activities:', error);
       showToast('Sync failed');
@@ -1322,16 +1330,10 @@ export function History() {
   };
 
   return (
-    <motion.div className="px-6 pt-6 pb-nav">
+    <motion.div className="px-6 pt-7 pb-nav">
       <Toast show={showSuccess} message={toastMessage} />
 
-      <header className="mb-7">
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">Training ledger</span>
-          <span className="t-label-sm">{format(new Date(), 'yyyy')}</span>
-        </div>
-        <PageTitle className="mt-5">History</PageTitle>
-      </header>
+      <PageHeader back={{ label: 'Today', to: '/' }} eyebrow="Training ledger" title="History" className="mb-2" />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
         <section aria-label="Calendar">
@@ -1437,6 +1439,10 @@ export function History() {
               );
             })}
           </div>
+          <div className="mt-2 flex items-center gap-4 t-caption text-[var(--color-muted)]" aria-hidden>
+            <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-lift" />Lift</span>
+            <span className="inline-flex items-center gap-1.5"><span className="ledger-mark-activity" />Activity</span>
+          </div>
         </section>
       </motion.div>
 
@@ -1459,11 +1465,12 @@ export function History() {
               <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
               <p className="t-label-sm mt-1.5 text-[var(--color-muted)]">{selectedDaySummary}</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center shrink-0 -mr-2.5 -mb-2.5">
               {syncAvailable && (
                 <button
                   type="button"
-                  className="ledger-capsule"
+                  className="text-action"
+                  data-tone="quiet"
                   disabled={syncingWhoop}
                   onClick={() => { void handleSyncWhoop(); }}
                 >
@@ -1472,10 +1479,11 @@ export function History() {
               )}
               <button
                 type="button"
-                className="ledger-capsule"
+                className="text-action"
                 onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
               >
-                + Activity
+                <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+                Add activity
               </button>
             </div>
           </div>
@@ -1499,7 +1507,7 @@ export function History() {
               const durationLabel = formatWorkoutDuration(getWorkoutDurationMs(workout));
               const subtitle = durationLabel === '—'
                 ? `${progress.completedSets}/${progress.totalSets} sets`
-                : `${durationLabel} • ${progress.completedSets}/${progress.totalSets} sets`;
+                : `${durationLabel} · ${progress.completedSets}/${progress.totalSets} sets`;
 
               const plannedVisible = plan
                 ? plan.items.filter((item) => !item.hidden).sort((a, b) => a.order - b.order)
@@ -1910,10 +1918,11 @@ export function History() {
                     </span>
                     {selectedDayActivities.length > 1 && (
                       mergeSelection ? (
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center shrink-0 -mr-2.5">
                           <button
                             type="button"
-                            className="pressable min-h-11 px-2 t-label-sm text-[var(--color-muted)]"
+                            className="text-action"
+                            data-tone="quiet"
                             onClick={() => setMergeSelection(null)}
                           >
                             Cancel
@@ -1921,7 +1930,7 @@ export function History() {
                           <button
                             type="button"
                             disabled={mergeSelection.length < 2 || merging}
-                            className="ledger-capsule"
+                            className="text-action"
                             onClick={() => { void handleMergeActivities(); }}
                           >
                             {merging ? 'Merging…' : 'Merge'}
@@ -1930,10 +1939,11 @@ export function History() {
                       ) : (
                         <button
                           type="button"
-                          className="pressable min-h-11 -mr-1 px-1 t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
+                          className="text-action -mr-2.5"
+                          data-tone="quiet"
                           onClick={() => setMergeSelection([])}
                         >
-                          Merge activities
+                          Merge
                         </button>
                       )
                     )}
@@ -1968,7 +1978,6 @@ export function History() {
                         expanded={expandedActivity === activity.id}
                         onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
                         onEdit={() => setActivityEditor({ activity, defaultDate: parseDateKey(getActivitySessionDateKey(activity) || selectedDateKey) })}
-                        onDelete={() => setShowActivityDeleteConfirm(activity)}
                       />
                     </motion.div>
                   ))}
@@ -1980,7 +1989,7 @@ export function History() {
         </motion.div>
       )}
 
-      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit Set">
+      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit set">
         {editingSet && (
           <SetEditor
             workoutSet={editingSet}
@@ -1993,7 +2002,7 @@ export function History() {
       <Modal
         isOpen={!!activityEditor}
         onClose={() => setActivityEditor(null)}
-        title={activityEditor?.activity ? 'Edit Activity' : 'Add Activity'}
+        title={activityEditor?.activity ? 'Edit activity' : 'Add activity'}
       >
         {activityEditor && (
           <ActivityEditor
@@ -2004,11 +2013,16 @@ export function History() {
             saving={savingActivity}
             onSave={(input) => { void handleSaveActivity(input); }}
             onCancel={() => setActivityEditor(null)}
+            onDelete={activityEditor.activity ? () => {
+              const target = activityEditor.activity;
+              setActivityEditor(null);
+              setShowActivityDeleteConfirm(target);
+            } : undefined}
           />
         )}
       </Modal>
 
-      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete Session">
+      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete session">
         <div className="space-y-5">
           <p className="t-body text-[var(--color-text-dim)]">
             Are you sure you want to delete this session? This action cannot be undone.
@@ -2028,7 +2042,7 @@ export function History() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete Activity">
+      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete activity">
         <div className="space-y-5">
           <p className="t-body text-[var(--color-text-dim)]">
             Delete this activity from your calendar?

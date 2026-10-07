@@ -35,7 +35,7 @@ export function SettingsGroup({ children, className = '' }: { children: ReactNod
 export function SettingsSection({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="mt-7">
-      <h2 className="t-label px-1 mb-3">{label}</h2>
+      <h2 className="t-label mb-3">{label}</h2>
       <SettingsGroup>{children}</SettingsGroup>
     </section>
   );

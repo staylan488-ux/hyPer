@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { ChevronLeft, ChevronRight, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageTitle } from '@/components/shared';
+import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageHeader } from '@/components/shared';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -483,7 +483,7 @@ export function Settings() {
         : whoopAction === 'disconnect'
           ? 'Disconnecting WHOOP…'
           : whoopConnection
-            ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+            ? `Connected${whoopConnection.last_synced_at ? ` · synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' · never synced'}`
             : 'Not connected';
 
   const clearMealManagerFeedback = () => {
@@ -961,24 +961,24 @@ export function Settings() {
           setSearchOpen(false);
           go(href);
         }} />
-      <header className="mb-5">
-        {page !== 'home' && (
-          <button type="button" onClick={() => go(backPath)} className="you-back">
-            <ChevronLeft size={20} strokeWidth={1.75} />
-            {backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')]}
+      <PageHeader
+        className="mb-5"
+        back={page !== 'home' ? {
+          label: backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')],
+          onClick: () => go(backPath),
+        } : undefined}
+        actions={page !== 'home' ? (
+          <button type="button" className="you-search-icon pressable"
+            aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
+            <Search size={19} strokeWidth={1.75} aria-hidden="true" />
           </button>
-        )}
-        <div className="flex items-center justify-between gap-3">
-          <PageTitle ref={pageHeading} tabIndex={-1} className="outline-none" compactTitle={titles[page] || 'You'}>
-            {titles[page] || 'You'}
-          </PageTitle>
-          {page !== 'home' && (
-            <button type="button" className="you-search-icon pressable"
-              aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
-              <Search size={18} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          )}
-        </div>
+        ) : undefined}
+        eyebrow={page === 'home' ? 'Profile and settings' : undefined}
+        title={titles[page] || 'You'}
+        compactTitle={titles[page] || 'You'}
+        titleRef={pageHeading}
+        titleProps={{ tabIndex: -1, className: 'outline-none' }}
+      >
         {page === 'home' && (
           <button type="button" className="you-search-field pressable mt-5"
             aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
@@ -986,7 +986,7 @@ export function Settings() {
             <span>Search</span>
           </button>
         )}
-      </header>
+      </PageHeader>
 
       {page === 'home' && (
         <>
@@ -1181,7 +1181,7 @@ export function Settings() {
       )}
       {page === 'targets' && (
         <>
-          <p className="t-label px-1 mb-3">
+          <p className="t-label mb-3">
             {targetLoadState === 'loading' && !macroTarget
               ? 'Loading targets…'
               : macroTarget
@@ -1227,12 +1227,12 @@ export function Settings() {
             </div>
           </div>
           {macroMessage && (
-            <p role="status" className="t-body mt-3 px-1">
+            <p role="status" className="t-body mt-3">
               {macroMessage}
             </p>
           )}
           {macroError && (
-            <p role="alert" className="t-body mt-3 px-1">
+            <p role="alert" className="t-body mt-3">
               {macroError}
             </p>
           )}
@@ -1250,7 +1250,7 @@ export function Settings() {
           </SettingsSection>
           {nutritionProfile && (
             <section className="mt-7">
-              <h2 className="t-label px-1 mb-3">Automatic adjustments</h2>
+              <h2 className="t-label mb-3">Automatic adjustments</h2>
               <SettingsGroup>
                 <div className="platter-row px-5 py-4">
                   <p className="t-body">
@@ -1322,13 +1322,13 @@ export function Settings() {
       {page === 'targets/edit' && (
         <>
           {targetLoadState !== 'ready' && (
-            <p role="status" className="t-body px-1 mb-2">
+            <p role="status" className="t-body mb-2">
               {targetLoadState === 'loading'
                 ? targetSummary
                 : 'Targets could not be loaded. Return to Nutrition targets to retry.'}
             </p>
           )}
-          <p className="t-body px-1 mb-3 text-[var(--color-text-dim)]">
+          <p className="t-body mb-3 text-[var(--color-text-dim)]">
             {macrosChanged
               ? 'Unsaved targets'
               : macroTarget
@@ -1410,12 +1410,12 @@ export function Settings() {
               : 'Calculated targets can adapt when automatic adjustments are enabled.'}
           </p>
           {macroMessage && (
-            <p role="status" className="mt-4 t-body px-1">
+            <p role="status" className="mt-4 t-body">
               {macroMessage}
             </p>
           )}
           {macroError && (
-            <p role="alert" className="mt-4 t-body px-1">
+            <p role="alert" className="mt-4 t-body">
               {macroError}
             </p>
           )}
@@ -1477,12 +1477,12 @@ export function Settings() {
           {' '}
           <div className="pt-1 pb-2">
             {mealManagerMessage && (
-              <p role="status" className="mb-4 px-1 t-body">
+              <p role="status" className="mb-4 t-body">
                 {mealManagerMessage}
               </p>
             )}
             {mealManagerError && (
-              <div role="alert" className="mb-4 px-1">
+              <div role="alert" className="mb-4">
                 <p className="mb-4 t-body">{mealManagerError}</p>
                 <Button
                   variant="secondary"
@@ -1619,7 +1619,7 @@ export function Settings() {
       {page === 'analysis' && (
         <>
           {' '}
-          <label className="t-label block px-1 mb-3" id="analysis-method-label">
+          <label className="t-label block mb-3" id="analysis-method-label">
             Meal analysis method
           </label>
           <div id="search-analysis-mode" className="platter space-y-4">
@@ -1815,7 +1815,7 @@ export function Settings() {
               </Button>
             )}
           </div>
-          <div aria-live="polite" className="px-1">
+          <div aria-live="polite">
             {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
             {whoopError && (
               <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>
@@ -1926,7 +1926,7 @@ export function Settings() {
           </section>
           {!weightLoading && latestBodyWeight && bodyWeightHistory.length > 1 && (
             <section className="mt-7">
-              <h2 className="t-label px-1 mb-3">Earlier</h2>
+              <h2 className="t-label mb-3">Earlier</h2>
               <ul className="platter platter-flush">
                 {bodyWeightHistory.slice(1, 6).map((entry) => (
                   <li
@@ -1944,7 +1944,7 @@ export function Settings() {
               </ul>
             </section>
           )}
-          <div className="px-1">{feedback}</div>
+          <div>{feedback}</div>
           {isNativeIOS() && (
             <SettingsGroup className="mt-4">
               <SettingsRow
@@ -2023,7 +2023,7 @@ export function Settings() {
         title="Log weight"
       >
         <div className="pt-1">
-          <label className="t-label block px-1 mb-3" htmlFor="weigh-in">
+          <label className="t-label block mb-3" htmlFor="weigh-in">
             Record a weigh-in
           </label>
           <div className="material-inset flex items-baseline gap-2 px-5 py-3 rounded-[var(--radius-control)]">
@@ -2042,7 +2042,7 @@ export function Settings() {
             />
             <span className="t-label shrink-0">{weightUnit}</span>
           </div>
-          <button className="you-text-action mt-2 px-1 text-[var(--color-text-dim)]" onClick={handleToggleWeightUnit}>
+          <button className="you-text-action mt-2 text-[var(--color-text-dim)]" onClick={handleToggleWeightUnit}>
             Unit: {weightUnit} · switch to {weightUnit === 'lb' ? 'kg' : 'lb'}
           </button>
           <Button
@@ -2060,7 +2060,7 @@ export function Settings() {
         </div>
 
         {healthWeightMessage && (
-          <p role="status" className="t-body mt-3 px-1">
+          <p role="status" className="t-body mt-3">
             {healthWeightMessage}
           </p>
         )}

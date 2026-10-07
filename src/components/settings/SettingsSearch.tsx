@@ -27,7 +27,7 @@ export function SettingsSearch({ open, query, onQuery, onClose, onSelect }: {
           autoComplete="off" autoCapitalize="none" spellCheck={false}
           onChange={(event) => onQuery(event.target.value)} />
       </form>
-      <p className="t-label px-1 mt-5 mb-3 shrink-0" role="status" aria-live="polite">
+      <p className="t-label mt-5 mb-3 shrink-0" role="status" aria-live="polite">
         {query.trim() ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : 'Suggested destinations'}
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
@@ -37,7 +37,7 @@ export function SettingsSearch({ open, query, onQuery, onClose, onSelect }: {
               description={result.path} onClick={() => onSelect(result.href)} />)}
           </SettingsGroup>
         )}
-        {results.length === 0 && <p className="t-body px-1 py-5">
+        {results.length === 0 && <p className="t-body py-5">
           No matching settings or features. Try “dark mode”, “protein goal”, or “program”.
         </p>}
       </div>
