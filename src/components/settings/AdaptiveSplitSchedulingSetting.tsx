@@ -45,8 +45,8 @@ export function AdaptiveSplitSchedulingSetting() {
         Adjust upcoming workouts and rest days based on the split day you complete.
         When off, keep your saved schedule.
       </p>
-      {saving && <p role="status" className="t-caption mt-3 px-1">Saving…</p>}
-      {error && <p role="alert" className="t-body mt-3 px-1">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
+      {saving && <p role="status" className="t-caption mt-3">Saving…</p>}
+      {error && <p role="alert" className="t-body mt-3">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
     </section>
   );
 }

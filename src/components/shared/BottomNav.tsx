@@ -1,17 +1,20 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, Leaf, User } from 'lucide-react';
 import { motion } from 'motion/react';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppStore } from '@/stores/appStore';
 import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
+import { nativeTabForPath, type NativeTab } from '@/lib/nativeGlassNavigation';
 import { useLitSurface } from '@/hooks/useLitSurface';
 
-const navItems = [
-  { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
-  { to: '/train', icon: Dumbbell, label: 'Train', matchPaths: ['/train', '/workout', '/splits'] },
-  { to: '/nutrition', icon: Leaf, label: 'Fuel', matchPaths: ['/nutrition'] },
-  { to: '/settings', icon: User, label: 'You', matchPaths: ['/settings', '/history', '/analysis'] },
+// The selected tab comes from the same mapping the native bar uses, so the
+// web fallback and iOS always agree on where a screen lives.
+const navItems: { to: string; icon: typeof Home; label: string; tab: NativeTab }[] = [
+  { to: '/', icon: Home, label: 'Today', tab: 'today' },
+  { to: '/train', icon: Dumbbell, label: 'Train', tab: 'train' },
+  { to: '/nutrition', icon: Leaf, label: 'Fuel', tab: 'fuel' },
+  { to: '/settings', icon: User, label: 'You', tab: 'you' },
 ];
 
 export function BottomNav() {
@@ -28,13 +31,7 @@ export function BottomNav() {
     return null;
   }
 
-  const isPathMatch = (pathname: string, target: string) => {
-    if (target === '/') {
-      return pathname === '/';
-    }
-
-    return pathname === target || pathname.startsWith(`${target}/`);
-  };
+  const selectedTab = nativeTabForPath(location.pathname);
 
   return (
     <motion.nav
@@ -45,14 +42,15 @@ export function BottomNav() {
       transition={springs.settle}
     >
       <div className="relative z-10 max-w-lg mx-auto grid grid-cols-4">
-        {navItems.map(({ to, icon: Icon, label, matchPaths }) => {
-          const isActive = matchPaths.some((path) => isPathMatch(location.pathname, path));
+        {navItems.map(({ to, icon: Icon, label, tab }) => {
+          const isActive = tab === selectedTab;
 
           return (
-            <NavLink
+            <Link
               key={to}
               to={to}
               aria-label={label}
+              aria-current={isActive ? 'page' : undefined}
               className="relative flex flex-col items-center justify-center gap-1.5 h-[68px]"
               onClick={() => {
                 if (!isActive) tapHaptic();
@@ -78,14 +76,14 @@ export function BottomNav() {
                   strokeWidth={1.5}
                 />
                 <span
-                  className={`text-[11px] font-medium uppercase tracking-[0.12em] [font-family:var(--font-sans)] transition-colors duration-200 ${
+                  className={`text-[11px] font-medium tracking-[0.01em] [font-family:var(--font-sans)] transition-colors duration-200 ${
                     isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
                   }`}
                 >
                   {label}
                 </span>
               </motion.span>
-            </NavLink>
+            </Link>
           );
         })}
       </div>

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
-import { Button, EmptyState, Screen, PageTitle } from '@/components/shared';
+import { Button, EmptyState, Screen, PageHeader } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
@@ -119,21 +119,12 @@ export function Analysis() {
 
   return (
     <Screen>
-      {/* Header */}
-      <header className="mb-8">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-0.5 min-h-11 -ml-1 mb-2 text-[12px] text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          Today
-        </Link>
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">Volume coaching</span>
-          <span className="t-label-sm">Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}</span>
-        </div>
-        <PageTitle className="mt-3 pt-5 border-t border-[var(--color-border)]">Progress</PageTitle>
-      </header>
+      <PageHeader
+        back={{ label: 'Today', to: '/' }}
+        eyebrow={`Week of ${format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}`}
+        title="Progress"
+        className="mb-8"
+      />
 
       {/* Per-muscle calls */}
       {weeklyVolume.length === 0 ? (

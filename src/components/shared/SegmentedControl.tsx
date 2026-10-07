@@ -14,6 +14,8 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
   distribution?: 'content' | 'equal';
+  /** Locks the choice while keeping the current selection fully readable. */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -27,6 +29,7 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = 'md',
   distribution = 'content',
+  disabled = false,
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
@@ -36,6 +39,7 @@ export function SegmentedControl<T extends string>({
     <div
       className={`segmented-track flex gap-1 well overflow-x-auto no-scrollbar ${className}`}
       role="tablist"
+      aria-disabled={disabled || undefined}
       onKeyDown={(event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -57,12 +61,15 @@ export function SegmentedControl<T extends string>({
             role="tab"
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
+            disabled={disabled && !selected}
+            aria-disabled={disabled || undefined}
             onClick={() => {
+              if (disabled) return;
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
             className={`relative min-h-11 min-w-11 shrink-0 rounded-[var(--radius-capsule)] font-medium text-[14px] tracking-[-0.005em] [font-family:var(--font-sans)] transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
-              selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
+              selected ? 'text-[var(--color-text)]' : disabled ? 'text-[var(--color-muted)] opacity-45' : 'text-[var(--color-muted)]'
             }`}
           >
             <span className="relative z-10 flex items-center justify-center gap-1.5 whitespace-nowrap">{option.label}</span>

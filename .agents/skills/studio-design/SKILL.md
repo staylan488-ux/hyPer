@@ -34,8 +34,12 @@ tokens; an already approved direction does not need another design exploration.
   `platter-flush` + `platter-row`); floating chrome is liquid glass with a
   specular edge; editorial content inside platters stays ruled. Nested cards
   and controls never add their own backdrop filter.
-- Page titles use `PageTitle`, which condenses into the scroll-edge band.
-  Sheet titles use the editorial `sheet-title`.
+- Pages open with `PageHeader`: a 44px bar row (back on pushed screens,
+  quiet trailing actions), one eyebrow line, then the `PageTitle` serif title
+  at the same height everywhere; it condenses into the scroll-edge band.
+  Pushed screens keep their parent tab selected (`nativeTabForPath`).
+  Contextual actions are sentence-case `text-action` buttons; tracked caps
+  are for section labels only. Sheet titles use the editorial `sheet-title`.
 - Primary actions are metal-capped capsules (`Button` primary: graphite dome in
   Black, pearl in Ivory, still chrome bezel). Exactly one hero action per
   screen may pass `metal` for the live, tilt-lit bezel. Secondary actions are

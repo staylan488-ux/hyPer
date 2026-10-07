@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import {
   ArrowRight,
   ArrowUpRight,
+  ChevronRight,
   CalendarDays,
   Dumbbell,
   History as HistoryIcon,
@@ -12,12 +13,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { Button, MetalRing, RailStrip, RollingNumber, Screen, TickStrip, SealMark, BankedStamp } from '@/components/shared';
-import { useTargetSeal } from '@/hooks/useTargetSeal';
+import { Button, MetalRing, PageHeader, RollingNumber, Screen, TickStrip, BankedStamp } from '@/components/shared';
 import { VolumeMap } from '@/components/coaching/VolumeMap';
 import { LandmarkRail } from '@/components/coaching/LandmarkRail';
 import { muscleSubject } from '@/lib/muscleCopy';
-import type { SealMacro } from '@/lib/targetSeal';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import { tapHaptic } from '@/lib/haptics';
@@ -159,7 +158,9 @@ export function Dashboard() {
     return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
   }, [heroLoading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
 
-  const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
+  const targetKcal = macroTarget?.calories || DEFAULT_MACRO_TARGET.calories;
+  const targetProtein = macroTarget?.protein || DEFAULT_MACRO_TARGET.protein;
+  const remainingKcal = Math.max(0, Math.round(targetKcal - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
 
@@ -171,86 +172,70 @@ export function Dashboard() {
 
   return (
     <Screen>
-      <header>
-        <div className="flex items-baseline justify-between gap-3">
-          <BrandWordmark variant="dashboard" />
-          <span className="t-caption">{format(parseISO(dayKey), 'EEE · MMM d')}</span>
-        </div>
-        <h1 className="t-label mt-5">Today</h1>
-      </header>
+      <PageHeader
+        leading={<BrandWordmark variant="dashboard" />}
+        eyebrow={format(parseISO(dayKey), 'EEEE, MMM d')}
+        title="Today"
+      />
 
-      <section className="platter mt-5">
+      <section className="platter mt-4">
         <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
       </section>
 
-      {/* ── Fuel ── */}
-      <section className="platter mt-4">
-        <h2 className="t-label mb-4">Fuel</h2>
+      {/* ── Fuel: one figure, one line of macros, one action. The detail
+           (ring, macro rails) lives on the Fuel page. ── */}
+      <section className="platter mt-4" aria-labelledby="today-fuel-label">
+        <div className="flex items-center justify-between gap-3 -mt-3 -mb-1">
+          <h2 id="today-fuel-label" className="t-label">Fuel</h2>
+          <Link to="/nutrition" className="text-action -mr-2.5" onClick={() => tapHaptic()}>
+            <Plus className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+            Log food
+          </Link>
+        </div>
 
         {fuelLoading ? (
-          <div className="space-y-4">
-            <div className="shimmer h-12 w-40" />
-            <div className="shimmer h-px w-full" />
+          <div className="space-y-3 mt-3">
+            <div className="shimmer h-11 w-40" />
+            <div className="shimmer h-3 w-56" />
           </div>
         ) : hasAnyNutrition ? (
-          <>
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                <span className="t-caption block mt-2">kcal left today</span>
-              </div>
-              <MetalRing
-                progress={nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)}
-                label={`${Math.round(nutritionTotals.calories).toLocaleString()} of ${(macroTarget?.calories || DEFAULT_MACRO_TARGET.calories).toLocaleString()} kcal eaten`}
-                size={84}
-                thickness={6}
-                reveal="dash-fuel-ring"
-              >
-                <span className="t-data-lg text-[var(--color-text)]">{Math.round((nutritionTotals.calories / (macroTarget?.calories || DEFAULT_MACRO_TARGET.calories)) * 100)}%</span>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-dim)]">eaten</span>
-              </MetalRing>
-            </div>
-            <div className="space-y-4">
-              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
-              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" dayKey={dayKey} />
-            </div>
-          </>
+          <Link to="/nutrition" className="block mt-2" aria-label={`${remainingKcal.toLocaleString()} kcal left today. Open Fuel`}>
+            <span className="flex items-baseline gap-2">
+              <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
+              <span className="t-caption">kcal left</span>
+            </span>
+            <span className="t-data-sm block mt-2.5 text-[var(--color-text-dim)]">
+              {Math.round(nutritionTotals.calories).toLocaleString()} of {targetKcal.toLocaleString()} kcal
+              <span aria-hidden> · </span>
+              {Math.round(nutritionTotals.protein)} of {targetProtein} g protein
+            </span>
+          </Link>
         ) : (
-          <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
+          <p className="text-editorial mt-2">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
         )}
 
-        <div className="mt-5 flex gap-3">
-          <Link to="/nutrition" className="flex-1">
-            <Button variant="secondary" size="md" className="w-full">
-              <Plus className="w-4 h-4" strokeWidth={1.75} />
-              Log food
-            </Button>
-          </Link>
-          {!macroTarget && !loading && (
-            <Link to="/settings" className="flex-1">
-              <Button variant="ghost" size="md" className="w-full">Set targets</Button>
-            </Link>
-          )}
-        </div>
+        {!macroTarget && !loading && (
+          <Link to="/settings/targets" className="text-action -ml-2.5 mt-2" data-tone="quiet">Set targets</Link>
+        )}
       </section>
 
       {/* ── Contents / stations ── */}
-      <nav className="mt-7">
-        <span className="t-label block mb-3 px-1">Contents</span>
+      <nav className="mt-7" aria-labelledby="today-contents-label">
+        <span id="today-contents-label" className="t-label block mb-1">Contents</span>
         <ul className="platter platter-flush">
           {stations.map((s) => (
-            <li key={s.to} className="platter-row has-icon">
+            <li key={s.to} className="platter-row" style={{ '--row-inset': '54px' } as CSSProperties}>
               <Link
                 to={s.to}
                 onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-3.5 px-4"
+                className="pressable group flex items-center gap-4 py-3.5 px-5"
               >
-                <span className="icon-tile" aria-hidden><s.icon className="w-[17px] h-[17px]" strokeWidth={1.6} /></span>
+                <s.icon className="w-[18px] h-[18px] shrink-0 text-[var(--color-text)]" strokeWidth={1.6} aria-hidden />
                 <span className="flex-1 min-w-0">
                   <span className="t-heading block">{s.label}</span>
                   <span className="t-caption">{s.sub}</span>
                 </span>
-                <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+                <ChevronRight className="w-4 h-4 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.75} aria-hidden />
               </Link>
             </li>
           ))}
@@ -453,36 +438,6 @@ function TodayHero({ hero, programName }: { hero: HeroState; programName: string
 
 function activeWorkoutIdOf(workout: { id: string; completed: boolean } | null) {
   return workout && !workout.completed ? workout.id : null;
-}
-
-function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string; current: number; target: number; unit: string; seal: SealMacro; dayKey: string }) {
-  const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
-  const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey, live: true });
-  const over = target > 0 && current > target;
-  const maxScale = Math.max(target * 1.18, current);
-
-  return (
-    <div>
-      <div className="flex items-baseline justify-between mb-2">
-        <span className="t-label-sm flex items-center gap-2">
-          {label}
-          <SealMark show={met} label={`${label} target met`} anchorRef={anchorRef} />
-        </span>
-        <span className="flex items-baseline gap-1.5">
-          <span className="number-medium text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
-          <span className="t-data-sm text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
-        </span>
-      </div>
-      <RailStrip
-        value={current / maxScale}
-        notch={target / maxScale}
-        tone={over ? 'berry' : 'chalk'}
-        size="sm"
-        reveal={`dash-fuel-${label}`}
-      />
-      <span className="sr-only">{pct}% of target</span>
-    </div>
-  );
 }
 
 function pickInsight(weeklyVolume: MuscleVolume[]) {
