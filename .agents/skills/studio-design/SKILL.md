@@ -52,7 +52,7 @@ tokens; an already approved direction does not need another design exploration.
   Keep drafts when rows or movements close. Rest uses a compact anchored bar,
   starts only after a successful set save (or an explicit manual start), and
   continues while browsing or editing. Failed saves retain numbers and Retry.
-  Reorder movements directly with a visible drag handle and keyboard support;
+  Reorder movements in Reorder mode, with drag handles and keyboard support;
   move supersets together. Save order to the session, preserve mounted drafts,
   and restore the previous order with an error if saving fails.
 
