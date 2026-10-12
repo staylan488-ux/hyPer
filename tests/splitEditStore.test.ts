@@ -146,3 +146,57 @@ describe('splitEditStore keeps untouched objects for memoized editor rows', () =
     expect(store().draft!.days[1]).toBe(lower);
   });
 });
+
+describe('splitEditStore.reorderExercise keeps supersets together', () => {
+  const order = () => store().draft!.days[0].exercises.map((ex) => `${ex.id}${ex.exercise_order}`);
+
+  it('steps a single exercise over a whole superset pair', () => {
+    store().reorderExercise('day-1', 'a', 1);
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+  });
+
+  it('moves a superset pair as one block from either member', () => {
+    store().reorderExercise('day-1', 'c', -1);
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+
+    store().reorderExercise('day-1', 'b', 1);
+    expect(order()).toEqual(['a0', 'b1', 'c2']);
+  });
+
+  it('leaves the day alone at either end', () => {
+    const day = store().draft!.days[0];
+    store().reorderExercise('day-1', 'a', -1);
+    store().reorderExercise('day-1', 'c', 1);
+    expect(store().draft!.days[0]).toBe(day);
+  });
+});
+
+describe('splitEditStore removal undo', () => {
+  it('restores a removed exercise with its superset partner relinked', () => {
+    const before = store().draft;
+    store().removeExercise('day-1', 'b');
+
+    expect(store().undo?.label).toBe('Removed ex-b');
+    expect(draftExercise('day-1', 'c').superset_group_id).toBeNull();
+
+    store().undoRemoval();
+    expect(store().draft).toBe(before);
+    expect(store().undo).toBeNull();
+    expect(store().isDirty).toBe(true);
+  });
+
+  it('restores a removed day', () => {
+    store().removeDay('day-2');
+    expect(store().draft!.days).toHaveLength(1);
+    expect(store().undo?.label).toBe('Removed Lower');
+
+    store().undoRemoval();
+    expect(store().draft!.days.map((day) => day.id)).toEqual(['day-1', 'day-2']);
+  });
+
+  it('drops the undo once another edit is made', () => {
+    store().removeExercise('day-1', 'a');
+    store().renameDay('day-2', 'Legs');
+    expect(store().undo).toBeNull();
+  });
+});

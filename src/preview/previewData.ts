@@ -51,8 +51,22 @@ const exLegcurl = ex('ex_legcurl', 'Seated Leg Curl', 'hamstrings', null, 'Machi
 const exLegext = ex('ex_legext', 'Leg Extension', 'quads', null, 'Machine', false);
 const exCalf = ex('ex_calf', 'Standing Calf Raise', 'calves', null, 'Machine', false);
 
+// Library-only rows (not in the program) so the picker shows its sections
+const libraryOnly: Exercise[] = [
+  ex('ex_hack', 'Hack Squat', 'quads', 'glutes', 'Machine', true),
+  ex('ex_machine_chest', 'Machine Chest Press', 'chest', 'triceps', 'Machine', true),
+  ex('ex_hyper', 'Weighted Hyperextension', 'hamstrings', 'glutes', 'Machine', true),
+  ex('ex_back_ext', '45° Back Extension', 'glutes', 'hamstrings', 'Machine', true),
+  ex('ex_pullup', 'Pull-Up', 'back', 'biceps', 'Bodyweight', true),
+  ex('ex_front_lever_row', 'Front Lever Row', 'back', 'biceps', 'Bodyweight', true),
+  ex('ex_shrimp', 'Shrimp Squat', 'quads', 'glutes', 'Bodyweight', true),
+  ex('ex_ring_dip', 'Ring Dip', 'triceps', 'chest', 'Rings', true),
+  ex('ex_one_arm_dip', 'One-Arm Dip', 'triceps', 'chest', 'Bodyweight', true),
+];
+
 export const previewExercises: Exercise[] = [
   exBench, exIncline, exRow, exPulldown, exSquat, exRdl, exOhp, exCurl, exPushdown, exLateral, exLegcurl, exLegext, exCalf,
+  ...libraryOnly,
 ];
 
 /* ── Split (active program) ── */

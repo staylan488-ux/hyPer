@@ -133,6 +133,8 @@ export function Splits() {
       addSupersetExercise(dayId, exerciseId, exercise);
     } else {
       addExercise(dayId, exercise);
+      // Add mode stays open so several exercises can be added in one go
+      return;
     }
 
     setPickerState((prev) => ({ ...prev, isOpen: false }));
@@ -774,12 +776,13 @@ export function Splits() {
         onSelect={handleExerciseSelected}
         initialMuscleGroup={pickerState.initialMuscleGroup}
         excludeExerciseIds={pickerState.excludeExerciseIds}
+        keepOpenOnSelect={pickerState.mode === 'add'}
         title={
           pickerState.mode === 'swap'
             ? 'Swap Exercise'
             : pickerState.mode === 'superset'
               ? 'Add Superset Exercise'
-              : 'Add Exercise'
+              : 'Add Exercises'
         }
       />
     </Screen>

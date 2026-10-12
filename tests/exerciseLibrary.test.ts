@@ -110,4 +110,24 @@ describe('exercise library cache', () => {
 
     expect(peekExerciseLibrary()).toBeNull();
   });
+  it('refreshes cached rows only once they are older than maxAgeMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const { order } = queueResults(
+        Promise.resolve({ data: rows, error: null }),
+        Promise.resolve({ data: [rows[1]], error: null }),
+      );
+
+      await getExerciseLibrary();
+      vi.advanceTimersByTime(60_000);
+      await expect(getExerciseLibrary({ maxAgeMs: 5 * 60_000 })).resolves.toEqual(rows);
+      expect(order).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(5 * 60_000);
+      await expect(getExerciseLibrary({ maxAgeMs: 5 * 60_000 })).resolves.toEqual([rows[1]]);
+      expect(order).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

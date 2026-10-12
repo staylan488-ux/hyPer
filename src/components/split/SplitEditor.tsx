@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import {
   ChevronUp,
@@ -9,6 +9,7 @@ import {
   ArrowRightLeft,
   Link2,
   Unlink2,
+  RotateCcw,
 } from 'lucide-react';
 import { Button, Input, Card } from '@/components/shared';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -93,7 +94,11 @@ const ExerciseRow = memo(function ExerciseRow({
               </span>
             )}
           </span>
-          <ArrowRightLeft className="w-3.5 h-3.5 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity shrink-0" strokeWidth={1.5} />
+          <ArrowRightLeft
+            className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors shrink-0"
+            strokeWidth={1.5}
+            aria-label="Swap"
+          />
         </button>
 
         {/* Reorder + remove */}
@@ -175,11 +180,15 @@ const DayCard = memo(function DayCard({
   day,
   index,
   total,
+  expanded,
+  onToggle,
   onPickExercise,
 }: {
   day: DraftDay;
   index: number;
   total: number;
+  expanded: boolean;
+  onToggle: (dayId: string) => void;
   onPickExercise: SplitEditorProps['onPickExercise'];
 }) {
   const renameDay = useSplitEditStore((s) => s.renameDay);
@@ -188,13 +197,8 @@ const DayCard = memo(function DayCard({
 
   const isFirst = index === 0;
   const isLast = index === total - 1;
-
-  const handleRemoveDay = useCallback(() => {
-    const confirmed = window.confirm(
-      `Remove "${day.day_name}"? This will delete all exercises in this day.`
-    );
-    if (confirmed) removeDay(day.id);
-  }, [day.id, day.day_name, removeDay]);
+  const dayLabel = day.day_name || `day ${index + 1}`;
+  const exerciseSummary = day.exercises.map((exercise) => exercise.exercise.name).join(' · ');
 
   return (
     <motion.div
@@ -207,29 +211,44 @@ const DayCard = memo(function DayCard({
     >
       <Card variant="slab" animated={false} className="material-surface space-y-5">
         {/* ── Day header ── */}
-        <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-[var(--color-border)]">
+        <div className={`flex flex-wrap items-center gap-3 ${expanded ? 'pb-4 border-b border-[var(--color-border)]' : ''}`}>
           {/* Day index */}
           <span className="t-data-sm text-[var(--color-text-dim)] shrink-0 w-5">
             {String(index + 1).padStart(2, '0')}
           </span>
 
-          {/* Day name input */}
-          <div className="flex-1 min-w-0">
-            <Input
-              aria-label={`Day ${index + 1} name`}
-              value={day.day_name}
-              onChange={(e) => renameDay(day.id, e.target.value)}
-              placeholder="Day name"
-            />
-          </div>
+          {/* Day name input, or the day at a glance while collapsed */}
+          {expanded ? (
+            <div className="flex-1 min-w-0">
+              <Input
+                aria-label={`Day ${index + 1} name`}
+                value={day.day_name}
+                onChange={(e) => renameDay(day.id, e.target.value)}
+                placeholder="Day name"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="pressable flex-1 min-w-0 min-h-11 text-left flex flex-col justify-center"
+              onClick={() => onToggle(day.id)}
+              aria-expanded={false}
+              aria-label={`Edit ${dayLabel}, ${day.exercises.length} exercises`}
+            >
+              <span className="t-heading break-words">{day.day_name || `Day ${index + 1}`}</span>
+              <span className="t-caption line-clamp-2 mt-0.5">
+                {exerciseSummary || 'No exercises yet'}
+              </span>
+            </button>
+          )}
 
-          {/* Day actions: reorder + delete */}
+          {/* Day actions: reorder + delete + show/hide */}
           <div className="flex items-center justify-end shrink-0 basis-full">
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               disabled={isFirst}
-              aria-label={`Move ${day.day_name || `day ${index + 1}`} earlier`}
+              aria-label={`Move ${dayLabel} earlier`}
               onClick={() => reorderDays(day.id, -1)}
               whileTap={isFirst ? undefined : { scale: 0.985 }}
             >
@@ -240,7 +259,7 @@ const DayCard = memo(function DayCard({
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
               disabled={isLast}
-              aria-label={`Move ${day.day_name || `day ${index + 1}`} later`}
+              aria-label={`Move ${dayLabel} later`}
               onClick={() => reorderDays(day.id, 1)}
               whileTap={isLast ? undefined : { scale: 0.985 }}
             >
@@ -250,61 +269,79 @@ const DayCard = memo(function DayCard({
             <motion.button
               type="button"
               className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-              aria-label={`Remove ${day.day_name || `day ${index + 1}`}`}
-              onClick={handleRemoveDay}
+              aria-label={`Remove ${dayLabel}`}
+              onClick={() => removeDay(day.id)}
               whileTap={{ scale: 0.985 }}
             >
               <Trash2 className="w-4 h-4" strokeWidth={1.5} />
             </motion.button>
+
+            <motion.button
+              type="button"
+              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              aria-expanded={expanded}
+              aria-label={expanded ? `Collapse ${dayLabel}` : `Expand ${dayLabel}`}
+              onClick={() => onToggle(day.id)}
+              whileTap={{ scale: 0.985 }}
+            >
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                strokeWidth={1.5}
+              />
+            </motion.button>
           </div>
         </div>
 
-        {/* ── Exercises section label ── */}
-        <div className="flex items-baseline justify-between">
-          <span className="t-label">Exercises</span>
-          <span className="t-data-sm text-[var(--color-muted)]">
-            {day.exercises.length} total
-          </span>
-        </div>
+        {expanded && (
+          <>
+            {/* ── Exercises section label ── */}
+            <div className="flex items-baseline justify-between">
+              <span className="t-label">Exercises</span>
+              <span className="t-data-sm text-[var(--color-muted)]">
+                {day.exercises.length} total
+              </span>
+            </div>
 
-        {/* ── Exercise list ── */}
-        <div>
-          <AnimatePresence mode="popLayout">
-            {day.exercises.length === 0 ? (
-              <motion.p
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="t-caption py-3 border-t border-[var(--color-border)]"
-              >
-                No exercises yet. Tap below to add.
-              </motion.p>
-            ) : (
-              day.exercises.map((exercise, exerciseIndex) => (
-                <ExerciseRow
-                  key={exercise.id}
-                  dayId={day.id}
-                  exercise={exercise}
-                  index={exerciseIndex}
-                  total={day.exercises.length}
-                  onPickExercise={onPickExercise}
-                />
-              ))
-            )}
-          </AnimatePresence>
-        </div>
+            {/* ── Exercise list ── */}
+            <div>
+              <AnimatePresence mode="popLayout">
+                {day.exercises.length === 0 ? (
+                  <motion.p
+                    key="empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="t-caption py-3 border-t border-[var(--color-border)]"
+                  >
+                    No exercises yet. Tap below to add.
+                  </motion.p>
+                ) : (
+                  day.exercises.map((exercise, exerciseIndex) => (
+                    <ExerciseRow
+                      key={exercise.id}
+                      dayId={day.id}
+                      exercise={exercise}
+                      index={exerciseIndex}
+                      total={day.exercises.length}
+                      onPickExercise={onPickExercise}
+                    />
+                  ))
+                )}
+              </AnimatePresence>
+            </div>
 
-        {/* ── Add exercise button ── */}
-        <motion.button
-          type="button"
-          className="pressable studio-row-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
-          onClick={() => onPickExercise(day.id, 'add')}
-          whileTap={{ scale: 0.99 }}
-        >
-          <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
-          Add exercise
-        </motion.button>
+            {/* ── Add exercise button ── */}
+            <motion.button
+              type="button"
+              className="pressable studio-row-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
+              onClick={() => onPickExercise(day.id, 'add')}
+              whileTap={{ scale: 0.99 }}
+            >
+              <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
+              Add exercises
+            </motion.button>
+          </>
+        )}
       </Card>
     </motion.div>
   );
@@ -322,6 +359,24 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
   const updateDescription = useSplitEditStore((s) => s.updateDescription);
   const addDay = useSplitEditStore((s) => s.addDay);
   const saveEdit = useSplitEditStore((s) => s.saveEdit);
+  const undo = useSplitEditStore((s) => s.undo);
+  const undoRemoval = useSplitEditStore((s) => s.undoRemoval);
+
+  // Days open as a one-line overview (a single-day program opens expanded);
+  // tapping a day opens it for editing.
+  const [expandedDays, setExpandedDays] = useState<ReadonlySet<string>>(() => {
+    const days = useSplitEditStore.getState().draft?.days ?? [];
+    return new Set(days.length === 1 ? [days[0].id] : []);
+  });
+
+  const toggleDay = useCallback((dayId: string) => {
+    setExpandedDays((current) => {
+      const next = new Set(current);
+      if (next.has(dayId)) next.delete(dayId);
+      else next.add(dayId);
+      return next;
+    });
+  }, []);
 
   const handleCancel = useCallback(() => {
     if (discardSplitEdit()) onClose();
@@ -346,6 +401,8 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
   const handleAddDay = useCallback(() => {
     if (!draft) return;
     addDay(`Day ${draft.days.length + 1}`);
+    const added = useSplitEditStore.getState().draft?.days.at(-1);
+    if (added) setExpandedDays((current) => new Set(current).add(added.id));
   }, [draft, addDay]);
 
   // Guard: draft must be loaded
@@ -415,6 +472,8 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
                 day={day}
                 index={index}
                 total={draft.days.length}
+                expanded={expandedDays.has(day.id)}
+                onToggle={toggleDay}
                 onPickExercise={onPickExercise}
               />
             ))}
@@ -447,6 +506,29 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
         style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
       >
         <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+          {/* Undo the latest removal */}
+          <AnimatePresence>
+            {undo && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex items-center justify-between gap-3"
+                role="status"
+              >
+                <span className="t-caption text-[var(--color-text)] min-w-0 break-words">{undo.label}</span>
+                <button
+                  type="button"
+                  className="pressable studio-row-action shrink-0 t-label text-[var(--color-text)]"
+                  onClick={undoRemoval}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+                  Undo
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Error message */}
           <AnimatePresence>
             {error && (
