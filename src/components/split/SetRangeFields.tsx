@@ -37,8 +37,8 @@ function fieldValue(values: SetRangeFieldValues, field: Field): number {
 }
 
 /**
- * Set min/target/max and rep min/max cells for one exercise. Typing only
- * edits a draft of the focused cell; it commits (clamped and normalized) on
+ * Set min/target/max and rep min/max cells for one exercise. Focusing a cell
+ * selects its value; typing only edits a draft of the focused cell; it commits (clamped and normalized) on
  * blur or Enter, so a cell can be cleared and retyped. Every other cell
  * shows the committed values, so outside changes such as a superset
  * partner's synced sets appear without remounting (which would drop focus).
@@ -92,6 +92,8 @@ export function SetRangeFields({
               min={1}
               max={max}
               value={editing?.field === field ? editing.value : String(fieldValue(values, field))}
+              // Select the value so typing replaces it without clearing first
+              onFocus={(e) => e.currentTarget.select()}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setEditing({ field, value: e.target.value })}
               onBlur={() => {
                 if (editing?.field === field) commit(field, editing.value);

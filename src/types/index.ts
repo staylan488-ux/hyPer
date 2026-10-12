@@ -14,6 +14,8 @@ export type MuscleGroup =
   | 'core'
   | 'traps';
 
+export type ExerciseCategory = 'gym' | 'calisthenics';
+
 export interface Exercise {
   id: string;
   name: string;
@@ -21,6 +23,8 @@ export interface Exercise {
   muscle_group_secondary: MuscleGroup | null;
   equipment: string | null;
   is_compound: boolean;
+  /** Absent before the category migration; null lets the app decide by name. */
+  category?: ExerciseCategory | null;
 }
 
 export interface Split {

@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import type { Exercise } from '@/types';
 
 let cached: Exercise[] | null = null;
+let cachedAt = 0;
 let inflight: Promise<Exercise[]> | null = null;
 // Bumped on invalidate so a request that started earlier cannot refill the cache.
 let generation = 0;
@@ -20,10 +21,12 @@ export function peekExerciseLibrary(): Exercise[] | null {
 
 /**
  * Resolves the library ordered by name. Uses the cached rows unless `force`
- * is set; concurrent calls share one request.
+ * is set or they are older than `maxAgeMs`; concurrent calls share one request.
  */
-export function getExerciseLibrary({ force = false }: { force?: boolean } = {}): Promise<Exercise[]> {
-  if (!force && cached) return Promise.resolve(cached);
+export function getExerciseLibrary(
+  { force = false, maxAgeMs = Infinity }: { force?: boolean; maxAgeMs?: number } = {}
+): Promise<Exercise[]> {
+  if (!force && cached && Date.now() - cachedAt < maxAgeMs) return Promise.resolve(cached);
   if (inflight) return inflight;
 
   const requestGeneration = generation;
@@ -36,6 +39,7 @@ export function getExerciseLibrary({ force = false }: { force?: boolean } = {}):
     // an empty answer is not worth keeping over a real list
     if (rows.length > 0 && requestGeneration === generation) {
       cached = rows;
+      cachedAt = Date.now();
     }
     return rows;
   })();

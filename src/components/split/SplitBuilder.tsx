@@ -5,7 +5,8 @@ import { Button, Chip, Input, SelectSheet, TickStrip } from '@/components/shared
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
 import { splitTemplates } from '@/lib/splitTemplates';
-import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
+import { getExerciseLibrary, invalidateExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
+import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import { springs } from '@/lib/animations';
 import { SetRangeFields } from '@/components/split/SetRangeFields';
 import { commitFocusedField } from '@/lib/commitFocusedField';
@@ -19,7 +20,8 @@ import {
   type SessionLength,
 } from '@/lib/programDesigner';
 import { normalizeSetRange, serializeSetRangeNotes } from '@/lib/setRangeNotes';
-import type { MuscleGroup, SplitTemplate } from '@/types';
+import type { Exercise, MuscleGroup, SplitTemplate } from '@/types';
+import { MUSCLE_GROUP_LABELS } from '@/types';
 
 interface SplitBuilderProps {
   onComplete: (createdSplit?: { id: string; name: string }) => void;
@@ -165,7 +167,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   useLayoutEffect(() => {
     daysRef.current = days;
   }, [days]);
-  const [exerciseLibrary, setExerciseLibrary] = useState<Array<{ id: string; name: string }>>([]);
+  const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
   const [activeCustomDayIndex, setActiveCustomDayIndex] = useState(0);
   const [exerciseQuery, setExerciseQuery] = useState('');
   const [customExerciseName, setCustomExerciseName] = useState('');
@@ -185,10 +187,14 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
     [recommendedTemplate, guidedAnswers]
   );
 
-  const getExerciseRows = async () => {
-    const { data, error } = await supabase.from('exercises').select('id, name');
-    if (error || !data) return [];
-    return data;
+  // Shared with the exercise picker, so the list is usually already loaded.
+  // Creating a program reads a fresh copy (`force`) to match names exactly.
+  const getExerciseRows = async ({ force = false }: { force?: boolean } = {}): Promise<Exercise[]> => {
+    try {
+      return await getExerciseLibrary({ force });
+    } catch {
+      return [];
+    }
   };
 
   const resolveExerciseId = (
@@ -560,7 +566,7 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
         return;
       }
 
-      const exerciseRows = await getExerciseRows();
+      const exerciseRows = await getExerciseRows({ force: true });
       const normalizedToId = new Map(
         exerciseRows.map((exercise) => [normalizeExerciseName(exercise.name), exercise.id])
       );
@@ -1001,9 +1007,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
   /* ═══════════ Custom: exercises ═══════════ */
 
   if (step === 'custom-exercises') {
-    const filteredExercises = exerciseLibrary.filter((exercise) =>
-      exercise.name.toLowerCase().includes(exerciseQuery.toLowerCase())
-    );
+    // Without a search the list shows everyday gym movements; a search covers
+    // the whole library, calisthenics included, best match first.
+    const filteredExercises = exerciseQuery.trim()
+      ? searchExercises(exerciseLibrary, exerciseQuery)
+      : exerciseLibrary.filter((exercise) => exerciseCategory(exercise) === 'gym');
 
     return (
       <div className="pt-1 pb-2 space-y-4">
@@ -1045,8 +1053,11 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
               {supersetSourceLocalId && (
                 <p className="text-[11px] font-medium text-[var(--color-accent)] mb-1">Pick a superset partner from the list</p>
               )}
-              <div className="max-h-[150px] overflow-y-auto pr-1 overscroll-contain">
-                {filteredExercises.slice(0, 8).map((exercise) => {
+              <div className="max-h-[240px] overflow-y-auto pr-1 overscroll-contain">
+                {exerciseQuery.trim() && filteredExercises.length === 0 && (
+                  <p className="t-caption py-2.5">No matches. Add it as your own below.</p>
+                )}
+                {filteredExercises.slice(0, 40).map((exercise) => {
                   const alreadyAdded = activeCustomDay.exercises.some(
                     (entry) => entry.exercise_id === exercise.id
                   );
@@ -1060,7 +1071,10 @@ export function SplitBuilder({ onComplete }: SplitBuilderProps) {
                         alreadyAdded ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
                       }`}
                     >
-                      <span className="min-w-0 break-words">{exercise.name}</span>
+                      <span className="min-w-0 flex flex-col">
+                        <span className="break-words">{exercise.name}</span>
+                        <span className="t-caption">{MUSCLE_GROUP_LABELS[exercise.muscle_group] ?? exercise.muscle_group}</span>
+                      </span>
                       {alreadyAdded ? (
                         <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
                       ) : (

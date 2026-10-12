@@ -49,11 +49,15 @@ interface SplitEditState {
   isDirty: boolean;
   saving: boolean;
   error: string | null;
+  /** The draft before the latest removal, until the next edit. */
+  undo: { label: string; draft: DraftSplit } | null;
 
   // Lifecycle
   startEdit: (split: Split) => void;
   cancelEdit: () => void;
   saveEdit: () => Promise<boolean>;
+  undoRemoval: () => void;
+  dismissUndo: () => void;
 
   // Split-level
   renameSplit: (name: string) => void;
@@ -156,7 +160,48 @@ const TARGET_FIELDS = [
 
 function updateDraft(state: SplitEditState, updater: (draft: DraftSplit) => DraftSplit): Partial<SplitEditState> {
   if (!state.draft) return {};
-  return { draft: updater(state.draft), isDirty: true, error: null };
+  return { draft: updater(state.draft), isDirty: true, error: null, undo: null };
+}
+
+/** Like updateDraft, but keeps the previous draft so the removal can be undone. */
+function removeFromDraft(
+  state: SplitEditState,
+  label: string,
+  updater: (draft: DraftSplit) => DraftSplit
+): Partial<SplitEditState> {
+  if (!state.draft) return {};
+  return { ...updateDraft(state, updater), undo: { label, draft: state.draft } };
+}
+
+/**
+ * Moves an exercise one place. A superset pair moves as one block and other
+ * exercises step over the whole pair, so a pair is never split apart.
+ */
+export function moveExercise(exercises: DraftExercise[], exerciseId: string, direction: -1 | 1): DraftExercise[] {
+  const blockOf = (index: number): [number, number] => {
+    const groupId = exercises[index].superset_group_id;
+    if (!groupId) return [index, index];
+    let start = index;
+    let end = index;
+    while (start > 0 && exercises[start - 1].superset_group_id === groupId) start -= 1;
+    while (end < exercises.length - 1 && exercises[end + 1].superset_group_id === groupId) end += 1;
+    return [start, end];
+  };
+
+  const index = exercises.findIndex((entry) => entry.id === exerciseId);
+  if (index < 0) return exercises;
+
+  const [start, end] = blockOf(index);
+  const neighbour = direction === -1 ? start - 1 : end + 1;
+  if (neighbour < 0 || neighbour >= exercises.length) return exercises;
+  const [neighbourStart, neighbourEnd] = blockOf(neighbour);
+
+  const block = exercises.slice(start, end + 1);
+  const neighbourBlock = exercises.slice(neighbourStart, neighbourEnd + 1);
+  const next = direction === -1
+    ? [...exercises.slice(0, neighbourStart), ...block, ...neighbourBlock, ...exercises.slice(end + 1)]
+    : [...exercises.slice(0, start), ...neighbourBlock, ...block, ...exercises.slice(neighbourEnd + 1)];
+  return next.map((entry, order) => ({ ...entry, exercise_order: order }));
 }
 
 // ═══════════════════════════════════
@@ -168,6 +213,7 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
   isDirty: false,
   saving: false,
   error: null,
+  undo: null,
 
   startEdit: (split) => {
     set({
@@ -175,11 +221,22 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
       isDirty: false,
       saving: false,
       error: null,
+      undo: null,
     });
   },
 
   cancelEdit: () => {
-    set({ draft: null, isDirty: false, saving: false, error: null });
+    set({ draft: null, isDirty: false, saving: false, error: null, undo: null });
+  },
+
+  undoRemoval: () => {
+    const { undo } = get();
+    if (!undo) return;
+    set({ draft: undo.draft, isDirty: true, error: null, undo: null });
+  },
+
+  dismissUndo: () => {
+    if (get().undo) set({ undo: null });
   },
 
   saveEdit: async () => {
@@ -222,7 +279,7 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
         return false;
       }
 
-      set({ draft: null, isDirty: false, saving: false, error: null });
+      set({ draft: null, isDirty: false, saving: false, error: null, undo: null });
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save changes';
@@ -287,7 +344,7 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
 
   removeDay: (dayId) => {
     set((state) =>
-      updateDraft(state, (d) => ({
+      removeFromDraft(state, `Removed ${state.draft?.days.find((day) => day.id === dayId)?.day_name.trim() || 'day'}`, (d) => ({
         ...d,
         days: fixDayOrders(d.days.filter((day) => day.id !== dayId)),
       }))
@@ -302,18 +359,8 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
         ...d,
         days: d.days.map((day) => {
           if (day.id !== dayId) return day;
-          const idx = day.exercises.findIndex((ex) => ex.id === exerciseId);
-          if (idx < 0) return day;
-          const target = idx + direction;
-          if (target < 0 || target >= day.exercises.length) return day;
-
-          const next = [...day.exercises];
-          const [moving] = next.splice(idx, 1);
-          next.splice(target, 0, moving);
-          return {
-            ...day,
-            exercises: next.map((ex, i) => ({ ...ex, exercise_order: i })),
-          };
+          const next = moveExercise(day.exercises, exerciseId, direction);
+          return next === day.exercises ? day : { ...day, exercises: next };
         }),
       }))
     );
@@ -518,7 +565,9 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
 
   removeExercise: (dayId, exerciseId) => {
     set((state) =>
-      updateDraft(state, (d) => ({
+      removeFromDraft(state, `Removed ${
+        state.draft?.days.find((day) => day.id === dayId)?.exercises.find((ex) => ex.id === exerciseId)?.exercise.name ?? 'exercise'
+      }`, (d) => ({
         ...d,
         days: d.days.map((day) => {
           if (day.id !== dayId) return day;

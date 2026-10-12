@@ -1,4 +1,14 @@
-# Current work snapshot — session-only exercise swaps
+# Current work snapshot — exercise library and program editor
+
+Recorded 2026-10-12 (Pacific). The owner asked for missing gym exercises, a less cluttered exercise picker with calisthenics separated, partial multi-word search, and a faster program building/editing flow. Built on `fix/exercise-library-and-editor` from `main` at `2d6bc7d` (#141). A pull request was requested; merge, release and production writes were not.
+
+- Migration `20261012120000_add_exercise_category_and_gym_staples.sql` (not applied) adds a nullable `exercises.category` (`gym`/`calisthenics`), backfills it by name rules, and inserts Hack Squat, Machine Chest Press, Machine Shoulder Press, One-Arm Chest-Supported Machine Row, Cable Overhead Tricep Extension, Cable Curl and 45° Back Extension with `ON CONFLICT (name) DO NOTHING`. Nothing is deleted or renamed; "Weighted Hyperextension" keeps its history. The app classifies rows the same way when the column is missing or NULL (`src/lib/exerciseSearch.ts`), so it works before the migration is applied.
+- The picker (shared with Workout and History) shows gym movements first and calisthenics in a collapsed section; search matches every word in any order, partial words, plurals and common shorthand. Cached library rows are reused for five minutes instead of refetched on every open.
+- Program editor: the add picker stays open for several picks; days open as a one-line overview; removals of exercises and days offer Undo (day removal no longer uses a confirm dialog); reorder moves superset pairs together; number cells select on focus; the swap icon is always visible. The custom builder uses the cached library and the new search.
+
+Validation: 1,695 tests across 136 files under Node 22 (Node 20 here lacks the native WebSocket that seven existing suites need, on `main` too), lint with test typecheck, and the production build. The migration ran twice against an in-memory Postgres (PGlite). A headless browser run at 390×844 in Ivory and Black covered edit, multi-add, calisthenics toggle, search, remove/Undo, save and the custom builder, with no console errors. Native device behavior, select-on-focus in iOS WebKit and the migration against production remain unverified.
+
+# Previous work snapshot — session-only exercise swaps
 
 Recorded 2026-10-04 (Pacific). The owner asked for an intuitive way to swap a movement mid-session, for that workout only (e.g. Lat Pulldown taken → weighted Pull-Ups), mainly in program (split) workouts, so History shows what was really done instead of a note. Built on `feat/session-swap` from `main` at `1841914` (#139). The owner then authorized a commit and pull request; merge and release were not requested.
 
