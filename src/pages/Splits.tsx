@@ -15,7 +15,8 @@ import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import { requestConfirm } from '@/lib/confirmDialog';
-import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
+import { pendingExercises } from '@/lib/customExercises';
+import type { Exercise, FlexDayTemplate, Split, MuscleGroup } from '@/types';
 
 export function Splits() {
   const {
@@ -70,12 +71,13 @@ export function Splits() {
     exerciseId?: string;
     initialMuscleGroup?: MuscleGroup;
     excludeExerciseIds?: string[];
+    extraExercises?: Exercise[];
   }>({ isOpen: false, dayId: '', mode: 'add' });
 
   // Actions only: selecting them keeps draft edits from re-rendering this page.
   const startEdit = useSplitEditStore((s) => s.startEdit);
   const swapExercise = useSplitEditStore((s) => s.swapExercise);
-  const addExercise = useSplitEditStore((s) => s.addExercise);
+  const addExercises = useSplitEditStore((s) => s.addExercises);
   const addSupersetExercise = useSplitEditStore((s) => s.addSupersetExercise);
 
   useEffect(() => {
@@ -122,24 +124,19 @@ export function Splits() {
       exerciseId,
       initialMuscleGroup,
       excludeExerciseIds,
+      extraExercises: draft ? pendingExercises(draft) : [],
     });
   }, []);
 
-  const handleExerciseSelected = useCallback((exercise: { id: string; name: string; muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; equipment: string | null; is_compound: boolean }) => {
+  const handleExerciseSelected = useCallback((exercise: Exercise) => {
     const { dayId, mode, exerciseId } = pickerState;
 
     if (mode === 'swap' && exerciseId) {
       swapExercise(dayId, exerciseId, exercise);
     } else if (mode === 'superset' && exerciseId) {
       addSupersetExercise(dayId, exerciseId, exercise);
-    } else {
-      addExercise(dayId, exercise);
-      // Add mode stays open so several exercises can be added in one go
-      return;
     }
-
-    setPickerState((prev) => ({ ...prev, isOpen: false }));
-  }, [pickerState, swapExercise, addExercise, addSupersetExercise]);
+  }, [pickerState, swapExercise, addSupersetExercise]);
 
   const handleDelete = async (split: Split) => {
     setShowMenu(null);
@@ -781,9 +778,11 @@ export function Splits() {
         isOpen={pickerState.isOpen}
         onClose={() => setPickerState((prev) => ({ ...prev, isOpen: false }))}
         onSelect={handleExerciseSelected}
+        onSelectMany={pickerState.mode === 'add' ? (picked) => addExercises(pickerState.dayId, picked) : undefined}
+        allowCustom
+        extraExercises={pickerState.extraExercises}
         initialMuscleGroup={pickerState.initialMuscleGroup}
         excludeExerciseIds={pickerState.excludeExerciseIds}
-        keepOpenOnSelect={pickerState.mode === 'add'}
         title={
           pickerState.mode === 'swap'
             ? 'Swap Exercise'
