@@ -2,19 +2,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
+import { Button, ConfirmDialogHost, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useSplitEditStore } from '@/stores/splitEditStore';
-import { SplitBuilder } from '@/components/split/SplitBuilder';
-import { SplitEditor } from '@/components/split/SplitEditor';
-import { ExercisePicker } from '@/components/split/ExercisePicker';
+import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
+import { SplitEditorSheet } from '@/components/split/SplitEditorSheet';
 import { springs } from '@/lib/animations';
 import { useLitSurface } from '@/hooks/useLitSurface';
 import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import { discardSplitEdit } from '@/lib/discardSplitEdit';
-import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
+import { requestConfirm } from '@/lib/confirmDialog';
+import type { FlexDayTemplate, Split } from '@/types';
 
 export function Splits() {
   const {
@@ -35,7 +33,6 @@ export function Splits() {
   } = useAppStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [showBuilder, setShowBuilder] = useState(false);
   const [showMenu, setShowMenu] = useState<string | null>(null);
   const litMenuRef = useLitSurface<HTMLDivElement>();
   const [expandedSplit, setExpandedSplit] = useState<string | null>(null);
@@ -60,22 +57,11 @@ export function Splits() {
   const [startingTemplateLabel, setStartingTemplateLabel] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  // ── Edit state ──
-  const [showEditor, setShowEditor] = useState(false);
-  const [pickerState, setPickerState] = useState<{
-    isOpen: boolean;
-    dayId: string;
-    mode: 'add' | 'swap' | 'superset';
-    exerciseId?: string;
-    initialMuscleGroup?: MuscleGroup;
-    excludeExerciseIds?: string[];
-  }>({ isOpen: false, dayId: '', mode: 'add' });
-
+  // ── Program sheet: create and edit share one editor ──
+  const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   // Actions only: selecting them keeps draft edits from re-rendering this page.
   const startEdit = useSplitEditStore((s) => s.startEdit);
-  const swapExercise = useSplitEditStore((s) => s.swapExercise);
-  const addExercise = useSplitEditStore((s) => s.addExercise);
-  const addSupersetExercise = useSplitEditStore((s) => s.addSupersetExercise);
+  const cancelEdit = useSplitEditStore((s) => s.cancelEdit);
 
   useEffect(() => {
     void Promise.all([
@@ -87,67 +73,28 @@ export function Splits() {
   }, [fetchCurrentWorkout, fetchFlexTemplates, fetchSplits, fetchWorkoutMode]);
 
   const handleEdit = useCallback((split: Split) => {
-    startEdit(split);
+    startEdit(split, { userId: user?.id ?? null });
     setShowMenu(null);
-    setShowEditor(true);
-  }, [startEdit]);
+    setEditorMode('edit');
+  }, [startEdit, user?.id]);
 
-  const handlePickExercise = useCallback((dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => {
-    const { draft } = useSplitEditStore.getState();
-    let initialMuscleGroup: MuscleGroup | undefined;
-    let excludeExerciseIds: string[] = [];
+  const handleNew = useCallback(() => {
+    cancelEdit();
+    setEditorMode('new');
+  }, [cancelEdit]);
 
-    if (draft) {
-      const day = draft.days.find((entry) => entry.id === dayId);
-      if (day) {
-        excludeExerciseIds = day.exercises.map((entry) => entry.exercise_id);
-      }
-    }
-
-    if ((mode === 'swap' || mode === 'superset') && exerciseId && draft) {
-      for (const day of draft.days) {
-        const ex = day.exercises.find((e) => e.id === exerciseId);
-        if (ex) {
-          initialMuscleGroup = ex.exercise.muscle_group;
-          break;
-        }
-      }
-    }
-
-    setPickerState({
-      isOpen: true,
-      dayId,
-      mode,
-      exerciseId,
-      initialMuscleGroup,
-      excludeExerciseIds,
+  const handleDelete = async (split: Split) => {
+    setShowMenu(null);
+    const confirmed = await requestConfirm({
+      title: 'Delete program?',
+      message: `${split.name} and its training days will be deleted. Past workouts stay in History.`,
+      confirmLabel: 'Delete',
+      destructive: true,
     });
-  }, []);
-
-  const handleExerciseSelected = useCallback((exercise: { id: string; name: string; muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; equipment: string | null; is_compound: boolean }) => {
-    const { dayId, mode, exerciseId } = pickerState;
-
-    if (mode === 'swap' && exerciseId) {
-      swapExercise(dayId, exerciseId, exercise);
-    } else if (mode === 'superset' && exerciseId) {
-      addSupersetExercise(dayId, exerciseId, exercise);
-    } else {
-      addExercise(dayId, exercise);
-      // Add mode stays open so several exercises can be added in one go
-      return;
-    }
-
-    setPickerState((prev) => ({ ...prev, isOpen: false }));
-  }, [pickerState, swapExercise, addExercise, addSupersetExercise]);
-
-  const handleDelete = async (splitId: string) => {
-    if (confirm('Delete this program?')) {
-      const result = await deleteSplit(splitId);
-      if (!result.ok) {
-        window.alert(result.reason ?? 'Could not delete the program.');
-        return;
-      }
-      setShowMenu(null);
+    if (!confirmed) return;
+    const result = await deleteSplit(split.id);
+    if (!result.ok) {
+      window.alert(result.reason ?? 'Could not delete the program.');
     }
   };
 
@@ -161,7 +108,6 @@ export function Splits() {
     }
 
     if (mode === 'flexible') {
-      setShowBuilder(false);
       setShowMenu(null);
       setExpandedSplit(null);
       setExpandedDay(null);
@@ -253,6 +199,12 @@ export function Splits() {
     }
   };
 
+  const handleSaved = (saved: SavedSplit) => {
+    // Creating already refreshed the list; an edit saved through the snapshot did not.
+    if (saved.created) void maybePromptPlanStart(saved.id, saved.name);
+    else void fetchSplits({ force: true });
+  };
+
   const handleSelectSplit = async (splitId: string, splitName: string) => {
     const result = await setActiveSplit(splitId);
     if (!result.ok) {
@@ -279,7 +231,7 @@ export function Splits() {
         <div className="mt-5 flex items-end justify-between gap-3">
           <PageTitle>Program</PageTitle>
           {workoutMode === 'split' && (
-            <Button size="sm" onClick={() => setShowBuilder(true)}>
+            <Button size="sm" onClick={handleNew}>
               <Plus className="w-4 h-4" strokeWidth={1.75} />
               New
             </Button>
@@ -438,7 +390,7 @@ export function Splits() {
             title="Build your first program"
             body="Five questions and the guided builder assembles an evidence-based split around your week — editable down to every set."
             action={
-              <Button size="lg" onClick={() => setShowBuilder(true)}>
+              <Button size="lg" onClick={handleNew}>
                 Create program
               </Button>
             }
@@ -527,7 +479,7 @@ export function Splits() {
                           </button>
                           <button
                             className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
-                            onClick={() => handleDelete(split.id)}
+                            onClick={() => { void handleDelete(split); }}
                           >
                             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                             Delete
@@ -735,56 +687,15 @@ export function Splits() {
         </div>
       </Modal>
 
-      {/* Split Builder Modal */}
-      <Modal
-        isOpen={showBuilder}
-        onClose={() => {
-          setShowBuilder(false);
-        }}
-        title="New program"
-      >
-        <SplitBuilder
-          onComplete={(createdSplit) => {
-            setShowBuilder(false);
-
-            if (createdSplit) {
-              void maybePromptPlanStart(createdSplit.id, createdSplit.name);
-            }
-          }}
-        />
-      </Modal>
-
-      {/* Split Editor Modal */}
-      <Modal
-        isOpen={showEditor}
-        onClose={() => {
-          if (discardSplitEdit()) setShowEditor(false);
-        }}
-        title="Edit program"
-      >
-        <SplitEditor
-          onClose={() => setShowEditor(false)}
-          onSaved={() => void fetchSplits({ force: true })}
-          onPickExercise={handlePickExercise}
-        />
-      </Modal>
-
-      {/* Exercise Picker (for editor) */}
-      <ExercisePicker
-        isOpen={pickerState.isOpen}
-        onClose={() => setPickerState((prev) => ({ ...prev, isOpen: false }))}
-        onSelect={handleExerciseSelected}
-        initialMuscleGroup={pickerState.initialMuscleGroup}
-        excludeExerciseIds={pickerState.excludeExerciseIds}
-        keepOpenOnSelect={pickerState.mode === 'add'}
-        title={
-          pickerState.mode === 'swap'
-            ? 'Swap Exercise'
-            : pickerState.mode === 'superset'
-              ? 'Add Superset Exercise'
-              : 'Add Exercises'
-        }
+      <SplitEditorSheet
+        mode={editorMode}
+        userId={user?.id ?? null}
+        onClose={() => setEditorMode(null)}
+        onSaved={handleSaved}
       />
+
+      {/* Last, so its sheet sits above the editor and picker */}
+      <ConfirmDialogHost />
     </Screen>
   );
 }

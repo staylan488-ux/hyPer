@@ -1,0 +1,9 @@
+/* Press-and-hold drag handle: a quick swipe across it still scrolls the sheet. */
+.split-drag-handle { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin-left: -12px; color: var(--color-muted); cursor: grab; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.split-drag-handle:hover { color: var(--color-text); }
+.split-drag-handle:active { cursor: grabbing; }
+.split-drag-handle:focus-visible { outline: 1px solid var(--color-text); outline-offset: -4px; border-radius: var(--radius-control); }
+.split-sortable { position: relative; }
+.split-sortable[data-dragging="true"] { z-index: 5; }
+.split-sortable[data-dragging="true"] > .split-sortable-body { background: var(--color-base); box-shadow: var(--material-dock-shadow); }
+.split-sortable-list[data-sorting="true"] { user-select: none; -webkit-user-select: none; }

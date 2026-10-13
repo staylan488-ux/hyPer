@@ -2,21 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { splitTemplates } from '../src/lib/splitTemplates';
+import { normalizeExerciseName } from '../src/lib/customExercises';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
   type ProgramDesignAnswers,
 } from '../src/lib/programDesigner';
 
-// Same normalization SplitBuilder.createFromTemplate uses to match template names
-// against exercise rows. Names that do not resolve are dropped from the saved split.
-function normalizeExerciseName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// templateSplitDraft matches template names against exercise rows with
+// normalizeExerciseName; names that do not resolve are left out of the draft.
 
 function readSeededExerciseNames(): Set<string> {
   const schema = readFileSync('supabase/schema.sql', 'utf8');
