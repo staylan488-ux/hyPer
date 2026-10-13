@@ -1,4 +1,19 @@
-# Current work snapshot — exercise library and program editor
+# Current work snapshot — set logging stuck after iOS resume
+
+Recorded 2026-10-13 (Pacific). Production bug on TestFlight: after the app sat in the background past token expiry, every Save set attempt and retry hung until a cold restart. Server logs showed hourly refreshes stop at that point and no stuck retry reaching the server. Fix on `fix/set-logging-auth-refresh` from `main` at `e54c096` (#144), committed locally; push, PR, merge and release were not requested.
+
+Likely cause: supabase-js reads the session (the iOS Keychain through the native bridge) before every request and single-flights refreshes. After resume, its suspended ticker and unbounded resume handling, or a bridge call that never settles, left every request waiting on auth; the 8 s save deadline fired on each attempt and the retry waited on the same stall.
+
+- `src/lib/nativeSecureStorage.ts`: each Keychain get/set/remove gives up after 3 s and takes the existing fallback. A timed-out read reuses the value this launch last read or wrote (in memory only), else the legacy copy, else signed-out. Plain Keychain errors behave as before.
+- `src/lib/authResume.ts`, wired once in `src/lib/supabase.ts` (not for the preview client): on `visibilitychange` and Capacitor `appStateChange`, stop/start auto-refresh and refresh a session expiring within 60 s; stop the ticker when hidden. This replaces the SDK's own visibility listener. Steps have 3 s (5 s for refresh) deadlines and never throw.
+- `src/lib/saveWorkoutSet.ts`: every save timeout starts a single-flight auth recovery (restart auto-refresh, `refreshSession` within 5 s). The automatic retry and any later manual Retry wait for it; the payload is unchanged. Also covers Finish workout, which shares `runSaveWithRetry`. The wait before an error grows from 16 s to about 21 s (27 s if every auth step stalls).
+- `src/lib/authDiagnostics.ts`: an on-device trail of the last 50 auth events (token refresh start/end with outcome and duration, resume/pause, Keychain timeouts, set-save timeouts) in memory and localStorage `hyper:auth-diagnostics`. No network, no tokens or account details. Read it from Safari Web Inspector on a TestFlight device to confirm the next occurrence.
+
+Validation: 1,721 tests across 138 files (Node 20 with `--experimental-websocket`; Node 22 needs no flag), lint with test typecheck and instruction checks, and the production build. New coverage: hanging Keychain reads, writes and removals, plus a real supabase-js `getSession` over a hung read; resume stop/start and refresh only within 60 s; stalled resume steps; save timeout → recovery → successful identical retry, a stalled recovery, and a manual Retry waiting for recovery; diagnostics capping and redaction.
+
+Not exercised: a physical device or TestFlight build, real WKWebView suspension, and a native iOS build (no native files changed). The root cause is inferred from server logs and SDK behavior, not reproduced. Risks: a timed-out Keychain write is not cancelled, so a late native write could land out of order (the plugin is expected to serialize calls); a real Keychain read slower than 3 s at cold start with no legacy copy shows sign-in for that launch; each save timeout now triggers one extra token refresh; and if the stall is inside the SDK's single-flight refresh itself rather than storage, recovery only helps once that request reaches the 30 s `timedFetch` deadline.
+
+# Previous work snapshot — exercise library and program editor
 
 Recorded 2026-10-12 (Pacific). The owner asked for missing gym exercises, a less cluttered exercise picker with calisthenics separated, partial multi-word search, and a faster program building/editing flow. Built on `fix/exercise-library-and-editor` from `main` at `2d6bc7d` (#141). A pull request was requested; merge, release and production writes were not.
 
