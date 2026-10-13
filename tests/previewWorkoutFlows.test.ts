@@ -13,6 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
+import { blankSplitDraft } from '@/lib/splitDraftSeed';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -96,6 +97,29 @@ describe('preview uses real program and workout store paths', () => {
     expect(useAppStore.getState().activeSplit?.id).toBe('split1');
   });
 
+  it('creates a program from the shared editor through the real createSplit path', async () => {
+    await useAppStore.getState().fetchSplits();
+    const existing = useAppStore.getState().activeSplit!;
+    const [first, second] = existing.days[0].exercises;
+    const draft = blankSplitDraft(2);
+    useSplitEditStore.getState().startNew(draft);
+    useSplitEditStore.getState().renameSplit('Fresh plan');
+    useSplitEditStore.getState().renameDay(draft.days[0].id, 'Push');
+    useSplitEditStore.getState().addExercises(draft.days[0].id, [first.exercise, second.exercise]);
+    useSplitEditStore.getState().addExercises(draft.days[1].id, [first.exercise]);
+    const pushIds = useSplitEditStore.getState().draft!.days[0].exercises.map((ex) => ex.id);
+    useSplitEditStore.getState().moveExerciseTo(draft.days[0].id, pushIds[1], pushIds[0]);
+
+    const saved = await useSplitEditStore.getState().saveEdit({ createSplit: useAppStore.getState().createSplit });
+
+    expect(saved).toMatchObject({ name: 'Fresh plan', created: true });
+    const created = useAppStore.getState().splits.find((split) => split.id === saved!.id)!;
+    expect(created.is_active).toBe(true);
+    expect(created.days.map((day) => day.day_name)).toEqual(['Push', 'Day 2']);
+    expect(created.days[0].exercises.map((ex) => ex.exercise_id)).toEqual([second.exercise_id, first.exercise_id]);
+    expect(useSplitEditStore.getState().draft).toBeNull();
+  });
+
   it('saves the actual program editor snapshot, retaining IDs and removing omitted rows', async () => {
     await useAppStore.getState().fetchSplits();
     const original = useAppStore.getState().activeSplit!;
@@ -112,7 +136,7 @@ describe('preview uses real program and workout store paths', () => {
     useSplitEditStore.getState().addDay('New studio day');
     const newDay = useSplitEditStore.getState().draft!.days.at(-1)!;
     useSplitEditStore.getState().addExercise(newDay.id, removedExercise.exercise);
-    expect(await useSplitEditStore.getState().saveEdit()).toBe(true);
+    expect(await useSplitEditStore.getState().saveEdit()).toEqual({ id: original.id, name: 'Upper / Lower Studio', created: false });
     await useAppStore.getState().fetchSplits();
     const updated = useAppStore.getState().activeSplit!;
     expect(updated.name).toBe('Upper / Lower Studio');

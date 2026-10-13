@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue, type ReactNode } from 'react';
 import { Loader2, Search, Dumbbell, ArrowRight, Check, ChevronDown } from 'lucide-react';
 import { Modal, Input, Chip, Button } from '@/components/shared';
+import { CustomExerciseForm } from '@/components/split/CustomExerciseForm';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import type { Exercise, MuscleGroup } from '@/types';
@@ -19,7 +20,18 @@ interface ExercisePickerProps {
   intro?: ReactNode;
   /** Stay open after a pick so several exercises can be added in one go. */
   keepOpenOnSelect?: boolean;
+  /**
+   * Multi-select: picks are collected and handed over together when the user
+   * confirms. `onSelect` is not called in this mode.
+   */
+  onSelectMany?: (exercises: Exercise[]) => void;
+  /** Offers to make an exercise the library lacks (inserted when the program saves). */
+  allowCustom?: boolean;
+  /** Exercises to list besides the library, e.g. custom ones not saved yet. */
+  extraExercises?: Exercise[];
 }
+
+type ContentProps = Omit<ExercisePickerProps, 'isOpen' | 'title'>;
 
 const ALL_MUSCLE_GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
 
@@ -52,16 +64,24 @@ function ExercisePickerContent({
   excludeExerciseIds = [],
   intro,
   keepOpenOnSelect = false,
-}: {
-  onClose: () => void;
-  onSelect: (exercise: Exercise) => void;
-  initialMuscleGroup?: MuscleGroup;
-  excludeExerciseIds?: string[];
-  intro?: ReactNode;
-  keepOpenOnSelect?: boolean;
-}) {
+  onSelectMany,
+  allowCustom = false,
+  extraExercises,
+}: ContentProps) {
   // Rows from earlier opens show immediately; a fresh copy replaces them quietly.
-  const [exercises, setExercises] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  const [library, setLibrary] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  const [created, setCreated] = useState<Exercise[]>([]);
+  const exercises = useMemo(() => {
+    const additions = [...(extraExercises ?? []), ...created];
+    if (additions.length === 0) return library;
+    const known = new Set(library.map((exercise) => exercise.id));
+    const unique = additions.filter((exercise) => !known.has(exercise.id) && known.add(exercise.id));
+    return [...unique, ...library];
+  }, [created, extraExercises, library]);
+  const multiSelect = Boolean(onSelectMany);
+  // Multi-select picks, in the order they were chosen.
+  const [selected, setSelected] = useState<Exercise[]>([]);
+  const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(() => peekExerciseLibrary() === null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -86,7 +106,7 @@ function ExercisePickerContent({
       try {
         const rows = await getExerciseLibrary({ maxAgeMs: hadCache ? LIBRARY_MAX_AGE_MS : Infinity });
         if (!cancelled && (rows.length > 0 || !hadCache)) {
-          setExercises(rows);
+          setLibrary(rows);
         }
       } catch {
         // with cached rows on screen a failed refresh changes nothing
@@ -144,8 +164,17 @@ function ExercisePickerContent({
   const calisthenicsForced = isSearching || gymGroups.length === 0;
   const calisthenicsOpen = showCalisthenics || calisthenicsForced;
   const addedSet = useMemo(() => new Set(addedIds), [addedIds]);
+  const selectedSet = useMemo(() => new Set(selected.map((exercise) => exercise.id)), [selected]);
 
   const handleSelect = (exercise: Exercise) => {
+    if (multiSelect) {
+      setSelected((current) => (
+        current.some((entry) => entry.id === exercise.id)
+          ? current.filter((entry) => entry.id !== exercise.id)
+          : [...current, exercise]
+      ));
+      return;
+    }
     if (addedSet.has(exercise.id)) return;
     onSelect(exercise);
     if (keepOpenOnSelect) {
@@ -155,14 +184,35 @@ function ExercisePickerContent({
     }
   };
 
+  const handleCreate = (exercise: Exercise) => {
+    setShowCustom(false);
+    setSearchQuery('');
+    if (!library.some((entry) => entry.id === exercise.id)) {
+      setCreated((current) => (current.some((entry) => entry.id === exercise.id) ? current : [exercise, ...current]));
+    }
+    if (multiSelect) {
+      setSelected((current) => (current.some((entry) => entry.id === exercise.id) ? current : [...current, exercise]));
+    } else {
+      handleSelect(exercise);
+    }
+  };
+
+  const confirmSelection = () => {
+    if (selected.length === 0) return;
+    onSelectMany?.(selected);
+    onClose();
+  };
+
   const renderRow = (exercise: Exercise) => {
     const added = addedSet.has(exercise.id);
+    const picked = selectedSet.has(exercise.id);
     return (
       <li key={exercise.id} className="border-t border-[var(--color-border)] first:border-t-0">
         <button
           onClick={() => handleSelect(exercise)}
           disabled={added}
           aria-label={added ? `${exercise.name}, added` : undefined}
+          aria-pressed={multiSelect ? picked : undefined}
           className="pressable group w-full text-left py-3 flex items-baseline gap-3 disabled:cursor-default"
           type="button"
         >
@@ -186,7 +236,18 @@ function ExercisePickerContent({
               )}
             </span>
           </span>
-          {added ? (
+          {multiSelect ? (
+            <span
+              aria-hidden
+              className={`self-center shrink-0 flex items-center justify-center w-6 h-6 rounded-full border transition-colors ${
+                picked
+                  ? 'bg-[var(--color-text)] border-[var(--color-text)] text-[var(--color-base)]'
+                  : 'border-[var(--color-border-strong)]'
+              }`}
+            >
+              {picked && <Check className="w-3.5 h-3.5" strokeWidth={2.25} />}
+            </span>
+          ) : added ? (
             <span className="t-label-sm self-center shrink-0 flex items-center gap-1 text-[var(--color-text)]">
               <Check className="w-4 h-4" strokeWidth={1.75} aria-hidden />
               Added
@@ -318,7 +379,48 @@ function ExercisePickerContent({
         )}
       </div>
 
-      {keepOpenOnSelect && (
+      {allowCustom && !loading && (
+        showCustom ? (
+          <CustomExerciseForm
+            initialName={searchQuery}
+            initialMuscleGroup={selectedMuscle === 'all' ? initialMuscleGroup : selectedMuscle}
+            library={library}
+            onCreate={handleCreate}
+            onCancel={() => setShowCustom(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            className="pressable studio-row-action w-full min-h-11 flex items-center justify-center gap-2 t-label hover:text-[var(--color-text)] transition-colors"
+            onClick={() => setShowCustom(true)}
+          >
+            {searchQuery.trim() ? `Create “${searchQuery.trim()}”` : 'Create a custom exercise'}
+          </button>
+        )
+      )}
+
+      {multiSelect && (
+        // Stays in reach while the list scrolls, like the program editor's bar.
+        <div
+          className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
+        >
+          <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+            {selected.length > 0 && (
+              <p className="t-caption break-words" aria-live="polite">
+                {selected.map((exercise) => exercise.name).join(' · ')}
+              </p>
+            )}
+            <Button variant="primary" size="md" className="w-full" onClick={confirmSelection} disabled={selected.length === 0}>
+              {selected.length === 0
+                ? 'Select exercises'
+                : `Add ${selected.length} ${selected.length === 1 ? 'exercise' : 'exercises'}`}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {keepOpenOnSelect && !multiSelect && (
         <Button variant="primary" size="md" className="w-full" onClick={onClose}>
           {addedIds.length > 0 ? `Done · ${addedIds.length} added` : 'Done'}
         </Button>
@@ -336,6 +438,9 @@ export function ExercisePicker({
   excludeExerciseIds,
   intro,
   keepOpenOnSelect,
+  onSelectMany,
+  allowCustom,
+  extraExercises,
 }: ExercisePickerProps) {
   return (
     <Modal
@@ -351,6 +456,9 @@ export function ExercisePicker({
         excludeExerciseIds={excludeExerciseIds}
         intro={intro}
         keepOpenOnSelect={keepOpenOnSelect}
+        onSelectMany={onSelectMany}
+        allowCustom={allowCustom}
+        extraExercises={extraExercises}
       />
     </Modal>
   );
