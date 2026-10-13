@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // on the loading screen), and fully clear the session on sign-out.
 const mocks = vi.hoisted(() => ({
   isNativeIOS: vi.fn(),
+  record: vi.fn(),
   NativeAuth: {
     getSecureValue: vi.fn(),
     setSecureValue: vi.fn(),
@@ -17,7 +18,9 @@ vi.mock('@/lib/nativeBridge', () => ({
   NativeAuth: mocks.NativeAuth,
 }));
 
-import { nativeAuthStorage } from '@/lib/nativeSecureStorage';
+vi.mock('@/lib/authDiagnostics', () => ({ recordAuthDiagnostic: mocks.record }));
+
+import { KEYCHAIN_TIMEOUT_MS, nativeAuthStorage } from '@/lib/nativeSecureStorage';
 
 const KEY = 'sb-abcd-auth-token';
 const SESSION = '{"access_token":"a","refresh_token":"r"}';
@@ -120,6 +123,95 @@ describe('nativeAuthStorage on native iOS', () => {
     keychain.set(KEY, SESSION);
     await expect(nativeAuthStorage.removeItem(KEY)).resolves.toBeUndefined();
     expect(keychain.has(KEY)).toBe(false);
+  });
+});
+
+describe('nativeAuthStorage when the Keychain bridge stalls', () => {
+  const hang = () => new Promise<never>(() => {});
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('stops waiting on a hung read and falls back to the legacy session, else signed-out', async () => {
+    mocks.NativeAuth.getSecureValue.mockImplementation(hang);
+    const signedOut = nativeAuthStorage.getItem('sb-hang-none');
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(signedOut).resolves.toBeNull();
+
+    legacy.set('sb-hang-legacy', SESSION);
+    const restored = nativeAuthStorage.getItem('sb-hang-legacy');
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(restored).resolves.toBe(SESSION);
+    expect(mocks.record).toHaveBeenCalledWith('keychain:timeout', { detail: 'get' });
+  });
+
+  it('keeps serving the session this launch last read or wrote while reads hang', async () => {
+    const key = 'sb-hang-known';
+    keychain.set(key, SESSION);
+    await expect(nativeAuthStorage.getItem(key)).resolves.toBe(SESSION);
+
+    mocks.NativeAuth.getSecureValue.mockImplementation(hang);
+    mocks.NativeAuth.setSecureValue.mockImplementation(hang);
+    const write = nativeAuthStorage.setItem(key, 'rotated');
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(write).resolves.toBeUndefined();
+
+    const read = nativeAuthStorage.getItem(key);
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(read).resolves.toBe('rotated');
+    expect(mocks.record).toHaveBeenCalledWith('keychain:timeout', { detail: 'set' });
+  });
+
+  it('does not resurrect a signed-out session while reads hang', async () => {
+    const key = 'sb-hang-removed';
+    await nativeAuthStorage.setItem(key, SESSION);
+    mocks.NativeAuth.removeSecureValue.mockImplementation(hang);
+    const removal = nativeAuthStorage.removeItem(key);
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(removal).resolves.toBeUndefined();
+
+    mocks.NativeAuth.getSecureValue.mockImplementation(hang);
+    const read = nativeAuthStorage.getItem(key);
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(read).resolves.toBeNull();
+    expect(mocks.record).toHaveBeenCalledWith('keychain:timeout', { detail: 'remove' });
+  });
+
+  it('bounds a hung legacy promotion and still restores the session', async () => {
+    legacy.set('sb-hang-promote', SESSION);
+    mocks.NativeAuth.setSecureValue.mockImplementation(hang);
+    const read = nativeAuthStorage.getItem('sb-hang-promote');
+    await vi.advanceTimersByTimeAsync(KEYCHAIN_TIMEOUT_MS);
+    await expect(read).resolves.toBe(SESSION);
+    expect(legacy.get('sb-hang-promote')).toBe(SESSION);
+  });
+
+  it('lets supabase-js resolve getSession instead of hanging behind the read', async () => {
+    const { createClient } = await import('@supabase/supabase-js');
+    const storageKey = 'sb-hang-sdk-auth-token';
+    const session = {
+      access_token: 'access', refresh_token: 'refresh', token_type: 'bearer',
+      expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: { id: 'user-1', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '' },
+    };
+    legacy.set(storageKey, JSON.stringify(session));
+    mocks.NativeAuth.getSecureValue.mockImplementation(hang);
+    const client = createClient('https://keychain-hang.test', 'test-key', {
+      auth: { storage: nativeAuthStorage, storageKey, autoRefreshToken: false, detectSessionInUrl: false },
+      global: { fetch: vi.fn<typeof fetch>() },
+    });
+
+    const result = client.auth.getSession();
+    await vi.advanceTimersByTimeAsync(3 * KEYCHAIN_TIMEOUT_MS);
+    await expect(result).resolves.toMatchObject({ data: { session: { access_token: 'access' } }, error: null });
+  });
+
+  it('does not reuse the last value for a plain Keychain error', async () => {
+    const key = 'sb-error-known';
+    keychain.set(key, SESSION);
+    await nativeAuthStorage.getItem(key);
+    mocks.NativeAuth.getSecureValue.mockRejectedValue(new Error('locked before first unlock'));
+    await expect(nativeAuthStorage.getItem(key)).resolves.toBeNull();
   });
 });
 
