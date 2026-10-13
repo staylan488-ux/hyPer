@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Check, MoreVertical, Trash2, ChevronDown, ChevronRight, Pencil, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
+import { Button, ConfirmDialogHost, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -14,6 +14,7 @@ import { useLitSurface } from '@/hooks/useLitSurface';
 import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { discardSplitEdit } from '@/lib/discardSplitEdit';
+import { requestConfirm } from '@/lib/confirmDialog';
 import type { FlexDayTemplate, Split, MuscleGroup } from '@/types';
 
 export function Splits() {
@@ -140,14 +141,18 @@ export function Splits() {
     setPickerState((prev) => ({ ...prev, isOpen: false }));
   }, [pickerState, swapExercise, addExercise, addSupersetExercise]);
 
-  const handleDelete = async (splitId: string) => {
-    if (confirm('Delete this program?')) {
-      const result = await deleteSplit(splitId);
-      if (!result.ok) {
-        window.alert(result.reason ?? 'Could not delete the program.');
-        return;
-      }
-      setShowMenu(null);
+  const handleDelete = async (split: Split) => {
+    setShowMenu(null);
+    const confirmed = await requestConfirm({
+      title: 'Delete program?',
+      message: `${split.name} and its training days will be deleted. Past workouts stay in History.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    const result = await deleteSplit(split.id);
+    if (!result.ok) {
+      window.alert(result.reason ?? 'Could not delete the program.');
     }
   };
 
@@ -527,7 +532,7 @@ export function Splits() {
                           </button>
                           <button
                             className="w-full px-4 py-3 text-left t-data-sm text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] flex items-center gap-2.5 border-t border-[var(--color-border)] transition-colors"
-                            onClick={() => handleDelete(split.id)}
+                            onClick={() => { void handleDelete(split); }}
                           >
                             <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                             Delete
@@ -758,7 +763,9 @@ export function Splits() {
       <Modal
         isOpen={showEditor}
         onClose={() => {
-          if (discardSplitEdit()) setShowEditor(false);
+          void discardSplitEdit().then((discarded) => {
+            if (discarded) setShowEditor(false);
+          });
         }}
         title="Edit program"
       >
@@ -785,6 +792,9 @@ export function Splits() {
               : 'Add Exercises'
         }
       />
+
+      {/* Last, so its sheet sits above the editor and picker */}
+      <ConfirmDialogHost />
     </Screen>
   );
 }

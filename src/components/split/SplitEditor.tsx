@@ -378,8 +378,8 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
     });
   }, []);
 
-  const handleCancel = useCallback(() => {
-    if (discardSplitEdit()) onClose();
+  const handleCancel = useCallback(async () => {
+    if (await discardSplitEdit()) onClose();
   }, [onClose]);
 
   const handleSave = useCallback(async () => {

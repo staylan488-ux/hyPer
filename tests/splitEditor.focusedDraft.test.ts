@@ -9,8 +9,9 @@ const editor = vi.hoisted(() => ({
     draft: { id: 'split-1', name: 'Program', description: null, days: [] },
     isDirty: false, saving: false, error: null,
     renameSplit: vi.fn(), updateDescription: vi.fn(), addDay: vi.fn(),
-    saveEdit: vi.fn(), cancelEdit: vi.fn(),
+    saveEdit: vi.fn(), cancelEdit: vi.fn(), discardEdit: vi.fn(),
   },
+  confirm: vi.fn(async () => false),
   commit: vi.fn(),
   cellDraft: undefined as unknown,
 }));
@@ -29,6 +30,7 @@ vi.mock('@/stores/splitEditStore', () => ({ useSplitEditStore: Object.assign(
   { getState: () => editor.state },
 ) }));
 vi.mock('@/lib/commitFocusedField', () => ({ commitFocusedField: editor.commit }));
+vi.mock('@/lib/confirmDialog', () => ({ requestConfirm: editor.confirm }));
 vi.mock('@/components/shared', () => ({ Button: 'button', Input: 'input', Card: 'div' }));
 vi.mock('motion/react', () => ({
   motion: { div: 'div', button: 'button', p: 'p' }, AnimatePresence: 'div', LayoutGroup: 'div',
@@ -76,7 +78,8 @@ beforeEach(() => {
   editor.commit.mockReset();
   editor.state.saveEdit.mockReset().mockResolvedValue(true);
   editor.state.cancelEdit.mockReset();
-  vi.stubGlobal('window', { confirm: vi.fn(() => false) });
+  editor.state.discardEdit.mockReset();
+  editor.confirm.mockReset().mockResolvedValue(false);
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -97,24 +100,32 @@ describe('program editor with a focused numeric draft', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('commits before Cancel checks dirtiness and keeps the edit when discard is declined', () => {
+  it('commits before Cancel checks dirtiness and keeps the edit when discard is declined', async () => {
     const values = typeMaxSets();
     const onClose = vi.fn();
     const tree = SplitEditor({ onClose, onSaved: vi.fn(), onPickExercise: vi.fn() });
-    action(tree, 'Cancel').props.onClick!();
+    await action(tree, 'Cancel').props.onClick!();
     expect(values.target_sets_max).toBe(5);
-    expect(window.confirm).toHaveBeenCalledOnce();
-    expect(editor.state.cancelEdit).not.toHaveBeenCalled();
+    expect(editor.confirm).toHaveBeenCalledOnce();
+    expect(editor.confirm.mock.calls[0]).toMatchObject([{ confirmLabel: 'Discard', destructive: true }]);
+    expect(editor.state.discardEdit).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('uses the same focused-draft check for sheet close, including confirmed discard', () => {
+  it('uses the same focused-draft check for sheet close, including confirmed discard', async () => {
     typeMaxSets();
-    expect(discardSplitEdit()).toBe(false);
-    expect(editor.state.cancelEdit).not.toHaveBeenCalled();
-    vi.mocked(window.confirm).mockReturnValue(true);
-    expect(discardSplitEdit()).toBe(true);
+    expect(await discardSplitEdit()).toBe(false);
+    expect(editor.state.discardEdit).not.toHaveBeenCalled();
+    editor.confirm.mockResolvedValue(true);
+    expect(await discardSplitEdit()).toBe(true);
+    expect(editor.state.discardEdit).toHaveBeenCalledOnce();
+  });
+
+  it('closes an untouched draft without asking, keeping its device copy', async () => {
+    expect(await discardSplitEdit()).toBe(true);
+    expect(editor.confirm).not.toHaveBeenCalled();
     expect(editor.state.cancelEdit).toHaveBeenCalledOnce();
+    expect(editor.state.discardEdit).not.toHaveBeenCalled();
   });
 
   it('closes an unchanged form without writing the program again', async () => {
@@ -133,7 +144,7 @@ describe('program editor with a focused numeric draft', () => {
     const tree = SplitEditor({ onClose, onSaved: vi.fn(), onPickExercise: vi.fn() });
     editor.state.saving = true;
     await action(tree, 'Save').props.onClick!();
-    expect(discardSplitEdit()).toBe(false);
+    expect(await discardSplitEdit()).toBe(false);
     expect(editor.commit).not.toHaveBeenCalled();
     expect(editor.state.saveEdit).not.toHaveBeenCalled();
     expect(editor.state.cancelEdit).not.toHaveBeenCalled();
