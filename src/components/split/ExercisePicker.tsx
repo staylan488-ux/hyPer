@@ -400,17 +400,23 @@ function ExercisePickerContent({
       )}
 
       {multiSelect && (
-        <div className="space-y-2">
-          {selected.length > 0 && (
-            <p className="t-caption break-words" aria-live="polite">
-              {selected.map((exercise) => exercise.name).join(' · ')}
-            </p>
-          )}
-          <Button variant="primary" size="md" className="w-full" onClick={confirmSelection} disabled={selected.length === 0}>
-            {selected.length === 0
-              ? 'Select exercises'
-              : `Add ${selected.length} ${selected.length === 1 ? 'exercise' : 'exercises'}`}
-          </Button>
+        // Stays in reach while the list scrolls, like the program editor's bar.
+        <div
+          className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
+        >
+          <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+            {selected.length > 0 && (
+              <p className="t-caption break-words" aria-live="polite">
+                {selected.map((exercise) => exercise.name).join(' · ')}
+              </p>
+            )}
+            <Button variant="primary" size="md" className="w-full" onClick={confirmSelection} disabled={selected.length === 0}>
+              {selected.length === 0
+                ? 'Select exercises'
+                : `Add ${selected.length} ${selected.length === 1 ? 'exercise' : 'exercises'}`}
+            </Button>
+          </div>
         </div>
       )}
 

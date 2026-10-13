@@ -1,366 +1,40 @@
-import { memo, useCallback, useState } from 'react';
-import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
-import {
-  ChevronUp,
-  ChevronDown,
-  Trash2,
-  X,
-  Plus,
-  ArrowRightLeft,
-  Link2,
-  Unlink2,
-  RotateCcw,
-} from 'lucide-react';
-import { Button, Input, Card } from '@/components/shared';
-import { useSplitEditStore } from '@/stores/splitEditStore';
-import {
-  springs,
-  fadeUp,
-  staggerContainer,
-} from '@/lib/animations';
-import { SetRangeFields } from '@/components/split/SetRangeFields';
-import { commitFocusedField } from '@/lib/commitFocusedField';
-import { discardSplitEdit } from '@/lib/discardSplitEdit';
-import type { DraftDay, DraftExercise } from '@/stores/splitEditStore';
-
-// ═══════════════════════════════════
-// PROPS
-// ═══════════════════════════════════
+import { useCallback, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Plus } from 'lucide-react';
+import { useSplitEditStore, type CreateSplitFn, type SavedSplit } from '@/stores/splitEditStore';
+import { springs } from '@/lib/animations';
+import { CommitInput } from '@/components/split/editor/CommitInput';
+import { DayCard } from '@/components/split/editor/DayCard';
+import { EditorFooter } from '@/components/split/editor/EditorFooter';
+import { RestoreBanner } from '@/components/split/editor/RestoreBanner';
+import { SortableList } from '@/components/split/editor/SortableList';
+import { cancelSplitEdit, saveSplitEdit } from '@/components/split/editor/editorActions';
+import type { PickExercise } from '@/components/split/editor/types';
 
 interface SplitEditorProps {
+  createSplit: CreateSplitFn;
   onClose: () => void;
-  onSaved: () => void;
-  onPickExercise: (dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => void;
+  onSaved: (saved: SavedSplit) => void;
+  onPickExercise: PickExercise;
+  /** Shown above the form, e.g. template exercises the library lacked. */
+  notice?: string | null;
 }
 
-// ═══════════════════════════════════
-// EXERCISE ROW
-// ═══════════════════════════════════
-
-// Memoized: typing a day or program name leaves untouched rows alone.
-const ExerciseRow = memo(function ExerciseRow({
-  dayId,
-  exercise,
-  index,
-  total,
-  onPickExercise,
-}: {
-  dayId: string;
-  exercise: DraftExercise;
-  index: number;
-  total: number;
-  onPickExercise: SplitEditorProps['onPickExercise'];
-}) {
-  const reorderExercise = useSplitEditStore((s) => s.reorderExercise);
-  const updateExerciseTargets = useSplitEditStore((s) => s.updateExerciseTargets);
-  const removeExercise = useSplitEditStore((s) => s.removeExercise);
-  const clearExerciseSuperset = useSplitEditStore((s) => s.clearExerciseSuperset);
-
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
-      transition={springs.settle}
-      className={`relative border-t border-[var(--color-border)] py-3 space-y-3 ${
-        exercise.superset_group_id ? 'material-surface px-3' : ''
-      }`}
-    >
-      {/* ── Top row: index + name + actions ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Record index */}
-        <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
-          {String(index + 1).padStart(2, '0')}
-        </span>
-
-        {/* Exercise name — tappable to swap */}
-        <button
-          type="button"
-          className="pressable flex-1 text-left group flex items-center gap-1.5 min-w-0"
-          onClick={() => onPickExercise(dayId, 'swap', exercise.id)}
-        >
-          <span className="flex flex-col min-w-0">
-            <span className="t-body text-[var(--color-text)] break-words">
-              {exercise.exercise.name}
-            </span>
-            {exercise.superset_group_id && (
-              <span className="t-label-sm flex items-center gap-1 mt-0.5">
-                <Link2 className="w-3 h-3" strokeWidth={1.75} />
-                Superset
-              </span>
-            )}
-          </span>
-          <ArrowRightLeft
-            className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors shrink-0"
-            strokeWidth={1.5}
-            aria-label="Swap"
-          />
-        </button>
-
-        {/* Reorder + remove */}
-        <div className="flex items-center justify-end shrink-0 basis-full ml-auto">
-          {exercise.superset_group_id ? (
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
-              onClick={() => clearExerciseSuperset(dayId, exercise.id)}
-              whileTap={{ scale: 0.985 }}
-              title="Remove Superset"
-              aria-label={`Remove superset for ${exercise.exercise.name}`}
-            >
-              <Unlink2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-            </motion.button>
-          ) : (
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              onClick={() => onPickExercise(dayId, 'superset', exercise.id)}
-              whileTap={{ scale: 0.985 }}
-              title="Add Superset"
-              aria-label={`Add superset for ${exercise.exercise.name}`}
-            >
-              <Link2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-            </motion.button>
-          )}
-          <motion.button
-            type="button"
-            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-            disabled={isFirst}
-            aria-label={`Move ${exercise.exercise.name} earlier`}
-            onClick={() => reorderExercise(dayId, exercise.id, -1)}
-            whileTap={isFirst ? undefined : { scale: 0.985 }}
-          >
-            <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </motion.button>
-
-          <motion.button
-            type="button"
-            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-            disabled={isLast}
-            aria-label={`Move ${exercise.exercise.name} later`}
-            onClick={() => reorderExercise(dayId, exercise.id, 1)}
-            whileTap={isLast ? undefined : { scale: 0.985 }}
-          >
-            <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </motion.button>
-
-          <motion.button
-            type="button"
-            className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-            aria-label={`Remove ${exercise.exercise.name}`}
-            onClick={() => removeExercise(dayId, exercise.id)}
-            whileTap={{ scale: 0.985 }}
-          >
-            <X className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </motion.button>
-        </div>
-      </div>
-
-      {/* ── Target inputs: Set Min/Target/Max + Rep Min/Max ── */}
-      <SetRangeFields
-        values={exercise}
-        onCommitSets={(range) => updateExerciseTargets(dayId, exercise.id, range)}
-        onCommitReps={(patch) => updateExerciseTargets(dayId, exercise.id, patch)}
-      />
-    </motion.div>
-  );
-});
-
-// ═══════════════════════════════════
-// DAY CARD
-// ═══════════════════════════════════
-
-// Memoized: store actions that leave a day untouched keep its object, so
-// only the edited day re-renders.
-const DayCard = memo(function DayCard({
-  day,
-  index,
-  total,
-  expanded,
-  onToggle,
-  onPickExercise,
-}: {
-  day: DraftDay;
-  index: number;
-  total: number;
-  expanded: boolean;
-  onToggle: (dayId: string) => void;
-  onPickExercise: SplitEditorProps['onPickExercise'];
-}) {
-  const renameDay = useSplitEditStore((s) => s.renameDay);
-  const reorderDays = useSplitEditStore((s) => s.reorderDays);
-  const removeDay = useSplitEditStore((s) => s.removeDay);
-
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
-  const dayLabel = day.day_name || `day ${index + 1}`;
-  const exerciseSummary = day.exercises.map((exercise) => exercise.exercise.name).join(' · ');
-
-  return (
-    <motion.div
-      layout
-      variants={fadeUp}
-      initial="hidden"
-      animate="visible"
-      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.2 } }}
-      transition={springs.settle}
-    >
-      <Card variant="slab" animated={false} className="material-surface space-y-5">
-        {/* ── Day header ── */}
-        <div className={`flex flex-wrap items-center gap-3 ${expanded ? 'pb-4 border-b border-[var(--color-border)]' : ''}`}>
-          {/* Day index */}
-          <span className="t-data-sm text-[var(--color-text-dim)] shrink-0 w-5">
-            {String(index + 1).padStart(2, '0')}
-          </span>
-
-          {/* Day name input, or the day at a glance while collapsed */}
-          {expanded ? (
-            <div className="flex-1 min-w-0">
-              <Input
-                aria-label={`Day ${index + 1} name`}
-                value={day.day_name}
-                onChange={(e) => renameDay(day.id, e.target.value)}
-                placeholder="Day name"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="pressable flex-1 min-w-0 min-h-11 text-left flex flex-col justify-center"
-              onClick={() => onToggle(day.id)}
-              aria-expanded={false}
-              aria-label={`Edit ${dayLabel}, ${day.exercises.length} exercises`}
-            >
-              <span className="t-heading break-words">{day.day_name || `Day ${index + 1}`}</span>
-              <span className="t-caption line-clamp-2 mt-0.5">
-                {exerciseSummary || 'No exercises yet'}
-              </span>
-            </button>
-          )}
-
-          {/* Day actions: reorder + delete + show/hide */}
-          <div className="flex items-center justify-end shrink-0 basis-full">
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-              disabled={isFirst}
-              aria-label={`Move ${dayLabel} earlier`}
-              onClick={() => reorderDays(day.id, -1)}
-              whileTap={isFirst ? undefined : { scale: 0.985 }}
-            >
-              <ChevronUp className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-              disabled={isLast}
-              aria-label={`Move ${dayLabel} later`}
-              onClick={() => reorderDays(day.id, 1)}
-              whileTap={isLast ? undefined : { scale: 0.985 }}
-            >
-              <ChevronDown className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
-              aria-label={`Remove ${dayLabel}`}
-              onClick={() => removeDay(day.id)}
-              whileTap={{ scale: 0.985 }}
-            >
-              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-
-            <motion.button
-              type="button"
-              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              aria-expanded={expanded}
-              aria-label={expanded ? `Collapse ${dayLabel}` : `Expand ${dayLabel}`}
-              onClick={() => onToggle(day.id)}
-              whileTap={{ scale: 0.985 }}
-            >
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                strokeWidth={1.5}
-              />
-            </motion.button>
-          </div>
-        </div>
-
-        {expanded && (
-          <>
-            {/* ── Exercises section label ── */}
-            <div className="flex items-baseline justify-between">
-              <span className="t-label">Exercises</span>
-              <span className="t-data-sm text-[var(--color-muted)]">
-                {day.exercises.length} total
-              </span>
-            </div>
-
-            {/* ── Exercise list ── */}
-            <div>
-              <AnimatePresence mode="popLayout">
-                {day.exercises.length === 0 ? (
-                  <motion.p
-                    key="empty"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="t-caption py-3 border-t border-[var(--color-border)]"
-                  >
-                    No exercises yet. Tap below to add.
-                  </motion.p>
-                ) : (
-                  day.exercises.map((exercise, exerciseIndex) => (
-                    <ExerciseRow
-                      key={exercise.id}
-                      dayId={day.id}
-                      exercise={exercise}
-                      index={exerciseIndex}
-                      total={day.exercises.length}
-                      onPickExercise={onPickExercise}
-                    />
-                  ))
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* ── Add exercise button ── */}
-            <motion.button
-              type="button"
-              className="pressable studio-row-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
-              onClick={() => onPickExercise(day.id, 'add')}
-              whileTap={{ scale: 0.99 }}
-            >
-              <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
-              Add exercises
-            </motion.button>
-          </>
-        )}
-      </Card>
-    </motion.div>
-  );
-});
-
-// ═══════════════════════════════════
-// SPLIT EDITOR
-// ═══════════════════════════════════
-
-export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorProps) {
+/**
+ * The one program editor, for new and existing programs alike. A new program
+ * arrives as a seeded draft and is created on save.
+ */
+export function SplitEditor({ createSplit, onClose, onSaved, onPickExercise, notice }: SplitEditorProps) {
   const draft = useSplitEditStore((s) => s.draft);
-  const saving = useSplitEditStore((s) => s.saving);
-  const error = useSplitEditStore((s) => s.error);
+  const isDirty = useSplitEditStore((s) => s.isDirty);
+  const restorable = useSplitEditStore((s) => s.restorable);
+  const baseSignature = useSplitEditStore((s) => s.baseSignature);
   const renameSplit = useSplitEditStore((s) => s.renameSplit);
   const updateDescription = useSplitEditStore((s) => s.updateDescription);
   const addDay = useSplitEditStore((s) => s.addDay);
-  const saveEdit = useSplitEditStore((s) => s.saveEdit);
-  const undo = useSplitEditStore((s) => s.undo);
-  const undoRemoval = useSplitEditStore((s) => s.undoRemoval);
+  const moveDay = useSplitEditStore((s) => s.moveDay);
+  const restoreSaved = useSplitEditStore((s) => s.restoreSaved);
+  const dismissRestore = useSplitEditStore((s) => s.dismissRestore);
 
   // Days open as a one-line overview (a single-day program opens expanded);
   // tapping a day opens it for editing.
@@ -378,195 +52,116 @@ export function SplitEditor({ onClose, onSaved, onPickExercise }: SplitEditorPro
     });
   }, []);
 
-  const handleCancel = useCallback(async () => {
-    if (await discardSplitEdit()) onClose();
+  const describeDay = useCallback((dayId: string) => {
+    const days = useSplitEditStore.getState().draft?.days ?? [];
+    const index = days.findIndex((day) => day.id === dayId);
+    return days[index]?.day_name.trim() || `Day ${index + 1}`;
+  }, []);
+
+  const handleCancel = useCallback(() => {
+    void cancelSplitEdit(onClose);
   }, [onClose]);
 
-  const handleSave = useCallback(async () => {
-    if (useSplitEditStore.getState().saving) return;
-    // Commit a cell still being typed in before the draft is read.
-    commitFocusedField();
-    if (!useSplitEditStore.getState().isDirty) {
-      useSplitEditStore.getState().cancelEdit();
-      onClose();
-      return;
-    }
-    const success = await saveEdit();
-    if (success) {
-      onSaved();
-      onClose();
-    }
-  }, [saveEdit, onSaved, onClose]);
+  const handleSave = useCallback(() => {
+    void saveSplitEdit({ createSplit, onSaved, onClose });
+  }, [createSplit, onSaved, onClose]);
 
   const handleAddDay = useCallback(() => {
-    if (!draft) return;
-    addDay(`Day ${draft.days.length + 1}`);
+    const count = useSplitEditStore.getState().draft?.days.length ?? 0;
+    addDay(`Day ${count + 1}`);
     const added = useSplitEditStore.getState().draft?.days.at(-1);
     if (added) setExpandedDays((current) => new Set(current).add(added.id));
-  }, [draft, addDay]);
+  }, [addDay]);
 
-  // Guard: draft must be loaded
+  const days = draft?.days;
+  const dayIds = useMemo(() => days?.map((day) => day.id) ?? [], [days]);
+
   if (!draft) {
     return (
       <div className="pt-4 flex items-center justify-center py-20">
-        <p className="t-label-sm">
-          No program loaded
-        </p>
+        <p className="t-label-sm">No program loaded</p>
       </div>
     );
   }
 
   return (
     <div className="pt-1 pb-2 space-y-6">
-      {/* ═══════════════════════════════════ */}
-      {/* PROGRAM HEADER SECTION              */}
-      {/* ═══════════════════════════════════ */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springs.settle, delay: 0.05 }}
-        className="space-y-4"
-      >
-        <p className="t-label pb-3 border-b border-[var(--color-border)]">
-          Program details
-        </p>
-        <Input
+      {restorable && !isDirty && (
+        <RestoreBanner
+          stored={restorable}
+          changedSince={Boolean(restorable.baseSignature && baseSignature && restorable.baseSignature !== baseSignature)}
+          onRestore={restoreSaved}
+          onDismiss={dismissRestore}
+        />
+      )}
+
+      {notice && <p className="t-caption" role="status">{notice}</p>}
+
+      <div className="space-y-4">
+        <p className="t-label pb-3 border-b border-[var(--color-border)]">Program details</p>
+        <CommitInput
           label="Program name"
           value={draft.name}
-          onChange={(e) => renameSplit(e.target.value)}
+          onCommit={renameSplit}
           placeholder="e.g., Push Pull Legs"
+          maxLength={60}
         />
-        <Input
+        <CommitInput
           label="Description"
           value={draft.description ?? ''}
-          onChange={(e) => updateDescription(e.target.value)}
+          onCommit={updateDescription}
           placeholder="Optional description…"
+          maxLength={200}
         />
-      </motion.div>
+      </div>
 
-      {/* ═══════════════════════════════════ */}
-      {/* DAYS SECTION                        */}
-      {/* ═══════════════════════════════════ */}
-      <motion.div
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="space-y-4"
-      >
+      <div className="space-y-4">
         <div className="flex items-baseline justify-between pb-3 border-b border-[var(--color-border)]">
-          <p className="t-label">
-            Training days
-          </p>
+          <p className="t-label">Training days</p>
           <span className="t-data-sm text-[var(--color-muted)]">
             {draft.days.length} {draft.days.length === 1 ? 'day' : 'days'}
           </span>
         </div>
 
-        {/* The group re-measures every layout node when any one updates, so
-            memoized cards below a day that grew or shrank still glide. */}
-        <LayoutGroup>
-          <AnimatePresence mode="popLayout">
-            {draft.days.map((day, index) => (
-              <DayCard
-                key={day.id}
-                day={day}
-                index={index}
-                total={draft.days.length}
-                expanded={expandedDays.has(day.id)}
-                onToggle={toggleDay}
-                onPickExercise={onPickExercise}
-              />
-            ))}
-          </AnimatePresence>
-        </LayoutGroup>
-      </motion.div>
-
-      {/* ── Add Day ── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        <motion.button
-          type="button"
-          className="pressable studio-secondary-action w-full flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
-          onClick={handleAddDay}
-          whileTap={{ scale: 0.99 }}
-        >
-          <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
-          Add day
-        </motion.button>
-      </motion.div>
-
-      {/* ═══════════════════════════════════ */}
-      {/* STICKY BOTTOM BAR                   */}
-      {/* ═══════════════════════════════════ */}
-      <div
-        className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-        style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
-      >
-        <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
-          {/* Undo the latest removal */}
-          <AnimatePresence>
-            {undo && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex items-center justify-between gap-3"
-                role="status"
-              >
-                <span className="t-caption text-[var(--color-text)] min-w-0 break-words">{undo.label}</span>
-                <button
-                  type="button"
-                  className="pressable studio-row-action shrink-0 t-label text-[var(--color-text)]"
-                  onClick={undoRemoval}
+        <SortableList ids={dayIds} onMove={moveDay} describe={describeDay}>
+          <div className="space-y-4">
+            {/* Existing days appear at once; added and removed ones fade. */}
+            <AnimatePresence initial={false}>
+              {draft.days.map((day, index) => (
+                <motion.div
+                  key={day.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: { duration: 0.12 } }}
+                  transition={springs.settle}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
-                  Undo
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Error message */}
-          <AnimatePresence>
-            {error && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="t-caption text-[var(--color-accent)] text-center"
-              >
-                {error}
-              </motion.p>
-            )}
-          </AnimatePresence>
-
-          {/* Action buttons */}
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              size="md"
-              className="flex-1"
-              onClick={handleCancel}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              className="flex-1"
-              onClick={handleSave}
-              loading={saving}
-              disabled={saving}
-            >
-              Save
-            </Button>
+                  <DayCard
+                    day={day}
+                    index={index}
+                    total={draft.days.length}
+                    expanded={expandedDays.has(day.id)}
+                    onToggle={toggleDay}
+                    onPickExercise={onPickExercise}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
-        </div>
+        </SortableList>
       </div>
+
+      <motion.button
+        type="button"
+        className="pressable studio-secondary-action w-full min-h-11 flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
+        onClick={handleAddDay}
+        whileTap={{ scale: 0.99 }}
+        transition={springs.tactile}
+      >
+        <Plus className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+        Add day
+      </motion.button>
+
+      <EditorFooter isNew={Boolean(draft._isNew)} onCancel={handleCancel} onSave={handleSave} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
 import { Button, Input, SelectSheet } from '@/components/shared';
 import { customExercise } from '@/lib/customExercises';
@@ -29,6 +29,7 @@ export function CustomExerciseForm({
   const [name, setName] = useState(initialName.trim());
   const [muscle, setMuscle] = useState<MuscleGroup>(initialMuscleGroup ?? 'chest');
   const trimmed = name.trim();
+  const muscleLabelId = useId();
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -47,7 +48,16 @@ export function CustomExerciseForm({
         maxLength={80}
         autoFocus
       />
-      <SelectSheet title="Muscle group" value={muscle} onChange={setMuscle} options={MUSCLE_OPTIONS} />
+      <div>
+        <span id={muscleLabelId} className="t-label-sm block mb-1.5">Main muscle</span>
+        <SelectSheet
+          title="Main muscle"
+          value={muscle}
+          onChange={setMuscle}
+          options={MUSCLE_OPTIONS}
+          ariaLabelledBy={muscleLabelId}
+        />
+      </div>
       <p className="t-caption">Added to your exercise library when you save the program.</p>
       <div className="flex gap-3">
         <Button type="button" variant="secondary" className="flex-1" onClick={onCancel}>

@@ -5,18 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { Button, ConfirmDialogHost, EmptyState, Input, Modal, Screen, SegmentedControl, PageTitle } from '@/components/shared';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useSplitEditStore } from '@/stores/splitEditStore';
-import { SplitBuilder } from '@/components/split/SplitBuilder';
-import { SplitEditor } from '@/components/split/SplitEditor';
-import { ExercisePicker } from '@/components/split/ExercisePicker';
+import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
+import { SplitEditorSheet } from '@/components/split/SplitEditorSheet';
 import { springs } from '@/lib/animations';
 import { useLitSurface } from '@/hooks/useLitSurface';
 import { loadPlanScheduleAsync } from '@/lib/planSchedule';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
-import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import { requestConfirm } from '@/lib/confirmDialog';
-import { pendingExercises } from '@/lib/customExercises';
-import type { Exercise, FlexDayTemplate, Split, MuscleGroup } from '@/types';
+import type { FlexDayTemplate, Split } from '@/types';
 
 export function Splits() {
   const {
@@ -37,7 +33,6 @@ export function Splits() {
   } = useAppStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [showBuilder, setShowBuilder] = useState(false);
   const [showMenu, setShowMenu] = useState<string | null>(null);
   const litMenuRef = useLitSurface<HTMLDivElement>();
   const [expandedSplit, setExpandedSplit] = useState<string | null>(null);
@@ -62,23 +57,11 @@ export function Splits() {
   const [startingTemplateLabel, setStartingTemplateLabel] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  // ── Edit state ──
-  const [showEditor, setShowEditor] = useState(false);
-  const [pickerState, setPickerState] = useState<{
-    isOpen: boolean;
-    dayId: string;
-    mode: 'add' | 'swap' | 'superset';
-    exerciseId?: string;
-    initialMuscleGroup?: MuscleGroup;
-    excludeExerciseIds?: string[];
-    extraExercises?: Exercise[];
-  }>({ isOpen: false, dayId: '', mode: 'add' });
-
+  // ── Program sheet: create and edit share one editor ──
+  const [editorMode, setEditorMode] = useState<'new' | 'edit' | null>(null);
   // Actions only: selecting them keeps draft edits from re-rendering this page.
   const startEdit = useSplitEditStore((s) => s.startEdit);
-  const swapExercise = useSplitEditStore((s) => s.swapExercise);
-  const addExercises = useSplitEditStore((s) => s.addExercises);
-  const addSupersetExercise = useSplitEditStore((s) => s.addSupersetExercise);
+  const cancelEdit = useSplitEditStore((s) => s.cancelEdit);
 
   useEffect(() => {
     void Promise.all([
@@ -90,53 +73,15 @@ export function Splits() {
   }, [fetchCurrentWorkout, fetchFlexTemplates, fetchSplits, fetchWorkoutMode]);
 
   const handleEdit = useCallback((split: Split) => {
-    startEdit(split);
+    startEdit(split, { userId: user?.id ?? null });
     setShowMenu(null);
-    setShowEditor(true);
-  }, [startEdit]);
+    setEditorMode('edit');
+  }, [startEdit, user?.id]);
 
-  const handlePickExercise = useCallback((dayId: string, mode: 'add' | 'swap' | 'superset', exerciseId?: string) => {
-    const { draft } = useSplitEditStore.getState();
-    let initialMuscleGroup: MuscleGroup | undefined;
-    let excludeExerciseIds: string[] = [];
-
-    if (draft) {
-      const day = draft.days.find((entry) => entry.id === dayId);
-      if (day) {
-        excludeExerciseIds = day.exercises.map((entry) => entry.exercise_id);
-      }
-    }
-
-    if ((mode === 'swap' || mode === 'superset') && exerciseId && draft) {
-      for (const day of draft.days) {
-        const ex = day.exercises.find((e) => e.id === exerciseId);
-        if (ex) {
-          initialMuscleGroup = ex.exercise.muscle_group;
-          break;
-        }
-      }
-    }
-
-    setPickerState({
-      isOpen: true,
-      dayId,
-      mode,
-      exerciseId,
-      initialMuscleGroup,
-      excludeExerciseIds,
-      extraExercises: draft ? pendingExercises(draft) : [],
-    });
-  }, []);
-
-  const handleExerciseSelected = useCallback((exercise: Exercise) => {
-    const { dayId, mode, exerciseId } = pickerState;
-
-    if (mode === 'swap' && exerciseId) {
-      swapExercise(dayId, exerciseId, exercise);
-    } else if (mode === 'superset' && exerciseId) {
-      addSupersetExercise(dayId, exerciseId, exercise);
-    }
-  }, [pickerState, swapExercise, addSupersetExercise]);
+  const handleNew = useCallback(() => {
+    cancelEdit();
+    setEditorMode('new');
+  }, [cancelEdit]);
 
   const handleDelete = async (split: Split) => {
     setShowMenu(null);
@@ -163,7 +108,6 @@ export function Splits() {
     }
 
     if (mode === 'flexible') {
-      setShowBuilder(false);
       setShowMenu(null);
       setExpandedSplit(null);
       setExpandedDay(null);
@@ -255,6 +199,12 @@ export function Splits() {
     }
   };
 
+  const handleSaved = (saved: SavedSplit) => {
+    // Creating already refreshed the list; an edit saved through the snapshot did not.
+    if (saved.created) void maybePromptPlanStart(saved.id, saved.name);
+    else void fetchSplits({ force: true });
+  };
+
   const handleSelectSplit = async (splitId: string, splitName: string) => {
     const result = await setActiveSplit(splitId);
     if (!result.ok) {
@@ -281,7 +231,7 @@ export function Splits() {
         <div className="mt-5 flex items-end justify-between gap-3">
           <PageTitle>Program</PageTitle>
           {workoutMode === 'split' && (
-            <Button size="sm" onClick={() => setShowBuilder(true)}>
+            <Button size="sm" onClick={handleNew}>
               <Plus className="w-4 h-4" strokeWidth={1.75} />
               New
             </Button>
@@ -440,7 +390,7 @@ export function Splits() {
             title="Build your first program"
             body="Five questions and the guided builder assembles an evidence-based split around your week — editable down to every set."
             action={
-              <Button size="lg" onClick={() => setShowBuilder(true)}>
+              <Button size="lg" onClick={handleNew}>
                 Create program
               </Button>
             }
@@ -737,59 +687,11 @@ export function Splits() {
         </div>
       </Modal>
 
-      {/* Split Builder Modal */}
-      <Modal
-        isOpen={showBuilder}
-        onClose={() => {
-          setShowBuilder(false);
-        }}
-        title="New program"
-      >
-        <SplitBuilder
-          onComplete={(createdSplit) => {
-            setShowBuilder(false);
-
-            if (createdSplit) {
-              void maybePromptPlanStart(createdSplit.id, createdSplit.name);
-            }
-          }}
-        />
-      </Modal>
-
-      {/* Split Editor Modal */}
-      <Modal
-        isOpen={showEditor}
-        onClose={() => {
-          void discardSplitEdit().then((discarded) => {
-            if (discarded) setShowEditor(false);
-          });
-        }}
-        title="Edit program"
-      >
-        <SplitEditor
-          onClose={() => setShowEditor(false)}
-          onSaved={() => void fetchSplits({ force: true })}
-          onPickExercise={handlePickExercise}
-        />
-      </Modal>
-
-      {/* Exercise Picker (for editor) */}
-      <ExercisePicker
-        isOpen={pickerState.isOpen}
-        onClose={() => setPickerState((prev) => ({ ...prev, isOpen: false }))}
-        onSelect={handleExerciseSelected}
-        onSelectMany={pickerState.mode === 'add' ? (picked) => addExercises(pickerState.dayId, picked) : undefined}
-        allowCustom
-        extraExercises={pickerState.extraExercises}
-        initialMuscleGroup={pickerState.initialMuscleGroup}
-        excludeExerciseIds={pickerState.excludeExerciseIds}
-        title={
-          pickerState.mode === 'swap'
-            ? 'Swap Exercise'
-            : pickerState.mode === 'superset'
-              ? 'Add Superset Exercise'
-              : 'Add Exercises'
-        }
+      <SplitEditorSheet
+        mode={editorMode}
+        userId={user?.id ?? null}
+        onClose={() => setEditorMode(null)}
+        onSaved={handleSaved}
       />
 
       {/* Last, so its sheet sits above the editor and picker */}
