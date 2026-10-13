@@ -15,6 +15,7 @@ vi.mock('@/lib/supabase', async () => {
   };
 });
 
+import { AUTH_REFRESH_TIMEOUT_MS } from '@/lib/authResume';
 import { supabase } from '@/lib/supabase';
 import { SET_SAVE_TIMEOUT_MS } from '@/lib/saveWorkoutSet';
 import { useAppStore } from '@/stores/appStore';
@@ -186,5 +187,83 @@ describe('workout set save recovery', () => {
     useAppStore.setState({ currentWorkout: null });
     await expect(useAppStore.getState().logSet('exercise-1', 1, 185, 8)).rejects.toThrow('No active workout');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// A save that times out is usually stuck behind a stalled token refresh. The
+// retry must not wait behind the same one, and a later manual Retry must not
+// either.
+describe('auth recovery after a set save timeout', () => {
+  const refreshed = { data: { user: null, session: null }, error: null } as never;
+
+  function spyAuth() {
+    return {
+      stop: vi.spyOn(supabase.auth, 'stopAutoRefresh').mockResolvedValue(),
+      start: vi.spyOn(supabase.auth, 'startAutoRefresh').mockResolvedValue(),
+      refresh: vi.spyOn(supabase.auth, 'refreshSession').mockResolvedValue(refreshed),
+    };
+  }
+
+  it('restarts auto-refresh and refreshes the session before retrying the same write', async () => {
+    const auth = spyAuth();
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+    fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
+
+    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
+    await save;
+
+    expect(auth.stop).toHaveBeenCalledTimes(1);
+    expect(auth.start).toHaveBeenCalledTimes(1);
+    expect(auth.refresh).toHaveBeenCalledTimes(1);
+    expect(auth.refresh.mock.invocationCallOrder[0]).toBeLessThan(fetchMock.mock.invocationCallOrder[1]);
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(fetchMock.mock.calls[0][1]?.body);
+    expect(useAppStore.getState().currentWorkout?.sets[0]).toMatchObject({ weight: 185, reps: 8, completed: true });
+  });
+
+  it('retries after the recovery deadline when the refresh itself stalls', async () => {
+    const auth = spyAuth();
+    auth.refresh.mockImplementation(() => new Promise(() => {}));
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+    fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
+
+    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(AUTH_REFRESH_TIMEOUT_MS);
+    await save;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useAppStore.getState().currentWorkout?.sets[0].completed).toBe(true);
+  });
+
+  it('recovers after the final timeout too, so a manual Retry starts unstuck', async () => {
+    const auth = spyAuth();
+    const lastRecovery = deferred<never>();
+    auth.refresh.mockResolvedValueOnce(refreshed).mockReturnValueOnce(lastRecovery.promise);
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+
+    const failed = useAppStore.getState().logSet('exercise-1', 1, 185, 8).then(() => 'saved', () => 'failed');
+    await vi.advanceTimersByTimeAsync(2 * SET_SAVE_TIMEOUT_MS);
+    expect(await failed).toBe('failed');
+    expect(auth.refresh).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockImplementation(async (_url, init) => responseFor(init));
+    const retry = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    lastRecovery.resolve(refreshed);
+    await retry;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(useAppStore.getState().currentWorkout?.sets[0].completed).toBe(true);
+  });
+
+  it('does not touch auth for a save that fails without timing out', async () => {
+    const auth = spyAuth();
+    fetchMock.mockImplementationOnce(async () => { throw new TypeError('Failed to fetch'); });
+    fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
+    await useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    expect(auth.refresh).not.toHaveBeenCalled();
   });
 });
