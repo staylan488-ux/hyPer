@@ -5,6 +5,7 @@ import { Button, Input } from '@/components/shared';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import { springs } from '@/lib/animations';
 import { isNativeIOS } from '@/lib/nativeBridge';
+import { friendlyAuthError, SIGNUP_PRIVATE_BETA_MESSAGE } from '@/lib/betaAccess';
 
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 
@@ -51,7 +52,7 @@ export function AuthForm() {
 
     const { error, existingAccount } = await signUp(email, password, displayName);
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       setShowSignInPrompt(existingAccount);
       setSignupSuccess(null);
       setPendingVerificationEmail(null);
@@ -71,14 +72,14 @@ export function AuthForm() {
     clearSignupSignals();
     setError(null);
     const { error } = await signInWithGoogle();
-    if (error) setError(error.message);
+    if (error) setError(friendlyAuthError(error.message));
   };
 
   const handleAppleSignIn = async () => {
     clearSignupSignals();
     setError(null);
     const { error } = await signInWithApple();
-    if (error) setError(error.message);
+    if (error) setError(friendlyAuthError(error.message));
   };
 
   const handleResendVerification = async () => {
@@ -131,6 +132,9 @@ export function AuthForm() {
             >
               <p className="t-label-sm mb-2">{isLogin ? 'Sign in' : 'Create account'}</p>
               <h2 className="t-title">{isLogin ? 'Welcome back' : 'Get started'}</h2>
+              {!isLogin && (
+                <p className="t-caption mt-3">{SIGNUP_PRIVATE_BETA_MESSAGE}</p>
+              )}
             </motion.div>
           </AnimatePresence>
 

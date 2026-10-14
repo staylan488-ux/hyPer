@@ -7,8 +7,19 @@ export interface MealInput {
 }
 
 export interface TrialConfig {
+  /** Per-user analyses per UTC date (1–40). */
   maxAttempts: number;
+  /** All users combined, per UTC date (1–1000). Caps total paid AI spend. */
+  maxGlobalAttempts: number;
   allowedOrigins: string[];
+}
+
+/** Project-wide daily request counter (Postgres-backed in production). */
+export interface GlobalQuota {
+  /** Requests already counted for this UTC date. */
+  used(date: string): Promise<number>;
+  /** Atomically count one request; false when the date's cap is already reached. */
+  claim(date: string, max: number): Promise<boolean>;
 }
 
 export interface TrialLedger {
@@ -20,6 +31,9 @@ export interface TrialLedger {
 interface Dependencies {
   config: TrialConfig;
   authenticate(token: string): Promise<string | null>;
+  /** Private beta: only accounts in approved_users may use paid analysis. */
+  isApproved(userId: string): Promise<boolean>;
+  globalQuota: GlobalQuota;
   ledger: TrialLedger;
   analyze(input: MealInput): Promise<unknown>;
   interpretServing?(input: ServingInput): Promise<unknown>;
@@ -30,12 +44,15 @@ interface SavedResponse { status: number; body: Record<string, unknown> }
 const MAX_BODY_BYTES = 9_000_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
+export const PRIVATE_BETA_MESSAGE = 'hyPer is in private beta and this account has not been approved yet. Ask the hyPer team for an invite.';
+export const GLOBAL_QUOTA_MESSAGE = 'Food analysis has reached today’s overall limit for all hyPer users. It resets at midnight UTC. You can still enter the meal manually.';
 // Change the content namespace when the analysis pipeline changes, while retaining
 // the same daily quota objects. A provider change must never refresh the quota.
 export const ANALYSIS_VERSION = 'gemini-tavily-v2';
 
 export function validateConfig(config: TrialConfig): void {
   if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1 || config.maxAttempts > 40
+    || !Number.isInteger(config.maxGlobalAttempts) || config.maxGlobalAttempts < 1 || config.maxGlobalAttempts > 1000
     || !config.allowedOrigins.length || config.allowedOrigins.some(origin => {
       try {
         const url = new URL(origin);
@@ -143,6 +160,8 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       if (!auth || !/^Bearer \S+$/i.test(auth)) return respond(401, { code: 'unauthorized', error: 'Sign in to analyze a meal.' });
       const userId = await deps.authenticate(auth.slice(7));
       if (!userId || !UUID.test(userId)) return respond(401, { code: 'unauthorized', error: 'Sign in to analyze a meal.' });
+      // Fails closed: an approval lookup error lands in the 503 handler below.
+      if (!await deps.isApproved(userId)) return respond(403, { code: 'not_approved', error: PRIVATE_BETA_MESSAGE });
       const body = await boundedJson(request);
       if (body.action !== undefined && body.action !== 'analyze' && body.action !== 'status' && body.action !== 'interpret-serving') throw new RequestError(400, 'invalid_request', 'Unknown food analysis action.');
       // Identity comes only from getUser. Each UTC date gets its own fixed quota.
@@ -163,7 +182,7 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
           const result = await ledger.read(`${base}/results/${claim.requestId}.json`) as SavedResponse | null;
           return { ...claim, analysisVersion: result?.body.analysisVersion ?? claim.analysisVersion ?? 'legacy-google', status: result?.status ?? null, usage: result?.body.usage ?? null, code: result?.body.code ?? null };
         }));
-        return respond(200, { date, maxAttempts: config.maxAttempts, attemptsUsed: attempts.length, attempts });
+        return respond(200, { date, maxAttempts: config.maxAttempts, attemptsUsed: attempts.length, attempts, globalLimitReached: await deps.globalQuota.used(date) >= config.maxGlobalAttempts });
       }
       let input: MealInput | ServingInput;
       const isServing = body.action === 'interpret-serving';
@@ -178,6 +197,11 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       // Same user's identical input replays within this UTC date.
       const saved = await ledger.read(resultPath) as SavedResponse | null;
       if (saved) return respond(saved.status, { ...saved.body, replayed: true });
+      // Refuse before claiming anything once everyone's combined limit is spent,
+      // so no per-user slot is consumed and the same meal can run tomorrow.
+      if (await deps.globalQuota.used(date) >= config.maxGlobalAttempts) {
+        return respond(429, { code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE, requestId, analysisVersion });
+      }
       const claim = { requestId, createdAt: new Date(now()).toISOString(), analysisVersion };
       if (!await ledger.insert(`${base}/claims/${requestId}.json`, claim)) {
         const result = await ledger.read(resultPath) as SavedResponse | null;
@@ -187,8 +211,18 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       for (let index = 0; index < config.maxAttempts; index++) {
         if (await ledger.insert(`${base}/slots/${index}.json`, claim)) { reserved = true; break; }
       }
+      // The global counter is claimed atomically after the user's own slot, so
+      // concurrent requests can never exceed maxGlobalAttempts paid calls.
+      let globalReserved = false;
+      let globalUnavailable = false;
+      if (reserved) {
+        try { globalReserved = await deps.globalQuota.claim(date, config.maxGlobalAttempts); }
+        catch { globalUnavailable = true; }
+      }
       let response: SavedResponse;
       if (!reserved) response = { status: 429, body: { code: 'daily_quota_exhausted', error: 'Today’s food analysis request limit has been reached. It resets at midnight UTC.', requestId, analysisVersion } };
+      else if (globalUnavailable) response = { status: 503, body: { code: 'analysis_unavailable', error: 'Food analysis is temporarily unavailable. No automatic paid retry will run.', requestId, analysisVersion } };
+      else if (!globalReserved) response = { status: 429, body: { code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE, requestId, analysisVersion } };
       else {
         try {
           const result = 'action' in input ? await deps.interpretServing!(input) : await deps.analyze(input);

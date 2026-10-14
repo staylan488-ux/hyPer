@@ -52,6 +52,10 @@ VITE_USDA_API_KEY=your_usda_api_key
 
 Native iOS builds are intentionally locked to the isolated Hyper-Dev Supabase project. Put its URL and public client key in an ignored `.env.local`; never use a service-role key in the app.
 
+### Private beta
+
+Only approved accounts can use the app, and only invited emails can sign up. See [docs/private-beta.md](docs/private-beta.md) for how to invite testers and how the AI cost caps work.
+
 ### 3) Run the app
 
 ```bash
