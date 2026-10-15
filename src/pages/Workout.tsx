@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
-  Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Dumbbell,
   Link2,
-  Loader2,
   Minus,
-  Moon,
   MoreHorizontal,
   Plus,
   Pencil,
@@ -19,19 +14,18 @@ import {
   Trash2,
   Undo2,
   Unlink2,
-  X,
-  Footprints,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { addDays, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { BankedStamp, Button, Card, Chip, CountUp, EmptyState, Input, Modal, RailStrip, TickStrip, PageTitle } from '@/components/shared';
+import { addDays, differenceInCalendarWeeks, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
+import { BankedStamp, Button, Chip, CountUp, Input, Modal } from '@/components/shared';
+import { Eyebrow, HeroFigure, LineButton, MetalSection, MetalTitle, SegmentedHairline, useCommandCapsule, type CommandCapsuleSpec } from '@/components/metal';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { useLitSurface } from '@/hooks/useLitSurface';
-import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
+import { WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
 import { WorkoutCommandCapsule } from '@/components/workout/WorkoutCommandCapsule';
 import { SessionToken } from '@/components/workout/SessionToken';
@@ -116,6 +110,86 @@ function SessionClock({ createdAt }: { createdAt: string }) {
   }, []);
 
   return <>{formatSessionDuration(createdAt, now)}</>;
+}
+
+/** "8–10 reps", "8+ reps" or "Up to 12 reps"; null when the plan has no rep target. */
+function formatRepTarget(min?: number | null, max?: number | null): string | null {
+  if (min && max) return `${min === max ? min : `${min}–${max}`} reps`;
+  if (min) return `${min}+ reps`;
+  if (max) return `Up to ${max} reps`;
+  return null;
+}
+
+/** The movement's progress line: "Set 2 of 3 · target 8–10 reps". */
+function movementProgressLine(sets: WorkoutSet[], repTarget: string | null): string {
+  const target = repTarget ? ` · target ${repTarget}` : '';
+  const next = sets.findIndex((set) => !set.completed);
+  if (sets.length === 0) return repTarget ? `Target ${repTarget}` : 'No sets yet';
+  if (next < 0) return `All ${sets.length} ${sets.length === 1 ? 'set' : 'sets'} logged${target}`;
+  return `Set ${next + 1} of ${sets.length}${target}`;
+}
+
+/**
+ * Registers a Train state's one primary action on the command capsule. A
+ * child component, so the page body itself adds no hooks.
+ */
+function TrainCapsule({ spec }: { spec: CommandCapsuleSpec | null }) {
+  useCommandCapsule(spec);
+  return null;
+}
+
+/**
+ * The compact session bar (back · title and clock · Finish) that pins under
+ * the status bar once the session title scrolls away. It fades in over the
+ * page colour; no hard line.
+ */
+function SessionPin({ title, createdAt, finishing, onBack, onFinish }: {
+  title: string;
+  createdAt: string | null;
+  finishing: boolean;
+  onBack: () => void;
+  onFinish: () => void;
+}) {
+  const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    const anchor = document.querySelector<HTMLElement>('[data-session-title]');
+    const viewport = anchor?.closest<HTMLElement>('[data-app-scroll-viewport]');
+    if (!anchor || !viewport) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const bounds = anchor.getBoundingClientRect();
+      // No layout (hidden, or a test DOM): stay unpinned.
+      setPinned(bounds.height > 0 && bounds.bottom < viewport.getBoundingClientRect().top + 44);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      viewport.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  return (
+    <div className={`studio-session-pin${pinned ? ' is-pinned' : ''}`} aria-hidden={!pinned} inert={!pinned}>
+      <button type="button" className="studio-session-pin-back" onClick={onBack} aria-label="Back to Today">
+        <ChevronLeft size={18} strokeWidth={1.75} aria-hidden />
+      </button>
+      <p className="studio-session-pin-title">
+        <span>{title}</span>
+        {createdAt && <span className="studio-session-pin-clock"><SessionClock key={createdAt} createdAt={createdAt} /></span>}
+      </p>
+      <button type="button" className="studio-session-pin-finish" onClick={onFinish} disabled={finishing}>
+        {finishing ? 'Finishing…' : 'Finish'}
+      </button>
+    </div>
+  );
 }
 
 function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
@@ -1020,7 +1094,6 @@ export function Workout() {
 
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;
-  const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
   const currentSessionTitle = currentWorkout?.split_day_id === null
     ? currentWorkoutDayPlan?.day_label || 'Flexible Session'
     : splitDay?.day_name || 'Session';
@@ -1219,19 +1292,16 @@ export function Workout() {
 
   if (initializing) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
+      <motion.div className="metal-page train-pre pb-nav">
+        <header>
+          <div className="train-head"><Eyebrow>Train</Eyebrow></div>
+          <div className="shimmer h-8 w-44 mt-2" aria-hidden />
         </header>
-        <div className="border-t border-[var(--color-border)]">
-          <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
-            <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
-            <span className="t-label-sm">Loading program</span>
-          </div>
+        <div aria-hidden>
+          <div className="shimmer h-[90px] w-36 mt-5" />
+          <div className="shimmer h-[2px] w-full mt-[18px]" />
         </div>
+        <p className="sr-only" role="status">Loading program</p>
       </motion.div>
     );
   }
@@ -1240,23 +1310,20 @@ export function Workout() {
 
   if (workoutMode === 'split' && !activeSplit) {
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">Train</span>
-          </div>
-          <h1 className="t-title mt-3 pt-5 border-t border-[var(--color-text)]">Session</h1>
+      <motion.div className="metal-page train-pre pb-nav">
+        <header>
+          <div className="train-head"><Eyebrow>Train</Eyebrow></div>
+          <MetalTitle>No program yet</MetalTitle>
         </header>
-        <EmptyState
-          art="program"
-          title="No program yet"
-          body="A program turns sessions into a plan: days, exercises, and weekly volume that adds up. The guided builder takes two minutes."
-          action={
-            <Button size="lg" onClick={() => navigate('/train/program')}>
-              Build my program
-            </Button>
-          }
-        />
+        <p className="metal-note">A program turns sessions into a plan: days, exercises, and weekly volume that adds up. The guided builder takes two minutes.</p>
+        <TrainCapsule spec={{
+          key: 'build-program',
+          label: 'Build my program',
+          sublabel: 'Guided builder · about 2 minutes',
+          glyph: 'arrow',
+          dock: 'tabbar',
+          onPress: () => navigate('/train/program'),
+        }} />
       </motion.div>
     );
   }
@@ -1304,31 +1371,32 @@ export function Workout() {
 
   if (!currentWorkout) {
     if (workoutMode === 'flexible') {
-      const completionSheet = (
-        <CompletionSheet summary={completionSummary} onClose={() => setCompletionSummary(null)} />
-      );
+      const label = flexibleDayLabel.trim();
+      const flexibleCapsule: CommandCapsuleSpec = {
+        key: 'start-flexible',
+        label: startingFlexibleWorkout ? 'Starting…' : label ? `Start ${label}` : 'Start session',
+        sublabel: label ? (selectedTemplateLabel ? 'Quick start · its movements and notes' : 'Flexible session') : 'Name what you’re training first',
+        glyph: 'arrow',
+        dock: 'tabbar',
+        busy: startingFlexibleWorkout,
+        disabled: !label,
+        ariaLabel: label ? `Start session: ${label}` : 'Start session',
+        onPress: () => { void handleStartFlexibleWorkout(); },
+      };
 
       return (
-        <motion.div className="px-6 pt-6 pb-nav">
-          <header className="mb-8">
-            <div className="flex items-baseline justify-between">
-              <span className="t-label-sm">Train</span>
-              <div className="flex items-baseline gap-4">
-                <button
-                  type="button"
-                  onClick={() => navigate('/train/run')}
-                  className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-                >
-                  <Footprints className="w-4 h-4" strokeWidth={1.75} />
-                  Run
-                </button>
-                <span className="t-label-sm">Flexible</span>
+        <motion.div className="metal-page train-pre pb-nav">
+          <header>
+            <div className="train-head">
+              <Eyebrow>Train · Flexible</Eyebrow>
+              <div className="train-head-actions">
+                <LineButton onClick={() => navigate('/train/run')}>Run</LineButton>
               </div>
             </div>
-            <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Start a session</PageTitle>
+            <MetalTitle note="Build today as you go.">Start a session</MetalTitle>
           </header>
 
-          <div className="py-5">
+          <div className="train-flex-form">
             <Input
               label="What are you training?"
               value={flexibleDayLabel}
@@ -1342,204 +1410,181 @@ export function Workout() {
               placeholder="Upper, Push, Arms…"
               maxLength={40}
             />
-
-            {flexTemplates.length > 0 && (
-              <div className="mt-4">
-                <p className="t-label-sm mb-2">Quick start</p>
-                <div className="flex flex-wrap gap-2">
-                  {flexTemplates.slice(0, 6).map((template) => {
-                    const selected = selectedTemplateLabel === template.label;
-                    return (
-                      <Chip
-                        key={template.id}
-                        tone="amber"
-                        selected={selected}
-                        onClick={() => {
-                          if (selected) {
-                            setSelectedTemplateLabel('');
-                            setFlexibleDayLabel('');
-                          } else {
-                            setSelectedTemplateLabel(template.label);
-                            setFlexibleDayLabel(template.label);
-                          }
-                        }}
-                      >
-                        {template.label}
-                      </Chip>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <Button
-              size="lg"
-              className="w-full mt-5"
-              onClick={() => { void handleStartFlexibleWorkout(); }}
-              disabled={!flexibleDayLabel.trim() || startingFlexibleWorkout}
-              loading={startingFlexibleWorkout}
-            >
-              {startingFlexibleWorkout ? 'Starting…' : 'Start session'}
-            </Button>
           </div>
-          {completionSheet}
+
+          {flexTemplates.length > 0 && (
+            <MetalSection label="Quick start">
+              <div className="flex flex-wrap gap-2 mt-2">
+                {flexTemplates.slice(0, 6).map((template) => {
+                  const selected = selectedTemplateLabel === template.label;
+                  return (
+                    <Chip
+                      key={template.id}
+                      selected={selected}
+                      onClick={() => {
+                        if (selected) {
+                          setSelectedTemplateLabel('');
+                          setFlexibleDayLabel('');
+                        } else {
+                          setSelectedTemplateLabel(template.label);
+                          setFlexibleDayLabel(template.label);
+                        }
+                      }}
+                    >
+                      {template.label}
+                    </Chip>
+                  );
+                })}
+              </div>
+            </MetalSection>
+          )}
+
+          <TrainCapsule spec={flexibleCapsule} />
+          <CompletionSheet summary={completionSummary} onClose={() => setCompletionSummary(null)} />
         </motion.div>
       );
     }
 
+    const preState = planSchedule && scheduleWorkoutsLoading ? 'loading'
+      : planSchedule && scheduleError ? 'error'
+        : !planSchedule ? (planScheduleResolving ? 'setup-loading' : 'setup')
+          : todayCompletedWorkout ? 'done'
+            : todayPlannedDay ? 'planned' : 'rest';
+    const programWeek = planSchedule
+      ? differenceInCalendarWeeks(today, parseISO(planSchedule.startDate), TRAINING_WEEK) + 1
+      : null;
+    const plannedSets = (todayPlannedDay?.exercises || []).reduce((sum, ex) => sum + (ex.target_sets || 0), 0);
+    const plannedExercises = todayPlannedDay?.exercises?.length || 0;
+    const firstPlannedName = [...(todayPlannedDay?.exercises || [])]
+      .sort((a, b) => (a.exercise_order ?? 0) - (b.exercise_order ?? 0))[0]?.exercise?.name;
+    const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const setupRhythm = setupMode === 'fixed'
+      ? buildFixedWeekdays(setupAnchorDay, activeSplit?.days_per_week || 0).map((day) => weekdayNames[day]).join(' / ')
+      : 'Flexible sequence';
+    const setupDay1 = /^\d{4}-\d{2}-\d{2}$/.test(setupStartDate) ? format(parseISO(setupStartDate), 'EEE, MMM d') : null;
+
+    const preCapsule: CommandCapsuleSpec | null = preState === 'planned' && todayPlannedDay ? {
+      key: `start:${todayPlannedDay.id}`,
+      label: startingDayId === todayPlannedDay.id ? 'Starting…' : `Start ${todayPlannedDay.day_name}`,
+      sublabel: `${plannedSets} ${plannedSets === 1 ? 'set' : 'sets'}${firstPlannedName ? ` · ${firstPlannedName} first` : ''}`,
+      glyph: 'arrow',
+      dock: 'tabbar',
+      busy: startingDayId !== null,
+      ariaLabel: `Start today’s workout, ${todayPlannedDay.day_name}`,
+      onPress: () => { void handleStartWorkout(todayPlannedDay); },
+    } : preState === 'error' ? {
+      key: 'schedule-retry',
+      label: 'Retry',
+      sublabel: 'Couldn’t load your workout schedule',
+      alert: true,
+      glyph: 'arrow',
+      dock: 'tabbar',
+      ariaLabel: 'Retry loading your workout schedule',
+      onPress: retrySchedule,
+    } : preState === 'setup' ? {
+      key: 'save-plan',
+      label: savingPlanSchedule ? 'Saving…' : 'Save plan setup',
+      sublabel: [setupDay1 ? `Day 1 ${setupDay1}` : null, setupRhythm].filter(Boolean).join(' · '),
+      glyph: 'check',
+      dock: 'tabbar',
+      busy: savingPlanSchedule,
+      onPress: () => { void handleSavePlanSetup(); },
+    } : null;
+
     return (
-      <motion.div className="px-6 pt-6 pb-nav">
-        <header className="mb-8">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="t-label-sm truncate">Train · {activeSplit?.name}</span>
-            <div className="flex items-baseline gap-4 shrink-0">
-              <button
-                type="button"
-                onClick={() => navigate('/train/run')}
-                className="min-h-11 px-4 rounded-[11px] material-control t-label text-[var(--color-text)] flex items-center gap-1.5"
-              >
-                <Footprints className="w-4 h-4" strokeWidth={1.75} />
-                Run
-              </button>
-              {planSchedule && (
-                <button
-                  type="button"
-                  onClick={openScheduleEditor}
-                  className="t-label-sm flex items-center gap-1.5 shrink-0 hover:text-[var(--color-text)] transition-colors"
-                >
-                  <Settings2 className="w-3 h-3" strokeWidth={1.75} />
-                  Schedule
-                </button>
-              )}
+      <motion.div className="metal-page train-pre pb-nav">
+        <header>
+          <div className="train-head">
+            <Eyebrow>Train</Eyebrow>
+            <div className="train-head-actions">
+              <LineButton onClick={() => navigate('/train/run')}>Run</LineButton>
+              {planSchedule && <LineButton onClick={openScheduleEditor}>Schedule</LineButton>}
             </div>
           </div>
-          <PageTitle className="mt-3 pt-5 border-t border-[var(--color-text)]">Today</PageTitle>
+          {preState === 'loading' || preState === 'setup-loading' ? (
+            <div className="shimmer h-8 w-44 mt-2" aria-hidden />
+          ) : preState === 'error' ? (
+            <MetalTitle note="Couldn’t load your workout schedule.">Today</MetalTitle>
+          ) : preState === 'setup' ? (
+            <MetalTitle note={activeSplit?.name}>Start your plan</MetalTitle>
+          ) : preState === 'done' ? (
+            <MetalTitle note="The work is banked.">Trained today</MetalTitle>
+          ) : preState === 'planned' && todayPlannedDay ? (
+            <MetalTitle note={[activeSplit?.name, programWeek && programWeek >= 1 ? `week ${programWeek}` : null].filter(Boolean).join(' · ') || undefined}>
+              {todayPlannedDay.day_name}
+            </MetalTitle>
+          ) : (
+            <MetalTitle note={<span className="metal-quote">Recovery is part of the program.</span>}>Rest day</MetalTitle>
+          )}
         </header>
 
-        {planSchedule && scheduleWorkoutsLoading ? (
-          <p className="t-caption py-8">Loading workout schedule…</p>
-        ) : planSchedule && scheduleError ? (
-          <div className="py-8"><p className="t-caption mb-3">Couldn’t load your workout schedule.</p><Button onClick={retrySchedule}>Retry</Button></div>
-        ) : !planSchedule ? (
-          planScheduleResolving ? (
-            <div className="border-t border-[var(--color-border)]">
-              <div className="flex items-center justify-center gap-2 py-16 text-[var(--color-muted)]">
-                <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} />
-                <span className="t-label-sm">Loading saved plan setup</span>
-              </div>
-            </div>
-          ) : (
-            <Card variant="slab">
-              <ScheduleEditor
-                title="Start Plan"
-                description="Set your Day 1 and weekly rhythm"
-                daysPerWeek={activeSplit?.days_per_week || 0}
-                splitDays={activeSplit?.days || []}
-                startChoice={setupStartChoice}
-                startDate={setupStartDate}
-                mode={setupMode}
-                anchorDay={setupAnchorDay}
-                flexDayIndex={setupFlexDayIndex}
-                onStartChoiceChange={setSetupStartChoice}
-                onStartDateChange={setSetupStartDate}
-                onModeChange={setSetupMode}
-                onAnchorDayChange={setSetupAnchorDay}
-                onFlexDayIndexChange={setSetupFlexDayIndex}
-                onSave={() => {
-                  void handleSavePlanSetup();
-                }}
-                saveLabel="Save Plan Setup"
-                saving={savingPlanSchedule}
-              />
-            </Card>
-          )
-        ) : (
-          <div className="space-y-4">
-            {/* Today hero */}
-            {todayCompletedWorkout ? (
-              <div className="py-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="block w-2 h-2 bg-[var(--color-text)]" aria-hidden />
-                  <span className="t-label">Trained today</span>
-                </div>
-                <div className="flex items-start justify-between gap-4">
-                  <p className="t-title text-[var(--color-text)]">The work is banked.</p>
-                  <BankedStamp date={format(new Date(), 'MMM d')} className="mt-1 shrink-0" />
-                </div>
-                <p className="t-caption mt-2">Rest, or pick a different day below.</p>
-              </div>
-            ) : todayPlannedDay ? (
-              <div className="py-5">
-                <div className="flex items-baseline justify-between mb-3">
-                  <p className="t-label text-[var(--color-accent)]">Today</p>
-                  <span className="t-data-sm text-[var(--color-muted)]">
-                    {todayPlannedDay.exercises?.length || 0} ex ·{' '}
-                    {(todayPlannedDay.exercises || []).reduce((sum, ex) => sum + (ex.target_sets || 0), 0)} sets
-                  </span>
-                </div>
-                <h2 className="t-title text-[var(--color-text)] mb-5">
-                  {todayPlannedDay.day_name}
-                </h2>
-                <TickStrip total={Math.min(todayPlannedDay.exercises?.length || 0, 16)} filled={0} tone="amber" size="md" className="mb-6" />
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={() => handleStartWorkout(todayPlannedDay)}
-                  disabled={startingDayId !== null}
-                  loading={startingDayId === todayPlannedDay.id}
-                >
-                  <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
-                  {startingDayId === todayPlannedDay.id ? 'Starting…' : "Start today's workout"}
-                </Button>
-              </div>
-            ) : (
-              <div className="py-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Moon className="w-3.5 h-3.5 text-[var(--color-muted)]" strokeWidth={1.5} />
-                  <span className="t-label">Rest day</span>
-                </div>
-                <p className="t-title text-[var(--color-text)]">Recovery is part of the program.</p>
-              </div>
-            )}
-
-            {lastCompletedWorkout && (
-              <p className="t-caption px-1">
-                Last trained {format(parseISO(`${lastCompletedWorkout.date}T00:00:00`), 'EEE, MMM d')}
-              </p>
-            )}
+        {preState === 'loading' ? (
+          <p className="metal-note" role="status">Loading workout schedule…</p>
+        ) : preState === 'error' ? null : preState === 'setup-loading' ? (
+          <p className="metal-note" role="status">Loading saved plan setup</p>
+        ) : preState === 'setup' ? (
+          <div className="train-setup">
+            <p className="metal-note">Set your Day 1 and weekly rhythm, and hyPer calls each session from there.</p>
+            <ScheduleEditor
+              daysPerWeek={activeSplit?.days_per_week || 0}
+              splitDays={activeSplit?.days || []}
+              startChoice={setupStartChoice}
+              startDate={setupStartDate}
+              mode={setupMode}
+              anchorDay={setupAnchorDay}
+              flexDayIndex={setupFlexDayIndex}
+              onStartChoiceChange={setSetupStartChoice}
+              onStartDateChange={setSetupStartDate}
+              onModeChange={setSetupMode}
+              onAnchorDayChange={setSetupAnchorDay}
+              onFlexDayIndexChange={setSetupFlexDayIndex}
+              onSave={() => {
+                void handleSavePlanSetup();
+              }}
+              saveLabel="Save plan setup"
+              saving={savingPlanSchedule}
+              hideSave
+            />
+          </div>
+        ) : planSchedule && (
+          <>
+            <section aria-label="Today" className="train-today">
+              {preState === 'done' && (
+                <>
+                  <BankedStamp date={format(new Date(), 'MMM d')} className="train-banked" />
+                  <p className="metal-note">Rest, or pick a different day below.</p>
+                </>
+              )}
+              {preState === 'planned' && todayPlannedDay && (
+                <HeroFigure
+                  value={plannedSets}
+                  caption={`${plannedSets === 1 ? 'set' : 'sets'} · ${plannedExercises} ${plannedExercises === 1 ? 'exercise' : 'exercises'}`}
+                  segments={{ total: Math.max(1, plannedSets), on: 0, label: `${plannedSets} sets planned` }}
+                />
+              )}
+              {lastCompletedWorkout && (
+                <p className="metal-note train-last">
+                  Last trained {format(parseISO(`${lastCompletedWorkout.date}T00:00:00`), 'EEE, MMM d')}
+                </p>
+              )}
+            </section>
 
             {/* Week strip */}
-            <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
-              <div className="flex items-center justify-between mb-4">
-                <span className="t-label">{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label="Previous week"
-                    className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                    onClick={() => setWeekCursor((current) => addDays(current, -7))}
-                  >
-                    <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
+            <MetalSection
+              label={`${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d')}`}
+              right={(
+                <span className="train-week-nav">
+                  <button type="button" aria-label="Previous week" onClick={() => setWeekCursor((current) => addDays(current, -7))}>
+                    <ChevronLeft size={16} strokeWidth={1.6} aria-hidden />
                   </button>
-                  <button
-                    type="button"
-                    className="pressable px-2.5 py-1.5 t-label-sm hover:text-[var(--color-text)] transition-colors"
-                    onClick={() => setWeekCursor(new Date())}
-                  >
-                    Now
+                  <button type="button" onClick={() => setWeekCursor(new Date())}>Now</button>
+                  <button type="button" aria-label="Next week" onClick={() => setWeekCursor((current) => addDays(current, 7))}>
+                    <ChevronRight size={16} strokeWidth={1.6} aria-hidden />
                   </button>
-                  <button
-                    type="button"
-                    aria-label="Next week"
-                    className="pressable p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                    onClick={() => setWeekCursor((current) => addDays(current, 7))}
-                  >
-                    <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-7 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+                </span>
+              )}
+            >
+              <div className="train-week" role="list" aria-label="Training week">
                 {weekDays.map((date) => {
                   const dateKey = format(date, 'yyyy-MM-dd');
                   const workout = weekWorkouts.find((entry) => entry.date === dateKey && entry.completed);
@@ -1552,83 +1597,60 @@ export function Workout() {
                   } else if (plannedDay) {
                     status = isBefore(date, today) && !isToday ? 'missed' : 'planned';
                   }
-
-                  const completed = status === 'completed';
+                  const dayLabel = workout ? activeSplit?.days.find((day) => day.id === workout.split_day_id)?.day_name || 'Completed workout' : plannedDay?.day_name || 'Rest';
 
                   return (
                     <div
                       key={dateKey}
-                      title={`${format(date, 'EEE, MMM d')}: ${workout ? activeSplit?.days.find((day) => day.id === workout.split_day_id)?.day_name || 'Completed workout' : plannedDay?.day_name || 'Rest'}`}
-                      aria-label={`${format(date, 'EEE, MMM d')}: ${workout ? activeSplit?.days.find((day) => day.id === workout.split_day_id)?.day_name || 'Completed workout' : plannedDay?.day_name || 'Rest'} (${status})`}
-                      className={`relative flex flex-col items-center gap-1.5 py-2.5 ${
-                        completed ? 'bg-[var(--color-text)]' : 'bg-[var(--color-surface-1)]'
-                      }`}
+                      role="listitem"
+                      title={`${format(date, 'EEE, MMM d')}: ${dayLabel}`}
+                      aria-label={`${format(date, 'EEE, MMM d')}: ${dayLabel} (${status})${isToday ? ', today' : ''}`}
+                      className={`train-day is-${status}${isToday ? ' is-today' : ''}`}
                     >
-                      {isToday && (
-                        <span className="absolute bottom-1 w-1 h-1 rounded-full bg-[var(--color-accent)]" aria-hidden />
-                      )}
-                      <span className={`t-label-sm ${completed ? 'text-[var(--color-base)]' : ''}`}>
-                        {weekdayLetters[date.getDay()]}
-                      </span>
-                      <span
-                        className={`t-data-sm ${
-                          completed
-                            ? 'text-[var(--color-base)]'
-                            : isToday
-                              ? 'text-[var(--color-text)]'
-                              : 'text-[var(--color-text-dim)]'
-                        }`}
-                      >
-                        {format(date, 'd')}
-                      </span>
-                      <span className="h-3 flex items-center">
-                        {status === 'completed' ? (
-                          <Check className="w-3 h-3 text-[var(--color-base)]" strokeWidth={2.5} />
-                        ) : status === 'missed' ? (
-                          <X className="w-3 h-3 text-[var(--color-accent)]" strokeWidth={2} />
-                        ) : status === 'planned' ? (
-                          <span className="w-[2px] h-2.5 bg-[var(--color-text-dim)]" />
-                        ) : (
-                          <span className="w-1 h-1 bg-[color-mix(in_srgb,var(--color-muted)_35%,transparent)]" />
-                        )}
-                      </span>
+                      <span className="train-day-letter" aria-hidden>{weekdayLetters[date.getDay()]}</span>
+                      <span className="train-day-date" aria-hidden>{format(date, 'd')}</span>
+                      <span className="train-day-mark" aria-hidden />
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </MetalSection>
 
             {/* Other days */}
-            <div className="pt-8 mt-2 border-t border-[var(--color-border)]">
-              <p className="t-label mb-1">Train a different day</p>
-              <p className="t-caption mb-3">{!adaptiveSchedulingEnabled
+            <MetalSection label="Train a different day">
+              <p className="metal-note train-other-note">{!adaptiveSchedulingEnabled
                 ? 'Adaptive split scheduling is off. Workouts follow your saved schedule.'
                 : planSchedule.mode === 'fixed'
                 ? 'Finishing a different day shifts upcoming workouts and rest days to follow your split.'
                 : 'Finishing a different day moves your next workout forward from that day.'}</p>
-              <ul>
+              <ul className="train-days">
                 {(activeSplit?.days || []).map((day) => (
-                  <li
-                    key={day.id}
-                    className="flex items-center justify-between gap-3 py-3.5 border-t border-[var(--color-border)]"
-                  >
-                    <div className="min-w-0">
-                      <p className="t-heading">{day.day_name}</p>
-                      <p className="t-caption">{day.exercises?.length || 0} exercises</p>
-                    </div>
-                    <Button size="sm" variant="ghost" onClick={() => handleStartWorkout(day)} disabled={startingDayId !== null}>
+                  <li key={day.id} className="metal-row">
+                    <span className="min-w-0">
+                      <span className="metal-row-title">{day.day_name}</span>
+                      <span className="metal-row-detail">{day.exercises?.length || 0} exercises</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="metal-text-btn train-day-start"
+                      onClick={() => { tapHaptic(); void handleStartWorkout(day); }}
+                      disabled={startingDayId !== null}
+                      aria-label={`Start ${day.day_name}`}
+                    >
                       {startingDayId === day.id ? 'Starting…' : 'Start'}
-                    </Button>
+                    </button>
                   </li>
                 ))}
               </ul>
-            </div>
-          </div>
+            </MetalSection>
+          </>
         )}
 
-        <Modal isOpen={showScheduleEditor} onClose={() => setShowScheduleEditor(false)} title="Edit Schedule">
+        <TrainCapsule spec={preCapsule} />
+
+        <Modal isOpen={showScheduleEditor} onClose={() => setShowScheduleEditor(false)} title="Edit schedule">
           <ScheduleEditor
-            title="Adjust Plan"
+            title="Adjust plan"
             description="Update your start date, scheduling mode, and active training day."
             daysPerWeek={activeSplit?.days_per_week || 0}
             splitDays={activeSplit?.days || []}
@@ -1646,7 +1668,7 @@ export function Workout() {
               void handleSavePlanSetup();
             }}
             onCancel={() => setShowScheduleEditor(false)}
-            saveLabel="Save Changes"
+            saveLabel="Save changes"
             saving={savingPlanSchedule}
           />
         </Modal>
@@ -1659,41 +1681,65 @@ export function Workout() {
   /* ═══════════════ In session ═══════════════ */
 
   const isFlexibleSession = workoutMode === 'flexible' && currentWorkout.split_day_id === null;
+  const movementName = (id: string) => workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement';
+  const pinTitle = expansion.expandedExerciseId && focusOrder.includes(expansion.expandedExerciseId)
+    ? movementName(expansion.expandedExerciseId)
+    : currentSessionTitle;
+  const flexibleEmpty = isFlexibleSession && activeFlexibleItems.length === 0;
+  const openAddMovement = () => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); };
 
   return (
-    <motion.div className={`studio-workout-page px-6${showRestTimer ? ' has-rest-timer' : ''}`}>
+    <motion.div className={`studio-workout-page metal-page${showRestTimer ? ' has-rest-timer' : ''}`}>
+      <SessionPin
+        title={pinTitle}
+        createdAt={currentWorkoutCreatedAt}
+        finishing={finishing}
+        onBack={() => navigate('/')}
+        onFinish={() => { void handleCompleteWorkout(); }}
+      />
       <header className="studio-session-header">
         <div className="studio-session-top">
-          <button type="button" onClick={() => navigate('/')}><ChevronLeft size={14} /> Today</button>
+          <button type="button" onClick={() => navigate('/')}><ChevronLeft size={18} strokeWidth={1.75} aria-hidden /> Today</button>
           <span>{currentWorkoutCreatedAt ? <SessionClock key={currentWorkoutCreatedAt} createdAt={currentWorkoutCreatedAt} /> : '—'}</span>
           <Button variant="ghost" size="sm" onClick={handleCompleteWorkout} disabled={finishing}>{finishing ? 'Finishing…' : 'Finish'}</Button>
         </div>
-        {finishError && <div className="flex items-center justify-between gap-3">
-          <p className="t-caption text-[var(--color-accent)]" role="alert">{finishError}</p>
-          {noteSaveFailed && <Button variant="ghost" size="sm" onClick={() => {
+        {finishError && <div className="studio-session-error">
+          <p className="metal-flag" role="alert"><span>{finishError}</span></p>
+          {noteSaveFailed && <button type="button" className="metal-text-btn" onClick={() => {
             void settleNoteWrites().then(() => setFinishError(null)).catch(() => {});
-          }}>Retry</Button>}
+          }}>Retry</button>}
         </div>}
-        <div className="studio-session-summary">
-          <h1>{isFlexibleSession ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button> : currentSessionTitle}</h1>
-          <span>{completedSets} / {totalSets} sets</span>
-        </div>
-        {totalSets > 0 && totalSets <= 40 ? (
-          <TickStrip total={totalSets} filled={completedSets} tone="amber" size="sm" reveal="session-sets" />
-        ) : <RailStrip value={progress / 100} tone="amber" size="sm" />}
-        <div className="studio-session-actions">
-          <span className="t-caption">{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</span>
-          <div>
-            <button type="button" onClick={handleManualRestStart} disabled={showRestTimer} aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer size={15} aria-hidden />Rest</button>
-            {isFlexibleSession && <button type="button" onClick={() => { setSupersetPickerSourceExerciseId(null); setShowExercisePicker(true); }}><Plus size={16} aria-hidden />Add movement</button>}
+        <Eyebrow live className="studio-session-eyebrow">{isFlexibleSession ? 'Flexible session' : activeSplit?.name || 'Session in progress'}</Eyebrow>
+        <h1 className="metal-title studio-session-title" data-session-title>
+          {isFlexibleSession
+            ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button>
+            : <span>{currentSessionTitle}</span>}
+          <small>{totalSets > 0 ? `${completedSets} of ${totalSets} ${totalSets === 1 ? 'set' : 'sets'}` : 'No sets yet'}</small>
+        </h1>
+        {totalSets > 0 && <SegmentedHairline
+          total={totalSets}
+          on={completedSets}
+          now={completedSets < totalSets ? completedSets : undefined}
+          max={40}
+          label={`${completedSets} of ${totalSets} sets logged`}
+        />}
+      </header>
+
+      <section className="metal-section studio-session-list" aria-label="Movements">
+        <div className="metal-section-head">
+          <Eyebrow>{focusOrder.length} {focusOrder.length === 1 ? 'movement' : 'movements'}</Eyebrow>
+          <div className="metal-section-head-right">
+            <button type="button" className="metal-line-btn" onClick={() => { tapHaptic(); handleManualRestStart(); }} disabled={showRestTimer}
+              aria-label={showRestTimer ? 'Rest timer is running' : 'Start rest timer'}><Timer aria-hidden />Rest</button>
+            {isFlexibleSession && !flexibleEmpty && <button type="button" className="metal-line-btn" onClick={() => { tapHaptic(); openAddMovement(); }}>
+              <Plus aria-hidden />Add movement</button>}
           </div>
         </div>
-      </header>
 
       <MovementReorderList key={currentWorkout.id} onReorder={reorderSessionMovements}
         items={focusOrder.map((id) => ({ id, name: workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement', supersetGroupId: supersetByExerciseId.get(id) }))}>
       {isFlexibleSession ? (
-        <div className="space-y-3">
+        <div className="studio-movements">
           <Modal isOpen={showSessionDetails} onClose={() => setShowSessionDetails(false)} title="Workout name">
               <Input
                 label="Name"
@@ -1706,17 +1752,10 @@ export function Workout() {
           </Modal>
 
           {activeFlexibleItems.length === 0 ? (
-            <EmptyState
-              art="barbell"
-              title="Nothing on the bar yet"
-              body="Add your first movement and the session starts counting."
-              action={
-                <Button onClick={() => setShowExercisePicker(true)}>
-                  <Plus className="w-4 h-4" strokeWidth={2.25} />
-                  Add first exercise
-                </Button>
-              }
-            />
+            <div className="studio-session-empty">
+              <p className="metal-row-title">Nothing on the bar yet</p>
+              <p className="metal-note">Add your first movement and the session starts counting.</p>
+            </div>
           ) : (
             activeFlexibleItems.map((item, index) => {
               const exerciseId = item.exercise_id;
@@ -1737,12 +1776,14 @@ export function Workout() {
                 : null;
               const supersetRole = supersetFlowMap.get(exerciseId)?.role;
               const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
+              const repTarget = formatRepTarget(item.target_reps_min, item.target_reps_max);
 
               return (
                 <ExerciseCard
                   key={exerciseId}
                   exerciseId={exerciseId}
                   index={index}
+                  movementCount={activeFlexibleItems.length}
                   exerciseName={exerciseName}
                   previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                   completedCount={completedInExercise}
@@ -1750,8 +1791,8 @@ export function Workout() {
                   allComplete={allComplete}
                   isActive={isActive}
                   isNext={exerciseId === nextMovementId}
-                  targetRepsMin={item.target_reps_min}
-                  targetRepsMax={item.target_reps_max}
+                  repTarget={repTarget}
+                  progressLine={movementProgressLine(sets, repTarget)}
                   onToggle={() => selectMovement(exerciseId)}
                   supersetRole={supersetRole}
                   supersetLabel={
@@ -1788,9 +1829,9 @@ export function Workout() {
                   ]}
                 >
                   <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
-                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                    <label className="flex items-center gap-2">
-                      <span className="t-caption">Target sets</span>
+                  <div className="studio-set-adjust">
+                    <label className="studio-set-adjust-target">
+                      <span className="metal-eyebrow">Target sets</span>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -1806,10 +1847,10 @@ export function Workout() {
                             (event.currentTarget as HTMLInputElement).blur();
                           }
                         }}
-                        className="well w-14 min-h-9 text-center t-data-sm text-[var(--color-text)] outline-none"
+                        className="metal-input studio-set-adjust-input"
                       />
                     </label>
-                    <div className="flex items-center gap-1.5">
+                    <div className="studio-set-adjust-steps">
                       <SetCountButton
                         ariaLabel="Remove set"
                         disabled={!sets.some((set) => !set.completed)}
@@ -1824,8 +1865,7 @@ export function Workout() {
                   </div>
                   </Modal>
 
-                  <div>
-                    <WorkoutSetHeadings />
+                  <div className="studio-set-list">
                     {sets.map((set, idx) => (
                       <div
                         key={set.id}
@@ -1842,6 +1882,7 @@ export function Workout() {
                             previousWorkoutSetsByExercise,
                           })}
                           previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
+                          repTarget={repTarget}
                           isNext={set.id === firstUncompletedSetId}
                           editing={set.id === editorSet?.id}
                           exerciseName={exerciseName}
@@ -1890,7 +1931,7 @@ export function Workout() {
           />
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="studio-movements">
           {orderedExerciseEntries.map(([exerciseId, sets], index) => {
             const rawSet = sets[0] as WorkoutSet & { exercises?: { name?: string } };
             const exerciseName = rawSet.exercise?.name || rawSet.exercises?.name || 'Unknown Exercise';
@@ -1909,12 +1950,14 @@ export function Workout() {
             const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
             const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
             const prescription = sessionExercises.find((entry) => entry.exercise_id === exerciseId);
+            const repTarget = formatRepTarget(prescription?.target_reps_min, prescription?.target_reps_max);
 
             return (
               <ExerciseCard
                 key={exerciseId}
                 exerciseId={exerciseId}
                 index={index}
+                movementCount={orderedExerciseEntries.length}
                 exerciseName={exerciseName}
                 previousTargetText={previousWorkoutSetsByExercise[exerciseId]?.[sets.find((set) => !set.completed)?.set_number ?? 1] ? formatSetPerformanceTarget(previousWorkoutSetsByExercise[exerciseId][sets.find((set) => !set.completed)?.set_number ?? 1]) : null}
                 completedCount={completedInExercise}
@@ -1922,8 +1965,15 @@ export function Workout() {
                 allComplete={allComplete}
                 isActive={isActive}
                 isNext={exerciseId === nextMovementId}
-                targetRepsMin={prescription?.target_reps_min}
-                targetRepsMax={prescription?.target_reps_max}
+                repTarget={repTarget}
+                progressLine={movementProgressLine(sets, repTarget)}
+                progressAction={hasRemovableUncompletedSet ? (
+                  <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
+                    aria-label={`Swap ${exerciseName} for this workout`}
+                    onClick={() => { tapHaptic(); openSwap(exerciseId); }}>
+                    <ArrowLeftRight size={14} aria-hidden />Swap
+                  </button>
+                ) : null}
                 onToggle={() => selectMovement(exerciseId)}
                 supersetRole={supersetRole}
                 supersetLabel={
@@ -1933,28 +1983,17 @@ export function Workout() {
                 {...swapCardProps(exerciseId)}
                 menuActions={[{ label: 'Adjust sets', icon: <Settings2 className="w-4 h-4" />, onClick: () => setSetAdjustmentExerciseId(exerciseId) }, ...swapMenuActions(exerciseId)]}
               >
-                <div className="studio-movement-prescription">
-                  <p className="t-caption">
-                    {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
-                      : `${sets.length} sets`}
-                  </p>
-                  {hasRemovableUncompletedSet && (
-                    <button type="button" className="studio-movement-swap" disabled={!canSwap(exerciseId)}
-                      aria-label={`Swap ${exerciseName} for this workout`}
-                      onClick={() => { tapHaptic(); openSwap(exerciseId); }}>
-                      <ArrowLeftRight size={14} aria-hidden />Swap
-                    </button>
-                  )}
-                </div>
                 <Modal isOpen={setAdjustmentExerciseId === exerciseId} onClose={closeSetAdjustment} title={`Sets · ${exerciseName}`}>
-                <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <span className="t-caption">
-                    {exerciseSetRanges.has(exerciseId)
-                      ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
-                      : `Choose your reps · ${sets.length} sets`}
+                <div className="studio-set-adjust">
+                  <span className="studio-set-adjust-target">
+                    <span className="metal-eyebrow">{exerciseSetRanges.has(exerciseId) ? 'Plan' : 'Sets'}</span>
+                    <span className="metal-row-detail">
+                      {exerciseSetRanges.has(exerciseId)
+                        ? `Target ${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_min ?? '—'}–${sessionExercises.find((entry) => entry.exercise_id === exerciseId)?.target_reps_max ?? '—'} reps · ${setRange.targetSets} sets`
+                        : `Choose your reps · ${sets.length} sets`}
+                    </span>
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="studio-set-adjust-steps">
                     <SetCountButton
                       ariaLabel="Remove set"
                       disabled={!canRemoveSet}
@@ -1969,8 +2008,7 @@ export function Workout() {
                 </div>
                 </Modal>
 
-                <div>
-                  <WorkoutSetHeadings />
+                <div className="studio-set-list">
                   {sets.map((set, idx) => (
                     <div
                       key={set.id}
@@ -1987,6 +2025,7 @@ export function Workout() {
                           previousWorkoutSetsByExercise,
                         })}
                         previousTarget={previousWorkoutSetsByExercise[exerciseId]?.[set.set_number] ?? null}
+                        repTarget={repTarget}
                         isNext={set.id === firstUncompletedSetId}
                         editing={set.id === editorSet?.id}
                         exerciseName={exerciseName}
@@ -2014,6 +2053,7 @@ export function Workout() {
       )}
 
       </MovementReorderList>
+      </section>
       <ExercisePicker
         isOpen={substitutionSource !== null}
         onClose={() => setSubstitutionSource(null)}
@@ -2053,6 +2093,15 @@ export function Workout() {
         finishing={finishing}
         onFinish={() => { void handleCompleteWorkout(); }}
       />
+      {/* An empty flexible session has no set to log yet: its first movement is the action. */}
+      <TrainCapsule spec={flexibleEmpty ? {
+        key: 'add-first-movement',
+        label: 'Add first exercise',
+        sublabel: 'The session starts counting from there',
+        glyph: 'plus',
+        dock: 'bottom',
+        onPress: openAddMovement,
+      } : null} />
 
       {/* Rest is independent of movement expansion and set entry. */}
       {showRestTimer && (
@@ -2076,13 +2125,14 @@ export function Workout() {
 
       {/* Complete Confirmation */}
       <Modal isOpen={showCompleteConfirm} onClose={() => setShowCompleteConfirm(false)} title="Finish workout?">
-        <div className="space-y-4 pt-1">
-          <div className="flex items-center gap-3">
-            <TickStrip total={Math.min(totalSets, 30)} filled={Math.min(completedSets, 30)} tone="amber" size="sm" />
-            <span className="t-data-sm text-[var(--color-text-dim)]">{completedSets}/{totalSets} sets</span>
+        <div className="studio-sheet-body">
+          <div className="studio-finish-figure">
+            <span className="metal-num">{completedSets}</span>
+            <span className="metal-hero-caption">of {totalSets} {totalSets === 1 ? 'set' : 'sets'} logged</span>
           </div>
-          <p className="t-caption">Remaining sets won't be logged. You can always edit this session later in History.</p>
-          <div className="flex gap-3 pt-1">
+          <SegmentedHairline total={Math.max(1, totalSets)} on={completedSets} max={40} label={`${completedSets} of ${totalSets} sets logged`} />
+          <p className="metal-note">Remaining sets won't be logged. You can always edit this session later in History.</p>
+          <div className="studio-sheet-actions">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCompleteConfirm(false)}>
               Keep training
             </Button>
@@ -2095,12 +2145,12 @@ export function Workout() {
 
       {/* Save template prompt (flexible) */}
       <Modal isOpen={showSaveTemplatePrompt} onClose={() => setShowSaveTemplatePrompt(false)} title="Save as quick start?">
-        <div className="space-y-4 pt-1">
-          <p className="t-body text-[var(--color-text)]">
-            Keep <span className="font-semibold">{currentWorkoutDayPlan?.day_label || 'this day'}</span> as a one-tap template?
+        <div className="studio-sheet-body">
+          <p className="metal-line">
+            Keep <span className="font-medium">{currentWorkoutDayPlan?.day_label || 'this day'}</span> as a one-tap template?
           </p>
-          <p className="t-caption">An existing template with this label will be replaced with today's exercises and notes.</p>
-          <div className="flex gap-3 pt-1">
+          <p className="metal-note">An existing template with this label will be replaced with today's exercises and notes.</p>
+          <div className="studio-sheet-actions">
             <Button variant="secondary" className="flex-1" onClick={handleSkipTemplateAtCompletion} disabled={finishing}>
               Skip
             </Button>
@@ -2131,9 +2181,16 @@ type CardMenuAction = {
   tone?: 'default' | 'sage' | 'danger';
 };
 
+/**
+ * One movement in the session list. Closed, it is a hairline row (name,
+ * where it stands, count). Open, it shows the Fraunces title, "Set n of N ·
+ * target", its set rows and note, and an explicit collapse; drafts stay
+ * mounted either way.
+ */
 function ExerciseCard({
   exerciseId,
   index,
+  movementCount,
   exerciseName,
   previousTargetText,
   completedCount,
@@ -2141,8 +2198,9 @@ function ExerciseCard({
   allComplete,
   isActive,
   isNext,
-  targetRepsMin,
-  targetRepsMax,
+  repTarget,
+  progressLine,
+  progressAction,
   onToggle,
   supersetRole,
   supersetLabel,
@@ -2154,6 +2212,7 @@ function ExerciseCard({
 }: {
   exerciseId: string;
   index: number;
+  movementCount: number;
   exerciseName: string;
   previousTargetText: string | null;
   completedCount: number;
@@ -2161,8 +2220,11 @@ function ExerciseCard({
   allComplete: boolean;
   isActive: boolean;
   isNext: boolean;
-  targetRepsMin?: number | null;
-  targetRepsMax?: number | null;
+  repTarget: string | null;
+  /** "Set 2 of 3 · target 8–10 reps" under the open title. */
+  progressLine: string;
+  /** A quiet action on the progress line (Swap). */
+  progressAction?: React.ReactNode;
   onToggle: () => void;
   supersetRole?: 'A' | 'B';
   supersetLabel: string | null;
@@ -2176,9 +2238,15 @@ function ExerciseCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const contentId = useId();
   const summaryId = useId();
-  const repTarget = targetRepsMin && targetRepsMax
-    ? `${targetRepsMin === targetRepsMax ? targetRepsMin : `${targetRepsMin}–${targetRepsMax}`} reps`
-    : targetRepsMin ? `${targetRepsMin}+ reps` : targetRepsMax ? `Up to ${targetRepsMax} reps` : null;
+  const isNow = isNext && !allComplete;
+  const summary = allComplete
+    ? `Done · ${totalCount} ${totalCount === 1 ? 'set' : 'sets'}`
+    : [
+      isNow ? 'Now' : null,
+      `${totalCount} ${totalCount === 1 ? 'set' : 'sets'}`,
+      repTarget,
+      previousTargetText ? `last ${previousTargetText}` : null,
+    ].filter(Boolean).join(' · ');
   const headingRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -2200,40 +2268,39 @@ function ExerciseCard({
     if (!scroller) return;
     const bounds = headingRef.current.getBoundingClientRect();
     const viewport = scroller.getBoundingClientRect();
-    // Opening near an edge reveals the heading and first row in this scroller only.
-    if (bounds.top < viewport.top + 12 || bounds.bottom + 150 > viewport.bottom) {
-      scroller.scrollTop += bounds.top - viewport.top - 12;
+    // Opening near an edge reveals the heading and first row in this scroller
+    // only, clear of the pinned session bar.
+    if (bounds.top < viewport.top + 56 || bounds.bottom + 150 > viewport.bottom) {
+      scroller.scrollTop += bounds.top - viewport.top - 56;
     }
   }, [isActive]);
   return (
-    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}`} aria-label={exerciseName}>
+    <section data-movement-reorder-id={exerciseId} className={`studio-movement${isActive ? ' is-active' : ''}${allComplete ? ' is-complete' : ''}${isNow ? ' is-now' : ''}`} aria-label={exerciseName}>
       <div className="studio-movement-header" ref={headingRef}>
         <button ref={toggleRef} type="button" className="studio-movement-toggle" aria-expanded={isActive} aria-controls={contentId}
           aria-describedby={!isActive ? summaryId : undefined}
-          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={onToggle}>
+          aria-label={`${isActive ? 'Collapse' : 'Expand'} ${exerciseName}`} onClick={() => { setMenuOpen(false); onToggle(); }}>
           <span className="studio-movement-heading">
-            {isActive && <span className="t-label">Movement {String(index + 1).padStart(2, '0')}{supersetRole ? ` · Superset ${supersetRole}` : ''}</span>}
-            {!isActive && isNext && !allComplete && <span className="studio-movement-next">Up next</span>}
-            <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>
-              {allComplete && <Check size={14} aria-hidden />}{exerciseName}
-            </span>
-            {!isActive && <span id={summaryId} className="studio-movement-summary">
-              <span>{totalCount} {totalCount === 1 ? 'set' : 'sets'}{repTarget ? ` · ${repTarget}` : ''}{allComplete ? ' · Complete' : ''}</span>
-              {!allComplete && previousTargetText && <span className="studio-movement-previous">Last workout <span>{previousTargetText}</span></span>}
+            {isActive && <span className="studio-movement-eyebrow">
+              Movement {index + 1} of {movementCount}{supersetRole ? ` · Superset ${supersetRole}` : ''}
             </span>}
+            <span className={isActive ? 'studio-movement-name' : 'studio-movement-name-compact'}>{exerciseName}</span>
+            {!isActive && <span id={summaryId} className="studio-movement-summary">{summary}</span>}
           </span>
-          <span className="studio-movement-count">{completedCount} / {totalCount}</span>
-          <ChevronDown className="studio-movement-chevron" size={16} aria-hidden />
+          <span className="studio-movement-count">
+            {completedCount} / {totalCount}
+            {isActive && <ChevronUp className="studio-movement-chevron" size={15} strokeWidth={1.75} aria-hidden />}
+          </span>
         </button>
         <div className="studio-movement-controls">
-        {menuActions.length > 0 && <div className="relative">
+        {isActive && menuActions.length > 0 && <div className="relative">
           <button ref={optionsRef} type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
-            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+            className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} strokeWidth={1.75} /></button>
           {menuOpen && <>
             <button className="fixed inset-0 z-10" aria-label="Close exercise options" onClick={() => setMenuOpen(false)} />
-            <div ref={litMenuRef} className="absolute right-0 top-full z-20 w-48 p-1 rounded-xl material-glass">
+            <div ref={litMenuRef} className="studio-movement-menu">
               {menuActions.map((action) => <button key={action.label} type="button" disabled={action.disabled}
-                className="w-full min-h-11 px-3 text-left flex items-center gap-2 t-caption disabled:opacity-30"
+                className={action.tone === 'danger' ? 'is-danger' : undefined}
                 onClick={() => { setMenuOpen(false); optionsRef.current?.focus({ preventScroll: true }); action.onClick(); }}>{action.icon}{action.label}</button>)}
             </div>
           </>}
@@ -2242,9 +2309,9 @@ function ExerciseCard({
         </div>
       </div>
       {substitutionLabel && <p className="studio-movement-detail"><ArrowLeftRight size={13} aria-hidden />{substitutionLabel}</p>}
-      {swapStatus && <p className={`studio-movement-detail${swapStatus.failed ? ' text-[var(--color-accent)]' : ''}`}
+      {swapStatus && <p className={`studio-movement-detail${swapStatus.failed ? ' is-failed' : ''}`}
         role={swapStatus.failed ? 'alert' : 'status'}>{swapStatus.text}</p>}
-      {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} />Superset {supersetLabel}</p>}
+      {supersetLabel && <p className="studio-movement-detail"><Link2 size={13} aria-hidden />Superset {supersetLabel}</p>}
       {notePreview && <p className="studio-movement-note-preview">{notePreview}</p>}
       {/* Keep every draft mounted while the user browses other movements. The
           reveal grows open (0fr → 1fr) and closes instantly, so a movement
@@ -2252,7 +2319,11 @@ function ExerciseCard({
       <div ref={revealRef} className="studio-movement-reveal" data-open={isActive ? 'true' : 'false'} inert={!isActive} aria-hidden={!isActive || undefined}>
       <div className="studio-movement-reveal-inner">
       <div id={contentId} className="studio-movement-content">
-        {previousTargetText && <div className="studio-last-workout"><span>Last workout</span><span>{previousTargetText}</span></div>}
+        <div className="studio-movement-prescription">
+          <p>{progressLine}</p>
+          {progressAction}
+        </div>
+        {previousTargetText && <p className="studio-last-workout">Last workout <span>{previousTargetText}</span></p>}
         {children}
         <button type="button" className="studio-collapse-movement" onClick={() => {
           onToggle();
@@ -2262,7 +2333,7 @@ function ExerciseCard({
             const scroller = heading?.closest<HTMLElement>('[data-app-scroll-viewport]');
             if (!heading || !scroller) return;
             const top = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-            if (top < 0) scroller.scrollTop += top - 12;
+            if (top < 56) scroller.scrollTop += top - 56;
           });
         }}>All movements <ChevronUp size={14} aria-hidden /></button>
       </div>
@@ -2292,7 +2363,7 @@ function SetCountButton({
       }}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="pressable flex items-center justify-center w-11 h-11 rounded-[11px] material-control text-[var(--color-text-dim)] disabled:opacity-30 disabled:pointer-events-none"
+      className="metal-step-btn pressable flex items-center justify-center w-11 h-11 text-[var(--metal-ink)] disabled:opacity-30 disabled:pointer-events-none"
     >
       {children}
     </button>
@@ -2318,7 +2389,7 @@ function MovementNote({
   return (
     <div className="studio-movement-note">
       {!editing && value.trim() && <p className="studio-note-text">{value}</p>}
-      <button type="button" className="t-caption min-h-11 flex items-center gap-1" aria-expanded={editing}
+      <button type="button" className="studio-note-toggle" aria-expanded={editing}
         aria-controls={`movement-note-${exerciseId}`} onClick={() => setEditing((open) => !open)}>
         {editing ? 'Hide note editor' : value.trim() ? 'Edit note' : 'Add note'}
       </button>
@@ -2331,13 +2402,13 @@ function MovementNote({
         maxLength={200}
         placeholder="Note — technique, feel, cues…"
         aria-label="Movement note"
-        className="w-full bg-transparent border-b border-[var(--color-border)] pb-2 text-sm text-[var(--color-text)] placeholder:text-[color-mix(in_srgb,var(--color-muted)_60%,transparent)] focus:outline-none focus:border-[var(--color-accent)] resize-none overflow-y-auto max-h-28"
+        className="studio-note-input"
       />
-      <div hidden={!editing} className="mt-1 flex items-center justify-between min-h-4">
-        <span className="t-caption">
-          {saving ? 'Saving…' : saved ? <span className="text-[var(--color-sage)]">Saved</span> : ''}
+      <div hidden={!editing} className="studio-note-status">
+        <span>
+          {saving ? 'Saving…' : saved ? 'Saved' : ''}
         </span>
-        {value.length >= 160 && <span className="t-caption tabular-nums">{value.length}/200</span>}
+        {value.length >= 160 && <span className="tabular-nums">{value.length}/200</span>}
       </div>
     </div>
   );
@@ -2361,9 +2432,9 @@ function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | nu
   return (
     <Modal isOpen={summary !== null} onClose={onClose}>
       {summary && (
-        <div className="pt-1 pb-2">
+        <div className="studio-banked">
           <SessionToken
-            className="h-[190px] -mt-2 mb-3"
+            className="h-[190px] -mt-2 mb-4"
             face={{
               title: summary.title,
               dateLabel: format(summary.completedAt, 'EEEE, MMM d'),
@@ -2372,79 +2443,77 @@ function CompletionSheet({ summary, onClose }: { summary: CompletionSummary | nu
               figure: summary.tonnage > 0 ? `${Math.round(summary.tonnage).toLocaleString('en-US')} lb` : summary.duration,
             }}
           />
-          <div className="flex items-center gap-2 mb-3">
+          <p className="metal-eyebrow">
             <motion.span
-              className="block w-2.5 h-2.5 bg-[var(--color-accent)]"
-              initial={{ scale: 0, rotate: -45 }}
-              animate={{ scale: 1, rotate: 0 }}
+              className="metal-live-dot"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
               transition={{ ...springs.lift, delay: 0.15 }}
               aria-hidden
             />
-            <span className="t-label">Session complete</span>
-          </div>
+            Session complete
+          </p>
           <motion.p
             ref={titleRef}
-            className="t-title text-[var(--color-text)] mb-1.5"
-            initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            className="studio-banked-title"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ ...springs.heavy, delay: 0.1 }}
           >
             Session banked.
           </motion.p>
-          <p className="t-caption mb-6">{summary.title}</p>
-          <TickStrip
-            total={Math.min(summary.totalSets, 30)}
-            filled={Math.min(summary.completedSets, 30)}
-            tone="sage"
-            reveal={`banked-${summary.completedAt}`}
-            className="mb-6"
+          <p className="studio-banked-name">{summary.title} · {format(summary.completedAt, 'EEE, MMM d')}</p>
+          <SegmentedHairline
+            total={Math.max(1, summary.totalSets)}
+            on={summary.completedSets}
+            max={40}
+            label={`${summary.completedSets} of ${summary.totalSets} sets logged`}
           />
-          <div className="grid grid-cols-3 border-t border-[var(--color-border)]">
-            <div className="py-4 pr-3 border-r border-[var(--color-border)]">
-              <p className="number-medium text-[var(--color-text)]">
+          <dl className="studio-banked-figures">
+            <div>
+              <dd className="metal-num">
                 <CountUp value={summary.completedSets} duration={0.8} delay={0.25} />
-                <span className="text-[var(--color-muted)]">/{summary.totalSets}</span>
-              </p>
-              <p className="t-label-sm mt-1">sets</p>
+                <i>/{summary.totalSets}</i>
+              </dd>
+              <dt>sets</dt>
             </div>
-            <div className="py-4 px-3 border-r border-[var(--color-border)]">
-              <p className="number-medium text-[var(--color-text)]">
+            <div>
+              <dd className="metal-num">
                 {summary.tonnage > 0 ? <CountUp value={summary.tonnage} duration={1.3} delay={0.35} /> : '—'}
-              </p>
-              <p className="t-label-sm mt-1">lb moved</p>
+              </dd>
+              <dt>lb moved</dt>
             </div>
-            <div className="py-4 pl-3">
-              <p className="number-medium text-[var(--color-text)]">{summary.duration}</p>
-              <p className="t-label-sm mt-1">duration</p>
+            <div>
+              <dd className="metal-num">{summary.duration}</dd>
+              <dt>duration</dt>
             </div>
-          </div>
+          </dl>
           {summary.gains.length > 0 && (
-            <div className="border-t border-[var(--color-border)] pt-4">
-              <p className="t-label-sm mb-2">
+            <div className="studio-banked-gains">
+              <p className="metal-eyebrow">
                 Beat last workout · {summary.gains.length} {summary.gains.length === 1 ? 'set' : 'sets'}
               </p>
               <ul>
                 {summary.gains.slice(0, 5).map((gain, index) => (
                   <motion.li
                     key={`${gain.name}-${gain.setNumber}`}
-                    className="flex items-baseline justify-between gap-3 py-1.5 t-body"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ ...springs.settle, delay: 0.55 + index * 0.07 }}
                   >
                     <span className="min-w-0 [overflow-wrap:anywhere]">
-                      {gain.name} <span className="text-[var(--color-text-dim)]">· set {gain.setNumber}</span>
+                      {gain.name} <span className="text-[var(--metal-ink-2)]">· set {gain.setNumber}</span>
                     </span>
-                    <span className="shrink-0 t-data-sm text-[var(--color-accent)]">{gain.gain}</span>
+                    <span className="studio-banked-gain">{gain.gain}</span>
                   </motion.li>
                 ))}
               </ul>
               {summary.gains.length > 5 && (
-                <p className="t-caption mt-1">and {summary.gains.length - 5} more</p>
+                <p className="metal-note">and {summary.gains.length - 5} more</p>
               )}
             </div>
           )}
-          <Button size="lg" className="w-full mt-6" onClick={onClose}>
+          <Button size="lg" className="w-full mt-7" onClick={onClose}>
             Done
           </Button>
         </div>

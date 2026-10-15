@@ -91,14 +91,18 @@ describe('Train on a warm return', () => {
 
     const html = renderFirstFrame();
 
-    expect(html).not.toContain('Start Plan');
+    // The setup form: its title and first question.
+    expect(html).not.toContain('Start your plan');
+    expect(html).not.toContain('When should Day 1 start?');
     expect(html).not.toContain('Loading program');
   });
 
   it('shows the saved-setup loader, not the setup form, while a schedule may still arrive', () => {
     const html = renderFirstFrame();
 
-    expect(html).not.toContain('Start Plan');
+    // The setup form: its title and first question.
+    expect(html).not.toContain('Start your plan');
+    expect(html).not.toContain('When should Day 1 start?');
     expect(html).toContain('Loading saved plan setup');
   });
 });
