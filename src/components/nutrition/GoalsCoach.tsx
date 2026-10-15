@@ -104,7 +104,7 @@ export function GoalsCoach({
         Describe what you want to change, then review the suggested calories and macros before saving.
       </p>
       {!profile && (
-        <div className="border-y border-[var(--color-border)] py-4 space-y-2">
+        <div className="metal-rule border-b-[0.5px] border-b-[var(--metal-rule)] py-4 space-y-2">
           <p className="text-sm font-medium">Set up your nutrition profile first</p>
           <p className="text-sm leading-relaxed text-[var(--color-text-dim)]">
             The calculator saves the basic stats the coach needs. Your goal text stays here while you set it up.
@@ -113,7 +113,7 @@ export function GoalsCoach({
         </div>
       )}
       <div className="space-y-2">
-        <label htmlFor={goalId} className="block text-sm font-medium">Your goal</label>
+        <label htmlFor={goalId} className="t-label block">Your goal</label>
         <textarea
           id={goalId}
           value={goals}
@@ -124,7 +124,7 @@ export function GoalsCoach({
             onDraftChange?.(true);
           }}
           placeholder="For example: I want to maintain my weight while getting stronger. I lift four times a week."
-          className="well w-full min-h-32 px-3 py-3 text-[1rem] text-[var(--color-text)] resize-y placeholder:text-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-[var(--color-text)]"
+          className="metal-input w-full min-h-32 px-3.5 py-3 border-0 text-[1rem] text-[var(--color-text)] resize-y placeholder:text-[var(--color-muted)]"
         />
       </div>
       <div>
@@ -138,7 +138,7 @@ export function GoalsCoach({
               setShareMeasured(event.target.checked);
               onDraftChange?.(true);
             }}
-            className="mt-1 w-5 h-5 shrink-0 accent-[var(--color-accent)]"
+            className="mt-1 w-5 h-5 shrink-0 accent-[var(--metal-ink)]"
           />
           <span className="text-sm leading-relaxed">Include daily-burn estimates and recent weight trend</span>
         </label>
@@ -147,7 +147,7 @@ export function GoalsCoach({
           Daily-burn estimates and trends are inferred from your logs when available.
         </p>
       </div>
-      <div className="border-t border-[var(--color-border)] pt-4">
+      <div className="metal-rule pt-4">
         <p className="text-sm leading-relaxed text-[var(--color-text-dim)]">
           {fixturePreview
             ? 'This preview uses sample suggestions and sends no coach request.'
@@ -170,8 +170,8 @@ export function GoalsCoach({
       </Button>
       {asking && <p role="status" className="text-sm text-[var(--color-text-dim)]">This can take a minute or two. You can keep this screen open while the coach responds.</p>}
       {recommendation && !asking && (
-        <div className="border-t border-[var(--color-border)] pt-4 space-y-3">
-          <h3 className="text-[1rem] font-medium">Latest suggestion</h3>
+        <div className="metal-rule pt-4 space-y-3">
+          <h3 className="metal-eyebrow">Latest suggestion</h3>
           <p className="text-sm leading-relaxed">{recommendation.rationale}</p>
           {recommendation.cautions && <p className="text-sm leading-relaxed text-[var(--color-accent)]">{recommendation.cautions}</p>}
           <p className="text-sm leading-relaxed text-[var(--color-text-dim)]">

@@ -249,9 +249,7 @@ export function NutritionWizard({
             <button
               type="button"
               aria-pressed={active}
-              className={`pressable w-full text-left flex items-center gap-4 py-4 border-t border-[var(--color-border)] transition-colors ${
-                active ? 'material-surface px-4' : 'px-4'
-              }`}
+              className="metal-row you-row"
               onClick={() => {
                 if (option.value === selected) return;
                 onDraftChange?.(true);
@@ -259,15 +257,23 @@ export function NutritionWizard({
               }}
             >
               <span className="flex-1 min-w-0">
-                <span className={`t-heading block normal-case tracking-normal ${active ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                <span className={`metal-row-title ${active ? '' : 'text-[var(--metal-ink-2)]'}`}>
                   {option.label}
                 </span>
-                <span className="text-sm leading-relaxed text-[var(--color-text-dim)]">{option.hint}</span>
+                <span className="metal-row-detail">{option.hint}</span>
               </span>
-              <span
-                className={`shrink-0 w-1.5 h-1.5 ${active ? 'bg-[var(--color-accent)]' : 'bg-transparent border border-[var(--color-border-strong)]'}`}
+              <svg
+                className={`you-check ${active ? '' : 'invisible'}`}
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 aria-hidden
-              />
+              >
+                <path d="M3 8.5l3.2 3L13 4.5" />
+              </svg>
             </button>
           </li>
         );
@@ -283,8 +289,8 @@ export function NutritionWizard({
     placeholder?: string
   ) => (
     <div>
-      <label htmlFor={`${inputId}-${label.replaceAll(' ', '-')}`} className="block mb-2 text-sm font-medium">{label}</label>
-      <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
+      <label htmlFor={`${inputId}-${label.replaceAll(' ', '-')}`} className="t-label block mb-2">{label}</label>
+      <div className="you-field">
         <input
           id={`${inputId}-${label.replaceAll(' ', '-')}`}
           aria-label={`${label}${suffix ? ` (${suffix})` : ''}`}
@@ -296,9 +302,9 @@ export function NutritionWizard({
             if (e.target.value !== value) onDraftChange?.(true);
             onChange(e.target.value);
           }}
-          className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
+          className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)]"
         />
-        {suffix && <span className="t-label-sm shrink-0">{suffix}</span>}
+        {suffix && <span className="you-field-unit">{suffix}</span>}
       </div>
     </div>
   );
@@ -317,24 +323,21 @@ export function NutritionWizard({
         <button
           type="button"
           disabled={saving}
-          className="min-h-11 flex items-center gap-1.5 text-sm hover:text-[var(--color-text)] transition-colors"
+          className="min-h-11 flex items-center gap-1.5 text-[15px] text-[var(--metal-ink-2)] hover:text-[var(--color-text)] transition-colors"
           onClick={goBack}
         >
           <ChevronLeft className="w-3 h-3" strokeWidth={1.75} />
           {stepIndex === 0 ? 'Cancel' : 'Back'}
         </button>
-        <span className="t-data-sm text-[var(--color-muted)]">
+        <span className="text-[13px] tabular-nums text-[var(--metal-ink-2)]">
           {String(stepIndex + 1).padStart(2, '0')} / {String(STEPS.length).padStart(2, '0')}
         </span>
       </div>
 
       {/* Step progress — hairline ticks */}
-      <div className="flex gap-1.5" aria-hidden>
+      <div className="metal-segs is-wide !mt-1" aria-hidden>
         {STEPS.map((s, i) => (
-          <span
-            key={s}
-            className={`h-px flex-1 ${i <= stepIndex ? 'bg-[var(--color-text)]' : 'bg-[var(--color-border)]'}`}
-          />
+          <span key={s} className={i <= stepIndex ? 'is-on' : undefined} />
         ))}
       </div>
 
@@ -346,10 +349,9 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
-            <p className="t-label mt-5 mb-3">Nutrition calculator</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Units &amp; biological sex</h2>
-            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
+          <div className="pt-5 metal-rule">
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">Units &amp; biological sex</h2>
+            <p className="you-copy mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
           </div>
 
           <div>
@@ -393,10 +395,10 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
+          <div className="pt-1 metal-rule">
             <p className="t-label mt-5 mb-3">Body measurements</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Your current stats</h2>
-            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">Your current stats</h2>
+            <p className="you-copy mt-3 max-w-[34ch]">
               {initialWeightKg != null
                 ? 'Weight is prefilled from your latest weigh-in.'
                 : 'Used to estimate your resting metabolic rate.'}
@@ -415,9 +417,9 @@ export function NutritionWizard({
 
             {unitSystem === 'imperial' ? (
               <div>
-                <p className="text-sm font-medium block mb-2">Height</p>
+                <p className="t-label block mb-2">Height</p>
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
+                  <div className="you-field">
                     <input
                       type="number"
                       inputMode="numeric"
@@ -427,11 +429,11 @@ export function NutritionWizard({
                         if (e.target.value !== heightFeet) onDraftChange?.(true);
                         setHeightFeet(e.target.value);
                       }}
-                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
+                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)]"
                     />
-                    <span className="t-label-sm shrink-0">ft</span>
+                    <span className="you-field-unit">ft</span>
                   </div>
-                  <div className="material-inset relative flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
+                  <div className="you-field">
                     <input
                       type="number"
                       inputMode="numeric"
@@ -441,9 +443,9 @@ export function NutritionWizard({
                         if (e.target.value !== heightInches) onDraftChange?.(true);
                         setHeightInches(e.target.value);
                       }}
-                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-text)]"
+                      className="flex-1 min-w-0 px-0 py-3 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)]"
                     />
-                    <span className="t-label-sm shrink-0">in</span>
+                    <span className="you-field-unit">in</span>
                   </div>
                 </div>
               </div>
@@ -466,10 +468,10 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
+          <div className="pt-1 metal-rule">
             <p className="t-label mt-5 mb-3">Body composition</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Body fat, if you know it</h2>
-            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[38ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">Body fat, if you know it</h2>
+            <p className="you-copy mt-3 max-w-[38ch]">
               Optional. With it, calories come from lean mass rather than a population average, and
               protein scales off the tissue that actually needs it. A rough estimate still helps.
             </p>
@@ -519,10 +521,10 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
+          <div className="pt-1 metal-rule">
             <p className="t-label mt-5 mb-3">Daily activity</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">How active are you?</h2>
-            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[38ch]">
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">How active are you?</h2>
+            <p className="you-copy mt-3 max-w-[38ch]">
               Lifestyle and training combined. Pick the lower option when torn — this is only a
               starting estimate. With adaptive targets enabled, logged data can refine it over time.
             </p>
@@ -544,16 +546,16 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
+          <div className="pt-1 metal-rule">
             <p className="t-label mt-5 mb-3">Nutrition goal</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">What are you optimising for?</h2>
-            <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-3 max-w-[34ch]">This sets how fast your weight should move.</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">What are you optimising for?</h2>
+            <p className="you-copy mt-3 max-w-[34ch]">This sets how fast your weight should move.</p>
           </div>
 
           {renderOptionRow(GOAL_OPTIONS, goal, selectGoal)}
 
           {showsRateControl && (
-            <div className="pt-8 border-t border-[var(--color-border)]">
+            <div className="pt-8 metal-rule">
               <p className="t-label mb-4">Rate of change</p>
 
               <div className="flex items-center justify-between gap-6">
@@ -561,7 +563,7 @@ export function NutritionWizard({
                   type="button"
                   aria-label="Slower"
                   disabled={roundRate(rate) <= rateMin + 1e-9}
-                  className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
+                  className="pressable metal-step-btn shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => {
                     onDraftChange?.(true);
                     setRate(Math.max(rateMin, roundRate(rate - RATE_STEP)));
@@ -571,7 +573,7 @@ export function NutritionWizard({
                 </button>
 
                 <div className="text-center">
-                  <span className="number-large text-[var(--color-text)] tabular-nums">
+                  <span className="metal-step-value">
                     {displayedRate > 0 ? '+' : ''}
                     {displayedRate.toFixed(2)}
                   </span>
@@ -587,7 +589,7 @@ export function NutritionWizard({
                   type="button"
                   aria-label="Faster"
                   disabled={roundRate(rate) >= rateMax - 1e-9}
-                  className="pressable studio-secondary-action shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
+                  className="pressable metal-step-btn shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => {
                     onDraftChange?.(true);
                     setRate(Math.min(rateMax, roundRate(rate + RATE_STEP)));
@@ -618,19 +620,19 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 border-t border-[var(--color-border)]">
+          <div className="pt-1 metal-rule">
             <p className="t-label mt-5 mb-3">Suggested daily targets</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="[font-family:var(--font-display)] text-[28px] leading-tight font-light tracking-tight scroll-mt-4 outline-none">Based on your profile</h2>
+            <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">Based on your profile</h2>
           </div>
 
           {/* Calories hero — the data is the point */}
           <div>
             <p className="t-label-sm mb-1">Daily calories</p>
-            <div className="flex items-baseline gap-2">
-              <span className="number-hero text-[var(--color-text)]">{result.calories.toLocaleString()}</span>
-              <span className="text-sm leading-relaxed text-[var(--color-text-dim)]">kcal</span>
+            <div className="metal-big">
+              <span className="metal-num">{result.calories.toLocaleString()}</span>
+              <span className="metal-unit">kcal</span>
             </div>
-            <p className="t-data-sm text-[var(--color-muted)] mt-2">
+            <p className="text-[12.5px] tabular-nums text-[var(--metal-ink-2)] mt-2">
               {result.tdeeIsMeasured ? 'Learned daily-burn estimate' : 'Estimated daily burn'} {result.tdee.toLocaleString()} kcal
               {' · '}
               {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
@@ -638,7 +640,7 @@ export function NutritionWizard({
           </div>
 
           {/* Macro breakdown */}
-          <dl className="border-t border-[var(--color-border)]">
+          <dl>
             {[
               { label: 'Protein', grams: result.protein, pct: percentages.protein },
               { label: 'Carbs', grams: result.carbs, pct: percentages.carbs },
@@ -646,14 +648,14 @@ export function NutritionWizard({
             ].map((macro) => (
               <div
                 key={macro.label}
-                className="flex items-baseline justify-between gap-4 py-4 border-b border-[var(--color-border)]"
+                className="metal-row you-figure-row"
               >
-                <dt className="t-label-sm">{macro.label}</dt>
+                <dt>{macro.label}</dt>
                 <dd className="flex items-baseline gap-3">
-                  <span className="t-data-sm text-[var(--color-muted)] tabular-nums">{macro.pct}%</span>
-                  <span className="flex items-baseline gap-1">
-                    <span className="number-large text-[var(--color-text)]">{macro.grams}</span>
-                    <span className="t-data-sm text-[var(--color-muted)]">g</span>
+                  <span className="text-[12.5px] text-[var(--metal-ink-2)] tabular-nums">{macro.pct}%</span>
+                  <span className="you-figure-value">
+                    <span className="metal-num">{macro.grams}</span>
+                    <span className="metal-unit">g</span>
                   </span>
                 </dd>
               </div>

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { format, isToday } from 'date-fns';
+import { Check } from 'lucide-react';
 import { Button, DateField, Input, SelectSheet, TimeField } from '@/components/shared';
+import { Chevron } from '@/components/metal';
 import { useAuthStore } from '@/stores/authStore';
 import { FoodLogger, type FoodLoggerProps, type FoodCaptureMethod } from './FoodLogger';
 import { toLocalTimeInput } from './foodLoggerUtils';
@@ -9,6 +11,7 @@ import { saveComposedMeal } from '@/lib/saveMealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import type { Food } from '@/types';
+import './fuel.css';
 
 const amount = (value: number) => Number(value.toFixed(3));
 
@@ -18,10 +21,10 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
 }) {
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
-  return <div className="space-y-3 py-4 border-t border-[var(--color-border)]">
+  return <div className="fuel-ingredient-row">
     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0"><p className="t-heading break-words">{item.food.name}</p><p className="t-caption mt-1">{Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g</p></div>
-      <Button variant="ghost" disabled={disabled} onClick={onRemove} aria-label={`Remove ${item.food.name}`}>Remove</Button>
+      <div className="min-w-0"><p className="fuel-food-name">{item.food.name}</p><p className="fuel-food-detail">{Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g</p></div>
+      <Button variant="ghost" size="sm" className="-mr-3 -mt-2.5" disabled={disabled} onClick={onRemove} aria-label={`Remove ${item.food.name}`}>Remove</Button>
     </div>
     <Input label={`Amount (${item.food.serving_unit})`} type="number" inputMode="decimal" min="0.001" step="any" value={value} disabled={disabled}
       onChange={(event) => {
@@ -32,7 +35,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
         onInvalid(invalid);
         if (!invalid) onChange(servings);
       }} />
-    {!valid && <p className="t-caption text-[var(--color-accent)]">Enter an amount greater than zero.</p>}
+    {!valid && <p className="fuel-note is-alert">Enter an amount greater than zero.</p>}
   </div>;
 }
 
@@ -142,25 +145,38 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
     } finally { setBusy(false); onBusyChange?.(false); }
   };
 
-  if (!draft || paused) return <div className="space-y-5">
-    {paused ? <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => setPaused(false)}>Resume pending meal</Button> : !initialEntry && <Button variant="secondary" className="w-full" disabled={analysisBusy} onClick={() => start()}>Build a meal</Button>}
+  if (!draft || paused) return <div>
+    {(paused || !initialEntry) && (
+      <button type="button" className="fuel-option is-lead" disabled={analysisBusy}
+        onClick={() => { if (paused) setPaused(false); else start(); }}>
+        <span className="min-w-0">
+          <span className="metal-row-title">{paused ? 'Resume pending meal' : 'Build a meal'}</span>
+          <span className="metal-row-detail">{paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}</span>
+        </span>
+        <Chevron className="metal-row-chevron" />
+      </button>
+    )}
     <FoodLogger {...props} onComposeMeal={paused ? undefined : start} onAnalysisBusyChange={reportAnalysisBusy} />
   </div>;
 
   const totals = getMealTotals(draft.ingredients);
   const valid = !!draft.name.trim() && draft.ingredients.length > 0 && !!draft.time && !invalidRows.length;
   const orderedGroups = sortNutritionGroups(groups.filter((group) => group.date === draft.date));
-  return <div className="space-y-5">
-    <div className="flex items-center justify-between gap-3">
-      <span className="t-label">{savedTarget ? 'Edit saved meal' : initialEntry ? 'Edit meal' : 'Build a meal'}</span>
-      {!draft.locked && <Button variant="ghost" disabled={busy} onClick={discard}>Discard draft</Button>}
-      {draft.locked && !busy && !initialEntry && !savedTarget && <Button variant="ghost" onClick={() => setPaused(true)}>Back to food logging</Button>}
+  return <div className="fuel-logger is-snug">
+    <div className="fuel-sheet-head -mt-1">
+      <span className="metal-eyebrow">{savedTarget ? 'Edit saved meal' : initialEntry ? 'Edit meal' : 'Build a meal'}</span>
+      {!draft.locked && <Button variant="ghost" size="sm" className="-mr-3" disabled={busy} onClick={discard}>Discard draft</Button>}
+      {draft.locked && !busy && !initialEntry && !savedTarget && <Button variant="ghost" size="sm" className="-mr-3" onClick={() => setPaused(true)}>Back to food logging</Button>}
     </div>
-    {storageFailed && <p role="alert" className="t-caption text-[var(--color-accent)]">This device couldn’t keep your latest changes. Keep this sheet open until you log the meal.</p>}
-    {error && <p role="alert" className="t-caption text-[var(--color-accent)]">{error}</p>}
+    {storageFailed && <p role="alert" className="fuel-note is-alert">This device couldn’t keep your latest changes. Keep this sheet open until you log the meal.</p>}
+    {error && <p role="alert" className="fuel-note is-alert">{error}</p>}
     {review ? <>
       <Input label="Meal name" placeholder="e.g., Protein shake" value={draft.name} maxLength={500} disabled={busy || draft.locked} onChange={(event) => update({ name: event.target.value })} />
-      <div><h3 className="flex flex-wrap items-baseline gap-x-2"><span className="number-hero">{Math.round(totals.calories)}</span>{' '}<span className="t-caption">kcal</span></h3><p className="t-data-sm mt-2">P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g</p></div>
+      <div className="fuel-figure">
+        <span className="metal-eyebrow">Meal total</span>
+        <h3 className="metal-big"><span className="metal-num">{Math.round(totals.calories)}</span>{' '}<span className="metal-unit">kcal</span></h3>
+        <p className="fuel-macro-line">P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g</p>
+      </div>
       <div>{draft.ingredients.map((item) => <IngredientRow key={item.id} item={item} disabled={busy || draft.locked}
         onChange={(servings) => update({ ingredients: draft.ingredients.map((part) => part.id === item.id ? { ...part, servings } : part) })}
         onInvalid={(invalid) => setInvalidRows((rows) => invalid ? [...new Set([...rows, item.id])] : rows.filter((id) => id !== item.id))}
@@ -173,14 +189,19 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
         </fieldset>
         <SelectSheet title="Add to" value={draft.groupId || ''} disabled={busy || draft.locked} onChange={(groupId) => update({ groupId: groupId || null })}
           options={[{ value: '', label: 'Unassigned' }, ...orderedGroups.map((group) => ({ value: group.id, label: nutritionGroupLabel(group, orderedGroups) }))]} />
-        <label className="min-h-11 flex items-center gap-3"><input type="checkbox" className="w-[18px] h-[18px] accent-[var(--color-text)]" checked={draft.saveAsReusableMeal} disabled={busy || draft.locked} onChange={(event) => update({ saveAsReusableMeal: event.target.checked })} /><span className="t-label">Save as reusable meal</span></label>
+        <label className="fuel-check -my-2"><input type="checkbox" className="sr-only" checked={draft.saveAsReusableMeal} disabled={busy || draft.locked} onChange={(event) => update({ saveAsReusableMeal: event.target.checked })} /><span className="fuel-check-box" aria-hidden>{draft.saveAsReusableMeal && <Check strokeWidth={3} />}</span><span className="fuel-check-label">Save as reusable meal</span></label>
       </>}
       <Button className="w-full" size="lg" disabled={!valid || busy} loading={busy} onClick={() => void save()}>{draft.locked ? 'Retry save' : savedTarget || initialEntry ? 'Save changes' : 'Log meal'}</Button>
     </> : <>
       <FoodLogger key={captureKey} selectedDate={selectedDate} onComplete={() => {}} onAddIngredients={addIngredients} initialMethod={draft.method} onMethodChange={methodChange} onAnalysisBusyChange={reportAnalysisBusy} onUnreviewedResultChange={props.onUnreviewedResultChange} />
-      <div className="sticky bottom-0 bg-[var(--color-base)] border-t border-[var(--color-border)] pt-3 pb-2 flex items-center gap-3">
-        <div className="flex-1"><p className="t-label">{draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}</p><p className="t-caption mt-1">{Math.round(totals.calories)} kcal</p></div>
-        <Button disabled={!draft.ingredients.length || analysisBusy} onClick={() => setReview(true)}>Review meal</Button>
+      <div className="fuel-tray pb-2">
+        <div className="fuel-tray-row">
+          <div className="fuel-tray-figure">
+            <p className="metal-eyebrow">{draft.ingredients.length} ingredient{draft.ingredients.length === 1 ? '' : 's'}</p>
+            <p className="flex items-baseline gap-1.5 mt-1"><span className="metal-num">{Math.round(totals.calories)}</span><span className="metal-unit">kcal</span></p>
+          </div>
+          <Button disabled={!draft.ingredients.length || analysisBusy} onClick={() => setReview(true)}>Review meal</Button>
+        </div>
       </div>
     </>}
   </div>;

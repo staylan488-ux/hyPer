@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ImagePlus, Sparkles, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ImagePlus, Sparkles, Trash2 } from 'lucide-react';
 import { Button, FormField, Input } from '@/components/shared';
 import { supabase } from '@/lib/supabase';
 import { analyzeFoodTrial, trialFoodTotals, type FoodTrialResult, type TrialFoodItem } from '@/lib/foodTrial';
 import { buildClarifiedMealHint, isValidTrialReview } from './foodTrialReview';
 import type { PhotoAnalysisImage } from '@/lib/photoAnalysis';
+import './fuel.css';
 
 export interface FoodTrialDraftState {
   hasDraft: boolean;
@@ -118,71 +119,72 @@ export function FoodTrialLogger({ whenRow, prepareImage, onSave, initialHint = '
       setError(null);
       setPhotos((current) => [...current, ...selected.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
     }} />
-    {photos.length > 0 && <div className="grid grid-cols-2 gap-3">{photos.map((photo, index) => <div key={photo.preview} className="space-y-2">
-      <img src={photo.preview} alt={`Meal photo ${index + 1}`} className="w-full h-36 object-cover rounded-xl" />
-      <Button variant="ghost" disabled={!!busy} onClick={() => { URL.revokeObjectURL(photo.preview); setPhotos((current) => current.filter((entry) => entry !== photo)); }}>Remove photo {index + 1}</Button>
+    {photos.length > 0 && <div className="grid grid-cols-2 gap-3">{photos.map((photo, index) => <div key={photo.preview} className="space-y-1">
+      <div className="fuel-photo"><img src={photo.preview} alt={`Meal photo ${index + 1}`} className="h-36" /></div>
+      <Button variant="ghost" size="sm" className="-ml-3" disabled={!!busy} onClick={() => { URL.revokeObjectURL(photo.preview); setPhotos((current) => current.filter((entry) => entry !== photo)); }}>Remove photo {index + 1}</Button>
     </div>)}</div>}
     <Button variant="secondary" className="w-full" disabled={!!busy || photos.length === 2} onClick={() => inputRef.current?.click()}><ImagePlus className="w-4 h-4" />Add photo</Button>
   </>;
 
-  return <div className="space-y-6">
+  return <div className="fuel-stack is-loose">
     {!result ? <>
       <FormField label="Your meal">
         <textarea value={hint} onChange={(event) => setHint(event.target.value.slice(0, 1500))} maxLength={1500} disabled={!!busy} rows={3}
           placeholder="e.g., Six Trader Joe’s chicken tikka samosas"
-          className="well w-full min-h-24 px-3 py-3 text-[1rem] text-[var(--color-text)] outline-none resize-y placeholder:text-[var(--color-muted)]" />
+          className="metal-input w-full min-h-24 px-3.5 py-3 text-[1rem] text-[var(--metal-ink)] resize-y placeholder:text-[var(--metal-ink-3)]" />
       </FormField>
       {photoControls}
-      <p className="t-caption">Photo, text, or both. Include the amount and any added oil or sauce you know about.</p>
+      <p className="fuel-note">Photo, text, or both. Include the amount and any added oil or sauce you know about.</p>
       <Button className="w-full" loading={busy === 'analysis'} disabled={!!busy || (!hint.trim() && !photos.length)} onClick={() => void analyze()}><Sparkles className="w-4 h-4" />Analyze meal</Button>
     </> : (result.clarification || result.items.length === 0) && !saveStarted ? <>
-      {clarificationUsed ? <div><p className="t-label">Your meal</p><h3 className="t-heading mt-3">{busy === 'analysis' ? 'Making your estimate…' : 'We couldn’t estimate this meal yet.'}</h3></div> : <>
-        <div><p className="t-label">One quick detail</p><h3 className="t-heading mt-3">{result.clarification || 'What is the main food in this meal?'}</h3></div>
+      {clarificationUsed ? <div><p className="metal-eyebrow">Your meal</p><h3 className="metal-row-title mt-2">{busy === 'analysis' ? 'Making your estimate…' : 'We couldn’t estimate this meal yet.'}</h3></div> : <>
+        <div><p className="metal-eyebrow">One quick detail</p><h3 className="metal-row-title mt-2">{result.clarification || 'What is the main food in this meal?'}</h3></div>
         <Input label="Your answer (optional)" value={answer} disabled={!!busy} onChange={(event) => setAnswer(event.target.value)} placeholder="Or let us use an estimate" />
       </>}
       {photoControls}
-      <p className="t-caption">Add a meal or nutrition label photo. Up to two photos, 10 MB each. Remove a photo to replace it.</p>
+      <p className="fuel-note">Add a meal or nutrition label photo. Up to two photos, 10 MB each. Remove a photo to replace it.</p>
       <div className="flex gap-3"><Button variant="secondary" disabled={!!busy} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'analysis'} disabled={!!busy} onClick={() => void analyze(true)}>{clarificationUsed ? 'Retry estimate' : answer.trim() || photos.length ? 'Update estimate' : 'Use an estimate'}</Button></div>
     </> : <>
       <div>
-        <p className="t-label">Your meal</p>
-        <h3 className="mt-3 flex flex-wrap items-baseline gap-x-2"><span className="number-hero">{formatAmount(totals.calories)}</span>{' '}<span className="t-caption">kcal</span></h3>
-        <p className="t-data-sm mt-3">P {formatAmount(totals.protein)} g · C {formatAmount(totals.carbs)} g · F {formatAmount(totals.fat)} g</p>
-        {result.summary && <p className="t-caption mt-3">{result.summary}</p>}
+        <p className="metal-eyebrow">Your meal</p>
+        <h3 className="metal-big"><span className="metal-num">{formatAmount(totals.calories)}</span>{' '}<span className="metal-unit">kcal</span></h3>
+        <p className="fuel-macro-line">P {formatAmount(totals.protein)} g · C {formatAmount(totals.carbs)} g · F {formatAmount(totals.fat)} g</p>
+        {result.summary && <p className="fuel-note mt-3">{result.summary}</p>}
       </div>
-      {editingEntry && items.length > 1 && <p className="t-caption" role="status">Keep one food to replace this entry. Add other foods separately.</p>}
+      {editingEntry && items.length > 1 && <p className="fuel-note" role="status">Keep one food to replace this entry. Add other foods separately.</p>}
       {items.map((item, index) => {
         const itemTotals = trialFoodTotals(item);
-        return <div key={index} className="space-y-3 border-t border-[var(--color-border)] pt-4">
-          <div className="flex items-start justify-between gap-4"><div className="min-w-0"><h4 className="t-heading break-words">{item.name}</h4><p className="t-caption mt-1">{item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'}</p></div><span className="t-data-sm shrink-0">{formatAmount(itemTotals.calories)} kcal</span></div>
-          <p className="t-data-sm">P {formatAmount(itemTotals.protein)} g · C {formatAmount(itemTotals.carbs)} g · F {formatAmount(itemTotals.fat)} g</p>
-          <details>
-            <summary className="t-caption cursor-pointer min-h-11 flex items-center">Adjust {item.name}</summary>
+        return <div key={index} className="fuel-ruled pt-3.5">
+          <div className="flex items-start justify-between gap-4"><div className="min-w-0"><h4 className="fuel-food-name">{item.name}</h4><p className="fuel-food-detail">{item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'}</p></div><span className="fuel-entry-kcal">{formatAmount(itemTotals.calories)}<small>kcal</small></span></div>
+          <p className="fuel-food-detail mt-1">P {formatAmount(itemTotals.protein)} g · C {formatAmount(itemTotals.carbs)} g · F {formatAmount(itemTotals.fat)} g</p>
+          <details className="fuel-ingredients is-flush">
+            <summary>Adjust {item.name}<ChevronDown strokeWidth={1.5} aria-hidden /></summary>
             <div className="space-y-4 pt-1 pb-3">
               <Input label="Food name" value={item.name} disabled={!!busy || saveStarted} onChange={(event) => update(index, { name: event.target.value })} />
               <div className="grid grid-cols-2 gap-3"><Input label="Amount eaten" type="number" inputMode="decimal" min="0.01" step="any" value={item.quantity} disabled={!!busy || saveStarted} onChange={(event) => update(index, { quantity: Number(event.target.value), amountConfirmed: true })} /><Input label="Unit" value={item.unit} disabled={!!busy || saveStarted} onChange={(event) => update(index, { unit: event.target.value, amountConfirmed: true })} /></div>
-              <p className="t-caption">Nutrition below is per {item.basisQuantity} {item.unit}. Your meal total scales with the amount eaten.</p>
+              <p className="fuel-note">Nutrition below is per {item.basisQuantity} {item.unit}. Your meal total scales with the amount eaten.</p>
               <Input label={`Nutrition per (${item.unit || 'units'})`} type="number" inputMode="decimal" min="0.01" step="any" value={item.basisQuantity} disabled={!!busy || saveStarted} onChange={(event) => update(index, { basisQuantity: Number(event.target.value) })} />
               <div className="grid grid-cols-2 gap-3">{MACROS.map((key) => <Input key={key} label={key === 'calories' ? 'Calories (kcal)' : `${key[0].toUpperCase()}${key.slice(1)} (g)`} type="number" inputMode="decimal" min="0" step="any" value={item[key]} disabled={!!busy || saveStarted} onChange={(event) => update(index, { [key]: Number(event.target.value) })} />)}</div>
-              {item.notes && <p className="t-caption">{item.notes}</p>}
-              <Button variant="ghost" disabled={!!busy || saveStarted} onClick={() => setItems((current) => current.filter((_, position) => position !== index))}><Trash2 className="w-4 h-4" />Remove food</Button>
+              {item.notes && <p className="fuel-note">{item.notes}</p>}
+              <Button variant="danger" size="sm" disabled={!!busy || saveStarted} onClick={() => setItems((current) => current.filter((_, position) => position !== index))}><Trash2 className="w-4 h-4" />Remove food</Button>
             </div>
           </details>
         </div>;
       })}
-      {result.sources.length > 0 && <details className="t-caption"><summary className="min-h-11 flex items-center cursor-pointer">Sources ({result.sources.length})</summary><div className="space-y-3 pb-3">{result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="block underline underline-offset-2 break-words">{source.title}</a>)}</div></details>}
+      {result.sources.length > 0 && <details className="fuel-ingredients is-flush fuel-ruled"><summary>Sources ({result.sources.length})<ChevronDown strokeWidth={1.5} aria-hidden /></summary><div className="fuel-note space-y-3 pb-3">{result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="block break-words">{source.title}</a>)}</div></details>}
       {whenRow}
-      {!addingIngredients && <label className="flex items-center gap-3 min-h-11 cursor-pointer">
+      {!addingIngredients && <label className="fuel-check -my-2">
         <input type="checkbox" checked={saveAsReusableMeal} disabled={!!busy || saveStarted}
           onChange={(event) => setSaveAsReusableMeal(event.target.checked)}
-          className="w-[18px] h-[18px] shrink-0 accent-[var(--color-text)]" />
+          className="sr-only" />
+        <span className="fuel-check-box" aria-hidden>{saveAsReusableMeal && <Check strokeWidth={3} />}</span>
         <span>
-          <span className="t-label block">Save as reusable meal</span>
-          <span className="t-caption block mt-1">{items.length > 1 ? 'Also add these foods to Saved meals for future logging.' : 'Also add this food to Saved meals for future logging.'}</span>
+          <span className="fuel-check-label">Save as reusable meal</span>
+          <span className="fuel-check-detail">{items.length > 1 ? 'Also add these foods to Saved meals for future logging.' : 'Also add this food to Saved meals for future logging.'}</span>
         </span>
       </label>}
       <div className="flex gap-3"><Button variant="secondary" disabled={!!busy || saveStarted} onClick={changeMeal}>Change meal</Button><Button className="flex-1" loading={busy === 'save'} disabled={!!busy || !valid} onClick={() => void save()}>{addingIngredients ? 'Add ingredients' : editingEntry ? 'Save changes' : 'Log meal'}</Button></div>
     </>}
-    {error && <p className="t-caption text-[var(--color-accent)]" role="alert">{error}</p>}
+    {error && <p className="fuel-note is-alert" role="alert">{error}</p>}
   </div>;
 }

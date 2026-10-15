@@ -18,7 +18,7 @@ interface SegmentedControlProps<T extends string> {
 }
 
 /**
- * Studio segmented choices: one quiet well with a neutral selected surface.
+ * Metal segmented choices: a hairline track with one quiet selected capsule.
  * Long option groups can scroll without shrinking labels or touch targets.
  */
 export function SegmentedControl<T extends string>({
@@ -30,11 +30,11 @@ export function SegmentedControl<T extends string>({
   className = '',
 }: SegmentedControlProps<T>) {
   const groupId = useId();
-  const item = size === 'sm' ? 'px-2' : 'px-3';
+  const item = size === 'sm' ? 'px-2.5' : 'px-3.5';
 
   return (
     <div
-      className={`flex gap-1 p-1 well overflow-x-auto no-scrollbar ${className}`}
+      className={`metal-segmented flex gap-0.5 overflow-x-auto no-scrollbar ${className}`}
       role="tablist"
       onKeyDown={(event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -61,7 +61,7 @@ export function SegmentedControl<T extends string>({
               if (!selected) tapHaptic();
               onChange(option.value);
             }}
-            className={`relative min-h-11 min-w-11 shrink-0 rounded-[var(--radius-control)] uppercase font-medium text-[11px] tracking-[0.16em] [font-family:var(--font-sans)] transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
+            className={`metal-segment relative min-h-11 min-w-11 shrink-0 transition-colors duration-200 ${distribution === 'equal' ? 'flex-1' : ''} ${item} ${
               selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
             }`}
           >
@@ -69,7 +69,7 @@ export function SegmentedControl<T extends string>({
             {selected && (
               <motion.span
                 layoutId={`segment-${groupId}`}
-                className="material-selected absolute inset-0 rounded-[var(--radius-control)]"
+                className="metal-segment-pill absolute inset-0"
                 transition={springs.tactile}
               />
             )}

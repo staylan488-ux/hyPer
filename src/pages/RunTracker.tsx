@@ -5,7 +5,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Button, SegmentedControl, SelectSheet } from '@/components/shared';
+import { ChevronLeft } from 'lucide-react';
+import { SegmentedControl, SelectSheet } from '@/components/shared';
+import { Eyebrow, HeroFigure, MetalSection, MetalTitle, useCommandCapsule, type CommandCapsuleSpec } from '@/components/metal';
 import { LapPaceChart } from '@/components/shared/charts';
 import { useAppStore } from '@/stores/appStore';
 import { useRunTracker, createSimulatedSource, type PositionSource } from '@/hooks/useRunTracker';
@@ -32,6 +34,7 @@ import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
 import { isNativeIOS, NativeRun } from '@/lib/nativeBridge';
+import './RunTracker.css';
 
 const RUN_MODE_LABELS: Record<RunMode, string> = {
   free: 'Long run',
@@ -72,6 +75,23 @@ function formatRunPace(secondsPerMile: number | null): string | null {
 function formatMeters(distanceM: number): string {
   if (distanceM < MILE_M) return `${Math.round(distanceM)} m`;
   return formatDistanceMi(distanceM) ?? '0.00 mi';
+}
+
+/** "195 m" → ["195", "m"]; "7:59 /mi" → ["7:59", "/mi"]; "0:58" → ["0:58", ""]. */
+function figure(label: string): [string, string] {
+  const space = label.lastIndexOf(' ');
+  return space > 0 ? [label.slice(0, space), label.slice(space + 1)] : [label, ''];
+}
+
+/** A labelled Fraunces figure with its unit in Geist. */
+function Stat({ label, value }: { label: string; value: string }) {
+  const [number, unit] = figure(value);
+  return (
+    <div className="min-w-0">
+      <p className="metal-stat-label">{label}</p>
+      <p className="metal-stat-value">{number}{unit && <small>{unit}</small>}</p>
+    </div>
+  );
 }
 
 async function exportGpsDiagnostics(
@@ -130,7 +150,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   return (
     <button
       type="button"
-      className="relative material-control rounded-[11px] w-full min-h-20 overflow-hidden select-none touch-none transition-transform duration-75 active:scale-[0.94]"
+      className={`run-control is-finish w-full${holding ? ' is-holding' : ''}`}
       onPointerDown={(event) => {
         event.stopPropagation();
         begin();
@@ -141,16 +161,12 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
       onClick={(event) => event.stopPropagation()}
     >
       <motion.span
-        className="absolute inset-y-0 left-0 bg-[var(--button-primary-bg)]"
+        className="run-hold-fill"
         initial={false}
         animate={{ width: holding ? '100%' : '0%' }}
         transition={holding ? { duration: HOLD_TO_FINISH_MS / 1000, ease: 'linear' } : { duration: 0.15 }}
       />
-      <span
-        className={`relative z-10 t-label text-lg transition-colors ${
-          holding ? 'text-[var(--button-primary-fg)]' : 'text-[var(--color-text)]'
-        }`}
-      >
+      <span className="run-control-label">
         {holding ? 'Keep holding…' : 'Hold to finish'}
       </span>
     </button>
@@ -282,6 +298,54 @@ export function RunTracker() {
     tracker.resting,
   ]);
 
+  /* ── the one primary action ── */
+  // Start (or resume an interrupted run) before; Save after. The live run
+  // keeps its own large controls, so it registers nothing.
+  const autoLapLabel = autoLap === 'off'
+    ? 'manual splits'
+    : autoLap === 'custom'
+      ? `every ${Number(customAutoLapM).toLocaleString('en-US')} m`
+      : `every ${Number(autoLap).toLocaleString('en-US')} m`;
+  const capsule: CommandCapsuleSpec | null = tracker.finishedRun
+    ? {
+        key: 'run-save',
+        label: 'Save run',
+        sublabel: saveError
+          ? 'Couldn’t save · try again'
+          : `${RUN_MODE_LABELS[tracker.finishedRun.mode]} · ${formatMeters(tracker.finishedRun.totalDistanceM)}`,
+        alert: Boolean(saveError),
+        glyph: 'check',
+        busy: saving,
+        dock: 'bottom',
+        onPress: () => { void handleSave(); },
+      }
+    : running
+      ? null
+      : tracker.resumable
+        ? {
+            key: 'run-resume',
+            label: 'Resume run',
+            sublabel: 'Pick the interrupted run back up',
+            glyph: 'arrow',
+            dock: 'bottom',
+            onPress: () => tracker.resume(),
+          }
+        : {
+            key: 'run-start',
+            label: 'Start run',
+            sublabel: !customAutoLapValid
+              ? 'Enter 10–100,000 m'
+              : mode === 'intervals'
+                ? `${RUN_MODE_LABELS.intervals} · ${autoLapLabel}`
+                : `${RUN_MODE_LABELS.free} · live and average pace`,
+            alert: !customAutoLapValid,
+            disabled: !customAutoLapValid,
+            glyph: 'arrow',
+            dock: 'bottom',
+            onPress: handleStart,
+          };
+  useCommandCapsule(capsule);
+
   /* ── finished summary ── */
   if (tracker.finishedRun) {
     const finishedRun = tracker.finishedRun;
@@ -297,66 +361,63 @@ export function RunTracker() {
           distanceM: lap.distanceM,
           isRest: lap.kind === 'rest',
         }));
+    const [distanceValue, distanceUnit] = figure(formatMeters(finishedRun.totalDistanceM));
 
     return (
-      <motion.div className="min-h-dvh px-6 pt-10 pb-10 max-w-lg mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springs.settle}>
-        <p className="t-label-sm">Run complete</p>
-        <h1 className="t-display text-[2rem] mt-2">
-          {RUN_MODE_LABELS[finishedRun.mode]}
-        </h1>
+      <motion.div className="metal-page run-page max-w-lg mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={springs.settle}>
+        <header>
+          <Eyebrow>Run complete</Eyebrow>
+          <MetalTitle>{RUN_MODE_LABELS[finishedRun.mode]}</MetalTitle>
+        </header>
 
-        <div className="grid grid-cols-3 gap-4 mt-8">
-          <div>
-            <p className="t-label-sm">Time</p>
-            <p className="t-data-lg mt-1">{formatClockDuration(finishedRun.elapsedS)}</p>
-          </div>
-          <div>
-            <p className="t-label-sm">Distance</p>
-            <p className="t-data-lg mt-1">{formatMeters(finishedRun.totalDistanceM)}</p>
-          </div>
-          <div>
-            <p className="t-label-sm">Avg pace</p>
-            <p className="t-data-lg mt-1">
-              {formatRunPace(paceSecondsPerMile(finishedRun.totalDistanceM, finishedRun.elapsedS)) ?? '—'}
-            </p>
-          </div>
+        <HeroFigure value={distanceValue} caption={distanceUnit} />
+        <div className="run-stats is-two mt-7">
+          <Stat label="Time" value={formatClockDuration(finishedRun.elapsedS) ?? '—'} />
+          <Stat
+            label="Avg pace"
+            value={formatRunPace(paceSecondsPerMile(finishedRun.totalDistanceM, finishedRun.elapsedS)) ?? '—'}
+          />
         </div>
+        <p className="sr-only">Distance {formatMeters(finishedRun.totalDistanceM)}</p>
 
         {splits.length > 1 && (
-          <div className="mt-8 border-t border-[var(--color-border)] pt-3">
+          <MetalSection label="Splits" right={<b>{splits.filter((split) => !('isRest' in split && split.isRest)).length}</b>}>
             <LapPaceChart
-              className="mb-5"
+              className="mt-3 mb-6"
               laps={splits}
               formatPace={formatRunPace}
               formatDistance={(meters) => (meters == null ? null : formatMeters(meters))}
               formatDuration={formatClockDuration}
             />
-            <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm pb-1">
+            <div className="run-ledger-row is-head">
               <span>#</span>
               <span>Time</span>
               <span>Dist</span>
               <span>Pace</span>
             </div>
-            {splits.map((split) => (
-              <div key={split.key} className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-data-sm text-[11px] text-[var(--color-text-dim)] py-0.5">
-                <span>{'isRest' in split && split.isRest ? '·' : split.key}</span>
-                <span>{formatClockDuration(split.durationS) ?? '—'}</span>
-                <span>{'isRest' in split && split.isRest ? 'rest' : formatMeters(split.distanceM)}</span>
-                <span>
-                  {'isRest' in split && split.isRest
-                    ? '—'
-                    : formatRunPace(paceSecondsPerMile(split.distanceM, split.durationS)) ?? '—'}
-                </span>
-              </div>
-            ))}
-          </div>
+            {splits.map((split) => {
+              const rest = 'isRest' in split && split.isRest;
+              return (
+                <div key={split.key} className={`run-ledger-row${rest ? ' is-rest' : ''}`}>
+                  <span className="text-[var(--metal-ink-3)]">{rest ? '·' : split.key}</span>
+                  <span>{formatClockDuration(split.durationS) ?? '—'}</span>
+                  <span>{rest ? 'rest' : formatMeters(split.distanceM)}</span>
+                  <span>
+                    {rest
+                      ? '—'
+                      : formatRunPace(paceSecondsPerMile(split.distanceM, split.durationS)) ?? '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </MetalSection>
         )}
 
         {finishedRun.trace && finishedRun.trace.length > 0 && (
-          <div className="mt-8 border-t border-[var(--color-border)] pt-4">
+          <MetalSection label="GPS diagnostics">
             <button
               type="button"
-              className="pressable t-label-sm min-h-11 text-[var(--color-muted)]"
+              className="metal-text-btn"
               onClick={() => {
                 setExportError(null);
                 void exportGpsDiagnostics(finishedRun).catch(() => {
@@ -366,20 +427,21 @@ export function RunTracker() {
             >
               Export private GPS diagnostics
             </button>
-            <p className="t-caption mt-1">Coordinates stay on this device unless you export them.</p>
-            {exportError && <p className="t-caption mt-1 text-[var(--color-accent)]">{exportError}</p>}
-          </div>
+            <p className="metal-row-detail">Coordinates stay on this device unless you export them.</p>
+            {exportError && <p className="metal-flag"><span>{exportError}</span></p>}
+          </MetalSection>
         )}
 
-        {saveError && <p className="t-caption mt-6 text-[var(--color-accent)]">{saveError}</p>}
-
-        <div className="flex gap-3 mt-10">
-          <Button variant="ghost" className="flex-1" disabled={saving} onClick={handleDiscardAll}>
-            Discard
-          </Button>
-          <Button className="flex-1" loading={saving} onClick={() => { void handleSave(); }}>
-            Save
-          </Button>
+        <div className="metal-section pt-2">
+          {saveError && <p className="metal-flag mt-3"><span>{saveError}</span></p>}
+          <button
+            type="button"
+            className="metal-text-btn is-quiet disabled:opacity-40"
+            disabled={saving}
+            onClick={handleDiscardAll}
+          >
+            Discard run
+          </button>
         </div>
       </motion.div>
     );
@@ -387,16 +449,17 @@ export function RunTracker() {
 
   /* ── live tracking ── */
   if (running) {
+    const [paceValue, paceUnit] = figure(paceLabel);
+    const alertStatus = tracker.resting || warming || weak;
+    // A rest lap has no pace; its clock is the figure worth reading.
+    const restHero = tracker.resting && state.config.mode === 'intervals';
     return (
-      <div
-        className="fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-w-lg mx-auto select-none overscroll-none"
-        style={{ background: 'var(--material-foundation, var(--color-base))' }}
-      >
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">
+      <div className="run-live fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col max-w-lg mx-auto select-none overscroll-none">
+        <div className="flex items-center justify-between gap-3 min-h-11">
+          <Eyebrow live={!tracker.resting}>
             {RUN_MODE_LABELS[state.config.mode]}
-          </span>
-          <span className={`t-label-sm ${tracker.resting || warming || weak ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}`}>
+          </Eyebrow>
+          <span className={`metal-eyebrow ${alertStatus ? '!text-[var(--metal-red)]' : ''}`}>
             {tracker.resting
               ? 'resting'
               : warming
@@ -408,45 +471,37 @@ export function RunTracker() {
         </div>
 
         {tracker.gpsError && (
-          <p className="t-caption mt-3 text-[var(--color-accent)]">{tracker.gpsError}</p>
+          <p className="metal-flag mt-3"><span>{tracker.gpsError}</span></p>
         )}
 
-        <div className="flex-1 flex flex-col justify-center gap-8">
+        <div className="flex-1 flex flex-col justify-center">
           <div>
-            <p className="t-label-sm">{state.config.mode === 'intervals' ? 'Lap pace' : 'Pace'}</p>
-            <p className="t-data-hero mt-1">
-              {paceLabel}
-            </p>
+            <p className="metal-eyebrow">{restHero ? 'Rest' : state.config.mode === 'intervals' ? 'Lap pace' : 'Pace'}</p>
+            <div className="metal-hero mt-3">
+              <span className="metal-num">{restHero ? formatClockDuration(currentLapSeconds(state, tracker.nowMs)) : paceValue}</span>
+              {!restHero && paceUnit && <span className="metal-hero-caption">{paceUnit}</span>}
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <p className="t-label-sm">Time</p>
-              <p className="t-data-lg mt-1">{elapsedLabel}</p>
-            </div>
-            <div>
-              <p className="t-label-sm">Distance</p>
-              <p className="t-data-lg mt-1">{distanceLabel}</p>
-            </div>
-            <div>
-              <p className="t-label-sm">Avg pace</p>
-              <p className="t-data-lg mt-1">{formatRunPace(averagePace) ?? '—'}</p>
-            </div>
+          <div className="run-stats metal-rule mt-8 pt-5">
+            <Stat label="Time" value={elapsedLabel ?? '0:00'} />
+            <Stat label="Distance" value={distanceLabel} />
+            <Stat label="Avg pace" value={formatRunPace(averagePace) ?? '—'} />
           </div>
 
           {state.config.mode === 'intervals' && (
-            <div className="grid grid-cols-2 gap-6 border-t border-[var(--color-border)] pt-5">
+            <div className="grid grid-cols-2 gap-6 metal-rule mt-6 pt-5">
               <div>
-                <p className="t-label-sm">{tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}</p>
-                <p className="t-data mt-1">
-                  {formatClockDuration(currentLapSeconds(state, tracker.nowMs))} • {formatMeters(currentLapDistanceM(state))}
+                <p className="metal-stat-label">{tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}</p>
+                <p className="run-detail">
+                  {formatClockDuration(currentLapSeconds(state, tracker.nowMs))} · {formatMeters(currentLapDistanceM(state))}
                 </p>
               </div>
               <div>
-                <p className="t-label-sm">Last split</p>
-                <p className="t-data mt-1">
+                <p className="metal-stat-label">Last split</p>
+                <p className="run-detail">
                   {lastLap
-                    ? `${formatClockDuration((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} • ${formatMeters(lastLap.distanceM)}`
+                    ? `${formatClockDuration((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatMeters(lastLap.distanceM)}`
                     : '—'}
                 </p>
               </div>
@@ -454,19 +509,19 @@ export function RunTracker() {
           )}
 
           {state.config.mode === 'sprints' && (
-            <div className="grid grid-cols-2 gap-6 border-t border-[var(--color-border)] pt-5">
+            <div className="grid grid-cols-2 gap-6 metal-rule mt-6 pt-5">
               <div>
-                <p className="t-label-sm">Sprints</p>
-                <p className="t-data-lg mt-1">
+                <p className="metal-stat-label">Sprints</p>
+                <p className="metal-stat-value">
                   {state.reps.length}
-                  {state.sprintPhase === 'active' && <span className="text-[var(--color-accent)]"> ●</span>}
+                  {state.sprintPhase === 'active' && <span className="text-[var(--metal-red)] text-[18px] align-middle"> ●</span>}
                 </p>
               </div>
               <div>
-                <p className="t-label-sm">Last rep</p>
-                <p className="t-data mt-1">
+                <p className="metal-stat-label">Last rep</p>
+                <p className="run-detail">
                   {lastRep
-                    ? `${formatMeters(lastRep.distanceM)} • ${lastRep.peakSpeedMps.toFixed(1)} m/s peak`
+                    ? `${formatMeters(lastRep.distanceM)} · ${lastRep.peakSpeedMps.toFixed(1)} m/s peak`
                     : '—'}
                 </p>
               </div>
@@ -475,13 +530,12 @@ export function RunTracker() {
 
         </div>
 
-        {/* Large tactile controls share one foreground material while the
-            pace and session records stay directly on the foundation. */}
-        <div className="material-toolbar flex items-stretch gap-3 rounded-[20px] p-3 -mx-3">
+        {/* Large hairline controls for running hands; finishing needs a hold. */}
+        <div className="flex items-stretch gap-2.5">
           {state.config.mode === 'intervals' && !tracker.resting && (
             <button
               type="button"
-              className="material-control rounded-[11px] min-h-20 min-w-0 flex-1 px-3 t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] "
+              className="run-control is-primary"
               onClick={() => { tapHaptic(); tracker.split(); }}
             >
               Split
@@ -489,12 +543,12 @@ export function RunTracker() {
           )}
           <button
             type="button"
-            className="material-control rounded-[11px] min-h-20 min-w-0 flex-1 px-3 t-label text-lg text-[var(--color-text)] shrink-0 transition-all duration-75 active:scale-[0.94] "
+            className="run-control"
             onClick={() => { tapHaptic(); tracker.toggleRest(); }}
           >
             {tracker.resting ? 'Resume' : 'Rest'}
           </button>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex">
             <HoldToFinish onFinish={handleFinish} />
           </div>
         </div>
@@ -504,37 +558,47 @@ export function RunTracker() {
 
   /* ── pre-start config ── */
   return (
-    <motion.div className="fixed inset-0 z-40 h-dvh overflow-hidden pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] max-w-lg mx-auto flex flex-col overscroll-none" style={{ background: 'var(--material-foundation, var(--color-base))' }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-      <p className="t-label-sm">Field tracker</p>
-      <h1 className="t-display text-[2rem] mt-2">Run</h1>
+    <motion.div className="metal-page run-page max-w-lg mx-auto" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
+      <button
+        type="button"
+        className="metal-text-btn is-quiet run-back"
+        onClick={() => navigate(-1)}
+      >
+        <ChevronLeft strokeWidth={1.5} aria-hidden />
+        Back
+      </button>
+
+      <header className="mt-2">
+        <Eyebrow>Field tracker</Eyebrow>
+        <MetalTitle note={mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}>Run</MetalTitle>
+      </header>
 
       {tracker.resumable && (
-        <div className="material-surface rounded-[16px] mt-6 p-4">
-          <p className="t-heading">Run in progress</p>
-          <p className="t-caption mt-1">A tracked run was interrupted. Pick it back up?</p>
-          <div className="flex gap-3 mt-4">
-            <Button variant="ghost" size="sm" className="flex-1" onClick={handleDiscardAll}>
-              Discard
-            </Button>
-            <Button variant="secondary" size="sm" className="flex-1" onClick={() => tracker.resume()}>
-              Resume
-            </Button>
+        <section className="metal-section">
+          <div className="metal-section-head">
+            <Eyebrow live>Run in progress</Eyebrow>
           </div>
-        </div>
+          <p className="metal-note mt-1">A tracked run was interrupted. Pick it back up?</p>
+          <p className="metal-row-detail mt-2">Resume or discard the interrupted run before starting another.</p>
+          <button type="button" className="metal-text-btn is-quiet mt-1" onClick={handleDiscardAll}>
+            Discard
+          </button>
+        </section>
       )}
 
-      <div className="mt-8">
-        <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} />
-      </div>
+      <MetalSection label="Mode">
+        <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} distribution="equal" className="mt-2" />
+      </MetalSection>
 
       {mode === 'intervals' && (
-        <div className="mt-6">
-          <label className="t-label-sm block mb-2">Auto-split</label>
-          <SelectSheet value={autoLap} onChange={setAutoLap} options={AUTO_LAP_OPTIONS} title="Auto-split distance" />
-          <p className="t-caption mt-2">Use the Split button anytime, or let distance trigger it.</p>
+        <MetalSection label="Auto-split">
+          <div className="mt-2">
+            <SelectSheet value={autoLap} onChange={setAutoLap} options={AUTO_LAP_OPTIONS} title="Auto-split distance" />
+          </div>
+          <p className="metal-row-detail mt-2">Use the Split button anytime, or let distance trigger it.</p>
           {autoLap === 'custom' && (
-            <label className="block mt-3">
-              <span className="t-label-sm block mb-2">Custom metres</span>
+            <label className="block mt-4">
+              <span className="t-label block mb-2">Custom metres</span>
               <input
                 type="number"
                 inputMode="numeric"
@@ -543,47 +607,32 @@ export function RunTracker() {
                 step={1}
                 value={customAutoLapM}
                 onChange={(event) => setCustomAutoLapM(event.target.value)}
-                className="material-inset rounded-[11px] w-full min-h-12 px-4 t-data"
+                className="metal-input run-metres-input w-full min-h-12 px-4 text-[var(--metal-ink)] tabular-nums"
                 aria-invalid={!customAutoLapValid}
               />
               {!customAutoLapValid && (
-                <span className="t-caption mt-1 block text-[var(--color-accent)]">Enter 10–100,000 m.</span>
+                <span className="metal-flag"><span>Enter 10–100,000 m.</span></span>
               )}
             </label>
           )}
-          <p className="t-caption mt-2">Automatic distances also work for hands-free sprint timing.</p>
-        </div>
+          <p className="metal-row-detail mt-2">Automatic distances also work for hands-free sprint timing.</p>
+        </MetalSection>
       )}
 
       {preview && !appSandbox && (
-        <div className="mt-6">
-          <label className="t-label-sm block mb-2">Position source</label>
-          <SelectSheet
-            value={sourceChoice}
-            onChange={setSourceChoice}
-            options={sourceOptions}
-            title="Position source"
-          />
-        </div>
+        <MetalSection label="Position source">
+          <div className="mt-2">
+            <SelectSheet
+              value={sourceChoice}
+              onChange={setSourceChoice}
+              options={sourceOptions}
+              title="Position source"
+            />
+          </div>
+        </MetalSection>
       )}
 
-      {tracker.gpsError && <p className="t-caption mt-4 text-[var(--color-accent)]">{tracker.gpsError}</p>}
-
-      <Button size="lg" className="w-full mt-auto" onClick={handleStart} disabled={tracker.resumable || !customAutoLapValid}>
-        Start
-      </Button>
-
-      {tracker.resumable && (
-        <p className="t-caption mt-3 text-center">Resume or discard the interrupted run before starting another.</p>
-      )}
-
-      <button
-        type="button"
-        className="pressable t-label-sm mt-6 min-h-11 w-full text-center text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-        onClick={() => navigate(-1)}
-      >
-        Back
-      </button>
+      {tracker.gpsError && <p className="metal-flag mt-6"><span>{tracker.gpsError}</span></p>}
     </motion.div>
   );
 }

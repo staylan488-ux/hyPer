@@ -1,40 +1,44 @@
 import { useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
+import { addDays, differenceInCalendarWeeks, format, parseISO } from 'date-fns';
+import { VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import {
-  ArrowRight,
-  ArrowUpRight,
-  Dumbbell,
-  Plus,
-} from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { Button, RailStrip, RollingNumber, Screen, TickStrip, VolumeRail, SealMark, BankedStamp } from '@/components/shared';
+  BigFigure,
+  Chevron,
+  EntryRow,
+  Eyebrow,
+  HeroFigure,
+  LineButton,
+  MetalRail,
+  MetalSection,
+  MetalTitle,
+  useCommandCapsule,
+  type CommandCapsuleSpec,
+} from '@/components/metal';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import type { SealMacro } from '@/lib/targetSeal';
-import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
-import { tapHaptic } from '@/lib/haptics';
 import { getWorkoutWriteSeq, useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
+import { useWeekSessions } from '@/hooks/useWeekSessions';
 import { plannedDayForDate } from '@/lib/planSchedule';
 import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
-import { DEFAULT_MACRO_TARGET, MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
-
-type HeroState =
-  | { kind: 'loading' }
-  | { kind: 'schedule-error'; retry: () => void }
-  | { kind: 'resume'; completedSets: number; totalSets: number; title: string; dayName: string; exerciseCount: number; elapsed: string; nextExercise: string | null; nextSet: number | null }
-  | { kind: 'done'; title: string }
-  | { kind: 'planned'; day: SplitDay }
-  | { kind: 'rest' }
-  | { kind: 'no-schedule' }
-  | { kind: 'flexible' }
-  | { kind: 'first-run' };
+import { DEFAULT_MACRO_TARGET } from '@/types';
+import {
+  pickInsight,
+  plannedSetCount,
+  summarizeWeekVolume,
+  todayCapsule,
+  TODAY_ACTION_PATHS,
+  type HeroState,
+} from '@/components/dashboard/todayModel';
 
 export function Dashboard() {
   const { user } = useAuthStore();
@@ -124,6 +128,8 @@ export function Dashboard() {
         title: 'Session in progress',
         nextExercise: upcomingName,
         nextSet: upcomingSet?.set_number ?? null,
+        nextWeight: upcomingSet?.weight ?? null,
+        nextReps: upcomingSet?.reps ?? null,
         dayName,
         exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
         elapsed: currentWorkout.created_at
@@ -156,108 +162,170 @@ export function Dashboard() {
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);
+  const weekSummary = useMemo(() => summarizeWeekVolume(weeklyVolume), [weeklyVolume]);
 
-  const stations: { to: string; index: string; label: string; sub: string }[] = [
-    { to: '/train/program', index: '01', label: 'Program', sub: 'Your current plan' },
-    { to: '/history', index: '02', label: 'History', sub: 'Past sessions' },
-    { to: '/analysis', index: '03', label: 'Progress', sub: 'Volume & results' },
-  ];
+  // Completed sessions this training week; refreshed with Today and whenever
+  // the live session starts or completes.
+  const weekSessions = useWeekSessions(userId, dayKey, `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`);
+  const weekDone = weekSessions.dates?.length ?? null;
+  // Flexible mode has no weekly plan to count against.
+  const weekTarget = workoutMode === 'flexible' ? null
+    : schedule?.mode === 'fixed' && schedule.weekdays.length > 0 ? schedule.weekdays.length
+      : activeSplit?.days_per_week ?? null;
+
+  const programWeek = useMemo(() => {
+    if (!schedule) return null;
+    const week = differenceInCalendarWeeks(parseISO(dayKey), parseISO(schedule.startDate), TRAINING_WEEK) + 1;
+    return week >= 1 ? week : null;
+  }, [schedule, dayKey]);
+
+  // On a rest day, the next planned session by the same schedule rules.
+  const nextSession = useMemo(() => {
+    if (hero.kind !== 'rest' || !activeSplit || !schedule) return null;
+    const base = parseISO(dayKey);
+    for (let offset = 1; offset <= 14; offset += 1) {
+      const date = addDays(base, offset);
+      const day = plannedDayForDate(date, activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
+      if (day) return `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}`;
+    }
+    return null;
+  }, [hero.kind, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey]);
+
+  // Today's one primary action rides the command capsule, with main's
+  // destinations: Start/Resume → Train, Log food → Fuel, Review → History.
+  const navigate = useNavigate();
+  const capsule = todayCapsule(hero, { kcalLeft: hasAnyNutrition ? remainingKcal : null });
+  const capsuleSpec: CommandCapsuleSpec | null = capsule ? {
+    key: capsule.key,
+    label: capsule.label,
+    sublabel: capsule.sublabel,
+    alert: capsule.alert,
+    glyph: capsule.glyph,
+    progress: capsule.progress,
+    dock: 'tabbar',
+    onPress: () => {
+      if (capsule.action === 'retry') {
+        if (hero.kind === 'schedule-error') hero.retry();
+        return;
+      }
+      navigate(TODAY_ACTION_PATHS[capsule.action]);
+    },
+  } : null;
+  useCommandCapsule(capsuleSpec);
+
+  const dateLabel = format(parseISO(dayKey), 'EEEE, MMM d');
+  const showWeekRight = weekDone !== null && hero.kind !== 'rest' && hero.kind !== 'done';
+  const showSetTargets = !macroTarget && !loading;
 
   return (
-    <Screen>
+    <div className="metal-page metal-today pb-nav">
       <header>
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="metal-today-head">
+          <Eyebrow live={hero.kind === 'resume'}>
+            {hero.kind === 'resume' ? 'Session in progress' : hero.kind === 'first-run' ? 'Start here' : dateLabel}
+          </Eyebrow>
           <BrandWordmark variant="dashboard" />
-          <span className="t-caption">{format(parseISO(dayKey), 'EEE · MMM d')}</span>
         </div>
-        <h1 className="t-label mt-5">Today</h1>
+        <TodayTitle hero={hero} programName={activeSplit?.name ?? null} programWeek={programWeek} />
       </header>
 
-      <section className="mt-5">
-        <TodayHero hero={hero} programName={activeSplit?.name ?? null} />
+      <section aria-label="Today">
+        <TodayHero
+          hero={hero}
+          weekDone={weekDone}
+          weekFailed={weekSessions.failed}
+          weekTarget={weekTarget}
+        />
+        {hero.kind === 'rest' && (
+          <div className="metal-next">
+            <div className="min-w-0">
+              {nextSession && <p className="metal-next-label">Next session</p>}
+              <p className="metal-next-what">{nextSession ?? 'Growth happens between sessions.'}</p>
+            </div>
+            <Link to="/train" className="metal-text-btn">Train anyway</Link>
+          </div>
+        )}
       </section>
 
       {/* ── Fuel ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+      <MetalSection
+        label="Fuel"
+        right={(showSetTargets || hero.kind !== 'rest') ? (
+          <>
+            {showSetTargets && <LineButton to="/settings">Set targets</LineButton>}
+            {hero.kind !== 'rest' && <LineButton to="/nutrition" plus>Log food</LineButton>}
+          </>
+        ) : undefined}
       >
-        <h2 className="t-label mb-4">Fuel</h2>
-
         {fuelLoading ? (
-          <div className="space-y-4">
+          <div className="mt-2 space-y-4">
             <div className="shimmer h-12 w-40" />
             <div className="shimmer h-px w-full" />
           </div>
         ) : hasAnyNutrition ? (
           <>
-            <div className="mb-4">
-              <div className="flex items-baseline gap-2">
-                <RollingNumber value={remainingKcal.toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                <span className="t-caption">kcal left</span>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <FuelRow label="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} unit=" kcal" seal="calories" dayKey={dayKey} />
-              <FuelRow label="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" dayKey={dayKey} />
+            <BigFigure unit="kcal left">{remainingKcal.toLocaleString()}</BigFigure>
+            <div className="metal-rails">
+              <FuelRail label="Eaten" sealLabel="Calories" current={nutritionTotals.calories} target={macroTarget?.calories || DEFAULT_MACRO_TARGET.calories} seal="calories" dayKey={dayKey} />
+              <FuelRail label="Protein" sealLabel="Protein" current={nutritionTotals.protein} target={macroTarget?.protein || DEFAULT_MACRO_TARGET.protein} unit=" g" seal="protein" dayKey={dayKey} />
             </div>
           </>
         ) : (
-          <p className="text-editorial mb-5">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
+          <p className="metal-note">Nothing logged today. Targets turn every meal into a decision, not a guess.</p>
         )}
+      </MetalSection>
 
-        <div className="mt-4 flex gap-3">
-          <Link to="/nutrition" className="flex-1">
-            <Button variant="secondary" size="md" className="w-full">
-              <Plus className="w-4 h-4" strokeWidth={1.75} />
-              Log food
-            </Button>
-          </Link>
-          {!macroTarget && !loading && (
-            <Link to="/settings" className="flex-1">
-              <Button variant="ghost" size="md" className="w-full">Set targets</Button>
-            </Link>
-          )}
-        </div>
-      </section>
-
-      {/* ── Contents / stations ── */}
-      <nav
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
+      {/* ── This week ── */}
+      <MetalSection
+        label="This week"
+        right={showWeekRight ? (
+          <>
+            {weekTarget ? (
+              <span className="metal-dots" aria-hidden>
+                {Array.from({ length: Math.min(weekTarget, 7) }, (_, index) => <span key={index} className={index < (weekDone ?? 0) ? 'is-on' : undefined} />)}
+              </span>
+            ) : null}
+            <span>
+              <b>{weekDone}</b>{weekTarget ? ` of ${weekTarget}` : ''} {(weekTarget ?? weekDone) === 1 ? 'session' : 'sessions'}
+            </span>
+          </>
+        ) : undefined}
       >
-        <span className="t-label block mb-3">Contents</span>
-        <ul>
-          {stations.map((s) => (
-            <li key={s.to}>
-              <Link
-                to={s.to}
-                onClick={() => tapHaptic()}
-                className="pressable group flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]"
-              >
-                <span className="flex-1 min-w-0">
-                  <span className="t-heading block">{s.label}</span>
-                  <span className="t-caption">{s.sub}</span>
-                </span>
-                <ArrowRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
+        {weekSummary.trained > 0 ? (
+          <p className="metal-line">
+            {weekSummary.trained} {weekSummary.trained === 1 ? 'muscle' : 'muscles'} trained
+            <span className="metal-sep" aria-hidden>·</span>{weekSummary.inRange} in range
+            <span className="metal-sep" aria-hidden>·</span>{weekSummary.under} under
+            {weekSummary.over > 0 && <><span className="metal-sep" aria-hidden>·</span>{weekSummary.over} over</>}
+          </p>
+        ) : (
+          <p className="metal-line text-[var(--metal-ink-2)]">No sets logged yet this week.</p>
+        )}
+        {insight && insight.tone !== 'zone' && (
+          <p className="metal-flag"><span><b>{insight.muscle}</b> {insight.flag}</span></p>
+        )}
+        <EntryRow
+          label="Contents"
+          items={[
+            { label: 'Progress', to: '/analysis' },
+            { label: 'Program', to: '/train/program' },
+            { label: 'History', to: '/history' },
+          ]}
+        />
+      </MetalSection>
 
-      {/* ── One insight, only when it exists ── */}
+      {/* ── Main's weekly insight, kept below in the quiet style ── */}
       {insight && (
-        <section
-          className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-        >
+        <section className="metal-section">
           <Link to="/analysis" className="block group">
-            <div className="flex items-baseline justify-between mb-3">
-              <span className="t-label">This week</span>
-              <ArrowUpRight className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+            <div className="metal-section-head">
+              <Eyebrow>Volume</Eyebrow>
+              <span className="metal-section-head-right">Details <Chevron className="metal-row-chevron" /></span>
             </div>
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3 mt-1">
               <div className="flex-1 min-w-0">
-                <p className="t-heading mb-2">{insight.headline}</p>
-                <p className="t-caption mb-5 max-w-[34ch]">{insight.detail}</p>
+                <p className="metal-row-title">{insight.headline}</p>
+                <p className="metal-note mt-1">{insight.detail}</p>
               </div>
               <VolumeMaquette
                 variant="compact"
@@ -266,167 +334,131 @@ export function Dashboard() {
                 className="w-[76px] h-[132px] shrink-0 -mt-3 -mr-1"
               />
             </div>
-            {insight.landmark && (
-              <VolumeRail
-                current={insight.volume.weekly_sets}
-                mev={insight.landmark.mev}
-                mavLow={insight.landmark.mav_low}
-                mavHigh={insight.landmark.mav_high}
-                mrv={insight.landmark.mrv}
-                reveal={`dash-volume-${insight.volume.muscle_group}`}
-              />
-            )}
+            <VolumeRail
+              current={insight.volume.weekly_sets}
+              mev={insight.landmark.mev}
+              mavLow={insight.landmark.mav_low}
+              mavHigh={insight.landmark.mav_high}
+              mrv={insight.landmark.mrv}
+              reveal={`dash-volume-${insight.volume.muscle_group}`}
+            />
           </Link>
         </section>
       )}
-    </Screen>
+    </div>
   );
 }
 
-/* ───────────────────────── hero ───────────────────────── */
+/* ───────────────────────── title & hero ───────────────────────── */
 
-function HeroEyebrow({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
-  return <p className={`t-label mb-3 ${accent ? 'text-[var(--color-accent)]' : ''}`}>{children}</p>;
+function TodayTitle({ hero, programName, programWeek }: { hero: HeroState; programName: string | null; programWeek: number | null }) {
+  switch (hero.kind) {
+    case 'loading':
+      return <div className="shimmer h-8 w-44 mt-2" aria-hidden />;
+    case 'schedule-error':
+      return <MetalTitle note="Couldn’t load your workout schedule.">Today</MetalTitle>;
+    case 'resume':
+      return <MetalTitle note={hero.elapsed !== '—' ? hero.elapsed : undefined}>{hero.dayName}</MetalTitle>;
+    case 'planned': {
+      const note = [programName, programWeek ? `week ${programWeek}` : null].filter(Boolean).join(' · ');
+      return <MetalTitle note={note || undefined}>{hero.day.day_name}</MetalTitle>;
+    }
+    case 'rest':
+      return <MetalTitle note={<span className="metal-quote">Growth happens between sessions.</span>}>Rest day</MetalTitle>;
+    case 'done':
+      return <MetalTitle note="The work is banked.">Trained today</MetalTitle>;
+    case 'flexible':
+      return <MetalTitle note="Build today as you go.">Flexible mode</MetalTitle>;
+    case 'no-schedule':
+      return <MetalTitle note={programName ?? undefined}>Pick your training days</MetalTitle>;
+    case 'first-run':
+      return <MetalTitle>Build your program</MetalTitle>;
+  }
 }
 
-function TodayHero({ hero, programName }: { hero: HeroState; programName: string | null }) {
+function TodayHero({ hero, weekDone, weekFailed, weekTarget }: {
+  hero: HeroState;
+  weekDone: number | null;
+  weekFailed: boolean;
+  weekTarget: number | null;
+}) {
   if (hero.kind === 'loading') {
     return (
-      <div>
-        <div className="shimmer h-3 w-20 mb-4" />
-        <div className="shimmer h-12 w-44 mb-5" />
-        <div className="shimmer h-12 w-full" />
-      </div>
-    );
-  }
-
-  if (hero.kind === 'schedule-error') {
-    return <div><p className="t-caption mb-3">Couldn’t load your workout schedule.</p><Button onClick={hero.retry}>Retry</Button></div>;
-  }
-
-  if (hero.kind === 'resume') {
-    return (
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="w-[5px] h-[5px] bg-[var(--color-accent)]" />
-          <span className="t-label">{hero.title}</span>
-        </div>
-        <h2 className="t-title">{hero.dayName}</h2>
-        {programName && <p className="t-caption mt-2">{programName}</p>}
-        <div className="flex items-baseline gap-2 mt-5">
-          <span className="t-data">{hero.completedSets} <span className="text-[var(--color-text-dim)]">/ {hero.totalSets}</span></span>
-          <span className="t-caption">sets complete{hero.elapsed !== '—' ? ` · ${hero.elapsed}` : ''}</span>
-        </div>
-        <TickStrip total={Math.min(hero.totalSets, 30)} filled={Math.min(hero.completedSets, 30)} tone="amber" size="sm" className="mt-3 w-full [&>span]:flex-1" />
-        <div className="py-4">
-          <p className="t-caption mb-1">{hero.nextExercise ? `Up next · Set ${hero.nextSet}` : 'All sets logged'}</p>
-          <p className="t-body">{hero.nextExercise ?? 'Review and finish your session'}</p>
-        </div>
-        <Link to="/train">
-          <Button size="lg" className="w-full justify-between!">Resume session <ArrowRight className="w-4 h-4" strokeWidth={1.5} /></Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (hero.kind === 'done') {
-    return (
-      <div>
-        <div className="flex items-start justify-between gap-4">
-          <HeroEyebrow>Trained today</HeroEyebrow>
-          <BankedStamp date={format(new Date(), 'MMM d')} className="-mt-1 mr-1" />
-        </div>
-        <p className="t-title mb-6">The work is banked.</p>
-        <Link to="/history">
-          <Button variant="secondary" size="lg" className="w-full">Review session</Button>
-        </Link>
+      <div aria-hidden>
+        <div className="shimmer h-[90px] w-36 mt-5" />
+        <div className="shimmer h-[2px] w-full mt-[18px]" />
       </div>
     );
   }
 
   if (hero.kind === 'planned') {
-    const exercises = hero.day.exercises ?? [];
-    const totalSets = exercises.reduce((sum, ex) => sum + (ex.target_sets || 0), 0);
+    const totalSets = plannedSetCount(hero.day);
+    const exercises = hero.day.exercises?.length ?? 0;
     return (
-      <div>
-        <div className="flex items-baseline justify-between mb-3">
-          <HeroEyebrow accent>Today · {programName}</HeroEyebrow>
-          <span className="t-data-sm text-[var(--color-muted)]">{exercises.length} ex · {totalSets} sets</span>
+      <HeroFigure
+        value={totalSets}
+        caption={`${totalSets === 1 ? 'set' : 'sets'} · ${exercises} ${exercises === 1 ? 'exercise' : 'exercises'}`}
+        segments={{ total: Math.max(1, totalSets), on: 0, label: `${totalSets} sets planned` }}
+      />
+    );
+  }
+
+  if (hero.kind === 'resume') {
+    const live = hero.completedSets < hero.totalSets ? hero.completedSets : undefined;
+    return (
+      <HeroFigure
+        value={hero.completedSets}
+        of={hero.totalSets}
+        caption="sets done"
+        segments={{ total: Math.max(1, hero.totalSets), on: hero.completedSets, now: live, label: `${hero.completedSets} of ${hero.totalSets} sets done` }}
+      />
+    );
+  }
+
+  if (hero.kind === 'rest' || hero.kind === 'done' || hero.kind === 'flexible') {
+    if (weekDone === null && weekFailed) {
+      // The week read failed: leave the figure out rather than wait on it.
+      return hero.kind === 'done'
+        ? <div className="relative h-[90px] mt-5"><BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-3 top-0" /></div>
+        : null;
+    }
+    if (weekDone === null) {
+      return (
+        <div aria-hidden>
+          <div className="shimmer h-[90px] w-36 mt-5" />
+          <div className="shimmer h-[2px] w-full mt-[18px]" />
         </div>
-        <h2 className="t-title mb-5">
-          {hero.day.day_name}
-        </h2>
-        <TickStrip total={Math.min(exercises.length, 12)} filled={0} tone="amber" size="md" className="mb-6" />
-        <Link to="/train">
-          <Button size="lg" className="w-full">
-            <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
-            Start workout
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (hero.kind === 'rest') {
+      );
+    }
+    const target = hero.kind === 'flexible' ? null : weekTarget;
     return (
-      <div>
-        <HeroEyebrow>Rest day</HeroEyebrow>
-        <p className="t-title mb-5">Growth happens between sessions.</p>
-        <Link to="/train">
-          <Button variant="ghost" size="sm">Train anyway →</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (hero.kind === 'flexible') {
-    return (
-      <div>
-        <HeroEyebrow accent>Flexible mode</HeroEyebrow>
-        <p className="t-title mb-6">Build today as you go.</p>
-        <Link to="/train">
-          <Button size="lg" className="w-full">
-            <Dumbbell className="w-4 h-4" strokeWidth={1.75} />
-            Start session
-          </Button>
-        </Link>
+      <div className="relative">
+        <HeroFigure
+          value={weekDone}
+          of={target ?? undefined}
+          caption={`${(target ?? weekDone) === 1 ? 'session' : 'sessions'} this week`}
+          segments={target ? { total: target, on: Math.min(weekDone, target), wide: true, label: `${weekDone} of ${target} sessions this week` } : undefined}
+        />
+        {hero.kind === 'done' && <BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-3 top-6" />}
       </div>
     );
   }
 
   if (hero.kind === 'no-schedule') {
+    return <p className="metal-note">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>;
+  }
+
+  if (hero.kind === 'first-run') {
     return (
-      <div>
-        <HeroEyebrow accent>{programName}</HeroEyebrow>
-        <p className="t-title mb-2">Pick your training days.</p>
-        <p className="t-caption mb-6 max-w-[34ch]">Set Day 1 and your weekly rhythm so hyPer can call the next session.</p>
-        <Link to="/train">
-          <Button size="lg" className="w-full">Set plan start</Button>
-        </Link>
-      </div>
+      <>
+        <HeroFigure value={5} caption="questions · about 2 minutes" segments={{ total: 5, on: 0, wide: true, label: 'Five questions' }} />
+        <p className="metal-note">Answer five questions and hyPer assembles an evidence-based split around your week.</p>
+      </>
     );
   }
 
-  // first-run
-  return (
-    <div>
-      <HeroEyebrow accent>Start here</HeroEyebrow>
-      <p className="t-title mb-2">Build your program.</p>
-      <p className="t-caption mb-5 max-w-[34ch]">
-        Answer five questions and hyPer assembles an evidence-based split around your week.
-      </p>
-      <div className="flex items-center gap-3 mb-6" aria-hidden>
-        <TickStrip total={5} filled={0} tone="stone" size="sm" />
-        <span className="t-label-sm">~2 minutes</span>
-      </div>
-      <Link to="/train/program">
-        <Button size="lg" className="w-full">
-          Get started
-          <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
-        </Button>
-      </Link>
-    </div>
-  );
+  // schedule-error: the capsule carries Retry.
+  return null;
 }
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -435,81 +467,15 @@ function activeWorkoutIdOf(workout: { id: string; completed: boolean } | null) {
   return workout && !workout.completed ? workout.id : null;
 }
 
-function FuelRow({ label, current, target, unit, seal, dayKey }: { label: string; current: number; target: number; unit: string; seal: SealMacro; dayKey: string }) {
-  const pct = target > 0 ? Math.min(999, Math.round((current / target) * 100)) : 0;
+function FuelRail({ label, sealLabel, current, target, unit = '', seal, dayKey }: { label: string; sealLabel: string; current: number; target: number; unit?: string; seal: SealMacro; dayKey: string }) {
   const { met, anchorRef } = useTargetSeal({ macro: seal, current, target, dayKey, live: true });
-  const over = target > 0 && current > target;
-  const maxScale = Math.max(target * 1.18, current);
-
   return (
-    <div>
-      <div className="flex items-baseline justify-between mb-2">
-        <span className="t-label-sm flex items-center gap-2">
-          {label}
-          <SealMark show={met} label={`${label} target met`} anchorRef={anchorRef} />
-        </span>
-        <span className="flex items-baseline gap-1.5">
-          <span className="number-medium text-[var(--color-text)]">{Math.round(current).toLocaleString()}</span>
-          <span className="t-data-sm text-[var(--color-muted)]">/ {Math.round(target).toLocaleString()}{unit}</span>
-        </span>
-      </div>
-      <RailStrip
-        value={current / maxScale}
-        notch={target / maxScale}
-        tone={over ? 'berry' : 'chalk'}
-        size="sm"
-        reveal={`dash-fuel-${label}`}
-      />
-      <span className="sr-only">{pct}% of target</span>
-    </div>
+    <MetalRail
+      label={label}
+      value={current}
+      target={target}
+      unit={unit}
+      extra={<SealMark show={met} label={`${sealLabel} target met`} anchorRef={anchorRef} />}
+    />
   );
-}
-
-function pickInsight(weeklyVolume: MuscleVolume[]) {
-  if (!weeklyVolume || weeklyVolume.length === 0) return null;
-
-  const labeled = (mv: MuscleVolume) => MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group;
-
-  const below = weeklyVolume
-    .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => a.weekly_sets - b.weekly_sets)[0];
-  if (below?.landmark) {
-    const gap = Math.max(1, Math.ceil(below.landmark.mev - below.weekly_sets));
-    return {
-      volume: below,
-      landmark: below.landmark,
-      headline: `${labeled(below)} is under-stimulated`,
-      detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-    };
-  }
-
-  const over = weeklyVolume
-    .filter((mv) => (mv.status === 'above_mrv' || mv.status === 'approaching_mrv') && mv.landmark)
-    .sort((a, b) => b.weekly_sets - a.weekly_sets)[0];
-  if (over?.landmark) {
-    return {
-      volume: over,
-      landmark: over.landmark,
-      headline:
-        over.status === 'above_mrv'
-          ? `${labeled(over)} is past recoverable volume`
-          : `${labeled(over)} is nearing its ceiling`,
-      detail:
-        over.status === 'above_mrv'
-          ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
-          : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-    };
-  }
-
-  const inZone = weeklyVolume.filter((mv) => mv.status === 'mav' && mv.landmark)[0];
-  if (inZone?.landmark) {
-    return {
-      volume: inZone,
-      landmark: inZone.landmark,
-      headline: `${labeled(inZone)} is in the adaptive zone`,
-      detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-    };
-  }
-
-  return null;
 }

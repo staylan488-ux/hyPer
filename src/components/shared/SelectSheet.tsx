@@ -21,7 +21,7 @@ interface SelectSheetProps<T extends string> {
   ariaLabelledBy?: string;
 }
 
-/** App-native replacement for <select>: a well-styled trigger opening a bottom sheet of options. */
+/** App-native replacement for <select>: a hairline field opening a sheet of hairline option rows. */
 export function SelectSheet<T extends string>({
   value,
   onChange,
@@ -45,16 +45,16 @@ export function SelectSheet<T extends string>({
         aria-labelledby={ariaLabelledBy ? `${ariaLabelledBy} ${valueId}` : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`pressable well w-full flex items-center justify-between gap-2 px-3.5 min-h-11 text-left disabled:opacity-40 ${className}`}
+        className={`metal-input pressable w-full flex items-center justify-between gap-2 px-3.5 min-h-11 text-left disabled:opacity-40 ${className}`}
       >
-        <span id={valueId} className={`t-body min-w-0 break-words py-2 ${selected ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
+        <span id={valueId} className={`text-[15px] leading-[1.35] min-w-0 break-words py-2 ${selected ? 'text-[var(--metal-ink)]' : 'text-[var(--metal-ink-3)]'}`}>
           {selected ? selected.label : placeholder}
         </span>
-        <ChevronDown className="w-4 h-4 shrink-0 text-[var(--color-muted)]" strokeWidth={2} />
+        <ChevronDown className="w-4 h-4 shrink-0 text-[var(--metal-ink-2)]" strokeWidth={1.5} />
       </button>
 
       <Modal isOpen={open} onClose={() => setOpen(false)} title={title}>
-        <div className="flex flex-col gap-1 pt-1 pb-2">
+        <div className="flex flex-col pb-2">
           {options.map((option) => {
             const isSelected = option.value === value;
             return (
@@ -66,22 +66,18 @@ export function SelectSheet<T extends string>({
                   onChange(option.value);
                   setOpen(false);
                 }}
-                className={`pressable flex items-center gap-3 px-3.5 py-3 min-h-11 rounded-[var(--radius-control)] text-left ${
-                  isSelected
-                    ? 'bg-[var(--color-well)]'
-                    : 'bg-transparent'
-                }`}
+                className="pressable flex items-center gap-3 py-3 min-h-[52px] text-left border-t-[0.5px] border-[var(--metal-rule)]"
               >
-                {option.icon && <span className="shrink-0 text-[var(--color-stone)]">{option.icon}</span>}
+                {option.icon && <span className="shrink-0 text-[var(--metal-ink-2)]">{option.icon}</span>}
                 <span className="flex-1 min-w-0">
-                  <span className={`block t-body ${isSelected ? 'text-[var(--color-text)]' : 'text-[var(--color-text-dim)]'}`}>
+                  <span className={`block text-[15px] leading-[1.35] text-[var(--metal-ink)] break-words ${isSelected ? 'font-medium' : ''}`}>
                     {option.label}
                   </span>
                   {option.description && (
-                    <span className="block t-caption mt-0.5">{option.description}</span>
+                    <span className="block text-[12.5px] leading-[1.45] mt-0.5 text-[var(--metal-ink-2)]">{option.description}</span>
                   )}
                 </span>
-                {isSelected && <Check className="w-4 h-4 shrink-0 text-[var(--color-accent)]" strokeWidth={2.5} />}
+                {isSelected && <Check className="w-4 h-4 shrink-0 text-[var(--metal-ink)]" strokeWidth={2} />}
               </button>
             );
           })}

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { MoreHorizontal } from 'lucide-react';
+import '@/components/split/program.css';
 
 export interface RowMenuItem {
   label: string;
@@ -50,35 +51,29 @@ export function RowMenu({ label, items }: { label: string; items: RowMenuItem[] 
       <button
         ref={triggerRef}
         type="button"
-        className="pressable studio-row-action flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+        className="metal-icon-btn"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        <MoreHorizontal className="w-4 h-4" strokeWidth={1.5} aria-hidden />
+        <MoreHorizontal strokeWidth={1.5} aria-hidden />
       </button>
       {open && (
         <div
           id={menuId}
           role="menu"
           aria-label={label}
-          className="absolute right-0 top-full mt-1 material-glass rounded-[var(--radius-control)] z-20 min-w-[180px] overflow-hidden"
+          className="metal-menu"
         >
-          {items.map((item, index) => (
+          {items.map((item) => (
             <button
               key={item.label}
               type="button"
               role="menuitem"
               disabled={item.disabled}
-              className={`w-full min-h-11 px-4 py-3 text-left t-data-sm flex items-center gap-2.5 transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${
-                index > 0 ? 'border-t border-[var(--color-border)]' : ''
-              } ${
-                item.destructive
-                  ? 'text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)]'
-                  : 'text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)]'
-              }`}
+              className={`metal-menu-item${item.destructive ? ' is-danger' : ''}`}
               onClick={() => {
                 setOpen(false);
                 triggerRef.current?.focus({ preventScroll: true });

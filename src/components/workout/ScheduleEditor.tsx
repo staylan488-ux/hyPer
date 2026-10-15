@@ -1,10 +1,12 @@
 import { Button } from '@/components/shared';
+import { tapHaptic } from '@/lib/haptics';
 import { buildFixedWeekdays, type PlanMode } from '@/lib/planSchedule';
 import type { SplitDay } from '@/types';
 
 interface ScheduleEditorProps {
-  title: string;
-  description: string;
+  /** Shown as an eyebrow with the description; the setup page titles itself. */
+  title?: string;
+  description?: string;
   daysPerWeek: number;
   splitDays: SplitDay[];
   startChoice: 'today' | 'tomorrow' | 'pick';
@@ -21,34 +23,40 @@ interface ScheduleEditorProps {
   onCancel?: () => void;
   saveLabel?: string;
   saving?: boolean;
+  /** The page's command capsule carries Save instead. */
+  hideSave?: boolean;
 }
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const shortWeekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /**
- * Studio schedule editor: quiet filled choices with an explicit selected state.
+ * Metal schedule choices: hairline capsules in sentence case; the selected
+ * one fills with ink.
  */
 function OptionButton({
   active,
   onClick,
   className = '',
+  ariaLabel,
   children,
 }: {
   active: boolean;
   onClick: () => void;
   className?: string;
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => { tapHaptic(); onClick(); }}
       aria-pressed={active}
-      className={`pressable min-h-11 px-3 rounded-[11px] uppercase font-medium tracking-[0.16em] text-[11px] transition-colors ${
+      aria-label={ariaLabel}
+      className={`metal-chip pressable min-h-11 px-3 text-[13.5px] font-medium transition-colors ${
         active
-          ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-          : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
+          ? 'is-selected bg-[var(--metal-ink)] text-[var(--color-base)]'
+          : 'text-[var(--metal-ink-2)] hover:text-[var(--metal-ink)]'
       } ${className}`}
     >
       {children}
@@ -73,59 +81,62 @@ export function ScheduleEditor({
   onFlexDayIndexChange,
   onSave,
   onCancel,
-  saveLabel = 'Save Changes',
+  saveLabel = 'Save changes',
   saving = false,
+  hideSave = false,
 }: ScheduleEditorProps) {
   return (
-    <div className="space-y-8 py-1">
-      <div>
-        <p className="t-label mb-2">{title}</p>
-        <p className="t-caption max-w-[42ch]">{description}</p>
-      </div>
+    <div className="py-1">
+      {(title || description) && (
+        <div className="mb-6">
+          {title && <p className="metal-eyebrow mb-2">{title}</p>}
+          {description && <p className="metal-note mt-0 max-w-[42ch]">{description}</p>}
+        </div>
+      )}
 
-      <div className="pt-6 border-t border-[var(--color-border)]">
-        <p className="t-label-sm mb-3">When should Day 1 start?</p>
+      <div className="metal-rule pt-3 pb-6">
+        <p className="metal-eyebrow mb-3 min-h-8">When should Day 1 start?</p>
         <div className="grid grid-cols-3 gap-2">
-          <OptionButton active={startChoice === 'today'} onClick={() => onStartChoiceChange('today')} className="border-0">
+          <OptionButton active={startChoice === 'today'} onClick={() => onStartChoiceChange('today')}>
             Today
           </OptionButton>
-          <OptionButton active={startChoice === 'tomorrow'} onClick={() => onStartChoiceChange('tomorrow')} className="border-0">
+          <OptionButton active={startChoice === 'tomorrow'} onClick={() => onStartChoiceChange('tomorrow')}>
             Tomorrow
           </OptionButton>
-          <OptionButton active={startChoice === 'pick'} onClick={() => onStartChoiceChange('pick')} className="border-0">
+          <OptionButton active={startChoice === 'pick'} onClick={() => onStartChoiceChange('pick')}>
             Pick date
           </OptionButton>
         </div>
 
         {startChoice === 'pick' && (
-          <div className="mt-3 w-full min-w-0 overflow-hidden well px-3 py-2.5">
+          <div className="mt-3 w-full min-w-0 overflow-hidden metal-input px-3.5 py-2.5">
             <input
               type="date"
               aria-label="Plan start date"
               value={startDate}
               onChange={(event) => onStartDateChange(event.target.value)}
-              className="w-full min-w-0 bg-transparent text-[var(--color-text)] t-data outline-none"
+              className="w-full min-w-0 bg-transparent text-[var(--metal-ink)] text-[1rem] tabular-nums outline-none"
             />
           </div>
         )}
       </div>
 
-      <div className="pt-6 border-t border-[var(--color-border)]">
-        <p className="t-label-sm mb-3">Schedule style</p>
+      <div className="metal-rule pt-3 pb-6">
+        <p className="metal-eyebrow mb-3 min-h-8">Schedule style</p>
         <div className="grid grid-cols-2 gap-2">
-          <OptionButton active={mode === 'fixed'} onClick={() => onModeChange('fixed')} className="border-0 min-h-12">
+          <OptionButton active={mode === 'fixed'} onClick={() => onModeChange('fixed')}>
             Fixed weekly rhythm
           </OptionButton>
-          <OptionButton active={mode === 'flex'} onClick={() => onModeChange('flex')} className="border-0 min-h-12">
+          <OptionButton active={mode === 'flex'} onClick={() => onModeChange('flex')}>
             Flexible sequence
           </OptionButton>
         </div>
       </div>
 
       {mode === 'fixed' ? (
-        <div className="pt-6 border-t border-[var(--color-border)]">
-          <p className="t-label-sm mb-3">Choose first training day</p>
-          <div className="grid grid-cols-7 gap-2">
+        <div className="metal-rule pt-3 pb-6">
+          <p className="metal-eyebrow mb-3 min-h-8">Choose first training day</p>
+          <div className="grid grid-cols-7 gap-1.5">
             {shortWeekdayLabels.map((label, weekday) => {
               const active = anchorDay === weekday;
               return (
@@ -133,7 +144,8 @@ export function ScheduleEditor({
                   key={`${label}-${weekday}`}
                   active={active}
                   onClick={() => onAnchorDayChange(weekday)}
-                  className="border-0 px-0"
+                  ariaLabel={weekdayLabels[weekday]}
+                  className="px-0"
                 >
                   {label}
                 </OptionButton>
@@ -141,41 +153,30 @@ export function ScheduleEditor({
             })}
           </div>
 
-          <p className="mt-3 flex items-baseline gap-2">
-            <span className="t-label-sm">Auto plan</span>
-            <span className="t-data-sm text-[var(--color-text-dim)]">
-              {buildFixedWeekdays(anchorDay, daysPerWeek).map((day) => weekdayLabels[day]).join(' / ')}
-            </span>
+          <p className="metal-line mt-4">
+            <span className="text-[var(--metal-ink-2)]">Auto plan</span>
+            <span className="metal-sep" aria-hidden>·</span>
+            {buildFixedWeekdays(anchorDay, daysPerWeek).map((day) => weekdayLabels[day]).join(' / ')}
           </p>
         </div>
       ) : (
-        <div className="pt-6 border-t border-[var(--color-border)]">
-          <p className="t-label-sm mb-2">Active training day</p>
-          <p className="t-caption mb-3 max-w-[42ch]">Choose which split day should be next in your sequence.</p>
+        <div className="metal-rule pt-3 pb-6">
+          <p className="metal-eyebrow mb-2 min-h-8">Active training day</p>
+          <p className="metal-note mt-0 mb-3 max-w-[42ch]">Choose which split day should be next in your sequence.</p>
           <div className="grid grid-cols-2 gap-2">
             {splitDays.map((day, index) => {
               const active = index === flexDayIndex;
               return (
-                <button
-                  type="button"
-                  key={day.id}
-                  onClick={() => onFlexDayIndexChange(index)}
-                  aria-pressed={active}
-                  className={`pressable rounded-[11px] min-h-12 px-3.5 text-left t-body transition-colors ${
-                    active
-                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                      : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
-                  }`}
-                >
+                <OptionButton key={day.id} active={active} onClick={() => onFlexDayIndexChange(index)} className="min-h-12 px-3.5">
                   {day.day_name}
-                </button>
+                </OptionButton>
               );
             })}
           </div>
         </div>
       )}
 
-      {onCancel ? (
+      {hideSave ? null : onCancel ? (
         <div className="grid grid-cols-2 gap-3 pt-2">
           <Button variant="secondary" onClick={onCancel} disabled={saving}>
             Cancel

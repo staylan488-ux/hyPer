@@ -27,6 +27,7 @@ import { stepSpring } from '@/lib/three/spring';
 import {
   BODY_SOLIDS,
   MUSCLE_PARTS,
+  mixRgb,
   muscleColor,
   type MaquettePalette,
   type MuscleShade,
@@ -87,6 +88,7 @@ function buildMesh(solid: Solid, material: MeshPhysicalMaterial, sphere: SphereG
   return mesh;
 }
 
+/** A soft contact shadow on Ivory. Black gets none: a light pool there reads as a glow. */
 function contactShadow(dark: boolean): Texture {
   const size = 128;
   const canvas = document.createElement('canvas');
@@ -94,26 +96,54 @@ function contactShadow(dark: boolean): Texture {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  const tone = dark ? '255,255,255' : '20,24,22';
-  gradient.addColorStop(0, `rgba(${tone},${dark ? 0.1 : 0.22})`);
-  gradient.addColorStop(1, `rgba(${tone},0)`);
+  gradient.addColorStop(0, `rgba(22,22,22,${dark ? 0 : 0.2})`);
+  gradient.addColorStop(1, 'rgba(22,22,22,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
   return new CanvasTexture(canvas);
 }
 
+/**
+ * Metal finishes. The body is polished obsidian on Black and glazed porcelain
+ * on Ivory; trained muscles are brushed pewter-to-silver on Black and dark
+ * glaze on Ivory; over-ceiling (and the compact focus) is red lacquer in both.
+ * Untrained muscles share the body's finish so they melt into it.
+ */
+type Finish = 'body' | 'trained' | 'hot';
+type FinishParams = Pick<MeshPhysicalMaterial, 'metalness' | 'roughness' | 'clearcoat' | 'clearcoatRoughness' | 'envMapIntensity'>;
+
+const FINISHES: Record<Finish, { dark: FinishParams; light: FinishParams }> = {
+  body: {
+    dark: { metalness: 0.3, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.05 },
+    light: { metalness: 0, roughness: 0.36, clearcoat: 1, clearcoatRoughness: 0.14, envMapIntensity: 0.6 },
+  },
+  trained: {
+    dark: { metalness: 0.72, roughness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.2, envMapIntensity: 1.15 },
+    light: { metalness: 0, roughness: 0.34, clearcoat: 0.85, clearcoatRoughness: 0.14, envMapIntensity: 0.65 },
+  },
+  hot: {
+    dark: { metalness: 0, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 0.8 },
+    light: { metalness: 0, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 0.8 },
+  },
+};
+
+// Porcelain sits a touch whiter than the page so the figure reads as glaze.
+const PORCELAIN = new Color().setRGB(0.985, 0.982, 0.968, SRGBColorSpace);
+
 function bodyMaterial(palette: MaquettePalette, dark: boolean) {
+  const color = new Color().setRGB(...palette.body, SRGBColorSpace);
+  if (!dark) color.lerp(PORCELAIN, 0.55);
   return new MeshPhysicalMaterial({
-    color: new Color().setRGB(...palette.body, SRGBColorSpace),
-    roughness: dark ? 0.32 : 0.42,
-    metalness: dark ? 0.15 : 0,
-    clearcoat: dark ? 1 : 0.55,
-    clearcoatRoughness: dark ? 0.18 : 0.35,
-    sheen: dark ? 0 : 0.4,
+    color,
+    ...FINISHES.body[dark ? 'dark' : 'light'],
+    sheen: dark ? 0 : 0.3,
     sheenRoughness: 0.6,
     sheenColor: new Color(1, 1, 1),
-    envMapIntensity: dark ? 0.9 : 0.55,
   });
+}
+
+function finishMuscle(material: MeshPhysicalMaterial, dark: boolean, finish: Finish) {
+  Object.assign(material, FINISHES[finish][dark ? 'dark' : 'light']);
 }
 
 export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptions): MaquetteController {
@@ -126,9 +156,10 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
   const hemi = new HemisphereLight(0xffffff, 0x8a8478, options.dark ? 0.55 : 0.5);
   const key = new DirectionalLight(0xffffff, options.dark ? 1.9 : 1.45);
   key.position.set(-3, 4, 5);
-  const rim = new DirectionalLight(0xdfe8ff, options.dark ? 1.8 : 1.1);
+  // Neutral light only: no cool or tinted rims.
+  const rim = new DirectionalLight(0xffffff, options.dark ? 1.6 : 1.1);
   rim.position.set(3.5, 2, -4);
-  const fill = new DirectionalLight(0xfff1e2, 0.3);
+  const fill = new DirectionalLight(0xfff8f0, 0.3);
   fill.position.set(4, -1, 3);
   scene.add(hemi, key, rim, fill);
 
@@ -162,20 +193,45 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
   scene.add(shadow);
 
   let selected: MuscleGroup | null = null;
-  let pulse = 0;
+  // A selection is shown by quieting the other muscles toward the body (no
+  // glow): `spotlight` is the muscle being presented, `dim` how far the rest
+  // have receded. The spotlight outlives a deselect so the fade can run out.
+  let spotlight: MuscleGroup | null = null;
+  const dim = { value: 0, velocity: 0 };
+  let paintedDim = 0;
 
-  const accentColor = new Color();
   const paint = () => {
-    accentColor.setRGB(...options.palette.accent, SRGBColorSpace);
+    const bodyColor = body.color;
+    const inkColor = new Color().setRGB(...options.palette.ink, SRGBColorSpace);
+    // The compact figurine already quiets everything but its focus.
+    const recede = options.focus ? 0 : dim.value;
     for (const [muscle, material] of muscleMaterials) {
       const shade = options.shades.get(muscle);
-      const base = new Color().setRGB(...muscleColor(shade, options.palette), SRGBColorSpace);
+      const trained = Boolean(shade && shade.ink > 0);
+      let finish: Finish = options.focus === muscle || (trained && shade?.hot) ? 'hot' : trained ? 'trained' : 'body';
+      const quieted = options.focus ? options.focus !== muscle : recede > 0 && spotlight !== muscle;
+      // Red faded toward porcelain turns pink, so a quieted red recedes as ink.
+      const quietedHot = finish === 'hot' && quieted && shade !== undefined;
+      if (quietedHot) finish = 'trained';
+      const base = finish === 'body'
+        ? bodyColor.clone()
+        : new Color().setRGB(
+          ...(quietedHot ? mixRgb(options.palette.body, options.palette.ink, shade.ink) : muscleColor(shade, options.palette)),
+          SRGBColorSpace,
+        );
       if (options.focus === muscle) base.setRGB(...options.palette.accent, SRGBColorSpace);
-      else if (options.focus) base.lerp(new Color().setRGB(...options.palette.body, SRGBColorSpace), 0.85);
+      else if (options.focus) base.lerp(bodyColor, 0.85);
+      if (recede > 0 && spotlight === muscle && finish === 'body') {
+        // An untrained muscle still shows where it is when chosen.
+        base.lerp(bodyColor.clone().lerp(inkColor, 0.45), recede);
+        finish = 'trained';
+      } else if (recede > 0 && spotlight !== muscle) {
+        base.lerp(bodyColor, 0.72 * recede);
+      }
       material.color.copy(base);
-      material.emissive.copy(accentColor);
-      material.emissiveIntensity = 0;
+      finishMuscle(material, options.dark, finish);
     }
+    paintedDim = dim.value;
   };
   paint();
 
@@ -202,7 +258,9 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
         if (!dragging && yawTarget !== null) yaw.value = yawTarget;
         rise.value = 1;
         if (!dragging) pitch.value = 0;
-        if (selected) muscleMaterials.get(selected)!.emissiveIntensity = 0.35;
+        dim.value = selected ? 1 : 0;
+        dim.velocity = 0;
+        if (dim.value !== paintedDim) paint();
         figure.rotation.set(pitch.value, yaw.value, 0);
         figure.scale.setScalar(1);
         figure.position.y = 0;
@@ -226,12 +284,8 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
         moving = stepSpring(pitch, 0, dt, 60, 0.9) || moving;
       }
       moving = stepSpring(rise, 1, dt, 40, 0.85) || moving;
-      if (selected) {
-        pulse += dt;
-        const material = muscleMaterials.get(selected);
-        if (material) material.emissiveIntensity = 0.22 + Math.sin(pulse * 4) * 0.12 * Math.exp(-pulse * 0.9);
-        moving = moving || pulse < 3;
-      }
+      moving = stepSpring(dim, selected ? 1 : 0, dt, 120, 1) || moving;
+      if (dim.value !== paintedDim) paint();
       figure.rotation.y = yaw.value;
       figure.rotation.x = pitch.value;
       figure.scale.setScalar(rise.value);
@@ -332,14 +386,13 @@ export function createMaquette(canvas: HTMLCanvasElement, initial: MaquetteOptio
         shadowMaterial.needsUpdate = true;
       }
       paint();
-      if (selected) muscleMaterials.get(selected)!.emissiveIntensity = 0.3;
       host.invalidate();
     },
     select(muscle) {
-      if (selected) muscleMaterials.get(selected)!.emissiveIntensity = 0;
       selected = muscle;
-      pulse = 0;
       if (muscle) {
+        spotlight = muscle;
+        paint();
         // Turn the chosen muscle toward the viewer.
         const part = MUSCLE_PARTS.find((candidate) => candidate.muscle === muscle);
         const facesBack = part ? part.solid.center[2] < -0.02 : false;

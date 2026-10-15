@@ -7,6 +7,7 @@ import { normalizeBarcode, normalizeFoodBarcode } from '@/lib/barcodes';
 import { tapHaptic } from '@/lib/haptics';
 import { NativeBarcode, isNativeIOS } from '@/lib/nativeBridge';
 import { withTimeout } from '@/lib/withTimeout';
+import './fuel.css';
 
 const SCAN_INTERVAL_MS = 180;
 // hard ceilings so no await can strand the UI in a disabled busy state: the
@@ -267,22 +268,23 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
   const scanning = state === 'scanning';
 
   return (
-    <div className="space-y-4">
-      <div className="relative overflow-hidden bg-black aspect-[4/3] hairline-strong">
-        <video ref={videoRef} muted playsInline className={`w-full h-full object-cover ${scanning ? 'opacity-100' : 'opacity-35'}`} />
-        <div className="absolute inset-[18%_10%] border border-white/80" aria-hidden="true">
-          <span className="absolute left-1/2 top-1/2 w-[82%] h-px -translate-x-1/2 bg-[var(--color-accent)]" />
+    <div className="fuel-stack">
+      <div className="fuel-camera">
+        <video ref={videoRef} muted playsInline className={scanning ? 'opacity-100' : 'opacity-35'} />
+        <div className="fuel-camera-frame" aria-hidden="true">
+          <i /><i /><i /><i />
+          <span className="fuel-camera-line" />
         </div>
         {!scanning && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            {busy ? <Loader2 className="w-7 h-7 animate-spin text-white" /> : <Barcode className="w-8 h-8 text-white/75" strokeWidth={1.5} />}
+          <div className="fuel-camera-state">
+            {busy ? <Loader2 className="w-7 h-7 animate-spin" /> : <Barcode className="w-8 h-8" strokeWidth={1.25} />}
           </div>
         )}
         {torchAvailable && scanning && (
           <button
             type="button"
             onClick={() => { void toggleTorch(); }}
-            className="pressable absolute top-3 right-3 flex items-center justify-center w-11 h-11 bg-black/65 text-white"
+            className="fuel-camera-torch pressable"
             aria-label={torchOn ? 'Turn flashlight off' : 'Turn flashlight on'}
           >
             <Flashlight className="w-4 h-4" fill={torchOn ? 'currentColor' : 'none'} />
@@ -290,13 +292,13 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
         )}
       </div>
 
-      <p className={`t-caption ${state === 'error' ? 'text-[var(--color-accent)]' : ''}`} aria-live="polite">
+      <p className={`fuel-note ${state === 'error' ? 'is-alert' : ''}`} aria-live="polite">
         {message}
       </p>
 
       {(state === 'idle' || state === 'error') ? (
         <Button className="w-full" size="lg" onClick={() => { void startCamera(); }}>
-          <ScanLine className="w-4 h-4" />
+          <ScanLine className="w-4 h-4" strokeWidth={1.5} />
           Scan again
         </Button>
       ) : scanning ? (
@@ -307,7 +309,8 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
 
       <button
         type="button"
-        className="pressable flex items-center gap-2 t-label text-[var(--color-text-dim)]"
+        className="metal-text-btn is-quiet self-start"
+        aria-expanded={showManual}
         onClick={() => setShowManual((current) => !current)}
       >
         <Keyboard className="w-4 h-4" strokeWidth={1.5} />

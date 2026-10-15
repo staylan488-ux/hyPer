@@ -11,7 +11,7 @@ interface ToastProps {
   tone?: 'sage' | 'berry';
 }
 
-/** Compact feedback in the same material as the app's foreground controls. */
+/** Compact feedback: a solid hairline capsule, like the command capsule. */
 export function Toast({ show, message, tone = 'sage' }: ToastProps) {
   const Icon = tone === 'sage' ? Check : AlertCircle;
   const theme = useThemeStore((state) => state.theme);
@@ -33,14 +33,14 @@ export function Toast({ show, message, tone = 'sage' }: ToastProps) {
         >
           <div
             ref={litRef}
-            className="material-toast flex items-center gap-2.5 px-4 py-3"
+            className="material-toast flex items-center gap-2.5 px-5 py-3"
           >
             <Icon
               className="w-3.5 h-3.5 shrink-0"
               strokeWidth={2}
               style={{ color: tone === 'berry' ? 'var(--color-accent)' : 'var(--color-text)' }}
             />
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-text)]">{message}</span>
+            <span className="text-[13.5px] font-medium text-[var(--color-text)]">{message}</span>
           </div>
         </motion.div>
       )}

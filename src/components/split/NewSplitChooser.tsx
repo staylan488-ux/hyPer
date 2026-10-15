@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { PenLine, Wand2 } from 'lucide-react';
 import { Button, SegmentedControl } from '@/components/shared';
 import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 import { splitTemplates } from '@/lib/splitTemplates';
@@ -100,14 +99,14 @@ export function NewSplitChooser({
   };
 
   return (
-    <div className="pt-1 pb-2 space-y-8">
-      <p className="text-editorial max-w-[34ch]">
+    <div className="pt-1 pb-2">
+      <p className="metal-note mt-0">
         Start from a plan or a blank page. You can change every day and set before it is created.
       </p>
 
       {stored && (
-        <div className="border-t border-b border-[var(--color-border)] py-4 space-y-3" role="status">
-          <p className="t-body text-[var(--color-text)]">
+        <div className="split-offer space-y-3 mt-6" role="status">
+          <p className="text-[15px] leading-[1.4] text-[var(--metal-ink)]">
             Unsaved program{stored.draft.name.trim() ? ` “${stored.draft.name.trim()}”` : ''} · {stored.draft.days.length}{' '}
             {stored.draft.days.length === 1 ? 'day' : 'days'}, from {formatDistanceToNowStrict(stored.savedAt, { addSuffix: true })}.
           </p>
@@ -130,10 +129,10 @@ export function NewSplitChooser({
         </div>
       )}
 
-      <section className="space-y-5">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-[var(--color-border)]">
-          <Wand2 className="w-4 h-4 text-[var(--color-accent)] shrink-0" strokeWidth={1.5} aria-hidden />
-          <h3 className="t-heading">Guided</h3>
+      <section className="metal-section space-y-5">
+        <div className="metal-section-head">
+          <h3 className="metal-eyebrow">Guided</h3>
+          <span className="metal-section-head-right">Five questions</span>
         </div>
 
         <ChoiceRow
@@ -150,24 +149,23 @@ export function NewSplitChooser({
         <ChoiceRow question={SESSION} value={answers.sessionLength} onChange={(value) => answer('sessionLength', value)} />
         <ChoiceRow question={EXPERIENCE} value={answers.experience} onChange={(value) => answer('experience', value)} />
 
-        <div aria-live="polite">
-          <p className="t-heading">{guided.name}</p>
-          <p className="t-data-sm text-[var(--color-muted)] mt-1">
+        <div aria-live="polite" className="pt-1">
+          <p className="metal-sheet-title text-[22px]">{guided.name}</p>
+          <p className="metal-row-detail mt-1 tabular-nums">
             {guided.days.length} days/week · {guidedExercises} exercises
           </p>
         </div>
 
-        {error && <p className="t-caption text-[var(--color-accent)]" role="alert">{error}</p>}
+        {error && <p className="metal-flag" role="alert"><span>{error}</span></p>}
 
         <Button size="lg" className="w-full" onClick={() => { void startGuided(); }} loading={loading} disabled={loading}>
           Start from this plan
         </Button>
       </section>
 
-      <section className="space-y-5">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-[var(--color-border)]">
-          <PenLine className="w-4 h-4 text-[var(--color-text-dim)] shrink-0" strokeWidth={1.5} aria-hidden />
-          <h3 className="t-heading">Blank</h3>
+      <section className="metal-section space-y-5">
+        <div className="metal-section-head">
+          <h3 className="metal-eyebrow">Blank</h3>
         </div>
         <ChoiceRow
           question={{ key: 'daysPerWeek', label: 'Training days', options: BLANK_DAY_OPTIONS }}

@@ -2,6 +2,7 @@
 @import "./styles/fonts.css";
 @import "./styles/materials.css";
 @import "./styles/kinetic.css";
+@import "./styles/metal.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */
@@ -276,6 +277,8 @@ body {
 .studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
 }
 :where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+/* Metal fields draw their own ink line on focus; a second ring would read as a glowing outline. */
+:where(.metal-input, .metal-input input, .metal-input textarea):focus-visible { outline: none; }
 
 /* ═════════════════════════════════════════════════════════════
    CONTENT — calm, readable surfaces beneath the glass control layer.
@@ -320,7 +323,7 @@ body {
 
 /* Clears the bottom nav + safe area */
 .pb-nav {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px) + var(--metal-capsule-clearance, 0px));
 }
 
 /* ═════════════════════════════════════════════════════════════
@@ -442,6 +445,7 @@ input, textarea, select, button { font-family: inherit; }
   max-width: 32rem;
   margin: auto;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior-y: contain;
   background: transparent;
 }

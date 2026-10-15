@@ -1,11 +1,13 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Layers3, Plus } from 'lucide-react';
-import { Button, EmptyState, Modal, RailStrip, RollingNumber, Screen, Toast, PageTitle, SealMark } from '@/components/shared';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Modal, Toast, SealMark } from '@/components/shared';
+import { Eyebrow, HeroFigure, LineButton, MetalRail, MetalSection, MetalTitle, useCommandCapsule } from '@/components/metal';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
 import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
 import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedger';
+import '@/components/nutrition/fuel.css';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import {
@@ -442,165 +444,139 @@ export function Nutrition() {
     live: liveDay && !loading,
   });
 
+  const eatenKcal = Math.round(dayTotals.calories);
+  const roundedTarget = Math.round(targetKcal);
+  const kcalLeft = Math.max(0, roundedTarget - eatenKcal);
+  const kcalOver = Math.max(0, eatenKcal - roundedTarget);
+  const proteinLeft = Math.max(0, Math.round(targetProtein - dayTotals.protein));
+  // One segment per 100 kcal of target (the hairline caps long runs); on
+  // today the segment being filled is the live one.
+  const energySegments = Math.max(1, Math.round(targetKcal / 100));
+  const energyOn = Math.min(energySegments, Math.floor(dayTotals.calories / 100));
+  const openLogger = () => {
+    setEditingEntry(null);
+    setShowLogger(true);
+  };
+  const capsuleSublabel = loading
+    ? undefined
+    : !liveDay
+      ? `Adds to ${format(selectedDate, 'EEEE, MMM d')}`
+      : kcalOver > 0
+        ? `${kcalOver.toLocaleString()} kcal over target`
+        : `${kcalLeft.toLocaleString()} kcal left${proteinLeft > 0 ? ` · ${proteinLeft} g protein to go` : ''}`;
+  const otherYear = format(selectedDate, 'yyyy') !== format(new Date(), 'yyyy');
+
   return (
-    <Screen>
+    <div className="metal-page fuel-page pb-nav">
+      <FuelCommand sublabel={capsuleSublabel} onPress={openLogger} />
       <Toast show={showSuccess} message="Entry saved" />
 
       {/* ── Dateline ── */}
       <header>
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">{isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE')}</span>
-          <span className="t-label-sm">{format(selectedDate, 'MMM d')}</span>
-        </div>
-        <PageTitle className="mt-5">Fuel</PageTitle>
+        <Eyebrow>{liveDay ? `Today · ${format(selectedDate, 'MMM d')}` : format(selectedDate, 'EEEE, MMM d')}</Eyebrow>
+        <MetalTitle note={otherYear ? format(selectedDate, 'yyyy') : undefined}>Fuel</MetalTitle>
       </header>
 
-      {/* ── Energy hero — the day's calories, big ── */}
-      <section
-        className="mt-6"
-      >
+      {/* ── Energy — the day's calories, as the one huge figure ── */}
+      <section className="fuel-hero" aria-label="Energy">
         {loading ? (
-          <div className="space-y-4">
-            <div className="shimmer h-3 w-24" />
-            <div className="shimmer h-16 w-44" />
-            <div className="shimmer h-px w-full" />
+          <div aria-hidden>
+            <div className="shimmer h-[90px] w-48 mt-5" />
+            <div className="shimmer h-[2px] w-full mt-[18px]" />
           </div>
         ) : (
           <>
-            <div className="flex items-end justify-between gap-4">
-              <div className="min-w-0">
-                <span className="t-label block mb-3">Energy consumed</span>
-                <div className="flex items-baseline gap-2.5">
-                  <RollingNumber value={Math.round(dayTotals.calories).toLocaleString()} className="number-hero text-[var(--color-text)]" />
-                  <span className="t-caption text-[var(--color-text-dim)]">kcal</span>
-                </div>
-              </div>
-              <div className="text-right shrink-0 pb-1.5">
-                <span className="t-data-sm text-[var(--color-text-dim)]">
-                  / {Math.round(targetKcal).toLocaleString()}
-                </span>
-                <span className="t-label-sm mt-1 flex items-center justify-end gap-1.5">
+            {/* Today's hero, set the same way: plain proportional figures, two short caption lines.
+                What's left rides in the capsule; an overage gets the flag below. */}
+            <HeroFigure
+              value={eatenKcal.toLocaleString()}
+              caption={<>
+                <span>
+                  kcal eaten
                   <SealMark show={calorieSeal.met} label="Calorie target met" anchorRef={calorieSeal.anchorRef} />
-                  {calorieSeal.met ? 'On target' : 'Daily target'}
                 </span>
-              </div>
-            </div>
-            <RailStrip
-              value={dayTotals.calories / Math.max(targetKcal * 1.18, dayTotals.calories)}
-              notch={targetKcal / Math.max(targetKcal * 1.18, dayTotals.calories)}
-              tone={dayTotals.calories > targetKcal ? 'berry' : 'chalk'}
-              size="md"
-              className="mt-6"
-              reveal="fuel-energy"
+                {calorieSeal.met ? <b>On target</b> : <>of {roundedTarget.toLocaleString()}</>}
+              </>}
+              segments={{
+                total: energySegments,
+                on: energyOn,
+                now: liveDay && kcalOver === 0 && energyOn < energySegments ? energyOn : undefined,
+                label: `${eatenKcal.toLocaleString()} of ${roundedTarget.toLocaleString()} kcal`,
+              }}
             />
+            {kcalOver > 0 && (
+              <p className="metal-flag"><span><b>{kcalOver.toLocaleString()} kcal</b> over the daily target</span></p>
+            )}
           </>
         )}
       </section>
 
-      {/* ── Primary action ── */}
-      <div
-        className="mt-6"
-      >
-        <Button
-          size="lg"
-          className="w-full"
-          onClick={() => {
-            setEditingEntry(null);
-            setShowLogger(true);
-          }}
-        >
-          <Plus className="w-[18px] h-[18px]" strokeWidth={1.75} />
-          Log food
-        </Button>
-      </div>
-
-      {/* Supporting macro ledger keeps energy as the single hero. */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <span className="t-label block mb-5">Macros</span>
+      {/* ── Macros — hairline bars under the energy figure ── */}
+      <MetalSection label="Macros">
         {loading ? (
-          <div className="space-y-4">
+          <div className="fuel-macros" aria-hidden>
             {[0, 1, 2].map((i) => (
               <div key={i} className="space-y-2.5">
-                <div className="shimmer h-2.5 w-10" />
-                <div className="shimmer h-8 w-14" />
-                <div className="shimmer h-px w-full" />
+                <div className="shimmer h-3 w-full" />
+                <div className="shimmer h-[2px] w-full" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="space-y-4">
-            {macroFigures.map((macro) => {
-              const max = Math.max(macro.target * 1.18, macro.current);
-              const over = macro.current > macro.target;
-              return (
-                <div key={macro.label}>
-                  <div className="flex items-baseline justify-between gap-3 mb-2">
-                    <span className="t-body flex items-center gap-2">
-                      {macro.label}
-                      {macro.label === 'Protein' && (
-                        <SealMark show={proteinSeal.met} label="Protein target met" anchorRef={proteinSeal.anchorRef} />
-                      )}
-                    </span>
-                    <span className="t-data-sm text-[var(--color-text)]">
-                      {Math.round(macro.current)} <span className="text-[var(--color-text-dim)]">/ {Math.round(macro.target)} g</span>
-                    </span>
-                  </div>
-                  <RailStrip
-                    value={macro.current / max}
-                    notch={macro.target / max}
-                    tone={over ? 'berry' : 'chalk'}
-                    size="sm"
-                    reveal={`fuel-macro-${macro.label}`}
-                  />
-                </div>
-              );
-            })}
+          <div className="fuel-macros">
+            {macroFigures.map((macro) => (
+              <MetalRail
+                key={macro.label}
+                label={macro.label}
+                value={macro.current}
+                target={macro.target}
+                unit=" g"
+                extra={macro.label === 'Protein'
+                  ? <SealMark show={proteinSeal.met} label="Protein target met" anchorRef={proteinSeal.anchorRef} />
+                  : undefined}
+              />
+            ))}
           </div>
         )}
-      </section>
+      </MetalSection>
 
       {/* ── Week strip + month jump ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <div className="flex items-baseline justify-between mb-4">
-          <span className="t-label">{format(weekStart, 'MMMM')}</span>
-          <div className="flex items-center">
+      <MetalSection
+        label={format(weekStart, 'MMMM')}
+        right={(
+          <div className="fuel-head-tools">
             <button
               type="button"
               aria-label="Previous week"
-              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="fuel-icon-btn"
               onClick={() => setWeekAnchor((current) => addDays(current, -7))}
             >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
+              <ChevronLeft strokeWidth={1.5} />
             </button>
             <button
               type="button"
               aria-label="Next week"
-              className="pressable studio-row-action p-2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="fuel-icon-btn"
               onClick={() => setWeekAnchor((current) => addDays(current, 7))}
             >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+              <ChevronRight strokeWidth={1.5} />
             </button>
             <button
               type="button"
               aria-label="Open month calendar"
-              className="pressable studio-row-action p-2 ml-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="fuel-icon-btn"
               onClick={() => setShowMonthSheet(true)}
             >
-              <CalendarDays className="w-4 h-4" strokeWidth={1.5} />
+              <CalendarDays strokeWidth={1.5} />
             </button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1">
+        )}
+      >
+        <div className="fuel-week">
           {weekDays.map((day) => {
             const key = getDateKey(day);
             const isSelected = isSameDay(day, selectedDate);
             const hasLogs = (logsByDay[key] || []).length > 0;
-            const dayIsToday = isToday(day);
 
             return (
               <button
@@ -609,79 +585,49 @@ export function Nutrition() {
                 onClick={() => pickDate(day)}
                 aria-label={format(day, 'EEEE, MMMM d')}
                 aria-pressed={isSelected}
-                className={`relative rounded-[11px] flex flex-col items-center gap-1.5 py-3 transition-colors ${
-                  isSelected ? 'bg-[var(--color-text)]' : 'pressable'
-                }`}
+                aria-current={isToday(day) ? 'date' : undefined}
+                className={`fuel-day${isSelected ? ' is-selected' : ''}${isToday(day) ? ' is-today' : ''}`}
               >
-                {dayIsToday && !isSelected && (
-                  <span className="absolute top-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
-                )}
-                <span className={`t-label-sm ${isSelected ? 'text-[var(--color-base)]' : 'text-[var(--color-muted)]'}`}>
-                  {format(day, 'EEEEE')}
-                </span>
-                <span className={`t-data ${isSelected ? 'text-[var(--color-base)]' : 'text-[var(--color-text-dim)]'}`}>
-                  {format(day, 'd')}
-                </span>
-                <span
-                  className={`w-1 h-1 rounded-full ${hasLogs ? '' : 'opacity-0'}`}
-                  style={{ backgroundColor: isSelected ? 'var(--color-base)' : 'var(--color-text-dim)' }}
-                />
+                <span className="fuel-day-letter" aria-hidden>{format(day, 'EEEEE')}</span>
+                <span className="fuel-day-num">{format(day, 'd')}</span>
+                <span className={`fuel-day-dot${hasLogs ? '' : ' is-off'}`} aria-hidden />
               </button>
             );
           })}
         </div>
-      </section>
+      </MetalSection>
 
       {/* ── Unified food inbox + meal groups ── */}
-      <section
-        className="mt-[30px] pt-5 border-t border-[var(--color-border)]"
-      >
-        <div className="flex items-baseline justify-between mb-4">
-          <div className="flex items-baseline gap-2">
-            <span className="t-label">Meals</span>
+      <MetalSection
+        label="Meals"
+        right={(
+          <>
             {!loading && selectedDayLogs.length > 0 && (
-            <span className="t-data-sm text-[var(--color-muted)]">
-              {selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}
-            </span>
+              <span>{selectedDayLogs.length} {selectedDayLogs.length === 1 ? 'entry' : 'entries'}</span>
             )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setShowGroupSheet(true)}>
-            <Layers3 className="w-4 h-4" strokeWidth={1.5} />
-            Add meal
-          </Button>
-        </div>
-
+            <LineButton plus onClick={() => setShowGroupSheet(true)}>Add meal</LineButton>
+          </>
+        )}
+      >
         {loading ? (
-          <div className="space-y-px">
+          <div aria-hidden className="mt-1.5">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-t border-[var(--color-border-soft)]">
-                <div className="shimmer h-3 w-12" />
+              <div key={i} className="flex items-center gap-4 py-4 border-t-[0.5px] border-[var(--metal-rule)]">
                 <div className="flex-1 space-y-1.5">
                   <div className="shimmer h-3.5 w-2/3" />
                   <div className="shimmer h-2.5 w-1/3" />
                 </div>
-                <div className="shimmer h-6 w-12" />
+                <div className="shimmer h-4 w-14" />
               </div>
             ))}
           </div>
         ) : selectedDayLogs.length === 0 && selectedDayGroups.length === 0 ? (
-          <EmptyState
-            art="plate"
-            title="Nothing logged yet"
-            body={isToday(selectedDate) ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
-            action={
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setEditingEntry(null);
-                  setShowLogger(true);
-                }}
-              >
-                <Plus className="w-4 h-4" strokeWidth={1.75} />
-                Add entry
-              </Button>
-            }
-          />
+          <div className="mt-1">
+            <p className="metal-row-title">Nothing logged yet</p>
+            <p className="metal-note mt-1">
+              {liveDay ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
+            </p>
+          </div>
         ) : (
           <NutritionGroupLedger
             logs={selectedDayLogs}
@@ -704,7 +650,7 @@ export function Nutrition() {
             onDeleteGroup={(group) => void deleteGroup(group)}
           />
         )}
-      </section>
+      </MetalSection>
 
       {/* Month jump sheet */}
       <Modal
@@ -716,33 +662,33 @@ export function Nutrition() {
         }}
         title="Jump to date"
       >
-        <div className="pt-1 pb-2">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--color-border)]">
+        <div className="fuel-month pb-2">
+          <div className="fuel-month-head">
             <button
               type="button"
               aria-label="Previous month"
               onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
-              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="metal-step-btn pressable flex items-center justify-center w-11 h-11 text-[var(--metal-ink)]"
             >
               <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
-            <span className="t-heading">{format(selectedMonth, 'MMMM yyyy')}</span>
+            <span className="fuel-month-title">{format(selectedMonth, 'MMMM yyyy')}</span>
             <button
               type="button"
               aria-label="Next month"
               onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
-              className="pressable studio-row-action p-2.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="metal-step-btn pressable flex items-center justify-center w-11 h-11 text-[var(--metal-ink)]"
             >
               <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 mb-1">
+          <div className="fuel-month-letters" aria-hidden>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-              <span key={`${d}-${i}`} className="t-label-sm text-center py-1">{d}</span>
+              <span key={`${d}-${i}`} className="fuel-day-letter py-1">{d}</span>
             ))}
           </div>
-          <div className="grid grid-cols-7">
+          <div className="fuel-week">
             {calendarDays.map((day) => {
               const key = getDateKey(day);
               const isSelected = isSameDay(day, selectedDate);
@@ -755,25 +701,15 @@ export function Nutrition() {
                   type="button"
                   aria-label={format(day, 'EEEE, MMMM d')}
                   aria-pressed={isSelected}
+                  aria-current={isToday(day) ? 'date' : undefined}
                   onClick={() => {
                     pickDate(day);
                     setShowMonthSheet(false);
                   }}
-                  className={`relative h-11 rounded-[11px] t-data transition-colors ${
-                    isSelected
-                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                      : inMonth
-                        ? 'text-[var(--color-text-dim)] active:bg-[var(--color-surface-2)]'
-                        : 'text-[var(--color-muted)] opacity-50'
-                  }`}
+                  className={`fuel-day${isSelected ? ' is-selected' : ''}${isToday(day) ? ' is-today' : ''}${inMonth ? '' : ' is-outside'}`}
                 >
-                  {format(day, 'd')}
-                  {hasLogs && !isSelected && (
-                    <span className="absolute left-1/2 -translate-x-1/2 bottom-1.5 w-1 h-1 rounded-full bg-[var(--color-text-dim)]" />
-                  )}
-                  {isToday(day) && !isSelected && (
-                    <span className="absolute left-1/2 -translate-x-1/2 top-1.5 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
-                  )}
+                  <span className="fuel-day-num">{format(day, 'd')}</span>
+                  <span className={`fuel-day-dot${hasLogs ? '' : ' is-off'}`} aria-hidden />
                 </button>
               );
             })}
@@ -782,7 +718,7 @@ export function Nutrition() {
       </Modal>
 
       <Modal isOpen={showGroupSheet} onClose={() => setShowGroupSheet(false)} title="Add meal or snack">
-        <div className="space-y-px pb-2">
+        <div className="pb-2">
           {[
             { kind: 'meal' as const, title: 'Meal', description: 'Inserted by time and numbered by its place in the day' },
             { kind: 'snack' as const, title: 'Snack', description: 'Inserted by time and numbered with other snacks' },
@@ -790,14 +726,14 @@ export function Nutrition() {
             <button
               key={option.kind}
               type="button"
-              className="pressable w-full flex items-center justify-between gap-4 py-4 border-t border-[var(--color-border-soft)] text-left"
+              className="fuel-option"
               onClick={() => void createGroup(option.kind)}
             >
-              <span>
-                <span className="t-heading block">{option.title}</span>
-                <span className="t-caption block mt-0.5">{option.description}</span>
+              <span className="min-w-0">
+                <span className="metal-row-title">{option.title}</span>
+                <span className="metal-row-detail">{option.description}</span>
               </span>
-              <span className="t-data-sm text-[var(--color-muted)]">Add</span>
+              <span className="fuel-option-value">Add</span>
             </button>
           ))}
         </div>
@@ -829,6 +765,19 @@ export function Nutrition() {
           onComplete={handleLogComplete}
         />
       </Modal>
-    </Screen>
+    </div>
   );
+}
+
+/** Fuel's one primary action on the command capsule: Log food. */
+function FuelCommand({ sublabel, onPress }: { sublabel?: string; onPress: () => void }) {
+  useCommandCapsule({
+    key: 'fuel-log-food',
+    label: 'Log food',
+    sublabel,
+    glyph: 'plus',
+    dock: 'tabbar',
+    onPress,
+  });
+  return null;
 }

@@ -22,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { commitFocusedField } from '@/lib/commitFocusedField';
 import { selectionHaptic, selectionHapticEnd, selectionHapticStart, tapHaptic } from '@/lib/haptics';
+import '@/components/split/program.css';
 import './split-editor.css';
 
 /**

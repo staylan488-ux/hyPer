@@ -1,0 +1,84 @@
+/* Run tracker (/train/run) on Metal. Joins the shared `components` layer so
+   Tailwind utilities still win. */
+@layer components {
+
+/* Setup and summary flow in the shell; the capsule docks at the bottom. */
+.run-page { padding-bottom: calc(var(--app-safe-bottom) + 36px + var(--metal-capsule-clearance, 0px)); }
+
+.run-back { margin-left: -6px; padding-right: 8px; }
+.run-back svg { width: 18px; height: 18px; }
+
+/* The live screen: fixed, unscrollable, inside the shell's safe area. */
+.run-live {
+  padding:
+    max(16px, var(--app-safe-top))
+    max(var(--metal-gutter), var(--app-safe-right))
+    max(20px, calc(var(--app-safe-bottom) + 12px))
+    max(var(--metal-gutter), var(--app-safe-left));
+  background: var(--material-foundation, var(--color-base));
+}
+
+/* Label over a Fraunces figure ("Time 2:17"); a candidate for metal.css. */
+.metal-stat-label { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.metal-stat-value {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-display);
+  font-weight: 340;
+  font-variation-settings: 'opsz' 144;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--metal-ink);
+  white-space: nowrap;
+}
+.metal-stat-value small { margin-left: 4px; font-family: var(--font-sans); font-size: 12px; letter-spacing: 0; color: var(--metal-ink-2); }
+
+.run-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.run-stats.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.run-detail { margin-top: 6px; font-size: 15px; line-height: 1.35; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+
+/* Big hairline capsules for running hands. */
+.run-control {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 12px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  font-size: 16.5px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--metal-ink);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: transform 75ms ease, box-shadow 160ms ease;
+}
+.run-control:active { transform: scale(0.96); }
+.run-control.is-primary { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-ink) 72%, transparent); }
+.run-control.is-finish { color: var(--metal-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-red) 55%, transparent); touch-action: none; }
+.run-control.is-finish.is-holding .run-control-label { color: var(--color-base); }
+.run-hold-fill { position: absolute; inset: 0 auto 0 0; background: var(--metal-red); }
+.run-control-label { position: relative; z-index: 1; transition: color 120ms ease; }
+
+/* Split ledger under the lap chart. */
+.run-ledger-row { display: grid; grid-template-columns: 2rem 1fr 1fr 1fr; gap: 8px; align-items: baseline; padding: 9px 0; border-top: 0.5px solid var(--color-border-soft); font-size: 13.5px; line-height: 1.35; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+.run-ledger-row.is-head { border-top: 0; padding: 0 0 6px; font-size: 10.5px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.run-ledger-row.is-rest { color: var(--metal-ink-3); }
+
+}
+
+/* Unlayered on purpose: the global :focus-visible outline is unlayered too. The
+   metres field draws its own focus line instead of stacking a second ring. */
+.run-metres-input:focus-visible { outline: none; }
+.run-metres-input:focus { box-shadow: inset 0 0 0 1.5px var(--metal-ink); }
+.run-metres-input[aria-invalid='true']:focus { box-shadow: inset 0 0 0 1.5px var(--metal-red); }

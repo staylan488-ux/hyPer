@@ -1,94 +1,152 @@
 ---
 name: studio-design
-description: Apply hyPer's approved Studio design when creating or editing its interface, typography, layout, controls, or motion.
+description: Apply hyPer's approved Metal design (the current Studio direction) when creating or editing its interface, typography, layout, controls, or motion.
 ---
 
-# Studio design
+# Metal design
 
-Continue the approved Studio design. Reuse the existing shared components and
-tokens; an already approved direction does not need another design exploration.
+Metal (approved 2026-10) is the current Studio direction: Fraunces figures on
+real black or ivory, hairlines instead of boxes, and one floating command
+capsule with a liquid-metal ring per screen. Build from the shared tokens and
+primitives; an approved direction does not need another design exploration.
+Today and the workout are the reference implementation; every other screen
+and sheet follows the same structure. Screen-specific styles live next to
+their pages (`fuel.css`, `history.css`, `program.css`, `settings.css`,
+`RunTracker.css`); promote a class to `metal.css` once a second screen needs
+it.
 
-## Typography and color
+## Color
 
-- Fraunces carries page titles; Geist carries interface text and compact
-  tabular data. Key figures and counters use the platform system sans through
-  `--font-metric` (SF on Apple platforms), weight 500, tabular digits and
-  -.025em tracking. Use system sans medium with monospaced digits for native
-  metric counterparts. There is no separate monospace voice.
-- Current roles are 40px/1.06 Fraunces titles, 44px/1 system-sans key figures,
-  14px/1.45 body, 12px/1.4 support, and 11px/1.4 labels. Adapt for readability
-  and accessibility without truncating meaningful names.
-- Use the current Ivory/Black theme tokens and one restrained Lacquer red accent. The approved
-  material refinement uses Ivory (#F5F5F0) and true Black (#000000), with soft
-  neutral translucent surfaces. Positive/completed states use ink; use semantic
-  tokens for both themes.
-- `text-base` collides with the `--color-base` theme color in Tailwind v4;
-  use `text-[1rem]` when a 16px font size is intended.
+- Dark is true black (#000000); light is ivory (#F5F5F0). Ink is #F2F2EE /
+  #161616, with `--metal-ink-2` for support text and `--metal-ink-3` for muted
+  figures. The one accent is red: #D9503F dark, #A8352A light. No purple, no
+  other accent hues, no glowing outlines or colored rims.
+- Use the `--metal-*` tokens in `src/styles/metal.css` (they also remap the
+  legacy `--color-*` tokens). Completed/positive states use ink, not green.
+- `text-base` collides with `--color-base` in Tailwind v4; use `text-[1rem]`.
 
-## Structure and controls
+## Type scale
 
-- Content stays editorial, separated by neutral rules and spacing. Reuse the
-  shared diffuse material classes; do not add bright rims, inset bevels, colored
-  edges or independent backdrop filters to nested cards and controls.
-- Page titles use `PageTitle`, which condenses into the scroll-edge band.
-- Primary actions use the shared fill (dark: #303030 with #EAEAEA text);
-  secondary actions use quiet filled surfaces;
-  contextual row actions stay unboxed. Meaningful touch targets are at least 44px.
-- Use the dedicated radius tokens: controls 11px, sheets 20px, navigation 22px.
-  Ordinary content containers retain square corners.
-- Preserve the inset four-tab navigation: native iOS 26 glass when available,
-  web fallback elsewhere. On iOS 26 the rest bar and status toasts are also
-  native glass (`HyperGlassSurfaces`); the web versions remain the fallback and
-  the web keeps all timer, save and preference behavior. Workouts open as a movement list; tapping a movement
-  expands its details and inline set entry in place, with an explicit collapse.
-  Keep drafts when rows or movements close. Rest uses a compact anchored bar,
-  starts only after a successful set save (or an explicit manual start), and
-  continues while browsing or editing. Failed saves retain numbers and Retry.
-  Reorder movements directly with a visible drag handle and keyboard support;
-  move supersets together. Save order to the session, preserve mounted drafts,
-  and restore the previous order with an error if saving fails.
+Fraunces is the figure and title voice; Geist carries everything else.
 
-## Motion and mobile behavior
+| Role | Spec | Use |
+|---|---|---|
+| Hero figure | Fraunces 104px/0.86, 340, opsz 144, −.035em; denominator in ink-3 | `HeroFigure`, one per screen |
+| Big figure | Fraunces 56px/0.92 + 13px unit | `BigFigure` (e.g. kcal left) |
+| Capsule value | Fraunces 27px + 12px unit | command capsule values |
+| Page title | Fraunces 40px, opsz 144 | `PageTitle` on unmigrated pages |
+| Screen title | Fraunces 30px/1.1, 360, opsz 72 + 13px Geist note on the baseline | `MetalTitle` |
+| Sheet title | Fraunces 24px, 360, opsz 72 | `Modal` |
+| Eyebrow | Geist 11px/14px, 500, .14em, uppercase, ink-2 | `Eyebrow`, section heads |
+| Line / row title | Geist 15px (rows 500) | `.metal-line`, `HairlineRow` |
+| Support | Geist 13–14px, ink-2; details 12.5px | captions, notes |
+| Capsule label | Geist 16.5px 500 / 13px sublabel | command capsule |
 
-The approved Kinetic direction (2026-09-26) keeps Studio's type, color and
-layout and makes motion, data and 3D the expressive layer.
+Figures use lining proportional digits (`.metal-num`); counters that tick use
+tabular digits. Sentence case everywhere except eyebrows. Never truncate a
+meaningful name; let titles wrap.
 
-- Routes appear immediately and restore their scroll position. Never transform
-  the route ancestor or add route transitions: that captures viewport-fixed
-  workout/native overlays. Fixed layers (scroll-edge band, FX) live inside the
-  untransformed route content or portal to `body`.
-- Use the named springs in `src/lib/animations.ts`: `tactile` for contact,
-  `settle` for state, `lift` (the only visible overshoot) for celebrations,
-  `heavy` for large objects. Move with transform/opacity, never width/left.
-- Data draws itself once per session per metric (`reveal` keys via
-  `useFirstReveal`), not on every tab visit. Charts are custom SVG/div from
-  `src/components/shared/charts/`; scrubbing gives one selection haptic per
-  datum and leaves vertical scrolling to the page.
-- Celebrations, particles, 3D scenes and motion-reactive light are allowed for
-  meaningful moments. They must never delay a save, focus or navigation; load
-  heavy code lazily; pause when hidden; and fall back to 2D without WebGL.
-- `useMotionPolicy` is the shared policy: reduced motion skips decorative
-  motion entirely (final state, no slow-motion); reduced transparency or
-  increased contrast removes moving light and blur. Keep the brand intro's
-  skip/cleanup behavior and reduced-motion bypass.
-- Preserve safe areas, visible-viewport keyboard behavior, nested sheet focus,
-  and background isolation. Inspect changed UI in Ivory/Black at phone widths.
+## Layout: sections and lists
+
+- Page: 20px gutters (`.metal-page`), eyebrow + title row, then the hero
+  figure with its caption on the baseline and a full-width segmented hairline
+  (`SegmentedHairline`: 2px segments; `wide` for few segments).
+- Sections (`MetalSection`): a 0.5px rule, 30px above, an eyebrow head with an
+  optional right side (a count, dots, or one `LineButton`). No cards, and never
+  cards inside cards; space and hairlines do the grouping.
+- Lists (`HairlineList` + `HairlineRow`): unboxed rows with title, detail,
+  value and a 7×12 chevron when they navigate; 44pt minimum height.
+- Thin bars (`MetalRail`): 2px track, ink fill, red when over target.
+- Flags (`.metal-flag`): a 2×13 red tick before one line that needs attention.
+- `EntryRow` (Progress / Program / History) is the only raised control in
+  Metal; do not reuse its bevel elsewhere. No neumorphic or puffy controls.
+- No hard line under the status bar; the shell's scroll edge handles it.
+
+## The command capsule and the one ring
+
+- A screen's single primary action goes on the command capsule:
+  `useCommandCapsule(spec | null)` from `@/components/metal`. The shell renders
+  it; the newest registration wins and it hides when its screen unmounts.
+  Pass `null` while loading or when there is no primary action.
+- Spec: `label` + `sublabel` (or `values` + `caption` for editable numbers),
+  `glyph` (`arrow` go, `plus` add, `check` log), optional `progress` (thin red
+  line), `busy`, `alert` (red sublabel), and `dock` (`tabbar` on tab routes,
+  `bottom` on chromeless routes, where it rides above the rest bar).
+- The capsule's `MetalRing` is the one ring per screen. Never place another
+  ring, and never invent a second visual for the same action on screen.
+- It hides itself for sheets (`#root[inert]`) and the keyboard. Content clears
+  it through `.pb-nav`; custom fixed-bottom layouts add
+  `var(--metal-capsule-clearance, 0px)`.
+- The capsule calls existing handlers; it never owns data or save logic. The
+  workout capsule logs through the set row's own save (`setEntryRegistry` →
+  `WorkoutSetRow.handleSave`), shows suggested values in ink-2 and logs exactly
+  what it shows; a value tap opens and focuses the inline row.
+
+## Controls and sheets
+
+- `Button`: capsules in sentence case. `primary` is an ink hairline (no filled
+  slab), `secondary` a quiet hairline, `ghost` unboxed, `danger` red hairline.
+  Prefer the command capsule for the main action. Touch targets ≥ 44pt.
+- `LineButton`: the 32pt hairline capsule (44pt hit area) for a section's
+  secondary action ("+ Log food"); `.metal-text-btn` for plain text actions.
+- Inputs: transparent with a hairline, 12px radius, ink outline on focus, red
+  when invalid. `SegmentedControl`: hairline track with a filled pill. `Chip`:
+  hairline capsule, selected fills with ink. `Stepper`: hairline circles and a
+  Fraunces 28px readout. Toasts are solid capsules.
+- Sheets (`Modal`, `.studio-sheet`): solid `--metal-sheet` (#111111 dark,
+  #FFFFFF light), no blur or gradients, 28px top radius, 36×5 handle, 24px
+  Fraunces title, 44pt hairline-circle close.
+- Tab bar: keep the native iOS 26 glass bar exactly as is. The web fallback has
+  no pill: 11px medium labels, inactive #8E8E93 / #6C6C70, active in ink with a
+  4px red dot. The rest bar and status toasts stay native glass on iOS 26.
+
+## Workout behavior (unchanged by Metal)
+
+Workouts open as a movement list; tapping a movement expands its details and
+inline set entry in place, with an explicit collapse. Keep drafts when rows or
+movements close. 0 lb and 0 reps are valid. Rest starts only after a
+successful set save (or an explicit manual start) and continues while
+browsing or editing. Failed saves retain numbers and offer Retry. Reorder
+movements with a visible drag handle and keyboard support; supersets move and
+log in rounds together.
+
+## Motion
+
+- Routes appear immediately and restore scroll; never transform the route
+  ancestor or add route transitions. Fixed layers live inside untransformed
+  content or portal to `body`.
+- Use the named springs in `src/lib/animations.ts` (`tactile`, `settle`,
+  `lift`, `heavy`); move with transform/opacity. The capsule morphs with
+  `settle` and cross-fades its label.
+- The ring loads lazily into one shared WebGL context, pauses when hidden or
+  off screen, takes its light from `subscribeMotionLight` (CoreMotion on iOS),
+  and falls back to a static CSS ring without WebGL.
+- `useMotionPolicy`: reduced motion shows final states (the ring is a still
+  frame); reduced transparency or increased contrast removes moving light and
+  blur. Data draws once per session per metric. Celebrations never delay a
+  save, focus or navigation. Keep the brand intro's skip and reduced-motion
+  bypass; its wordmark stays on Today.
+- Preserve safe areas, keyboard behavior, nested sheet focus and background
+  isolation. Inspect changes in both themes at 402pt wide.
 
 ## Implementation references
 
-- [Tokens and typography](../../../src/index.css), [route shell](../../../src/App.tsx).
-- [Diffuse materials](../../../src/styles/materials.css),
-  [approved refinement](../../../docs/plans/2026-09-04-luminous-materials.md).
+- [Metal tokens and primitives](../../../src/styles/metal.css),
+  [Metal components](../../../src/components/metal/),
+  [capsule store](../../../src/lib/commandCapsule.ts),
+  [capsule hook](../../../src/hooks/useCommandCapsule.ts).
+- Reference screens: [Today](../../../src/pages/Dashboard.tsx) with
+  [its model](../../../src/components/dashboard/todayModel.ts), and the
+  [workout capsule](../../../src/components/workout/WorkoutCommandCapsule.ts).
 - [Shared controls and sheets](../../../src/components/shared/),
   [motion primitives](../../../src/lib/animations.ts),
   [motion policy](../../../src/lib/motionPolicy.ts),
-  [Kinetic surfaces](../../../src/styles/kinetic.css).
-- 3D scenes live in [src/components/three](../../../src/components/three/) and
-  load only through dynamic `import()`; they share the
-  [renderer host](../../../src/lib/three/host.ts) and the
-  [motion light](../../../src/lib/motionLight.ts). The
-  [volume maquette geometry](../../../src/lib/maquette.ts) drives both the 3D
-  figure and its flat fallback.
-- [Preview fixtures](../../../src/preview/): use `/preview` in the dev server;
-  `/preview?previewSetSave=fail` exercises save failure and Retry;
-  `/preview/intro` replays brand motion and `/preview/sign-in` previews auth UI.
+  [motion light](../../../src/lib/motionLight.ts),
+  [route shell](../../../src/App.tsx).
+- 3D scenes load only through dynamic `import()` from
+  [src/components/three](../../../src/components/three/) and share the
+  [renderer host](../../../src/lib/three/host.ts).
+- [Preview fixtures](../../../src/preview/): `/preview` in the dev server;
+  `/preview?today=planned|live|rest|done|flexible|no-schedule|first-run` sets
+  Today's state; `/preview?previewSetSave=fail` exercises save failure and
+  Retry; `/preview/intro` replays the brand intro.

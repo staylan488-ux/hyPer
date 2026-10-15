@@ -19,11 +19,8 @@ export function EditorFooter({
   const undoRemoval = useSplitEditStore((s) => s.undoRemoval);
 
   return (
-    <div
-      className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
-    >
-      <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+    <div className="metal-sheet-bar">
+      <div className="w-full max-w-lg mx-auto space-y-2">
         <AnimatePresence>
           {undo && (
             <motion.div
@@ -33,10 +30,10 @@ export function EditorFooter({
               className="flex items-center justify-between gap-3"
               role="status"
             >
-              <span className="t-caption text-[var(--color-text)] min-w-0 break-words">{undo.label}</span>
+              <span className="text-[13px] leading-[1.4] text-[var(--metal-ink)] min-w-0 break-words">{undo.label}</span>
               <button
                 type="button"
-                className="pressable studio-row-action shrink-0 min-h-11 flex items-center gap-1.5 t-label text-[var(--color-text)]"
+                className="metal-text-btn shrink-0 text-[14px] gap-1.5"
                 onClick={undoRemoval}
               >
                 <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
@@ -47,7 +44,7 @@ export function EditorFooter({
         </AnimatePresence>
 
         {error && (
-          <p className="t-caption text-[var(--color-accent)] text-center" role="alert">{error}</p>
+          <p className="text-[13px] leading-[1.4] text-[var(--metal-red)] text-center" role="alert">{error}</p>
         )}
 
         <div className="flex gap-3">

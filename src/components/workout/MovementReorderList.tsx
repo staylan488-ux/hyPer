@@ -317,10 +317,10 @@ export function MovementReorderList({ items, onReorder, children }: {
         {children}
       </div>
       {activeId && !busy && ghost && createPortal(
-        <div ref={litGhostRef} className="material-glass studio-movement-drag-ghost" aria-hidden
+        <div ref={litGhostRef} className="studio-movement-drag-ghost" aria-hidden
           style={{ left: ghost.left, width: ghost.width, transform: `translateY(${ghost.top}px)` }}>
-          <GripVertical size={18} />
-          <div>{ghost.names.length > 1 && <span className="t-label-sm">Superset</span>}{ghost.names.map((name, index) => <p key={index}>{name}</p>)}</div>
+          <GripVertical size={16} strokeWidth={1.6} />
+          <div>{ghost.names.length > 1 && <span className="metal-eyebrow">Superset</span>}{ghost.names.map((name, index) => <p key={index}>{name}</p>)}</div>
         </div>, document.body)}
     </MovementDragContext.Provider>
   );
@@ -332,5 +332,5 @@ export function MovementDragHandle({ exerciseId, name, onIntent }: { exerciseId:
   return <button type="button" className="studio-movement-drag-handle" aria-label={`Reorder ${name}`}
     aria-describedby={drag.instructionsId} aria-pressed={drag.activeId === exerciseId} aria-disabled={drag.busy}
     title="Drag to reorder" onPointerDown={(event) => { onIntent(); drag.pointerDown(exerciseId, event); }}
-    onKeyDown={(event) => { onIntent(); drag.keyDown(exerciseId, event); }}><GripVertical size={18} aria-hidden /></button>;
+    onKeyDown={(event) => { onIntent(); drag.keyDown(exerciseId, event); }}><GripVertical size={16} strokeWidth={1.6} aria-hidden /></button>;
 }

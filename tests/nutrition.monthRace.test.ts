@@ -59,6 +59,7 @@ vi.mock('react', async (original) => ({
 vi.mock('@/components/shared', () => Object.fromEntries(
   ['Button', 'EmptyState', 'Modal', 'RailStrip', 'RollingNumber', 'Screen', 'Toast', 'PageTitle', 'SealMark'].map((name) => [name, name]),
 ));
+vi.mock('@/components/metal', async (original) => ({ ...(await original<typeof import('@/components/metal')>()), HeroFigure: 'HeroFigure' }));
 vi.mock('@/components/nutrition/MealLogger', () => ({ MealLogger: 'MealLogger' }));
 vi.mock('@/components/nutrition/NutritionGroupLedger', () => ({ NutritionGroupLedger: 'NutritionGroupLedger' }));
 vi.mock('@/hooks/useTargetSeal', () => ({ useTargetSeal: () => ({ met: false, anchorRef: null }) }));
@@ -140,11 +141,11 @@ it.each(['insert', 'order'] as const)('keeps the selected month when an old defa
   nodes(tree).find((node) => node.props['aria-label'] === 'Tuesday, September 15')!.props.onClick!();
   tree = render();
   await tick();
-  expect(nodes(tree).find((node) => node.type === 'RollingNumber')!.props.value).toBe('500');
+  expect(nodes(tree).find((node) => node.type === 'HeroFigure')!.props.value).toBe('500');
   const readsBeforeFailure = db.logs.mock.calls.length;
   finish({ data: null, error: { message: 'offline' } });
   await tick();
   tree = render();
-  expect(nodes(tree).find((node) => node.type === 'RollingNumber')!.props.value).toBe('500');
+  expect(nodes(tree).find((node) => node.type === 'HeroFigure')!.props.value).toBe('500');
   expect(db.logs.mock.calls.length).toBe(readsBeforeFailure);
 });

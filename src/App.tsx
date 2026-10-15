@@ -14,6 +14,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { BottomNav, RouteErrorScreen } from '@/components/shared';
 import { FxLayer } from '@/components/fx/FxLayer';
+import { CommandCapsule } from '@/components/metal/CommandCapsule';
+import { ScrollEdge } from '@/components/metal/ScrollEdge';
 import { AuthForm } from '@/components/auth/AuthForm';
 import { Button } from '@/components/shared/Button';
 import { Dashboard } from '@/pages/Dashboard';
@@ -131,7 +133,9 @@ function PrivateLayout() {
       <main data-app-scroll-viewport className="app-scroll-viewport">
         <AnimatedOutlet />
       </main>
+      <ScrollEdge />
       <BottomNav />
+      <CommandCapsule />
       <FxLayer />
     </div>
   );

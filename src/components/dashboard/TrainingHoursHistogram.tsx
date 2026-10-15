@@ -19,9 +19,9 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
 
   if (!hasTraining) {
     return (
-      <div className="py-12 text-center">
-        <p className="t-heading">No training hours yet.</p>
-        <p className="t-caption mt-3">Complete a workout to chart your weekly time</p>
+      <div className="mt-1">
+        <p className="metal-line">No training hours yet.</p>
+        <p className="metal-note mt-1">Complete a workout to chart your weekly time</p>
       </div>
     );
   }
@@ -35,11 +35,13 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
       label: point.label,
       value: point.totalMinutes,
       emphasis: isPeak,
-      caption: (
+      caption: point.totalHours > 0 ? (
         <>
-          {point.totalHours > 0 ? point.totalHours : '0'}
-          <span className="t-caption text-[var(--color-muted)] ml-0.5">h</span>
+          {point.totalHours}
+          <span className="text-[var(--metal-ink-2)] ml-0.5">h</span>
         </>
+      ) : (
+        <span className="text-[var(--metal-ink-3)]">0<span className="ml-0.5">h</span></span>
       ),
       ariaLabel: `Week of ${week}: ${formatMinutes(point.totalMinutes)}${isPeak ? ', peak week' : ''}`,
       readout: (
@@ -47,7 +49,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
           <span>Week of {week}</span>
           <span>
             {formatMinutes(point.totalMinutes)}
-            {isPeak && <span className="text-[var(--color-accent)]"> · peak</span>}
+            {isPeak && <span className="text-[var(--metal-red)]"> · peak</span>}
           </span>
         </span>
       ),
@@ -55,7 +57,7 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
   });
 
   return (
-    <div className="space-y-4">
+    <div>
       <BarChart
         data={data}
         height={144}
@@ -64,12 +66,12 @@ export function TrainingHoursHistogram({ points }: TrainingHoursHistogramProps) 
         reveal="coaching-training-hours"
         summary={
           <span className="flex justify-between gap-3">
-            <span className="text-[var(--color-text-dim)]">8-week total</span>
+            <span className="text-[var(--metal-ink-2)]">8-week total</span>
             <span>{formatMinutes(totalMinutes)}</span>
           </span>
         }
       />
-      <p className="t-label-sm pt-2 border-t border-[var(--color-border)]">
+      <p className="mt-3 text-[12.5px] leading-[1.4] text-[var(--metal-ink-2)]">
         Completed session time · last 8 weeks
       </p>
     </div>

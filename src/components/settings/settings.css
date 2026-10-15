@@ -1,108 +1,281 @@
+/* ═════════════════════════════════════════════════════════════
+   YOU — Metal layout for Settings, its sub-pages and sheets.
+   Builds on the tokens and primitives in src/styles/metal.css:
+   eyebrow + Fraunces title, one hero figure, hairline sections and rows.
+   `.you-settings` scopes sheet content too (Modal contentClassName).
+   ═════════════════════════════════════════════════════════════ */
+
 .you-settings {
   max-width: 42rem;
   margin-inline: auto;
 }
-.you-row {
+.studio-sheet .you-settings { width: 100%; }
+
+/* Same top rhythm as Today: the eyebrow row sits where Today's date sits. */
+.you-page.metal-page { padding-top: 8px; }
+
+/* ── Header ─────────────────────────────────────────────────── */
+
+.you-head-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 16px;
-  width: 100%;
-  text-align: left;
-  padding: 13px 0;
-  min-height: 56px;
-  border-bottom: 1px solid var(--color-border);
+  justify-content: space-between;
+  min-height: 14px;
+  padding-right: 52px;
 }
-.you-row-title {
-  display: block;
-  font-size: 16px;
-  line-height: 1.4;
-  color: var(--color-text);
-  overflow-wrap: anywhere;
+.you-head-row.is-sub { min-height: 44px; margin-top: -15px; margin-bottom: -6px; }
+.you-search-btn {
+  position: absolute;
+  right: -11px;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--metal-ink);
+  transition: opacity 160ms ease;
 }
-.you-row-description {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-text-dim);
-  overflow-wrap: anywhere;
-}
-.you-text-action,
+.you-search-btn:active { opacity: 0.55; }
+.you-search-btn svg { width: 19px; height: 19px; }
+
 .you-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 44px;
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--color-text);
+  margin-left: -2px;
+  padding-right: 8px;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--metal-ink-2);
+  transition: opacity 160ms ease;
 }
-.you-back {
+.you-back:active { opacity: 0.55; }
+.you-back svg { width: 7px; height: 12px; transform: scaleX(-1); color: var(--metal-ink-2); }
+
+.you-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.you-title-row .metal-title { min-width: 0; outline: none; }
+.you-title-row .metal-text-btn { flex: none; min-height: 32px; font-size: 13.5px; }
+.metal-title.you-title { outline: none; }
+
+/* ── Hero (body weight / calories) ───────────────────────────── */
+
+.you-hero-caption-sub { display: block; }
+.you-hero-skeleton { margin-top: 20px; }
+
+/* The trend line takes the place of Today's segmented hairline. */
+.you-spark { margin-top: 14px; }
+.you-spark-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--metal-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.you-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+.you-actions.is-end { justify-content: flex-end; }
+.you-actions .metal-text-btn svg { width: 7px; height: 12px; color: var(--metal-ink-3); }
+.you-line-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Rows ─────────────────────────────────────────────────────── */
+
+.you-row { min-height: 56px; }
+.you-row .metal-row-title,
+.you-row .metal-row-detail { overflow-wrap: anywhere; }
+.you-row:active { opacity: 0.6; }
+.you-row:disabled { opacity: 0.45; }
+.you-list { margin-top: 2px; }
+/* An unlabeled group: space and one hairline instead of a section head. */
+.you-group { margin-top: 30px; }
+
+/* Figures in a list (macros): Fraunces at the capsule-value size. */
+.you-figure-value { display: inline-flex; align-items: baseline; gap: 5px; flex: none; }
+.you-figure-value .metal-num { font-size: 27px; line-height: 1; font-weight: 350; }
+.you-figure-value .metal-unit { font-size: 12.5px; }
+.you-figure-row { min-height: 54px; }
+.you-figure-row dt { font-size: 15px; font-weight: 500; }
+
+/* Row-level icon actions (edit / delete). */
+.you-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  color: var(--metal-ink-3);
+  transition: color 160ms ease, opacity 160ms ease;
+}
+.you-icon-btn:hover { color: var(--metal-ink); }
+.you-icon-btn.is-danger:hover { color: var(--metal-red); }
+.you-icon-btn:active { opacity: 0.55; }
+.you-icon-btn:disabled { opacity: 0.35; }
+.you-icon-btn svg { width: 15px; height: 15px; }
+
+/* Selected-choice mark: an ink check, never a filled slab. */
+.you-check { width: 16px; height: 16px; flex: none; color: var(--metal-ink); }
+
+/* Theme swatches beside the appearance choices. */
+.you-swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+}
+.you-swatch.is-light { background: #F5F5F0; box-shadow: inset 0 0 0 1px #D9D6CE; }
+.you-swatch.is-dark { background: #000; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); }
+.you-swatch.is-system { background: linear-gradient(135deg, #F5F5F0 0 50%, #000 50% 100%); box-shadow: inset 0 0 0 1px var(--metal-line); }
+
+/* Switch: hairline track, ink when on. No bevel. */
+.you-switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  flex: none;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+.you-switch > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--metal-ink-3);
+  transition: transform 220ms cubic-bezier(.3, .7, .4, 1), background-color 200ms ease;
+}
+.you-switch.is-on { background: var(--metal-ink); box-shadow: none; }
+.you-switch.is-on > span { transform: translateX(18px); background: var(--color-base); }
+@media (prefers-reduced-motion: reduce) {
+  .you-switch, .you-switch > span { transition: none; }
+}
+
+/* ── Copy ─────────────────────────────────────────────────────── */
+
+.you-copy { margin-top: 10px; font-size: 14px; line-height: 1.5; color: var(--metal-ink-2); max-width: 44ch; }
+.you-copy b, .you-copy strong { color: var(--metal-ink); font-weight: 500; }
+.you-copy.is-ink { color: var(--metal-ink); }
+.you-status { margin-top: 12px; font-size: 13.5px; line-height: 1.45; color: var(--metal-ink); }
+.you-status.is-error { color: var(--metal-red); }
+.you-field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--metal-ink-2);
+}
+
+/* Hairline field wrapper for inputs with a trailing unit (wizard, weigh-in). */
+.you-field {
+  display: flex;
+  align-items: baseline;
   gap: 8px;
-  margin-bottom: 12px;
+  padding: 0 14px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  transition: box-shadow 160ms ease;
 }
-.you-weight-hero {
-  padding: 18px 0;
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
+.you-field:focus-within { box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.you-field input { outline: none; }
+.you-field input:focus-visible { outline: none; }
+.you-field-unit { flex: none; font-size: 13px; color: var(--metal-ink-2); }
+
+/* The weigh-in: the number is typed as a Fraunces figure. */
+/* The global iOS zoom floor sizes inputs at max(16px, 1em), so the figure
+   size is set on the field and the input inherits it. */
+.you-weigh-field {
+  font-size: 56px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0 12px;
+  border-bottom: 1px solid var(--metal-line);
+  transition: border-color 160ms ease;
 }
-.you-weight-value {
-  font-family: var(--font-metric);
-  font-size: 32px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -.025em;
+.you-weigh-field:focus-within { border-color: var(--metal-ink); }
+.you-weigh-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-display);
+  font-weight: 340;
+  font-variation-settings: 'opsz' 144;
+  font-variant-numeric: lining-nums proportional-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--metal-ink);
+  outline: none;
+}
+.you-weigh-field input::placeholder { color: var(--metal-ink-3); }
+.you-weigh-field input:focus-visible { outline: none; }
+.you-weigh-field .you-field-unit { font-size: 15px; }
+
+/* Wizard step heading (inside the Calculate targets page). */
+.you-step-title {
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-variation-settings: 'opsz' 72;
+  font-size: 24px;
   line-height: 1.15;
-  overflow-wrap: anywhere;
+  letter-spacing: -0.015em;
+  color: var(--metal-ink);
 }
-.you-target-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  padding-block: 20px;
-  border-block: 1px solid var(--color-border);
+
+/* About: the wordmark set in Fraunces with the red P. */
+.you-wordmark {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-variation-settings: 'opsz' 144;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  color: var(--metal-ink);
 }
-.you-target-value {
-  font-family: var(--font-metric);
-  font-size: 32px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -.025em;
-  line-height: 1.3;
-}
-.you-settings .t-caption {
-  color: var(--color-text-dim);
-}
-.you-settings :where(button, input, textarea):focus-visible {
-  outline: 2px solid var(--color-text);
+.you-wordmark i { font-style: italic; font-weight: 400; color: var(--metal-red); }
+
+/* ── Focus ───────────────────────────────────────────────────── */
+
+.you-settings :where(button, textarea):focus-visible,
+.you-settings :where(input:not(.metal-input)):focus-visible {
+  outline: 2px solid var(--metal-ink);
   outline-offset: 3px;
 }
-/* Keep shared materials; make settings actions and essential guidance readable. */
-.you-settings button:not(.you-row):not(.you-back):not(.you-text-action) {
-  text-transform: none;
-  letter-spacing: normal;
-  font-size: 14px;
-}
-.you-settings input {
-  font-size: 16px;
-}
+/* Metal fields show focus with their own ink line (metal.css); the global
+   focus outline would draw a second ring around it. */
+.you-settings .metal-input:focus-visible { outline: none; }
+.you-settings input[type='search']::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.6; }
+.you-settings .you-field input:focus-visible,
+.you-settings .you-weigh-field input:focus-visible { outline: none; }
 
-.studio-sheet:has(.you-settings) {
-  --material-sheet: color-mix(in srgb, var(--color-base) 98%, transparent);
-}
-.studio-sheet .you-settings {
-  width: 100%;
-}
-
-.you-settings > .t-caption,
-.you-settings .space-y-4 > .t-caption,
-.you-settings .space-y-4 > div > .t-caption {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
+/* A search jump lands here: a quiet ink outline that fades out. */
 .you-search-highlight {
-  outline: 2px solid var(--color-text);
-  outline-offset: 5px;
+  outline: 1.5px solid var(--metal-ink);
+  outline-offset: 6px;
+  border-radius: 12px;
   scroll-margin-block: 24px;
 }
 
@@ -115,3 +288,6 @@
   flex-direction: column;
   overflow: hidden;
 }
+
+/* A saved meal opened for editing, in place of its row. */
+.you-meal-edit { padding: 18px 0 22px; border-top: 0.5px solid var(--metal-rule); }

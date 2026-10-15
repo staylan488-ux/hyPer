@@ -31,20 +31,20 @@ export function AdaptiveSplitSchedulingSetting() {
         aria-describedby="adaptive-split-description"
         disabled={saving || !userId}
         onClick={() => void toggle()}
-        className="you-row disabled:opacity-60"
+        className="metal-row you-row disabled:opacity-60"
       >
-        <span id="adaptive-split-label" className="you-row-title flex-1 min-w-0">Adaptive split scheduling</span>
-        <span aria-hidden="true" className="t-label-sm shrink-0">{enabled ? 'On' : 'Off'}</span>
-        <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${enabled ? 'bg-[var(--color-text)]' : 'bg-[var(--color-border-strong)]'}`}>
-          <span className={`absolute top-1 h-4 w-4 rounded-full bg-[var(--color-base)] ${enabled ? 'right-1' : 'left-1'}`} />
+        <span id="adaptive-split-label" className="metal-row-title flex-1 min-w-0">Adaptive split scheduling</span>
+        <span aria-hidden="true" className="metal-row-value">{enabled ? 'On' : 'Off'}</span>
+        <span aria-hidden="true" className={`you-switch${enabled ? ' is-on' : ''}`}>
+          <span />
         </span>
       </button>
-      <p id="adaptive-split-description" className="t-body mt-4">
+      <p id="adaptive-split-description" className="you-copy">
         Adjust upcoming workouts and rest days based on the split day you complete.
         When off, keep your saved schedule.
       </p>
-      {saving && <p role="status" className="t-caption mt-3">Saving…</p>}
-      {error && <p role="alert" className="t-body mt-3">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
+      {saving && <p role="status" className="you-status">Saving…</p>}
+      {error && <p role="alert" className="you-status is-error">Couldn’t save this setting. Your previous choice is still active. Try the switch again.</p>}
     </section>
   );
 }

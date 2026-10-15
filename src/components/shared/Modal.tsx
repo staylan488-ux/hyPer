@@ -15,11 +15,12 @@ interface ModalProps {
   initialFocusRef?: RefObject<HTMLInputElement | null>;
 }
 
-/** An anchored sheet with a shared keyboard and focus boundary. */
+/** An anchored Metal sheet (solid, hairline-edged) with a shared keyboard and focus boundary. */
 export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const fadeRef = useRef<HTMLDivElement>(null);
   const litDialogRef = useLitSurface(dialogRef);
   const titleId = useId();
   const close = useEffectEvent(onClose);
@@ -93,7 +94,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
             aria-label={title ? undefined : "Dialog"}
             tabIndex={-1}
             className="studio-sheet w-full sm:max-w-lg flex flex-col overflow-hidden outline-none"
-            style={{ boxShadow: 'var(--sheet-shadow)' }}
+            style={{ boxShadow: 'var(--metal-sheet-edge)' }}
             initial={{ opacity: 0, y: 80 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
@@ -125,25 +126,32 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               className={`material-sheet-header flex items-center justify-between pl-6 pr-5 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
-              {title ? <h2 id={titleId} className="t-heading">{title}</h2> : <span />}
+              {title ? <h2 id={titleId} className="metal-sheet-title">{title}</h2> : <span />}
               <motion.button
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="material-sheet-close p-3 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                className="material-sheet-close flex items-center justify-center w-11 h-11 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </motion.button>
             </div>
-            <motion.div
-              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.08, duration: 0.24 }}
-            >
-              {children}
-            </motion.div>
+            <div className="relative flex-1 min-h-0 flex flex-col">
+              {/* Scrolled content fades under the header instead of ending on a hard line. */}
+              <div ref={fadeRef} aria-hidden className="metal-sheet-fade" />
+              <motion.div
+                className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.08, duration: 0.24 }}
+                onScroll={(event) => {
+                  if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, event.currentTarget.scrollTop / 16));
+                }}
+              >
+                {children}
+              </motion.div>
+            </div>
           </motion.div>
         </motion.div>
       )}
