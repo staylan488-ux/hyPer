@@ -34,6 +34,8 @@ export function LapPaceChart({ laps, formatPace, formatDistance, formatDuration,
   const moving = rows.filter((row) => row.speed > 0);
   if (moving.length < 2) return null;
   const fastest = moving.reduce((best, row) => (row.speed > best.speed ? row : best));
+  // Bars start just under the slowest lap so lap-to-lap differences read.
+  const floor = Math.min(...moving.map((row) => row.speed)) * 0.85;
   const pace = (speed: number) => formatPace(speed > 0 ? METERS_PER_MILE / speed : null) ?? '—';
 
   const data: BarDatum[] = rows.map(({ lap, speed, number }) => {
@@ -45,7 +47,7 @@ export function LapPaceChart({ laps, formatPace, formatDistance, formatDuration,
     return {
       key: String(lap.key),
       label,
-      value: speed,
+      value: speed > 0 ? speed - floor : 0,
       emphasis: isFastest,
       ariaLabel: number === null ? detail : `${detail}, pace ${pace(speed)}${isFastest ? ', fastest' : ''}`,
       readout: (

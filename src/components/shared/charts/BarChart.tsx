@@ -39,7 +39,7 @@ interface BarChartProps {
 }
 
 /**
- * Editorial bar chart: flat ink-2 columns on a hairline baseline. Bars grow by
+ * Editorial bar chart: slim ink-2 stems on a hairline baseline. Bars grow by
  * scaleY on first appearance; a finger scrubs across them with one detent per
  * bar and the readout line above follows.
  */
@@ -116,7 +116,7 @@ export function BarChart({
                   {d.caption}
                 </motion.span>
               )}
-              <div className="relative w-full shrink-0" style={{ height: fraction * barArea }}>
+              <div className="relative shrink-0" style={{ height: fraction * barArea, width: 'min(12px, 46%)' }}>
                 <motion.div
                   aria-hidden
                   className="absolute inset-0"
