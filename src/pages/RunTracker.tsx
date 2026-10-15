@@ -605,7 +605,7 @@ export function RunTracker() {
                 step={1}
                 value={customAutoLapM}
                 onChange={(event) => setCustomAutoLapM(event.target.value)}
-                className="metal-input w-full min-h-12 px-4 text-[var(--metal-ink)] tabular-nums"
+                className="metal-input run-metres-input w-full min-h-12 px-4 text-[var(--metal-ink)] tabular-nums"
                 aria-invalid={!customAutoLapValid}
               />
               {!customAutoLapValid && (

@@ -76,3 +76,9 @@
 .run-ledger-row.is-rest { color: var(--metal-ink-3); }
 
 }
+
+/* Unlayered on purpose: the global :focus-visible outline is unlayered too. The
+   metres field draws its own focus line instead of stacking a second ring. */
+.run-metres-input:focus-visible { outline: none; }
+.run-metres-input:focus { box-shadow: inset 0 0 0 1.5px var(--metal-ink); }
+.run-metres-input[aria-invalid='true']:focus { box-shadow: inset 0 0 0 1.5px var(--metal-red); }

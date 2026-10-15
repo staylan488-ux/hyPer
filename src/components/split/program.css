@@ -215,3 +215,7 @@
 }
 .studio-sheet { --program-menu-bg: var(--metal-sheet); }
 :root.dark .studio-sheet { --program-menu-bg: #1C1C1C; }
+
+/* Unlayered on purpose: the global :focus-visible outline is unlayered too, and
+   the set fields already draw their own focus line, so they skip the extra ring. */
+.set-range-input:focus-visible { outline: none; }
