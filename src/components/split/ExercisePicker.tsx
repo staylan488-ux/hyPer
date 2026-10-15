@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue, type ReactNode } from 'react';
 import { Loader2, Search, Dumbbell, ArrowRight, Check, ChevronDown } from 'lucide-react';
 import { Modal, Input, Chip, Button } from '@/components/shared';
+import { LineButton } from '@/components/metal';
 import { CustomExerciseForm } from '@/components/split/CustomExerciseForm';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
+import '@/components/split/program.css';
 
 interface ExercisePickerProps {
   isOpen: boolean;
@@ -206,54 +208,40 @@ function ExercisePickerContent({
   const renderRow = (exercise: Exercise) => {
     const added = addedSet.has(exercise.id);
     const picked = selectedSet.has(exercise.id);
+    const details = [
+      exercise.muscle_group_secondary ? `+${MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}` : null,
+      exercise.equipment || null,
+      exercise.is_compound ? 'Compound' : null,
+    ].filter(Boolean);
     return (
-      <li key={exercise.id} className="border-t border-[var(--color-border)] first:border-t-0">
+      <li key={exercise.id} className="picker-row">
         <button
           onClick={() => handleSelect(exercise)}
           disabled={added}
           aria-label={added ? `${exercise.name}, added` : undefined}
           aria-pressed={multiSelect ? picked : undefined}
-          className="pressable group w-full text-left py-3 flex items-baseline gap-3 disabled:cursor-default"
+          className="group picker-row-btn disabled:cursor-default"
           type="button"
         >
           <span className="flex-1 min-w-0">
-            <span className="flex items-baseline gap-2">
-              <span className={`t-body break-words ${added ? 'text-[var(--color-muted)]' : 'text-[var(--color-text)]'}`}>
-                {exercise.name}
-              </span>
-              {exercise.is_compound && (
-                <span className="t-label-sm shrink-0 text-[var(--color-accent)]">
-                  Compound
-                </span>
-              )}
+            <span className={`metal-row-title break-words ${added ? 'text-[var(--metal-ink-2)]' : ''}`}>
+              {exercise.name}
             </span>
-            <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-1">
-              {exercise.muscle_group_secondary && (
-                <span className="t-caption">+{MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}</span>
-              )}
-              {exercise.equipment && (
-                <span className="t-caption">{exercise.equipment}</span>
-              )}
-            </span>
+            {details.length > 0 && (
+              <span className="metal-row-detail">{details.join(' · ')}</span>
+            )}
           </span>
           {multiSelect ? (
-            <span
-              aria-hidden
-              className={`self-center shrink-0 flex items-center justify-center w-6 h-6 rounded-full border transition-colors ${
-                picked
-                  ? 'bg-[var(--color-text)] border-[var(--color-text)] text-[var(--color-base)]'
-                  : 'border-[var(--color-border-strong)]'
-              }`}
-            >
+            <span aria-hidden className={`picker-check${picked ? ' is-on' : ''}`}>
               {picked && <Check className="w-3.5 h-3.5" strokeWidth={2.25} />}
             </span>
           ) : added ? (
-            <span className="t-label-sm self-center shrink-0 flex items-center gap-1 text-[var(--color-text)]">
+            <span className="shrink-0 flex items-center gap-1 text-[13px] font-medium text-[var(--metal-ink)]">
               <Check className="w-4 h-4" strokeWidth={1.75} aria-hidden />
               Added
             </span>
           ) : (
-            <ArrowRight className="w-4 h-4 self-center shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+            <ArrowRight className="w-4 h-4 shrink-0 text-[var(--metal-ink-3)] group-hover:text-[var(--metal-ink)] transition-colors" strokeWidth={1.5} />
           )}
         </button>
       </li>
@@ -265,7 +253,7 @@ function ExercisePickerContent({
       {intro}
       {/* Search bar */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--metal-ink-3)] pointer-events-none z-10" strokeWidth={1.75} />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -276,7 +264,7 @@ function ExercisePickerContent({
 
       {/* Muscle group filter — tracked-caps chips on a hairline */}
       <div>
-        <p className="t-label mb-3">Muscle group</p>
+        <p className="metal-eyebrow mb-3">Muscle group</p>
         <div
           ref={filterScrollRef}
           className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar"
@@ -311,14 +299,14 @@ function ExercisePickerContent({
       <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1 overscroll-contain touch-pan-y">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--color-muted)]" strokeWidth={1.5} />
-            <p className="t-label-sm">Loading exercises...</p>
+            <Loader2 className="w-5 h-5 animate-spin text-[var(--metal-ink-3)]" strokeWidth={1.5} />
+            <p className="metal-eyebrow">Loading exercises...</p>
           </div>
         ) : loadFailed ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-            <Dumbbell className="w-6 h-6 text-[var(--color-muted)]" strokeWidth={1.25} />
-            <p className="t-body text-[var(--color-text)]">Couldn't load exercises</p>
-            <p className="t-caption">Check your connection and try again</p>
+            <Dumbbell className="w-6 h-6 text-[var(--metal-ink-3)]" strokeWidth={1.25} />
+            <p className="metal-row-title">Couldn't load exercises</p>
+            <p className="metal-row-detail">Check your connection and try again</p>
             <Button variant="secondary" size="sm" className="mt-1" onClick={retryLoad}>
               Retry
             </Button>
@@ -326,17 +314,17 @@ function ExercisePickerContent({
         ) : filteredExercises.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-            <Dumbbell className="w-6 h-6 text-[var(--color-muted)]" strokeWidth={1.25} />
-            <p className="t-body text-[var(--color-text)]">No exercises found</p>
-            <p className="t-caption">Try a different search or muscle group</p>
+            <Dumbbell className="w-6 h-6 text-[var(--metal-ink-3)]" strokeWidth={1.25} />
+            <p className="metal-row-title">No exercises found</p>
+            <p className="metal-row-detail">Try a different search or muscle group</p>
           </div>
         ) : (
           <div key={selectedMuscle} className="space-y-7">
             {gymGroups.map(([group, groupExercises]) => (
               <section key={group}>
-                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
-                  <span className="t-heading">{MUSCLE_GROUP_LABELS[group]}</span>
-                  <span className="t-data-sm text-[var(--color-muted)]">{groupExercises.length}</span>
+                <div className="picker-group-head">
+                  <span className="metal-eyebrow">{MUSCLE_GROUP_LABELS[group]}</span>
+                  <span className="metal-section-head-right">{groupExercises.length}</span>
                 </div>
                 <ul>{groupExercises.map(renderRow)}</ul>
               </section>
@@ -345,27 +333,27 @@ function ExercisePickerContent({
             {calisthenics.length > 0 && (
               <section>
                 {calisthenicsForced ? (
-                  <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
-                    <span className="t-heading">Calisthenics</span>
-                    <span className="t-data-sm text-[var(--color-muted)]">{calisthenics.length}</span>
+                  <div className="picker-group-head">
+                    <span className="metal-eyebrow">Calisthenics</span>
+                    <span className="metal-section-head-right">{calisthenics.length}</span>
                   </div>
                 ) : (
                   <button
                     type="button"
-                    className="pressable w-full min-h-11 flex items-center justify-between gap-3 pb-2 border-b border-[var(--color-border)] text-left"
+                    className="w-full min-h-11 flex items-center justify-between gap-3 py-1 text-left"
                     onClick={() => setShowCalisthenics((open) => !open)}
                     aria-expanded={calisthenicsOpen}
                   >
-                    <span className="flex flex-col">
-                      <span className="t-heading">Calisthenics</span>
+                    <span className="flex flex-col gap-1">
+                      <span className="metal-eyebrow">Calisthenics</span>
                       {!calisthenicsOpen && (
-                        <span className="t-caption">Bodyweight skills and progressions</span>
+                        <span className="metal-row-detail mt-0">Bodyweight skills and progressions</span>
                       )}
                     </span>
-                    <span className="flex items-center gap-2 shrink-0">
-                      <span className="t-data-sm text-[var(--color-muted)]">{calisthenics.length}</span>
+                    <span className="metal-section-head-right shrink-0">
+                      <span>{calisthenics.length}</span>
                       <ChevronDown
-                        className={`w-4 h-4 text-[var(--color-muted)] transition-transform ${calisthenicsOpen ? 'rotate-180' : ''}`}
+                        className={`w-4 h-4 text-[var(--metal-ink-3)] transition-transform ${calisthenicsOpen ? 'rotate-180' : ''}`}
                         strokeWidth={1.5}
                         aria-hidden
                       />
@@ -389,25 +377,18 @@ function ExercisePickerContent({
             onCancel={() => setShowCustom(false)}
           />
         ) : (
-          <button
-            type="button"
-            className="pressable studio-row-action w-full min-h-11 flex items-center justify-center gap-2 t-label hover:text-[var(--color-text)] transition-colors"
-            onClick={() => setShowCustom(true)}
-          >
+          <LineButton plus onClick={() => setShowCustom(true)}>
             {searchQuery.trim() ? `Create “${searchQuery.trim()}”` : 'Create a custom exercise'}
-          </button>
+          </LineButton>
         )
       )}
 
       {multiSelect && (
         // Stays in reach while the list scrolls, like the program editor's bar.
-        <div
-          className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-          style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
-        >
-          <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+        <div className="metal-sheet-bar">
+          <div className="w-full max-w-lg mx-auto space-y-2">
             {selected.length > 0 && (
-              <p className="t-caption break-words" aria-live="polite">
+              <p className="metal-row-detail break-words" aria-live="polite">
                 {selected.map((exercise) => exercise.name).join(' · ')}
               </p>
             )}

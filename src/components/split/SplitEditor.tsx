@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Plus } from 'lucide-react';
+import { LineButton } from '@/components/metal';
 import { useSplitEditStore, type CreateSplitFn, type SavedSplit } from '@/stores/splitEditStore';
 import { springs } from '@/lib/animations';
 import { CommitInput } from '@/components/split/editor/CommitInput';
@@ -10,6 +10,7 @@ import { RestoreBanner } from '@/components/split/editor/RestoreBanner';
 import { SortableList } from '@/components/split/editor/SortableList';
 import { cancelSplitEdit, saveSplitEdit } from '@/components/split/editor/editorActions';
 import type { PickExercise } from '@/components/split/editor/types';
+import '@/components/split/program.css';
 
 interface SplitEditorProps {
   createSplit: CreateSplitFn;
@@ -79,26 +80,28 @@ export function SplitEditor({ createSplit, onClose, onSaved, onPickExercise, not
   if (!draft) {
     return (
       <div className="pt-4 flex items-center justify-center py-20">
-        <p className="t-label-sm">No program loaded</p>
+        <p className="metal-eyebrow">No program loaded</p>
       </div>
     );
   }
 
   return (
-    <div className="pt-1 pb-2 space-y-6">
+    <div className="pt-1 pb-2">
       {restorable && !isDirty && (
-        <RestoreBanner
-          stored={restorable}
-          changedSince={Boolean(restorable.baseSignature && baseSignature && restorable.baseSignature !== baseSignature)}
-          onRestore={restoreSaved}
-          onDismiss={dismissRestore}
-        />
+        <div className="mb-7">
+          <RestoreBanner
+            stored={restorable}
+            changedSince={Boolean(restorable.baseSignature && baseSignature && restorable.baseSignature !== baseSignature)}
+            onRestore={restoreSaved}
+            onDismiss={dismissRestore}
+          />
+        </div>
       )}
 
-      {notice && <p className="t-caption" role="status">{notice}</p>}
+      {notice && <p className="metal-flag mt-0 mb-6" role="status"><span>{notice}</span></p>}
 
-      <div className="space-y-4">
-        <p className="t-label pb-3 border-b border-[var(--color-border)]">Program details</p>
+      <section className="split-sheet-section space-y-4">
+        <p className="metal-eyebrow">Program details</p>
         <CommitInput
           label="Program name"
           value={draft.name}
@@ -113,18 +116,18 @@ export function SplitEditor({ createSplit, onClose, onSaved, onPickExercise, not
           placeholder="Optional description…"
           maxLength={200}
         />
-      </div>
+      </section>
 
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between pb-3 border-b border-[var(--color-border)]">
-          <p className="t-label">Training days</p>
-          <span className="t-data-sm text-[var(--color-muted)]">
-            {draft.days.length} {draft.days.length === 1 ? 'day' : 'days'}
+      <section className="split-sheet-section">
+        <div className="split-sheet-head">
+          <p className="metal-eyebrow">Training days</p>
+          <span className="metal-section-head-right">
+            <span><b>{draft.days.length}</b> {draft.days.length === 1 ? 'day' : 'days'}</span>
           </span>
         </div>
 
         <SortableList ids={dayIds} onMove={moveDay} describe={describeDay}>
-          <div className="space-y-4">
+          <div className="split-days">
             {/* Existing days appear at once; added and removed ones fade. */}
             <AnimatePresence initial={false}>
               {draft.days.map((day, index) => (
@@ -148,18 +151,9 @@ export function SplitEditor({ createSplit, onClose, onSaved, onPickExercise, not
             </AnimatePresence>
           </div>
         </SortableList>
-      </div>
 
-      <motion.button
-        type="button"
-        className="pressable studio-secondary-action w-full min-h-11 flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
-        onClick={handleAddDay}
-        whileTap={{ scale: 0.99 }}
-        transition={springs.tactile}
-      >
-        <Plus className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
-        Add day
-      </motion.button>
+        <LineButton plus className="mt-4" onClick={handleAddDay}>Add day</LineButton>
+      </section>
 
       <EditorFooter isNew={Boolean(draft._isNew)} onCancel={handleCancel} onSave={handleSave} />
     </div>

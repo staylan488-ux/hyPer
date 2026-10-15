@@ -18,13 +18,13 @@ export function RestoreBanner({
 }) {
   const age = formatDistanceToNowStrict(stored.savedAt, { addSuffix: true });
   return (
-    <div className="border-t border-b border-[var(--color-border)] py-4 space-y-3" role="status">
-      <p className="flex items-start gap-2.5 t-body text-[var(--color-text)]">
-        <History className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.5} aria-hidden />
+    <div className="split-offer space-y-3" role="status">
+      <p className="flex items-start gap-2.5 text-[15px] leading-[1.4] text-[var(--metal-ink)]">
+        <History className="w-4 h-4 mt-0.5 shrink-0 text-[var(--metal-ink-2)]" strokeWidth={1.5} aria-hidden />
         <span>
           Unsaved edits from {age} are on this device.
           {changedSince && (
-            <span className="block t-caption mt-1">
+            <span className="block metal-row-detail mt-1">
               The program has changed since. Restoring replaces those changes when you save.
             </span>
           )}

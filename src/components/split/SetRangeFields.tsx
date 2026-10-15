@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { resolveRepDraft, resolveSetRangeDraft, type SetRangeDraft, type SetRangeValues } from '@/lib/setRangeDraft';
+import '@/components/split/program.css';
 
 type Field = keyof SetRangeDraft | 'minReps' | 'maxReps';
 
@@ -81,45 +82,45 @@ export function SetRangeFields({
   };
 
   return (
-    <div className="grid grid-cols-3 min-[420px]:grid-cols-5 gap-3">
-      {FIELDS.map(({ field, max }) => {
-        const emphasized = field === 'targetSets';
-        return (
-          <SetRepCell key={field} label={labels?.[field] ?? DEFAULT_LABELS[field]}>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={max}
-              value={editing?.field === field ? editing.value : String(fieldValue(values, field))}
-              // Select the value so typing replaces it without clearing first
-              onFocus={(e) => e.currentTarget.select()}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setEditing({ field, value: e.target.value })}
-              onBlur={() => {
-                if (editing?.field === field) commit(field, editing.value);
-              }}
-              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+    <div className="set-range-wrap">
+      <div className="set-range">
+        {FIELDS.map(({ field, max }) => {
+          const emphasized = field === 'targetSets';
+          return (
+            <SetRepCell key={field} label={labels?.[field] ?? DEFAULT_LABELS[field]}>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={max}
+                value={editing?.field === field ? editing.value : String(fieldValue(values, field))}
+                // Select the value so typing replaces it without clearing first
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setEditing({ field, value: e.target.value })}
+                onBlur={() => {
                   if (editing?.field === field) commit(field, editing.value);
-                }
-              }}
-              className={emphasized
-                ? 'well w-full min-h-11 text-center t-data-sm text-[var(--color-accent)] outline-none focus:ring-[1.5px] focus:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]'
-                : 'well w-full min-h-11 text-center t-data-sm text-[var(--color-text)] outline-none focus:ring-[1.5px] focus:ring-[var(--color-border-strong)]'}
-            />
-          </SetRepCell>
-        );
-      })}
+                }}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (editing?.field === field) commit(field, editing.value);
+                  }
+                }}
+                className={`set-range-input${emphasized ? ' is-target' : ''}`}
+              />
+            </SetRepCell>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/** Labelled numeric cell — tracked-caps label over a recessed well input */
+/** Labelled numeric cell: a quiet label over a hairline field. */
 function SetRepCell({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col items-center gap-1">
-      <span className="t-label-sm">{label}</span>
+    <label className="set-range-cell">
+      <span className="set-range-label">{label}</span>
       {children}
     </label>
   );

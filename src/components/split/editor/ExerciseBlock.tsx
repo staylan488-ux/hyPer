@@ -52,17 +52,15 @@ export const ExerciseBlock = memo(function ExerciseBlock({
       transition={springs.settle}
     >
       <SortableItem id={members[0].id} label={superset ? `superset ${label}` : label}>
-        <div className={`flex gap-1 border-t border-[var(--color-border)] py-3 ${superset ? 'material-surface pr-3' : ''}`}>
-          <div className={superset ? 'pl-3' : ''}>
-            <DragHandle />
-          </div>
-          <div className="flex-1 min-w-0 space-y-4">
+        <div className="split-block">
+          <DragHandle />
+          <div className={`split-block-members ${superset ? 'split-superset' : ''}`}>
             {superset && (
-              <div className="flex items-center justify-between gap-2 -mb-1">
-                <span className="t-label-sm">Superset</span>
+              <div className="flex items-center justify-between gap-2 -mt-1 -mb-2">
+                <span className="metal-eyebrow">Superset</span>
                 <button
                   type="button"
-                  className="pressable studio-row-action flex items-center gap-1.5 min-h-11 t-label-sm text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
+                  className="metal-text-btn is-quiet text-[13px] gap-1.5"
                   onClick={() => clearExerciseSuperset(dayId, members[0].id)}
                   aria-label={`Split superset ${label}`}
                 >

@@ -1,10 +1,9 @@
 import { memo, useCallback, useMemo } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
-import { Card } from '@/components/shared';
+import { AnimatePresence } from 'motion/react';
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { LineButton } from '@/components/metal';
 import { useSplitEditStore, type DraftDay } from '@/stores/splitEditStore';
 import { exerciseBlocks } from '@/lib/splitDraft';
-import { springs } from '@/lib/animations';
 import { CommitInput } from './CommitInput';
 import { DragHandle, SortableItem, SortableList } from './SortableList';
 import { ExerciseBlock } from './ExerciseBlock';
@@ -66,10 +65,10 @@ export const DayCard = memo(function DayCard({
 
   return (
     <SortableItem id={day.id} label={dayLabel}>
-      <Card variant="slab" animated={false} className="material-surface space-y-5">
-        <div className={`flex items-center gap-1 ${expanded ? 'pb-4 border-b border-[var(--color-border)]' : ''}`}>
+      <div className="split-day">
+        <div className="split-day-head">
           <DragHandle />
-          <span className="t-data-sm text-[var(--color-text-dim)] shrink-0 w-6">
+          <span className="split-index">
             {String(index + 1).padStart(2, '0')}
           </span>
 
@@ -86,13 +85,13 @@ export const DayCard = memo(function DayCard({
           ) : (
             <button
               type="button"
-              className="pressable flex-1 min-w-0 min-h-11 text-left flex flex-col justify-center"
+              className="flex-1 min-w-0 min-h-11 text-left flex flex-col justify-center"
               onClick={() => onToggle(day.id)}
               aria-expanded={false}
               aria-label={`Edit ${dayLabel}, ${day.exercises.length} exercises`}
             >
-              <span className="t-heading break-words">{dayLabel}</span>
-              <span className="t-caption line-clamp-2 mt-0.5">{exerciseSummary || 'No exercises yet'}</span>
+              <span className="split-day-name">{dayLabel}</span>
+              <span className="split-day-summary">{exerciseSummary || 'No exercises yet'}</span>
             </button>
           )}
 
@@ -101,19 +100,19 @@ export const DayCard = memo(function DayCard({
             items={[
               {
                 label: 'Move day earlier',
-                icon: <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
+                icon: <ChevronUp strokeWidth={1.75} aria-hidden />,
                 disabled: index === 0,
                 onSelect: () => reorderDays(day.id, -1),
               },
               {
                 label: 'Move day later',
-                icon: <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
+                icon: <ChevronDown strokeWidth={1.75} aria-hidden />,
                 disabled: index === total - 1,
                 onSelect: () => reorderDays(day.id, 1),
               },
               {
                 label: 'Remove day',
-                icon: <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
+                icon: <Trash2 strokeWidth={1.75} aria-hidden />,
                 destructive: true,
                 onSelect: () => removeDay(day.id),
               },
@@ -121,24 +120,26 @@ export const DayCard = memo(function DayCard({
           />
           <button
             type="button"
-            className="pressable studio-row-action flex items-center justify-center w-11 h-11 shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            className="metal-icon-btn -mr-3"
             aria-expanded={expanded}
             aria-label={expanded ? `Collapse ${dayLabel}` : `Expand ${dayLabel}`}
             onClick={() => onToggle(day.id)}
           >
-            <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} strokeWidth={1.5} aria-hidden />
+            <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} strokeWidth={1.5} aria-hidden />
           </button>
         </div>
 
         {expanded && (
-          <>
-            <div className="flex items-baseline justify-between">
-              <span className="t-label">Exercises</span>
-              <span className="t-data-sm text-[var(--color-muted)]">{day.exercises.length} total</span>
+          <div className="split-day-body">
+            <div className="split-sheet-head">
+              <span className="metal-eyebrow">Exercises</span>
+              <span className="metal-section-head-right">
+                <span><b>{day.exercises.length}</b> total</span>
+              </span>
             </div>
 
             {day.exercises.length === 0 ? (
-              <p className="t-caption py-3 border-t border-[var(--color-border)]">No exercises yet. Tap below to add.</p>
+              <p className="metal-row-detail py-3 border-t border-[var(--color-border-soft)]">No exercises yet. Tap below to add.</p>
             ) : (
               <SortableList ids={blockIds} onMove={moveBlock} describe={describeBlock}>
                 {/* Existing rows appear at once; only later additions fade in. */}
@@ -158,19 +159,10 @@ export const DayCard = memo(function DayCard({
               </SortableList>
             )}
 
-            <motion.button
-              type="button"
-              className="pressable studio-row-action w-full min-h-11 flex items-center justify-center gap-2 py-3 t-label hover:text-[var(--color-text)] transition-colors"
-              onClick={() => onPickExercise(day.id, 'add')}
-              whileTap={{ scale: 0.99 }}
-              transition={springs.tactile}
-            >
-              <Plus className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
-              Add exercises
-            </motion.button>
-          </>
+            <LineButton plus className="mt-3" onClick={() => onPickExercise(day.id, 'add')}>Add exercises</LineButton>
+          </div>
         )}
-      </Card>
+      </div>
     </SortableItem>
   );
 });

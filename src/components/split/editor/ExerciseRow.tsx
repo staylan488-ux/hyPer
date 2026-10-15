@@ -33,68 +33,68 @@ export const ExerciseRow = memo(function ExerciseRow({
   const name = exercise.exercise.name;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="t-data-sm text-[var(--color-muted)] w-5 shrink-0">
+    <div>
+      <div className="flex items-center gap-1">
+        <span className="split-index !w-6">
           {String(index + 1).padStart(2, '0')}
         </span>
 
         <button
           type="button"
-          className="pressable flex-1 min-w-0 min-h-11 text-left group flex items-center gap-1.5"
+          className="flex-1 min-w-0 min-h-11 text-left group flex items-center gap-2"
           onClick={() => onPickExercise(dayId, 'swap', exercise.id)}
           aria-label={`Swap ${name}`}
         >
           <span className="flex flex-col min-w-0">
-            <span className="t-body text-[var(--color-text)] break-words">{name}</span>
+            <span className="split-exercise-name">{name}</span>
             {isPendingExerciseId(exercise.exercise_id) && (
-              <span className="t-caption">Custom · added on save</span>
+              <span className="metal-row-detail">Custom · added on save</span>
             )}
           </span>
-          <ArrowRightLeft
-            className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors shrink-0"
-            strokeWidth={1.5}
-            aria-hidden
-          />
+          <ArrowRightLeft className="split-exercise-swap" strokeWidth={1.5} aria-hidden />
         </button>
 
         <button
           type="button"
-          className="pressable studio-row-action flex items-center justify-center w-11 h-11 shrink-0 text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"
+          className="metal-icon-btn is-danger"
           aria-label={`Remove ${name}`}
           onClick={() => removeExercise(dayId, exercise.id)}
         >
-          <X className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden />
+          <X strokeWidth={1.5} aria-hidden />
         </button>
-        <RowMenu
-          label={`More for ${name}`}
-          items={[
-            ...(inSuperset ? [] : [{
-              label: 'Add superset',
-              icon: <Link2 className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
-              onSelect: () => onPickExercise(dayId, 'superset', exercise.id),
-            }]),
-            {
-              label: inSuperset ? 'Move superset earlier' : 'Move earlier',
-              icon: <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
-              disabled: !canMoveUp,
-              onSelect: () => reorderExercise(dayId, exercise.id, -1),
-            },
-            {
-              label: inSuperset ? 'Move superset later' : 'Move later',
-              icon: <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />,
-              disabled: !canMoveDown,
-              onSelect: () => reorderExercise(dayId, exercise.id, 1),
-            },
-          ]}
-        />
+        <div className="-mr-3">
+          <RowMenu
+            label={`More for ${name}`}
+            items={[
+              ...(inSuperset ? [] : [{
+                label: 'Add superset',
+                icon: <Link2 strokeWidth={1.75} aria-hidden />,
+                onSelect: () => onPickExercise(dayId, 'superset', exercise.id),
+              }]),
+              {
+                label: inSuperset ? 'Move superset earlier' : 'Move earlier',
+                icon: <ChevronUp strokeWidth={1.75} aria-hidden />,
+                disabled: !canMoveUp,
+                onSelect: () => reorderExercise(dayId, exercise.id, -1),
+              },
+              {
+                label: inSuperset ? 'Move superset later' : 'Move later',
+                icon: <ChevronDown strokeWidth={1.75} aria-hidden />,
+                disabled: !canMoveDown,
+                onSelect: () => reorderExercise(dayId, exercise.id, 1),
+              },
+            ]}
+          />
+        </div>
       </div>
 
-      <SetRangeFields
-        values={exercise}
-        onCommitSets={(range) => updateExerciseTargets(dayId, exercise.id, range)}
-        onCommitReps={(patch) => updateExerciseTargets(dayId, exercise.id, patch)}
-      />
+      <div className="mt-2 pl-7">
+        <SetRangeFields
+          values={exercise}
+          onCommitSets={(range) => updateExerciseTargets(dayId, exercise.id, range)}
+          onCommitReps={(patch) => updateExerciseTargets(dayId, exercise.id, patch)}
+        />
+      </div>
     </div>
   );
 });

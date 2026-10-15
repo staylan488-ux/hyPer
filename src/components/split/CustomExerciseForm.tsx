@@ -38,8 +38,8 @@ export function CustomExerciseForm({
   };
 
   return (
-    <form className="space-y-3 pt-3 border-t border-[var(--color-border)]" onSubmit={submit}>
-      <span className="t-label block">Custom exercise</span>
+    <form className="metal-rule space-y-3 pt-4" onSubmit={submit}>
+      <span className="metal-eyebrow">Custom exercise</span>
       <Input
         aria-label="Exercise name"
         value={name}
@@ -58,7 +58,7 @@ export function CustomExerciseForm({
           ariaLabelledBy={muscleLabelId}
         />
       </div>
-      <p className="t-caption">Added to your exercise library when you save the program.</p>
+      <p className="metal-row-detail">Added to your exercise library when you save the program.</p>
       <div className="flex gap-3">
         <Button type="button" variant="secondary" className="flex-1" onClick={onCancel}>
           Cancel
