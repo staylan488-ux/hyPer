@@ -1,0 +1,328 @@
+/* ═════════════════════════════════════════════════════════════
+   HISTORY — the month calendar and the day ledger in Metal.
+   Hairlines and space instead of boxes; Fraunces for the month and the
+   calendar numerals; the selected day wears the Today entry-pill material.
+   Built only from the --metal-* tokens in src/styles/metal.css.
+   ═════════════════════════════════════════════════════════════ */
+
+@layer components {
+/* ── Header: eyebrow, Fraunces month, quiet month arrows ── */
+.hist-month { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.hist-month .metal-title { min-width: 0; }
+.hist-month-nav { display: flex; gap: 8px; flex: none; padding-bottom: 1px; }
+.hist-nav-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  color: var(--metal-ink);
+  transition: opacity 160ms ease, transform 110ms ease;
+}
+.hist-nav-btn::after { content: ''; position: absolute; inset: -3px; }
+.hist-nav-btn:active { opacity: 0.6; transform: scale(0.96); }
+.hist-nav-btn svg { width: 15px; height: 15px; }
+
+/* ── Calendar: a ruled grid, numerals in Fraunces ── */
+.hist-cal { margin-top: 24px; }
+.hist-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.hist-cal-dow {
+  padding-bottom: 10px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--metal-ink-2);
+}
+/* The day ledger's section rule closes the grid. */
+.hist-cal + .metal-section { margin-top: 0; }
+.hist-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 66px;
+  padding: 9px 3px 9px;
+  border-top: 0.5px solid var(--metal-rule);
+  color: var(--metal-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+.hist-day.is-out { color: var(--metal-ink-3); }
+.hist-day-pill {
+  position: absolute;
+  inset: 4px 2px;
+  border-radius: 999px;
+  background: var(--metal-chip);
+  box-shadow: var(--metal-chip-edge);
+}
+.hist-day-num {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-variation-settings: 'opsz' 72;
+  font-variant-numeric: lining-nums proportional-nums;
+  font-size: 19px;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+.hist-day.is-today .hist-day-num { color: var(--metal-red); }
+.hist-day.is-selected .hist-day-num { font-weight: 460; }
+.hist-day-label {
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--metal-ink-2);
+  overflow-wrap: anywhere;
+}
+.hist-day-marks { position: relative; display: flex; gap: 3px; margin-top: auto; padding-top: 4px; }
+.hist-day-marks > span { width: 5px; height: 5px; border-radius: 50%; }
+.hist-mark-lift { background: var(--metal-ink); }
+.hist-mark-activity { box-shadow: inset 0 0 0 1px var(--metal-ink-2); }
+.hist-day.is-out .hist-mark-lift { background: var(--metal-ink-3); }
+
+/* ── Day ledger ── */
+.hist-day-head { align-items: flex-start; }
+.hist-day-summary { margin-top: 3px; font-size: 13px; line-height: 1.35; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-day-actions { display: flex; align-items: center; gap: 14px; flex: none; margin-top: -2px; }
+.hist-quiet-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -6px 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--metal-ink-2);
+  transition: opacity 160ms ease;
+}
+.hist-quiet-btn:active { opacity: 0.6; }
+.hist-quiet-btn:disabled { opacity: 0.4; }
+
+/* A past session: Fraunces title over a quiet detail line. */
+.hist-session { border-top: 0.5px solid var(--metal-rule); }
+.hist-day-ledger > .hist-session:first-child { margin-top: 10px; }
+.hist-session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 14px 0 16px;
+  text-align: left;
+  color: var(--metal-ink);
+}
+.hist-session-title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-variation-settings: 'opsz' 72;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+.hist-session-side { display: flex; align-items: center; gap: 12px; flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-session-side svg { width: 14px; height: 14px; }
+.hist-chevron { display: inline-flex; color: var(--metal-ink-3); }
+.hist-chevron svg { width: 14px; height: 14px; }
+.hist-session-body { padding-bottom: 6px; }
+
+/* Sub-heads inside a session: eyebrow left, one quiet action right. */
+.hist-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding-top: 6px; border-top: 0.5px solid var(--metal-rule); }
+.hist-sub-right { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-caption { margin: 2px 0 14px; max-width: 40ch; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
+.hist-caption.is-alert { color: var(--metal-red); }
+
+/* Attached activity stats: four figures, no box. */
+.hist-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 18px; }
+.hist-stat .metal-num { display: block; font-size: 26px; line-height: 1; }
+.hist-stat-label { display: block; margin-top: 5px; font-size: 11.5px; line-height: 1.3; color: var(--metal-ink-2); }
+
+/* Choosing an activity to attach: hairline rows. */
+.hist-pick-list { margin-bottom: 14px; }
+.hist-pick {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 11px 0;
+  border-top: 0.5px solid var(--metal-rule);
+  text-align: left;
+  color: var(--metal-ink);
+  transition: opacity 160ms ease;
+}
+.hist-pick:active { opacity: 0.6; }
+.hist-pick:disabled { opacity: 0.45; }
+.hist-pick-title { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; }
+.hist-pick-hint { font-weight: 400; color: var(--metal-ink-2); }
+
+/* Movements in a past session. */
+.hist-move { border-top: 0.5px solid var(--metal-rule); }
+.hist-move-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 0;
+  text-align: left;
+  color: var(--metal-ink);
+}
+.hist-move-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.hist-move-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); overflow-wrap: anywhere; }
+.hist-move-count { display: inline-flex; align-items: center; gap: 12px; flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-move-count svg { width: 14px; height: 14px; }
+.hist-move-body { padding: 0 0 14px; }
+
+.hist-tools { display: flex; align-items: center; gap: 4px; margin: -4px 0 6px; }
+.hist-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--metal-ink-2);
+  transition: opacity 160ms ease, color 160ms ease;
+}
+.hist-tool svg { width: 14px; height: 14px; flex: none; }
+.hist-tool:active { opacity: 0.6; }
+.hist-tool:disabled { opacity: 0.3; pointer-events: none; }
+.hist-tool.is-on { color: var(--metal-ink); }
+.hist-tool.is-danger { color: var(--metal-red); margin-left: auto; margin-right: -10px; }
+/* Reorder: two small hairline circles, like the month arrows. */
+.hist-tool.is-step { min-width: 40px; padding: 0; }
+.hist-tool.is-step > span { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--metal-line); color: var(--metal-ink); }
+
+.hist-target { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; border-top: 0.5px solid var(--metal-rule); }
+.hist-target-label { font-size: 13px; color: var(--metal-ink-2); }
+.hist-target-controls { display: flex; align-items: center; gap: 10px; }
+.hist-target-input {
+  width: 56px;
+  min-height: 40px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  text-align: center;
+  font-size: 16px;
+  color: var(--metal-ink);
+  font-variant-numeric: tabular-nums;
+}
+.hist-target-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
+
+/* The set ledger mirrors the workout's columns. */
+.hist-sets { display: grid; grid-template-columns: 34px repeat(3, minmax(0, 1fr)) 88px; align-items: center; }
+.hist-sets-head { min-height: 34px; border-top: 0.5px solid var(--metal-rule); font-size: 10.5px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-set { min-height: 50px; border-top: 0.5px solid var(--metal-rule); font-size: 15px; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+.hist-set-index { font-size: 13px; color: var(--metal-ink-3); }
+.hist-set-empty { color: var(--metal-ink-3); }
+.hist-set-actions { display: flex; justify-content: flex-end; margin-right: -10px; }
+.hist-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--metal-ink-3);
+  transition: opacity 160ms ease, color 160ms ease;
+}
+.hist-icon-btn svg { width: 14px; height: 14px; }
+.hist-icon-btn:active { opacity: 0.6; }
+.hist-icon-btn:hover { color: var(--metal-ink); }
+.hist-icon-btn.is-danger { color: var(--metal-red); }
+
+/* Notes: a transparent field with a hairline, ink when focused. */
+.hist-note { padding-top: 14px; border-top: 0.5px solid var(--metal-rule); }
+.hist-note-label { display: block; margin-bottom: 8px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-textarea {
+  display: block;
+  width: 100%;
+  padding: 11px 13px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--metal-ink);
+  resize: none;
+  transition: box-shadow 160ms ease;
+}
+.hist-textarea::placeholder { color: var(--metal-ink-3); }
+.hist-textarea:focus { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.hist-note-status { display: flex; align-items: center; justify-content: space-between; min-height: 22px; margin-top: 6px; font-size: 12px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+
+.hist-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--metal-red);
+  transition: opacity 160ms ease;
+}
+.hist-danger svg { width: 14px; height: 14px; }
+.hist-danger:active { opacity: 0.6; }
+
+/* Activities on the day. */
+.hist-activities { margin-top: 8px; }
+.hist-merge { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 13px; color: var(--metal-ink-2); }
+.hist-activity { padding: 12px 0 10px; border-top: 0.5px solid var(--metal-rule); }
+.hist-activity-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.hist-activity-title { font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--metal-ink); overflow-wrap: anywhere; }
+.hist-activity-line { margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-activity-line.is-metrics { color: var(--metal-ink); }
+.hist-activity-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
+.hist-activity-actions { display: flex; align-items: center; flex: none; margin: -10px -10px 0 0; }
+.hist-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -10px 0 0 -11px;
+}
+.hist-select > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  color: var(--color-base);
+}
+.hist-select[aria-checked='true'] > span { background: var(--metal-ink); box-shadow: none; }
+.hist-select svg { width: 12px; height: 12px; }
+
+.hist-splits { margin-top: 12px; padding-top: 10px; border-top: 0.5px solid var(--metal-rule); }
+.hist-splits-grid { display: grid; grid-template-columns: 2rem repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hist-splits-head { padding-bottom: 4px; font-size: 10.5px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-splits-row { padding: 3px 0; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-splits-row > span:first-child { color: var(--metal-ink-3); }
+
+/* Sheets */
+.hist-sheet-kicker { font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
+.hist-sheet-copy { font-size: 15px; line-height: 1.45; color: var(--metal-ink-2); }
+}
