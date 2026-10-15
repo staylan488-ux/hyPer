@@ -8,6 +8,9 @@ import { springs } from '@/lib/animations';
 import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
+import { notifySetEntries, registerSetEntry, type SetEntryField, type SetEntryState, type SetEntryValues } from './setEntryRegistry';
+
+const FIELD_LABELS: Record<SetEntryField, string> = { weight: 'Weight', reps: 'Reps', rpe: 'Effort (RPE, optional)' };
 
 interface PreviousTarget { weight: number | null; reps: number | null; rpe: number | null }
 interface WorkoutSetRowProps {
@@ -36,7 +39,8 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
   const hasDraft = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const rowRef = useRef<HTMLButtonElement>(null);
-  const focusOnOpen = useRef(false);
+  // true focuses the first field; a field name focuses that field (capsule).
+  const focusOnOpen = useRef<boolean | SetEntryField>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   // The ink stamp after a confirmed save; `gain` when it beat last workout.
   const [stamp, setStamp] = useState<{ key: number; gain: string | null } | null>(null);
@@ -52,10 +56,13 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
 
   useLayoutEffect(() => {
     if (!editing || !focusOnOpen.current) return;
+    const field = focusOnOpen.current;
     focusOnOpen.current = false;
-    const target = formRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')
+    const target = (typeof field === 'string' ? formRef.current?.querySelector<HTMLInputElement>(`input[aria-label="${FIELD_LABELS[field]}"]:not(:disabled)`) : null)
+      ?? formRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')
       ?? formRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)');
     target?.focus({ preventScroll: true });
+    if (typeof field === 'string') revealEditor(target);
   }, [editing]);
 
   const releaseEditorFocus = () => {
@@ -70,12 +77,20 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
     });
   };
 
-  const handleSave = async () => {
-    if (!validNumbers || saveInFlight.current) return;
+  // The inline check and the command capsule both save here. The capsule may
+  // pass the values it showed; they become this row's draft first, so a
+  // failed save keeps them for Retry. It logs without opening a closed row.
+  const handleSave = async ({ values, fromCapsule = false }: { values?: SetEntryValues; fromCapsule?: boolean } = {}) => {
+    const entry = values ?? { weight, reps, rpe };
+    if (!isLoggableSetEntry(entry.weight, entry.reps, entry.rpe) || saveInFlight.current) return;
     saveInFlight.current = true;
-    tapHaptic();
+    if (values) {
+      hasDraft.current = true;
+      setWeight(values.weight); setReps(values.reps); setRpe(values.rpe);
+    }
+    if (!fromCapsule) tapHaptic(); // The capsule's ring already ticked.
     // Pin an implicitly opened row until its save callback confirms completion.
-    onSelect?.();
+    if (!fromCapsule || editing) onSelect?.();
     setSaving(true);
     setSaveError(null);
     const originalSet = set;
@@ -92,11 +107,11 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       if (liveWorkout?.id !== originalSet.workout_id || liveSet?.id !== originalSet.id) {
         throw new Error('This workout set is no longer active.');
       }
-      await logSet(originalSet.exercise_id, originalSet.set_number, Number(weight), Number(reps), rpe ? Number(rpe) : undefined);
+      await logSet(originalSet.exercise_id, originalSet.set_number, Number(entry.weight), Number(entry.reps), entry.rpe ? Number(entry.rpe) : undefined);
       hasDraft.current = false;
       releaseEditorFocus();
       const gain = !originalSet.completed && previousTarget
-        ? describeSetGain({ weight: Number(weight), reps: Number(reps) }, previousTarget)
+        ? describeSetGain({ weight: Number(entry.weight), reps: Number(entry.reps) }, previousTarget)
         : null;
       setStamp({ key: Date.now(), gain });
       onComplete?.(originalSet);
@@ -127,6 +142,35 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
     }
     onSelect?.();
   };
+
+  // The capsule's value tap: open this row's editor on one field.
+  const focusFromCapsule = (field: SetEntryField = 'weight') => {
+    focusOnOpen.current = field;
+    if (set.completed && !hasDraft.current) {
+      setWeight(set.weight?.toString() ?? '');
+      setReps(set.reps?.toString() ?? '');
+      setRpe(set.rpe?.toString() ?? '');
+    }
+    onSelect?.();
+    if (!editing) return; // The editing layout effect focuses once it opens.
+    focusOnOpen.current = false;
+    const target = formRef.current?.querySelector<HTMLInputElement>(`input[aria-label="${FIELD_LABELS[field]}"]:not(:disabled)`);
+    target?.focus({ preventScroll: true });
+    revealEditor(target);
+  };
+
+  // Publish this row to the set-entry registry (see setEntryRegistry.ts).
+  const entryState: SetEntryState = { weight, reps, rpe, hasDraft: hasDraft.current, saving, error: saveError, completed: set.completed };
+  const entryRef = useRef({ state: entryState, save: handleSave, focus: focusFromCapsule });
+  useLayoutEffect(() => {
+    entryRef.current = { state: entryState, save: handleSave, focus: focusFromCapsule };
+  });
+  useEffect(() => registerSetEntry(set.id, {
+    read: () => entryRef.current.state,
+    save: (values) => entryRef.current.save({ values, fromCapsule: true }),
+    focus: (field) => entryRef.current.focus(field),
+  }), [set.id]);
+  useEffect(() => { notifySetEntries(); }, [weight, reps, rpe, saving, saveError, set.completed]);
 
   const displayWeight = hasDraft.current ? weight : set.weight?.toString() ?? weight;
   const displayReps = hasDraft.current ? reps : set.reps?.toString() ?? reps;
@@ -192,6 +236,13 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
       <span className="sr-only" role="status">{saving ? 'Saving…' : saveError ? 'Not saved' : set.completed ? 'Editing saved set' : 'Ready to log'}</span>
     </form>
   </>;
+}
+
+/** Bring a capsule-opened editor into view once its movement has expanded. */
+function revealEditor(target: HTMLElement | null | undefined) {
+  if (!target?.scrollIntoView) return;
+  requestAnimationFrame(() => target.scrollIntoView({ block: 'center' }));
+  window.setTimeout(() => { if (target.isConnected) target.scrollIntoView({ block: 'center' }); }, 360);
 }
 
 /** A check drawn in ink: its stroke plays in whenever it remounts after a save. */

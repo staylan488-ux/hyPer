@@ -33,6 +33,7 @@ import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { useLitSurface } from '@/hooks/useLitSurface';
 import { WorkoutSetHeadings, WorkoutSetRow } from '@/components/workout/WorkoutSetRow';
 import { RestTimerPill } from '@/components/workout/RestTimerPill';
+import { WorkoutCommandCapsule } from '@/components/workout/WorkoutCommandCapsule';
 import { SessionToken } from '@/components/workout/SessionToken';
 import { MovementDragHandle, MovementReorderList } from '@/components/workout/MovementReorderList';
 import { expandedWorkoutSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
@@ -2035,6 +2036,22 @@ export function Workout() {
           const source = substitutionSource;
           runSwap(source, replacement, () => substituteWorkoutExercise(source, replacement));
         }}
+      />
+
+      {/* Metal command capsule: the next set with a check ring that logs
+          through the set row's own save, or Finish when every set is logged. */}
+      <WorkoutCommandCapsule
+        active={!currentWorkout.completed}
+        orderedSets={orderedSets}
+        focusOrder={focusOrder}
+        editorSet={editorSet}
+        pairings={supersetFlowMap}
+        previousWorkoutSetsByExercise={previousWorkoutSetsByExercise}
+        exerciseName={(id) => workoutExerciseMap.get(id)?.name || activeFlexibleItems.find((item) => item.exercise_id === id)?.exercise_name || 'Movement'}
+        completedSets={completedSets}
+        totalSets={totalSets}
+        finishing={finishing}
+        onFinish={() => { void handleCompleteWorkout(); }}
       />
 
       {/* Rest is independent of movement expansion and set entry. */}
