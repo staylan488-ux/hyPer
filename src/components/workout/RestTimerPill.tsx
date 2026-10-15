@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Modal, RailStrip, RollingNumber } from '@/components/shared';
+import { Button, Modal, RollingNumber } from '@/components/shared';
 import { springs } from '@/lib/animations';
 import { readMotionPolicy } from '@/lib/motionPolicy';
 import { useNativeRestDock } from '@/hooks/useNativeGlassSurfaces';
@@ -59,6 +59,13 @@ function getInitialSession(workoutId: string, defaultSeconds: number, sessionSee
 
   saveRestTimerSession(syncedSession);
   return syncedSession;
+}
+
+/** Metal chip look; the handlers already tick, so no second haptic. */
+function presetClass(selected: boolean) {
+  return `metal-chip pressable inline-flex items-center justify-center min-h-11 px-2 text-[13.5px] font-medium whitespace-nowrap tabular-nums transition-colors duration-200 ${
+    selected ? 'is-selected bg-[var(--metal-ink)] text-[var(--color-base)]' : 'text-[var(--metal-ink-2)] hover:text-[var(--metal-ink)]'
+  }`;
 }
 
 function formatTime(totalSeconds: number) {
@@ -332,7 +339,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
       {/* With the native dock, an invisible anchor holds its place so page
           padding and drag auto-scroll still know where the dock sits. */}
       {nativeDock && createPortal(<div ref={setBar} className="studio-rest-bar studio-rest-bar-anchor" aria-hidden />, document.body)}
-      {!nativeDock && createPortal(<section ref={setLitBar} className={`material-glass studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
+      {!nativeDock && createPortal(<section ref={setLitBar} className={`studio-rest-bar${isComplete ? ' is-complete' : ''}${leaving ? ' is-leaving' : ''}`} aria-label="Rest timer" inert={leaving}>
         <button type="button" className="studio-rest-summary" onClick={() => setExpanded(true)}
           aria-label={`Open rest timer options, ${statusLabel.toLowerCase()}, ${formatTime(timeLeft)}${nextUpLabel ? `, next ${nextUpLabel}` : ''}`}
           aria-haspopup="dialog" aria-expanded={expanded}>
@@ -340,69 +347,67 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
           <span className="studio-rest-status">{statusLabel}</span>
           <span className="studio-rest-context">{nextUpLabel ? `Next · ${nextUpLabel}` : isComplete ? 'Ready when you are' : 'Tap timer for options'}</span>
         </button>
-        {!isComplete && <button type="button" className="material-control studio-rest-pause" onClick={() => handleToggleRunning()}
-          aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={18} /> : <Play size={18} />}</button>}
+        {!isComplete && <button type="button" className="studio-rest-pause" onClick={() => handleToggleRunning()}
+          aria-label={isRunning ? 'Pause rest timer' : 'Resume rest timer'}>{isRunning ? <Pause size={16} strokeWidth={1.75} /> : <Play size={16} strokeWidth={1.75} className="ml-0.5" />}</button>}
         <button type="button" className="studio-rest-dismiss" onClick={() => handleDismiss()}
           aria-label={isComplete ? 'Continue training' : 'Skip rest'}>{isComplete ? 'Continue' : 'Skip'}</button>
         <div className="studio-rest-bar-progress" role="progressbar" aria-label="Rest remaining" aria-valuemin={0} aria-valuemax={seconds} aria-valuenow={timeLeft} aria-valuetext={`${formatTime(timeLeft)} remaining`}><span style={{ transform: `scaleX(${isComplete ? 1 : Math.max(0, Math.min(1, remainingRatio))})` }} /></div>
       </section>, document.body)}
 
       <Modal isOpen={expanded} onClose={() => { setExpanded(false); setCustomOpen(false); }} title="Rest timer">
-        <div className="pt-1 pb-2">
-          <div className="text-center mb-5">
+        <div className="studio-rest-sheet">
+          <div className="studio-rest-sheet-figure">
             <motion.p
-              className="t-data-hero"
+              className="metal-num studio-rest-sheet-countdown"
               animate={{ color: tone }}
               transition={{ duration: 0.3 }}
             >
               <RollingNumber value={formatTime(timeLeft)} />
             </motion.p>
-            <p className="t-label-sm mt-1">{isRunning ? 'Remaining' : isComplete ? 'Complete' : 'Paused'}</p>
-            {nextUpLabel && <p className="mt-3 text-xs text-[var(--color-text-dim)]">Next · {nextUpLabel}</p>}
+            <p className="metal-hero-caption">{isRunning ? 'Remaining' : isComplete ? 'Complete' : 'Paused'}</p>
+          </div>
+          {nextUpLabel && <p className="metal-note studio-rest-sheet-next">Next · {nextUpLabel}</p>}
+
+          <div className="metal-rail-track studio-rest-sheet-rail" aria-hidden>
+            <span
+              className={`metal-rail-fill${isWarning ? ' is-over' : ''}`}
+              style={{ transform: `scaleX(${isComplete ? 1 : Math.max(0, Math.min(1, remainingRatio))})` }}
+            />
           </div>
 
-          <RailStrip
-            value={isComplete ? 1 : remainingRatio}
-            tone={isComplete ? 'sage' : isWarning ? 'berry' : 'amber'}
-            size="lg"
-            className="mb-6"
-          />
-
-          <div className="flex justify-center gap-2.5 mb-6">
+          <div className="studio-rest-sheet-controls">
             <button
               type="button"
               onClick={() => handleToggleRunning()}
               disabled={isComplete}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] material-control text-[var(--color-text)] disabled:opacity-40"
+              className="studio-rest-sheet-btn pressable"
               aria-label={isRunning ? 'Pause' : 'Resume'}
             >
               {isRunning ? (
-                <Pause className="w-5 h-5" />
+                <Pause className="w-5 h-5" strokeWidth={1.75} />
               ) : (
-                <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+                <Play className="w-5 h-5 ml-0.5" strokeWidth={1.75} />
               )}
             </button>
             <button
               type="button"
               onClick={handleReset}
-              className="pressable flex items-center justify-center min-w-[52px] min-h-[52px] rounded-[11px] material-control text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              className="studio-rest-sheet-btn pressable"
               aria-label="Restart timer"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-5 h-5" strokeWidth={1.75} />
             </button>
           </div>
 
-          <div className="grid grid-cols-5 gap-1.5 mb-5">
+          <p className="metal-eyebrow studio-rest-sheet-label">Rest length</p>
+          <div className="studio-rest-presets">
             {PRESET_TIMES.map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => handleSetTime(preset)}
-                className={`pressable rounded-[11px] min-h-11 t-data-sm transition-colors ${
-                  !isCustom && seconds === preset
-                    ? 'material-button-primary text-[var(--button-primary-fg)]'
-                    : 'material-control text-[var(--color-text-dim)] hover:text-[var(--color-text)]'
-                }`}
+                aria-pressed={!isCustom && seconds === preset}
+                className={presetClass(!isCustom && seconds === preset)}
               >
                 {preset >= 60 ? `${preset / 60}m` : `${preset}s`}
               </button>
@@ -411,11 +416,8 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
               type="button"
               onClick={handleOpenCustom}
               aria-label="Set a custom rest time"
-              className={`pressable rounded-[11px] min-h-11 transition-colors ${
-                isCustom
-                  ? 'material-button-primary text-[var(--button-primary-fg)] t-data-sm tabular-nums'
-                  : 'material-control text-[var(--color-text-dim)] hover:text-[var(--color-text)] t-label-sm'
-              }`}
+              aria-pressed={isCustom}
+              className={presetClass(isCustom)}
             >
               {isCustom ? formatTime(seconds) : 'Custom'}
             </button>
@@ -431,7 +433,7 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                 transition={springs.settle}
                 className="overflow-hidden"
               >
-                <div className="material-inset rounded-[11px] overflow-hidden flex items-stretch gap-px mb-2">
+                <div className="studio-rest-custom">
                   <input
                     type="text"
                     value={customDraft}
@@ -446,30 +448,20 @@ export function RestTimerPill({ workoutId, sessionSeed = 0, defaultSeconds = 90,
                     aria-label="Custom rest time, minutes and seconds"
                     aria-invalid={customError}
                     autoFocus
-                    className={`flex-1 min-w-0 min-h-11 px-3 t-data-sm tabular-nums bg-transparent text-[var(--color-text)] placeholder:text-[var(--color-muted)] outline-none ${customError ? 'ring-1 ring-[var(--color-accent)]' : ''}`}
+                    className="metal-input studio-rest-custom-input"
                   />
-                  <button
-                    type="button"
-                    onClick={handleCustomSubmit}
-                    className="pressable min-h-11 px-5 material-control text-[var(--color-text)] t-label-sm hover:bg-[var(--button-primary-hover)] hover:text-[var(--button-primary-fg)] transition-colors"
-                  >
-                    Set
-                  </button>
+                  <Button variant="secondary" onClick={handleCustomSubmit}>Set</Button>
                 </div>
                 {customError && (
-                  <p className="t-label-sm mb-3 text-[var(--color-accent)]">Try a time like 1:30 or 4:00 — 5s to 60min.</p>
+                  <p className="metal-flag studio-rest-custom-error">Try a time like 1:30 or 4:00 — 5s to 60min.</p>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
 
-          <button
-            type="button"
-            onClick={() => handleDismiss()}
-            className="pressable w-full min-h-12 rounded-[11px] material-control t-label text-[var(--color-text)] hover:bg-[var(--button-primary-hover)] hover:text-[var(--button-primary-fg)] transition-colors"
-          >
+          <Button variant="secondary" size="lg" className="w-full mt-6" onClick={() => handleDismiss()}>
             Done resting
-          </button>
+          </Button>
         </div>
       </Modal>
     </>
