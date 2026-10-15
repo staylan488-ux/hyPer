@@ -58,8 +58,8 @@
   position: absolute;
   inset: 4px 2px;
   border-radius: 999px;
-  background: var(--metal-chip);
-  box-shadow: var(--metal-chip-edge);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
 }
 .hist-day-num {
   position: relative;
@@ -247,7 +247,8 @@
 .hist-icon-btn svg { width: 14px; height: 14px; }
 .hist-icon-btn:active { opacity: 0.6; }
 .hist-icon-btn:hover { color: var(--metal-ink); }
-.hist-icon-btn.is-danger { color: var(--metal-red); }
+/* Row deletes stay quiet; red is kept for Remove and the confirm sheets. */
+.hist-icon-btn.is-danger { color: var(--metal-ink-3); }
 
 /* Notes: a transparent field with a hairline, ink when focused. */
 .hist-note { padding-top: 14px; border-top: 0.5px solid var(--metal-rule); }

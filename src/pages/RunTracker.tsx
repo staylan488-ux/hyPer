@@ -451,6 +451,8 @@ export function RunTracker() {
   if (running) {
     const [paceValue, paceUnit] = figure(paceLabel);
     const alertStatus = tracker.resting || warming || weak;
+    // A rest lap has no pace; its clock is the figure worth reading.
+    const restHero = tracker.resting && state.config.mode === 'intervals';
     return (
       <div className="run-live fixed inset-0 z-40 h-dvh overflow-hidden flex flex-col max-w-lg mx-auto select-none overscroll-none">
         <div className="flex items-center justify-between gap-3 min-h-11">
@@ -474,10 +476,10 @@ export function RunTracker() {
 
         <div className="flex-1 flex flex-col justify-center">
           <div>
-            <p className="metal-eyebrow">{state.config.mode === 'intervals' ? 'Lap pace' : 'Pace'}</p>
+            <p className="metal-eyebrow">{restHero ? 'Rest' : state.config.mode === 'intervals' ? 'Lap pace' : 'Pace'}</p>
             <div className="metal-hero mt-3">
-              <span className="metal-num">{paceValue}</span>
-              {paceUnit && <span className="metal-hero-caption">{paceUnit}</span>}
+              <span className="metal-num">{restHero ? formatClockDuration(currentLapSeconds(state, tracker.nowMs)) : paceValue}</span>
+              {!restHero && paceUnit && <span className="metal-hero-caption">{paceUnit}</span>}
             </div>
           </div>
 

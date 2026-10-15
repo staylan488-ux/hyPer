@@ -349,8 +349,7 @@ export function NutritionWizard({
           animate={{ opacity: 1, y: 0 }}
           transition={springs.settle}
         >
-          <div className="pt-1 metal-rule">
-            <p className="t-label mt-5 mb-3">Nutrition calculator</p>
+          <div className="pt-5 metal-rule">
             <h2 ref={stepHeading} tabIndex={-1} className="you-step-title scroll-mt-4 outline-none">Units &amp; biological sex</h2>
             <p className="you-copy mt-3 max-w-[34ch]">Sex affects basal metabolic rate estimation.</p>
           </div>

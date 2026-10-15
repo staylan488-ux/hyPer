@@ -8,7 +8,6 @@ import {
   Chevron,
   Eyebrow,
   HeroFigure,
-  LineButton,
   useCommandCapsule,
   type CommandCapsuleSpec,
 } from '@/components/metal';
@@ -135,6 +134,11 @@ export function Settings() {
     let target: HTMLElement | null = null;
     // Wait until the search sheet has released background isolation and focus.
     const timer = window.setTimeout(() => {
+      // Log weight lives on the command capsule; the search result opens its sheet.
+      if (location.hash === '#search-log-weight') {
+        setWeighInOpen(true);
+        return;
+      }
       target = document.getElementById(location.hash.slice(1)) ?? pageHeading.current;
       if (!target) return;
       if (!target.hasAttribute('tabindex') && !target.matches('button, input')) target.tabIndex = -1;
@@ -967,7 +971,7 @@ export function Settings() {
   );
 
   // Log weight is the You screen's one primary action: it rides the command
-  // capsule on You and Body weight, and keeps its in-page entry points.
+  // capsule on You and Body weight, and search opens its sheet directly.
   const latestWeightDate = latestBodyWeight ? new Date(latestBodyWeight.measured_at) : null;
   const weighInCapsule: CommandCapsuleSpec | null =
     (page === 'home' || page === 'weight') && !(weightLoading && !latestBodyWeight)
@@ -1108,7 +1112,6 @@ export function Settings() {
                 Details
                 <Chevron />
               </button>
-              <LineButton plus onClick={() => setWeighInOpen(true)}>Log weight</LineButton>
             </div>
             {healthWeightMessage && (
               <p role="status" className="you-status">
@@ -1970,18 +1973,6 @@ export function Settings() {
             >
               {weightUnit === 'lb' ? 'lb / kg' : 'kg / lb'}
             </button>
-            <button
-              type="button"
-              id="search-log-weight"
-              className="metal-line-btn"
-              onClick={() => {
-                tapHaptic();
-                setWeighInOpen(true);
-              }}
-            >
-              <PlusGlyph />
-              Log weight
-            </button>
           </div>
           {feedback}
           {!weightLoading && bodyWeightHistory.length > 1 && (
@@ -2088,7 +2079,7 @@ export function Settings() {
             inputMode="decimal"
             step="0.1"
             value={weighInDraft}
-            placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
+            placeholder={latestBodyWeight ? formatWeight(latestBodyWeight.kilograms, weightUnit) : weightUnit === 'lb' ? '180.5' : '82.0'}
             onChange={(e) => {
               setHealthWeightMessage(null);
               setWeighInDraft(e.target.value);
@@ -2239,14 +2230,6 @@ function CheckMark() {
   return (
     <svg className="you-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 8.5l3.2 3L13 4.5" />
-    </svg>
-  );
-}
-
-function PlusGlyph() {
-  return (
-    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden>
-      <path d="M6 1.5v9M1.5 6h9" />
     </svg>
   );
 }
