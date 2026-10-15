@@ -1396,7 +1396,14 @@ export function Workout() {
             <MetalTitle note="Build today as you go.">Start a session</MetalTitle>
           </header>
 
-          <div className="train-flex-form">
+          <form
+            className="train-flex-form"
+            onSubmit={(event) => {
+              // Return on the keyboard starts the session; the capsule hides while typing.
+              event.preventDefault();
+              if (label && !startingFlexibleWorkout) void handleStartFlexibleWorkout();
+            }}
+          >
             <Input
               label="What are you training?"
               value={flexibleDayLabel}
@@ -1409,8 +1416,9 @@ export function Workout() {
               }}
               placeholder="Upper, Push, Arms…"
               maxLength={40}
+              enterKeyHint="go"
             />
-          </div>
+          </form>
 
           {flexTemplates.length > 0 && (
             <MetalSection label="Quick start">
@@ -2293,7 +2301,7 @@ function ExerciseCard({
           </span>
         </button>
         <div className="studio-movement-controls">
-        {isActive && menuActions.length > 0 && <div className="relative">
+        {menuActions.length > 0 && <div className="relative">
           <button ref={optionsRef} type="button" aria-label={`Options for ${exerciseName}`} aria-expanded={menuOpen}
             className="studio-movement-options" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal size={20} strokeWidth={1.75} /></button>
           {menuOpen && <>

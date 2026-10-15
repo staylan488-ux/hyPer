@@ -166,8 +166,8 @@ export function Dashboard() {
 
   // Completed sessions this training week; refreshed with Today and whenever
   // the live session starts or completes.
-  const weekDates = useWeekSessions(userId, dayKey, `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`);
-  const weekDone = weekDates?.length ?? null;
+  const weekSessions = useWeekSessions(userId, dayKey, `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`);
+  const weekDone = weekSessions.dates?.length ?? null;
   // Flexible mode has no weekly plan to count against.
   const weekTarget = workoutMode === 'flexible' ? null
     : schedule?.mode === 'fixed' && schedule.weekdays.length > 0 ? schedule.weekdays.length
@@ -233,6 +233,7 @@ export function Dashboard() {
         <TodayHero
           hero={hero}
           weekDone={weekDone}
+          weekFailed={weekSessions.failed}
           weekTarget={weekTarget}
         />
         {hero.kind === 'rest' && (
@@ -375,9 +376,10 @@ function TodayTitle({ hero, programName, programWeek }: { hero: HeroState; progr
   }
 }
 
-function TodayHero({ hero, weekDone, weekTarget }: {
+function TodayHero({ hero, weekDone, weekFailed, weekTarget }: {
   hero: HeroState;
   weekDone: number | null;
+  weekFailed: boolean;
   weekTarget: number | null;
 }) {
   if (hero.kind === 'loading') {
@@ -414,6 +416,12 @@ function TodayHero({ hero, weekDone, weekTarget }: {
   }
 
   if (hero.kind === 'rest' || hero.kind === 'done' || hero.kind === 'flexible') {
+    if (weekDone === null && weekFailed) {
+      // The week read failed: leave the figure out rather than wait on it.
+      return hero.kind === 'done'
+        ? <div className="relative h-[90px] mt-5"><BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-1 top-0" /></div>
+        : null;
+    }
     if (weekDone === null) {
       return (
         <div aria-hidden>
