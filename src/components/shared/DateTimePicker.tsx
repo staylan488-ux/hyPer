@@ -72,21 +72,21 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
       <button
         type="button"
         onClick={openSheet}
-        className={`pressable well w-full flex items-center gap-2.5 px-3.5 min-h-11 text-left ${className}`}
+        className={`metal-input pressable w-full flex items-center gap-2.5 px-3.5 min-h-11 text-left ${className}`}
       >
-        <CalendarDays className="w-4 h-4 shrink-0 text-[var(--color-stone)]" strokeWidth={1.75} />
-        <span className="t-body text-[var(--color-text)]">
+        <CalendarDays className="w-4 h-4 shrink-0 text-[var(--metal-ink-2)]" strokeWidth={1.5} />
+        <span className="text-[15px] leading-[1.35] text-[var(--metal-ink)]">
           {isToday(value) ? 'Today' : isSameDay(value, yesterday) ? 'Yesterday' : format(value, 'EEE, MMM d')}
         </span>
       </button>
 
       <Modal isOpen={open} onClose={() => setOpen(false)} title="Date">
         <div className="pt-1 pb-2">
-          <div className="flex gap-2 mb-4">
-            <Chip selected={isSameDay(value, today)} tone="amber" onClick={() => pick(today)} disabled={isDisabled(today)}>
+          <div className="flex gap-2 mb-5">
+            <Chip selected={isSameDay(value, today)} onClick={() => pick(today)} disabled={isDisabled(today)}>
               Today
             </Chip>
-            <Chip selected={isSameDay(value, yesterday)} tone="amber" onClick={() => pick(yesterday)} disabled={isDisabled(yesterday)}>
+            <Chip selected={isSameDay(value, yesterday)} onClick={() => pick(yesterday)} disabled={isDisabled(yesterday)}>
               Yesterday
             </Chip>
           </div>
@@ -95,25 +95,25 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
             <button
               type="button"
               onClick={() => setViewMonth((m) => subMonths(m, 1))}
-              className="pressable flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-well)] text-[var(--color-text)]"
+              className="metal-step-btn pressable flex w-11 h-11 items-center justify-center text-[var(--metal-ink)]"
               aria-label="Previous month"
             >
-              <ChevronLeft className="w-4 h-4" strokeWidth={2} />
+              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
             </button>
-            <span className="t-heading">{format(viewMonth, 'MMMM yyyy')}</span>
+            <span className="text-[15px] font-medium text-[var(--metal-ink)]">{format(viewMonth, 'MMMM yyyy')}</span>
             <button
               type="button"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="pressable flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] bg-[var(--color-well)] text-[var(--color-text)]"
+              className="metal-step-btn pressable flex w-11 h-11 items-center justify-center text-[var(--metal-ink)]"
               aria-label="Next month"
             >
-              <ChevronRight className="w-4 h-4" strokeWidth={2} />
+              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 -mx-5 sm:mx-0 mb-1">
+          <div className="grid grid-cols-7 -mx-5 sm:mx-0 mb-1" aria-hidden>
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-              <span key={i} className="t-label-sm text-center py-1">
+              <span key={i} className="text-center py-1 text-[11px] leading-[14px] font-medium tracking-[0.08em] text-[var(--metal-ink-2)]">
                 {d}
               </span>
             ))}
@@ -132,20 +132,24 @@ export function DateField({ value, onChange, max, min, className = '' }: DateFie
                   aria-label={format(day, 'EEEE, MMMM d, yyyy')}
                   aria-pressed={selected}
                   aria-current={isToday(day) ? 'date' : undefined}
-                  className={`relative min-h-11 rounded-[var(--radius-control)] t-data transition-colors ${
-                    selected
-                      ? 'bg-[var(--color-text)] text-[var(--color-base)]'
-                      : disabled
-                        ? 'text-[color-mix(in_srgb,var(--color-muted)_45%,transparent)]'
-                        : outside
-                          ? 'text-[var(--color-muted)]'
-                          : 'text-[var(--color-text-dim)]'
-                  } ${!selected && !disabled ? 'active:bg-[var(--color-surface-2)]' : ''}`}
+                  className="group flex min-h-11 items-center justify-center"
                 >
-                  {format(day, 'd')}
-                  {isToday(day) && !selected && (
-                    <span className="absolute left-1/2 -translate-x-1/2 bottom-1 w-1 h-1 rounded-full bg-[var(--color-accent)]" />
-                  )}
+                  {/* Selected fills with ink; today's numeral is the red accent. */}
+                  <span
+                    className={`flex w-9 h-9 items-center justify-center rounded-full text-[15px] font-medium tabular-nums transition-colors ${
+                      selected
+                        ? 'bg-[var(--metal-ink)] text-[var(--color-base)]'
+                        : disabled
+                          ? 'text-[color-mix(in_srgb,var(--metal-ink-3)_55%,transparent)]'
+                          : isToday(day)
+                            ? 'text-[var(--metal-red)]'
+                            : outside
+                              ? 'text-[var(--metal-ink-3)]'
+                              : 'text-[var(--metal-ink)]'
+                    } ${!selected && !disabled ? 'group-active:bg-[color-mix(in_srgb,var(--metal-ink)_8%,transparent)]' : ''}`}
+                  >
+                    {format(day, 'd')}
+                  </span>
                 </button>
               );
             })}
@@ -240,8 +244,8 @@ function WheelColumn({
             if (el) el.scrollTo({ top: i * ITEM_H, behavior: 'instant' });
           }}
           data-wheel-row
-          className={`snap-center w-full flex items-center justify-center t-data transition-colors ${
-            i === index ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'
+          className={`snap-center w-full flex items-center justify-center text-[20px] font-normal tabular-nums transition-colors ${
+            i === index ? 'text-[var(--metal-ink)]' : 'text-[var(--metal-ink-2)]'
           }`}
           style={{ height: ITEM_H, backfaceVisibility: 'hidden' }}
         >
@@ -302,17 +306,16 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`pressable well w-full flex items-center gap-2.5 px-3.5 min-h-11 text-left ${className}`}
+        className={`metal-input pressable w-full flex items-center gap-2.5 px-3.5 min-h-11 text-left ${className}`}
       >
-        <Clock className="w-4 h-4 shrink-0 text-[var(--color-stone)]" strokeWidth={1.75} />
-        <span className="t-data text-[var(--color-text)]">{value ? formatTimeLabel(value) : '—'}</span>
+        <Clock className="w-4 h-4 shrink-0 text-[var(--metal-ink-2)]" strokeWidth={1.5} />
+        <span className="text-[15px] leading-[1.35] tabular-nums text-[var(--metal-ink)]">{value ? formatTimeLabel(value) : '—'}</span>
       </button>
 
       <Modal isOpen={open} onClose={() => setOpen(false)} title="Time">
         <div className="pt-1 pb-2">
-          <div className="flex gap-2 mb-3">
+          <div className="flex gap-2 mb-4">
             <Chip
-              tone="amber"
               onClick={() => {
                 onChange(format(new Date(), 'HH:mm'));
                 setOpen(false);
@@ -322,10 +325,10 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
             </Chip>
           </div>
 
-          <div className="relative well overflow-hidden">
-            {/* selection band — hairline rules above and below, no fill */}
+          <div className="relative overflow-hidden">
+            {/* selection band — the quiet selected capsule of the segmented control */}
             <div
-              className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 border-y border-[var(--color-border-strong)]"
+              className="metal-segment-pill pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 rounded-[12px]"
               style={{ height: ITEM_H }}
             />
             <div className="relative flex">
@@ -353,7 +356,7 @@ export function TimeField({ value, onChange, className = '' }: TimeFieldProps) {
             </div>
           </div>
 
-          <Button type="button" onClick={() => setOpen(false)} className="mt-4 w-full">
+          <Button type="button" size="lg" onClick={() => setOpen(false)} className="mt-5 w-full">
             Done
           </Button>
         </div>
