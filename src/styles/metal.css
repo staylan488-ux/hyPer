@@ -287,6 +287,26 @@
 
 }
 
+/* Shell scroll edge: scrolled content fades out under the status bar rather
+   than ending on a hard line. Sits below the session pin, capsule and sheets. */
+.metal-scroll-edge {
+  position: fixed;
+  z-index: 25;
+  top: calc(var(--app-viewport-top, 0px) + var(--app-safe-top));
+  left: 0;
+  right: 0;
+  max-width: 32rem;
+  margin: 0 auto;
+  height: 28px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to bottom,
+    var(--material-foundation) 0,
+    color-mix(in srgb, var(--material-foundation) 72%, transparent) 35%,
+    color-mix(in srgb, var(--material-foundation) 30%, transparent) 65%,
+    color-mix(in srgb, var(--material-foundation) 0%, transparent) 100%);
+}
+
 /* ─────────────────────────────────────────────────────────────
    COMMAND CAPSULE — one floating primary action with the metal ring.
    ───────────────────────────────────────────────────────────── */

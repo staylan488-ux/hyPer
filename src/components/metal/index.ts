@@ -1,5 +1,6 @@
 export { MetalRing } from './MetalRing';
 export { CommandCapsule } from './CommandCapsule';
+export { ScrollEdge } from './ScrollEdge';
 export {
   Eyebrow,
   MetalTitle,
