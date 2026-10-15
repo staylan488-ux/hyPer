@@ -13,7 +13,7 @@
 :root:not(.dark) {
   --metal-ink: #161616;
   --metal-ink-2: #575757;
-  --metal-ink-3: #9A9A95;
+  --metal-ink-3: #8A8A85;
   --metal-rule: rgba(0, 0, 0, 0.12);
   --metal-track: rgba(0, 0, 0, 0.11);
   --metal-red: #A8352A;
@@ -24,8 +24,8 @@
   --metal-line: #E0DDD5;
   --metal-chip: transparent;
   --metal-chip-edge: inset 0 0 0 1px #E6E3DC;
-  --metal-selected: #FFFFFF;
-  --metal-selected-edge: inset 0 0 0 1px #E6E3DC;
+  --metal-selected: #E9E7E0;
+  --metal-selected-edge: none;
   --metal-tab: #6C6C70;
 
   /* Studio tokens follow the Metal ink. */
@@ -281,7 +281,6 @@
 .metal-next-what { margin-top: 1px; font-size: 15px; line-height: 1.35; font-weight: 500; color: var(--metal-ink); }
 
 /* Today: the eyebrow shares its row with the wordmark the brand intro lands on. */
-.metal-today { padding-top: 8px; }
 .metal-today-head { position: relative; padding-right: 72px; }
 .metal-today-head .brand-wordmark { position: absolute; right: 0; bottom: -1px; }
 
@@ -551,6 +550,17 @@ html[data-keyboard-open='true'] .metal-capsule,
 }
 @media (min-width: 640px) { :root .studio-sheet { border-radius: 28px; } }
 :root .studio-sheet[inert] { background: var(--metal-sheet); }
+.metal-sheet-fade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 18px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to bottom, var(--metal-sheet), color-mix(in srgb, var(--metal-sheet) 0%, transparent));
+}
 .material-sheet-handle { width: 36px; height: 5px; border-radius: 3px; background: var(--metal-ink-3); opacity: 0.55; }
 .metal-sheet-title {
   font-family: var(--font-display);

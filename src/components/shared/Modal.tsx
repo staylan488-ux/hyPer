@@ -20,6 +20,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const fadeRef = useRef<HTMLDivElement>(null);
   const litDialogRef = useLitSurface(dialogRef);
   const titleId = useId();
   const close = useEffectEvent(onClose);
@@ -136,14 +137,21 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </motion.button>
             </div>
-            <motion.div
-              className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.08, duration: 0.24 }}
-            >
-              {children}
-            </motion.div>
+            <div className="relative flex-1 min-h-0 flex flex-col">
+              {/* Scrolled content fades under the header instead of ending on a hard line. */}
+              <div ref={fadeRef} aria-hidden className="metal-sheet-fade" />
+              <motion.div
+                className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6 ${contentClassName}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.08, duration: 0.24 }}
+                onScroll={(event) => {
+                  if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, event.currentTarget.scrollTop / 16));
+                }}
+              >
+                {children}
+              </motion.div>
+            </div>
           </motion.div>
         </motion.div>
       )}
