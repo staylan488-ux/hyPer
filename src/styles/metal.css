@@ -1,0 +1,594 @@
+/* ═════════════════════════════════════════════════════════════
+   METAL — the approved 2026-10 direction.
+   Real black / Ivory, Fraunces figures, hairlines, one red accent, and one
+   liquid-metal ring per screen on the floating command capsule.
+
+   Every Metal token and primitive lives in this file. Screens compose the
+   primitives in src/components/metal; shared controls in
+   src/components/shared read these classes. Imported by index.css before its
+   own rules, so token blocks use :root.dark / :root:not(.dark) to outrank the
+   legacy Studio values.
+   ═════════════════════════════════════════════════════════════ */
+
+:root:not(.dark) {
+  --metal-ink: #161616;
+  --metal-ink-2: #575757;
+  --metal-ink-3: #9A9A95;
+  --metal-rule: rgba(0, 0, 0, 0.12);
+  --metal-track: rgba(0, 0, 0, 0.11);
+  --metal-red: #A8352A;
+  --metal-capsule: #FFFFFF;
+  --metal-capsule-edge: inset 0 0 0 1px #E6E3DC;
+  --metal-sheet: #FFFFFF;
+  --metal-sheet-edge: 0 0 0 1px #E6E3DC;
+  --metal-line: #E0DDD5;
+  --metal-chip: transparent;
+  --metal-chip-edge: inset 0 0 0 1px #E6E3DC;
+  --metal-selected: #FFFFFF;
+  --metal-selected-edge: inset 0 0 0 1px #E6E3DC;
+  --metal-tab: #6C6C70;
+
+  /* Studio tokens follow the Metal ink. */
+  --color-text: var(--metal-ink);
+  --color-text-dim: var(--metal-ink-2);
+  --color-muted: var(--metal-ink-2);
+  --color-accent: var(--metal-red);
+  --color-accent-deep: #872A20;
+  --color-border: var(--metal-rule);
+  --color-border-soft: rgba(0, 0, 0, 0.06);
+  --strip-track: var(--metal-track);
+  --material-accent: var(--metal-red);
+  --material-nav-muted: var(--metal-tab);
+}
+
+:root.dark {
+  --metal-ink: #F2F2EE;
+  --metal-ink-2: #9A9A96;
+  --metal-ink-3: #5F5F5C;
+  --metal-rule: rgba(255, 255, 255, 0.13);
+  --metal-track: rgba(255, 255, 255, 0.15);
+  --metal-red: #D9503F;
+  --metal-capsule: #111111;
+  --metal-capsule-edge: inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --metal-sheet: #111111;
+  --metal-sheet-edge: 0 0 0 0.5px rgba(255, 255, 255, 0.10);
+  --metal-line: rgba(255, 255, 255, 0.16);
+  --metal-chip: linear-gradient(180deg, #131313, #0b0b0b);
+  --metal-chip-edge: inset 0 1px 0 rgba(255, 255, 255, 0.075), inset 0 -1px 0 rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --metal-selected: #1E1E1E;
+  --metal-selected-edge: none;
+  --metal-tab: #8E8E93;
+
+  --color-text: var(--metal-ink);
+  --color-text-dim: var(--metal-ink-2);
+  --color-muted: var(--metal-ink-2);
+  --color-accent: var(--metal-red);
+  --color-accent-deep: #E46A5A;
+  --color-border: var(--metal-rule);
+  --color-border-soft: rgba(255, 255, 255, 0.07);
+  --strip-track: var(--metal-track);
+  --material-accent: var(--metal-red);
+  --material-nav-muted: var(--metal-tab);
+}
+
+/* Shared geometry. The native iOS tab bar (HyperGlassNavigation) is 68pt tall
+   and sits 12pt above the safe area; the web fallback keeps the same slot, so
+   one clearance serves both. */
+:root {
+  --metal-gutter: 20px;
+  --metal-nav-top: calc(var(--app-safe-bottom) + 12px + 68px);
+  --metal-capsule-height: 70px;
+}
+
+@layer components {
+/* ─────────────────────────────────────────────────────────────
+   TYPE
+   ───────────────────────────────────────────────────────────── */
+
+/* Page titles keep Fraunces at its display cut. */
+.t-title { font-variation-settings: 'opsz' 144; }
+
+.metal-page {
+  padding: 14px var(--metal-gutter) 0;
+}
+
+.metal-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--metal-ink-2);
+}
+.metal-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--metal-red); flex: none; }
+
+/* Section title: Fraunces with an inline Geist note on its baseline. */
+.metal-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-variation-settings: 'opsz' 72;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--metal-ink);
+  overflow-wrap: anywhere;
+}
+.metal-title small {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--metal-ink-2);
+}
+.metal-quote {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0;
+  color: var(--metal-ink-2);
+}
+
+/* Figures: Fraunces at its largest optical size, lining proportional digits. */
+.metal-num {
+  font-family: var(--font-display);
+  font-weight: 340;
+  font-variation-settings: 'opsz' 144;
+  font-variant-numeric: lining-nums proportional-nums;
+  letter-spacing: -0.02em;
+  color: var(--metal-ink);
+}
+.metal-unit { font-size: 13px; color: var(--metal-ink-2); }
+
+.metal-hero { display: flex; align-items: baseline; gap: 12px; margin-top: 20px; min-width: 0; }
+.metal-hero .metal-num { font-size: 104px; line-height: 0.86; letter-spacing: -0.035em; margin-left: -4px; white-space: nowrap; }
+.metal-hero .metal-num i { font-style: normal; color: var(--metal-ink-3); }
+.metal-hero-caption { min-width: 0; font-size: 14px; line-height: 1.35; color: var(--metal-ink-2); padding-bottom: 2px; }
+.metal-hero-caption b { color: var(--metal-ink); font-weight: 500; }
+
+.metal-big { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+.metal-big .metal-num { font-size: 56px; line-height: 0.92; }
+
+/* Full-width segmented hairline under a hero figure. */
+.metal-segs { display: flex; gap: 3px; margin-top: 18px; }
+.metal-segs.is-wide { gap: 6px; }
+.metal-segs > span { flex: 1; height: 2px; border-radius: 1px; background: var(--metal-track); transition: background-color 300ms; }
+.metal-segs > span.is-on { background: var(--metal-ink); }
+.metal-segs > span.is-now { background: var(--metal-red); }
+
+/* ─────────────────────────────────────────────────────────────
+   STRUCTURE — sections are separated by hairlines and space, never boxes.
+   ───────────────────────────────────────────────────────────── */
+
+.metal-rule { border-top: 0.5px solid var(--metal-rule); }
+.metal-section { margin-top: 30px; border-top: 0.5px solid var(--metal-rule); }
+.metal-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin-top: 12px; }
+.metal-section-head-right { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.metal-section-head-right b { color: var(--metal-ink); font-weight: 500; }
+
+/* Hairline list: rows divided by 0.5px rules, content unboxed. */
+.metal-list { margin: 0; padding: 0; list-style: none; }
+.metal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 0;
+  border-top: 0.5px solid var(--metal-rule);
+  text-align: left;
+  color: var(--metal-ink);
+}
+.metal-row-title { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; }
+.metal-row-detail { display: block; margin-top: 1px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.metal-row-value { flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.metal-row-chevron { flex: none; width: 7px; height: 12px; color: var(--metal-ink-3); }
+
+/* Quiet hairline text button (secondary actions in a section head). */
+.metal-line-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--metal-ink);
+  white-space: nowrap;
+  transition: opacity 160ms ease;
+  position: relative;
+}
+/* A 44pt touch target around the 32pt visual. */
+.metal-line-btn::after { content: ''; position: absolute; inset: -6px -2px; }
+.metal-line-btn:active { opacity: 0.6; }
+.metal-line-btn svg { width: 11px; height: 11px; flex: none; }
+
+/* Plain text action (e.g. "Train anyway"). */
+.metal-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--metal-ink);
+}
+.metal-text-btn.is-quiet { color: var(--metal-ink-2); font-weight: 400; }
+
+/* Two thin bars (eaten / protein). */
+.metal-rails { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 14px; }
+.metal-rail-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.metal-rail-label b { font-weight: 500; color: var(--metal-ink); }
+.metal-rail-track { position: relative; height: 2px; margin-top: 7px; background: var(--metal-track); border-radius: 1px; overflow: hidden; }
+.metal-rail-fill { position: absolute; inset: 0; background: var(--metal-ink); border-radius: 1px; transform-origin: 0 50%; transition: transform 600ms cubic-bezier(.16, 1, .3, 1); }
+.metal-rail-fill.is-over { background: var(--metal-red); }
+
+/* Weekly line and the red tick flag. */
+.metal-line { margin-top: 4px; font-size: 15px; line-height: 1.45; color: var(--metal-ink); }
+.metal-line .metal-sep { color: var(--metal-ink-3); margin: 0 6px; }
+.metal-flag { display: flex; align-items: center; gap: 9px; margin-top: 5px; font-size: 13.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.metal-flag::before { content: ''; flex: none; width: 2px; height: 13px; background: var(--metal-red); border-radius: 1px; }
+.metal-flag b { color: var(--metal-ink); font-weight: 500; }
+.metal-dots { display: inline-flex; gap: 4px; }
+.metal-dots > span { width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--metal-ink-3); }
+.metal-dots > span.is-on { background: var(--metal-ink); box-shadow: none; }
+
+/* Entry capsules — the Progress / Program / History row. The only raised
+   control in Metal (approved as is); Ivory uses a hairline instead. */
+.metal-entries { display: flex; gap: 8px; margin-top: 20px; }
+.metal-entry {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  border-radius: 999px;
+  background: var(--metal-chip);
+  box-shadow: var(--metal-chip-edge);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--metal-ink);
+  white-space: nowrap;
+  transition: transform 110ms var(--ease-out-quart, ease);
+}
+.metal-entry:active { transform: scale(0.98); }
+.metal-entry svg { width: 7px; height: 12px; color: var(--metal-ink-3); flex: none; }
+/* A 44pt touch target around the 38pt capsule. */
+.metal-entry::after { content: ''; position: absolute; inset: -3px 0; }
+
+/* Quiet supporting copy under a figure or in an empty state. */
+.metal-note { margin-top: 10px; max-width: 36ch; font-size: 14px; line-height: 1.45; color: var(--metal-ink-2); }
+
+/* A label/value line with a trailing text action ("Next session · Train anyway"). */
+.metal-next { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.metal-next-label { font-size: 13px; line-height: 1.35; color: var(--metal-ink-2); }
+.metal-next-what { margin-top: 1px; font-size: 15px; line-height: 1.35; font-weight: 500; color: var(--metal-ink); }
+
+/* Today: the eyebrow shares its row with the wordmark the brand intro lands on. */
+.metal-today { padding-top: 8px; }
+.metal-today-head { position: relative; padding-right: 72px; }
+.metal-today-head .brand-wordmark { position: absolute; right: 0; bottom: -1px; }
+
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMMAND CAPSULE — one floating primary action with the metal ring.
+   ───────────────────────────────────────────────────────────── */
+
+.metal-capsule-host {
+  position: fixed;
+  z-index: 40;
+  left: max(16px, calc(var(--app-safe-left) + 16px));
+  right: max(16px, calc(var(--app-safe-right) + 16px));
+  bottom: calc(var(--app-safe-bottom) + 12px);
+  max-width: 480px;
+  margin: 0 auto;
+  height: var(--metal-capsule-height);
+  pointer-events: none;
+}
+.metal-capsule {
+  position: absolute;
+  inset: 0;
+  border-radius: 35px;
+  background: var(--metal-capsule);
+  box-shadow: var(--metal-capsule-edge);
+  overflow: hidden;
+  pointer-events: auto;
+}
+.metal-capsule-layer {
+  position: absolute;
+  left: 22px;
+  right: 75px;
+  top: 0;
+  bottom: 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.metal-capsule-press { position: absolute; inset: 0 70px 0 0; border-radius: 35px 0 0 35px; }
+.metal-capsule-c1 { overflow: hidden; text-overflow: ellipsis; font-size: 16.5px; line-height: 1.3; font-weight: 500; letter-spacing: -0.01em; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+.metal-capsule-c2 { overflow: hidden; text-overflow: ellipsis; margin-top: 1px; font-size: 13px; line-height: 1.35; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.metal-capsule-c2.is-alert { color: var(--metal-red); }
+.metal-capsule-layer.is-values { left: 10px; justify-content: flex-end; padding-bottom: 3px; }
+/* Inside the values layer (left 10px), so it lines up with the first value at 22px. */
+.metal-capsule-caption { position: absolute; left: 12px; right: 0; top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; line-height: 14px; color: var(--metal-ink-2); }
+.metal-capsule-caption.is-alert { color: var(--metal-red); }
+.metal-capsule-values { display: flex; align-items: center; min-width: 0; }
+.metal-capsule-value {
+  height: 44px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 12px 0;
+  border-radius: 22px;
+  min-width: 0;
+}
+.metal-capsule-value .metal-num { font-size: 27px; line-height: 1; font-weight: 350; }
+.metal-capsule-value.is-suggested .metal-num { color: var(--metal-ink-2); }
+.metal-capsule-value-unit { font-size: 12px; color: var(--metal-ink-2); }
+.metal-capsule-value:active { background: color-mix(in srgb, var(--metal-ink) 6%, transparent); }
+.metal-capsule-dot { flex: none; width: 3px; height: 3px; border-radius: 50%; background: var(--metal-ink-3); margin-top: 8px; }
+.metal-capsule-progress { position: absolute; left: 22px; right: 84px; bottom: 9px; height: 1.5px; background: var(--metal-track); border-radius: 1px; overflow: hidden; }
+.metal-capsule-progress > i { position: absolute; inset: 0; background: var(--metal-red); border-radius: 1px; transform-origin: 0 50%; transition: transform 500ms cubic-bezier(.16, 1, .3, 1); }
+.metal-capsule .metal-ring { position: absolute; right: 7px; bottom: 7px; }
+
+/* The floating stack sits on a soft fade of the page colour, never a line. */
+.metal-floor {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  pointer-events: none;
+  background: linear-gradient(to top,
+    var(--color-base) 0,
+    var(--color-base) 62%,
+    color-mix(in srgb, var(--color-base) 75%, transparent) 76%,
+    color-mix(in srgb, var(--color-base) 0%, transparent) 100%);
+}
+
+/* Open sheets (#root inert) and the keyboard take the stage. */
+html[data-keyboard-open='true'] .metal-capsule-host,
+html[data-keyboard-open='true'] .metal-floor,
+#root[inert] .metal-capsule-host,
+#root[inert] .metal-floor {
+  visibility: hidden;
+  pointer-events: none;
+}
+html[data-keyboard-open='true'] .metal-capsule,
+#root[inert] .metal-capsule { pointer-events: none; }
+
+/* ─────────────────────────────────────────────────────────────
+   METAL RING — static fallback (no WebGL) and the live canvas.
+   ───────────────────────────────────────────────────────────── */
+
+.metal-ring {
+  position: relative;
+  flex: none;
+  border-radius: 50%;
+  touch-action: manipulation;
+  transition: transform 160ms cubic-bezier(.3, .7, .4, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.metal-ring:active:not(:disabled) { transform: scale(0.955); }
+.metal-ring:disabled { cursor: default; }
+.metal-ring:focus-visible { outline: 2px solid var(--metal-ink); outline-offset: 3px; }
+.metal-ring canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 50%; }
+.metal-ring-static { position: absolute; inset: 0; border-radius: 50%; transition: opacity 240ms ease; }
+.metal-ring.is-live .metal-ring-static { opacity: 0; }
+.metal-ring-lip { position: absolute; inset: 0; border-radius: 50%; background: linear-gradient(to bottom, #444446, #2c2c2e 30%, #121212 55%, #000 75%); }
+.metal-ring-band {
+  position: absolute;
+  inset: 1.35%;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg,
+    #f4f4f6 0deg, #e8e9ee 24deg, #9aa0ae 40deg, #18181a 52deg, #0c0c0e 70deg,
+    #f2f2f4 76deg, #2a2a2e 92deg, #4a4e58 140deg, #c8ccd6 176deg, #f6f6f8 196deg,
+    #fbfbfc 214deg, #707684 236deg, #101012 250deg, #1c1c1e 286deg,
+    #b8bcc8 318deg, #f4f4f6 360deg);
+}
+.metal-ring-face {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  background: linear-gradient(to bottom, #3e3e3e 0%, #1c1c1c 38%, #060606 68%, #000 100%);
+}
+.metal-ring-glyph { position: absolute; inset: 0; width: 100%; height: 100%; color: rgb(214, 214, 214); overflow: visible; }
+:root:not(.dark) .metal-ring-lip { background: #b8b8b8; }
+:root:not(.dark) .metal-ring-band {
+  background: conic-gradient(from 210deg,
+    #ededee 0deg, #cfd0d4 30deg, #7a7b80 44deg, #4b4c52 56deg, #e6e6e8 72deg,
+    #8c8d92 96deg, #b9babe 150deg, #eeeeef 196deg, #f3f3f4 214deg, #6f7076 238deg,
+    #a3a4a8 270deg, #d8d9dc 318deg, #ededee 360deg);
+}
+:root:not(.dark) .metal-ring-face { background: linear-gradient(to bottom, #f8f8f8, #e9e9e9); }
+:root:not(.dark) .metal-ring-glyph { color: #3a3a3c; }
+
+@media (prefers-reduced-motion: reduce) {
+  .metal-ring, .metal-ring-static, .metal-rail-fill, .metal-capsule-progress > i, .metal-segs > span { transition: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   WEB TAB BAR — quiet: no capsule background, 11pt labels, a red dot.
+   (Native iOS keeps HyperGlassNavigation unchanged.)
+   ───────────────────────────────────────────────────────────── */
+
+.bottom-nav.metal-nav {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  margin: 0;
+  padding: 18px max(12px, var(--app-safe-right)) calc(12px + var(--app-safe-bottom)) max(12px, var(--app-safe-left));
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* Solid behind the icons and labels; content fades out above them. */
+  background: linear-gradient(to top,
+    var(--color-base) 0,
+    var(--color-base) 76%,
+    color-mix(in srgb, var(--color-base) 75%, transparent) 88%,
+    color-mix(in srgb, var(--color-base) 0%, transparent) 100%);
+  pointer-events: none;
+}
+#root[inert] .bottom-nav.metal-nav { background: linear-gradient(to top, var(--color-base) 0, var(--color-base) 76%, transparent 100%); }
+.metal-nav > div { pointer-events: auto; }
+.metal-nav-item { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 68px; color: var(--metal-tab); }
+.metal-nav-item.is-active { color: var(--metal-ink); }
+.metal-nav-item svg { width: 23px; height: 23px; }
+.metal-nav-label { font-family: var(--font-sans); font-size: 11px; line-height: 1.2; font-weight: 500; letter-spacing: 0; }
+.metal-nav-dot { position: absolute; left: 50%; bottom: 6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--metal-red); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .bottom-nav.metal-nav { background: var(--color-base) !important; box-shadow: none !important; }
+}
+
+@layer components {
+/* ─────────────────────────────────────────────────────────────
+   SHARED CONTROLS
+   ───────────────────────────────────────────────────────────── */
+
+/* Buttons: capsules drawn with hairlines, sentence case. A screen's single
+   primary action belongs on the command capsule; Button is for the rest. */
+.metal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--metal-ink);
+  background: transparent;
+  transition: opacity 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+.metal-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.metal-btn:focus-visible { outline: 2px solid var(--metal-ink); outline-offset: 3px; }
+.metal-btn--primary { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-ink) 72%, transparent); }
+.metal-btn--primary:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.metal-btn--secondary { box-shadow: inset 0 0 0 1px var(--metal-line); }
+.metal-btn--secondary:hover:not(:disabled) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-ink) 40%, transparent); }
+.metal-btn--danger { color: var(--metal-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-red) 55%, transparent); }
+.metal-btn--ghost { color: var(--metal-ink-2); }
+.metal-btn--ghost:hover:not(:disabled) { color: var(--metal-ink); }
+.metal-btn--sm { min-height: 44px; padding: 0 16px; font-size: 13.5px; }
+.metal-btn--md { min-height: 44px; padding: 0 20px; font-size: 14px; }
+.metal-btn--lg { min-height: 52px; padding: 0 24px; font-size: 15px; }
+.metal-btn--ghost.metal-btn--sm { padding: 0 12px; }
+
+/* Segmented choice: a hairline track with one quiet selected capsule. */
+.metal-segmented { border-radius: 999px; box-shadow: inset 0 0 0 1px var(--metal-line); padding: 2px; }
+.metal-segment { border-radius: 999px; font-family: var(--font-sans); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.metal-segment-pill { border-radius: 999px; background: var(--metal-selected); box-shadow: var(--metal-selected-edge); }
+
+/* Fields: transparent with a hairline; ink line when focused. */
+.metal-input {
+  background: transparent;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  transition: box-shadow 160ms ease;
+}
+.metal-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.metal-input[aria-invalid='true'] { box-shadow: inset 0 0 0 1px var(--metal-red); }
+
+.metal-chip { border-radius: 999px; box-shadow: inset 0 0 0 1px var(--metal-line); background: transparent; }
+.metal-chip.is-selected { box-shadow: none; }
+
+.metal-step-btn { border-radius: 50%; box-shadow: inset 0 0 0 1px var(--metal-line); background: transparent; }
+.metal-step-value { font-family: var(--font-display); font-weight: 340; font-variation-settings: 'opsz' 144; font-variant-numeric: lining-nums; font-size: 28px; line-height: 1; letter-spacing: -0.02em; color: var(--metal-ink); }
+
+}
+
+/* Sheets: solid, hairline-edged, no blur and no moving sheen. */
+:root .studio-sheet {
+  background: var(--metal-sheet);
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 28px 28px 0 0;
+}
+@media (min-width: 640px) { :root .studio-sheet { border-radius: 28px; } }
+:root .studio-sheet[inert] { background: var(--metal-sheet); }
+.material-sheet-handle { width: 36px; height: 5px; border-radius: 3px; background: var(--metal-ink-3); opacity: 0.55; }
+.metal-sheet-title {
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-variation-settings: 'opsz' 72;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--metal-ink);
+}
+.material-sheet-close { border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1px var(--metal-line); }
+
+/* Toast: a solid capsule like the command capsule, no blur. */
+.material-toast {
+  background: var(--metal-capsule);
+  background-image: none;
+  box-shadow: var(--metal-capsule-edge);
+  border-radius: 999px;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   WORKOUT — Metal type on main's movement list and inline set entry.
+   ───────────────────────────────────────────────────────────── */
+
+:root .studio-workout-page { padding-bottom: calc(32px + var(--app-safe-bottom, 0px) + var(--metal-capsule-clearance, 0px)); }
+:root .studio-workout-page.has-rest-timer { padding-bottom: calc(var(--workout-rest-height, 76px) + 28px + var(--app-safe-bottom, 0px) + var(--metal-capsule-clearance, 0px)); }
+:root .studio-session-top { font-size: 15px; }
+:root .studio-session-top > span { font-weight: 500; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+:root .studio-session-top > button:first-child { gap: 4px; color: var(--metal-ink-2); }
+:root .studio-session-top > button:last-child { padding: 0; min-width: 44px; font-size: 15px; font-weight: 500; color: var(--metal-red); box-shadow: none; }
+:root .studio-session-summary h1 { font-size: 40px; font-variation-settings: 'opsz' 144; letter-spacing: -0.022em; }
+:root .studio-session-summary > span { font-size: 13px; color: var(--metal-ink-2); }
+:root .studio-session-header [role='img'] { gap: 3px; }
+:root .studio-session-header [role='img'] > span { border-radius: 1px; }
+:root .studio-movement { border-bottom: 0.5px solid var(--metal-rule); }
+:root .studio-movement-name { font-size: 40px; font-variation-settings: 'opsz' 144; letter-spacing: -0.022em; }
+:root .studio-movement-name-compact { font-family: var(--font-sans); font-size: 15px; font-weight: 500; line-height: 1.35; letter-spacing: 0; }
+:root .studio-movement:not(.is-active) { padding: 13px 0 12px; }
+:root .studio-movement-summary { gap: 3px; margin-top: 2px; font-size: 12.5px; }
+:root .studio-movement-count { font-size: 13px; color: var(--metal-ink-2); }
+:root .studio-movement.is-active .studio-movement-count { color: var(--metal-red); }
+:root .studio-movement-next { margin-bottom: 4px; letter-spacing: 0.14em; color: var(--metal-red); }
+:root .studio-movement.is-complete:not(.is-active) .studio-movement-name-compact { font-size: 15px; font-weight: 400; color: var(--metal-ink-2); }
+:root .studio-set-headings { letter-spacing: 0.14em; font-size: 10.5px; }
+:root .studio-set-ledger { min-height: 50px; border-bottom: 0.5px solid var(--metal-rule); color: var(--metal-ink-3); font-size: 15px; }
+:root .studio-set-ledger[data-next] { color: var(--metal-ink); font-weight: 500; }
+:root .studio-set-ledger[data-next] .studio-set-index { color: var(--metal-red); font-weight: 500; }
+:root .studio-set-editor { border-bottom: 0.5px solid var(--metal-rule); }
+:root .studio-set-input.material-control { background: transparent; background-image: none; box-shadow: inset 0 0 0 1px var(--metal-line); border-radius: 12px; }
+:root .studio-set-input.material-control:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
+:root .studio-save-set.material-button-primary {
+  background: transparent;
+  background-image: none;
+  color: var(--metal-ink);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-ink) 72%, transparent);
+}
+:root .studio-save-set.material-button-primary:hover:not(:disabled),
+:root .studio-save-set.material-button-primary:active:not(:disabled) { background: color-mix(in srgb, var(--metal-ink) 6%, transparent); }

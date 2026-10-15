@@ -2,6 +2,7 @@
 @import "./styles/fonts.css";
 @import "./styles/materials.css";
 @import "./styles/kinetic.css";
+@import "./styles/metal.css";
 
 @theme {
   /* Studio typography with Ivory / Black materials. */
@@ -320,7 +321,7 @@ body {
 
 /* Clears the bottom nav + safe area */
 .pb-nav {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px) + var(--metal-capsule-clearance, 0px));
 }
 
 /* ═════════════════════════════════════════════════════════════
