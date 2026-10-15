@@ -1,8 +1,10 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Plus, Link2, Unlink2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField, PageTitle } from '@/components/shared';
+import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField } from '@/components/shared';
+import { Eyebrow, LineButton } from '@/components/metal';
 import { LapPaceChart } from '@/components/shared/charts';
+import '@/components/history/history.css';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/lib/supabase';
@@ -97,9 +99,13 @@ function SetEditor({ workoutSet, onSave, onCancel }: SetEditorProps) {
     });
   };
 
+  const exerciseName = workoutSet.exercise?.name;
+
   return (
     <div className="space-y-5">
-      <p className="t-label-sm">Editing Set {workoutSet.set_number}</p>
+      <p className="hist-sheet-kicker">
+        {exerciseName ? `${exerciseName} · ` : ''}Set {workoutSet.set_number}
+      </p>
 
       <div className="grid grid-cols-3 gap-4">
         <Input
@@ -312,7 +318,7 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
           rows={3}
           maxLength={280}
           placeholder="Optional"
-          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
+          className="hist-textarea"
         />
       </div>
 
@@ -385,65 +391,60 @@ function WorkoutActivityPanel({
   };
 
   return (
-    <div className="border-t border-[var(--color-border)] pt-4 mb-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="t-label">Activity stats</p>
+    <div>
+      <div className="hist-sub">
+        <Eyebrow>Activity stats</Eyebrow>
         {attached ? (
           <button
             type="button"
-            className="t-label-sm text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            className="hist-quiet-btn"
             disabled={busyId != null}
             onClick={() => void run(workout.id, () => onDetach(workout))}
           >
             Remove
           </button>
-        ) : (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={options.length === 0}
-            onClick={() => setPicking((open) => !open)}
-          >
+        ) : options.length > 0 ? (
+          <LineButton onClick={() => setPicking((open) => !open)}>
             {picking ? 'Cancel' : 'Attach activity'}
-          </Button>
-        )}
+          </LineButton>
+        ) : null}
       </div>
 
       {attached ? (
-        <div className="material-surface rounded-[var(--radius-control)] grid grid-cols-4 gap-2 mt-3 p-3">
+        <div className="hist-stats">
           {([
             ['strain', workout.strain != null ? workout.strain.toFixed(1) : '—'],
             ['avg hr', workout.avg_hr != null ? String(workout.avg_hr) : '—'],
             ['max hr', workout.max_hr != null ? String(workout.max_hr) : '—'],
             ['kcal', workout.energy_kcal != null ? String(Math.round(workout.energy_kcal)) : '—'],
           ] as const).map(([label, value]) => (
-            <div key={label}>
-              <p className="number-small text-[var(--color-text)]">{value}</p>
-              <p className="t-label-sm mt-0.5">{label}</p>
+            <div key={label} className="hist-stat">
+              <span className="metal-num">{value}</span>
+              <span className="hist-stat-label">{label}</span>
             </div>
           ))}
         </div>
       ) : options.length === 0 ? (
-        <p className="t-caption mt-2">
+        <p className="hist-caption">
           No activity on this day carries strain or heart rate to attach.
         </p>
       ) : picking ? (
-        <div className="mt-3 space-y-2">
+        <div className="hist-pick-list">
           {ordered.map((activity) => (
             <button
               key={activity.id}
               type="button"
               disabled={busyId != null}
-              className="studio-secondary-action w-full text-left px-3 py-2.5 disabled:opacity-50 active:bg-[var(--color-text)] active:text-[var(--color-base)]"
+              className="hist-pick"
               onClick={() => void run(activity.id, () => onAttach(workout, activity))}
             >
-              <span className="t-body block">
+              <span className="hist-pick-title">
                 {resolveActivityTitle(activity)}
                 {activity.id === suggestedId && (
-                  <span className="t-label-sm text-[var(--color-muted)]"> · closest match</span>
+                  <span className="hist-pick-hint"> · closest match</span>
                 )}
               </span>
-              <span className="t-caption block mt-0.5">
+              <span className="metal-row-detail">
                 {activity.strain != null ? `strain ${activity.strain.toFixed(1)}` : 'no strain'}
                 {activity.avg_hr != null ? ` · ${activity.avg_hr} bpm avg` : ''}
                 {activity.energy_kcal != null ? ` · ${Math.round(activity.energy_kcal)} kcal` : ''}
@@ -452,13 +453,13 @@ function WorkoutActivityPanel({
           ))}
         </div>
       ) : (
-        <p className="t-caption mt-2">
+        <p className="hist-caption">
           Attach the activity that covers this session. Its strain and heart rate
           move onto the workout and it leaves the activity list.
         </p>
       )}
 
-      {error && <p className="t-caption mt-2 text-[var(--color-accent)]">{error}</p>}
+      {error && <p className="hist-caption is-alert">{error}</p>}
     </div>
   );
 }
@@ -490,8 +491,8 @@ function ActivityLedgerRow({
   const hasSplits = primarySegments.length >= 2;
 
   return (
-    <div className="border-t border-[var(--color-border)] py-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className="hist-activity">
+      <div className="hist-activity-row">
         {selectable && (
           <button
             type="button"
@@ -499,58 +500,58 @@ function ActivityLedgerRow({
             aria-checked={selected}
             aria-label={`Select ${title} to merge`}
             onClick={onToggleSelected}
-            className="pressable h-11 w-11 shrink-0 rounded-[11px] material-control flex items-center justify-center"
+            className="hist-select"
           >
-            {selected && <span className="h-2.5 w-2.5 bg-[var(--color-text)]" />}
+            <span>{selected && <Check strokeWidth={2.2} />}</span>
           </button>
         )}
-        <div className="min-w-0">
-          <p className="t-label-sm">Activity</p>
-          <p className="mt-1 t-body text-[var(--color-text)] break-words">{title}</p>
-          <p className="t-data-sm text-[var(--color-muted)] mt-1">
-            {subtitleParts.length > 0 ? subtitleParts.join(' • ') : typeLabel}
+        <div className="min-w-0 flex-1">
+          <p className="hist-activity-title">{title}</p>
+          <p className="hist-activity-line">
+            {subtitleParts.length > 0 ? subtitleParts.join(' · ') : typeLabel}
           </p>
           {metricsParts.length > 0 && (
-            <p className="t-data-sm text-[var(--color-text-dim)] mt-1">
-              {metricsParts.join(' • ')}
+            <p className="hist-activity-line is-metrics">
+              {metricsParts.join(' · ')}
             </p>
           )}
           {activity.notes && (
-            <p className="t-caption mt-2 line-clamp-2">{activity.notes}</p>
+            <p className="hist-activity-note">{activity.notes}</p>
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="hist-activity-actions">
           {hasSplits && (
             <button
               type="button"
               onClick={onToggleExpand}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="hist-icon-btn"
               title={expanded ? 'Hide splits' : 'Show splits'}
               aria-label={expanded ? 'Hide splits' : 'Show splits'}
+              aria-expanded={expanded}
             >
               {expanded
-                ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-                : <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />}
+                ? <ChevronUp strokeWidth={1.6} />
+                : <ChevronDown strokeWidth={1.6} />}
             </button>
           )}
           <button
             type="button"
             onClick={onEdit}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+            className="hist-icon-btn"
             title="Edit activity"
             aria-label="Edit activity"
           >
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+            <Pencil strokeWidth={1.6} />
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
+            className="hist-icon-btn is-danger"
             title="Delete activity"
             aria-label="Delete activity"
           >
-            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+            <Trash2 strokeWidth={1.6} />
           </button>
         </div>
       </div>
@@ -564,7 +565,7 @@ function ActivityLedgerRow({
             transition={springs.settle}
             className="overflow-hidden"
           >
-            <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+            <div className="hist-splits">
               <LapPaceChart
                 className="mb-4"
                 laps={primarySegments.map((segment) => ({
@@ -576,7 +577,7 @@ function ActivityLedgerRow({
                 formatDistance={formatSegmentDistance}
                 formatDuration={formatClockDuration}
               />
-              <div className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-label-sm pb-1">
+              <div className="hist-splits-grid hist-splits-head">
                 <span>#</span>
                 <span>Time</span>
                 <span>Dist</span>
@@ -585,7 +586,7 @@ function ActivityLedgerRow({
               {primarySegments.map((segment, index) => (
                 <div
                   key={segment.id}
-                  className="grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 t-data-sm text-[var(--color-text-dim)] py-0.5"
+                  className="hist-splits-grid hist-splits-row"
                 >
                   <span>{index + 1}</span>
                   <span>{formatClockDuration(segment.duration_seconds) ?? '—'}</span>
@@ -1013,7 +1014,7 @@ export function History() {
     if (selectedDayActivities.length > 0) {
       parts.push(`${selectedDayActivities.length} activit${selectedDayActivities.length !== 1 ? 'ies' : 'y'}`);
     }
-    return parts.length > 0 ? parts.join(' • ') : '0 sessions';
+    return parts.length > 0 ? parts.join(' · ') : '0 sessions';
   }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
   const refreshWorkout = useCallback(async (workoutId: string, syncCompletion = true) => {
@@ -1319,684 +1320,638 @@ export function History() {
   };
 
   return (
-    <motion.div className="px-6 pt-6 pb-nav">
+    <div className="metal-page pb-nav">
       <Toast show={showSuccess} message={toastMessage} />
 
-      <header className="mb-7">
-        <div className="flex items-baseline justify-between">
-          <span className="t-label-sm">Training ledger</span>
-          <span className="t-label-sm">{format(new Date(), 'yyyy')}</span>
-        </div>
-        <PageTitle className="mt-5">History</PageTitle>
-      </header>
-
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-        <div className="mb-9">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--color-border)]">
-            <motion.button
+      <header>
+        <Eyebrow>History</Eyebrow>
+        <div className="hist-month">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.h1
+              key={format(selectedMonth, 'yyyy-MM')}
+              className="metal-title"
+              initial={{ opacity: 0, x: monthDirection * 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: monthDirection * -16 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span>{format(selectedMonth, 'MMMM')}</span>
+              <small>{format(selectedMonth, 'yyyy')}</small>
+            </motion.h1>
+          </AnimatePresence>
+          <div className="hist-month-nav">
+            <button
+              type="button"
               onClick={() => {
                 setMonthDirection(-1);
                 setSelectedMonth((prev) => subMonths(prev, 1));
               }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: -2 }}
+              className="hist-nav-btn"
               aria-label="Previous month"
             >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-            <AnimatePresence mode="wait">
-              <motion.h3
-                key={format(selectedMonth, 'yyyy-MM')}
-                className="t-label"
-                initial={{ opacity: 0, x: monthDirection * 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: monthDirection * -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                {format(selectedMonth, 'MMMM yyyy')}
-              </motion.h3>
-            </AnimatePresence>
-            <motion.button
+              <ChevronLeft strokeWidth={1.6} />
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setMonthDirection(1);
                 setSelectedMonth((prev) => addMonths(prev, 1));
               }}
-              className="pressable flex items-center justify-center w-11 h-11 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-              whileTap={{ scale: 0.9, x: 2 }}
+              className="hist-nav-btn"
               aria-label="Next month"
             >
-              <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-            </motion.button>
-          </div>
-
-          <div className="grid grid-cols-7">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={`${day}-${index}`} className="t-label-sm text-center pb-2">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day) => {
-              const key = getDateKey(day);
-              const dayWorkouts = workoutsByDay[key] || [];
-              const dayActivities = sortActivitySessionsByStart(activitiesByDay[key] || []);
-              const isSelected = isSameDay(day, selectedDate);
-              const inMonth = isSameMonth(day, selectedMonth);
-              const isTodayDate = isToday(day);
-              const firstWorkout = dayWorkouts[0] || null;
-              const firstActivity = dayActivities[0] || null;
-              const firstWorkoutTitle = firstWorkout
-                ? resolveWorkoutTitle({
-                    splitDayName: firstWorkout.split_day?.day_name,
-                    dayLabel: firstWorkout.day_label || null,
-                    exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
-                  })
-                : '';
-              const workoutSummaryLabel = dayWorkouts.length > 1
-                ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
-                : firstWorkoutTitle;
-              const firstActivityTitle = firstActivity ? resolveActivityTitle(firstActivity) : '';
-              const activitySummaryLabel = dayActivities.length > 1
-                ? `${firstActivityTitle} +${dayActivities.length - 1}`
-                : firstActivityTitle;
-              const daySummaryLabel = workoutSummaryLabel;
-              const titleLabel = [workoutSummaryLabel, activitySummaryLabel].filter(Boolean).join(' / ');
-
-              return (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setSelectedDate(day);
-                    if (!isSameMonth(day, selectedMonth)) {
-                      setSelectedMonth(startOfMonth(day));
-                    }
-                  }}
-                  title={titleLabel || undefined}
-                  aria-label={`${format(day, 'EEEE, MMMM d')}${titleLabel ? ` · ${titleLabel}` : ''}`}
-                  aria-pressed={isSelected}
-                  className={`min-h-20 rounded-[11px] transition-colors relative px-1.5 py-1.5 ${
-                    isSelected
-                      ? 'text-[var(--color-base)]'
-                      : inMonth
-                        ? 'text-[var(--color-text)] active:bg-[var(--color-surface-2)]'
-                        : 'text-[var(--color-muted)] active:bg-[var(--color-surface-2)]'
-                  }`}
-                >
-                  {isSelected && (
-                    <motion.div
-                      className="absolute inset-0 rounded-[11px] bg-[var(--color-text)]"
-                      layoutId="history-day-selected"
-                      transition={springs.settle}
-                    />
-                  )}
-                  {isTodayDate && !isSelected && (
-                    <span className="absolute top-1.5 right-1.5 w-1 h-1 bg-[var(--color-accent)] z-10" />
-                  )}
-                  <div className="relative z-10 flex h-full flex-col items-start">
-                    <span className={`t-data-sm ${isSelected ? 'font-medium' : ''}`}>{format(day, 'd')}</span>
-                    {daySummaryLabel && (
-                      <span
-                        className={`mt-1 line-clamp-2 text-left text-[11px] leading-tight font-sans ${
-                          isSelected ? 'text-[color-mix(in_srgb,var(--color-base)_85%,transparent)]' : 'text-[var(--color-text-dim)]'
-                        }`}
-                      >
-                        {daySummaryLabel}
-                      </span>
-                    )}
-                  </div>
-                  {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
-                    <motion.div
-                      className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={springs.lift}
-                    >
-                      {dayWorkouts.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 ${
-                            isSelected ? 'bg-[var(--color-base)]' : 'bg-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
-                      {dayActivities.length > 0 && (
-                        <span
-                          className={`w-1.5 h-1.5 border ${
-                            isSelected ? 'border-[var(--color-base)]' : 'border-[var(--color-text)]'
-                          }`}
-                        />
-                      )}
-                    </motion.div>
-                  )}
-                </button>
-              );
-            })}
+              <ChevronRight strokeWidth={1.6} />
+            </button>
           </div>
         </div>
-      </motion.div>
+      </header>
 
-      {loading ? (
-        <div className="space-y-4 pt-8 border-t border-[var(--color-border)]">
-          {[1, 2].map((i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="shimmer h-10 w-10" />
-              <div className="flex-1 space-y-1.5">
-                <div className="shimmer h-3.5 w-1/2" />
-                <div className="shimmer h-2.5 w-1/3" />
-              </div>
+      <div className="hist-cal">
+        <div className="hist-cal-grid" aria-hidden>
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+            <div key={`${day}-${index}`} className="hist-cal-dow">
+              {day}
             </div>
           ))}
         </div>
-      ) : (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={springs.settle}>
-          <div className="flex items-center justify-between gap-4 mb-4 pt-8 border-t border-[var(--color-border)]">
-            <div>
-              <span className="t-label">{format(selectedDate, 'EEEE, MMM d')}</span>
-              <p className="t-label-sm mt-1">{selectedDaySummary}</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {syncAvailable && (
-                <button
-                  type="button"
-                  className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40"
-                  disabled={syncingWhoop}
-                  onClick={() => { void handleSyncWhoop(); }}
-                >
-                  {syncingWhoop ? 'Syncing…' : 'Sync'}
-                </button>
-              )}
+
+        <div className="hist-cal-grid">
+          {calendarDays.map((day) => {
+            const key = getDateKey(day);
+            const dayWorkouts = workoutsByDay[key] || [];
+            const dayActivities = sortActivitySessionsByStart(activitiesByDay[key] || []);
+            const isSelected = isSameDay(day, selectedDate);
+            const inMonth = isSameMonth(day, selectedMonth);
+            const isTodayDate = isToday(day);
+            const firstWorkout = dayWorkouts[0] || null;
+            const firstActivity = dayActivities[0] || null;
+            const firstWorkoutTitle = firstWorkout
+              ? resolveWorkoutTitle({
+                  splitDayName: firstWorkout.split_day?.day_name,
+                  dayLabel: firstWorkout.day_label || null,
+                  exerciseNames: firstWorkout.sets.map((set) => set.exercise?.name || null),
+                })
+              : '';
+            const workoutSummaryLabel = dayWorkouts.length > 1
+              ? `${firstWorkoutTitle} +${dayWorkouts.length - 1}`
+              : firstWorkoutTitle;
+            const firstActivityTitle = firstActivity ? resolveActivityTitle(firstActivity) : '';
+            const activitySummaryLabel = dayActivities.length > 1
+              ? `${firstActivityTitle} +${dayActivities.length - 1}`
+              : firstActivityTitle;
+            const daySummaryLabel = workoutSummaryLabel;
+            const titleLabel = [workoutSummaryLabel, activitySummaryLabel].filter(Boolean).join(' / ');
+
+            return (
+              <button
+                key={key}
+                onClick={() => {
+                  setSelectedDate(day);
+                  if (!isSameMonth(day, selectedMonth)) {
+                    setSelectedMonth(startOfMonth(day));
+                  }
+                }}
+                title={titleLabel || undefined}
+                aria-label={`${format(day, 'EEEE, MMMM d')}${titleLabel ? ` · ${titleLabel}` : ''}`}
+                aria-pressed={isSelected}
+                className={`hist-day${inMonth ? '' : ' is-out'}${isSelected ? ' is-selected' : ''}${isTodayDate ? ' is-today' : ''}`}
+              >
+                {isSelected && (
+                  <motion.span
+                    className="hist-day-pill"
+                    layoutId="history-day-selected"
+                    transition={springs.settle}
+                    aria-hidden
+                  />
+                )}
+                <span className="hist-day-num">{format(day, 'd')}</span>
+                {daySummaryLabel && (
+                  <span className="hist-day-label">{daySummaryLabel}</span>
+                )}
+                {(dayWorkouts.length > 0 || dayActivities.length > 0) && (
+                  <span className="hist-day-marks" aria-hidden>
+                    {dayWorkouts.length > 0 && <span className="hist-mark-lift" />}
+                    {dayActivities.length > 0 && <span className="hist-mark-activity" />}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <section className="metal-section" aria-label={format(selectedDate, 'EEEE, MMMM d')}>
+        <div className="metal-section-head hist-day-head">
+          <div className="min-w-0">
+            <Eyebrow>{format(selectedDate, 'EEEE, MMM d')}</Eyebrow>
+            {!loading && <p className="hist-day-summary">{selectedDaySummary}</p>}
+          </div>
+          {/* As on main, the day's actions wait for the month to load. */}
+          {!loading && <div className="hist-day-actions">
+            {syncAvailable && (
               <button
                 type="button"
-                className="pressable t-label-sm text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition-colors"
-                onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}
+                className="hist-quiet-btn"
+                disabled={syncingWhoop}
+                onClick={() => { void handleSyncWhoop(); }}
               >
-                + Activity
+                {syncingWhoop ? 'Syncing…' : 'Sync'}
               </button>
-            </div>
+            )}
+            <LineButton plus onClick={() => setActivityEditor({ activity: null, defaultDate: selectedDate })}>
+              Activity
+            </LineButton>
+          </div>}
+        </div>
+
+        {loading ? (
+          <div className="hist-day-ledger" aria-hidden>
+            {[1, 2].map((i) => (
+              <div key={i} className="hist-session py-4 space-y-2">
+                <div className="shimmer h-5 w-1/2" />
+                <div className="shimmer h-3 w-1/3" />
+              </div>
+            ))}
           </div>
+        ) : (
+          <div className="hist-day-ledger">
+            {selectedDayWorkouts.length === 0 && selectedDayActivities.length === 0 ? (
+              <p className="metal-note">No sessions recorded.</p>
+            ) : (
+              <>
+                {selectedDayWorkouts.map((workout, workoutIndex) => {
+                const isExpanded = expandedWorkout === workout.id;
+                const groupedSets = groupSetsByExercise(workout.sets);
+                const plan = workoutPlans[workout.id] || null;
+                const progress = progressFromSets(workout.sets);
+                const resolvedTitle = resolveWorkoutTitle({
+                  splitDayName: workout.split_day?.day_name,
+                  dayLabel: workout.day_label || plan?.day_label || null,
+                  exerciseNames: workout.sets.map((set) => set.exercise?.name || null),
+                });
+                const durationLabel = formatWorkoutDuration(getWorkoutDurationMs(workout));
+                const subtitle = durationLabel === '—'
+                  ? `${progress.completedSets}/${progress.totalSets} sets`
+                  : `${durationLabel} · ${progress.completedSets}/${progress.totalSets} sets`;
 
-          {selectedDayWorkouts.length === 0 && selectedDayActivities.length === 0 ? (
-            <div className="py-12">
-              <p className="t-display text-[1.25rem] text-[var(--color-text-dim)]">No sessions recorded.</p>
-            </div>
-          ) : (
-            <>
-              {selectedDayWorkouts.map((workout, workoutIndex) => {
-              const isExpanded = expandedWorkout === workout.id;
-              const groupedSets = groupSetsByExercise(workout.sets);
-              const plan = workoutPlans[workout.id] || null;
-              const progress = progressFromSets(workout.sets);
-              const resolvedTitle = resolveWorkoutTitle({
-                splitDayName: workout.split_day?.day_name,
-                dayLabel: workout.day_label || plan?.day_label || null,
-                exerciseNames: workout.sets.map((set) => set.exercise?.name || null),
-              });
-              const durationLabel = formatWorkoutDuration(getWorkoutDurationMs(workout));
-              const subtitle = durationLabel === '—'
-                ? `${progress.completedSets}/${progress.totalSets} sets`
-                : `${durationLabel} • ${progress.completedSets}/${progress.totalSets} sets`;
+                const plannedVisible = plan
+                  ? plan.items.filter((item) => !item.hidden).sort((a, b) => a.order - b.order)
+                  : [];
 
-              const plannedVisible = plan
-                ? plan.items.filter((item) => !item.hidden).sort((a, b) => a.order - b.order)
-                : [];
+                const plannedIds = plannedVisible.map((item) => item.exercise_id);
+                const groupedIds = Object.keys(groupedSets);
+                const orderedExerciseIds = [
+                  ...plannedIds.filter((exerciseId) => groupedIds.includes(exerciseId)),
+                  ...groupedIds.filter((exerciseId) => !plannedIds.includes(exerciseId)),
+                ];
 
-              const plannedIds = plannedVisible.map((item) => item.exercise_id);
-              const groupedIds = Object.keys(groupedSets);
-              const orderedExerciseIds = [
-                ...plannedIds.filter((exerciseId) => groupedIds.includes(exerciseId)),
-                ...groupedIds.filter((exerciseId) => !plannedIds.includes(exerciseId)),
-              ];
+                const planByExercise = new Map<string, FlexiblePlanItem>(
+                  plannedVisible.map((item) => [item.exercise_id, item])
+                );
 
-              const planByExercise = new Map<string, FlexiblePlanItem>(
-                plannedVisible.map((item) => [item.exercise_id, item])
-              );
+                const supersetByExercise = new Map<string, string>();
+                plannedVisible.forEach((item) => {
+                  if (item.superset_group_id) {
+                    supersetByExercise.set(item.exercise_id, item.superset_group_id);
+                  }
+                });
 
-              const supersetByExercise = new Map<string, string>();
-              plannedVisible.forEach((item) => {
-                if (item.superset_group_id) {
-                  supersetByExercise.set(item.exercise_id, item.superset_group_id);
-                }
-              });
+                const supersetPartnerByExercise = new Map<string, string>();
+                const groupedBySuperset = new Map<string, string[]>();
+                plannedVisible.forEach((item) => {
+                  if (!item.superset_group_id) return;
+                  const current = groupedBySuperset.get(item.superset_group_id) || [];
+                  current.push(item.exercise_id);
+                  groupedBySuperset.set(item.superset_group_id, current);
+                });
 
-              const supersetPartnerByExercise = new Map<string, string>();
-              const groupedBySuperset = new Map<string, string[]>();
-              plannedVisible.forEach((item) => {
-                if (!item.superset_group_id) return;
-                const current = groupedBySuperset.get(item.superset_group_id) || [];
-                current.push(item.exercise_id);
-                groupedBySuperset.set(item.superset_group_id, current);
-              });
+                groupedBySuperset.forEach((exerciseIds) => {
+                  if (exerciseIds.length !== 2) return;
+                  supersetPartnerByExercise.set(exerciseIds[0], exerciseIds[1]);
+                  supersetPartnerByExercise.set(exerciseIds[1], exerciseIds[0]);
+                });
 
-              groupedBySuperset.forEach((exerciseIds) => {
-                if (exerciseIds.length !== 2) return;
-                supersetPartnerByExercise.set(exerciseIds[0], exerciseIds[1]);
-                supersetPartnerByExercise.set(exerciseIds[1], exerciseIds[0]);
-              });
-
-              return (
-                <motion.div
-                  key={workout.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: workoutIndex * 0.06, ...springs.settle }}
-                  className="border-t border-[var(--color-border)] first:border-t-0"
-                >
-                  <div className="overflow-hidden">
-                    <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="w-full text-left flex items-center justify-between gap-3 py-4" onClick={() => { void handleToggleWorkout(workout); }}>
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 material-surface rounded-[11px] flex items-center justify-center shrink-0">
+                return (
+                  <motion.div
+                    key={workout.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: workoutIndex * 0.06, ...springs.settle }}
+                    className="hist-session"
+                  >
+                    <div className="overflow-hidden">
+                      <button type="button" aria-expanded={isExpanded} aria-label={`View ${resolvedTitle} workout`} className="hist-session-head" onClick={() => { void handleToggleWorkout(workout); }}>
+                        <span className="min-w-0">
+                          <span className="hist-session-title">{resolvedTitle}</span>
+                          <span className="metal-row-detail">{subtitle}</span>
+                        </span>
+                        <span className="hist-session-side">
                           {progress.completed ? (
-                            <Check className="w-4 h-4 text-[var(--color-text)]" strokeWidth={2} />
+                            <Check strokeWidth={1.8} aria-label="Complete" />
                           ) : (
-                            <span className="t-data-sm text-[var(--color-muted)]">{progress.percent}%</span>
+                            <span>{progress.percent}%</span>
                           )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="t-heading text-[var(--color-text)] break-words">{resolvedTitle}</p>
-                          <p className="t-caption mt-1.5">{subtitle}</p>
-                        </div>
-                      </div>
-                      <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
-                        <ChevronDown className="w-4 h-4 text-[var(--color-muted)]" strokeWidth={1.5} />
-                      </motion.div>
-                    </button>
+                          <motion.span className="hist-chevron" animate={{ rotate: isExpanded ? 180 : 0 }} transition={springs.tactile}>
+                            <ChevronDown strokeWidth={1.6} />
+                          </motion.span>
+                        </span>
+                      </button>
 
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          className="pb-4 pt-1"
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={springs.settle}
-                        >
-                          <WorkoutActivityPanel
-                            workout={workout}
-                            dayActivities={selectedDayActivities}
-                            suggestedId={whoopSuggestions[workout.id] ?? null}
-                            onAttach={handleAttachActivity}
-                            onDetach={handleDetachActivity}
-                          />
-                          <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-t border-[var(--color-border)] pt-4">
-                            <p className="t-label">Exercises</p>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                setPickerState({
-                                  workoutId: workout.id,
-                                  baseExerciseId: null,
-                                  excludeExerciseIds: orderedExerciseIds,
-                                });
-                              }}
-                            >
-                              <Plus className="w-3 h-3 mr-1" />
-                              Add Exercise
-                            </Button>
-                          </div>
-
-                          {orderedExerciseIds.map((exerciseId, exIndex) => {
-                            const sets = groupedSets[exerciseId] || [];
-                            const firstSet = sets[0];
-                            const exerciseName = planByExercise.get(exerciseId)?.exercise_name
-                              || (firstSet?.exercise as { name?: string } | undefined)?.name
-                              || 'Unknown Exercise';
-
-                            const expandedExerciseKey = `${workout.id}:${exerciseId}`;
-                            const isExerciseExpanded = expandedExercise === expandedExerciseKey;
-                            const exerciseProgress = progressFromSets(sets);
-                            const planItem = planByExercise.get(exerciseId);
-                            const currentTargetSets = Math.max(1, Math.min(12, planItem?.target_sets || sets.length || 1));
-                            const targetDraftKey = `${workout.id}:${exerciseId}`;
-                            const targetDraft = targetSetDrafts[targetDraftKey];
-                            const targetInputValue = typeof targetDraft === 'string' ? targetDraft : String(currentTargetSets);
-                            // A program's set-range tag rides in plan notes; it is never a note to show.
-                            const movementNote = movementNotesByWorkout[workout.id]?.[exerciseId]
-                              || parseSetRangeNotes(planItem?.notes, 1).baseNotes || '';
-                            const substitutedFor = planItem?.substitutes_for ?? null;
-                            const noteCharacterCount = movementNote.length;
-                            const hasMovementNote = movementNote.trim().length > 0;
-                            const supersetGroupId = supersetByExercise.get(exerciseId) || null;
-                            const supersetPartnerId = supersetPartnerByExercise.get(exerciseId) || null;
-                            const supersetPartnerName = supersetPartnerId
-                              ? (
-                                  planByExercise.get(supersetPartnerId)?.exercise_name
-                                  || (groupedSets[supersetPartnerId]?.[0]?.exercise as { name?: string } | undefined)?.name
-                                  || 'Exercise'
-                                )
-                              : null;
-                            const canMoveUp = exIndex > 0;
-                            const canMoveDown = exIndex < orderedExerciseIds.length - 1;
-
-                            return (
-                              <motion.div
-                                key={exerciseId}
-                                className="mb-3"
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: exIndex * 0.04, ...springs.settle }}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            className="hist-session-body"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={springs.settle}
+                          >
+                            <WorkoutActivityPanel
+                              workout={workout}
+                              dayActivities={selectedDayActivities}
+                              suggestedId={whoopSuggestions[workout.id] ?? null}
+                              onAttach={handleAttachActivity}
+                              onDetach={handleDetachActivity}
+                            />
+                            <div className="hist-sub">
+                              <Eyebrow>Exercises</Eyebrow>
+                              <LineButton
+                                plus
+                                onClick={() => {
+                                  setPickerState({
+                                    workoutId: workout.id,
+                                    baseExerciseId: null,
+                                    excludeExerciseIds: orderedExerciseIds,
+                                  });
+                                }}
                               >
-                                <div
-                                  className="flex flex-wrap items-center justify-between gap-y-2 py-3 px-2 -mx-2"
+                                Add exercise
+                              </LineButton>
+                            </div>
+
+                            {orderedExerciseIds.map((exerciseId, exIndex) => {
+                              const sets = groupedSets[exerciseId] || [];
+                              const firstSet = sets[0];
+                              const exerciseName = planByExercise.get(exerciseId)?.exercise_name
+                                || (firstSet?.exercise as { name?: string } | undefined)?.name
+                                || 'Unknown Exercise';
+
+                              const expandedExerciseKey = `${workout.id}:${exerciseId}`;
+                              const isExerciseExpanded = expandedExercise === expandedExerciseKey;
+                              const exerciseProgress = progressFromSets(sets);
+                              const planItem = planByExercise.get(exerciseId);
+                              const currentTargetSets = Math.max(1, Math.min(12, planItem?.target_sets || sets.length || 1));
+                              const targetDraftKey = `${workout.id}:${exerciseId}`;
+                              const targetDraft = targetSetDrafts[targetDraftKey];
+                              const targetInputValue = typeof targetDraft === 'string' ? targetDraft : String(currentTargetSets);
+                              // A program's set-range tag rides in plan notes; it is never a note to show.
+                              const movementNote = movementNotesByWorkout[workout.id]?.[exerciseId]
+                                || parseSetRangeNotes(planItem?.notes, 1).baseNotes || '';
+                              const substitutedFor = planItem?.substitutes_for ?? null;
+                              const noteCharacterCount = movementNote.length;
+                              const hasMovementNote = movementNote.trim().length > 0;
+                              const supersetGroupId = supersetByExercise.get(exerciseId) || null;
+                              const supersetPartnerId = supersetPartnerByExercise.get(exerciseId) || null;
+                              const supersetPartnerName = supersetPartnerId
+                                ? (
+                                    planByExercise.get(supersetPartnerId)?.exercise_name
+                                    || (groupedSets[supersetPartnerId]?.[0]?.exercise as { name?: string } | undefined)?.name
+                                    || 'Exercise'
+                                  )
+                                : null;
+                              const canMoveUp = exIndex > 0;
+                              const canMoveDown = exIndex < orderedExerciseIds.length - 1;
+
+                              return (
+                                <motion.div
+                                  key={exerciseId}
+                                  className="hist-move"
+                                  initial={{ opacity: 0, x: -8 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: exIndex * 0.04, ...springs.settle }}
                                 >
                                   <button
                                     type="button"
                                     aria-expanded={isExerciseExpanded}
                                     onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
-                                    className="pressable flex items-center gap-3 min-w-0 w-full min-h-11 text-left"
+                                    className="hist-move-head"
                                   >
-                                    <div className="w-7 h-7 flex items-center justify-center t-data-sm text-[var(--color-muted)] shrink-0">
-                                      {exerciseProgress.completed ? <Check className="w-3.5 h-3.5 text-[var(--color-text)]" strokeWidth={2} /> : `${exerciseProgress.completedSets}/${exerciseProgress.totalSets}`}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <span className="t-body text-[var(--color-text)]">{exerciseName}</span>
+                                    <span className="min-w-0">
+                                      <span className="hist-move-name">{exerciseName}</span>
                                       {substitutedFor && (
-                                        <p className="t-caption mt-0.5">Instead of {substitutedFor.exercise_name ?? 'the planned exercise'}</p>
+                                        <span className="hist-move-detail">Instead of {substitutedFor.exercise_name ?? 'the planned exercise'}</span>
                                       )}
                                       {supersetGroupId && supersetPartnerName && (
-                                        <p className="t-label-sm mt-0.5">Superset with {supersetPartnerName}</p>
+                                        <span className="hist-move-detail">Superset with {supersetPartnerName}</span>
                                       )}
                                       {hasMovementNote && !isExerciseExpanded && (
-                                        <p className="t-caption mt-0.5 break-words max-w-[220px]">{movementNote}</p>
+                                        <span className="hist-move-detail">{movementNote}</span>
                                       )}
-                                    </div>
+                                    </span>
+                                    <span className="hist-move-count">
+                                      {exerciseProgress.completed
+                                        ? <Check strokeWidth={1.8} aria-label={`${exerciseProgress.totalSets} of ${exerciseProgress.totalSets} sets`} />
+                                        : <span>{exerciseProgress.completedSets} / {exerciseProgress.totalSets}</span>}
+                                      <motion.span className="hist-chevron" animate={{ rotate: isExerciseExpanded ? 180 : 0 }} transition={springs.tactile}>
+                                        <ChevronDown strokeWidth={1.6} />
+                                      </motion.span>
+                                    </span>
                                   </button>
 
-                                  <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(event) => event.stopPropagation()}>
-                                    <button
-                                      type="button"
-                                      disabled={!canMoveUp}
-                                      aria-label={`Move ${exerciseName} earlier`}
-                                      onClick={() => {
-                                        const nextOrder = [...orderedExerciseIds];
-                                        const currentIndex = nextOrder.indexOf(exerciseId);
-                                        if (currentIndex <= 0) return;
-                                        [nextOrder[currentIndex - 1], nextOrder[currentIndex]] = [nextOrder[currentIndex], nextOrder[currentIndex - 1]];
-                                        void runMutation(workout.id, async () => {
-                                          await reorderWorkoutExercises(workout.id, nextOrder);
-                                        });
-                                      }}
-                                      className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                                    >
-                                      <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={!canMoveDown}
-                                      aria-label={`Move ${exerciseName} later`}
-                                      onClick={() => {
-                                        const nextOrder = [...orderedExerciseIds];
-                                        const currentIndex = nextOrder.indexOf(exerciseId);
-                                        if (currentIndex < 0 || currentIndex >= nextOrder.length - 1) return;
-                                        [nextOrder[currentIndex], nextOrder[currentIndex + 1]] = [nextOrder[currentIndex + 1], nextOrder[currentIndex]];
-                                        void runMutation(workout.id, async () => {
-                                          await reorderWorkoutExercises(workout.id, nextOrder);
-                                        });
-                                      }}
-                                      className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-25 disabled:pointer-events-none transition-colors"
-                                    >
-                                      <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                    </button>
-                                    {supersetGroupId ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          void runMutation(workout.id, async () => {
-                                            await clearWorkoutSuperset(workout.id, exerciseId);
-                                          });
-                                        }}
-                                        className="studio-row-action p-1.5 text-[var(--color-text)] hover:text-[var(--color-text-dim)] transition-colors"
-                                        title="Remove superset"
+                                  <AnimatePresence>
+                                    {isExerciseExpanded && (
+                                      <motion.div
+                                        className="hist-move-body overflow-hidden"
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={springs.settle}
                                       >
-                                        <Unlink2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setPickerState({
-                                            workoutId: workout.id,
-                                            baseExerciseId: exerciseId,
-                                            excludeExerciseIds: orderedExerciseIds,
-                                          });
-                                        }}
-                                        className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                                        title="Add superset"
-                                      >
-                                        <Link2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => { void handleRemoveExercise(workout.id, exerciseId); }}
-                                      className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
-                                      title="Remove exercise"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      aria-label={isExerciseExpanded ? 'Collapse exercise' : 'Expand exercise'}
-                                      aria-expanded={isExerciseExpanded}
-                                      onClick={() => setExpandedExercise(isExerciseExpanded ? null : expandedExerciseKey)}
-                                      className="studio-row-action"
-                                    >
-                                      <motion.span animate={{ rotate: isExerciseExpanded ? 180 : 0 }} transition={springs.tactile}>
-                                        <ChevronDown className="w-3 h-3 text-[var(--color-muted)]" strokeWidth={1.5} />
-                                      </motion.span>
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <AnimatePresence>
-                                  {isExerciseExpanded && (
-                                    <motion.div
-                                      className="ml-4 mt-2 space-y-px"
-                                      initial={{ height: 0, opacity: 0 }}
-                                      animate={{ height: 'auto', opacity: 1 }}
-                                      exit={{ height: 0, opacity: 0 }}
-                                      transition={springs.settle}
-                                    >
-                                      <div className="flex items-center justify-between gap-2 py-2.5 border-t border-[var(--color-border)]">
-                                        <p className="t-label-sm">Target Sets</p>
-                                        <div className="flex items-center gap-2">
-                                          <input
-                                            type="number"
-                                            min={1}
-                                            max={12}
-                                            value={targetInputValue}
-                                            onChange={(event) => {
-                                              setTargetSetDrafts((prev) => ({
-                                                ...prev,
-                                                [targetDraftKey]: event.target.value,
-                                              }));
-                                            }}
-                                            onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId); }}
-                                            aria-label="Target sets"
-                                            className="w-14 min-h-11 px-2 py-1 well t-data-sm text-[var(--color-text)] text-center focus:outline-none"
-                                          />
+                                        <div className="hist-tools">
                                           <button
                                             type="button"
-                                            onClick={() => { void handleAddSet(workout.id, exerciseId); }}
-                                            className="studio-secondary-action px-3 t-label-sm text-[var(--color-text)]"
+                                            disabled={!canMoveUp}
+                                            aria-label={`Move ${exerciseName} earlier`}
+                                            title="Move earlier"
+                                            onClick={() => {
+                                              const nextOrder = [...orderedExerciseIds];
+                                              const currentIndex = nextOrder.indexOf(exerciseId);
+                                              if (currentIndex <= 0) return;
+                                              [nextOrder[currentIndex - 1], nextOrder[currentIndex]] = [nextOrder[currentIndex], nextOrder[currentIndex - 1]];
+                                              void runMutation(workout.id, async () => {
+                                                await reorderWorkoutExercises(workout.id, nextOrder);
+                                              });
+                                            }}
+                                            className="hist-tool is-step"
                                           >
-                                            + Add Set
+                                            <span><ChevronUp strokeWidth={1.6} /></span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={!canMoveDown}
+                                            aria-label={`Move ${exerciseName} later`}
+                                            title="Move later"
+                                            onClick={() => {
+                                              const nextOrder = [...orderedExerciseIds];
+                                              const currentIndex = nextOrder.indexOf(exerciseId);
+                                              if (currentIndex < 0 || currentIndex >= nextOrder.length - 1) return;
+                                              [nextOrder[currentIndex], nextOrder[currentIndex + 1]] = [nextOrder[currentIndex + 1], nextOrder[currentIndex]];
+                                              void runMutation(workout.id, async () => {
+                                                await reorderWorkoutExercises(workout.id, nextOrder);
+                                              });
+                                            }}
+                                            className="hist-tool is-step"
+                                          >
+                                            <span><ChevronDown strokeWidth={1.6} /></span>
+                                          </button>
+                                          {supersetGroupId ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                void runMutation(workout.id, async () => {
+                                                  await clearWorkoutSuperset(workout.id, exerciseId);
+                                                });
+                                              }}
+                                              className="hist-tool is-on"
+                                              title="Remove superset"
+                                            >
+                                              <Unlink2 strokeWidth={1.6} />
+                                              Unlink
+                                            </button>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPickerState({
+                                                  workoutId: workout.id,
+                                                  baseExerciseId: exerciseId,
+                                                  excludeExerciseIds: orderedExerciseIds,
+                                                });
+                                              }}
+                                              className="hist-tool"
+                                              title="Add superset"
+                                            >
+                                              <Link2 strokeWidth={1.6} />
+                                              Superset
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => { void handleRemoveExercise(workout.id, exerciseId); }}
+                                            className="hist-tool is-danger"
+                                            title="Remove exercise"
+                                          >
+                                            <Trash2 strokeWidth={1.6} />
+                                            Remove
                                           </button>
                                         </div>
-                                      </div>
 
-                                      {sets.map((set) => (
-                                        <motion.div
-                                          key={set.id}
-                                          className="flex items-center justify-between py-2.5 border-t border-[var(--color-border)]"
-                                          initial={{ opacity: 0, y: 4 }}
-                                          animate={{ opacity: 1, y: 0 }}
-                                          transition={springs.settle}
-                                        >
-                                          <div className="flex items-baseline gap-3">
-                                            <span className="t-data-sm text-[var(--color-muted)] w-10">{set.set_number.toString().padStart(2, '0')}</span>
-                                            <span className="t-data text-[var(--color-text)]">
-                                              {set.weight ?? '—'} <span className="text-[var(--color-muted)]">lb</span> × {set.reps ?? '—'}
-                                              {set.rpe ? <span className="text-[var(--color-muted)]"> @ {set.rpe}</span> : ''}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center gap-0.5">
-                                            <motion.button
-                                              onClick={(event) => {
-                                                event.stopPropagation();
-                                                setEditingSet(set);
+                                        <div className="hist-target">
+                                          <span className="hist-target-label">Target sets</span>
+                                          <div className="hist-target-controls">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={12}
+                                              value={targetInputValue}
+                                              onChange={(event) => {
+                                                setTargetSetDrafts((prev) => ({
+                                                  ...prev,
+                                                  [targetDraftKey]: event.target.value,
+                                                }));
                                               }}
-                                              aria-label={`Edit set ${set.set_number}`}
-                                              className="studio-row-action p-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
-                                              whileTap={{ scale: 0.985 }}
-                                            >
-                                              <Pencil className="w-3 h-3" strokeWidth={1.5} />
-                                            </motion.button>
-                                            <motion.button
-                                              onClick={(event) => {
-                                                event.stopPropagation();
-                                                void handleRemoveSet(workout.id, exerciseId, set.id);
-                                              }}
-                                              aria-label={`Remove set ${set.set_number}`}
-                                              className="studio-row-action p-1.5 text-[var(--color-accent)] hover:text-[var(--color-accent-deep)] transition-colors"
-                                              whileTap={{ scale: 0.985 }}
-                                            >
-                                              <X className="w-3 h-3" strokeWidth={1.5} />
-                                            </motion.button>
+                                              onBlur={() => { void handleTargetSetBlur(workout.id, exerciseId); }}
+                                              aria-label="Target sets"
+                                              className="hist-target-input"
+                                            />
+                                            <LineButton plus onClick={() => { void handleAddSet(workout.id, exerciseId); }}>
+                                              Add set
+                                            </LineButton>
                                           </div>
-                                        </motion.div>
-                                      ))}
-
-                                      <div className="pt-4 border-t border-[var(--color-border)]">
-                                        <label
-                                          htmlFor={`history-note-${workout.id}-${exerciseId}`}
-                                          className="t-label-sm block mb-2"
-                                        >
-                                          Movement Note
-                                        </label>
-                                        <textarea
-                                          id={`history-note-${workout.id}-${exerciseId}`}
-                                          value={movementNote}
-                                          onChange={(event) => handleMovementNoteChange(workout.id, exerciseId, event.target.value)}
-                                          onBlur={() => handleMovementNoteBlur(workout.id, exerciseId)}
-                                          rows={2}
-                                          maxLength={200}
-                                          placeholder="Note - technique, feel, cues..."
-                                          className="material-inset w-full rounded-[var(--radius-control)] p-3 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none transition-colors resize-none"
-                                        />
-                                        <div className="mt-2 flex items-center justify-between">
-                                          <div>
-                                            {savingMovementNoteKey === `${workout.id}:${exerciseId}` ? (
-                                              <p className="t-label-sm">Saving...</p>
-                                            ) : savedMovementNoteKey === `${workout.id}:${exerciseId}` ? (
-                                              <p className="t-label-sm text-[var(--color-text)]">Saved</p>
-                                            ) : null}
-                                          </div>
-                                          {noteCharacterCount >= 160 && (
-                                            <p className="t-data-sm text-[var(--color-muted)]">{noteCharacterCount}/200</p>
-                                          )}
                                         </div>
-                                      </div>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </motion.div>
-                            );
-                          })}
 
-                          <motion.button
-                            onClick={() => setShowDeleteConfirm(workout.id)}
-                            className="w-full mt-5 studio-secondary-action text-[var(--color-accent)] t-label hover:bg-rose-tint transition-colors flex items-center justify-center gap-2"
-                            whileTap={{ scale: 0.98 }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                            Delete session
-                          </motion.button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              );
-            })}
-              {selectedDayActivities.length > 0 && (
-                <div className={selectedDayWorkouts.length > 0 ? 'mt-6 pt-6 border-t border-[var(--color-border)]' : ''}>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="t-label-sm">Activities</span>
-                    <span className="t-label-sm">{selectedDayActivities.length}</span>
-                  </div>
-                  {selectedDayActivities.length > 1 && (
-                    <div className="flex items-center justify-between gap-3 pb-2">
-                      {mergeSelection ? (
-                        <>
-                          <span className="t-label-sm">
-                            {mergeSelection.length < 2
-                              ? 'Pick the activities that were really one'
-                              : `${mergeSelection.length} selected`}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
+                                        {sets.length > 0 && (
+                                          <div className="hist-sets hist-sets-head" aria-hidden>
+                                            <span>Set</span>
+                                            <span>lb</span>
+                                            <span>Reps</span>
+                                            <span>RPE</span>
+                                            <span />
+                                          </div>
+                                        )}
+                                        {sets.map((set) => (
+                                          <motion.div
+                                            key={set.id}
+                                            className="hist-sets hist-set"
+                                            initial={{ opacity: 0, y: 4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={springs.settle}
+                                            aria-label={`Set ${set.set_number}: ${set.weight ?? '—'} lb × ${set.reps ?? '—'}${set.rpe ? ` at RPE ${set.rpe}` : ''}`}
+                                            role="group"
+                                          >
+                                            <span className="hist-set-index">{set.set_number.toString().padStart(2, '0')}</span>
+                                            <span className={set.weight == null ? 'hist-set-empty' : undefined}>{set.weight ?? '—'}</span>
+                                            <span className={set.reps == null ? 'hist-set-empty' : undefined}>{set.reps ?? '—'}</span>
+                                            <span className={set.rpe ? undefined : 'hist-set-empty'}>{set.rpe || '—'}</span>
+                                            <span className="hist-set-actions">
+                                              <motion.button
+                                                type="button"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  setEditingSet(set);
+                                                }}
+                                                aria-label={`Edit set ${set.set_number}`}
+                                                className="hist-icon-btn"
+                                                whileTap={{ scale: 0.94 }}
+                                              >
+                                                <Pencil strokeWidth={1.6} />
+                                              </motion.button>
+                                              <motion.button
+                                                type="button"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  void handleRemoveSet(workout.id, exerciseId, set.id);
+                                                }}
+                                                aria-label={`Remove set ${set.set_number}`}
+                                                className="hist-icon-btn is-danger"
+                                                whileTap={{ scale: 0.94 }}
+                                              >
+                                                <X strokeWidth={1.6} />
+                                              </motion.button>
+                                            </span>
+                                          </motion.div>
+                                        ))}
+
+                                        <div className="hist-note">
+                                          <label
+                                            htmlFor={`history-note-${workout.id}-${exerciseId}`}
+                                            className="hist-note-label"
+                                          >
+                                            Movement note
+                                          </label>
+                                          <textarea
+                                            id={`history-note-${workout.id}-${exerciseId}`}
+                                            value={movementNote}
+                                            onChange={(event) => handleMovementNoteChange(workout.id, exerciseId, event.target.value)}
+                                            onBlur={() => handleMovementNoteBlur(workout.id, exerciseId)}
+                                            rows={2}
+                                            maxLength={200}
+                                            placeholder="Technique, feel, cues…"
+                                            className="hist-textarea"
+                                          />
+                                          <div className="hist-note-status">
+                                            <span>
+                                              {savingMovementNoteKey === `${workout.id}:${exerciseId}` ? (
+                                                'Saving…'
+                                              ) : savedMovementNoteKey === `${workout.id}:${exerciseId}` ? (
+                                                <span className="text-[var(--metal-ink)]">Saved</span>
+                                              ) : null}
+                                            </span>
+                                            {noteCharacterCount >= 160 && (
+                                              <span>{noteCharacterCount}/200</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </motion.div>
+                              );
+                            })}
+
+                            <motion.button
                               type="button"
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-muted)]"
-                              onClick={() => setMergeSelection(null)}
+                              onClick={() => setShowDeleteConfirm(workout.id)}
+                              className="hist-danger"
+                              whileTap={{ scale: 0.98 }}
                             >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              disabled={mergeSelection.length < 2 || merging}
-                              className="pressable min-h-11 px-3 t-label-sm text-[var(--color-text)] disabled:opacity-40"
-                              onClick={() => { void handleMergeActivities(); }}
-                            >
-                              {merging ? 'Merging…' : 'Merge'}
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="pressable min-h-11 t-label-sm text-[var(--color-muted)] ml-auto"
-                          onClick={() => setMergeSelection([])}
-                        >
-                          Merge activities
-                        </button>
-                      )}
+                              <Trash2 strokeWidth={1.6} />
+                              Delete session
+                            </motion.button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  )}
-                  {selectedDayActivities.map((activity, activityIndex) => (
-                    <motion.div
-                      key={activity.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.settle }}
-                    >
-                      <ActivityLedgerRow
-                        activity={activity}
-                        selectable={mergeSelection != null}
-                        selected={mergeSelection?.includes(activity.id) ?? false}
-                        onToggleSelected={() => setMergeSelection((prev) => {
-                          if (!prev) return prev;
-                          return prev.includes(activity.id)
-                            ? prev.filter((id) => id !== activity.id)
-                            : [...prev, activity.id];
-                        })}
-                        segments={segmentsBySession[activity.id] || []}
-                        expanded={expandedActivity === activity.id}
-                        onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
-                        onEdit={() => setActivityEditor({ activity, defaultDate: parseDateKey(getActivitySessionDateKey(activity) || selectedDateKey) })}
-                        onDelete={() => setShowActivityDeleteConfirm(activity)}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </motion.div>
-      )}
+                  </motion.div>
+                );
+              })}
+                {selectedDayActivities.length > 0 && (
+                  <div className={selectedDayWorkouts.length > 0 ? 'hist-activities' : 'mt-2.5'}>
+                    <div className="hist-sub">
+                      <Eyebrow>Activities</Eyebrow>
+                      <span className="hist-sub-right">
+                        {selectedDayActivities.length > 1 && !mergeSelection && (
+                          <button
+                            type="button"
+                            className="hist-quiet-btn"
+                            onClick={() => setMergeSelection([])}
+                          >
+                            Merge activities
+                          </button>
+                        )}
+                        <b className="font-medium text-[var(--metal-ink)]">{selectedDayActivities.length}</b>
+                      </span>
+                    </div>
+                    {selectedDayActivities.length > 1 && mergeSelection && (
+                      <div className="hist-merge">
+                        <span>
+                          {mergeSelection.length < 2
+                            ? 'Pick the activities that were really one'
+                            : `${mergeSelection.length} selected`}
+                        </span>
+                        <span className="flex items-center gap-4">
+                          <button
+                            type="button"
+                            className="hist-quiet-btn"
+                            onClick={() => setMergeSelection(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={mergeSelection.length < 2 || merging}
+                            className="metal-line-btn disabled:opacity-40"
+                            onClick={() => { void handleMergeActivities(); }}
+                          >
+                            {merging ? 'Merging…' : 'Merge'}
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                    {selectedDayActivities.map((activity, activityIndex) => (
+                      <motion.div
+                        key={activity.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: (selectedDayWorkouts.length + activityIndex) * 0.04, ...springs.settle }}
+                      >
+                        <ActivityLedgerRow
+                          activity={activity}
+                          selectable={mergeSelection != null}
+                          selected={mergeSelection?.includes(activity.id) ?? false}
+                          onToggleSelected={() => setMergeSelection((prev) => {
+                            if (!prev) return prev;
+                            return prev.includes(activity.id)
+                              ? prev.filter((id) => id !== activity.id)
+                              : [...prev, activity.id];
+                          })}
+                          segments={segmentsBySession[activity.id] || []}
+                          expanded={expandedActivity === activity.id}
+                          onToggleExpand={() => setExpandedActivity((prev) => (prev === activity.id ? null : activity.id))}
+                          onEdit={() => setActivityEditor({ activity, defaultDate: parseDateKey(getActivitySessionDateKey(activity) || selectedDateKey) })}
+                          onDelete={() => setShowActivityDeleteConfirm(activity)}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </section>
 
-      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit Set">
+      <Modal isOpen={!!editingSet} onClose={() => setEditingSet(null)} title="Edit set">
         {editingSet && (
           <SetEditor
             workoutSet={editingSet}
@@ -2009,7 +1964,7 @@ export function History() {
       <Modal
         isOpen={!!activityEditor}
         onClose={() => setActivityEditor(null)}
-        title={activityEditor?.activity ? 'Edit Activity' : 'Add Activity'}
+        title={activityEditor?.activity ? 'Edit activity' : 'Add activity'}
       >
         {activityEditor && (
           <ActivityEditor
@@ -2024,9 +1979,9 @@ export function History() {
         )}
       </Modal>
 
-      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete Session">
+      <Modal isOpen={!!showDeleteConfirm} onClose={() => setShowDeleteConfirm(null)} title="Delete session">
         <div className="space-y-5">
-          <p className="t-body text-[var(--color-text-dim)]">
+          <p className="hist-sheet-copy">
             Are you sure you want to delete this session? This action cannot be undone.
           </p>
           <div className="flex gap-3">
@@ -2044,9 +1999,9 @@ export function History() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete Activity">
+      <Modal isOpen={!!showActivityDeleteConfirm} onClose={() => setShowActivityDeleteConfirm(null)} title="Delete activity">
         <div className="space-y-5">
-          <p className="t-body text-[var(--color-text-dim)]">
+          <p className="hist-sheet-copy">
             Delete this activity from your calendar?
           </p>
           <div className="flex gap-3">
@@ -2085,8 +2040,8 @@ export function History() {
           });
         }}
         excludeExerciseIds={pickerState?.excludeExerciseIds || []}
-        title={pickerState?.baseExerciseId ? 'Add Superset Exercise' : 'Add Exercise'}
+        title={pickerState?.baseExerciseId ? 'Add superset exercise' : 'Add exercise'}
       />
-    </motion.div>
+    </div>
   );
 }
