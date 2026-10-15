@@ -9,7 +9,7 @@ export interface BarDatum {
   /** Axis label under the bar. */
   label: string;
   value: number;
-  /** Ink the bar in Lacquer (peak week, fastest lap). */
+  /** Ink the bar in the red accent (peak week, fastest lap). */
   emphasis?: boolean;
   /** What the readout says while this bar is selected. */
   readout: ReactNode;
@@ -39,7 +39,7 @@ interface BarChartProps {
 }
 
 /**
- * Editorial bar chart: flat ink columns on a hairline baseline. Bars grow by
+ * Editorial bar chart: flat ink-2 columns on a hairline baseline. Bars grow by
  * scaleY on first appearance; a finger scrubs across them with one detent per
  * bar and the readout line above follows.
  */
@@ -66,7 +66,7 @@ export function BarChart({
       <div className="min-h-[2.75rem] flex items-end pb-3" aria-live="polite">
         <motion.div
           key={active ?? 'summary'}
-          className="t-data-sm text-[var(--color-text)] w-full"
+          className="text-[13px] leading-[1.35] tabular-nums text-[var(--metal-ink)] w-full"
           initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={springs.tactile}
@@ -80,7 +80,7 @@ export function BarChart({
         role="group"
         aria-label={`${label}. Use left and right arrows to read each bar.`}
         tabIndex={0}
-        className={`relative flex items-end gap-px border-b border-[var(--color-border-strong)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-strong)] select-none ${scrubbing ? 'cursor-grabbing' : 'cursor-pointer'}`}
+        className={`relative flex items-end gap-px border-b border-[var(--metal-line)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--metal-ink)] select-none ${scrubbing ? 'cursor-grabbing' : 'cursor-pointer'}`}
         style={{ height, ...bind.style }}
         onPointerDown={bind.onPointerDown}
         onPointerMove={bind.onPointerMove}
@@ -91,7 +91,7 @@ export function BarChart({
         {target !== undefined && target > 0 && (
           <div
             aria-hidden
-            className="absolute inset-x-0 border-t border-dashed border-[var(--color-border-strong)] pointer-events-none"
+            className="absolute inset-x-0 border-t border-dashed border-[color-mix(in_srgb,var(--metal-ink)_36%,transparent)] pointer-events-none"
             style={{ bottom: Math.min(1, target / top) * barArea }}
           />
         )}
@@ -108,7 +108,7 @@ export function BarChart({
               {d.caption !== undefined && (
                 <motion.span
                   aria-hidden
-                  className={`t-data-sm tabular-nums mb-1.5 ${d.emphasis ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}
+                  className={`text-[12px] leading-[1.4] tabular-nums mb-1.5 ${d.emphasis ? 'text-[var(--metal-red)]' : 'text-[var(--metal-ink)]'}`}
                   initial={firstReveal ? { opacity: 0 } : false}
                   animate={{ opacity: selecting && !isActive ? 0.35 : 1 }}
                   transition={firstReveal ? { duration: 0.3, delay: 0.3 + i * 0.04 } : { duration: 0.18 }}
@@ -129,7 +129,9 @@ export function BarChart({
                   }
                   style={{
                     transformOrigin: '50% 100%',
-                    backgroundColor: d.emphasis ? 'var(--color-accent)' : 'var(--color-text)',
+                    // Quiet ink-2 columns; full ink on the bar being read; red for the one emphasis.
+                    backgroundColor: d.emphasis ? 'var(--metal-red)' : isActive ? 'var(--metal-ink)' : 'var(--metal-ink-2)',
+                    transition: 'background-color 160ms ease',
                   }}
                 />
               </div>
@@ -142,7 +144,7 @@ export function BarChart({
         {data.map((d, i) => (
           <span
             key={d.key}
-            className={`flex-1 text-center t-caption transition-colors duration-150 ${active === i ? 'text-[var(--color-text)]' : ''}`}
+            className={`flex-1 text-center text-[11.5px] leading-[1.4] tabular-nums transition-colors duration-150 ${active === i ? 'text-[var(--metal-ink)]' : 'text-[var(--metal-ink-2)]'}`}
           >
             {d.label}
           </span>

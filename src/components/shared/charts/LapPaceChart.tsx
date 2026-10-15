@@ -20,7 +20,7 @@ interface LapPaceChartProps {
 const METERS_PER_MILE = 1609.344;
 
 /**
- * Lap-by-lap speed: taller is faster, the fastest lap is inked in Lacquer and
+ * Lap-by-lap speed: taller is faster, the fastest lap is inked in the red accent and
  * rest segments stay as gaps. Scrub to read each lap's pace.
  */
 export function LapPaceChart({ laps, formatPace, formatDistance, formatDuration, reveal, className }: LapPaceChartProps) {
@@ -52,7 +52,7 @@ export function LapPaceChart({ laps, formatPace, formatDistance, formatDuration,
         <span className="flex justify-between gap-3">
           <span>{detail}</span>
           {number !== null && (
-            <span className={isFastest ? 'text-[var(--color-accent)]' : ''}>{pace(speed)}</span>
+            <span className={isFastest ? 'text-[var(--metal-red)]' : ''}>{pace(speed)}</span>
           )}
         </span>
       ),
@@ -68,8 +68,8 @@ export function LapPaceChart({ laps, formatPace, formatDistance, formatDuration,
       label="Pace per lap"
       summary={
         <span className="flex justify-between gap-3">
-          <span className="text-[var(--color-text-dim)]">Fastest · lap {fastest.number}</span>
-          <span className="text-[var(--color-accent)]">{pace(fastest.speed)}</span>
+          <span className="text-[var(--metal-ink-2)]">Fastest · lap {fastest.number}</span>
+          <span className="text-[var(--metal-red)]">{pace(fastest.speed)}</span>
         </span>
       }
     />

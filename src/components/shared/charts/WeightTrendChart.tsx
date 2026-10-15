@@ -69,7 +69,7 @@ export function WeightTrendChart({
       <span>{format(parseISO(selected.date), 'EEE, MMM d')}</span>
       <span className="flex items-baseline gap-3">
         {selected.observedKg != null && (
-          <span className="text-[var(--color-text-dim)]">
+          <span className="text-[var(--metal-ink-2)]">
             weighed {toUnit(selected.observedKg).toFixed(1)}
           </span>
         )}
@@ -89,7 +89,7 @@ export function WeightTrendChart({
       <div className={`${compact ? 'min-h-[1.75rem] pb-2' : 'min-h-[2.75rem] pb-3'} flex items-end`} aria-live="polite">
         <motion.div
           key={active ?? 'summary'}
-          className="t-data-sm text-[var(--color-text)] w-full"
+          className="text-[13px] leading-[1.35] tabular-nums text-[var(--metal-ink)] w-full"
           initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={springs.tactile}
@@ -103,7 +103,7 @@ export function WeightTrendChart({
         role="group"
         tabIndex={0}
         aria-label={`Body weight trend, last ${series.length} days. Use left and right arrows to read each day.`}
-        className="relative outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-strong)] select-none cursor-pointer"
+        className="relative outline-none focus-visible:ring-1 focus-visible:ring-[var(--metal-ink)] select-none cursor-pointer"
         style={{ height, ...bind.style }}
         onPointerDown={bind.onPointerDown}
         onPointerMove={bind.onPointerMove}
@@ -115,13 +115,13 @@ export function WeightTrendChart({
           <svg width={width} height={height} className="absolute inset-0 overflow-visible" aria-hidden>
             <defs>
               <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="var(--color-text)" stopOpacity={compact ? 0.08 : 0.1} />
-                <stop offset="100%" stopColor="var(--color-text)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--metal-ink)" stopOpacity={compact ? 0.08 : 0.1} />
+                <stop offset="100%" stopColor="var(--metal-ink)" stopOpacity={0} />
               </linearGradient>
             </defs>
 
             {!compact && (
-              <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="var(--color-border-strong)" strokeWidth={1} />
+              <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="var(--metal-line)" strokeWidth={1} />
             )}
 
             <motion.path
@@ -138,8 +138,8 @@ export function WeightTrendChart({
                 cx={dot.x}
                 cy={dot.y}
                 r={compact ? 1.5 : 2.25}
-                fill={dot.outlier ? 'none' : 'var(--color-text-dim)'}
-                stroke={dot.outlier ? 'var(--color-text-dim)' : 'none'}
+                fill={dot.outlier ? 'none' : 'var(--metal-ink-2)'}
+                stroke={dot.outlier ? 'var(--metal-ink-2)' : 'none'}
                 strokeWidth={1}
                 initial={firstReveal ? { opacity: 0, scale: 0 } : false}
                 animate={{ opacity: active === null || active === dot.i ? (compact ? 0.55 : 0.7) : 0.25, scale: 1 }}
@@ -151,7 +151,7 @@ export function WeightTrendChart({
             <motion.path
               d={geometry.path}
               fill="none"
-              stroke="var(--color-text)"
+              stroke="var(--metal-ink)"
               strokeWidth={compact ? 1.5 : 2}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -166,7 +166,7 @@ export function WeightTrendChart({
                 cx={geometry.line[geometry.line.length - 1].x}
                 cy={geometry.line[geometry.line.length - 1].y}
                 r={compact ? 3 : 3.5}
-                fill="var(--color-accent)"
+                fill="var(--metal-red)"
                 initial={firstReveal ? { scale: 0 } : false}
                 animate={{ scale: 1 }}
                 transition={{ ...springs.lift, delay: firstReveal ? 1.05 : 0 }}
@@ -183,10 +183,10 @@ export function WeightTrendChart({
                   x2={activePoint.x}
                   y1={0}
                   y2={height}
-                  stroke="var(--color-border-strong)"
+                  stroke="var(--metal-line)"
                   strokeWidth={1}
                 />
-                <circle cx={activePoint.x} cy={activePoint.y} r={4} fill="var(--color-base)" stroke="var(--color-text)" strokeWidth={2} />
+                <circle cx={activePoint.x} cy={activePoint.y} r={4} fill="var(--color-base)" stroke="var(--metal-ink)" strokeWidth={2} />
               </g>
             )}
           </svg>
@@ -194,7 +194,7 @@ export function WeightTrendChart({
       </div>
 
       {!compact && geometry && (
-        <div className="flex justify-between mt-2 t-caption" aria-hidden>
+        <div className="flex justify-between mt-2 text-[11.5px] leading-[1.4] tabular-nums text-[var(--metal-ink-2)]" aria-hidden>
           <span>{format(parseISO(series[0].date), 'MMM d')}</span>
           <span>
             {geometry.domain[0].toFixed(0)}–{geometry.domain[1].toFixed(0)} {unit}
