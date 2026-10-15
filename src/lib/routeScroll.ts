@@ -3,9 +3,6 @@
  * destination can render a loading state first; retry when its content grows,
  * but never fight a person who starts scrolling before loading finishes.
  * Memory belongs to the mounted private layout, not storage or another user.
- * While it restores, the viewport carries `data-restoring-scroll` so settling
- * (large titles, rest nudges) never moves the page away from the restored
- * position.
  */
 export function bindRouteScroll(
   viewport: HTMLElement,
@@ -15,17 +12,12 @@ export function bindRouteScroll(
 ) {
   const target = positions.get(path) ?? 0;
   let waitingForContent = true;
-  viewport.setAttribute('data-restoring-scroll', '');
-  const stopWaiting = () => {
-    waitingForContent = false;
-    viewport.removeAttribute('data-restoring-scroll');
-  };
 
   const restore = () => {
     if (!waitingForContent) return;
     viewport.scrollTop = target;
     if (Math.abs(viewport.scrollTop - target) < 1) {
-      stopWaiting();
+      waitingForContent = false;
       positions.set(path, viewport.scrollTop);
     }
   };
@@ -33,7 +25,7 @@ export function bindRouteScroll(
     if (!waitingForContent) positions.set(path, viewport.scrollTop);
   };
   const takeControl = () => {
-    stopWaiting();
+    waitingForContent = false;
     remember();
   };
   const onKey = (event: KeyboardEvent) => {
@@ -58,7 +50,6 @@ export function bindRouteScroll(
   surfaces.history?.addEventListener('hyper:native-navigation', remember);
 
   return () => {
-    viewport.removeAttribute('data-restoring-scroll');
     observer.disconnect();
     viewport.removeEventListener('scroll', remember);
     viewport.removeEventListener('wheel', takeControl);

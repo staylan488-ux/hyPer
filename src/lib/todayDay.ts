@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
-import { sumShownMacros } from '@/lib/nutritionMacros';
+import { sumMacros } from '@/lib/nutritionMacros';
 
 export interface NutritionTotals {
   calories: number;
@@ -63,7 +63,7 @@ async function readNutritionTotals(userId: string, day: string): Promise<Nutriti
 
   if (error) throw error;
   if (!logs || logs.length === 0) return EMPTY_TOTALS;
-  return sumShownMacros(logs);
+  return sumMacros(logs);
 }
 
 async function readTodayDone(userId: string, day: string): Promise<TodayDay['todayDone']> {

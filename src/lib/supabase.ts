@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { withRefreshDiagnostics } from '@/lib/authDiagnostics'
+import { installAuthResume } from '@/lib/authResume'
 import { isNativeIOS } from '@/lib/nativeBridge'
 import { nativeAuthStorage } from '@/lib/nativeSecureStorage'
 import { timedFetch } from '@/lib/timedFetch'
@@ -27,5 +29,8 @@ export const supabase = preview
         ...(nativeIOS ? { flowType: 'pkce' as const, storage: nativeAuthStorage } : {}),
       },
       // A stalled connection fails after a deadline instead of hanging.
-      global: { fetch: timedFetch },
+      global: { fetch: withRefreshDiagnostics(timedFetch) },
     })
+
+// Bounded refresh on foreground; replaces the SDK's own visibility handling.
+if (!preview) installAuthResume(supabase.auth)

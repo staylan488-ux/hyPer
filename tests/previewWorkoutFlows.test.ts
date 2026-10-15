@@ -13,6 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
+import { blankSplitDraft } from '@/lib/splitDraftSeed';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -96,6 +97,29 @@ describe('preview uses real program and workout store paths', () => {
     expect(useAppStore.getState().activeSplit?.id).toBe('split1');
   });
 
+  it('creates a program from the shared editor through the real createSplit path', async () => {
+    await useAppStore.getState().fetchSplits();
+    const existing = useAppStore.getState().activeSplit!;
+    const [first, second] = existing.days[0].exercises;
+    const draft = blankSplitDraft(2);
+    useSplitEditStore.getState().startNew(draft);
+    useSplitEditStore.getState().renameSplit('Fresh plan');
+    useSplitEditStore.getState().renameDay(draft.days[0].id, 'Push');
+    useSplitEditStore.getState().addExercises(draft.days[0].id, [first.exercise, second.exercise]);
+    useSplitEditStore.getState().addExercises(draft.days[1].id, [first.exercise]);
+    const pushIds = useSplitEditStore.getState().draft!.days[0].exercises.map((ex) => ex.id);
+    useSplitEditStore.getState().moveExerciseTo(draft.days[0].id, pushIds[1], pushIds[0]);
+
+    const saved = await useSplitEditStore.getState().saveEdit({ createSplit: useAppStore.getState().createSplit });
+
+    expect(saved).toMatchObject({ name: 'Fresh plan', created: true });
+    const created = useAppStore.getState().splits.find((split) => split.id === saved!.id)!;
+    expect(created.is_active).toBe(true);
+    expect(created.days.map((day) => day.day_name)).toEqual(['Push', 'Day 2']);
+    expect(created.days[0].exercises.map((ex) => ex.exercise_id)).toEqual([second.exercise_id, first.exercise_id]);
+    expect(useSplitEditStore.getState().draft).toBeNull();
+  });
+
   it('saves the actual program editor snapshot, retaining IDs and removing omitted rows', async () => {
     await useAppStore.getState().fetchSplits();
     const original = useAppStore.getState().activeSplit!;
@@ -112,7 +136,7 @@ describe('preview uses real program and workout store paths', () => {
     useSplitEditStore.getState().addDay('New studio day');
     const newDay = useSplitEditStore.getState().draft!.days.at(-1)!;
     useSplitEditStore.getState().addExercise(newDay.id, removedExercise.exercise);
-    expect(await useSplitEditStore.getState().saveEdit()).toBe(true);
+    expect(await useSplitEditStore.getState().saveEdit()).toEqual({ id: original.id, name: 'Upper / Lower Studio', created: false });
     await useAppStore.getState().fetchSplits();
     const updated = useAppStore.getState().activeSplit!;
     expect(updated.name).toBe('Upper / Lower Studio');
@@ -124,16 +148,11 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.workouts.find((workout) => workout.id === 'w_current')?.split_day_id).toBe(firstDay.id);
   });
 
-  it('preserves the 4/17 initial state, completes it, starts real placeholder sets and resumes them', async () => {
+  it('preserves 3/9 initial state, completes it, starts real placeholder sets and resumes them', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const initial = useAppStore.getState().currentWorkout!;
-    // The live preview session is seeded from the program's Upper A, like a real start.
-    const upperA = previewTables.split_exercises.filter((row) => row.split_day_id === 'd1');
-    expect(initial.sets).toHaveLength(upperA.reduce((sum, row) => sum + Number(row.target_sets), 0));
-    for (const row of upperA) {
-      expect(initial.sets.filter((set) => set.exercise_id === row.exercise_id)).toHaveLength(Number(row.target_sets));
-    }
-    expect(initial.sets.filter((set) => set.completed)).toHaveLength(4);
+    expect(initial.sets).toHaveLength(9);
+    expect(initial.sets.filter((set) => set.completed)).toHaveLength(3);
     await useAppStore.getState().completeWorkout();
     const started = await useAppStore.getState().startWorkout('d1');
     expect(started?.id).not.toBe(initial.id);
@@ -164,7 +183,7 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.sets.find((set) => set.id === original.id)?.completed).toBe(false);
     await useAppStore.getState().logSet(original.exercise_id, original.set_number, 82.5, 10, 7);
     const updated = useAppStore.getState().currentWorkout!.sets;
-    expect(updated).toHaveLength(17);
+    expect(updated).toHaveLength(9);
     expect(updated.find((set) => set.id === original.id)).toMatchObject({ weight: 82.5, reps: 10, completed: true });
   });
 

@@ -1,3 +1,5 @@
+import { recordAuthDiagnostic } from '@/lib/authDiagnostics';
+import { pendingAuthRecovery, recoverAuthSession } from '@/lib/authResume';
 import { supabase } from '@/lib/supabase';
 import type { WorkoutSet } from '@/types';
 
@@ -34,14 +36,24 @@ async function saveAttempt<T>(request: (signal: AbortSignal) => PromiseLike<T>):
 // timeout, a network failure or a transient server status. The caller must
 // send the same payload on both attempts: a lost response may mean the first
 // write already succeeded.
+//
+// A timeout usually means the SDK is stuck behind a stalled token refresh, and
+// a plain retry would wait on the same one. Each timeout starts a bounded auth
+// recovery; the retry waits for it, and so does a later manual Retry when the
+// last attempt timed out.
 export async function runSaveWithRetry<R extends { error: unknown; status: number }>(
   request: (signal: AbortSignal) => PromiseLike<R>,
 ): Promise<R> {
   for (let attempt = 1; ; attempt += 1) {
+    await pendingAuthRecovery();
     let result: R;
     try {
       result = await saveAttempt(request);
     } catch (error) {
+      if (error instanceof SetSaveTimeoutError) {
+        recordAuthDiagnostic('set-save:timeout', { detail: `attempt ${attempt}` });
+        void recoverAuthSession(supabase.auth);
+      }
       if (attempt < MAX_ATTEMPTS && (error instanceof SetSaveTimeoutError || error instanceof TypeError)) {
         continue;
       }

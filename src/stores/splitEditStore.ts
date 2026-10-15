@@ -1,44 +1,60 @@
 import { create } from 'zustand';
-import { normalizeSetRange, parseSetRangeNotes, serializeSetRangeNotes } from '@/lib/setRangeNotes';
+import { normalizeSetRange, serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
+import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
+import { applyExerciseIds, insertPendingExercises, pendingExercises, type ExerciseInsertClient } from '@/lib/customExercises';
+import {
+  createSupersetGroupId,
+  fixDayOrders,
+  moveDayTo,
+  moveExercise,
+  moveExerciseBlock,
+  newDraftDay,
+  newDraftExercise,
+  splitToDraft,
+  type DraftExercise,
+  type DraftSplit,
+} from '@/lib/splitDraft';
+import {
+  clearSplitDraft,
+  readSplitDraft,
+  splitDraftId,
+  splitSignature,
+  type StoredSplitDraft,
+} from '@/lib/splitDraftStorage';
 import type { Split, Exercise, MuscleGroup } from '@/types';
 
-// ═══════════════════════════════════
-// DRAFT TYPES
-// ═══════════════════════════════════
+export type { DraftDay, DraftExercise, DraftSplit } from '@/lib/splitDraft';
+export { moveExercise, moveExerciseBlock } from '@/lib/splitDraft';
 
-export interface DraftExercise {
-  /** Original DB id or a temp id for new exercises */
-  id: string;
-  exercise_id: string;
-  exercise: Exercise;
-  target_sets: number;
-  target_sets_min: number;
-  target_sets_max: number;
-  target_reps_min: number;
-  target_reps_max: number;
-  exercise_order: number;
-  notes: string | null;
-  superset_group_id: string | null;
-  /** true if this was created during the edit session */
-  _isNew?: boolean;
-}
-
-export interface DraftDay {
-  id: string;
-  day_name: string;
-  day_order: number;
-  exercises: DraftExercise[];
-  _isNew?: boolean;
-}
-
-export interface DraftSplit {
-  id: string;
+/** The fields program creation needs; `useAppStore.getState().createSplit` in the app. */
+export type CreateSplitFn = (split: {
   name: string;
   description: string | null;
   days_per_week: number;
-  days: DraftDay[];
+  is_active: boolean;
+  days: Array<{
+    day_name: string;
+    day_order: number;
+    exercises: Array<{
+      exercise_id: string;
+      target_sets: number;
+      target_reps_min: number;
+      target_reps_max: number;
+      exercise_order: number;
+      notes: string | null;
+      superset_group_id: string | null;
+    }>;
+  }>;
+}) => Promise<{ id: string; name: string } | null>;
+
+export interface SavedSplit {
+  id: string;
+  name: string;
+  created: boolean;
 }
+
+const CREATE_FAILED_MESSAGE = 'Could not create the program. Check your connection and try again.';
 
 // ═══════════════════════════════════
 // STORE STATE
@@ -49,11 +65,29 @@ interface SplitEditState {
   isDirty: boolean;
   saving: boolean;
   error: string | null;
+  /** The draft before the latest removal, until the next edit. */
+  undo: { label: string; draft: DraftSplit } | null;
+  /** Account whose device copy of the draft is kept; null keeps none. */
+  storageScope: string | null;
+  /** Fingerprint of the saved program the edit started from. */
+  baseSignature: string | null;
+  /** Unsaved edits found on this device when the edit opened, until restored or dismissed. */
+  restorable: StoredSplitDraft | null;
 
   // Lifecycle
-  startEdit: (split: Split) => void;
+  startEdit: (split: Split, options?: { userId?: string | null }) => void;
+  /** Opens a seeded, not yet created program in the editor. */
+  startNew: (draft: DraftSplit, options?: { userId?: string | null }) => void;
+  /** Reopens a stored device copy. */
+  restoreDraft: (stored: StoredSplitDraft, options?: { userId?: string | null }) => void;
+  restoreSaved: () => void;
+  dismissRestore: () => void;
   cancelEdit: () => void;
-  saveEdit: () => Promise<boolean>;
+  /** Closes the edit and forgets its device copy. */
+  discardEdit: () => void;
+  saveEdit: (options?: { createSplit?: CreateSplitFn }) => Promise<SavedSplit | null>;
+  undoRemoval: () => void;
+  dismissUndo: () => void;
 
   // Split-level
   renameSplit: (name: string) => void;
@@ -62,14 +96,17 @@ interface SplitEditState {
   // Day-level
   renameDay: (dayId: string, name: string) => void;
   reorderDays: (dayId: string, direction: -1 | 1) => void;
+  moveDay: (dayId: string, overDayId: string) => void;
   addDay: (dayName: string) => void;
   removeDay: (dayId: string) => void;
 
   // Exercise-level
   reorderExercise: (dayId: string, exerciseId: string, direction: -1 | 1) => void;
+  moveExerciseTo: (dayId: string, exerciseId: string, overExerciseId: string) => void;
   updateExerciseTargets: (dayId: string, exerciseId: string, updates: Partial<Pick<DraftExercise, 'target_sets' | 'target_sets_min' | 'target_sets_max' | 'target_reps_min' | 'target_reps_max'>>) => void;
   swapExercise: (dayId: string, exerciseId: string, newExercise: Exercise) => void;
   addExercise: (dayId: string, exercise: Exercise) => void;
+  addExercises: (dayId: string, exercises: Exercise[]) => void;
   addSupersetExercise: (dayId: string, sourceExerciseId: string, exercise: Exercise) => void;
   clearExerciseSuperset: (dayId: string, exerciseId: string) => void;
   removeExercise: (dayId: string, exerciseId: string) => void;
@@ -79,20 +116,6 @@ interface SplitEditState {
 // ═══════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════
-
-function createTempId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return `new-${globalThis.crypto.randomUUID()}`;
-  }
-  return `new-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function createSupersetGroupId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function inferSecondaryMuscleGroup(primary: MuscleGroup): MuscleGroup | null {
   if (primary === 'chest') return 'triceps';
@@ -105,47 +128,6 @@ function inferSecondaryMuscleGroup(primary: MuscleGroup): MuscleGroup | null {
   return null;
 }
 
-function splitToDraft(split: Split): DraftSplit {
-  return {
-    id: split.id,
-    name: split.name,
-    description: split.description,
-    days_per_week: split.days_per_week,
-    days: split.days.map((day) => ({
-      id: day.id,
-      day_name: day.day_name,
-      day_order: day.day_order,
-      exercises: (day.exercises || []).map((ex) => {
-        const parsedRange = parseSetRangeNotes(ex.notes, ex.target_sets);
-        return {
-          id: ex.id,
-          exercise_id: ex.exercise_id,
-          exercise: ex.exercise,
-          target_sets: parsedRange.targetSets,
-          target_sets_min: parsedRange.minSets,
-          target_sets_max: parsedRange.maxSets,
-          target_reps_min: ex.target_reps_min,
-          target_reps_max: ex.target_reps_max,
-          exercise_order: ex.exercise_order,
-          notes: parsedRange.baseNotes,
-          superset_group_id: ex.superset_group_id ?? null,
-        };
-      }),
-    })),
-  };
-}
-
-function fixDayOrders(days: DraftDay[]): DraftDay[] {
-  return days.map((day, index) => ({
-    ...day,
-    day_order: index,
-    exercises: day.exercises.map((ex, exIdx) => ({
-      ...ex,
-      exercise_order: exIdx,
-    })),
-  }));
-}
-
 const TARGET_FIELDS = [
   'target_sets_min',
   'target_sets',
@@ -154,9 +136,77 @@ const TARGET_FIELDS = [
   'target_reps_max',
 ] as const;
 
+const CLOSED: Pick<SplitEditState, 'draft' | 'isDirty' | 'saving' | 'error' | 'undo' | 'storageScope' | 'baseSignature' | 'restorable'> = {
+  draft: null,
+  isDirty: false,
+  saving: false,
+  error: null,
+  undo: null,
+  storageScope: null,
+  baseSignature: null,
+  restorable: null,
+};
+
 function updateDraft(state: SplitEditState, updater: (draft: DraftSplit) => DraftSplit): Partial<SplitEditState> {
   if (!state.draft) return {};
-  return { draft: updater(state.draft), isDirty: true, error: null };
+  const draft = updater(state.draft);
+  if (draft === state.draft) return {};
+  return { draft, isDirty: true, error: null, undo: null, restorable: null };
+}
+
+/** Like updateDraft, but keeps the previous draft so the removal can be undone. */
+function removeFromDraft(
+  state: SplitEditState,
+  label: string,
+  updater: (draft: DraftSplit) => DraftSplit
+): Partial<SplitEditState> {
+  if (!state.draft) return {};
+  const update = updateDraft(state, updater);
+  return update.draft ? { ...update, undo: { label, draft: state.draft } } : {};
+}
+
+function updateDay(draft: DraftSplit, dayId: string, updater: (exercises: DraftExercise[]) => DraftExercise[]): DraftSplit {
+  let changed = false;
+  const days = draft.days.map((day) => {
+    if (day.id !== dayId) return day;
+    const exercises = updater(day.exercises);
+    if (exercises === day.exercises) return day;
+    changed = true;
+    return { ...day, exercises };
+  });
+  return changed ? { ...draft, days } : draft;
+}
+
+function forgetStoredDraft(state: Pick<SplitEditState, 'draft' | 'storageScope'>) {
+  if (state.draft && state.storageScope) clearSplitDraft(state.storageScope, splitDraftId(state.draft));
+}
+
+function validationError(draft: DraftSplit): string | null {
+  if (!draft.name.trim()) return 'Give the program a name.';
+  if (draft.days.length === 0) return 'Add at least one training day.';
+  return null;
+}
+
+/** Days and exercises in save order; saved rows keep their ids so the snapshot updates them. */
+function snapshotDays(draft: DraftSplit) {
+  return draft.days.map((day, dayIndex) => ({
+    id: day._isNew ? undefined : day.id,
+    day_name: day.day_name.trim() || `Day ${dayIndex + 1}`,
+    day_order: dayIndex,
+    exercises: day.exercises.map((ex, exerciseIndex) => {
+      const normalizedRange = normalizeSetRange(ex.target_sets_min, ex.target_sets, ex.target_sets_max);
+      return {
+        id: ex._isNew ? undefined : ex.id,
+        exercise_id: ex.exercise_id,
+        target_sets: normalizedRange.targetSets,
+        target_reps_min: ex.target_reps_min,
+        target_reps_max: ex.target_reps_max,
+        exercise_order: exerciseIndex,
+        notes: serializeSetRangeNotes(ex.notes, normalizedRange.minSets, normalizedRange.targetSets, normalizedRange.maxSets),
+        superset_group_id: ex.superset_group_id,
+      };
+    }),
+  }));
 }
 
 // ═══════════════════════════════════
@@ -164,70 +214,141 @@ function updateDraft(state: SplitEditState, updater: (draft: DraftSplit) => Draf
 // ═══════════════════════════════════
 
 export const useSplitEditStore = create<SplitEditState>((set, get) => ({
-  draft: null,
-  isDirty: false,
-  saving: false,
-  error: null,
+  ...CLOSED,
 
-  startEdit: (split) => {
+  startEdit: (split, { userId = null } = {}) => {
+    const baseSignature = splitSignature(split);
+    const stored = userId ? readSplitDraft(userId, split.id) : null;
     set({
+      ...CLOSED,
       draft: splitToDraft(split),
-      isDirty: false,
-      saving: false,
-      error: null,
+      storageScope: userId,
+      baseSignature,
+      restorable: stored,
     });
   },
 
-  cancelEdit: () => {
-    set({ draft: null, isDirty: false, saving: false, error: null });
+  startNew: (draft, { userId = null } = {}) => {
+    set({
+      ...CLOSED,
+      draft: { ...draft, _isNew: true },
+      // A seeded program is unsaved work from the start.
+      isDirty: true,
+      storageScope: userId,
+    });
   },
 
-  saveEdit: async () => {
+  restoreDraft: (stored, { userId = null } = {}) => {
+    set({
+      ...CLOSED,
+      draft: stored.draft,
+      isDirty: true,
+      storageScope: userId,
+      baseSignature: stored.baseSignature,
+    });
+  },
+
+  restoreSaved: () => {
+    const { restorable } = get();
+    if (!restorable) return;
+    set({ draft: restorable.draft, isDirty: true, error: null, undo: null, restorable: null });
+  },
+
+  dismissRestore: () => {
+    const state = get();
+    if (!state.restorable) return;
+    forgetStoredDraft(state);
+    set({ restorable: null });
+  },
+
+  cancelEdit: () => {
+    set(CLOSED);
+  },
+
+  discardEdit: () => {
+    forgetStoredDraft(get());
+    set(CLOSED);
+  },
+
+  undoRemoval: () => {
+    const { undo } = get();
+    if (!undo) return;
+    set({ draft: undo.draft, isDirty: true, error: null, undo: null });
+  },
+
+  dismissUndo: () => {
+    if (get().undo) set({ undo: null });
+  },
+
+  saveEdit: async ({ createSplit } = {}) => {
     const { draft } = get();
-    if (!draft) return false;
+    if (!draft) return null;
+
+    const invalid = validationError(draft);
+    if (invalid) {
+      set({ error: invalid });
+      return null;
+    }
+    if (draft._isNew && !createSplit) {
+      set({ error: CREATE_FAILED_MESSAGE });
+      return null;
+    }
 
     set({ saving: true, error: null });
 
     try {
-      // Build JSONB payload for the RPC
-      const daysPayload = draft.days.map((day) => ({
-        id: day._isNew ? undefined : day.id,
-        day_name: day.day_name,
-        day_order: day.day_order,
-        exercises: day.exercises.map((ex) => {
-          const normalizedRange = normalizeSetRange(ex.target_sets_min, ex.target_sets, ex.target_sets_max);
-          return {
-            id: ex._isNew ? undefined : ex.id,
-            exercise_id: ex.exercise_id,
-            target_sets: normalizedRange.targetSets,
-            target_reps_min: ex.target_reps_min,
-            target_reps_max: ex.target_reps_max,
-            exercise_order: ex.exercise_order,
-            notes: serializeSetRangeNotes(ex.notes, normalizedRange.minSets, normalizedRange.targetSets, normalizedRange.maxSets),
-            superset_group_id: ex.superset_group_id,
-          };
-        }),
-      }));
-
-      const { error } = await supabase.rpc('save_split_snapshot', {
-        p_split_id: draft.id,
-        p_name: draft.name,
-        p_description: draft.description,
-        p_days_per_week: draft.days.length,
-        p_days: daysPayload,
+      // Exercises typed in by hand join the library first, in one insert.
+      const pending = pendingExercises(draft);
+      const exerciseIds = await insertPendingExercises(pending, {
+        client: supabase as unknown as ExerciseInsertClient,
+        loadLibrary: () => getExerciseLibrary({ force: true }),
       });
+      if (pending.length > 0) invalidateExerciseLibrary();
+      const saving = applyExerciseIds(draft, exerciseIds);
+      // A retry after a later failure must not insert them again.
+      if (saving !== draft && get().draft === draft) set({ draft: saving });
 
-      if (error) {
-        set({ saving: false, error: error.message });
-        return false;
+      const name = saving.name.trim();
+      const description = saving.description?.trim() || null;
+      let saved: SavedSplit;
+
+      if (saving._isNew) {
+        const created = await createSplit!({
+          name,
+          description,
+          days_per_week: saving.days.length,
+          is_active: true,
+          // Everything in a new program is new, so no row carries an id.
+          days: snapshotDays(saving).map(({ day_name, day_order, exercises }) => ({ day_name, day_order, exercises })),
+        });
+        if (!created) {
+          set({ saving: false, error: CREATE_FAILED_MESSAGE });
+          return null;
+        }
+        saved = { id: created.id, name, created: true };
+      } else {
+        const { error } = await supabase.rpc('save_split_snapshot', {
+          p_split_id: saving.id,
+          p_name: name,
+          p_description: description,
+          p_days_per_week: saving.days.length,
+          p_days: snapshotDays(saving),
+        });
+
+        if (error) {
+          set({ saving: false, error: error.message });
+          return null;
+        }
+        saved = { id: saving.id, name, created: false };
       }
 
-      set({ draft: null, isDirty: false, saving: false, error: null });
-      return true;
+      forgetStoredDraft(get());
+      set(CLOSED);
+      return saved;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save changes';
       set({ saving: false, error: message });
-      return false;
+      return null;
     }
   },
 
@@ -257,37 +378,30 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
   reorderDays: (dayId, direction) => {
     set((state) =>
       updateDraft(state, (d) => {
-        const idx = d.days.findIndex((day) => day.id === dayId);
-        if (idx < 0) return d;
-        const target = idx + direction;
-        if (target < 0 || target >= d.days.length) return d;
+        const neighbour = d.days[d.days.findIndex((day) => day.id === dayId) + direction];
+        return neighbour ? { ...d, days: moveDayTo(d.days, dayId, neighbour.id) } : d;
+      })
+    );
+  },
 
-        const next = [...d.days];
-        const [moving] = next.splice(idx, 1);
-        next.splice(target, 0, moving);
-        return { ...d, days: fixDayOrders(next) };
+  moveDay: (dayId, overDayId) => {
+    set((state) =>
+      updateDraft(state, (d) => {
+        const days = moveDayTo(d.days, dayId, overDayId);
+        return days === d.days ? d : { ...d, days };
       })
     );
   },
 
   addDay: (dayName) => {
     set((state) =>
-      updateDraft(state, (d) => {
-        const newDay: DraftDay = {
-          id: createTempId(),
-          day_name: dayName,
-          day_order: d.days.length,
-          exercises: [],
-          _isNew: true,
-        };
-        return { ...d, days: [...d.days, newDay] };
-      })
+      updateDraft(state, (d) => ({ ...d, days: [...d.days, newDraftDay(dayName, d.days.length)] }))
     );
   },
 
   removeDay: (dayId) => {
     set((state) =>
-      updateDraft(state, (d) => ({
+      removeFromDraft(state, `Removed ${state.draft?.days.find((day) => day.id === dayId)?.day_name.trim() || 'day'}`, (d) => ({
         ...d,
         days: fixDayOrders(d.days.filter((day) => day.id !== dayId)),
       }))
@@ -298,24 +412,13 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
 
   reorderExercise: (dayId, exerciseId, direction) => {
     set((state) =>
-      updateDraft(state, (d) => ({
-        ...d,
-        days: d.days.map((day) => {
-          if (day.id !== dayId) return day;
-          const idx = day.exercises.findIndex((ex) => ex.id === exerciseId);
-          if (idx < 0) return day;
-          const target = idx + direction;
-          if (target < 0 || target >= day.exercises.length) return day;
+      updateDraft(state, (d) => updateDay(d, dayId, (exercises) => moveExercise(exercises, exerciseId, direction)))
+    );
+  },
 
-          const next = [...day.exercises];
-          const [moving] = next.splice(idx, 1);
-          next.splice(target, 0, moving);
-          return {
-            ...day,
-            exercises: next.map((ex, i) => ({ ...ex, exercise_order: i })),
-          };
-        }),
-      }))
+  moveExerciseTo: (dayId, exerciseId, overExerciseId) => {
+    set((state) =>
+      updateDraft(state, (d) => updateDay(d, dayId, (exercises) => moveExerciseBlock(exercises, exerciseId, overExerciseId)))
     );
   },
 
@@ -410,27 +513,20 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
   },
 
   addExercise: (dayId, exercise) => {
+    get().addExercises(dayId, [exercise]);
+  },
+
+  addExercises: (dayId, exercises) => {
     set((state) =>
-      updateDraft(state, (d) => ({
-        ...d,
-        days: d.days.map((day) => {
-          if (day.id !== dayId) return day;
-          const newEx: DraftExercise = {
-            id: createTempId(),
-            exercise_id: exercise.id,
-            exercise,
-            target_sets: 3,
-            target_sets_min: 3,
-            target_sets_max: 3,
-            target_reps_min: 8,
-            target_reps_max: 12,
-            exercise_order: day.exercises.length,
-            notes: null,
-            superset_group_id: null,
-            _isNew: true,
-          };
-          return { ...day, exercises: [...day.exercises, newEx] };
-        }),
+      updateDraft(state, (d) => updateDay(d, dayId, (current) => {
+        const present = new Set(current.map((entry) => entry.exercise_id));
+        const adding = exercises.filter((exercise) => {
+          if (present.has(exercise.id)) return false;
+          present.add(exercise.id);
+          return true;
+        });
+        if (adding.length === 0) return current;
+        return [...current, ...adding.map((exercise, index) => newDraftExercise(exercise, current.length + index))];
       }))
     );
   },
@@ -463,23 +559,17 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
             return entry;
           });
 
-          const partnerExercise: DraftExercise = {
-            id: createTempId(),
-            exercise_id: exercise.id,
-            exercise: {
-              ...exercise,
-              muscle_group_secondary: exercise.muscle_group_secondary ?? inferSecondaryMuscleGroup(source.exercise.muscle_group),
-            },
+          const partnerExercise = newDraftExercise({
+            ...exercise,
+            muscle_group_secondary: exercise.muscle_group_secondary ?? inferSecondaryMuscleGroup(source.exercise.muscle_group),
+          }, source.exercise_order + 1, {
             target_sets: source.target_sets,
             target_sets_min: source.target_sets_min,
             target_sets_max: source.target_sets_max,
             target_reps_min: source.target_reps_min,
             target_reps_max: source.target_reps_max,
-            exercise_order: source.exercise_order + 1,
-            notes: null,
             superset_group_id: groupId,
-            _isNew: true,
-          };
+          });
 
           nextExercises.splice(sourceIndex + 1, 0, partnerExercise);
 
@@ -518,7 +608,9 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
 
   removeExercise: (dayId, exerciseId) => {
     set((state) =>
-      updateDraft(state, (d) => ({
+      removeFromDraft(state, `Removed ${
+        state.draft?.days.find((day) => day.id === dayId)?.exercises.find((ex) => ex.id === exerciseId)?.exercise.name ?? 'exercise'
+      }`, (d) => ({
         ...d,
         days: d.days.map((day) => {
           if (day.id !== dayId) return day;

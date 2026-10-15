@@ -102,25 +102,24 @@ export function AuthForm() {
   };
 
   return (
-    <div className="material-foundation min-h-screen flex flex-col justify-center px-6 py-12" style={{ background: 'var(--material-ambient, none), var(--material-foundation)' }}>
+    <div className="material-foundation min-h-screen flex flex-col justify-center px-7 py-14">
       <div className="w-full max-w-[26rem] mx-auto">
         {/* ─── Masthead ─── */}
         <header>
-          <div className="flex items-baseline justify-between px-1">
+          <div className="flex items-baseline justify-between">
             <span className="t-label-sm">A field journal</span>
             <span className="t-label-sm">Est. MMXXVI</span>
           </div>
-          <div className="border-t border-[var(--color-text)] mt-3 pt-6 px-1">
+          <div className="border-t border-[var(--color-text)] mt-3 pt-6">
             <h1><BrandWordmark variant="login" /></h1>
-            <p className="t-display-italic text-[var(--color-text-dim)] text-lg mt-4 max-w-[20ch]">
+            <p className="t-display-italic text-[var(--color-text-dim)] text-lg mt-5 max-w-[20ch]">
               Strength &amp; nourishment, kept like a journal.
             </p>
           </div>
         </header>
 
         {/* ─── Form ─── */}
-        <div className="mt-9">
-          <section className="platter px-5 pt-6 pb-5">
+        <div className="mt-12">
           <AnimatePresence mode="wait">
             <motion.div
               key={isLogin ? 'login' : 'signup'}
@@ -128,14 +127,14 @@ export function AuthForm() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={springs.settle}
-              className="mb-6"
+              className="mb-7"
             >
-              <p className="t-label mb-2">{isLogin ? 'Sign in' : 'Create account'}</p>
-              <h2 className="t-title text-[34px]!">{isLogin ? 'Welcome back' : 'Get started'}</h2>
+              <p className="t-label-sm mb-2">{isLogin ? 'Sign in' : 'Create account'}</p>
+              <h2 className="t-title">{isLogin ? 'Welcome back' : 'Get started'}</h2>
             </motion.div>
           </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-7">
             <AnimatePresence>
               {!isLogin && (
                 <motion.div
@@ -238,21 +237,22 @@ export function AuthForm() {
             <Button
               type="submit"
               size="lg"
-              metal
-              className="w-full mt-1"
+              className="w-full"
               loading={loading && !(signupButtonLocked && !isLogin)}
               disabled={!isLogin && signupButtonLocked}
             >
               {isLogin ? 'Sign in' : signupButtonLocked ? 'Check your email' : 'Create account'}
             </Button>
           </form>
-          </section>
 
           {/* ─── Divider ─── */}
-          <div className="flex items-center gap-4 my-6 px-1">
-            <div className="flex-1 border-t border-[var(--color-border)]" aria-hidden />
-            <span className="t-label-sm">or</span>
-            <div className="flex-1 border-t border-[var(--color-border)]" aria-hidden />
+          <div className="relative my-7">
+            <div className="absolute inset-0 flex items-center" aria-hidden>
+              <div className="w-full border-t border-[var(--color-border)]" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-4 bg-[var(--color-base)] t-label-sm">or</span>
+            </div>
           </div>
 
           <Button type="button" variant="secondary" size="lg" className="w-full" onClick={handleGoogleSignIn}>
@@ -283,7 +283,7 @@ export function AuthForm() {
             </Button>
           )}
 
-          <p className="mt-7 text-center text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)]">
+          <p className="mt-9 text-center text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)]">
             {isLogin ? 'No account?' : 'Have an account?'}{' '}
             <button
               type="button"
@@ -297,11 +297,9 @@ export function AuthForm() {
                   setShowSignInPrompt(false);
                 }
               }}
-              className="inline-flex items-center min-h-11 text-[var(--color-text)] ml-1"
+              className="text-[var(--color-text)] border-b border-[var(--color-accent)] ml-1"
             >
-              <span className="border-b border-[var(--color-accent)]">
-                {isLogin ? 'Sign up' : 'Sign in'}
-              </span>
+              {isLogin ? 'Sign up' : 'Sign in'}
             </button>
           </p>
         </div>

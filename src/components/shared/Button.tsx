@@ -7,23 +7,19 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
-  /** Marks a screen's hero action. Primaries are solid; liquid metal is
-   * reserved for the save-set key, so this no longer changes the look. */
-  metal?: boolean;
 }
 
-/** Studio actions: a solid primary, a quiet filled secondary, unboxed contextual. */
+/** Studio actions: solid primary, quiet filled secondary, unboxed contextual. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  ({ className = '', variant = 'primary', size = 'md', loading, disabled, metal: _hero = false, children, onClick, ...props }, ref) => {
+  ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
     const baseStyles = `
       inline-flex items-center justify-center
-      [font-family:var(--font-sans)] font-semibold
+      [font-family:var(--font-sans)] uppercase font-medium
       transition-colors duration-200
       focus:outline-none
       focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
-      disabled:opacity-30 disabled:cursor-not-allowed
-      rounded-[var(--radius-capsule)]
+      disabled:opacity-35 disabled:cursor-not-allowed
+      rounded-[var(--radius-control)]
     `;
 
     const variants = {
@@ -49,9 +45,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     };
 
     const sizes = {
-      sm: 'px-4 min-h-11 text-[14px] tracking-[-0.005em] gap-2',
-      md: 'px-5 min-h-[46px] text-[15px] tracking-[-0.01em] gap-2',
-      lg: 'px-5 min-h-[52px] text-[16px] tracking-[-0.01em] gap-2',
+      sm: 'px-4 min-h-11 text-[11px] tracking-[0.16em] gap-2',
+      md: 'px-4 min-h-[45px] text-[11px] tracking-[0.16em] gap-2',
+      lg: 'px-4 min-h-[51px] text-[11px] tracking-[0.16em] gap-2',
     };
 
     const isDisabled = disabled || loading;

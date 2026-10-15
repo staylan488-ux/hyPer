@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   muscle_group_secondary TEXT,
   equipment TEXT,
   is_compound BOOLEAN DEFAULT false,
+  -- 'gym' or 'calisthenics'; NULL lets the app decide from the name
+  category TEXT CONSTRAINT exercises_category_check CHECK (category IS NULL OR category IN ('gym', 'calisthenics')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -739,6 +741,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Incline Dumbbell Bench Press', 'chest', 'triceps', 'dumbbells', true),
 ('Cable Fly', 'chest', NULL, 'cable', false),
 ('Pec Deck / Machine Fly', 'chest', NULL, 'machine', false),
+('Machine Chest Press', 'chest', 'triceps', 'machine', true),
 ('Push-Up', 'chest', 'triceps', 'bodyweight', true),
 
 -- Back
@@ -747,6 +750,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('One-Arm Dumbbell Row', 'back', 'biceps', 'dumbbells', true),
 ('Lat Pulldown', 'back', 'biceps', 'cable', true),
 ('Seated Cable Row', 'back', 'biceps', 'cable', true),
+('One-Arm Chest-Supported Machine Row', 'back', 'biceps', 'machine', true),
 ('Pull-Up', 'back', 'biceps', 'bodyweight', true),
 ('Chin-Up', 'back', 'biceps', 'bodyweight', true),
 ('Face Pull', 'rear_delts', 'traps', 'cable', false),
@@ -755,6 +759,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Overhead Barbell Press', 'shoulders', 'triceps', 'barbell', true),
 ('Overhead Dumbbell Press', 'shoulders', 'triceps', 'dumbbells', true),
 ('Arnold Press', 'shoulders', 'triceps', 'dumbbells', true),
+('Machine Shoulder Press', 'shoulders', 'triceps', 'machine', true),
 ('Lateral Raise', 'side_delts', NULL, 'dumbbells', false),
 ('Cable Lateral Raise', 'side_delts', NULL, 'cable', false),
 ('Rear Delt Fly', 'rear_delts', NULL, 'dumbbells', false),
@@ -772,12 +777,14 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Close-Grip Bench Press', 'triceps', 'chest', 'barbell', true),
 ('Tricep Pushdown', 'triceps', NULL, 'cable', false),
 ('Overhead Tricep Extension', 'triceps', NULL, 'dumbbells', false),
+('Cable Overhead Tricep Extension', 'triceps', NULL, 'cable', false),
 ('Skull Crushers', 'triceps', NULL, 'barbell', false),
 ('Dips', 'triceps', 'chest', 'bodyweight', true),
 
 -- Legs
 ('Barbell Back Squat', 'quads', 'glutes', 'barbell', true),
 ('Leg Press', 'quads', 'glutes', 'machine', true),
+('Hack Squat', 'quads', 'glutes', 'machine', true),
 ('Bulgarian Split Squat', 'quads', 'glutes', 'dumbbells', true),
 ('Leg Extension', 'quads', NULL, 'machine', false),
 ('Romanian Deadlift', 'hamstrings', 'glutes', 'barbell', true),
@@ -787,6 +794,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Calf Raise', 'calves', NULL, 'machine', false),
 ('Standing Calf Raise', 'calves', NULL, 'dumbbells', false),
 ('Hip Thrust', 'glutes', 'hamstrings', 'barbell', true),
+('45° Back Extension', 'glutes', 'hamstrings', 'machine', true),
 ('Lunge', 'quads', 'glutes', 'dumbbells', true),
 ('Goblet Squat', 'quads', 'glutes', 'dumbbells', true),
 

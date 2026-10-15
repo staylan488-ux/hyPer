@@ -146,3 +146,125 @@ describe('splitEditStore keeps untouched objects for memoized editor rows', () =
     expect(store().draft!.days[1]).toBe(lower);
   });
 });
+
+describe('splitEditStore.reorderExercise keeps supersets together', () => {
+  const order = () => store().draft!.days[0].exercises.map((ex) => `${ex.id}${ex.exercise_order}`);
+
+  it('steps a single exercise over a whole superset pair', () => {
+    store().reorderExercise('day-1', 'a', 1);
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+  });
+
+  it('moves a superset pair as one block from either member', () => {
+    store().reorderExercise('day-1', 'c', -1);
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+
+    store().reorderExercise('day-1', 'b', 1);
+    expect(order()).toEqual(['a0', 'b1', 'c2']);
+  });
+
+  it('leaves the day alone at either end', () => {
+    const day = store().draft!.days[0];
+    store().reorderExercise('day-1', 'a', -1);
+    store().reorderExercise('day-1', 'c', 1);
+    expect(store().draft!.days[0]).toBe(day);
+  });
+});
+
+describe('splitEditStore removal undo', () => {
+  it('restores a removed exercise with its superset partner relinked', () => {
+    const before = store().draft;
+    store().removeExercise('day-1', 'b');
+
+    expect(store().undo?.label).toBe('Removed ex-b');
+    expect(draftExercise('day-1', 'c').superset_group_id).toBeNull();
+
+    store().undoRemoval();
+    expect(store().draft).toBe(before);
+    expect(store().undo).toBeNull();
+    expect(store().isDirty).toBe(true);
+  });
+
+  it('restores a removed day', () => {
+    store().removeDay('day-2');
+    expect(store().draft!.days).toHaveLength(1);
+    expect(store().undo?.label).toBe('Removed Lower');
+
+    store().undoRemoval();
+    expect(store().draft!.days.map((day) => day.id)).toEqual(['day-1', 'day-2']);
+  });
+
+  it('drops the undo once another edit is made', () => {
+    store().removeExercise('day-1', 'a');
+    store().renameDay('day-2', 'Legs');
+    expect(store().undo).toBeNull();
+  });
+});
+
+describe('splitEditStore drag reorder keeps supersets together', () => {
+  const order = () => store().draft!.days[0].exercises.map((ex) => `${ex.id}${ex.exercise_order}`);
+
+  it('drops a single exercise past a whole superset pair', () => {
+    store().moveExerciseTo('day-1', 'a', 'c');
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+  });
+
+  it('carries both superset members when either one is dragged', () => {
+    store().moveExerciseTo('day-1', 'c', 'a');
+    expect(order()).toEqual(['b0', 'c1', 'a2']);
+    store().moveExerciseTo('day-1', 'b', 'a');
+    expect(order()).toEqual(['a0', 'b1', 'c2']);
+  });
+
+  it('never lands inside a pair: dropping on a member uses the whole block', () => {
+    store().addExercises('day-1', [exercise('ex-e')]);
+    const added = store().draft!.days[0].exercises.at(-1)!.id;
+    store().moveExerciseTo('day-1', added, 'c');
+    const ids = store().draft!.days[0].exercises.map((ex) => ex.id);
+    expect(ids).toEqual(['a', added, 'b', 'c']);
+  });
+
+  it('leaves the draft clean and untouched for a drop onto itself or its partner', () => {
+    const before = store().draft;
+    store().moveExerciseTo('day-1', 'b', 'c');
+    store().moveExerciseTo('day-1', 'a', 'a');
+    expect(store().draft).toBe(before);
+    expect(store().isDirty).toBe(false);
+  });
+
+  it('keeps unmoved exercise objects for memoized rows', () => {
+    store().addExercises('day-1', [exercise('ex-e')]);
+    const [a, , , e] = store().draft!.days[0].exercises;
+    const lower = store().draft!.days[1];
+    store().moveExerciseTo('day-1', 'b', 'a');
+    const next = store().draft!.days[0].exercises;
+    expect(next.at(-1)).toBe(e);
+    expect(next[2]).toMatchObject({ id: a.id, exercise_order: 2 });
+    expect(store().draft!.days[1]).toBe(lower);
+  });
+
+  it('moves days by drag and renumbers them, keeping their exercises', () => {
+    const lowerExercises = store().draft!.days[1].exercises;
+    store().moveDay('day-2', 'day-1');
+    expect(store().draft!.days.map((day) => [day.id, day.day_order])).toEqual([['day-2', 0], ['day-1', 1]]);
+    expect(store().draft!.days[0].exercises).toBe(lowerExercises);
+    store().reorderDays('day-2', 1);
+    expect(store().draft!.days.map((day) => day.id)).toEqual(['day-1', 'day-2']);
+  });
+});
+
+describe('splitEditStore.addExercises', () => {
+  it('adds several picks in one edit, skipping ones already in the day', () => {
+    const before = store().draft!.days[1];
+    store().addExercises('day-1', [exercise('ex-x'), exercise('ex-a'), exercise('ex-y'), exercise('ex-x')]);
+    const ids = store().draft!.days[0].exercises.map((ex) => ex.exercise_id);
+    expect(ids).toEqual(['ex-a', 'ex-b', 'ex-c', 'ex-x', 'ex-y']);
+    expect(store().draft!.days[0].exercises.slice(3).every((ex) => ex._isNew && ex.target_sets === 3)).toBe(true);
+    expect(store().draft!.days[1]).toBe(before);
+  });
+
+  it('does not dirty the draft when every pick is already there', () => {
+    store().addExercises('day-1', [exercise('ex-a')]);
+    expect(store().isDirty).toBe(false);
+  });
+});

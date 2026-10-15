@@ -1,7 +1,6 @@
 // DEV-ONLY preview sample data. Pure data (no store imports) so it can be shared
 // by the mock Supabase client and the store seeder without import cycles.
 import { format } from 'date-fns';
-import { computeWeeklyVolume, trainingWeekRange } from '@/lib/weeklyVolume';
 import type {
   Exercise,
   Split,
@@ -52,8 +51,22 @@ const exLegcurl = ex('ex_legcurl', 'Seated Leg Curl', 'hamstrings', null, 'Machi
 const exLegext = ex('ex_legext', 'Leg Extension', 'quads', null, 'Machine', false);
 const exCalf = ex('ex_calf', 'Standing Calf Raise', 'calves', null, 'Machine', false);
 
+// Library-only rows (not in the program) so the picker shows its sections
+const libraryOnly: Exercise[] = [
+  ex('ex_hack', 'Hack Squat', 'quads', 'glutes', 'Machine', true),
+  ex('ex_machine_chest', 'Machine Chest Press', 'chest', 'triceps', 'Machine', true),
+  ex('ex_hyper', 'Weighted Hyperextension', 'hamstrings', 'glutes', 'Machine', true),
+  ex('ex_back_ext', '45° Back Extension', 'glutes', 'hamstrings', 'Machine', true),
+  ex('ex_pullup', 'Pull-Up', 'back', 'biceps', 'Bodyweight', true),
+  ex('ex_front_lever_row', 'Front Lever Row', 'back', 'biceps', 'Bodyweight', true),
+  ex('ex_shrimp', 'Shrimp Squat', 'quads', 'glutes', 'Bodyweight', true),
+  ex('ex_ring_dip', 'Ring Dip', 'triceps', 'chest', 'Rings', true),
+  ex('ex_one_arm_dip', 'One-Arm Dip', 'triceps', 'chest', 'Bodyweight', true),
+];
+
 export const previewExercises: Exercise[] = [
   exBench, exIncline, exRow, exPulldown, exSquat, exRdl, exOhp, exCurl, exPushdown, exLateral, exLegcurl, exLegext, exCalf,
+  ...libraryOnly,
 ];
 
 /* ── Split (active program) ── */
@@ -70,10 +83,7 @@ export const previewSplit: Split = {
   id: 'split1', user_id: PREVIEW_USER_ID, name: 'Upper / Lower', description: 'A 4-day upper/lower hypertrophy block.', days_per_week: 4, is_active: true, days: [dayUA, dayLA, dayUB, dayLB],
 };
 
-/* ── Current (in-progress) workout — drives the "resume" hero + in-session view ──
-   Seeded like a real startWorkout: every Upper A exercise with its target
-   sets (4/4/3/3/3), so the live session agrees with the program. Bench is
-   complete and Barbell Row is up next. */
+/* ── Current (in-progress) workout — drives the "resume" hero + in-session view ── */
 let wsId = 0;
 const ws = (e: Exercise, n: number, weight: number | null, reps: number | null, rpe: number | null, completed: boolean, completedAt: Date | null): WorkoutSet =>
   ({ id: `cs${++wsId}`, workout_id: 'w_current', exercise_id: e.id, exercise: e, set_number: n, weight, reps, rpe, completed, completed_at: completedAt ? iso(completedAt) : null });
@@ -87,50 +97,42 @@ export const previewCurrentWorkout: Workout = {
     ws(exBench, 1, 100, 8, 8, true, sessionMinutesAgo(19)),
     ws(exBench, 2, 100, 8, 8.5, true, sessionMinutesAgo(15)),
     ws(exBench, 3, 102.5, 6, 9, true, sessionMinutesAgo(10)),
-    ws(exBench, 4, 100, 6, 9, true, sessionMinutesAgo(6)),
     ws(exRow, 1, 80, 10, 7, false, null),
     ws(exRow, 2, 80, 10, 7, false, null),
     ws(exRow, 3, 80, 9, 8, false, null),
-    ws(exRow, 4, 80, 8, 8.5, false, null),
     ws(exIncline, 1, 30, 12, 7, false, null),
     ws(exIncline, 2, 30, 11, 8, false, null),
     ws(exIncline, 3, 30, 10, 8.5, false, null),
-    ws(exPulldown, 1, 60, 12, 7, false, null),
-    ws(exPulldown, 2, 60, 11, 8, false, null),
-    ws(exPulldown, 3, 60, 10, 8.5, false, null),
-    ws(exLateral, 1, 10, 15, 7, false, null),
-    ws(exLateral, 2, 10, 14, 8, false, null),
-    ws(exLateral, 3, 10, 12, 8.5, false, null),
   ],
 };
 
 /* ── Macros ── */
 export const previewMacroTarget: MacroTarget = { id: 'mt1', user_id: PREVIEW_USER_ID, calories: 2600, protein: 190, carbs: 280, fat: 80 };
 
-/* ── Volume landmarks ── */
-type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number];
+/* ── Volume landmarks + this-week volume ── */
+type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number, number, MuscleVolume['status']];
 const lmSeeds: LMSeed[] = [
-  // muscle, mv, mev, mav_low, mav_high, mrv
-  ['chest', 6, 10, 12, 18, 22],
-  ['back', 8, 12, 14, 20, 25],
-  ['quads', 6, 8, 10, 16, 20],
-  ['hamstrings', 4, 6, 8, 12, 16],
-  ['side_delts', 6, 10, 12, 18, 22],
-  ['front_delts', 0, 0, 6, 8, 12],
-  ['biceps', 6, 8, 10, 16, 20],
-  ['triceps', 6, 8, 10, 16, 20],
-  ['glutes', 4, 6, 8, 14, 18],
-  ['calves', 6, 8, 12, 16, 20],
+  // muscle, mv, mev, mav_low, mav_high, mrv, weekly_sets, status
+  ['chest', 6, 10, 12, 18, 22, 15, 'mav'],
+  ['back', 8, 12, 14, 20, 25, 18, 'mav'],
+  ['quads', 6, 8, 10, 16, 20, 9, 'mev_mav'],
+  ['hamstrings', 4, 6, 8, 12, 16, 5, 'below_mev'],
+  ['side_delts', 6, 10, 12, 18, 22, 21, 'above_mrv'],
+  ['biceps', 6, 8, 10, 16, 20, 12, 'mav'],
+  ['triceps', 6, 8, 10, 16, 20, 10, 'mav'],
+  ['glutes', 4, 6, 8, 14, 18, 11, 'mav'],
 ];
 export const previewLandmarks: VolumeLandmark[] = lmSeeds.map(([mg, mv, mev, mavLow, mavHigh, mrv], i) =>
   ({ id: `lm${i}`, user_id: PREVIEW_USER_ID, muscle_group: mg, mv, mev, mav_low: mavLow, mav_high: mavHigh, mrv }));
+export const previewWeeklyVolume: MuscleVolume[] = lmSeeds.map(([mg, , , , , , weekly, status], i) =>
+  ({ muscle_group: mg, weekly_sets: weekly, status, landmark: previewLandmarks[i] }));
 
 /* ── Foods + today's nutrition log ── */
 const food = (id: string, name: string, cal: number, p: number, c: number, f: number, size: number, unit: string, source: Food['source'] = 'usda'): Food =>
   ({ id, name, calories: cal, protein: p, carbs: c, fat: f, serving_size: size, serving_unit: unit, source, fdc_id: source === 'usda' ? `fdc-${id}` : null, user_id: source === 'custom' ? PREVIEW_USER_ID : null });
 
 export const previewFoods: Food[] = [
-  food('f_serving_demo', 'Vegetable Samosas', 250, 10, 30, 10, 5, 'pieces', 'custom'),
+  food('f_serving_demo', 'Samosas (serving demo)', 250, 10, 30, 10, 5, 'pieces', 'custom'),
   food('f_oats', 'Rolled Oats', 150, 5, 27, 3, 40, 'g'),
   food('f_eggs', 'Whole Eggs', 156, 13, 1, 11, 2, 'large'),
   food('f_chicken', 'Chicken Breast, grilled', 248, 47, 0, 5, 150, 'g'),
@@ -148,17 +150,15 @@ const logSeeds: LogSeed[] = [
   ['f_oats', 1.5, 'breakfast', 7, 30],
   ['f_eggs', 1.5, 'breakfast', 7, 35],
   ['f_yogurt', 1, 'breakfast', 7, 40],
-  // After the 8:10 ride and before the 9:18 lift; the preview's clock reads
-  // 9:41, so nothing is logged later than now.
-  ['f_banana', 1, 'snack', 9, 6],
-  ['f_whey', 1, 'snack', 9, 8],
+  ['f_chicken', 1.2, 'lunch', 12, 45],
+  ['f_rice', 1, 'lunch', 12, 50],
+  ['f_banana', 1, 'snack', 15, 10],
+  ['f_whey', 1, 'snack', 15, 12],
 ];
 export const previewNutritionGroups = [
-  // The morning snack (9:06) sits between breakfast and lunch: the user's
-  // meal order (sort_order) follows the day.
   { id: 'ng-breakfast', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'breakfast', sort_order: 0 },
-  { id: 'ng-snack-1', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'snack', label: null, sort_order: 1 },
-  { id: 'ng-lunch', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'lunch', sort_order: 2 },
+  { id: 'ng-lunch', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'lunch', sort_order: 1 },
+  { id: 'ng-snack-1', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'snack', label: null, sort_order: 2 },
   { id: 'ng-dinner', user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, kind: 'meal', label: 'dinner', sort_order: 3 },
 ].map((group) => ({ ...group, created_at: iso(daysAgo(1)), updated_at: iso(daysAgo(1)) }));
 
@@ -184,10 +184,6 @@ const historyPlan: { offset: number; dayId: string; ex: Exercise[] }[] = [
   { offset: 13, dayId: 'd1', ex: [exBench, exRow, exPulldown, exLateral] },
 ];
 
-const HISTORY_LOAD: Record<string, number> = {
-  ex_bench: 100, ex_row: 80, ex_incline: 30, ex_pulldown: 60, ex_lateral: 10, ex_squat: 120, ex_rdl: 100,
-  ex_legext: 50, ex_calf: 80, ex_ohp: 50, ex_curl: 14, ex_pushdown: 30, ex_legcurl: 45,
-};
 const histWorkoutRows: Record<string, unknown>[] = [];
 const histSetRows: Record<string, unknown>[] = [];
 let hsId = 0;
@@ -200,10 +196,7 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
   p.ex.forEach((e) => {
     for (let n = 1; n <= 3; n++) {
       const done = at(d, 18, 5 + order * 4);
-      // Plausible loads per movement (older weeks slightly lighter), so the
-      // live session's "Last" hints read like a real log.
-      const base = HISTORY_LOAD[e.id] ?? 40;
-      const w = base - Math.floor(p.offset / 7) * (base >= 20 ? 2.5 : 1);
+      const w = 60 + ((wi + order) % 5) * 10;
       const set: WorkoutSet = { id: `wsh${++hsId}`, workout_id: id, exercise_id: e.id, exercise: e, set_number: n, weight: w, reps: 8 + (n % 3), rpe: 8, completed: true, completed_at: iso(done) };
       sets.push(set);
       histSetRows.push({ id: set.id, workout_id: id, exercise_id: e.id, set_number: n, weight: w, reps: set.reps, rpe: 8, completed: true, completed_at: set.completed_at, created_at: iso(start) });
@@ -214,18 +207,6 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
   histWorkoutRows.push({ id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start) });
   return { id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start), sets };
 });
-
-/* ── This week's volume ── */
-// Counted from the seeded sessions themselves, by the live rule (this
-// training week's completed sets, computeWeeklyVolume) and graded by it, so
-// the volume always agrees with History and the lifting hours beside it.
-const previewWeek = trainingWeekRange(now);
-export const previewWeeklyVolume: MuscleVolume[] = computeWeeklyVolume(
-  [...previewHistoryWorkouts, previewCurrentWorkout]
-    .filter((workout) => workout.date >= previewWeek.weekStart && workout.date <= previewWeek.weekEnd)
-    .map((workout) => ({ sets: (workout.sets ?? []).map((set) => ({ completed: set.completed, exercise: set.exercise ?? null })) })),
-  previewLandmarks,
-);
 
 // blank metric/bookkeeping fields for plain manual entries
 const manualActivityDefaults = {
@@ -428,16 +409,6 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   plan_schedules: [],
   activity_sessions: previewActivitySessions.map((activity) => ({ ...activity })),
   activity_segments: previewActivitySegments.map((segment) => ({ ...segment })),
-  // Connected, as the seeded WHOOP activities say, and synced just now so the
-  // foreground sync stays idle; Settings > Connections can disconnect and
-  // reconnect it with mock rows.
-  whoop_connections: [{
-    user_id: PREVIEW_USER_ID,
-    whoop_user_id: 'preview-whoop-user',
-    scopes: 'read:workout offline',
-    connected_at: iso(daysAgo(30)),
-    last_synced_at: iso(now),
-    last_sync_status: 'success',
-    updated_at: iso(now),
-  }],
+  // start disconnected; the Settings "Connect" flows insert mock rows
+  whoop_connections: [],
 };

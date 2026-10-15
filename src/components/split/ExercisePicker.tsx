@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue, type ReactNode } from 'react';
-import { Loader2, Search, Dumbbell, ArrowRight } from 'lucide-react';
+import { Loader2, Search, Dumbbell, ArrowRight, Check, ChevronDown } from 'lucide-react';
 import { Modal, Input, Chip, Button } from '@/components/shared';
+import { CustomExerciseForm } from '@/components/split/CustomExerciseForm';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
+import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
 
@@ -16,9 +18,40 @@ interface ExercisePickerProps {
   excludeExerciseIds?: string[];
   /** Shown above the search, e.g. context or a shortcut for this choice. */
   intro?: ReactNode;
+  /** Stay open after a pick so several exercises can be added in one go. */
+  keepOpenOnSelect?: boolean;
+  /**
+   * Multi-select: picks are collected and handed over together when the user
+   * confirms. `onSelect` is not called in this mode.
+   */
+  onSelectMany?: (exercises: Exercise[]) => void;
+  /** Offers to make an exercise the library lacks (inserted when the program saves). */
+  allowCustom?: boolean;
+  /** Exercises to list besides the library, e.g. custom ones not saved yet. */
+  extraExercises?: Exercise[];
 }
 
+type ContentProps = Omit<ExercisePickerProps, 'isOpen' | 'title'>;
+
 const ALL_MUSCLE_GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
+
+// The library rarely changes; cached rows show instantly and are refreshed
+// in the background at most this often.
+const LIBRARY_MAX_AGE_MS = 5 * 60_000;
+
+/** Groups exercises by primary muscle, keeping their order within and across groups. */
+function groupByMuscle(exercises: Exercise[]): Array<[MuscleGroup, Exercise[]]> {
+  const groups = new Map<MuscleGroup, Exercise[]>();
+  for (const exercise of exercises) {
+    const list = groups.get(exercise.muscle_group);
+    if (list) {
+      list.push(exercise);
+    } else {
+      groups.set(exercise.muscle_group, [exercise]);
+    }
+  }
+  return Array.from(groups.entries());
+}
 
 /**
  * Inner content component — mounts/unmounts with Modal visibility,
@@ -30,15 +63,25 @@ function ExercisePickerContent({
   initialMuscleGroup,
   excludeExerciseIds = [],
   intro,
-}: {
-  onClose: () => void;
-  onSelect: (exercise: Exercise) => void;
-  initialMuscleGroup?: MuscleGroup;
-  excludeExerciseIds?: string[];
-  intro?: ReactNode;
-}) {
+  keepOpenOnSelect = false,
+  onSelectMany,
+  allowCustom = false,
+  extraExercises,
+}: ContentProps) {
   // Rows from earlier opens show immediately; a fresh copy replaces them quietly.
-  const [exercises, setExercises] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  const [library, setLibrary] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  const [created, setCreated] = useState<Exercise[]>([]);
+  const exercises = useMemo(() => {
+    const additions = [...(extraExercises ?? []), ...created];
+    if (additions.length === 0) return library;
+    const known = new Set(library.map((exercise) => exercise.id));
+    const unique = additions.filter((exercise) => !known.has(exercise.id) && known.add(exercise.id));
+    return [...unique, ...library];
+  }, [created, extraExercises, library]);
+  const multiSelect = Boolean(onSelectMany);
+  // Multi-select picks, in the order they were chosen.
+  const [selected, setSelected] = useState<Exercise[]>([]);
+  const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(() => peekExerciseLibrary() === null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -48,6 +91,9 @@ function ExercisePickerContent({
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | 'all'>(
     initialMuscleGroup ?? 'all'
   );
+  const [showCalisthenics, setShowCalisthenics] = useState(false);
+  // Picked while the picker stays open (add mode); shown as added, not hidden.
+  const [addedIds, setAddedIds] = useState<string[]>([]);
 
   const filterScrollRef = useRef<HTMLDivElement>(null);
 
@@ -58,9 +104,9 @@ function ExercisePickerContent({
     const fetchExercises = async () => {
       const hadCache = peekExerciseLibrary() !== null;
       try {
-        const rows = await getExerciseLibrary({ force: hadCache });
+        const rows = await getExerciseLibrary({ maxAgeMs: hadCache ? LIBRARY_MAX_AGE_MS : Infinity });
         if (!cancelled && (rows.length > 0 || !hadCache)) {
-          setExercises(rows);
+          setLibrary(rows);
         }
       } catch {
         // with cached rows on screen a failed refresh changes nothing
@@ -98,56 +144,139 @@ function ExercisePickerContent({
       );
     }
 
-    // Filter by search query
-    if (deferredSearchQuery.trim()) {
-      const query = deferredSearchQuery.toLowerCase().trim();
-      result = result.filter(
-        (exercise) =>
-          exercise.name.toLowerCase().includes(query) ||
-          exercise.muscle_group.toLowerCase().includes(query) ||
-          (exercise.equipment && exercise.equipment.toLowerCase().includes(query))
-      );
-    }
-
-    return result;
+    // Every word of the search has to match; best matches first
+    return searchExercises(result, deferredSearchQuery);
   }, [deferredSearchQuery, excludedSet, exercises, selectedMuscle]);
 
+  const isSearching = deferredSearchQuery.trim().length > 0;
+
+  // Everyday gym movements first; niche calisthenics skills in their own section
+  const { gymGroups, calisthenics } = useMemo(() => {
+    const gym: Exercise[] = [];
+    const other: Exercise[] = [];
+    for (const exercise of filteredExercises) {
+      (exerciseCategory(exercise) === 'calisthenics' ? other : gym).push(exercise);
+    }
+    return { gymGroups: groupByMuscle(gym), calisthenics: other };
+  }, [filteredExercises]);
+
+  // A search always shows its calisthenics matches
+  const calisthenicsForced = isSearching || gymGroups.length === 0;
+  const calisthenicsOpen = showCalisthenics || calisthenicsForced;
+  const addedSet = useMemo(() => new Set(addedIds), [addedIds]);
+  const selectedSet = useMemo(() => new Set(selected.map((exercise) => exercise.id)), [selected]);
+
   const handleSelect = (exercise: Exercise) => {
+    if (multiSelect) {
+      setSelected((current) => (
+        current.some((entry) => entry.id === exercise.id)
+          ? current.filter((entry) => entry.id !== exercise.id)
+          : [...current, exercise]
+      ));
+      return;
+    }
+    if (addedSet.has(exercise.id)) return;
     onSelect(exercise);
+    if (keepOpenOnSelect) {
+      setAddedIds((current) => [...current, exercise.id]);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleCreate = (exercise: Exercise) => {
+    setShowCustom(false);
+    setSearchQuery('');
+    if (!library.some((entry) => entry.id === exercise.id)) {
+      setCreated((current) => (current.some((entry) => entry.id === exercise.id) ? current : [exercise, ...current]));
+    }
+    if (multiSelect) {
+      setSelected((current) => (current.some((entry) => entry.id === exercise.id) ? current : [...current, exercise]));
+    } else {
+      handleSelect(exercise);
+    }
+  };
+
+  const confirmSelection = () => {
+    if (selected.length === 0) return;
+    onSelectMany?.(selected);
     onClose();
   };
 
-  // Group the filtered list by primary muscle, preserving name order within each
-  const groupedExercises = useMemo(() => {
-    const groups = new Map<MuscleGroup, Exercise[]>();
-    for (const exercise of filteredExercises) {
-      const list = groups.get(exercise.muscle_group);
-      if (list) {
-        list.push(exercise);
-      } else {
-        groups.set(exercise.muscle_group, [exercise]);
-      }
-    }
-    return Array.from(groups.entries());
-  }, [filteredExercises]);
+  const renderRow = (exercise: Exercise) => {
+    const added = addedSet.has(exercise.id);
+    const picked = selectedSet.has(exercise.id);
+    return (
+      <li key={exercise.id} className="border-t border-[var(--color-border)] first:border-t-0">
+        <button
+          onClick={() => handleSelect(exercise)}
+          disabled={added}
+          aria-label={added ? `${exercise.name}, added` : undefined}
+          aria-pressed={multiSelect ? picked : undefined}
+          className="pressable group w-full text-left py-3 flex items-baseline gap-3 disabled:cursor-default"
+          type="button"
+        >
+          <span className="flex-1 min-w-0">
+            <span className="flex items-baseline gap-2">
+              <span className={`t-body break-words ${added ? 'text-[var(--color-muted)]' : 'text-[var(--color-text)]'}`}>
+                {exercise.name}
+              </span>
+              {exercise.is_compound && (
+                <span className="t-label-sm shrink-0 text-[var(--color-accent)]">
+                  Compound
+                </span>
+              )}
+            </span>
+            <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-1">
+              {exercise.muscle_group_secondary && (
+                <span className="t-caption">+{MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}</span>
+              )}
+              {exercise.equipment && (
+                <span className="t-caption">{exercise.equipment}</span>
+              )}
+            </span>
+          </span>
+          {multiSelect ? (
+            <span
+              aria-hidden
+              className={`self-center shrink-0 flex items-center justify-center w-6 h-6 rounded-full border transition-colors ${
+                picked
+                  ? 'bg-[var(--color-text)] border-[var(--color-text)] text-[var(--color-base)]'
+                  : 'border-[var(--color-border-strong)]'
+              }`}
+            >
+              {picked && <Check className="w-3.5 h-3.5" strokeWidth={2.25} />}
+            </span>
+          ) : added ? (
+            <span className="t-label-sm self-center shrink-0 flex items-center gap-1 text-[var(--color-text)]">
+              <Check className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+              Added
+            </span>
+          ) : (
+            <ArrowRight className="w-4 h-4 self-center shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
+          )}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div className="pt-4 space-y-6">
       {intro}
       {/* Search bar */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" strokeWidth={1.75} />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search exercises..."
-          className="pl-11 rounded-[var(--radius-capsule)]!"
+          className="pl-9"
         />
       </div>
 
       {/* Muscle group filter — tracked-caps chips on a hairline */}
       <div>
-        <p className="t-label px-1 mb-3">Muscle group</p>
+        <p className="t-label mb-3">Muscle group</p>
         <div
           ref={filterScrollRef}
           className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar"
@@ -203,50 +332,99 @@ function ExercisePickerContent({
           </div>
         ) : (
           <div key={selectedMuscle} className="space-y-7">
-            {groupedExercises.map(([group, groupExercises]) => (
+            {gymGroups.map(([group, groupExercises]) => (
               <section key={group}>
-                <div className="flex items-baseline justify-between px-1 mb-3">
-                  <span className="t-label">{MUSCLE_GROUP_LABELS[group]}</span>
+                <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
+                  <span className="t-heading">{MUSCLE_GROUP_LABELS[group]}</span>
                   <span className="t-data-sm text-[var(--color-muted)]">{groupExercises.length}</span>
                 </div>
-                <ul className="platter platter-flush">
-                  {groupExercises.map((exercise) => (
-                    <li key={exercise.id} className="platter-row">
-                      <button
-                        onClick={() => handleSelect(exercise)}
-                        className="pressable group w-full min-h-[52px] text-left px-5 py-3 flex items-baseline gap-3"
-                        type="button"
-                      >
-                        <span className="flex-1 min-w-0">
-                          <span className="flex items-baseline gap-2">
-                            <span className="t-body text-[var(--color-text)] break-words">
-                              {exercise.name}
-                            </span>
-                            {exercise.is_compound && (
-                              <span className="t-label-sm shrink-0 text-[var(--color-accent)]">
-                                Compound
-                              </span>
-                            )}
-                          </span>
-                          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-1">
-                            {exercise.muscle_group_secondary && (
-                              <span className="t-caption">+{MUSCLE_GROUP_LABELS[exercise.muscle_group_secondary]}</span>
-                            )}
-                            {exercise.equipment && (
-                              <span className="t-caption">{exercise.equipment}</span>
-                            )}
-                          </span>
-                        </span>
-                        <ArrowRight className="w-4 h-4 self-center shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-text)] transition-colors" strokeWidth={1.5} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <ul>{groupExercises.map(renderRow)}</ul>
               </section>
             ))}
+
+            {calisthenics.length > 0 && (
+              <section>
+                {calisthenicsForced ? (
+                  <div className="flex items-baseline justify-between pb-2 border-b border-[var(--color-border)]">
+                    <span className="t-heading">Calisthenics</span>
+                    <span className="t-data-sm text-[var(--color-muted)]">{calisthenics.length}</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="pressable w-full min-h-11 flex items-center justify-between gap-3 pb-2 border-b border-[var(--color-border)] text-left"
+                    onClick={() => setShowCalisthenics((open) => !open)}
+                    aria-expanded={calisthenicsOpen}
+                  >
+                    <span className="flex flex-col">
+                      <span className="t-heading">Calisthenics</span>
+                      {!calisthenicsOpen && (
+                        <span className="t-caption">Bodyweight skills and progressions</span>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="t-data-sm text-[var(--color-muted)]">{calisthenics.length}</span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-[var(--color-muted)] transition-transform ${calisthenicsOpen ? 'rotate-180' : ''}`}
+                        strokeWidth={1.5}
+                        aria-hidden
+                      />
+                    </span>
+                  </button>
+                )}
+                {calisthenicsOpen && <ul>{calisthenics.map(renderRow)}</ul>}
+              </section>
+            )}
           </div>
         )}
       </div>
+
+      {allowCustom && !loading && (
+        showCustom ? (
+          <CustomExerciseForm
+            initialName={searchQuery}
+            initialMuscleGroup={selectedMuscle === 'all' ? initialMuscleGroup : selectedMuscle}
+            library={library}
+            onCreate={handleCreate}
+            onCancel={() => setShowCustom(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            className="pressable studio-row-action w-full min-h-11 flex items-center justify-center gap-2 t-label hover:text-[var(--color-text)] transition-colors"
+            onClick={() => setShowCustom(true)}
+          >
+            {searchQuery.trim() ? `Create “${searchQuery.trim()}”` : 'Create a custom exercise'}
+          </button>
+        )
+      )}
+
+      {multiSelect && (
+        // Stays in reach while the list scrolls, like the program editor's bar.
+        <div
+          className="material-toolbar sticky z-20 -mx-6 rounded-t-[20px] pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          style={{ bottom: 'calc(0px - max(1.25rem, env(safe-area-inset-bottom)))' }}
+        >
+          <div className="w-full max-w-lg mx-auto px-6 py-4 space-y-2">
+            {selected.length > 0 && (
+              <p className="t-caption break-words" aria-live="polite">
+                {selected.map((exercise) => exercise.name).join(' · ')}
+              </p>
+            )}
+            <Button variant="primary" size="md" className="w-full" onClick={confirmSelection} disabled={selected.length === 0}>
+              {selected.length === 0
+                ? 'Select exercises'
+                : `Add ${selected.length} ${selected.length === 1 ? 'exercise' : 'exercises'}`}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {keepOpenOnSelect && !multiSelect && (
+        <Button variant="primary" size="md" className="w-full" onClick={onClose}>
+          {addedIds.length > 0 ? `Done · ${addedIds.length} added` : 'Done'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -259,6 +437,10 @@ export function ExercisePicker({
   title,
   excludeExerciseIds,
   intro,
+  keepOpenOnSelect,
+  onSelectMany,
+  allowCustom,
+  extraExercises,
 }: ExercisePickerProps) {
   return (
     <Modal
@@ -273,6 +455,10 @@ export function ExercisePicker({
         initialMuscleGroup={initialMuscleGroup}
         excludeExerciseIds={excludeExerciseIds}
         intro={intro}
+        keepOpenOnSelect={keepOpenOnSelect}
+        onSelectMany={onSelectMany}
+        allowCustom={allowCustom}
+        extraExercises={extraExercises}
       />
     </Modal>
   );
