@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { ArrowLeft, LogOut, Pencil, Search, Trash2 } from 'lucide-react';
+import { LogOut, Pencil, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
-import { format, formatDistanceToNowStrict } from 'date-fns';
-import { Button, Input, Modal, Screen, SelectSheet, ThemeToggle, PageTitle } from '@/components/shared';
+import { format, formatDistanceToNowStrict, isToday } from 'date-fns';
+import { Button, Input, Modal, SelectSheet } from '@/components/shared';
+import {
+  BigFigure,
+  Chevron,
+  Eyebrow,
+  HeroFigure,
+  LineButton,
+  useCommandCapsule,
+  type CommandCapsuleSpec,
+} from '@/components/metal';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
-import { useThemeStore } from '@/stores/themeStore';
+import { useThemeStore, type ThemePreference } from '@/stores/themeStore';
 import { supabase } from '@/lib/supabase';
 import { dedupeSavedMealsByName, insertSavedMeal, listSavedMealRows, retireSavedMeal } from '@/lib/savedMeals';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -159,6 +168,7 @@ export function Settings() {
   } = useAppStore();
   const theme = useThemeStore((state) => state.theme);
   const themePreference = useThemeStore((state) => state.preference);
+  const setTheme = useThemeStore((state) => state.setTheme);
   const appearanceLabel = `${themePreference === 'system' ? 'Follow system · ' : ''}${theme === 'light' ? 'Ivory' : 'Black'}`;
   const [searchParams] = useSearchParams();
 
@@ -939,12 +949,14 @@ export function Settings() {
   );
   const feedback = (
     <div aria-live="polite">
-      {healthWeightMessage && <p className="t-body mt-3">{healthWeightMessage}</p>}
+      {healthWeightMessage && <p className="you-status">{healthWeightMessage}</p>}
       {bodyWeightError && (
         <div role="alert" className="mt-3">
-          <p className="t-body">{bodyWeightError}</p>
+          <p className="you-copy">{bodyWeightError}</p>
           <Button
             variant="secondary"
+            size="sm"
+            className="mt-3"
             onClick={() => user && void refreshBodyWeightHistory(user.id)}
           >
             Retry history
@@ -954,90 +966,152 @@ export function Settings() {
     </div>
   );
 
+  // Log weight is the You screen's one primary action: it rides the command
+  // capsule on You and Body weight, and keeps its in-page entry points.
+  const latestWeightDate = latestBodyWeight ? new Date(latestBodyWeight.measured_at) : null;
+  const weighInCapsule: CommandCapsuleSpec | null =
+    (page === 'home' || page === 'weight') && !(weightLoading && !latestBodyWeight)
+      ? {
+          key: 'log-weight',
+          label: 'Log weight',
+          sublabel: latestBodyWeight && latestWeightDate
+            ? `Last ${formatWeight(latestBodyWeight.kilograms, weightUnit)} ${weightUnit} · ${isToday(latestWeightDate) ? 'today' : format(latestWeightDate, 'MMM d')}`
+            : bodyWeightError
+              ? 'History unavailable'
+              : 'First weigh-in',
+          glyph: 'plus',
+          dock: 'tabbar',
+          disabled: !user?.id,
+          onPress: () => setWeighInOpen(true),
+        }
+      : null;
+  useCommandCapsule(weighInCapsule);
+
+  const pageTitle = titles[page] || 'You';
+  const titleNote =
+    page === 'home'
+      ? profile?.display_name || 'Your personal space'
+      : page === 'meals' && !loadingSavedMeals && !mealManagerError && savedMeals.length > 0
+        ? `${savedMeals.length} saved`
+        : undefined;
+  const searchButton = (
+    <button
+      type="button"
+      className="you-search-btn"
+      aria-label="Search settings and features"
+      onClick={() => setSearchOpen(true)}
+    >
+      <Search aria-hidden="true" strokeWidth={1.75} />
+    </button>
+  );
+  const weeklyRateFigure = weeklyWeightChange ? weeklyWeightChange.slice(0, weeklyWeightChange.indexOf(' ')) : null;
+  const kcalFromMacros = Math.round(macros.protein * 4 + macros.carbs * 4 + macros.fat * 9);
+  const macroDriftPct =
+    macros.calories > 0
+      ? Math.round((Math.abs(macros.calories - kcalFromMacros) / macros.calories) * 100)
+      : 0;
+
   return (
-    <Screen className="you-settings">
+    <div className="metal-page pb-nav you-page you-settings">
       <SettingsSearch open={searchOpen} query={searchQuery} onQuery={setSearchQuery}
         onClose={() => setSearchOpen(false)} onSelect={(href) => {
           setSearchOpen(false);
           go(href);
         }} />
-      <header className="mb-5">
-        {page !== 'home' && (
-          <button type="button" onClick={() => go(backPath)} className="you-back">
-            <ArrowLeft size={18} />
-            {backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')]}
-          </button>
+      <header>
+        {page === 'home' ? (
+          <div className="you-head-row">
+            <Eyebrow>Profile &amp; settings</Eyebrow>
+            {searchButton}
+          </div>
+        ) : (
+          <div className="you-head-row is-sub">
+            <button type="button" onClick={() => go(backPath)} className="you-back">
+              <Chevron />
+              {backPath === '/settings' ? 'You' : titles[backPath.replace('/settings/', '')]}
+            </button>
+            {searchButton}
+          </div>
         )}
-        <div className="flex items-center justify-between gap-3">
-          <PageTitle ref={pageHeading} tabIndex={-1} className="outline-none" compactTitle={titles[page] || 'You'}>
-            {titles[page] || 'You'}
-          </PageTitle>
-          <button type="button" className="you-text-action flex items-center justify-center gap-2 px-2 shrink-0"
-            aria-label="Search settings and features" onClick={() => setSearchOpen(true)}>
-            <Search size={20} aria-hidden="true" /><span>Search</span>
-          </button>
-        </div>
-        {page === 'home' && (
-          <div className="flex items-center justify-between gap-3 mt-2">
-            <p className="t-body break-words min-w-0">
-              {profile?.display_name || 'Your personal space'}
-            </p>
+        <div className="you-title-row">
+          <h1 ref={pageHeading} tabIndex={-1} className="metal-title you-title">
+            <span>{pageTitle}</span>
+            {titleNote && <small className="break-words min-w-0">{titleNote}</small>}
+          </h1>
+          {page === 'home' && (
             <button
+              type="button"
               data-you-focus="profile"
-              className="you-text-action shrink-0"
+              className="metal-text-btn is-quiet"
               onClick={() => go('/settings/account')}
             >
               Edit profile
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {page === 'home' && (
         <>
-          <section className="you-weight-hero" aria-label="Body weight">
-            <div className="flex justify-between items-start gap-3">
-              <div>
-                <p className="t-label-sm">Body weight</p>
-                <p className="you-weight-value mt-2">{weightSummary}</p>
-                {latestBodyWeight && (
-                  <p className="t-caption mt-1">
-                    {format(new Date(latestBodyWeight.measured_at), 'MMM d')} ·{' '}
-                    {latestBodyWeight.source_name}
-                  </p>
+          <section aria-label="Body weight">
+            {latestBodyWeight && latestWeightDate && !bodyWeightError ? (
+              <>
+                <HeroFigure
+                  value={formatWeight(latestBodyWeight.kilograms, weightUnit)}
+                  caption={
+                    <>
+                      {weightUnit} · body weight
+                      <span className="you-hero-caption-sub">
+                        {format(latestWeightDate, 'MMM d')} · {latestBodyWeight.source_name}
+                      </span>
+                    </>
+                  }
+                />
+                {weightTrend.fittedDayCount >= 2 && (
+                  <WeightTrendChart
+                    className="you-spark"
+                    compact
+                    days={30}
+                    height={52}
+                    points={weightTrend.points}
+                    toUnit={weightToUnit}
+                    unit={weightUnit}
+                    reveal="you-weight-spark"
+                    summary={
+                      <span className="you-spark-summary">
+                        <span>30 days</span>
+                        {weeklyWeightChange && <span>{weeklyWeightChange} · 3-wk rate</span>}
+                      </span>
+                    }
+                  />
                 )}
-              </div>
+              </>
+            ) : weightLoading ? (
+              <HeroSkeleton label="Loading weight…" />
+            ) : (
+              <>
+                <p className="metal-line mt-5">{weightSummary}</p>
+                <p className="metal-note mt-1">
+                  {bodyWeightError
+                    ? 'Your previous measurements are kept. Open Body weight to retry.'
+                    : 'Log a weigh-in to start your trend. Regular weigh-ins help refine adaptive targets.'}
+                </p>
+              </>
+            )}
+            <div className="you-actions">
               <button
+                type="button"
                 data-you-focus="weight"
                 onClick={() => go('/settings/weight')}
-                className="you-text-action"
+                className="metal-text-btn is-quiet"
               >
                 Details
+                <Chevron />
               </button>
+              <LineButton plus onClick={() => setWeighInOpen(true)}>Log weight</LineButton>
             </div>
-            {weightTrend.fittedDayCount >= 2 && (
-              <WeightTrendChart
-                className="mt-3"
-                compact
-                days={30}
-                height={52}
-                points={weightTrend.points}
-                toUnit={weightToUnit}
-                unit={weightUnit}
-                reveal="you-weight-spark"
-                summary={
-                  <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
-                    <span>30 days</span>
-                    {weeklyWeightChange && <span>{weeklyWeightChange} · 3-wk rate</span>}
-                  </span>
-                }
-              />
-            )}
-            <Button className="mt-4 w-full" onClick={() => setWeighInOpen(true)}>
-              Log weight
-            </Button>
             {healthWeightMessage && (
-              <p role="status" className="t-body mt-3">
+              <p role="status" className="you-status">
                 {healthWeightMessage}
               </p>
             )}
@@ -1083,7 +1157,7 @@ export function Settings() {
               onClick={() => go('/train/run')}
             />
           </SettingsSection>
-          <div className="mt-4">
+          <div className="you-group">
             <SettingsRow
               title="Account"
               description="Profile and sign-out"
@@ -1099,107 +1173,152 @@ export function Settings() {
       )}
       {page === 'account' && (
         <>
-          <Input
-            id="search-display-name"
-            label="Display name"
-            value={displayName}
-            onChange={(e) => {
-              clearNameFeedback();
-              setDisplayNameDraft(e.target.value);
-            }}
-            placeholder="Your name"
-          />
+          <div className="mt-6">
+            <Input
+              id="search-display-name"
+              label="Display name"
+              value={displayName}
+              onChange={(e) => {
+                clearNameFeedback();
+                setDisplayNameDraft(e.target.value);
+              }}
+              placeholder="Your name"
+            />
+          </div>
           {displayNameChanged && (
             <Button className="w-full mt-5" onClick={handleSaveDisplayName} loading={savingName}>
               Save name
             </Button>
           )}
           {nameMessage && (
-            <p role="status" className="mt-4 t-body">
+            <p role="status" className="you-status">
               {nameMessage}
             </p>
           )}
           {nameError && (
-            <p role="alert" className="mt-4 t-body">
+            <p role="alert" className="you-status is-error">
               {nameError}
             </p>
           )}
 
           <div id="search-sign-out" tabIndex={-1}>
             <SettingsSection label="Sign out">
-              <p className="t-body mb-3">Sign out of your account on this device.</p>
-              <Button variant="danger" disabled={busy} onClick={handleSignOut}>
-                <LogOut size={16} />
+              <p className="you-copy mt-1">Sign out of your account on this device.</p>
+              <Button variant="danger" className="mt-4" disabled={busy} onClick={handleSignOut}>
+                <LogOut size={15} strokeWidth={1.75} aria-hidden="true" />
                 Sign out
               </Button>
             </SettingsSection>
           </div>
         </>
       )}
-      {page === 'training' && <div id="search-adaptive-scheduling" tabIndex={-1}><AdaptiveSplitSchedulingSetting /></div>}
+      {page === 'training' && (
+        <div id="search-adaptive-scheduling" tabIndex={-1} className="mt-5">
+          <AdaptiveSplitSchedulingSetting />
+        </div>
+      )}
       {page === 'appearance' && (
         <>
-          <p className="t-body mb-5">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>{' '}
-          <div id="search-appearance" className="flex flex-col items-start gap-4">
-            <div>
-              <p className="t-heading">Theme</p>
-              <p className="t-caption mt-1">{appearanceLabel}</p>
-            </div>
-            <ThemeToggle />
+          <p className="you-copy">Follow your phone’s light or dark mode, or choose an appearance to always use.</p>
+          <div id="search-appearance">
+            <SettingsSection label="Theme" right={appearanceLabel}>
+              <div role="group" aria-label="Theme">
+                {THEME_CHOICES.map((choice) => {
+                  const active = themePreference === choice.mode;
+                  return (
+                    <button
+                      key={choice.mode}
+                      type="button"
+                      aria-pressed={active}
+                      aria-label={choice.ariaLabel}
+                      onClick={() => {
+                        if (!active) tapHaptic();
+                        setTheme(choice.mode);
+                      }}
+                      className="metal-row you-row justify-start"
+                    >
+                      <span className={`you-swatch is-${choice.swatch}`} aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="metal-row-title">{choice.label}</span>
+                        <span className="metal-row-detail">{choice.detail}</span>
+                      </span>
+                      {active && <CheckMark />}
+                    </button>
+                  );
+                })}
+              </div>
+            </SettingsSection>
           </div>
         </>
       )}
       {page === 'targets' && (
         <>
-          <p className="t-body mb-4">
-            {targetLoadState === 'loading' && !macroTarget
-              ? 'Loading targets…'
-              : macroTarget
-                ? `Saved targets · ${modeLabel}`
-                : 'Starting defaults — not saved'}
-          </p>
-          {targetLoadState === 'error' && (
-            <div role="alert">
-              <p>Could not load targets. Any previously loaded values are kept.</p>
-              <Button variant="secondary" onClick={() => void loadTargets()}>
-                Retry targets
-              </Button>
-            </div>
-          )}
-          <dl className="you-target-grid">
-            {[
-              { label: 'Calories', value: baseMacros.calories, unit: 'kcal' },
-              { label: 'Protein', value: baseMacros.protein, unit: 'g' },
-              { label: 'Carbs', value: baseMacros.carbs, unit: 'g' },
-              { label: 'Fat', value: baseMacros.fat, unit: 'g' },
-            ].map((item) => (
-              <div key={item.label}>
-                <dt className="t-body">{item.label}</dt>
-                <dd>
-                  <span className="you-target-value">{item.value.toLocaleString()}</span>{' '}
-                  <span className="t-caption">{item.unit}</span>
-                </dd>
+          <section aria-label="Daily targets">
+            {targetLoadState === 'loading' && !macroTarget ? (
+              <HeroSkeleton />
+            ) : (
+              <HeroFigure
+                value={baseMacros.calories.toLocaleString()}
+                caption="kcal a day"
+              />
+            )}
+            {targetLoadState === 'error' && (
+              <div role="alert" className="mt-4">
+                <p className="metal-flag mt-0">Could not load targets. Any previously loaded values are kept.</p>
+                <Button variant="secondary" size="sm" className="mt-3" onClick={() => void loadTargets()}>
+                  Retry targets
+                </Button>
               </div>
-            ))}
-          </dl>
-          <Button
-            data-you-focus="edit-targets"
-            className="w-full mt-5"
-            disabled={targetLoadState !== 'ready'}
-            onClick={() => go('/settings/targets/edit')}
-          >
-            {macrosChanged ? 'Continue editing targets' : 'Edit targets'}
-          </Button>
-          {macroMessage && (
-            <p role="status" className="t-body mt-3">
-              {macroMessage}
-            </p>
-          )}
-          {macroError && (
-            <p role="alert" className="t-body mt-3">
-              {macroError}
-            </p>
-          )}
+            )}
+            {!(targetLoadState === 'loading' && !macroTarget) && (
+              <dl className="mt-6">
+                {[
+                  { label: 'Protein', value: baseMacros.protein, unit: 'g' },
+                  { label: 'Carbs', value: baseMacros.carbs, unit: 'g' },
+                  { label: 'Fat', value: baseMacros.fat, unit: 'g' },
+                ].map((item) => (
+                  <div key={item.label} className="metal-row you-figure-row">
+                    <dt>{item.label}</dt>
+                    <dd className="you-figure-value">
+                      <span className="metal-num">{item.value.toLocaleString()}</span>
+                      <span className="metal-unit">{item.unit}</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            <div className="you-actions">
+              <p className="text-[13.5px] leading-snug text-[var(--metal-ink-2)] min-w-0">
+                {targetLoadState === 'loading' && !macroTarget
+                  ? 'Loading targets…'
+                  : macroTarget
+                    ? `Saved targets · ${modeLabel}`
+                    : 'Starting defaults — not saved'}
+              </p>
+              <button
+                type="button"
+                data-you-focus="edit-targets"
+                className="metal-line-btn you-line-btn"
+                disabled={targetLoadState !== 'ready'}
+                onClick={() => {
+                  tapHaptic();
+                  go('/settings/targets/edit');
+                }}
+              >
+                {macrosChanged ? 'Continue editing targets' : 'Edit targets'}
+              </button>
+            </div>
+            {macroMessage && (
+              <p role="status" className="you-status">
+                {macroMessage}
+              </p>
+            )}
+            {macroError && (
+              <p role="alert" className="you-status is-error">
+                {macroError}
+              </p>
+            )}
+          </section>
           <SettingsSection label="Guidance">
             <SettingsRow
               title="Calculate targets"
@@ -1214,14 +1333,11 @@ export function Settings() {
           </SettingsSection>
           {nutritionProfile && (
             <SettingsSection label="Automatic adjustments">
-              <p className="t-body">
-                Estimated daily burn{' '}
-                <strong>
-                  {expenditureDisplay.value}
-                  {expenditureDisplay.value !== '—' ? ' kcal' : ''}
-                </strong>
-              </p>
-              <p className="t-caption mt-1">
+              <p className="you-copy mt-1">Estimated daily burn</p>
+              <BigFigure unit={expenditureDisplay.value !== '—' ? 'kcal a day' : undefined}>
+                {expenditureDisplay.value}
+              </BigFigure>
+              <p className="you-copy mt-2 mb-4">
                 {nutritionProfile.expenditure_confidence === 'measured'
                   ? 'Inferred from logs and weight trend'
                   : nutritionProfile.expenditure_confidence === 'learning'
@@ -1234,12 +1350,14 @@ export function Settings() {
               />
               {baseMacros.source === 'manual' && (
                 <>
-                  <p className="t-body my-3">
+                  <p className="you-copy mt-4">
                     Manual targets stay fixed. Resume automatic management to request a
                     recalculation when enough data is available.
                   </p>
                   <Button
                     variant="secondary"
+                    size="sm"
+                    className="mt-4"
                     loading={resumingAdaptive}
                     onClick={() =>
                       macrosChanged
@@ -1260,41 +1378,43 @@ export function Settings() {
       )}
       {page === 'targets/adaptation' && (
         <>
-          <p className="t-body">{expenditureDisplay.explanation}</p>
-          <p className="t-body mt-4">
+          <p className="you-copy is-ink mt-4">{expenditureDisplay.explanation}</p>
+          <p className="you-copy mt-4">
             These values are estimates, not direct measurements. Automatic targets use your saved
             nutrition profile, food logs and weight trend. Manual targets stay fixed until you
             resume automatic management.
           </p>
-          <SettingsRow
-            title="Body weight"
-            description="Record a weigh-in or review your trend"
-            onClick={() => go('/settings/weight')}
-          />
+          <div className="you-group">
+            <SettingsRow
+              title="Body weight"
+              description="Record a weigh-in or review your trend"
+              onClick={() => go('/settings/weight')}
+            />
+          </div>
         </>
       )}
       {page === 'targets/edit' && (
         <>
           {targetLoadState !== 'ready' && (
-            <p role="status" className="t-body">
+            <p role="status" className="you-copy">
               {targetLoadState === 'loading'
                 ? targetSummary
                 : 'Targets could not be loaded. Return to Nutrition targets to retry.'}
             </p>
           )}
-          <p className="t-body">
+          <p className="you-copy is-ink">
             {macrosChanged
               ? 'Unsaved targets'
               : macroTarget
                 ? 'Edit your saved daily targets.'
                 : 'Starting defaults — save to make these your targets.'}
           </p>
-          <p className="t-body mt-2">
+          <p className="you-copy mt-1">
             {macros.source === 'manual'
               ? 'Saving sets manual targets. They stay fixed until you resume adaptive targets.'
               : 'Calculated targets can adapt when automatic adjustments are enabled.'}
           </p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-4">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-5 mt-6">
             <Input
               id="search-calories"
               label="Calories"
@@ -1333,24 +1453,18 @@ export function Settings() {
             />
           </div>
 
-          {(() => {
-            const kcalFromMacros = Math.round(
-              macros.protein * 4 + macros.carbs * 4 + macros.fat * 9,
-            );
-            const driftPct =
-              macros.calories > 0
-                ? Math.round((Math.abs(macros.calories - kcalFromMacros) / macros.calories) * 100)
-                : 0;
-            return driftPct > 5 ? (
-              <p className="t-caption mt-3 text-[var(--color-accent)]">
-                These macros total {kcalFromMacros.toLocaleString()} kcal; your calorie target is{' '}
+          {macroDriftPct > 5 && (
+            <p className="metal-flag mt-4">
+              <span>
+                These macros total <b>{kcalFromMacros.toLocaleString()} kcal</b>; your calorie target is{' '}
                 {macros.calories.toLocaleString()} kcal. Review the values before saving.
-              </p>
-            ) : null;
-          })()}
+              </span>
+            </p>
+          )}
 
           {(macrosChanged || !macroTarget) && (
             <Button
+              size="lg"
               className="w-full mt-6"
               onClick={handleSaveMacros}
               loading={savingMacros}
@@ -1360,40 +1474,42 @@ export function Settings() {
             </Button>
           )}
           {macroMessage && (
-            <p role="status" className="mt-4 t-body">
+            <p role="status" className="you-status">
               {macroMessage}
             </p>
           )}
           {macroError && (
-            <p role="alert" className="mt-4 t-body">
+            <p role="alert" className="you-status is-error">
               {macroError}
             </p>
           )}
 
           {coachRecommendation && macros.source === 'manual' && (
-            <section className="mt-5">
-              <h2 className="t-heading">Latest coach suggestion</h2>
+            <section className="metal-section">
+              <div className="metal-section-head">
+                <h2 className="metal-eyebrow">Latest coach suggestion</h2>
+              </div>
               {pendingTargets?.source === 'manual' && (
-                <p className="t-body mt-2">
+                <p className="you-copy is-ink mt-1">
                   These suggestions have not replaced your current draft.
                 </p>
               )}
-              <p className="t-body mt-2">{coachRecommendation.rationale}</p>
+              <p className="you-copy is-ink mt-2">{coachRecommendation.rationale}</p>
               {coachRecommendation.cautions && (
-                <p className="t-body mt-2">{coachRecommendation.cautions}</p>
+                <p className="metal-flag mt-3"><span>{coachRecommendation.cautions}</span></p>
               )}
-              <p className="t-caption mt-2">Not medical advice.</p>
+              <p className="you-copy mt-3">Not medical advice.</p>
             </section>
           )}
           {pendingTargets && (
-            <Button className="mt-4" variant="secondary" onClick={() => setReplacementOpen(true)}>
+            <Button className="mt-4" variant="secondary" size="sm" onClick={() => setReplacementOpen(true)}>
               Review new suggestions
             </Button>
           )}
         </>
       )}
       {(calculatorVisited || page === 'targets/calculate') && (
-        <div hidden={page !== 'targets/calculate'}>
+        <div hidden={page !== 'targets/calculate'} className="mt-5">
           <NutritionWizard
             key={calculatorKey}
             onDraftChange={setCalculatorDirty}
@@ -1407,7 +1523,7 @@ export function Settings() {
         </div>
       )}
       {(coachVisited || page === 'targets/coach') && (
-        <div hidden={page !== 'targets/coach'}>
+        <div hidden={page !== 'targets/coach'} className="mt-4">
           <GoalsCoach
             key={coachKey}
             profile={nutritionProfile}
@@ -1423,154 +1539,147 @@ export function Settings() {
         </div>
       )}
       {page === 'meals' && (
-        <>
-          {' '}
-          <div className="pt-1 pb-2">
-            {mealManagerMessage && (
-              <p role="status" className="mb-4 t-body">
-                {mealManagerMessage}
-              </p>
-            )}
-            {mealManagerError && (
-              <div role="alert">
-                <p className="mb-4 t-body">{mealManagerError}</p>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    clearMealManagerFeedback();
-                    void fetchSavedMeals();
-                  }}
-                >
-                  Retry meals
-                </Button>
-              </div>
-            )}
+        <div className="mt-5">
+          {mealManagerMessage && (
+            <p role="status" className="you-status mt-0 mb-4">
+              {mealManagerMessage}
+            </p>
+          )}
+          {mealManagerError && (
+            <div role="alert" className="mb-5">
+              <p className="metal-flag mt-0">{mealManagerError}</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  clearMealManagerFeedback();
+                  void fetchSavedMeals();
+                }}
+              >
+                Retry meals
+              </Button>
+            </div>
+          )}
 
-            {loadingSavedMeals ? (
-              <div className="space-y-px">
-                <div className="h-[64px] shimmer" />
-                <div className="h-[64px] shimmer" />
-                <div className="h-[64px] shimmer" />
-              </div>
-            ) : savedMeals.length === 0 ? (
-              <p className="text-editorial py-8">
-                Meals you save from the food logger will appear here.
-              </p>
-            ) : (
-              <ul>
-                {savedMeals.map((meal) => (
-                  <li
-                    key={meal.id}
-                    className="py-4 border-t border-[var(--color-border)] first:border-t-0"
-                  >
-                    {editingMealId === meal.id ? (
-                      <div className="space-y-5">
+          {loadingSavedMeals ? (
+            <div aria-hidden>
+              <div className="h-[56px] shimmer mt-px" />
+              <div className="h-[56px] shimmer mt-px" />
+              <div className="h-[56px] shimmer mt-px" />
+            </div>
+          ) : savedMeals.length === 0 ? (
+            <p className="metal-note mt-0">
+              Meals you save from the food logger will appear here.
+            </p>
+          ) : (
+            <ul className="metal-list">
+              {savedMeals.map((meal) => (
+                <li key={meal.id}>
+                  {editingMealId === meal.id ? (
+                    <div className="you-meal-edit space-y-5">
+                      <Input
+                        label="Meal name"
+                        value={editingMealDraft.name}
+                        onChange={(e) =>
+                          setEditingMealDraft({ ...editingMealDraft, name: e.target.value })
+                        }
+                      />
+                      <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                         <Input
-                          label="Meal name"
-                          value={editingMealDraft.name}
+                          label="Calories"
+                          type="number"
+                          value={editingMealDraft.calories}
                           onChange={(e) =>
-                            setEditingMealDraft({ ...editingMealDraft, name: e.target.value })
+                            setEditingMealDraft({ ...editingMealDraft, calories: e.target.value })
                           }
                         />
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-                          <Input
-                            label="Calories"
-                            type="number"
-                            value={editingMealDraft.calories}
-                            onChange={(e) =>
-                              setEditingMealDraft({ ...editingMealDraft, calories: e.target.value })
-                            }
-                          />
-                          <Input
-                            label="Protein (g)"
-                            type="number"
-                            value={editingMealDraft.protein}
-                            onChange={(e) =>
-                              setEditingMealDraft({ ...editingMealDraft, protein: e.target.value })
-                            }
-                          />
-                          <Input
-                            label="Carbs (g)"
-                            type="number"
-                            value={editingMealDraft.carbs}
-                            onChange={(e) =>
-                              setEditingMealDraft({ ...editingMealDraft, carbs: e.target.value })
-                            }
-                          />
-                          <Input
-                            label="Fat (g)"
-                            type="number"
-                            value={editingMealDraft.fat}
-                            onChange={(e) =>
-                              setEditingMealDraft({ ...editingMealDraft, fat: e.target.value })
-                            }
-                          />
-                        </div>
+                        <Input
+                          label="Protein (g)"
+                          type="number"
+                          value={editingMealDraft.protein}
+                          onChange={(e) =>
+                            setEditingMealDraft({ ...editingMealDraft, protein: e.target.value })
+                          }
+                        />
+                        <Input
+                          label="Carbs (g)"
+                          type="number"
+                          value={editingMealDraft.carbs}
+                          onChange={(e) =>
+                            setEditingMealDraft({ ...editingMealDraft, carbs: e.target.value })
+                          }
+                        />
+                        <Input
+                          label="Fat (g)"
+                          type="number"
+                          value={editingMealDraft.fat}
+                          onChange={(e) =>
+                            setEditingMealDraft({ ...editingMealDraft, fat: e.target.value })
+                          }
+                        />
+                      </div>
 
-                        <div className="flex gap-3 pt-1">
-                          <Button
-                            className="flex-1"
-                            onClick={saveMealEdit}
-                            loading={savingMealEdit}
-                            disabled={savingMealEdit}
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="flex-1"
-                            onClick={() => setDiscardAction(() => () => setEditingMealId(null))}
-                            disabled={savingMealEdit}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
+                      <div className="flex gap-3 pt-1">
+                        <Button
+                          className="flex-1"
+                          onClick={saveMealEdit}
+                          loading={savingMealEdit}
+                          disabled={savingMealEdit}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="flex-1"
+                          onClick={() => setDiscardAction(() => () => setEditingMealId(null))}
+                          disabled={savingMealEdit}
+                        >
+                          Cancel
+                        </Button>
                       </div>
-                    ) : (
-                      <div className="flex min-w-0 items-stretch justify-between overflow-hidden">
-                        <div className="min-w-0">
-                          <p className="t-heading break-words pr-2 normal-case tracking-normal text-[var(--color-text)]">
-                            {meal.name}
-                          </p>
-                          <p className="t-data-sm mt-1.5 break-words pr-2 leading-5 text-[var(--color-muted)]">
-                            {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C{' '}
-                            {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-stretch">
-                          <button
-                            type="button"
-                            disabled={savingMealEdit}
-                            onClick={() => beginEditingMeal(meal)}
-                            className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
-                            aria-label={`Edit saved meal ${meal.name}`}
-                          >
-                            <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={savingMealEdit}
-                            onClick={() => removeSavedMeal(meal)}
-                            className="pressable flex min-h-11 w-11 items-center justify-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-accent)]"
-                            aria-label={`Delete saved meal ${meal.name}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
-                          </button>
-                        </div>
+                    </div>
+                  ) : (
+                    <div className="metal-row you-row pr-0 overflow-hidden">
+                      <div className="min-w-0 flex-1">
+                        <p className="metal-row-title break-words">{meal.name}</p>
+                        <p className="metal-row-detail break-words tabular-nums">
+                          {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)} · C{' '}
+                          {Math.round(meal.carbs)} · F {Math.round(meal.fat)}
+                        </p>
                       </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
+                      <div className="flex shrink-0 items-stretch -my-3 -mr-2">
+                        <button
+                          type="button"
+                          disabled={savingMealEdit}
+                          onClick={() => beginEditingMeal(meal)}
+                          className="you-icon-btn"
+                          aria-label={`Edit saved meal ${meal.name}`}
+                        >
+                          <Pencil strokeWidth={1.6} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingMealEdit}
+                          onClick={() => removeSavedMeal(meal)}
+                          className="you-icon-btn is-danger"
+                          aria-label={`Delete saved meal ${meal.name}`}
+                        >
+                          <Trash2 strokeWidth={1.6} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {page === 'analysis' && (
         <>
-          {' '}
-          <div id="search-analysis-mode" className="space-y-4 mb-6">
-            <label className="t-body block mb-2" id="analysis-method-label">
+          <div id="search-analysis-mode" className="mt-6">
+            <label className="you-field-label" id="analysis-method-label">
               Meal analysis method
             </label>
             <SelectSheet
@@ -1598,93 +1707,95 @@ export function Settings() {
             />
             {foodAnalysisMode === 'gemini' && (
               <>
-                <p className="t-caption">
+                <p className="you-copy mt-4">
                   Gemini interprets your meal; Tavily looks up nutrition sources when needed. Adjust
                   the result before saving. Daily request limits help control API costs.
                 </p>
                 <Button
                   variant="secondary"
-                  className="w-full"
+                  size="sm"
+                  className="mt-4"
                   loading={foodTrialBusy}
                   onClick={() => void handleFoodTrialStatus()}
                 >
                   Check analysis usage
                 </Button>
                 {foodTrialMessage && (
-                  <p className="t-caption" role="status">
+                  <p className="you-status" role="status">
                     {foodTrialMessage}
                   </p>
                 )}
               </>
             )}
           </div>
-          <SettingsRow
-            title="Mac worker setup"
-            description="Connection and photo provider · also used by the coach"
-            onClick={() => go('/settings/analysis/worker')}
-          />
+          <div className="you-group">
+            <SettingsRow
+              title="Mac worker setup"
+              description="Connection and photo provider · also used by the coach"
+              onClick={() => go('/settings/analysis/worker')}
+            />
+          </div>
         </>
       )}
       {page === 'analysis/worker' && (
         <>
-          {' '}
-          <p className="t-heading">Your Mac</p>
-          <p className="t-caption mt-1 mb-5">
+          <p className="you-copy">
             This connection also runs target suggestions, even when meals use hosted analysis. Uses
             your local Codex or Claude login. On a phone, enter the worker’s Tailscale HTTPS URL.
           </p>
-          <div className="space-y-4">
-            <Input
-              id="search-worker-url"
-              label="Worker URL"
-              value={photoWorkerDraft.url}
-              onChange={(event) =>
-                setPhotoWorkerDraft((current) => ({ ...current, url: event.target.value }))
-              }
-              placeholder="http://127.0.0.1:8788"
-            />
-            <div id="search-analysis-provider">
-            <label id="photo-provider-label" className="t-body block">
-              Photo-analysis provider
-            </label>
-            <SelectSheet
-              ariaLabelledBy="photo-provider-label"
-              title="Photo-analysis provider"
-              value={photoWorkerDraft.provider}
-              onChange={(provider) => setPhotoWorkerDraft((current) => ({ ...current, provider }))}
-              options={[
-                {
-                  value: 'openai',
-                  label: 'OpenAI Codex',
-                  description: 'Uses your local ChatGPT/Codex subscription login.',
-                },
-                {
-                  value: 'anthropic',
-                  label: 'Anthropic Claude',
-                  description:
-                    'Local experimental connector; never use consumer credentials for other users.',
-                },
-              ]}
-            />
+          <SettingsSection label="Your Mac">
+            <div className="space-y-5 mt-2">
+              <Input
+                id="search-worker-url"
+                label="Worker URL"
+                value={photoWorkerDraft.url}
+                onChange={(event) =>
+                  setPhotoWorkerDraft((current) => ({ ...current, url: event.target.value }))
+                }
+                placeholder="http://127.0.0.1:8788"
+              />
+              <div id="search-analysis-provider">
+                <label id="photo-provider-label" className="t-label block mb-2">
+                  Photo-analysis provider
+                </label>
+                <SelectSheet
+                  ariaLabelledBy="photo-provider-label"
+                  title="Photo-analysis provider"
+                  value={photoWorkerDraft.provider}
+                  onChange={(provider) => setPhotoWorkerDraft((current) => ({ ...current, provider }))}
+                  options={[
+                    {
+                      value: 'openai',
+                      label: 'OpenAI Codex',
+                      description: 'Uses your local ChatGPT/Codex subscription login.',
+                    },
+                    {
+                      value: 'anthropic',
+                      label: 'Anthropic Claude',
+                      description:
+                        'Local experimental connector; never use consumer credentials for other users.',
+                    },
+                  ]}
+                />
+              </div>
+              <Button
+                className="w-full"
+                loading={photoWorkerBusy}
+                onClick={() => void handlePhotoWorkerSave()}
+              >
+                Save & test connection
+              </Button>
+              {photoWorkerMessage && (
+                <p role="status" className="you-status">
+                  {photoWorkerMessage}
+                </p>
+              )}
             </div>
-            <Button
-              variant="secondary"
-              className="w-full"
-              loading={photoWorkerBusy}
-              onClick={() => void handlePhotoWorkerSave()}
-            >
-              Save & test connection
-            </Button>
-            {photoWorkerMessage && (
-              <p role="status" className="t-body">
-                {photoWorkerMessage}
-              </p>
-            )}
-          </div>
+          </SettingsSection>
         </>
       )}
       {page === 'connections' && (
-        <>
+        <div className="mt-5">
           <SettingsRow
             title="WHOOP"
             description={whoopStatusLabel}
@@ -1699,27 +1810,22 @@ export function Settings() {
               onClick={() => go('/settings/connections/health')}
             />
           ) : (
-            <p className="t-body mt-5">
+            <p className="you-copy metal-rule pt-4 mt-0">
               Apple Health weight sync is available in the iPhone app. You can log weight manually
               here.
             </p>
           )}
-        </>
+        </div>
       )}
       {page === 'connections/whoop' && (
         <>
-          {' '}
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="t-heading">WHOOP</p>
-              <p className="t-caption mt-1" aria-live="polite">
-                {whoopStatusLabel}
-              </p>
-            </div>
+          <p className="metal-line mt-4" aria-live="polite">
+            {whoopStatusLabel}
+          </p>
+          <div className="flex flex-wrap gap-3 mt-5">
             {whoopConnection ? (
-              <div className="grid grid-cols-2 gap-2 w-full">
+              <>
                 <Button
-                  className="w-full"
                   variant="secondary"
                   size="sm"
                   loading={whoopAction === 'sync'}
@@ -1731,7 +1837,6 @@ export function Settings() {
                   Sync now
                 </Button>
                 <Button
-                  className="w-full"
                   variant="ghost"
                   size="sm"
                   loading={whoopAction === 'disconnect'}
@@ -1742,12 +1847,10 @@ export function Settings() {
                 >
                   Disconnect
                 </Button>
-              </div>
+              </>
             ) : (
               <Button
                 className="w-full"
-                variant="secondary"
-                size="sm"
                 loading={whoopAction === 'connect'}
                 disabled={whoopAction !== null}
                 onClick={() => {
@@ -1759,164 +1862,186 @@ export function Settings() {
             )}
           </div>
           <div aria-live="polite">
-            {whoopMessage && <p className="t-caption mt-3">{whoopMessage}</p>}
-            {whoopError && (
-              <p className="t-caption mt-3 text-[var(--color-accent)]">{whoopError}</p>
-            )}
+            {whoopMessage && <p className="you-status">{whoopMessage}</p>}
+            {whoopError && <p className="you-status is-error">{whoopError}</p>}
           </div>
         </>
       )}
       {page === 'connections/health' && (
         <>
-          <p className="t-body mb-4">
+          <p className="you-copy">
             Import body-weight measurements from Apple Health. Stopping automatic sync keeps
             measurements already imported.
           </p>
           {isNativeIOS() ? (
-            <>
+            <div className="flex flex-wrap items-center gap-3 mt-5">
               <Button loading={healthWeightBusy} onClick={() => void handleHealthWeightSync()}>
                 {healthWeightEnabled ? 'Sync now' : 'Connect Apple Health'}
-              </Button>{' '}
-              {isNativeIOS() && healthWeightEnabled && (
-                <button
-                  type="button"
-                  onClick={handleDisableHealthWeightSync}
-                  className="mt-3 t-label-sm text-[var(--color-muted)] border-b border-[var(--color-border-strong)]"
-                >
+              </Button>
+              {healthWeightEnabled && (
+                <Button variant="ghost" size="sm" onClick={handleDisableHealthWeightSync}>
                   Stop automatic sync
-                </button>
+                </Button>
               )}
-            </>
+            </div>
           ) : (
-            <p className="t-body">Open the iPhone app to connect Apple Health.</p>
+            <p className="metal-line mt-4">Open the iPhone app to connect Apple Health.</p>
           )}
           {feedback}
         </>
       )}
       {page === 'weight' && (
         <>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <Button id="search-log-weight" onClick={() => setWeighInOpen(true)}>Log weight</Button>
+          {latestBodyWeight && latestWeightDate ? (
+            <section aria-label="Latest weigh-in">
+              <HeroFigure
+                value={formatWeight(latestBodyWeight.kilograms, weightUnit)}
+                caption={
+                  <>
+                    {weightUnit} · {format(latestWeightDate, 'MMM d')}
+                    <span className="you-hero-caption-sub">
+                      {format(latestWeightDate, 'h:mm a')} · {latestBodyWeight.source_name}
+                    </span>
+                  </>
+                }
+              />
+              {(weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2) || weeklyWeightChange ? (
+                <dl className="metal-rails">
+                  {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
+                    <div>
+                      <dt className="metal-rail-label">Trend</dt>
+                      <dd className="you-figure-value mt-1">
+                        <span className="metal-num">{formatWeight(weightTrend.latestEwmaKg, weightUnit)}</span>
+                        <span className="metal-unit">{weightUnit}</span>
+                      </dd>
+                    </div>
+                  )}
+                  {weeklyWeightChange && (
+                    <div>
+                      <dt className="metal-rail-label">3-week rate</dt>
+                      <dd className="you-figure-value mt-1">
+                        <span className="metal-num">{weeklyRateFigure}</span>
+                        <span className="metal-unit">{weightUnit}/wk</span>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              ) : null}
+              {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
+                <p className="you-copy">
+                  Trend smoothed over {weightTrend.observedDayCount} weigh-in
+                  {weightTrend.observedDayCount === 1 ? '' : 's'}.
+                </p>
+              )}
+              {weightTrend.fittedDayCount >= 2 && (
+                <WeightTrendChart
+                  className="mt-6"
+                  days={90}
+                  height={168}
+                  points={weightTrend.points}
+                  toUnit={weightToUnit}
+                  unit={weightUnit}
+                  reveal="you-weight-trend"
+                  summary={
+                    <span className="you-spark-summary w-full">
+                      <span>Drag to read any day</span>
+                      {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
+                    </span>
+                  }
+                />
+              )}
+            </section>
+          ) : weightLoading ? (
+            <HeroSkeleton label="Loading weight history…" />
+          ) : (
+            <p className="metal-note mt-5">
+              {bodyWeightError
+                ? bodyWeightError
+                : 'Record your first weight. If adaptive targets are enabled, regular weigh-ins help refine them.'}
+            </p>
+          )}
+          <div className="you-actions">
             <button
+              type="button"
               id="search-weight-units"
-              className="you-text-action"
+              className="metal-text-btn is-quiet"
               aria-label={`Show weight in ${weightUnit === 'lb' ? 'kilograms' : 'pounds'}`}
               onClick={handleToggleWeightUnit}
             >
               {weightUnit === 'lb' ? 'lb / kg' : 'kg / lb'}
             </button>
+            <button
+              type="button"
+              id="search-log-weight"
+              className="metal-line-btn"
+              onClick={() => {
+                tapHaptic();
+                setWeighInOpen(true);
+              }}
+            >
+              <PlusGlyph />
+              Log weight
+            </button>
           </div>
-          {weightLoading ? (
-            <p role="status">Loading weight history…</p>
-          ) : (
-            <>
-              {' '}
-              {latestBodyWeight ? (
-                <div className="mt-4">
-                  <div className="flex items-baseline gap-2">
-                    <span className="number-medium text-[var(--color-text)]">
-                      {formatWeight(latestBodyWeight.kilograms, weightUnit)}
-                    </span>
-                    <span className="t-caption text-[var(--color-text-dim)]">{weightUnit}</span>
-                    {weeklyWeightChange && (
-                      <span className="t-data-sm text-[var(--color-text-dim)]">
-                        {weeklyWeightChange} · 3-wk rate
-                      </span>
-                    )}
-                  </div>
-                  <p className="t-caption mt-1.5">
-                    {format(new Date(latestBodyWeight.measured_at), 'MMM d · h:mm a')} ·{' '}
-                    {latestBodyWeight.source_name}
-                  </p>
-                  {weightTrend.latestEwmaKg !== null && weightTrend.fittedDayCount >= 2 && (
-                    <p className="t-caption mt-1">
-                      Trend {formatWeight(weightTrend.latestEwmaKg, weightUnit)} {weightUnit} ·
-                      smoothed over {weightTrend.observedDayCount} weigh-in
-                      {weightTrend.observedDayCount === 1 ? '' : 's'}
-                    </p>
-                  )}
-                  {weightTrend.fittedDayCount >= 2 && (
-                    <WeightTrendChart
-                      className="mt-5"
-                      days={90}
-                      height={168}
-                      points={weightTrend.points}
-                      toUnit={weightToUnit}
-                      unit={weightUnit}
-                      reveal="you-weight-trend"
-                      summary={
-                        <span className="flex justify-between gap-3 text-[var(--color-text-dim)]">
-                          <span>Drag to read any day</span>
-                          {weeklyWeightChange && <span>{weeklyWeightChange}</span>}
-                        </span>
-                      }
-                    />
-                  )}
-                  {bodyWeightHistory.length > 1 && (
-                    <ul className="mt-4 border-t border-[var(--color-border)]">
-                      {bodyWeightHistory.slice(1, 6).map((entry) => (
-                        <li
-                          key={entry.id}
-                          className="flex items-baseline justify-between gap-4 py-2 border-b border-[var(--color-border)]"
-                        >
-                          <span className="t-caption">
-                            {format(new Date(entry.measured_at), 'MMM d')}
-                          </span>
-                          <span className="t-data-sm text-[var(--color-text)]">
-                            {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <p className="t-caption mt-3">
-                  {bodyWeightError
-                    ? bodyWeightError
-                    : 'Record your first weight. If adaptive targets are enabled, regular weigh-ins help refine them.'}
-                </p>
-              )}
-            </>
-          )}
           {feedback}
+          {!weightLoading && bodyWeightHistory.length > 1 && (
+            <SettingsSection label="Recent weigh-ins">
+              <ul className="metal-list">
+                {bodyWeightHistory.slice(1, 6).map((entry) => (
+                  <li key={entry.id} className="metal-row min-h-11 py-2.5">
+                    <span className="metal-row-value text-[13.5px]">
+                      {format(new Date(entry.measured_at), 'MMM d')}
+                    </span>
+                    <span className="text-[15px] text-[var(--metal-ink)] tabular-nums">
+                      {formatWeight(entry.kilograms, weightUnit)} {weightUnit}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </SettingsSection>
+          )}
           {isNativeIOS() && (
-            <SettingsRow
-              title="Apple Health sync"
-              description={
-                healthWeightEnabled ? 'Automatic sync on' : 'Connect your weight measurements'
-              }
-              onClick={() => go('/settings/connections/health')}
-            />
+            <div className="you-group">
+              <SettingsRow
+                title="Apple Health sync"
+                description={
+                  healthWeightEnabled ? 'Automatic sync on' : 'Connect your weight measurements'
+                }
+                onClick={() => go('/settings/connections/health')}
+              />
+            </div>
           )}
         </>
       )}
       {page === 'about' && (
         <>
-          {' '}
-          <footer className="mt-12 pt-8 border-t border-[var(--color-border)]">
-            <div className="flex items-baseline justify-between">
-              <h2 className="t-display-italic text-[21px] text-[var(--color-text-dim)]">
-                hy<span className="italic text-[var(--color-accent)]">P</span>er
-              </h2>
-              {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
-              <button
-                type="button"
-                aria-label={`Build ${__BUILD_ID__}. Tap to test haptics on a supported device.`}
-                onClick={() => tapHaptic()}
-                className="t-data-sm text-[var(--color-muted)] min-h-11 py-2"
-              >
-                build {__BUILD_ID__}
-              </button>
-            </div>
-            <p className="t-label-sm mt-3">Built on peer-reviewed research</p>
-          </footer>
-          <p className="t-body mt-4">
+          <section className="mt-7">
+            <h2 className="you-wordmark" aria-label="hyPer">
+              hy<i>P</i>er
+            </h2>
+            <p className="metal-eyebrow mt-4">Built on peer-reviewed research</p>
+          </section>
+          <SettingsSection label="Build">
+            {/* Tapping the build stamp fires a test haptic — handy for verifying device support */}
+            <button
+              type="button"
+              aria-label={`Build ${__BUILD_ID__}. Tap to test haptics on a supported device.`}
+              onClick={() => tapHaptic()}
+              className="metal-row you-row"
+            >
+              <span className="metal-row-title tabular-nums">build {__BUILD_ID__}</span>
+            </button>
+          </SettingsSection>
+          <p className="you-copy">
             Tap the build information to test haptics on a supported device.
           </p>
         </>
       )}
-      {!titles[page] && <SettingsRow title="Back to You" onClick={() => go('/settings')} />}
+      {!titles[page] && (
+        <div className="you-group">
+          <SettingsRow title="Back to You" onClick={() => go('/settings')} />
+        </div>
+      )}
       <Modal
         isOpen={editingComposedMeal !== null}
         title="Edit saved meal"
@@ -1953,46 +2078,48 @@ export function Settings() {
         }}
         title="Log weight"
       >
-        <button className="you-text-action" onClick={handleToggleWeightUnit}>
-          Unit: {weightUnit} · switch to {weightUnit === 'lb' ? 'kg' : 'lb'}
-        </button>
-        <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
-          <label className="t-label-sm block mb-2" htmlFor="weigh-in">
-            Record a weigh-in
-          </label>
-          <div className="flex items-end gap-4">
-            <div className="material-inset flex-1 min-w-0 flex items-baseline gap-2 px-3 rounded-[var(--radius-control)]">
-              <input
-                id="weigh-in"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                value={weighInDraft}
-                placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
-                onChange={(e) => {
-                  setHealthWeightMessage(null);
-                  setWeighInDraft(e.target.value);
-                }}
-                className="flex-1 min-w-0 px-0 py-2 bg-transparent border-0 text-[var(--color-text)] text-[1rem] tabular-nums [font-family:var(--font-sans)] focus:outline-none"
-              />
-              <span className="t-label-sm shrink-0">{weightUnit}</span>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={weighInBusy}
-              disabled={weighInBusy || weighInDraft.trim() === ''}
-              onClick={() => {
-                void handleRecordWeighIn();
-              }}
-            >
-              Save
-            </Button>
-          </div>
+        <label className="you-field-label" htmlFor="weigh-in">
+          Record a weigh-in
+        </label>
+        <div className="you-weigh-field">
+          <input
+            id="weigh-in"
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={weighInDraft}
+            placeholder={weightUnit === 'lb' ? '180.5' : '82.0'}
+            onChange={(e) => {
+              setHealthWeightMessage(null);
+              setWeighInDraft(e.target.value);
+            }}
+          />
+          <span className="you-field-unit">{weightUnit}</span>
         </div>
+        <div className="you-actions mt-2">
+          <span className="text-[13px] text-[var(--metal-ink-2)] tabular-nums">
+            {latestBodyWeight && latestWeightDate
+              ? `Last ${formatWeight(latestBodyWeight.kilograms, weightUnit)} ${weightUnit} · ${format(latestWeightDate, 'MMM d')}`
+              : 'First weigh-in'}
+          </span>
+          <button type="button" className="metal-text-btn is-quiet text-[13.5px]" onClick={handleToggleWeightUnit}>
+            Unit: {weightUnit} · switch to {weightUnit === 'lb' ? 'kg' : 'lb'}
+          </button>
+        </div>
+        <Button
+          size="lg"
+          className="w-full mt-6"
+          loading={weighInBusy}
+          disabled={weighInBusy || weighInDraft.trim() === ''}
+          onClick={() => {
+            void handleRecordWeighIn();
+          }}
+        >
+          Save
+        </Button>
 
         {healthWeightMessage && (
-          <p role="status" className="t-body">
+          <p role="status" className="you-status">
             {healthWeightMessage}
           </p>
         )}
@@ -2006,19 +2133,20 @@ export function Settings() {
         }}
         title={busy ? 'Saving changes' : 'Discard unsaved changes?'}
       >
-        <p className="t-body mb-4">
+        <p className="you-copy mt-0 mb-4">
           {busy
             ? 'Wait for the current save to finish before leaving.'
             : 'Your unsaved edits will be discarded.'}
         </p>
         {calculatorSavedProfile && (
-          <p className="t-body mb-4">
+          <p className="you-copy mt-0 mb-4">
             Profile details and any recorded weight are already saved. Discarding targets does not
             undo those changes, which may affect later automatic updates.
           </p>
         )}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mt-2">
           <Button
+            size="lg"
             onClick={() => {
               if (blocker.state === 'blocked') blocker.reset();
               setDiscardAction(null);
@@ -2028,7 +2156,8 @@ export function Settings() {
           </Button>
           {!busy && (
             <Button
-              variant="secondary"
+              variant="danger"
+              size="lg"
               onClick={() => {
                 if (discardAction) discardAction();
                 else discardDrafts();
@@ -2047,22 +2176,23 @@ export function Settings() {
         onClose={() => setReplacementOpen(false)}
         title="Replace your target draft?"
       >
-        <p className="t-body mb-4">
+        <p className="you-copy mt-0 mb-4">
           You have unsaved target edits. Keep them or use the new suggestions.
         </p>
         {pendingTargets && (
-          <p className="t-body mb-4">
+          <p className="you-copy is-ink mt-0 mb-4 tabular-nums">
             Suggested: {pendingTargets.calories} kcal · Protein {pendingTargets.protein} g · Carbs{' '}
             {pendingTargets.carbs} g · Fat {pendingTargets.fat} g
           </p>
         )}
         {calculatorSavedProfile && (
-          <p className="t-body mb-4">
+          <p className="you-copy mt-0 mb-4">
             Your profile and any recorded weight have already been saved.
           </p>
         )}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mt-2">
           <Button
+            size="lg"
             onClick={() => {
               setReplacementOpen(false);
               go('/settings/targets/edit');
@@ -2072,6 +2202,7 @@ export function Settings() {
           </Button>
           <Button
             variant="secondary"
+            size="lg"
             onClick={() => {
               setMacroDraft(pendingTargets);
               setPendingTargets(null);
@@ -2083,6 +2214,39 @@ export function Settings() {
           </Button>
         </div>
       </Modal>
-    </Screen>
+    </div>
+  );
+}
+
+const THEME_CHOICES: { mode: ThemePreference; label: string; detail: string; ariaLabel: string; swatch: 'system' | 'light' | 'dark' }[] = [
+  { mode: 'system', label: 'Follow system', detail: 'Match your phone’s light or dark mode', ariaLabel: 'Follow system', swatch: 'system' },
+  { mode: 'light', label: 'Ivory', detail: 'Light', ariaLabel: 'Ivory (light)', swatch: 'light' },
+  { mode: 'dark', label: 'Black', detail: 'Dark', ariaLabel: 'Black (dark)', swatch: 'dark' },
+];
+
+/** Today's loading shape for a hero figure: a figure block and its hairline. */
+function HeroSkeleton({ label }: { label?: string }) {
+  return (
+    <div role={label ? 'status' : undefined} className="you-hero-skeleton">
+      {label && <span className="sr-only">{label}</span>}
+      <div className="shimmer h-[90px] w-40" aria-hidden />
+      <div className="shimmer h-[2px] w-full mt-[18px]" aria-hidden />
+    </div>
+  );
+}
+
+function CheckMark() {
+  return (
+    <svg className="you-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 8.5l3.2 3L13 4.5" />
+    </svg>
+  );
+}
+
+function PlusGlyph() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden>
+      <path d="M6 1.5v9M1.5 6h9" />
+    </svg>
   );
 }
