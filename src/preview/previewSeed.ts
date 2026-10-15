@@ -7,6 +7,7 @@ import { getPreviewUser } from './mockSupabase';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getYouPreviewState } from './youFixtures';
+import { applyTodayScenario, readTodayScenario } from './todayScenarios';
 import {
   PREVIEW_USER_ID,
   previewSplit,
@@ -30,12 +31,14 @@ export function maybeSeedPreview(): void {
   });
 
   const noop = async () => {};
+  const todayScenario = readTodayScenario();
+  const today = todayScenario ? applyTodayScenario(todayScenario) : null;
 
   useAppStore.setState({
-    activeSplit: previewSplit,
-    splits: [previewSplit],
-    currentWorkout: previewCurrentWorkout,
-    workoutMode: 'split',
+    activeSplit: today?.noActiveSplit ? null : previewSplit,
+    splits: today?.noActiveSplit ? [{ ...previewSplit, is_active: false }] : [previewSplit],
+    currentWorkout: today?.dropCurrentWorkout ? null : previewCurrentWorkout,
+    workoutMode: today?.workoutMode ?? 'split',
     currentWorkoutDayPlan: null,
     flexTemplates: [],
     macroTarget: getYouPreviewState() === 'empty' ? null : previewMacroTarget,

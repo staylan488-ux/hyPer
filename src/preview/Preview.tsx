@@ -67,6 +67,15 @@ export function PreviewGallery() {
           </a>
           <p className="t-caption">Switching scenarios reloads and resets sample edits.</p>
         </div>
+        <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+          <h2 className="t-heading">Today states</h2>
+          {['live', 'planned', 'rest', 'done', 'flexible', 'no-schedule', 'first-run'].map((state) => (
+            <a key={state} href={`/preview?today=${state}`} className="t-caption min-h-11 flex items-center gap-2">
+              {state} <ArrowRight size={14} />
+            </a>
+          ))}
+          <p className="t-caption">Switching states reloads and resets sample edits; open Today after choosing.</p>
+        </div>
         <a href="/preview?previewSetSave=fail" className="t-caption min-h-11 flex items-center gap-2 mt-3">
           Test set-save recovery <ArrowRight size={14} />
         </a>
