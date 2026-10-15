@@ -21,7 +21,7 @@ function waitForFonts(timeoutMs: number) {
 }
 
 /**
- * The banked-session medallion: a lacquer enamel coin with the session's
+ * The banked-session medallion: an enamel coin with the session's
  * name, date and tick ring embossed on its face. It spins down into the
  * sheet, tilts under a finger and catches the motion light. Devices without
  * WebGL get a flat printed version.
@@ -49,10 +49,12 @@ export function SessionToken({ face, className = '' }: SessionTokenProps) {
           face: faceRef.current,
           dark,
           still: policy.reducedMotion,
+          // Metal enamel: a near-black face in Real black, ivory in Ivory,
+          // with the name and tick ring raised in the theme's ink.
           colors: {
-            accent: styles.getPropertyValue('--color-accent').trim() || '#A8352A',
-            paper: '#F5F1E8',
-            ink: styles.getPropertyValue('--color-text').trim() || '#232625',
+            accent: dark ? '#191919' : '#ECEAE3',
+            paper: styles.getPropertyValue('--metal-ink').trim() || (dark ? '#F2F2EE' : '#161616'),
+            ink: styles.getPropertyValue('--metal-ink').trim() || (dark ? '#F2F2EE' : '#161616'),
           },
           onReady: () => setReady(true),
           onContextLost: () => {
