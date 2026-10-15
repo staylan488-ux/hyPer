@@ -33,8 +33,8 @@ const STATUS_WORDS: Record<MuscleVolume['status'], string> = {
 function readPalette(dark: boolean): MaquettePalette {
   const styles = getComputedStyle(document.documentElement);
   const base = parseColor(styles.getPropertyValue('--color-base'), dark ? [0, 0, 0] : [0.96, 0.96, 0.94]);
-  const ink = parseColor(styles.getPropertyValue('--color-text'), dark ? [0.95, 0.95, 0.95] : [0.14, 0.15, 0.15]);
-  const accent = parseColor(styles.getPropertyValue('--color-accent'), [0.66, 0.21, 0.16]);
+  const ink = parseColor(styles.getPropertyValue('--metal-ink'), dark ? [0.95, 0.95, 0.93] : [0.086, 0.086, 0.086]);
+  const accent = parseColor(styles.getPropertyValue('--metal-red'), dark ? [0.85, 0.31, 0.25] : [0.66, 0.21, 0.16]);
   return {
     // Porcelain on Ivory, obsidian on Black.
     body: mixRgb(base, ink, dark ? 0.13 : 0.075),
@@ -175,26 +175,26 @@ export function VolumeMaquette({ volume, variant = 'full', focus = null, onSelec
 
   return (
     <div className={className}>
-      <div className="min-h-[2.75rem] flex items-end pb-3" aria-live="polite">
+      <div className="min-h-[2.25rem] flex items-end pb-1" aria-live="polite">
         <motion.p
           key={selected ?? 'summary'}
-          className="t-data-sm text-[var(--color-text)] w-full flex justify-between gap-3"
+          className="w-full flex items-baseline justify-between gap-3 text-[13px] leading-[1.35] tabular-nums text-[var(--metal-ink)]"
           initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={springs.tactile}
         >
           {selectedShade ? (
             <>
-              <span>{MUSCLE_GROUP_LABELS[selectedShade.muscle]}</span>
-              <span className={selectedShade.hot ? 'text-[var(--color-accent)]' : ''}>
+              <span className="text-[15px] font-medium">{MUSCLE_GROUP_LABELS[selectedShade.muscle]}</span>
+              <span className={selectedShade.hot ? 'text-[var(--metal-red)]' : 'text-[var(--metal-ink-2)]'}>
                 {selectedShade.sets} {selectedShade.sets === 1 ? 'set' : 'sets'}
                 {selectedShade.status && selectedShade.sets > 0 ? ` · ${STATUS_WORDS[selectedShade.status]}` : ' · not trained'}
               </span>
             </>
           ) : (
             <>
-              <span className="text-[var(--color-text-dim)]">{wants3d ? 'Drag to turn · tap a muscle' : 'Front and back'}</span>
-              <span>{trained.length} {trained.length === 1 ? 'muscle' : 'muscles'} trained</span>
+              <span className="text-[var(--metal-ink-2)]">{wants3d ? 'Drag to turn · tap a muscle' : 'Front and back'}</span>
+              <span><b className="font-medium">{trained.length}</b> {trained.length === 1 ? 'muscle' : 'muscles'} trained</span>
             </>
           )}
         </motion.p>
@@ -219,18 +219,18 @@ export function VolumeMaquette({ volume, variant = 'full', focus = null, onSelec
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 mt-2">
-        <span className="flex items-center gap-3 t-caption" aria-hidden>
-          <Legend swatch="color-mix(in srgb, var(--color-text) 20%, var(--color-base))" label="Light" />
-          <Legend swatch="color-mix(in srgb, var(--color-text) 84%, var(--color-base))" label="Heavy" />
-          <Legend swatch="var(--color-accent)" label="Over" />
+      <div className="flex items-center justify-between gap-3 mt-1 min-h-11">
+        <span className="flex items-center gap-3.5 text-[12.5px] text-[var(--metal-ink-2)]" aria-hidden>
+          <Legend swatch="color-mix(in srgb, var(--metal-ink) 22%, var(--color-base))" label="Light" />
+          <Legend swatch="color-mix(in srgb, var(--metal-ink) 86%, var(--color-base))" label="Heavy" />
+          <Legend swatch="var(--metal-red)" label="Over" />
         </span>
         {ready && (
-          <span className="flex items-center">
-            <button type="button" className="studio-row-action min-h-11 px-3" onClick={() => controllerRef.current?.turnTo('front')}>
+          <span className="flex items-center gap-2">
+            <button type="button" className="metal-line-btn !px-3.5" onClick={() => controllerRef.current?.turnTo('front')}>
               Front
             </button>
-            <button type="button" className="studio-row-action min-h-11 px-3" onClick={() => controllerRef.current?.turnTo('back')}>
+            <button type="button" className="metal-line-btn !px-3.5" onClick={() => controllerRef.current?.turnTo('back')}>
               Back
             </button>
           </span>
@@ -243,7 +243,7 @@ export function VolumeMaquette({ volume, variant = 'full', focus = null, onSelec
 function Legend({ swatch, label }: { swatch: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className="w-2.5 h-2.5 rounded-full" style={{ background: swatch }} />
+      <span className="w-[7px] h-[7px] rounded-full" style={{ background: swatch }} />
       {label}
     </span>
   );
@@ -325,9 +325,15 @@ function FlatFigure({
           {BODY_SOLIDS.map((solid, i) => solidShape(solid, side, bodyFill, `b${i}`))}
           {MUSCLE_PARTS.filter((part) => visibleFrom(part.solid, side)).map((part, i) => {
             const shade = shades.get(part.muscle);
-            let color = muscleColor(shade, palette);
-            if (focus) color = focus === part.muscle ? palette.accent : mixRgb(color, palette.body, 0.85);
-            const fill = selected === part.muscle ? rgbToCss(palette.accent) : rgbToCss(color);
+            // Like the 3D scene: a focus or selection quiets the other
+            // muscles toward the body (a quieted red recedes as ink, never pink).
+            const lead = focus ?? selected;
+            const quieted = lead !== null && lead !== part.muscle;
+            let color = quieted && shade?.hot ? mixRgb(palette.body, palette.ink, shade.ink) : muscleColor(shade, palette);
+            if (focus === part.muscle) color = palette.accent;
+            else if (quieted) color = mixRgb(color, palette.body, focus ? 0.85 : 0.72);
+            else if (selected === part.muscle && (!shade || shade.ink === 0)) color = mixRgb(palette.body, palette.ink, 0.45);
+            const fill = rgbToCss(color);
             return solidShape(part.solid, side, fill, `m${i}`, onPick ? () => onPick(selected === part.muscle ? null : part.muscle) : undefined);
           })}
           {sides.length > 1 && <text
@@ -335,8 +341,8 @@ function FlatFigure({
             y={VIEW.bottom * -1 - 0.02}
             textAnchor="middle"
             fontSize={0.11}
-            fill="var(--color-text-dim)"
-            style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}
+            fill="var(--metal-ink-2)"
+            style={{ letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500 }}
           >
             {side}
           </text>}
