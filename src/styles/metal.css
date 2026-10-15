@@ -510,7 +510,7 @@ html[data-keyboard-open='true'] .metal-capsule,
   box-shadow: inset 0 0 0 1px var(--metal-line);
   transition: box-shadow 160ms ease;
 }
-.metal-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.metal-input:focus, .metal-input:focus-within { outline: none; box-shadow: inset 0 0 0 1px var(--metal-ink); }
 .metal-input[aria-invalid='true'] { box-shadow: inset 0 0 0 1px var(--metal-red); }
 
 .metal-chip { border-radius: 999px; box-shadow: inset 0 0 0 1px var(--metal-line); background: transparent; }

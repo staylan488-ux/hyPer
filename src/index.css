@@ -277,6 +277,8 @@ body {
 .studio-secondary-action:disabled, .studio-row-action:disabled { opacity: .4; cursor: not-allowed; }
 }
 :where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
+/* Metal fields draw their own ink line on focus; a second ring would read as a glowing outline. */
+:where(.metal-input, .metal-input input, .metal-input textarea):focus-visible { outline: none; }
 
 /* ═════════════════════════════════════════════════════════════
    CONTENT — calm, readable surfaces beneath the glass control layer.
