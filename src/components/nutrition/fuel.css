@@ -1,0 +1,400 @@
+/* ═════════════════════════════════════════════════════════════
+   FUEL — the Metal nutrition page and its logging sheets.
+   Builds on the tokens and primitives in src/styles/metal.css: hairlines
+   instead of boxes, Fraunces figures, Geist rows, one red accent. Classes
+   here are Fuel-only; promote any that another screen needs.
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── Page ── */
+
+/* The day's energy: Today's hero, its two-line caption sitting on the
+   figure's baseline. */
+.fuel-hero .metal-hero { align-items: flex-end; }
+.fuel-hero .metal-hero-caption { padding-bottom: 3px; }
+.fuel-hero .metal-hero-caption > span { display: flex; align-items: center; gap: 6px; }
+.fuel-hero .metal-flag { margin-top: 12px; }
+
+.fuel-macros { display: grid; gap: 16px; margin-top: 8px; }
+
+/* Icon actions in a section head: 44pt targets that do not grow the head. */
+.fuel-head-tools { display: flex; align-items: center; margin: -6px -12px -6px 0; }
+.fuel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--metal-ink-2);
+  transition: color 160ms ease, opacity 160ms ease;
+}
+.fuel-icon-btn:active { opacity: 0.55; }
+.fuel-icon-btn:disabled { opacity: 0.25; cursor: default; }
+.fuel-icon-btn.is-quiet { color: var(--metal-ink-3); }
+.fuel-icon-btn.is-ink { color: var(--metal-ink); }
+.fuel-icon-btn.is-danger:hover { color: var(--metal-red); }
+.fuel-icon-btn svg { width: 15px; height: 15px; }
+
+/* Week strip: the selected day fills with ink, today's numeral is red, a dot
+   marks a logged day. */
+.fuel-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 10px; }
+.fuel-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 2px 0 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+.fuel-day-letter { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.08em; color: var(--metal-ink-2); }
+.fuel-day-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--metal-ink);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+.fuel-day:active .fuel-day-num { background: color-mix(in srgb, var(--metal-ink) 8%, transparent); }
+.fuel-day.is-today .fuel-day-num { color: var(--metal-red); }
+.fuel-day.is-selected .fuel-day-num { background: var(--metal-ink); color: var(--color-base); }
+.fuel-day.is-outside .fuel-day-num { color: var(--metal-ink-3); }
+.fuel-day-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--metal-ink-3); }
+.fuel-day-dot.is-off { visibility: hidden; }
+
+/* Month grid in the Jump to date sheet. */
+.fuel-month-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.fuel-month-title { font-size: 15px; font-weight: 500; color: var(--metal-ink); }
+.fuel-month .fuel-day { min-height: 50px; gap: 3px; padding: 2px 0; }
+.fuel-month-letters { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-bottom: 4px; text-align: center; }
+
+/* ── Meal ledger ── */
+
+.fuel-group { margin-top: 18px; }
+.fuel-group:first-child { margin-top: 6px; }
+.fuel-group.is-drop-target { background: color-mix(in srgb, var(--metal-ink) 4%, transparent); }
+.fuel-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  border-top: 0.5px solid var(--metal-rule);
+}
+.fuel-group-title { font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--metal-ink); }
+.fuel-group-count { margin-left: 8px; font-size: 13px; color: var(--metal-ink-3); font-variant-numeric: tabular-nums; }
+.fuel-group-right { display: flex; align-items: center; flex: none; }
+.fuel-group-tools { display: flex; align-items: center; margin-right: 2px; }
+.fuel-group-kcal { min-width: 4.5rem; text-align: right; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fuel-group-empty {
+  display: block;
+  width: 100%;
+  padding: 14px 0 6px;
+  border-top: 0.5px solid var(--metal-rule);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--metal-ink-3);
+}
+
+.fuel-entry { border-top: 0.5px solid var(--metal-rule); }
+.fuel-entry-row { display: flex; align-items: stretch; min-width: 0; }
+.fuel-entry-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  margin-left: -9px;
+  color: var(--metal-ink-3);
+  cursor: grab;
+}
+.fuel-entry-grip:active { cursor: grabbing; color: var(--metal-ink-2); }
+.fuel-entry-grip svg { width: 14px; height: 14px; }
+.fuel-entry-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 12px 0;
+  text-align: left;
+  color: var(--metal-ink);
+  transition: opacity 160ms ease;
+}
+.fuel-entry-main:active { opacity: 0.6; }
+.fuel-entry-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.fuel-entry-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-entry-detail .metal-sep { color: var(--metal-ink-3); margin: 0 5px; }
+.fuel-entry-kcal { flex: none; padding-top: 1px; font-size: 15px; line-height: 1.35; font-variant-numeric: tabular-nums; color: var(--metal-ink); white-space: nowrap; }
+.fuel-entry-kcal small { margin-left: 3px; font-size: 12px; color: var(--metal-ink-2); }
+.fuel-entry-actions { display: flex; align-items: flex-start; flex: none; margin-right: -12px; padding-top: 2px; }
+
+.fuel-ingredients { margin: 0 0 6px 23px; }
+.fuel-ingredients.is-flush { margin: 0; }
+.fuel-ingredients summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--metal-ink-2);
+}
+.fuel-ingredients summary::-webkit-details-marker { display: none; }
+.fuel-ingredients summary svg { width: 13px; height: 13px; transition: transform 200ms ease; }
+.fuel-ingredients[open] summary svg { transform: rotate(180deg); }
+.fuel-ingredient { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--metal-rule); }
+.fuel-ingredient-name { font-size: 14px; line-height: 1.4; color: var(--metal-ink); overflow-wrap: anywhere; }
+.fuel-ingredient-detail { margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-ingredient-kcal { flex: none; font-size: 12.5px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+
+/* Option rows in small sheets (Add meal or snack, Move food). */
+.fuel-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 0;
+  border-top: 0.5px solid var(--metal-rule);
+  text-align: left;
+  color: var(--metal-ink);
+  transition: opacity 160ms ease;
+}
+.fuel-option:active { opacity: 0.6; }
+.fuel-option:disabled { opacity: 0.4; }
+/* The lead row of a sheet (Build a meal): ruled below, not above. */
+.fuel-option.is-lead { margin: -14px 0 18px; border-top: 0; border-bottom: 0.5px solid var(--metal-rule); }
+.fuel-option-value { flex: none; font-size: 13px; color: var(--metal-ink-2); }
+.fuel-option-value.is-current { color: var(--metal-ink); font-weight: 500; }
+
+/* ── Logging sheets ── */
+
+.fuel-logger { display: flex; flex-direction: column; gap: 24px; padding: 4px 0 8px; }
+.fuel-logger.is-snug { gap: 20px; }
+.fuel-stack { display: flex; flex-direction: column; gap: 16px; }
+.fuel-stack.is-loose { gap: 20px; }
+
+/* Eyebrow head with quiet actions ("2 saved · Add · Edit"). */
+.fuel-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+.fuel-sheet-head-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Search: a hairline field; the icon sits inside. */
+.fuel-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 4px 0 13px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  color: var(--metal-ink-2);
+  transition: box-shadow 160ms ease;
+}
+.fuel-search:focus-within { box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.fuel-search > svg { width: 16px; height: 16px; flex: none; }
+.fuel-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  color: var(--metal-ink);
+  outline: none;
+}
+.fuel-search input::placeholder { color: var(--metal-ink-3); }
+.fuel-search input:focus-visible { outline: none; }
+
+/* Food result rows: name, macros, and the add glyph. */
+.fuel-food-list { max-height: 17rem; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.fuel-food-row { display: flex; align-items: stretch; min-width: 0; border-top: 0.5px solid var(--metal-rule); }
+.fuel-food-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 11px 0;
+  text-align: left;
+  color: var(--metal-ink);
+  transition: opacity 160ms ease;
+}
+.fuel-food-main.is-compact { min-height: 44px; padding: 8px 0; }
+.fuel-food-main:active:not(:disabled) { opacity: 0.6; }
+.fuel-food-main:disabled { cursor: default; }
+.fuel-food-text { flex: 1; min-width: 0; }
+.fuel-food-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.fuel-food-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fuel-food-glyph { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; color: var(--metal-ink-2); }
+.fuel-food-glyph svg { width: 14px; height: 14px; }
+
+/* Quiet support copy and states inside sheets. */
+.fuel-note { font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-note a { color: var(--metal-ink); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 0.5px; }
+.fuel-note.is-alert { color: var(--metal-red); }
+.fuel-note.is-ink { color: var(--metal-ink); }
+.fuel-note.is-faint { color: var(--metal-ink-3); }
+.fuel-loading { display: flex; align-items: center; gap: 8px; padding: 20px 0; font-size: 13px; color: var(--metal-ink-2); }
+.fuel-loading.is-tall { padding: 40px 0; }
+.fuel-loading svg { width: 15px; height: 15px; }
+.fuel-empty { padding: 18px 0 4px; border-top: 0.5px solid var(--metal-rule); }
+
+/* A disclosure row (Describe with AI, Describe amount). */
+.fuel-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 0;
+  text-align: left;
+  color: var(--metal-ink);
+}
+.fuel-disclosure-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; line-height: 1.35; }
+.fuel-disclosure-title svg { width: 14px; height: 14px; color: var(--metal-ink-2); }
+.fuel-disclosure-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-disclosure-state { flex: none; font-size: 13px; color: var(--metal-ink-2); }
+.fuel-ruled { border-top: 0.5px solid var(--metal-rule); }
+.fuel-ruled-bottom { border-bottom: 0.5px solid var(--metal-rule); }
+
+/* Selected food: Fraunces name, then a hairline ledger of its macros. */
+.fuel-food-title { margin-top: 6px; }
+.fuel-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.fuel-fact { padding-top: 9px; border-top: 0.5px solid var(--metal-rule); }
+.fuel-fact-value { display: block; margin-top: 5px; font-size: 17px; line-height: 1.2; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+.fuel-fact-value small { margin-left: 2px; font-size: 12px; color: var(--metal-ink-2); }
+.fuel-basis { margin-top: 10px; font-size: 12.5px; color: var(--metal-ink-2); }
+.fuel-confidence { margin-top: 18px; }
+
+/* A large centered amount in a hairline field. */
+.fuel-amount { text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; min-height: 48px; }
+
+/* The entry's figure: the Big figure with a quiet support note. */
+.fuel-figure .metal-big { margin-top: 4px; flex-wrap: wrap; row-gap: 2px; }
+.fuel-figure-support { margin-left: 4px; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-macro-line { margin-top: 8px; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+
+/* A drawn checkbox: hairline square, ink when on. */
+.fuel-check { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 10px 0; text-align: left; cursor: pointer; }
+.fuel-check-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  color: var(--color-base);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+.fuel-check-box svg { width: 12px; height: 12px; }
+.fuel-check.is-on .fuel-check-box,
+.fuel-check input:checked + .fuel-check-box { background: var(--metal-ink); box-shadow: none; }
+.fuel-check input:focus-visible + .fuel-check-box { outline: 2px solid var(--metal-ink); outline-offset: 2px; }
+.fuel-check-label { display: block; font-size: 15px; line-height: 1.35; color: var(--metal-ink); }
+.fuel-check-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+
+/* Photo slots and previews: hairline frames, no fills. */
+.fuel-photo-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 9.5rem;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--metal-line);
+  color: var(--metal-ink);
+  transition: box-shadow 160ms ease, opacity 160ms ease;
+}
+.fuel-photo-slot:active { box-shadow: inset 0 0 0 1px var(--metal-ink); }
+.fuel-photo-slot:disabled { opacity: 0.4; }
+.fuel-photo-slot.is-row { flex-direction: row; justify-content: flex-start; gap: 14px; min-height: 4.5rem; padding: 0 16px; text-align: left; }
+.fuel-photo-slot svg { width: 18px; height: 18px; color: var(--metal-ink-2); }
+.fuel-photo-slot-title { font-size: 15px; font-weight: 500; line-height: 1.35; }
+.fuel-photo-slot-detail { font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-photo { position: relative; overflow: hidden; border-radius: 16px; box-shadow: 0 0 0 0.5px var(--metal-rule); }
+.fuel-photo img { display: block; width: 100%; object-fit: cover; }
+.fuel-photo-cover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: color-mix(in srgb, var(--metal-sheet) 62%, transparent); font-size: 13px; font-weight: 500; color: var(--metal-ink); }
+.fuel-photo-action {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--metal-capsule);
+  box-shadow: var(--metal-capsule-edge);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--metal-ink);
+}
+.fuel-photo-action::after { content: ''; position: absolute; inset: -4px; }
+.fuel-photo-action svg { width: 12px; height: 12px; }
+.fuel-step-label { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.fuel-step-title { margin-top: 4px; font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--metal-ink); }
+
+/* Barcode viewport: the camera in a rounded frame with white corner marks. */
+.fuel-camera { position: relative; overflow: hidden; aspect-ratio: 4 / 3; border-radius: 16px; background: #000; box-shadow: 0 0 0 0.5px var(--metal-rule); }
+.fuel-camera video { width: 100%; height: 100%; object-fit: cover; transition: opacity 240ms ease; }
+.fuel-camera-frame { position: absolute; inset: 22% 12%; }
+.fuel-camera-frame > i { position: absolute; width: 18px; height: 18px; border-color: rgba(255, 255, 255, 0.85); border-style: solid; border-width: 0; }
+.fuel-camera-frame > i:nth-child(1) { left: 0; top: 0; border-left-width: 1.5px; border-top-width: 1.5px; border-top-left-radius: 6px; }
+.fuel-camera-frame > i:nth-child(2) { right: 0; top: 0; border-right-width: 1.5px; border-top-width: 1.5px; border-top-right-radius: 6px; }
+.fuel-camera-frame > i:nth-child(3) { left: 0; bottom: 0; border-left-width: 1.5px; border-bottom-width: 1.5px; border-bottom-left-radius: 6px; }
+.fuel-camera-frame > i:nth-child(4) { right: 0; bottom: 0; border-right-width: 1.5px; border-bottom-width: 1.5px; border-bottom-right-radius: 6px; }
+.fuel-camera-line { position: absolute; left: 8%; right: 8%; top: 50%; height: 1px; background: #D9503F; }
+.fuel-camera-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.75); }
+.fuel-camera-torch {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+
+/* Bottom trays (meal builder, photo review): solid sheet colour that fades
+   up into the content, never a hard line. */
+.fuel-tray {
+  position: sticky;
+  z-index: 20;
+  bottom: 0;
+  margin-inline: -24px;
+  margin-top: 12px;
+  padding-top: 24px;
+  padding-inline: 24px;
+  /* padding-bottom comes from the caller (safe area or a fixed gap) */
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--metal-sheet) 0%, transparent) 0, var(--metal-sheet) 22px);
+}
+.fuel-tray-row { display: flex; align-items: center; gap: 12px; }
+.fuel-tray-figure { flex: 1; min-width: 0; }
+.fuel-tray-figure .metal-num { font-size: 27px; line-height: 1; font-weight: 350; }
+
+/* Ingredient rows in the meal builder. */
+.fuel-ingredient-row { display: flex; flex-direction: column; gap: 12px; padding: 14px 0 16px; border-top: 0.5px solid var(--metal-rule); }
