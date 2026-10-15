@@ -1658,7 +1658,6 @@ export function Workout() {
 
         <Modal isOpen={showScheduleEditor} onClose={() => setShowScheduleEditor(false)} title="Edit schedule">
           <ScheduleEditor
-            title="Adjust plan"
             description="Update your start date, scheduling mode, and active training day."
             daysPerWeek={activeSplit?.days_per_week || 0}
             splitDays={activeSplit?.days || []}
@@ -1935,7 +1934,7 @@ export function Workout() {
               void afterNoteWrites(() => addFlexibleExercise(exercise));
             }}
             excludeExerciseIds={activeFlexibleItems.map((item) => item.exercise_id)}
-            title={supersetPickerSourceExerciseId ? 'Add Superset Exercise' : 'Add Exercise'}
+            title={supersetPickerSourceExerciseId ? 'Add superset exercise' : 'Add exercise'}
           />
         </div>
       ) : (

@@ -9,7 +9,8 @@
 
 /* ─── Pre-workout ─────────────────────────────────────────────── */
 
-.train-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+/* The head row is the eyebrow's height so titles line up across tabs; its buttons centre on that line. */
+.train-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 14px; }
 .train-head-actions { display: flex; align-items: center; gap: 8px; }
 .train-today { margin-top: 2px; }
 .train-today .metal-hero { margin-top: 18px; }
@@ -216,7 +217,7 @@
 .studio-movement-swap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 44px; margin: -10px 0; padding-left: 12px; font-size: 13.5px; font-weight: 500; color: var(--metal-ink); }
 .studio-movement-swap svg { color: var(--metal-ink-3); }
 .studio-movement-swap:disabled { opacity: .4; }
-.studio-last-workout { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-3); }
+.studio-last-workout { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
 .studio-last-workout > span { color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .studio-collapse-movement { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; font-size: 13.5px; color: var(--metal-ink-2); }
 .studio-collapse-movement svg { color: var(--metal-ink-3); }
@@ -254,14 +255,14 @@
 .studio-set-prefix { color: inherit; }
 .studio-set-figures { overflow: hidden; text-overflow: ellipsis; }
 .studio-set-state { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-left: 3px; align-self: center; color: var(--metal-ink); }
-.studio-set-side { font-size: 13.5px; color: var(--metal-ink-3); text-align: right; white-space: nowrap; }
+.studio-set-side { font-size: 13.5px; color: var(--metal-ink-2); text-align: right; white-space: nowrap; }
 :root .studio-workout-page .studio-set-ledger.is-done { color: var(--metal-ink); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-done .studio-set-side { color: var(--metal-ink-2); }
 :root .studio-workout-page .studio-set-ledger.is-now { color: var(--metal-ink); font-weight: 500; }
 :root .studio-workout-page .studio-set-ledger.is-now .studio-set-side { color: var(--metal-ink-2); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-suggested { color: var(--metal-ink-2); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-suggested .studio-set-side { color: var(--metal-ink-2); }
-:root .studio-workout-page .studio-set-ledger.is-planned { color: var(--metal-ink-3); font-weight: 400; }
+:root .studio-workout-page .studio-set-ledger.is-planned { color: var(--metal-ink-2); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-draft { color: var(--metal-ink); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-draft .studio-set-side { color: var(--metal-ink-2); }
 :root .studio-workout-page .studio-set-ledger.is-failed .studio-set-side { color: var(--metal-red); font-weight: 500; }

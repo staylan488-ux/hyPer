@@ -419,7 +419,7 @@ function TodayHero({ hero, weekDone, weekFailed, weekTarget }: {
     if (weekDone === null && weekFailed) {
       // The week read failed: leave the figure out rather than wait on it.
       return hero.kind === 'done'
-        ? <div className="relative h-[90px] mt-5"><BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-1 top-0" /></div>
+        ? <div className="relative h-[90px] mt-5"><BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-3 top-0" /></div>
         : null;
     }
     if (weekDone === null) {
@@ -439,7 +439,7 @@ function TodayHero({ hero, weekDone, weekFailed, weekTarget }: {
           caption={`${(target ?? weekDone) === 1 ? 'session' : 'sessions'} this week`}
           segments={target ? { total: target, on: Math.min(weekDone, target), wide: true, label: `${weekDone} of ${target} sessions this week` } : undefined}
         />
-        {hero.kind === 'done' && <BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-1 top-6" />}
+        {hero.kind === 'done' && <BankedStamp date={format(new Date(), 'MMM d')} className="absolute right-3 top-6" />}
       </div>
     );
   }

@@ -42,3 +42,5 @@
 .studio-reorder-error { position: sticky; top: 44px; z-index: 1; display: flex; align-items: center; gap: 9px; padding: 12px 0; font-size: 13.5px; line-height: 1.4; color: var(--metal-ink-2); background: var(--color-base); }
 .studio-reorder-error::before { content: ''; flex: none; width: 2px; height: 13px; border-radius: 1px; background: var(--metal-red); }
 @media (prefers-reduced-motion: reduce) { .studio-reorder-list.is-reordering .studio-movement { transition: none; } }
+/* Closed rows keep options and the grip on one line so the list stays compact. */
+.studio-movement:not(.is-active) .studio-movement-controls { width: auto; flex-direction: row; align-self: center; margin-right: -10px; }
