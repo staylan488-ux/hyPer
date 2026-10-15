@@ -9,9 +9,11 @@ Metal (approved 2026-10) is the current Studio direction: Fraunces figures on
 real black or ivory, hairlines instead of boxes, and one floating command
 capsule with a liquid-metal ring per screen. Build from the shared tokens and
 primitives; an approved direction does not need another design exploration.
-Today and the workout are the reference implementation. Fuel, You, History,
-Program and Progress still use the earlier Studio page structure on Metal
-tokens; migrate them with these primitives without changing their behavior.
+Today and the workout are the reference implementation; every other screen
+and sheet follows the same structure. Screen-specific styles live next to
+their pages (`fuel.css`, `history.css`, `program.css`, `settings.css`,
+`RunTracker.css`); promote a class to `metal.css` once a second screen needs
+it.
 
 ## Color
 
