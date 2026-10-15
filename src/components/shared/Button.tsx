@@ -9,53 +9,33 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onD
   loading?: boolean;
 }
 
-/** Studio actions: solid primary, quiet filled secondary, unboxed contextual. */
+const variants = {
+  primary: 'metal-btn--primary',
+  secondary: 'metal-btn--secondary',
+  danger: 'metal-btn--danger',
+  ghost: 'metal-btn--ghost',
+};
+
+const sizes = {
+  sm: 'metal-btn--sm',
+  md: 'metal-btn--md',
+  lg: 'metal-btn--lg',
+};
+
+/**
+ * Metal actions: hairline capsules in sentence case (metal.css). A screen's
+ * one primary action belongs on the command capsule (useCommandCapsule);
+ * here `primary` is the ink hairline, `secondary` the quiet hairline,
+ * `ghost` is unboxed and `danger` is drawn in the red accent.
+ */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = '', variant = 'primary', size = 'md', loading, disabled, children, onClick, ...props }, ref) => {
-    const baseStyles = `
-      inline-flex items-center justify-center
-      [font-family:var(--font-sans)] uppercase font-medium
-      transition-colors duration-200
-      focus:outline-none
-      focus-visible:ring-2 focus-visible:ring-[var(--color-text)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-base)]
-      disabled:opacity-35 disabled:cursor-not-allowed
-      rounded-[var(--radius-control)]
-    `;
-
-    const variants = {
-      primary: `
-        material-button-primary
-        bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)]
-        hover:bg-[var(--button-primary-hover)]
-        active:bg-[var(--button-primary-active)]
-      `,
-      secondary: `
-        material-button-secondary
-        bg-[var(--color-well)] text-[var(--color-text)]
-        hover:bg-[var(--color-surface-3)]
-      `,
-      danger: `
-        bg-[var(--button-danger-bg)] text-[var(--button-danger-fg)]
-        hover:bg-[var(--button-danger-hover)]
-      `,
-      ghost: `
-        bg-transparent text-[var(--color-text-dim)]
-        hover:text-[var(--color-text)]
-      `,
-    };
-
-    const sizes = {
-      sm: 'px-4 min-h-11 text-[11px] tracking-[0.16em] gap-2',
-      md: 'px-4 min-h-[45px] text-[11px] tracking-[0.16em] gap-2',
-      lg: 'px-4 min-h-[51px] text-[11px] tracking-[0.16em] gap-2',
-    };
-
     const isDisabled = disabled || loading;
 
     return (
       <motion.button
         ref={ref}
-        className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+        className={`metal-btn ${variants[variant]} ${sizes[size]} ${className}`}
         disabled={isDisabled}
         whileTap={isDisabled ? undefined : { scale: 0.985 }}
         transition={springs.tactile}

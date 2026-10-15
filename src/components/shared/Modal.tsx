@@ -15,7 +15,7 @@ interface ModalProps {
   initialFocusRef?: RefObject<HTMLInputElement | null>;
 }
 
-/** An anchored sheet with a shared keyboard and focus boundary. */
+/** An anchored Metal sheet (solid, hairline-edged) with a shared keyboard and focus boundary. */
 export function Modal({ isOpen, onClose, title, children, contentClassName = '', initialFocusRef }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
@@ -93,7 +93,7 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
             aria-label={title ? undefined : "Dialog"}
             tabIndex={-1}
             className="studio-sheet w-full sm:max-w-lg flex flex-col overflow-hidden outline-none"
-            style={{ boxShadow: 'var(--sheet-shadow)' }}
+            style={{ boxShadow: 'var(--metal-sheet-edge)' }}
             initial={{ opacity: 0, y: 80 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
@@ -125,12 +125,12 @@ export function Modal({ isOpen, onClose, title, children, contentClassName = '',
               className={`material-sheet-header flex items-center justify-between pl-6 pr-5 pt-3 sm:pt-5 pb-3 ${sheetDrag ? 'touch-none cursor-grab active:cursor-grabbing' : ''}`}
               onPointerDown={sheetDrag ? startSheetDrag : undefined}
             >
-              {title ? <h2 id={titleId} className="t-heading">{title}</h2> : <span />}
+              {title ? <h2 id={titleId} className="metal-sheet-title">{title}</h2> : <span />}
               <motion.button
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="material-sheet-close p-3 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+                className="material-sheet-close flex items-center justify-center w-11 h-11 -mr-1 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                 whileTap={{ scale: 0.9 }}
               >
                 <X className="w-4 h-4" strokeWidth={1.5} />

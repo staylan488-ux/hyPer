@@ -12,7 +12,7 @@ interface StepperProps {
   className?: string;
 }
 
-/** Numeric stepper — consistent data readout with quiet filled controls. */
+/** Numeric stepper: a Fraunces readout between two hairline circles. */
 export function Stepper({ value, onDecrement, onIncrement, canDecrement = true, canIncrement = true, label, className = '' }: StepperProps) {
   return (
     <div className={`flex items-stretch gap-3 ${className}`}>
@@ -24,13 +24,13 @@ export function Stepper({ value, onDecrement, onIncrement, canDecrement = true, 
         }}
         disabled={!canDecrement}
         aria-label="Decrease"
-        className="pressable flex items-center justify-center min-w-12 min-h-12 text-[var(--color-text)] disabled:opacity-20 disabled:pointer-events-none rounded-[var(--radius-control)] bg-[var(--color-well)]"
+        className="metal-step-btn pressable flex items-center justify-center w-12 h-12 text-[var(--color-text)] disabled:opacity-20 disabled:pointer-events-none"
       >
         <Minus className="w-4 h-4" strokeWidth={1.5} />
       </button>
       <div className="flex-1 text-center py-2 flex flex-col items-center justify-center">
-        <span className="t-data text-[var(--color-text)]">{value}</span>
-        {label && <span className="block t-label-sm mt-0.5">{label}</span>}
+        <span className="metal-step-value">{value}</span>
+        {label && <span className="block t-label-sm mt-1.5">{label}</span>}
       </div>
       <button
         type="button"
@@ -40,7 +40,7 @@ export function Stepper({ value, onDecrement, onIncrement, canDecrement = true, 
         }}
         disabled={!canIncrement}
         aria-label="Increase"
-        className="pressable flex items-center justify-center min-w-12 min-h-12 text-[var(--color-text)] disabled:opacity-20 disabled:pointer-events-none rounded-[var(--radius-control)] bg-[var(--color-well)]"
+        className="metal-step-btn pressable flex items-center justify-center w-12 h-12 text-[var(--color-text)] disabled:opacity-20 disabled:pointer-events-none"
       >
         <Plus className="w-4 h-4" strokeWidth={1.5} />
       </button>

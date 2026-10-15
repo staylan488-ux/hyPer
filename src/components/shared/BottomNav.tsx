@@ -40,7 +40,7 @@ export function BottomNav() {
     <motion.nav
       ref={litRef}
       aria-label="Main navigation"
-      className="bottom-nav"
+      className="bottom-nav metal-nav"
       initial={false}
       transition={springs.settle}
     >
@@ -53,38 +53,20 @@ export function BottomNav() {
               key={to}
               to={to}
               aria-label={label}
-              className="relative flex flex-col items-center justify-center gap-1.5 h-[68px]"
+              className={`metal-nav-item${isActive ? ' is-active' : ''}`}
               onClick={() => {
                 if (!isActive) tapHaptic();
               }}
             >
-              {isActive && (
-                <motion.span
-                  layoutId="material-nav-selection"
-                  className="material-nav-selection pointer-events-none absolute inset-x-1 inset-y-1.5 rounded-[16px]"
-                  transition={springs.tactile}
-                />
-              )}
               <motion.span
                 whileTap={{ scale: 0.9 }}
-                animate={{ scale: isActive ? 1.04 : 1 }}
                 transition={springs.tactile}
-                className="relative flex flex-col items-center gap-1.5"
+                className="relative flex flex-col items-center gap-[3px] transition-colors duration-200"
               >
-                <Icon
-                  className={`w-[19px] h-[19px] transition-colors duration-200 ${
-                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
-                  }`}
-                  strokeWidth={1.5}
-                />
-                <span
-                  className={`text-[11px] font-medium uppercase tracking-[0.12em] [font-family:var(--font-sans)] transition-colors duration-200 ${
-                    isActive ? 'text-[var(--color-text)]' : 'text-[var(--material-nav-muted)]'
-                  }`}
-                >
-                  {label}
-                </span>
+                <Icon strokeWidth={1.5} aria-hidden />
+                <span className="metal-nav-label">{label}</span>
               </motion.span>
+              {isActive && <span className="metal-nav-dot" aria-hidden />}
             </NavLink>
           );
         })}
