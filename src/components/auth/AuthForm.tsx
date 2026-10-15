@@ -5,6 +5,7 @@ import { Button, Input } from '@/components/shared';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
 import { springs } from '@/lib/animations';
 import { isNativeIOS } from '@/lib/nativeBridge';
+import './auth.css';
 
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 
@@ -102,24 +103,22 @@ export function AuthForm() {
   };
 
   return (
-    <div className="material-foundation min-h-screen flex flex-col justify-center px-7 py-14">
-      <div className="w-full max-w-[26rem] mx-auto">
+    <div className="you-auth">
+      <div className="you-auth-inner">
         {/* ─── Masthead ─── */}
         <header>
-          <div className="flex items-baseline justify-between">
-            <span className="t-label-sm">A field journal</span>
-            <span className="t-label-sm">Est. MMXXVI</span>
+          <div className="you-auth-mast">
+            <span className="metal-eyebrow">A field journal</span>
+            <span className="metal-eyebrow">Est. MMXXVI</span>
           </div>
-          <div className="border-t border-[var(--color-text)] mt-3 pt-6">
-            <h1><BrandWordmark variant="login" /></h1>
-            <p className="t-display-italic text-[var(--color-text-dim)] text-lg mt-5 max-w-[20ch]">
-              Strength &amp; nourishment, kept like a journal.
-            </p>
-          </div>
+          <h1 className="you-auth-word"><BrandWordmark variant="login" /></h1>
+          <p className="metal-quote you-auth-tagline">
+            Strength &amp; nourishment, kept like a journal.
+          </p>
         </header>
 
         {/* ─── Form ─── */}
-        <div className="mt-12">
+        <div className="metal-section mt-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={isLogin ? 'login' : 'signup'}
@@ -127,14 +126,14 @@ export function AuthForm() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={springs.settle}
-              className="mb-7"
+              className="mt-4 mb-7"
             >
-              <p className="t-label-sm mb-2">{isLogin ? 'Sign in' : 'Create account'}</p>
-              <h2 className="t-title">{isLogin ? 'Welcome back' : 'Get started'}</h2>
+              <p className="metal-eyebrow">{isLogin ? 'Sign in' : 'Create account'}</p>
+              <h2 className="metal-title">{isLogin ? 'Welcome back' : 'Get started'}</h2>
             </motion.div>
           </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="space-y-7">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <AnimatePresence>
               {!isLogin && (
                 <motion.div
@@ -185,14 +184,14 @@ export function AuthForm() {
                   exit={{ opacity: 0, y: -6 }}
                   transition={springs.settle}
                 >
-                  <p className="t-caption text-[var(--color-text)]">{signupSuccess}</p>
-                  <p className="mt-2 t-caption">Verification emails can land in spam, junk, or promotions.</p>
+                  <p className="text-[14px] leading-snug text-[var(--metal-ink)]">{signupSuccess}</p>
+                  <p className="mt-2 text-[13px] leading-snug text-[var(--metal-ink-2)]">Verification emails can land in spam, junk, or promotions.</p>
                   {(pendingVerificationEmail || email) && (
                     <button
                       type="button"
                       onClick={() => { void handleResendVerification(); }}
                       disabled={resendingVerification}
-                      className="mt-3 text-[10px] tracking-[0.2em] uppercase font-medium text-[var(--color-text)] border-b border-[var(--color-accent)] disabled:opacity-50"
+                      className="you-auth-link mt-1"
                     >
                       {resendingVerification ? 'Resending…' : 'Resend verification email'}
                     </button>
@@ -204,7 +203,7 @@ export function AuthForm() {
             <AnimatePresence>
               {error && (
                 <motion.p
-                  className="py-2 t-caption text-[var(--color-accent)]"
+                  className="metal-flag py-1 text-[var(--metal-ink)]"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0 }}
@@ -226,7 +225,7 @@ export function AuthForm() {
                   <button
                     type="button"
                     onClick={switchToLogin}
-                    className="text-[10px] tracking-[0.2em] uppercase font-medium text-[var(--color-text)] border-b border-[var(--color-accent)]"
+                    className="you-auth-link"
                   >
                     Go to sign in
                   </button>
@@ -246,14 +245,7 @@ export function AuthForm() {
           </form>
 
           {/* ─── Divider ─── */}
-          <div className="relative my-7">
-            <div className="absolute inset-0 flex items-center" aria-hidden>
-              <div className="w-full border-t border-[var(--color-border)]" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="px-4 bg-[var(--color-base)] t-label-sm">or</span>
-            </div>
-          </div>
+          <div className="you-auth-or">or</div>
 
           <Button type="button" variant="secondary" size="lg" className="w-full" onClick={handleGoogleSignIn}>
             <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" aria-hidden>
@@ -283,7 +275,7 @@ export function AuthForm() {
             </Button>
           )}
 
-          <p className="mt-9 text-center text-[10px] tracking-[0.2em] uppercase text-[var(--color-muted)]">
+          <p className="you-auth-foot">
             {isLogin ? 'No account?' : 'Have an account?'}{' '}
             <button
               type="button"
@@ -297,7 +289,7 @@ export function AuthForm() {
                   setShowSignInPrompt(false);
                 }
               }}
-              className="text-[var(--color-text)] border-b border-[var(--color-accent)] ml-1"
+              className="you-auth-link ml-1"
             >
               {isLogin ? 'Sign up' : 'Sign in'}
             </button>
