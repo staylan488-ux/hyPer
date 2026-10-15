@@ -159,7 +159,8 @@ export function VolumeRail({ current, mev, mavLow, mavHigh, mrv, reveal, classNa
   const pos = (v: number) => `${fraction(v) * 100}%`;
 
   return (
-    <div className={`relative h-5 ${className}`}>
+    <div className={`relative h-5 overflow-x-clip ${className}`}>
+      {/* The marker rides a full-width carrier moved by x; the clip keeps it from widening the page. */}
       {/* base rail */}
       <div className="absolute top-1/2 -translate-y-1/2 inset-x-0 h-px" style={{ backgroundColor: EMPTY }} />
       {/* MAV band — the adaptive zone */}
