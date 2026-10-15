@@ -170,9 +170,10 @@ void main(){
     float x = uPhase * 1.0 - ph;
     vec2 g0 = strip(x, 0.42, 0.0, 1.0, 1.0);
     vec3 v = vec3(strip(x - DISP, 0.42, 0.0, 1.0, 1.0).x, g0.x, strip(x + DISP, 0.42, 0.0, 1.0, 1.0).x);
-    gC = mix(vec3(0.13, 0.13, 0.14), vec3(0.90), v);
+    // Chrome glyph on a pale face: cap the sheen so the glyph never washes out.
+    gC = mix(vec3(0.13, 0.13, 0.14), vec3(0.60), v);
     gC *= 1.0 - 0.35 * pow(q, 6.0);
-    gC = mix(gC, vec3(1.0), uFlash * 0.5);
+    gC = mix(gC, vec3(1.0), uFlash * 0.25);
     vec2 sn;
     float sd = glyph(p + vec2(0.0, 0.022), uGlyphMix < 0.5 ? uGlyph : uGlyphB, sn);
     faceC *= 1.0 - 0.07 * (1.0 - smoothstep(uHW, uHW + 0.06, sd));
