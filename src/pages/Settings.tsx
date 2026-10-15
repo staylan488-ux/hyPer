@@ -1935,7 +1935,7 @@ export function Settings() {
               )}
               {weightTrend.fittedDayCount >= 2 && (
                 <WeightTrendChart
-                  className="mt-6"
+                  className="mt-3"
                   days={90}
                   height={168}
                   points={weightTrend.points}
