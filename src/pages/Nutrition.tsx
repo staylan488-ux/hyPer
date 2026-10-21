@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Modal, Toast, SealMark } from '@/components/shared';
+import { Modal, SegmentedControl, Toast, SealMark } from '@/components/shared';
 import { HeroFigure, LineButton, MetalRail, MetalSection, MetalTitle, useCommandCapsule } from '@/components/metal';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
@@ -106,6 +106,7 @@ export function Nutrition() {
   const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null);
   const [showMonthSheet, setShowMonthSheet] = useState(false);
   const [showGroupSheet, setShowGroupSheet] = useState(false);
+  const [view, setView] = useState<'summary' | 'meals'>('summary');
   const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
   const loadedMonthKeyRef = useRef<string | null>(null);
   const [requestGate] = useState(createLatestRequestGate);
@@ -483,6 +484,77 @@ export function Nutrition() {
         </MetalTitle>
       </header>
 
+      {/* ── Week strip + month jump: the day everything below describes ── */}
+      <MetalSection
+        className="fuel-week-section"
+        label={format(weekStart, 'MMMM')}
+        right={(
+          <div className="fuel-head-tools">
+            <button
+              type="button"
+              aria-label="Previous week"
+              className="fuel-icon-btn"
+              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
+            >
+              <ChevronLeft strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next week"
+              className="fuel-icon-btn"
+              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
+            >
+              <ChevronRight strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              aria-label="Open month calendar"
+              className="fuel-icon-btn"
+              onClick={() => setShowMonthSheet(true)}
+            >
+              <CalendarDays strokeWidth={1.5} />
+            </button>
+          </div>
+        )}
+      >
+        <div className="fuel-week">
+          {weekDays.map((day) => {
+            const key = getDateKey(day);
+            const isSelected = isSameDay(day, selectedDate);
+            const hasLogs = (logsByDay[key] || []).length > 0;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => pickDate(day)}
+                aria-label={format(day, 'EEEE, MMMM d')}
+                aria-pressed={isSelected}
+                aria-current={isToday(day) ? 'date' : undefined}
+                className={`fuel-day${isSelected ? ' is-selected' : ''}${isToday(day) ? ' is-today' : ''}`}
+              >
+                <span className="fuel-day-letter" aria-hidden>{format(day, 'EEEEE')}</span>
+                <span className="fuel-day-num">{format(day, 'd')}</span>
+                <span className={`fuel-day-dot${hasLogs ? '' : ' is-off'}`} aria-hidden />
+              </button>
+            );
+          })}
+        </div>
+      </MetalSection>
+
+      {/* ── Summary or the meal ledger: one screen each ── */}
+      <SegmentedControl
+        className="fuel-view"
+        distribution="equal"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'summary', label: 'Summary' },
+          { value: 'meals', label: <>Meals{!loading && selectedDayLogs.length > 0 && <span className="fuel-view-count">{selectedDayLogs.length}</span>}</> },
+        ]}
+      />
+
+      {view === 'summary' && (<>
       {/* ── Energy — the day's calories, as the one huge figure ── */}
       <section className="fuel-hero" aria-label="Energy">
         {loading ? (
@@ -545,66 +617,12 @@ export function Nutrition() {
           </div>
         )}
       </MetalSection>
-
-      {/* ── Week strip + month jump ── */}
-      <MetalSection
-        label={format(weekStart, 'MMMM')}
-        right={(
-          <div className="fuel-head-tools">
-            <button
-              type="button"
-              aria-label="Previous week"
-              className="fuel-icon-btn"
-              onClick={() => setWeekAnchor((current) => addDays(current, -7))}
-            >
-              <ChevronLeft strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
-              aria-label="Next week"
-              className="fuel-icon-btn"
-              onClick={() => setWeekAnchor((current) => addDays(current, 7))}
-            >
-              <ChevronRight strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
-              aria-label="Open month calendar"
-              className="fuel-icon-btn"
-              onClick={() => setShowMonthSheet(true)}
-            >
-              <CalendarDays strokeWidth={1.5} />
-            </button>
-          </div>
-        )}
-      >
-        <div className="fuel-week">
-          {weekDays.map((day) => {
-            const key = getDateKey(day);
-            const isSelected = isSameDay(day, selectedDate);
-            const hasLogs = (logsByDay[key] || []).length > 0;
-
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => pickDate(day)}
-                aria-label={format(day, 'EEEE, MMMM d')}
-                aria-pressed={isSelected}
-                aria-current={isToday(day) ? 'date' : undefined}
-                className={`fuel-day${isSelected ? ' is-selected' : ''}${isToday(day) ? ' is-today' : ''}`}
-              >
-                <span className="fuel-day-letter" aria-hidden>{format(day, 'EEEEE')}</span>
-                <span className="fuel-day-num">{format(day, 'd')}</span>
-                <span className={`fuel-day-dot${hasLogs ? '' : ' is-off'}`} aria-hidden />
-              </button>
-            );
-          })}
-        </div>
-      </MetalSection>
+      </>)}
 
       {/* ── Unified food inbox + meal groups ── */}
+      {view === 'meals' && (
       <MetalSection
+        className="fuel-meals-section"
         label="Meals"
         right={(
           <>
@@ -657,6 +675,7 @@ export function Nutrition() {
           />
         )}
       </MetalSection>
+      )}
 
       {/* Month jump sheet */}
       <Modal

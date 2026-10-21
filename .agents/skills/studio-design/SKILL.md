@@ -67,6 +67,10 @@ Never truncate a meaningful name; let titles wrap.
 - `EntryRow` is the only raised control in Metal; Today no longer uses it, and
   its bevel is not for reuse. No neumorphic or puffy controls.
 - No hard line under the status bar; the shell's scroll edge handles it.
+- Fit rule: a tab's main job fits one screen at 402pt without scrolling.
+  Secondary content sits behind a `SegmentedControl` under the hero (Fuel:
+  Summary · Meals; Coaching: Map · Muscles · Trends) or in a sheet, never as
+  more page below. Lists may scroll; stacks of unrelated modules may not.
 
 ## The command capsule and the one ring
 

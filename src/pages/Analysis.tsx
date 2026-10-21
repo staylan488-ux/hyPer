@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
-import { VolumeRail } from '@/components/shared';
+import { SegmentedControl, VolumeRail } from '@/components/shared';
 import {
   Chevron,
   Eyebrow,
@@ -69,6 +69,7 @@ export function Analysis() {
   const backLabel = backTo === '/history' ? 'History' : backTo === '/train' ? 'Train' : 'Today';
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
+  const [view, setView] = useState<'map' | 'muscles' | 'trends'>('map');
   const [trainingHours, setTrainingHours] = useState<TrainingHoursPoint[]>([]);
   const [hoursLoading, setHoursLoading] = useState(true);
   // This week's volume has been read once since the screen opened, so an
@@ -136,6 +137,7 @@ export function Analysis() {
   const hasVolume = weeklyVolume.length > 0;
   const volumeLoading = !hasVolume && !volumeRead;
   const isEmpty = !hasVolume && volumeRead;
+  const selectedCoached = coached.find((entry) => entry.mv.muscle_group === expandedMuscle) ?? null;
 
   // Progress reads; its one action is main's empty-state "Start training".
   const capsule: CommandCapsuleSpec | null = isEmpty ? {
@@ -186,9 +188,22 @@ export function Analysis() {
       </section>
 
       {hasVolume && (
-        <>
-          {/* ── The figure ── */}
-          <MetalSection label="Muscle map" className="!mt-8">
+        <SegmentedControl
+          className="mt-6"
+          distribution="equal"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'map', label: 'Map' },
+            { value: 'muscles', label: 'Muscles' },
+            { value: 'trends', label: 'Trends' },
+          ]}
+        />
+      )}
+
+      {/* ── The figure, with the one muscle you tapped under it ── */}
+      {hasVolume && view === 'map' && (
+          <section className="mt-2" aria-label="Muscle map">
             <VolumeMaquette
               volume={weeklyVolume}
               onSelectMuscle={(muscle) => {
@@ -198,9 +213,23 @@ export function Analysis() {
                 if (target) setExpandedMuscle(target);
               }}
             />
-          </MetalSection>
+            {selectedCoached ? (
+              <div className="mt-2" role="list" aria-label="Selected muscle">
+                <MuscleRow
+                  mv={selectedCoached.mv}
+                  call={selectedCoached.call}
+                  expanded
+                  onToggle={() => setExpandedMuscle(null)}
+                />
+              </div>
+            ) : (
+              <p className="metal-note mt-3">Tap a muscle for its call this week.</p>
+            )}
+          </section>
+      )}
 
-          {/* ── Per-muscle calls ── */}
+      {/* ── Per-muscle calls ── */}
+      {hasVolume && view === 'muscles' && (
           <MetalSection
             label="By muscle"
             right={week.under + week.over > 0 ? (
@@ -223,9 +252,9 @@ export function Analysis() {
               ))}
             </div>
           </MetalSection>
-        </>
       )}
 
+      {(!hasVolume || view === 'trends') && (<>
       {/* ── Training hours ── */}
       <MetalSection label="Training hours" right="8 weeks">
         {hoursLoading ? (
@@ -279,6 +308,7 @@ export function Analysis() {
           )}
         </AnimatePresence>
       </section>
+      </>)}
     </div>
   );
 }

@@ -398,3 +398,10 @@
 
 /* Ingredient rows in the meal builder. */
 .fuel-ingredient-row { display: flex; flex-direction: column; gap: 12px; padding: 14px 0 16px; border-top: 0.5px solid var(--metal-rule); }
+
+/* The week strip leads the page; Summary and Meals each fit one screen below it. */
+.fuel-week-section { margin-top: 16px; border-top: 0; }
+.fuel-week-section .metal-section-head { margin-top: 0; }
+.fuel-view { margin-top: 18px; }
+.fuel-view-count { margin-left: 6px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-meals-section { margin-top: 20px; }
