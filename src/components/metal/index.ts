@@ -14,7 +14,9 @@ export {
   HairlineList,
   MetalRail,
   Chevron,
+  ScopeBar,
+  TrainScope,
 } from './primitives';
-export type { EntryItem, SegmentProgress } from './primitives';
+export type { EntryItem, SegmentProgress, ScopeItem } from './primitives';
 export { useCommandCapsule } from '@/hooks/useCommandCapsule';
 export type { CommandCapsuleSpec, CapsuleGlyph, CapsuleValue } from '@/lib/commandCapsule';

@@ -10,7 +10,7 @@
 /* ─── Pre-workout ─────────────────────────────────────────────── */
 
 /* The head row is the eyebrow's height so titles line up across tabs; its buttons centre on that line. */
-.train-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 14px; }
+.train-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .train-head-actions { display: flex; align-items: center; gap: 8px; }
 .train-today { margin-top: 2px; }
 .train-today .metal-hero { margin-top: 18px; }

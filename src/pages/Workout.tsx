@@ -19,7 +19,7 @@ import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { addDays, differenceInCalendarWeeks, format, isBefore, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { BankedStamp, Button, Chip, CountUp, Input, Modal } from '@/components/shared';
-import { Eyebrow, HeroFigure, LineButton, MetalSection, MetalTitle, SegmentedHairline, useCommandCapsule, type CommandCapsuleSpec } from '@/components/metal';
+import { Eyebrow, HeroFigure, LineButton, MetalSection, MetalTitle, SegmentedHairline, TrainScope, useCommandCapsule, type CommandCapsuleSpec } from '@/components/metal';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -1294,7 +1294,7 @@ export function Workout() {
     return (
       <motion.div className="metal-page train-pre pb-nav">
         <header>
-          <div className="train-head"><Eyebrow>Train</Eyebrow></div>
+          <div className="train-head"><TrainScope /></div>
           <div className="shimmer h-8 w-44 mt-2" aria-hidden />
         </header>
         <div aria-hidden>
@@ -1312,7 +1312,7 @@ export function Workout() {
     return (
       <motion.div className="metal-page train-pre pb-nav">
         <header>
-          <div className="train-head"><Eyebrow>Train</Eyebrow></div>
+          <div className="train-head"><TrainScope /></div>
           <MetalTitle>No program yet</MetalTitle>
         </header>
         <p className="metal-note">A program turns sessions into a plan: days, exercises, and weekly volume that adds up. The guided builder takes two minutes.</p>
@@ -1388,12 +1388,12 @@ export function Workout() {
         <motion.div className="metal-page train-pre pb-nav">
           <header>
             <div className="train-head">
-              <Eyebrow>Train · Flexible</Eyebrow>
+              <TrainScope />
               <div className="train-head-actions">
                 <LineButton onClick={() => navigate('/train/run')}>Run</LineButton>
               </div>
             </div>
-            <MetalTitle note="Build today as you go.">Start a session</MetalTitle>
+            <MetalTitle note="Flexible · build today as you go">Start a session</MetalTitle>
           </header>
 
           <form
@@ -1503,10 +1503,9 @@ export function Workout() {
       <motion.div className="metal-page train-pre pb-nav">
         <header>
           <div className="train-head">
-            <Eyebrow>Train</Eyebrow>
+            <TrainScope />
             <div className="train-head-actions">
               <LineButton onClick={() => navigate('/train/run')}>Run</LineButton>
-              {planSchedule && <LineButton onClick={openScheduleEditor}>Schedule</LineButton>}
             </div>
           </div>
           {preState === 'loading' || preState === 'setup-loading' ? (
@@ -1582,6 +1581,7 @@ export function Workout() {
               label={`${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d')}`}
               right={(
                 <span className="train-week-nav">
+                  <button type="button" className="train-week-schedule" onClick={openScheduleEditor}>Schedule</button>
                   <button type="button" aria-label="Previous week" onClick={() => setWeekCursor((current) => addDays(current, -7))}>
                     <ChevronLeft size={16} strokeWidth={1.6} aria-hidden />
                   </button>

@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
-import { addDays, differenceInCalendarWeeks, format, parseISO } from 'date-fns';
+import { addDays, differenceInCalendarWeeks, format, parseISO, startOfWeek } from 'date-fns';
 import { VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import {
   BigFigure,
-  Chevron,
-  EntryRow,
   Eyebrow,
+  HairlineList,
+  HairlineRow,
   HeroFigure,
   LineButton,
   MetalRail,
@@ -301,28 +301,10 @@ export function Dashboard() {
         ) : (
           <p className="metal-line text-[var(--metal-ink-2)]">No sets logged yet this week.</p>
         )}
-        {insight && insight.tone !== 'zone' && (
-          <p className="metal-flag"><span><b>{insight.muscle}</b> {insight.flag}</span></p>
-        )}
-        <EntryRow
-          label="Contents"
-          items={[
-            { label: 'Progress', to: '/analysis' },
-            { label: 'Program', to: '/train/program' },
-            { label: 'History', to: '/history' },
-          ]}
-        />
-      </MetalSection>
-
-      {/* ── Main's weekly insight, kept below in the quiet style ── */}
-      {insight && (
-        <section className="metal-section">
+        {/* The one weekly insight, with the figure; Coaching holds the rest. */}
+        {insight && (
           <Link to="/analysis" className="block group">
-            <div className="metal-section-head">
-              <Eyebrow>Volume</Eyebrow>
-              <span className="metal-section-head-right">Details <Chevron className="metal-row-chevron" /></span>
-            </div>
-            <div className="flex items-start gap-3 mt-1">
+            <div className="flex items-start gap-3 mt-3">
               <div className="flex-1 min-w-0">
                 <p className="metal-row-title">{insight.headline}</p>
                 <p className="metal-note mt-1">{insight.detail}</p>
@@ -343,8 +325,15 @@ export function Dashboard() {
               reveal={`dash-volume-${insight.volume.muscle_group}`}
             />
           </Link>
-        </section>
-      )}
+        )}
+        <HairlineList label="Coaching" className={insight ? 'mt-3' : 'mt-2'}>
+          <HairlineRow
+            title="Coaching"
+            detail={`Week of ${format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')} · volume by muscle`}
+            to="/analysis"
+          />
+        </HairlineList>
+      </MetalSection>
     </div>
   );
 }

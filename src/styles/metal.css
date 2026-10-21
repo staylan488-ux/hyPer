@@ -621,3 +621,24 @@ html[data-keyboard-open='true'] .metal-capsule,
 }
 :root .studio-save-set.material-button-primary:hover:not(:disabled),
 :root .studio-save-set.material-button-primary:active:not(:disabled) { background: color-mix(in srgb, var(--metal-ink) 6%, transparent); }
+
+/* Scope bar: routes that share one tab, drawn as one segmented hairline. */
+.metal-scope { display: flex; gap: 2px; width: fit-content; max-width: 100%; }
+.metal-scope-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  color: var(--metal-ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 160ms ease;
+}
+.metal-scope-item.is-on { color: var(--metal-ink); }
+.metal-scope-item .metal-segment-pill { position: absolute; inset: 0; }
+.metal-scope-item > span:last-child { position: relative; z-index: 1; }
+
+/* A scope bar leads the header; the title follows at the usual title gap. */
+.metal-scope + .metal-title, .metal-scope + .hist-month, .train-head + .metal-title { margin-top: 14px; }

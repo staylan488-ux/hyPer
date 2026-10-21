@@ -60,8 +60,12 @@ Never truncate a meaningful name; let titles wrap.
   value and a 7×12 chevron when they navigate; 44pt minimum height.
 - Thin bars (`MetalRail`): 2px track, ink fill, red when over target.
 - Flags (`.metal-flag`): a 2×13 red tick before one line that needs attention.
-- `EntryRow` (Progress / Program / History) is the only raised control in
-  Metal; do not reuse its bevel elsewhere. No neumorphic or puffy controls.
+- `ScopeBar` (`TrainScope`: Session · Program · History) sits where a
+  caption used to, at the top of screens that share one tab, so they read as
+  one place. The tab bar lights Train for History and Today for Coaching;
+  Coaching's back control returns where it came from (`location.state.from`).
+- `EntryRow` is the only raised control in Metal; Today no longer uses it, and
+  its bevel is not for reuse. No neumorphic or puffy controls.
 - No hard line under the status bar; the shell's scroll edge handles it.
 
 ## The command capsule and the one ring

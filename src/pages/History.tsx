@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, Trash2, Check, Link2, Unlink2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal, Button, Input, Toast, SelectSheet, DateField, TimeField } from '@/components/shared';
-import { Eyebrow, LineButton } from '@/components/metal';
+import { Eyebrow, LineButton, TrainScope } from '@/components/metal';
 import { LapPaceChart } from '@/components/shared/charts';
 import '@/components/history/history.css';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
@@ -1324,7 +1324,7 @@ export function History() {
       <Toast show={showSuccess} message={toastMessage} />
 
       <header>
-        <Eyebrow>History</Eyebrow>
+        <TrainScope />
         <div className="hist-month">
           <AnimatePresence mode="wait" initial={false}>
             <motion.h1

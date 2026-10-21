@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { tapHaptic } from '@/lib/haptics';
 
 /**
@@ -192,5 +192,61 @@ export function MetalRail({ label, value, target, unit = '', extra }: {
       </div>
       <span className="sr-only">{Math.round(ratio * 100)}% of target</span>
     </div>
+  );
+}
+
+export interface ScopeItem {
+  label: string;
+  to: string;
+  /** Extra path prefixes that count as this scope (the `to` path always does). */
+  match?: string[];
+}
+
+/**
+ * Scope bar: a segmented row of routes that share one tab, so sibling
+ * screens read as one place (Train: Session · Program · History). The
+ * selected capsule follows the current route; it never owns state.
+ */
+export function ScopeBar({ items, label, className = '' }: { items: ScopeItem[]; label: string; className?: string }) {
+  const { pathname } = useLocation();
+  const isOn = (item: ScopeItem) => {
+    const paths = [item.to, ...(item.match ?? [])];
+    return paths.some((path) => (path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`)));
+  };
+  // The most specific match wins when one scope's path prefixes another's.
+  const current = items.filter(isOn).sort((a, b) => b.to.length - a.to.length)[0];
+  return (
+    <nav className={`metal-scope metal-segmented ${className}`} aria-label={label}>
+      {items.map((item) => {
+        const selected = item === current;
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            aria-current={selected ? 'page' : undefined}
+            className={`metal-segment metal-scope-item${selected ? ' is-on' : ''}`}
+            onClick={() => { if (!selected) tapHaptic(); }}
+          >
+            {selected && <span className="metal-segment-pill" aria-hidden />}
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** The Train tab's scope: its session, the program behind it, and the history it leaves. */
+export function TrainScope({ className = '' }: { className?: string }) {
+  return (
+    <ScopeBar
+      label="Train"
+      className={className}
+      items={[
+        { label: 'Session', to: '/train', match: ['/workout'] },
+        { label: 'Program', to: '/train/program', match: ['/splits', '/train/templates'] },
+        { label: 'History', to: '/history' },
+      ]}
+    />
   );
 }
