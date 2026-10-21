@@ -176,11 +176,10 @@ body {
 /* Typography roles. Compact data always uses tabular Geist. */
 .t-label, .t-label-sm {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  line-height: 16px;
+  letter-spacing: 0;
 }
 .t-title {
   font-family: var(--font-display);
@@ -266,9 +265,8 @@ body {
   min-width: 44px;
   padding: 10px 16px;
   border: 0;
-  font: 500 11px/1.4 var(--font-sans);
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  font: 500 15px/1.4 var(--font-sans);
+  letter-spacing: 0;
   color: var(--color-text);
   transition: background-color 160ms ease, opacity 160ms ease;
 }

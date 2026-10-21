@@ -35,7 +35,7 @@
   font-size: 11px;
   line-height: 14px;
   font-weight: 500;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--metal-ink-2);
 }
@@ -102,7 +102,7 @@
   align-items: center;
   min-height: 44px;
   margin: -6px 0;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--metal-ink-2);
   transition: opacity 160ms ease;
@@ -149,7 +149,7 @@
 /* Attached activity stats: four figures, no box. */
 .hist-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 18px; }
 .hist-stat .metal-num { display: block; font-size: 26px; line-height: 1; }
-.hist-stat-label { display: block; margin-top: 5px; font-size: 11.5px; line-height: 1.3; color: var(--metal-ink-2); }
+.hist-stat-label { display: block; margin-top: 5px; font-size: 12px; line-height: 1.3; color: var(--metal-ink-2); }
 
 /* Choosing an activity to attach: hairline rows. */
 .hist-pick-list { margin-bottom: 14px; }
@@ -182,7 +182,7 @@
   color: var(--metal-ink);
 }
 .hist-move-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
-.hist-move-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); overflow-wrap: anywhere; }
+.hist-move-detail { display: block; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); overflow-wrap: anywhere; }
 .hist-move-count { display: inline-flex; align-items: center; gap: 12px; flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .hist-move-count svg { width: 14px; height: 14px; }
 .hist-move-body { padding: 0 0 14px; }
@@ -230,7 +230,7 @@
 
 /* The set ledger mirrors the workout's columns. */
 .hist-sets { display: grid; grid-template-columns: 34px repeat(3, minmax(0, 1fr)) 88px; align-items: center; }
-.hist-sets-head { min-height: 34px; border-top: 0.5px solid var(--metal-rule); font-size: 10.5px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-sets-head { min-height: 34px; border-top: 0.5px solid var(--metal-rule); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; color: var(--metal-ink-2); }
 .hist-set { min-height: 50px; border-top: 0.5px solid var(--metal-rule); font-size: 15px; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
 .hist-set-index { font-size: 13px; color: var(--metal-ink-3); }
 .hist-set-empty { color: var(--metal-ink-3); }
@@ -252,7 +252,7 @@
 
 /* Notes: a transparent field with a hairline, ink when focused. */
 .hist-note { padding-top: 14px; border-top: 0.5px solid var(--metal-rule); }
-.hist-note-label { display: block; margin-bottom: 8px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-note-label { display: block; margin-bottom: 8px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; color: var(--metal-ink-2); }
 .hist-textarea {
   display: block;
   width: 100%;
@@ -291,7 +291,7 @@
 .hist-activity { padding: 12px 0 10px; border-top: 0.5px solid var(--metal-rule); }
 .hist-activity-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .hist-activity-title { font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--metal-ink); overflow-wrap: anywhere; }
-.hist-activity-line { margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.hist-activity-line { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .hist-activity-line.is-metrics { color: var(--metal-ink); }
 .hist-activity-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
 .hist-activity-actions { display: flex; align-items: center; flex: none; margin: -10px -10px 0 0; }
@@ -319,7 +319,7 @@
 
 .hist-splits { margin-top: 12px; padding-top: 10px; border-top: 0.5px solid var(--metal-rule); }
 .hist-splits-grid { display: grid; grid-template-columns: 2rem repeat(3, minmax(0, 1fr)); gap: 8px; }
-.hist-splits-head { padding-bottom: 4px; font-size: 10.5px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.hist-splits-head { padding-bottom: 4px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; color: var(--metal-ink-2); }
 .hist-splits-row { padding: 3px 0; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .hist-splits-row > span:first-child { color: var(--metal-ink-3); }
 

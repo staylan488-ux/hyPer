@@ -64,7 +64,7 @@
   gap: 12px;
 }
 .you-title-row .metal-title { min-width: 0; outline: none; }
-.you-title-row .metal-text-btn { flex: none; min-height: 32px; font-size: 13.5px; }
+.you-title-row .metal-text-btn { flex: none; min-height: 32px; font-size: 14px; }
 .metal-title.you-title { outline: none; }
 
 /* ── Hero (body weight / calories) ───────────────────────────── */
@@ -78,7 +78,7 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--metal-ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -108,7 +108,7 @@
 /* Figures in a list (macros): Fraunces at the capsule-value size. */
 .you-figure-value { display: inline-flex; align-items: baseline; gap: 5px; flex: none; }
 .you-figure-value .metal-num { font-size: 27px; line-height: 1; font-weight: 350; }
-.you-figure-value .metal-unit { font-size: 12.5px; }
+.you-figure-value .metal-unit { font-size: 13px; }
 .you-figure-row { min-height: 54px; }
 .you-figure-row dt { font-size: 15px; font-weight: 500; }
 
@@ -174,16 +174,15 @@
 .you-copy { margin-top: 10px; font-size: 14px; line-height: 1.5; color: var(--metal-ink-2); max-width: 44ch; }
 .you-copy b, .you-copy strong { color: var(--metal-ink); font-weight: 500; }
 .you-copy.is-ink { color: var(--metal-ink); }
-.you-status { margin-top: 12px; font-size: 13.5px; line-height: 1.45; color: var(--metal-ink); }
+.you-status { margin-top: 12px; font-size: 14px; line-height: 1.45; color: var(--metal-ink); }
 .you-status.is-error { color: var(--metal-red); }
 .you-field-label {
   display: block;
   margin-bottom: 8px;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--metal-ink-2);
 }
 

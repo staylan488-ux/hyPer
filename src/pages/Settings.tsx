@@ -6,7 +6,6 @@ import { Button, Input, Modal, SelectSheet } from '@/components/shared';
 import {
   BigFigure,
   Chevron,
-  Eyebrow,
   HeroFigure,
   useCommandCapsule,
   type CommandCapsuleSpec,
@@ -1025,7 +1024,6 @@ export function Settings() {
       <header>
         {page === 'home' ? (
           <div className="you-head-row">
-            <Eyebrow>Profile &amp; settings</Eyebrow>
             {searchButton}
           </div>
         ) : (

@@ -140,7 +140,7 @@
 
 /* Closed: a hairline row — name, where it stands, count. */
 :root .studio-workout-page .studio-movement-name-compact { display: block; font-family: var(--font-sans); font-size: 15px; font-weight: 500; line-height: 1.35; letter-spacing: 0; color: var(--metal-ink); overflow-wrap: anywhere; }
-:root .studio-workout-page .studio-movement-summary { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+:root .studio-workout-page .studio-movement-summary { display: block; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 :root .studio-workout-page .studio-movement.is-complete:not(.is-active) .studio-movement-name-compact { font-weight: 400; color: var(--metal-ink-2); }
 :root .studio-workout-page .studio-movement-count { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; white-space: nowrap; font-size: 14px; line-height: 20px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 :root .studio-workout-page .studio-movement.is-now .studio-movement-count { color: var(--metal-red); }
@@ -152,11 +152,10 @@
 .studio-movement-eyebrow {
   display: block;
   margin-bottom: 8px;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--metal-ink-2);
 }
 :root .studio-workout-page .studio-movement-name {
@@ -203,7 +202,7 @@
 .studio-movement-menu > button:disabled { opacity: .4; }
 .studio-movement-menu > button:active:not(:disabled) { background: color-mix(in srgb, var(--metal-ink) 5%, transparent); }
 
-.studio-movement-detail { display: flex; align-items: center; gap: 7px; margin: 2px 0 4px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.studio-movement-detail { display: flex; align-items: center; gap: 7px; margin: 2px 0 4px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
 .studio-movement-detail svg { flex-shrink: 0; color: var(--metal-ink-3); }
 .studio-movement-detail.is-failed { color: var(--metal-ink); }
 .studio-movement-detail.is-failed::before { content: ''; flex: none; width: 2px; height: 13px; border-radius: 1px; background: var(--metal-red); }
@@ -214,12 +213,12 @@
 .studio-movement-prescription { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
 .studio-movement-prescription > p { min-width: 0; font-size: 15px; line-height: 1.4; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 /* Swap overhangs the line so the row keeps its rhythm. */
-.studio-movement-swap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 44px; margin: -10px 0; padding-left: 12px; font-size: 13.5px; font-weight: 500; color: var(--metal-ink); }
+.studio-movement-swap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 44px; margin: -10px 0; padding-left: 12px; font-size: 14px; font-weight: 500; color: var(--metal-ink); }
 .studio-movement-swap svg { color: var(--metal-ink-3); }
 .studio-movement-swap:disabled { opacity: .4; }
 .studio-last-workout { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
 .studio-last-workout > span { color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
-.studio-collapse-movement { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; font-size: 13.5px; color: var(--metal-ink-2); }
+.studio-collapse-movement { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; font-size: 14px; color: var(--metal-ink-2); }
 .studio-collapse-movement svg { color: var(--metal-ink-3); }
 
 /* ─── Set rows ────────────────────────────────────────────────── */
@@ -255,7 +254,7 @@
 .studio-set-prefix { color: inherit; }
 .studio-set-figures { overflow: hidden; text-overflow: ellipsis; }
 .studio-set-state { display: inline-flex; align-items: center; gap: 3px; flex: none; margin-left: 3px; align-self: center; color: var(--metal-ink); }
-.studio-set-side { font-size: 13.5px; color: var(--metal-ink-2); text-align: right; white-space: nowrap; }
+.studio-set-side { font-size: 14px; color: var(--metal-ink-2); text-align: right; white-space: nowrap; }
 :root .studio-workout-page .studio-set-ledger.is-done { color: var(--metal-ink); font-weight: 400; }
 :root .studio-workout-page .studio-set-ledger.is-done .studio-set-side { color: var(--metal-ink-2); }
 :root .studio-workout-page .studio-set-ledger.is-now { color: var(--metal-ink); font-weight: 500; }
@@ -289,7 +288,7 @@
   color: var(--metal-ink);
   cursor: text;
 }
-.studio-set-unit { font-family: var(--font-sans); font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--metal-ink-2); font-variation-settings: normal; }
+.studio-set-unit { font-family: var(--font-sans); font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--metal-ink-2); font-variation-settings: normal; }
 /* The hidden copy of the value sizes the field; the input lies over it, so
    its own intrinsic width never counts. */
 .studio-set-sizer { position: relative; display: inline-block; min-width: 0; }
@@ -361,7 +360,7 @@
 
 .studio-save-error { display: flex; align-items: flex-start; gap: 9px; margin: 4px 0 2px 38px; font-size: 13px; line-height: 1.45; color: var(--metal-ink); }
 .studio-save-error::before { content: ''; flex: none; width: 2px; height: 13px; margin-top: 3px; border-radius: 1px; background: var(--metal-red); }
-.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px; padding-left: 30px; font-size: 13.5px; color: var(--metal-ink-2); }
+.studio-set-editor-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px; padding-left: 30px; font-size: 14px; color: var(--metal-ink-2); }
 .studio-set-editor-foot > span { padding-left: 8px; }
 .studio-set-editor-foot > div { display: flex; gap: 2px; margin-left: auto; margin-right: -10px; }
 .studio-set-editor-foot button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 8px; color: var(--metal-ink-2); }
@@ -373,7 +372,7 @@
 /* Movement note: a quiet line; the saved note reads as an italic aside. */
 .studio-movement-note { margin-top: 6px; }
 .studio-note-text { padding-top: 10px; font-family: var(--font-display); font-style: italic; font-size: 15px; line-height: 1.45; color: var(--metal-ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.studio-note-toggle { display: inline-flex; align-items: center; min-height: 44px; font-size: 13.5px; color: var(--metal-ink-2); }
+.studio-note-toggle { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--metal-ink-2); }
 .studio-note-input {
   display: block;
   width: 100%;
@@ -429,11 +428,11 @@
 .studio-banked-figures > div + div { padding-left: 14px; }
 .studio-banked-figures dd { margin: 0; font-size: 30px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-banked-figures dd i { font-style: normal; color: var(--metal-ink-3); }
-.studio-banked-figures dt { font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.studio-banked-figures dt { font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
 .studio-banked-gains { margin-top: 26px; padding-top: 14px; border-top: 0.5px solid var(--metal-rule); }
 .studio-banked-gains ul { margin: 6px 0 0; padding: 0; list-style: none; }
 .studio-banked-gains li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 40px; padding: 10px 0; font-size: 15px; line-height: 1.35; color: var(--metal-ink); }
-.studio-banked-gain { flex: none; font-size: 13.5px; font-weight: 500; color: var(--metal-red); font-variant-numeric: tabular-nums; }
+.studio-banked-gain { flex: none; font-size: 14px; font-weight: 500; color: var(--metal-red); font-variant-numeric: tabular-nums; }
 
 /* The printed token (no WebGL) in Metal: a dark enamel coin in Real black,
    ivory in Ivory, an ink tick ring; no lacquer, no drop shadow. */
@@ -485,7 +484,7 @@
   display: flex;
   align-items: center;
   color: var(--metal-red);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   pointer-events: none;

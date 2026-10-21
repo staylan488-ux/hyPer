@@ -342,9 +342,9 @@ function FlatFigure({
             textAnchor="middle"
             fontSize={0.11}
             fill="var(--metal-ink-2)"
-            style={{ letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500 }}
+            style={{ fontWeight: 500 }}
           >
-            {side}
+            {`${side}`.charAt(0).toUpperCase() + `${side}`.slice(1)}
           </text>}
         </g>
       ))}

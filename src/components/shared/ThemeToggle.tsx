@@ -30,7 +30,7 @@ export function ThemeToggle({ compact = false, className = '' }: ThemeToggleProp
             onClick={() => setTheme(opt.mode)}
             aria-label={opt.mode === 'system' ? 'Follow system' : opt.mode === 'light' ? 'Ivory (light)' : 'Black (dark)'}
             aria-pressed={active}
-            className={`px-3.5 min-h-11 rounded-[var(--radius-control)] text-[11px] font-medium uppercase tracking-[0.16em] transition-colors duration-200 ${
+            className={`px-3.5 min-h-11 rounded-[var(--radius-control)] text-[13px] font-medium transition-colors duration-200 ${
               active
                 ? 'bg-[var(--color-text)] text-[var(--color-base)]'
                 : 'bg-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'

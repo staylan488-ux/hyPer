@@ -45,7 +45,7 @@
 }
 
 .studio-rest-status {
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.35;
   color: var(--metal-ink-2);
 }
@@ -55,7 +55,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.35;
   color: var(--metal-ink-2);
 }

@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button, ConfirmDialogHost, Input, Modal, SegmentedControl } from '@/components/shared';
 import {
   Chevron,
-  Eyebrow,
   HeroFigure,
   MetalSection,
   MetalTitle,
@@ -270,13 +269,12 @@ export function Splits() {
   return (
     <div className="metal-page pb-nav">
       <header>
-        <Eyebrow>{flexible ? 'Training plan' : activeProgram ? 'Active program' : splits.length === 0 ? 'Start here' : 'Training plan'}</Eyebrow>
         {flexible ? (
-          <MetalTitle note="Build each session as you go.">Flexible mode</MetalTitle>
+          <MetalTitle note="Flexible · build each session as you go">Program</MetalTitle>
         ) : activeProgram ? (
-          <MetalTitle>{activeProgram.name}</MetalTitle>
+          <MetalTitle note={`${activeProgram.name} · active`}>Program</MetalTitle>
         ) : splits.length === 0 ? (
-          <MetalTitle>Build your first program</MetalTitle>
+          <MetalTitle note="Start here">Build your first program</MetalTitle>
         ) : (
           <MetalTitle note="None active">Program</MetalTitle>
         )}
