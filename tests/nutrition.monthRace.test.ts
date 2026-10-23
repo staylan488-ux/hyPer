@@ -57,7 +57,7 @@ vi.mock('react', async (original) => ({
 
 
 vi.mock('@/components/shared', () => Object.fromEntries(
-  ['Button', 'EmptyState', 'Modal', 'RailStrip', 'RollingNumber', 'Screen', 'Toast', 'PageTitle', 'SealMark'].map((name) => [name, name]),
+  ['Button', 'EmptyState', 'Modal', 'RailStrip', 'RollingNumber', 'Screen', 'SegmentedControl', 'Toast', 'PageTitle', 'SealMark'].map((name) => [name, name]),
 ));
 vi.mock('@/components/metal', async (original) => ({ ...(await original<typeof import('@/components/metal')>()), HeroFigure: 'HeroFigure' }));
 vi.mock('@/components/nutrition/MealLogger', () => ({ MealLogger: 'MealLogger' }));
