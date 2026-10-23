@@ -8,6 +8,7 @@ import {
   HeroFigure,
   MetalSection,
   MetalTitle,
+  TrainScope,
   useCommandCapsule,
   type CommandCapsuleSpec,
 } from '@/components/metal';
@@ -269,6 +270,7 @@ export function Splits() {
   return (
     <div className="metal-page pb-nav">
       <header>
+        <TrainScope />
         {flexible ? (
           <MetalTitle note="Flexible · build each session as you go">Program</MetalTitle>
         ) : activeProgram ? (

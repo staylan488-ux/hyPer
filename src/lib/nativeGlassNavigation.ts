@@ -83,8 +83,8 @@ export function connectGlassNavigation(
 }
 
 export function nativeTabForPath(path: string): NativeTab {
-  if (['/train', '/workout', '/splits'].some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return 'train';
+  if (['/train', '/workout', '/splits', '/history'].some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return 'train';
   if (path === '/nutrition' || path.startsWith('/nutrition/')) return 'fuel';
-  if (path === '/') return 'today';
+  if (path === '/' || path === '/analysis' || path.startsWith('/analysis/')) return 'today';
   return 'you';
 }

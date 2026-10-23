@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
 import { VolumeRail } from '@/components/shared';
@@ -62,6 +62,11 @@ const LANDMARK_NOTES = [
 export function Analysis() {
   const { weeklyVolume, calculateWeeklyVolume } = useAppStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Coaching opens from Today or from History; the back control returns there.
+  const cameFrom = (location.state as { from?: string } | null)?.from;
+  const backTo = cameFrom === '/history' || cameFrom === '/train' ? cameFrom : '/';
+  const backLabel = backTo === '/history' ? 'History' : backTo === '/train' ? 'Train' : 'Today';
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
   const [trainingHours, setTrainingHours] = useState<TrainingHoursPoint[]>([]);
@@ -146,7 +151,7 @@ export function Analysis() {
   return (
     <div className="metal-page pb-nav">
       <header>
-        <BackLink to="/">Today</BackLink>
+        <BackLink to={backTo}>{backLabel}</BackLink>
         <MetalTitle note={`Week of ${format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}`}>Coaching</MetalTitle>
       </header>
 

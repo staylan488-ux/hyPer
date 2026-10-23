@@ -130,7 +130,9 @@ describe('native glass navigation', () => {
     expect(nativeTabForPath('/')).toBe('today');
     expect(nativeTabForPath('/train/program')).toBe('train');
     expect(nativeTabForPath('/nutrition')).toBe('fuel');
-    expect(nativeTabForPath('/history')).toBe('you');
+    expect(nativeTabForPath('/history')).toBe('train');
+    expect(nativeTabForPath('/analysis')).toBe('today');
+    expect(nativeTabForPath('/settings/analysis')).toBe('you');
     expect(nativeTabForPath('/training')).toBe('you');
   });
 });

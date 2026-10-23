@@ -8,10 +8,10 @@ import { useNativeGlassNavigation } from '@/hooks/useNativeGlassNavigation';
 import { useLitSurface } from '@/hooks/useLitSurface';
 
 const navItems = [
-  { to: '/', icon: Home, label: 'Today', matchPaths: ['/'] },
-  { to: '/train', icon: Dumbbell, label: 'Train', matchPaths: ['/train', '/workout', '/splits'] },
+  { to: '/', icon: Home, label: 'Today', matchPaths: ['/', '/analysis'] },
+  { to: '/train', icon: Dumbbell, label: 'Train', matchPaths: ['/train', '/workout', '/splits', '/history'] },
   { to: '/nutrition', icon: Leaf, label: 'Fuel', matchPaths: ['/nutrition'] },
-  { to: '/settings', icon: User, label: 'You', matchPaths: ['/settings', '/history', '/analysis'] },
+  { to: '/settings', icon: User, label: 'You', matchPaths: ['/settings'] },
 ];
 
 export function BottomNav() {
