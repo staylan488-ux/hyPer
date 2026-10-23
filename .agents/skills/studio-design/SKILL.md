@@ -32,27 +32,29 @@ Fraunces is the figure and title voice; Geist carries everything else.
 | Role | Spec | Use |
 |---|---|---|
 | Hero figure | Fraunces 104px/0.86, 340, opsz 144, −.035em; denominator in ink-3 | `HeroFigure`, one per screen |
-| Big figure | Fraunces 56px/0.92 + 13px unit | `BigFigure` (e.g. kcal left) |
+| Big figure | Fraunces 44px/0.92 + 13px unit | `BigFigure` (e.g. kcal left) |
 | Capsule value | Fraunces 27px + 12px unit | command capsule values |
 | Page title | Fraunces 40px, opsz 144 | `PageTitle` on unmigrated pages |
 | Screen title | Fraunces 30px/1.1, 360, opsz 72 + 13px Geist note on the baseline | `MetalTitle` |
 | Sheet title | Fraunces 24px, 360, opsz 72 | `Modal` |
-| Eyebrow | Geist 11px/14px, 500, .14em, uppercase, ink-2 | `Eyebrow`, section heads |
+| Label | Geist 12px/16px, 500, sentence case, ink-2 | `Eyebrow`: section heads and Today's live status |
 | Line / row title | Geist 15px (rows 500) | `.metal-line`, `HairlineRow` |
-| Support | Geist 13–14px, ink-2; details 12.5px | captions, notes |
-| Capsule label | Geist 16.5px 500 / 13px sublabel | command capsule |
+| Support | Geist 13px, ink-2; notes and hero captions 15px | captions, details, notes |
+| Capsule label | Geist 17px 500 / 13px sublabel | command capsule |
 
 Figures use lining proportional digits (`.metal-num`); counters that tick use
-tabular digits. Sentence case everywhere except eyebrows. Never truncate a
-meaningful name; let titles wrap.
+tabular digits. Sentence case everywhere, with no spaced capitals: the only small type is the
+tab bar's 11px labels and single day letters. Half-pixel sizes are not used.
+Never truncate a meaningful name; let titles wrap.
 
 ## Layout: sections and lists
 
-- Page: 20px gutters (`.metal-page`), eyebrow + title row, then the hero
-  figure with its caption on the baseline and a full-width segmented hairline
+- Page: 20px gutters (`.metal-page`), a title row (`MetalTitle` with its
+  context as the baseline note; nothing sits above the title except Today's
+  live status), then the hero figure with its caption on the baseline and a full-width segmented hairline
   (`SegmentedHairline`: 2px segments; `wide` for few segments).
-- Sections (`MetalSection`): a 0.5px rule, 30px above, an eyebrow head with an
-  optional right side (a count, dots, or one `LineButton`). No cards, and never
+- Sections (`MetalSection`): a 0.5px rule, 30px above, a 12px label head with
+  an optional right side (a count, dots, or one `LineButton`). No cards, and never
   cards inside cards; space and hairlines do the grouping.
 - Lists (`HairlineList` + `HairlineRow`): unboxed rows with title, detail,
   value and a 7×12 chevron when they navigate; 44pt minimum height.

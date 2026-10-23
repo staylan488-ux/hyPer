@@ -1716,7 +1716,6 @@ export function Workout() {
             void settleNoteWrites().then(() => setFinishError(null)).catch(() => {});
           }}>Retry</button>}
         </div>}
-        <Eyebrow live className="studio-session-eyebrow">{isFlexibleSession ? 'Flexible session' : activeSplit?.name || 'Session in progress'}</Eyebrow>
         <h1 className="metal-title studio-session-title" data-session-title>
           {isFlexibleSession
             ? <button type="button" onClick={() => setShowSessionDetails(true)} aria-label="Edit workout name">{currentSessionTitle}<Pencil size={14} aria-hidden /></button>

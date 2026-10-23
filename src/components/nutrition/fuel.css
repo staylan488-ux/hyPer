@@ -132,7 +132,7 @@
 }
 .fuel-entry-main:active { opacity: 0.6; }
 .fuel-entry-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
-.fuel-entry-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-entry-detail { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .fuel-entry-detail .metal-sep { color: var(--metal-ink-3); margin: 0 5px; }
 .fuel-entry-kcal { flex: none; padding-top: 1px; font-size: 15px; line-height: 1.35; font-variant-numeric: tabular-nums; color: var(--metal-ink); white-space: nowrap; }
 .fuel-entry-kcal small { margin-left: 3px; font-size: 12px; color: var(--metal-ink-2); }
@@ -147,7 +147,7 @@
   min-height: 36px;
   list-style: none;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--metal-ink-2);
 }
 .fuel-ingredients summary::-webkit-details-marker { display: none; }
@@ -156,7 +156,7 @@
 .fuel-ingredient { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--metal-rule); }
 .fuel-ingredient-name { font-size: 14px; line-height: 1.4; color: var(--metal-ink); overflow-wrap: anywhere; }
 .fuel-ingredient-detail { margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
-.fuel-ingredient-kcal { flex: none; font-size: 12.5px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.fuel-ingredient-kcal { flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 
 /* Option rows in small sheets (Add meal or snack, Move food). */
 .fuel-option {
@@ -237,7 +237,7 @@
 .fuel-food-main:disabled { cursor: default; }
 .fuel-food-text { flex: 1; min-width: 0; }
 .fuel-food-name { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
-.fuel-food-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fuel-food-detail { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fuel-food-glyph { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; color: var(--metal-ink-2); }
 .fuel-food-glyph svg { width: 14px; height: 14px; }
 
@@ -266,7 +266,7 @@
 }
 .fuel-disclosure-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; line-height: 1.35; }
 .fuel-disclosure-title svg { width: 14px; height: 14px; color: var(--metal-ink-2); }
-.fuel-disclosure-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-disclosure-detail { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
 .fuel-disclosure-state { flex: none; font-size: 13px; color: var(--metal-ink-2); }
 .fuel-ruled { border-top: 0.5px solid var(--metal-rule); }
 .fuel-ruled-bottom { border-bottom: 0.5px solid var(--metal-rule); }
@@ -277,7 +277,7 @@
 .fuel-fact { padding-top: 9px; border-top: 0.5px solid var(--metal-rule); }
 .fuel-fact-value { display: block; margin-top: 5px; font-size: 17px; line-height: 1.2; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
 .fuel-fact-value small { margin-left: 2px; font-size: 12px; color: var(--metal-ink-2); }
-.fuel-basis { margin-top: 10px; font-size: 12.5px; color: var(--metal-ink-2); }
+.fuel-basis { margin-top: 10px; font-size: 13px; color: var(--metal-ink-2); }
 .fuel-confidence { margin-top: 18px; }
 
 /* A large centered amount in a hairline field. */
@@ -308,7 +308,7 @@
 .fuel-check input:checked + .fuel-check-box { background: var(--metal-ink); box-shadow: none; }
 .fuel-check input:focus-visible + .fuel-check-box { outline: 2px solid var(--metal-ink); outline-offset: 2px; }
 .fuel-check-label { display: block; font-size: 15px; line-height: 1.35; color: var(--metal-ink); }
-.fuel-check-detail { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-check-detail { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
 
 /* Photo slots and previews: hairline frames, no fills. */
 .fuel-photo-slot {
@@ -329,7 +329,7 @@
 .fuel-photo-slot.is-row { flex-direction: row; justify-content: flex-start; gap: 14px; min-height: 4.5rem; padding: 0 16px; text-align: left; }
 .fuel-photo-slot svg { width: 18px; height: 18px; color: var(--metal-ink-2); }
 .fuel-photo-slot-title { font-size: 15px; font-weight: 500; line-height: 1.35; }
-.fuel-photo-slot-detail { font-size: 12.5px; line-height: 1.45; color: var(--metal-ink-2); }
+.fuel-photo-slot-detail { font-size: 13px; line-height: 1.45; color: var(--metal-ink-2); }
 .fuel-photo { position: relative; overflow: hidden; border-radius: 16px; box-shadow: 0 0 0 0.5px var(--metal-rule); }
 .fuel-photo img { display: block; width: 100%; object-fit: cover; }
 .fuel-photo-cover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: color-mix(in srgb, var(--metal-sheet) 62%, transparent); font-size: 13px; font-weight: 500; color: var(--metal-ink); }
@@ -351,7 +351,7 @@
 }
 .fuel-photo-action::after { content: ''; position: absolute; inset: -4px; }
 .fuel-photo-action svg { width: 12px; height: 12px; }
-.fuel-step-label { font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--metal-ink-2); }
+.fuel-step-label { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0; color: var(--metal-ink-2); }
 .fuel-step-title { margin-top: 4px; font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--metal-ink); }
 
 /* Barcode viewport: the camera in a rounded frame with white corner marks. */

@@ -97,11 +97,10 @@
   align-items: center;
   gap: 8px;
   font-family: var(--font-sans);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--metal-ink-2);
 }
 .metal-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--metal-red); flex: none; }
@@ -152,11 +151,11 @@
 .metal-hero { display: flex; align-items: baseline; gap: 12px; margin-top: 20px; min-width: 0; }
 .metal-hero .metal-num { font-size: 104px; line-height: 0.86; letter-spacing: -0.035em; margin-left: -4px; white-space: nowrap; }
 .metal-hero .metal-num i { font-style: normal; color: var(--metal-ink-3); }
-.metal-hero-caption { min-width: 0; font-size: 14px; line-height: 1.35; color: var(--metal-ink-2); padding-bottom: 2px; }
+.metal-hero-caption { min-width: 0; font-size: 15px; line-height: 1.35; color: var(--metal-ink-2); padding-bottom: 2px; }
 .metal-hero-caption b { color: var(--metal-ink); font-weight: 500; }
 
 .metal-big { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
-.metal-big .metal-num { font-size: 56px; line-height: 0.92; }
+.metal-big .metal-num { font-size: 44px; line-height: 0.92; }
 
 /* Full-width segmented hairline under a hero figure. */
 .metal-segs { display: flex; gap: 3px; margin-top: 18px; }
@@ -190,7 +189,7 @@
   color: var(--metal-ink);
 }
 .metal-row-title { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; }
-.metal-row-detail { display: block; margin-top: 1px; font-size: 12.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.metal-row-detail { display: block; margin-top: 1px; font-size: 13px; line-height: 1.4; color: var(--metal-ink-2); }
 .metal-row-value { flex: none; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .metal-row-chevron { flex: none; width: 7px; height: 12px; color: var(--metal-ink-3); }
 
@@ -204,7 +203,7 @@
   padding: 0 14px 0 12px;
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px var(--metal-line);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--metal-ink);
   white-space: nowrap;
@@ -230,7 +229,7 @@
 
 /* Two thin bars (eaten / protein). */
 .metal-rails { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 14px; }
-.metal-rail-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
+.metal-rail-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .metal-rail-label b { font-weight: 500; color: var(--metal-ink); }
 .metal-rail-track { position: relative; height: 2px; margin-top: 7px; background: var(--metal-track); border-radius: 1px; overflow: hidden; }
 .metal-rail-fill { position: absolute; inset: 0; background: var(--metal-ink); border-radius: 1px; transform-origin: 0 50%; transition: transform 600ms cubic-bezier(.16, 1, .3, 1); }
@@ -239,7 +238,7 @@
 /* Weekly line and the red tick flag. */
 .metal-line { margin-top: 4px; font-size: 15px; line-height: 1.45; color: var(--metal-ink); }
 .metal-line .metal-sep { color: var(--metal-ink-3); margin: 0 6px; }
-.metal-flag { display: flex; align-items: center; gap: 9px; margin-top: 5px; font-size: 13.5px; line-height: 1.4; color: var(--metal-ink-2); }
+.metal-flag { display: flex; align-items: center; gap: 9px; margin-top: 5px; font-size: 14px; line-height: 1.4; color: var(--metal-ink-2); }
 .metal-flag::before { content: ''; flex: none; width: 2px; height: 13px; background: var(--metal-red); border-radius: 1px; }
 .metal-flag b { color: var(--metal-ink); font-weight: 500; }
 .metal-dots { display: inline-flex; gap: 4px; }
@@ -261,7 +260,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--metal-ink);
   white-space: nowrap;
@@ -273,7 +272,7 @@
 .metal-entry::after { content: ''; position: absolute; inset: -3px 0; }
 
 /* Quiet supporting copy under a figure or in an empty state. */
-.metal-note { margin-top: 10px; max-width: 36ch; font-size: 14px; line-height: 1.45; color: var(--metal-ink-2); }
+.metal-note { margin-top: 10px; max-width: 36ch; font-size: 15px; line-height: 1.45; color: var(--metal-ink-2); }
 
 /* A label/value line with a trailing text action ("Next session · Train anyway"). */
 .metal-next { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
@@ -343,12 +342,12 @@
   white-space: nowrap;
 }
 .metal-capsule-press { position: absolute; inset: 0 70px 0 0; border-radius: 35px 0 0 35px; }
-.metal-capsule-c1 { overflow: hidden; text-overflow: ellipsis; font-size: 16.5px; line-height: 1.3; font-weight: 500; letter-spacing: -0.01em; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
+.metal-capsule-c1 { overflow: hidden; text-overflow: ellipsis; font-size: 17px; line-height: 1.3; font-weight: 500; letter-spacing: -0.01em; color: var(--metal-ink); font-variant-numeric: tabular-nums; }
 .metal-capsule-c2 { overflow: hidden; text-overflow: ellipsis; margin-top: 1px; font-size: 13px; line-height: 1.35; color: var(--metal-ink-2); font-variant-numeric: tabular-nums; }
 .metal-capsule-c2.is-alert { color: var(--metal-red); }
 .metal-capsule-layer.is-values { left: 10px; justify-content: flex-end; padding-bottom: 3px; }
 /* Inside the values layer (left 10px), so it lines up with the first value at 22px. */
-.metal-capsule-caption { position: absolute; left: 12px; right: 0; top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; line-height: 14px; color: var(--metal-ink-2); }
+.metal-capsule-caption { position: absolute; left: 12px; right: 0; top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 14px; color: var(--metal-ink-2); }
 .metal-capsule-caption.is-alert { color: var(--metal-red); }
 .metal-capsule-values { display: flex; align-items: center; min-width: 0; }
 .metal-capsule-value {
@@ -512,8 +511,8 @@ html[data-keyboard-open='true'] .metal-capsule,
 .metal-btn--danger { color: var(--metal-red); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metal-red) 55%, transparent); }
 .metal-btn--ghost { color: var(--metal-ink-2); }
 .metal-btn--ghost:hover:not(:disabled) { color: var(--metal-ink); }
-.metal-btn--sm { min-height: 44px; padding: 0 16px; font-size: 13.5px; }
-.metal-btn--md { min-height: 44px; padding: 0 20px; font-size: 14px; }
+.metal-btn--sm { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.metal-btn--md { min-height: 44px; padding: 0 20px; font-size: 15px; }
 .metal-btn--lg { min-height: 52px; padding: 0 24px; font-size: 15px; }
 .metal-btn--ghost.metal-btn--sm { padding: 0 12px; }
 
@@ -601,12 +600,12 @@ html[data-keyboard-open='true'] .metal-capsule,
 :root .studio-movement-name { font-size: 40px; font-variation-settings: 'opsz' 144; letter-spacing: -0.022em; }
 :root .studio-movement-name-compact { font-family: var(--font-sans); font-size: 15px; font-weight: 500; line-height: 1.35; letter-spacing: 0; }
 :root .studio-movement:not(.is-active) { padding: 13px 0 12px; }
-:root .studio-movement-summary { gap: 3px; margin-top: 2px; font-size: 12.5px; }
+:root .studio-movement-summary { gap: 3px; margin-top: 2px; font-size: 13px; }
 :root .studio-movement-count { font-size: 13px; color: var(--metal-ink-2); }
 :root .studio-movement.is-active .studio-movement-count { color: var(--metal-red); }
-:root .studio-movement-next { margin-bottom: 4px; letter-spacing: 0.14em; color: var(--metal-red); }
+:root .studio-movement-next { margin-bottom: 4px; letter-spacing: 0; color: var(--metal-red); }
 :root .studio-movement.is-complete:not(.is-active) .studio-movement-name-compact { font-size: 15px; font-weight: 400; color: var(--metal-ink-2); }
-:root .studio-set-headings { letter-spacing: 0.14em; font-size: 10.5px; }
+:root .studio-set-headings { letter-spacing: 0; font-size: 12px; }
 :root .studio-set-ledger { min-height: 50px; border-bottom: 0.5px solid var(--metal-rule); color: var(--metal-ink-3); font-size: 15px; }
 :root .studio-set-ledger[data-next] { color: var(--metal-ink); font-weight: 500; }
 :root .studio-set-ledger[data-next] .studio-set-index { color: var(--metal-red); font-weight: 500; }

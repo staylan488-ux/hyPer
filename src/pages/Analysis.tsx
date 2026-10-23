@@ -147,7 +147,6 @@ export function Analysis() {
     <div className="metal-page pb-nav">
       <header>
         <BackLink to="/">Today</BackLink>
-        <Eyebrow className="mt-1">Progress</Eyebrow>
         <MetalTitle note={`Week of ${format(startOfWeek(new Date(), TRAINING_WEEK), 'MMM d')}`}>Coaching</MetalTitle>
       </header>
 

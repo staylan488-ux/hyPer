@@ -569,7 +569,6 @@ export function RunTracker() {
       </button>
 
       <header className="mt-2">
-        <Eyebrow>Field tracker</Eyebrow>
         <MetalTitle note={mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}>Run</MetalTitle>
       </header>
 

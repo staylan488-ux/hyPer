@@ -1,3 +1,13 @@
+# Current work snapshot — Native Frame step 1 (type and labels)
+
+Recorded 2026-10-21 (Pacific). The owner asked for a calmer, more native UI (less text in fewer sizes, no scrolling for a tab's main job, clearer arrangement), reviewed three directions on a Design canvas (https://claude.ai/artifact/Ms1Y55CKKLtUy1t26wnxPF) and approved **B, Native Frame**, to be built in three pull requests. The audit behind the canvas was taken on a local `main` that was 101 commits behind `origin/main`; the current Metal screens were re-measured before building, and the plan below is adapted to Metal. Work is on `feat/native-frame-type` from `origin/main` at `c75338d` (#142). A pull request was requested; merge and release were not.
+
+Step 1 (this branch): the spaced-capitals label role retires everywhere (Metal `Eyebrow`, legacy `t-label`, set headings, History/Fuel/You/Run label rules, theme toggle, figure Front/Back); half-pixel sizes round onto 12 / 13 / 14 / 15 / 17; hero captions and notes read at 15px; `BigFigure` is 44px; Fuel's date and Program's active plan move onto the title line, and You, Coaching, Run and the live session drop the caption above the title. Today keeps its live status; Train pre-session and History keep their caption until step 2. The studio-design guide records the new label role and scale.
+
+Step 2 (next PR): one shared header; Train gains Session · Program · History; Coaching gets a back control that returns where you came from; the tab bar stops lighting You on History and Coaching; Today's Progress / Program / History capsules go. Step 3: Fuel (Today · Meals), Coaching (figure + selected muscle, the rest as sheets) and History refits so each tab's main job fits 402×874.
+
+Validation: lint (instruction checks, eslint, test typecheck), 1,788 tests across 147 files, the production build, and a preview pass at 402×874 in Black and Ivory over Today, Train, Fuel, Program, History, Coaching and You. Not exercised: a native device and the iOS 26 glass tab bar (unchanged). The History and Program reveal animations did not finish in the hidden preview pane.
+
 # Current work snapshot — set logging stuck after iOS resume
 
 Recorded 2026-10-13 (Pacific). Production bug on TestFlight: after the app sat in the background past token expiry, every Save set attempt and retry hung until a cold restart. Server logs showed hourly refreshes stop at that point and no stuck retry reaching the server. Fix on `fix/set-logging-auth-refresh` from `main` at `e54c096` (#144), committed locally; push, PR, merge and release were not requested.

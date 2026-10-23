@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Modal, Toast, SealMark } from '@/components/shared';
-import { Eyebrow, HeroFigure, LineButton, MetalRail, MetalSection, MetalTitle, useCommandCapsule } from '@/components/metal';
+import { HeroFigure, LineButton, MetalRail, MetalSection, MetalTitle, useCommandCapsule } from '@/components/metal';
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { useAppStore } from '@/stores/appStore';
 import { MealLogger } from '@/components/nutrition/MealLogger';
@@ -473,8 +473,14 @@ export function Nutrition() {
 
       {/* ── Dateline ── */}
       <header>
-        <Eyebrow>{liveDay ? `Today · ${format(selectedDate, 'MMM d')}` : format(selectedDate, 'EEEE, MMM d')}</Eyebrow>
-        <MetalTitle note={otherYear ? format(selectedDate, 'yyyy') : undefined}>Fuel</MetalTitle>
+        <MetalTitle
+          note={[
+            liveDay ? `Today · ${format(selectedDate, 'MMM d')}` : format(selectedDate, 'EEEE, MMM d'),
+            otherYear ? format(selectedDate, 'yyyy') : null,
+          ].filter(Boolean).join(' · ')}
+        >
+          Fuel
+        </MetalTitle>
       </header>
 
       {/* ── Energy — the day's calories, as the one huge figure ── */}

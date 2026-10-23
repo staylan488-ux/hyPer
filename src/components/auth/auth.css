@@ -35,7 +35,7 @@
   align-items: center;
   gap: 14px;
   margin: 26px 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--metal-ink-3);
 }
 .you-auth-or::before,
