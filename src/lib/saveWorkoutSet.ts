@@ -37,10 +37,10 @@ async function saveAttempt<T>(request: (signal: AbortSignal) => PromiseLike<T>):
 // send the same payload on both attempts: a lost response may mean the first
 // write already succeeded.
 //
-// A timeout usually means the SDK is stuck behind a stalled token refresh, and
-// a plain retry would wait on the same one. Each timeout starts a bounded auth
-// recovery; the retry waits for it, and so does a later manual Retry when the
-// last attempt timed out.
+// A timeout can include a wait behind token refresh. Recovery restarts its
+// ticker and requests a refresh; it does not cancel the SDK's in-flight
+// refresh. timedFetch must settle stalled refresh transports so this recovery
+// and the retry can make progress. Later manual retries share that recovery.
 export async function runSaveWithRetry<R extends { error: unknown; status: number }>(
   request: (signal: AbortSignal) => PromiseLike<R>,
 ): Promise<R> {

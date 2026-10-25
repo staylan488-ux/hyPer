@@ -22,7 +22,8 @@ vi.mock('@/lib/authDiagnostics', () => ({ recordAuthDiagnostic: mocks.record }))
 
 import { KEYCHAIN_TIMEOUT_MS, nativeAuthStorage } from '@/lib/nativeSecureStorage';
 
-const KEY = 'sb-abcd-auth-token';
+let keySequence = 0;
+let KEY: string;
 const SESSION = '{"access_token":"a","refresh_token":"r"}';
 
 let keychain: Map<string, string>;
@@ -42,6 +43,7 @@ function throwingLocalStorage() {
 }
 
 beforeEach(() => {
+  KEY = `sb-test-${++keySequence}-auth-token`;
   keychain = new Map();
   legacy = new Map();
   vi.stubGlobal('window', { localStorage: fakeLocalStorage(legacy) });
@@ -116,6 +118,48 @@ describe('nativeAuthStorage on native iOS', () => {
     mocks.NativeAuth.removeSecureValue.mockRejectedValue(new Error('keychain delete failed'));
     await expect(nativeAuthStorage.removeItem(KEY)).resolves.toBeUndefined();
     expect(legacy.has(KEY)).toBe(false);
+  });
+
+  it('does not revive a signed-out session when the native deletion failed', async () => {
+    keychain.set(KEY, SESSION);
+    await nativeAuthStorage.getItem(KEY);
+    mocks.NativeAuth.removeSecureValue.mockRejectedValue(new Error('delete failed'));
+    await nativeAuthStorage.removeItem(KEY);
+    expect(keychain.get(KEY)).toBe(SESSION);
+    await expect(nativeAuthStorage.getItem(KEY)).resolves.toBeNull();
+
+    await nativeAuthStorage.setItem(KEY, 'new-sign-in');
+    await expect(nativeAuthStorage.getItem(KEY)).resolves.toBe('new-sign-in');
+  });
+
+  it('honors a successful Keychain miss even after a session was cached', async () => {
+    keychain.set(KEY, SESSION);
+    await nativeAuthStorage.getItem(KEY);
+    keychain.delete(KEY);
+    await expect(nativeAuthStorage.getItem(KEY)).resolves.toBeNull();
+    mocks.NativeAuth.getSecureValue.mockRejectedValue(new Error('read failed'));
+    await expect(nativeAuthStorage.getItem(KEY)).resolves.toBeNull();
+  });
+
+  it.each(['write', 'remove'])('ignores an old read that settles after a newer %s', async (mutation) => {
+    let resolveRead!: (value: { value: string }) => void;
+    mocks.NativeAuth.getSecureValue.mockReturnValueOnce(new Promise((resolve) => { resolveRead = resolve; }));
+    const read = nativeAuthStorage.getItem(KEY);
+    if (mutation === 'write') await nativeAuthStorage.setItem(KEY, 'new-session');
+    else await nativeAuthStorage.removeItem(KEY);
+    resolveRead({ value: SESSION });
+    await expect(read).resolves.toBe(mutation === 'write' ? 'new-session' : null);
+  });
+
+  it('does not return a legacy session when sign-out happened during its promotion', async () => {
+    legacy.set(KEY, SESSION);
+    let finishPromotion!: () => void;
+    mocks.NativeAuth.setSecureValue.mockReturnValueOnce(new Promise<void>((resolve) => { finishPromotion = resolve; }));
+    const read = nativeAuthStorage.getItem(KEY);
+    await vi.waitFor(() => expect(mocks.NativeAuth.setSecureValue).toHaveBeenCalled());
+    await nativeAuthStorage.removeItem(KEY);
+    finishPromotion();
+    await expect(read).resolves.toBeNull();
   });
 
   it('never rejects sign-out when localStorage throws', async () => {
@@ -206,12 +250,58 @@ describe('nativeAuthStorage when the Keychain bridge stalls', () => {
     await expect(result).resolves.toMatchObject({ data: { session: { access_token: 'access' } }, error: null });
   });
 
-  it('does not reuse the last value for a plain Keychain error', async () => {
+  it('keeps the last value for a plain Keychain read error, just as for a timeout', async () => {
     const key = 'sb-error-known';
     keychain.set(key, SESSION);
     await nativeAuthStorage.getItem(key);
     mocks.NativeAuth.getSecureValue.mockRejectedValue(new Error('locked before first unlock'));
-    await expect(nativeAuthStorage.getItem(key)).resolves.toBeNull();
+    await expect(nativeAuthStorage.getItem(key)).resolves.toBe(SESSION);
+  });
+});
+
+describe('set-save authentication after a native storage error', () => {
+  it('keeps the signed-in token on the real SDK request when a later Keychain read fails', async () => {
+    const { createClient } = await import('@supabase/supabase-js');
+    const session = {
+      access_token: 'test-access', refresh_token: 'test-refresh', token_type: 'bearer',
+      expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: { id: 'user-1', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '' },
+    };
+    keychain.set(KEY, JSON.stringify(session));
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      if (new Headers(init?.headers).get('Authorization') !== 'Bearer test-access') {
+        return Response.json({ code: '42501', message: 'permission denied' }, { status: 401 });
+      }
+      return Response.json({ id: 'set-1', weight: 185, reps: 8, completed: true });
+    });
+    const client = createClient('https://native-storage-save.test', 'test-public-key', {
+      auth: { storage: nativeAuthStorage, storageKey: KEY, autoRefreshToken: false, detectSessionInUrl: false },
+      global: { fetch: fetchMock },
+    });
+    await expect(client.auth.getSession()).resolves.toMatchObject({ data: { session: { access_token: 'test-access' } } });
+
+    mocks.NativeAuth.getSecureValue.mockRejectedValue(Object.assign(new Error('private native details'), {
+      code: 'KEYCHAIN_READ_FAILED', data: { osStatus: -25308, session: 'private-session-data' },
+    }));
+    const saved = await client.from('sets').update({ weight: 185, reps: 8, completed: true }).eq('id', 'set-1').select().single();
+    expect(saved.error).toBeNull();
+    expect(saved.data).toMatchObject({ completed: true, weight: 185, reps: 8 });
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer test-access');
+    expect(mocks.record).toHaveBeenCalledWith('keychain:error', { detail: 'get', outcome: 'KEYCHAIN_READ_FAILED:-25308' });
+    expect(JSON.stringify(mocks.record.mock.calls)).not.toContain('private native details');
+    expect(JSON.stringify(mocks.record.mock.calls)).not.toContain('test-access');
+    expect(JSON.stringify(mocks.record.mock.calls)).not.toContain('private-session-data');
+  });
+
+  it.each([
+    { code: 'private-code', status: -25308, expected: 'error' },
+    { code: 'KEYCHAIN_READ_FAILED', status: 'private-status', expected: 'KEYCHAIN_READ_FAILED' },
+    { code: 'KEYCHAIN_READ_FAILED', status: Number.MAX_SAFE_INTEGER, expected: 'KEYCHAIN_READ_FAILED' },
+  ])('does not record arbitrary error metadata ($expected)', async ({ code, status, expected }) => {
+    mocks.NativeAuth.getSecureValue.mockRejectedValue({ code, data: { osStatus: status }, message: 'private-message' });
+    await nativeAuthStorage.getItem(KEY);
+    expect(mocks.record).toHaveBeenCalledWith('keychain:error', { detail: 'get', outcome: expected });
+    expect(JSON.stringify(mocks.record.mock.calls)).not.toContain('private-');
   });
 });
 

@@ -143,7 +143,9 @@ final class HyperAuthPlugin: CAPPlugin, CAPBridgedPlugin {
               let data = item as? Data,
               let value = String(data: data, encoding: .utf8)
         else {
-            call.reject("Secure session storage is unavailable.", "KEYCHAIN_READ_FAILED")
+            // Numeric OSStatus identifies the failure without exposing the
+            // storage key, session value or an OS-generated message.
+            call.reject("Secure session storage is unavailable.", "KEYCHAIN_READ_FAILED", nil, ["osStatus": Int(status)])
             return
         }
         call.resolve(["value": value])

@@ -14,6 +14,7 @@ export type AuthDiagnosticEvent =
   | 'pause'
   | 'recovery:end'
   | 'keychain:timeout'
+  | 'keychain:error'
   | 'set-save:timeout';
 
 export interface AuthDiagnostic {
