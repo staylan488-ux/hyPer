@@ -38,7 +38,7 @@ import { supabase } from '@/lib/supabase';
 import { createPendingEntryId, entryWriteId } from '@/lib/pendingEntryId';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import {
-  LONG_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MS, requestTimeoutMs, timedFetch,
+  LONG_REQUEST_TIMEOUT_MS, REFRESH_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MS, requestTimeoutMs, timedFetch,
 } from '@/lib/timedFetch';
 
 const BASE = 'https://timed-fetch.test';
@@ -74,7 +74,12 @@ describe('requestTimeoutMs', () => {
   it('gives database and auth requests the default deadline', () => {
     expect(requestTimeoutMs(`${BASE}/rest/v1/workouts?select=*`)).toBe(REQUEST_TIMEOUT_MS);
     expect(requestTimeoutMs(`${BASE}/rest/v1/rpc/other_function`)).toBe(REQUEST_TIMEOUT_MS);
-    expect(requestTimeoutMs(new URL(`${BASE}/auth/v1/token?grant_type=refresh_token`))).toBe(REQUEST_TIMEOUT_MS);
+    expect(requestTimeoutMs(`${BASE}/auth/v1/token?grant_type=password`)).toBe(REQUEST_TIMEOUT_MS);
+    expect(requestTimeoutMs(`${BASE}/auth/v1/user`)).toBe(REQUEST_TIMEOUT_MS);
+  });
+
+  it('bounds each token refresh transport attempt within the set-save deadline', () => {
+    expect(requestTimeoutMs(new URL(`${BASE}/auth/v1/token?grant_type=refresh_token`))).toBe(REFRESH_REQUEST_TIMEOUT_MS);
   });
 
   it('gives the program snapshot save a long deadline', () => {
@@ -90,6 +95,31 @@ describe('requestTimeoutMs', () => {
 });
 
 describe('timedFetch', () => {
+  it('rejects at its deadline even when fetch ignores cancellation', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = settled(timedFetch(`${BASE}/rest/v1/sets`));
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+
+    expect(request.done).toBe(true);
+    expect(request.error).toMatchObject({ name: 'AbortError' });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('rejects when a response body ignores cancellation too', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('[')); },
+    }))));
+
+    const request = settled(timedFetch(`${BASE}/rest/v1/sets`));
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+
+    expect(request.done).toBe(true);
+    expect(request.error).toMatchObject({ name: 'AbortError' });
+  });
+
   it('keeps the database deadline active through a stalled response body', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (_input, init) => new Response(new ReadableStream({
       start(controller) {
@@ -166,6 +196,25 @@ describe('timedFetch', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('rejects on caller cancellation even if fetch ignores it and rejects late', async () => {
+    let rejectLate!: (error: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(() => new Promise((_, reject) => { rejectLate = reject; })));
+    const caller = new AbortController();
+    const reason = new Error('caller gave up');
+    const request = settled(timedFetch(`${BASE}/rest/v1/sets`, { signal: caller.signal }));
+    caller.abort(reason);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request.done).toBe(true);
+    expect(request.error).toBe(reason);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // The losing promise stays observed; a late transport rejection must not
+    // become an unhandled rejection or change the caller's result.
+    rejectLate(new TypeError('late transport failure'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request.error).toBe(reason);
+  });
+
   it('keeps the set-save abort firing first through the client', async () => {
     const fetchMock = stalledFetch();
     vi.stubGlobal('fetch', fetchMock);
@@ -189,7 +238,7 @@ describe('timedFetch', () => {
     caller.abort(reason);
 
     await expect(timedFetch(`${BASE}/rest/v1/sets`, { signal: caller.signal })).rejects.toBe(reason);
-    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
