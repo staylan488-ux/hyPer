@@ -7,9 +7,11 @@ import { AppState } from 'react-native';
 
 import { withRefreshDiagnostics } from '@/lib/authDiagnostics';
 import { pauseAuth, resumeAuth } from '@/lib/authResume';
+import { createSecureAuthStorage } from '@/lib/nativeSecureStorage';
 import { timedFetch } from '@/lib/timedFetch';
 import { createMockClient } from '@/preview/mockSupabase';
 
+import { hyperKeychain } from '../../modules/hyper-keychain';
 import { isPreviewActive } from './previewFlag';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -24,9 +26,9 @@ export const supabase: SupabaseClient = preview
   ? createMockClient()
   : createClient(url as string, anonKey as string, {
       auth: {
-        // Moves to the Keychain with sign-in (milestone 2), using the web
-        // app's item names so cutover keeps people signed in.
-        storage: globalThis.localStorage,
+        // The session lives in the Keychain under the Capacitor app's item
+        // names, with the shared timeouts, cache and sign-out tombstone.
+        storage: createSecureAuthStorage(hyperKeychain, () => true),
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,

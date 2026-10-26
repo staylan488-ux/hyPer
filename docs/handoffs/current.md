@@ -79,10 +79,31 @@ the plan's milestone 2 entry lists it:
   callback (tested).
 - Sample-data mode still logs sets and starts rest in the simulator.
 
-Next: sign-in. Before Google sign-in, the owner must approve adding
-`hyper-native://auth/callback` to Supabase's redirect allow-list, and decide
-whether testing starts with a separate account. CocoaPods was installed via
-Homebrew for native builds.
+The owner then asked to build sign-in. Built and **not yet committed** (details
+in the plan's milestone 2 entry): sign-in and offline screens behind Expo
+Router guards, Keychain session storage (`native/modules/hyper-keychain`, same
+items as the Capacitor app), Google and Apple through iOS's sign-in sheet,
+account loading after sign-in, sign-out in You, and the missing Web Crypto parts
+from expo-crypto. Shared changes: `createSecureAuthStorage` (the Keychain is a
+parameter; web behaviour and tests unchanged) and a Row fix so a Start button
+inside a row is reachable by VoiceOver.
+
+Verified in the simulator against a throwaway local Supabase backend (the
+reference schema plus local-only table grants, which newer local stacks no
+longer add): sign in, relaunch still signed in, start a session and log a set
+(the set is in the database), sign out, relaunch still signed out. The Google
+sheet opens and closing it shows nothing. Sample-data mode still works.
+Production was not touched; the owner's phone still has the sample-data build.
+
+Build note: Debug and Release share prebuilt React Native, Hermes and Expo
+frameworks that are swapped per configuration, and `pod install` drops the
+markers. Run `native/scripts/use-rn-core.sh Debug|Release` before a build whose
+configuration changed (a mismatch failed to link, then crashed at launch).
+
+Next, each with the owner's approval: add `hyper-native://auth/callback` to
+Supabase's redirect allow-list (Google and Apple), and install a Release build
+that uses the owner's real account. CocoaPods was installed via Homebrew for
+native builds.
 
 # Previous work snapshot — a single set stuck on every retry
 

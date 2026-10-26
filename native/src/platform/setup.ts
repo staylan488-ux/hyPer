@@ -4,11 +4,29 @@
 // localStorage. Expo SQLite provides the same synchronous API on device.
 import 'expo-sqlite/localStorage/install';
 
-import { randomUUID } from 'expo-crypto';
+import { CryptoDigestAlgorithm, digest, getRandomValues, randomUUID } from 'expo-crypto';
 
-// Shared code creates retry-safe ids with crypto.randomUUID(), which React
-// Native does not provide (session swaps, new food entries, meal ingredients).
+// React Native has no Web Crypto. Once `crypto` exists, code expects its
+// parts to work, so each one used here comes from expo-crypto:
+// - randomUUID: shared code's retry-safe ids (session swaps, food entries).
+// - getRandomValues: supabase-js's PKCE verifier for Google and Apple sign-in.
+// - subtle.digest (SHA-256 only): supabase-js's PKCE code challenge. Without it
+//   supabase-js falls back to the weaker "plain" challenge.
 const globalCrypto = ((globalThis as { crypto?: Partial<Crypto> }).crypto ??= {});
 if (typeof globalCrypto.randomUUID !== 'function') {
   globalCrypto.randomUUID = randomUUID as Crypto['randomUUID'];
+}
+if (typeof globalCrypto.getRandomValues !== 'function') {
+  globalCrypto.getRandomValues = getRandomValues as Crypto['getRandomValues'];
+}
+if (!globalCrypto.subtle) {
+  (globalCrypto as { subtle?: SubtleCrypto }).subtle = {
+    digest: async (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+      const name = typeof algorithm === 'string' ? algorithm : algorithm.name;
+      if (name.toUpperCase() !== CryptoDigestAlgorithm.SHA256) {
+        throw new Error(`crypto.subtle.digest supports SHA-256 only, not ${name}`);
+      }
+      return digest(CryptoDigestAlgorithm.SHA256, data);
+    },
+  } as SubtleCrypto;
 }

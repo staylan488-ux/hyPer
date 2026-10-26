@@ -26,7 +26,12 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
 - The native Supabase client keeps the web client's safety: `timedFetch`
-  deadlines, refresh diagnostics and the shared `authResume` steps.
+  deadlines, refresh diagnostics and the shared `authResume` steps. Its session
+  lives in the Keychain through `native/modules/hyper-keychain`, which writes the
+  Capacitor app's items so cutover keeps people signed in.
+- Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
+  the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
+  tab layout loads the account (`native/src/lib/accountData.ts`).
 - Preview mode is the default: the shared stores run on the in-memory sample
   backend. `EXPO_PUBLIC_HYPER_PREVIEW=0` with `EXPO_PUBLIC_SUPABASE_URL` and
   `EXPO_PUBLIC_SUPABASE_ANON_KEY` uses the real project.
@@ -92,6 +97,16 @@ inventory before rebuilding a flow.
   `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server that accepts connections
   and never answers, then launch with `-hyperAction probeTimeout`. Metro should log
   `status=0` after about 30 s.
+- Debug and Release builds share prebuilt React Native, Hermes and Expo frameworks.
+  Run one build at a time, and run `native/scripts/use-rn-core.sh Debug|Release`
+  before a build whose configuration differs from the last one or after
+  `pod install`; otherwise a build can fail to link or crash at launch.
+- Sign-in and real data: never test against production without the owner's
+  approval. Run a local backend with `supabase start` from a scratch workdir
+  holding `supabase/schema.sql` as its one migration, grant table access to the
+  `authenticated` role there (newer local stacks no longer do), create a test
+  user through the local auth admin API, and point Metro at it with
+  `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and the local anon key.
 - Phone installs use bundle ID `app.hyper.native` until cutover; signing follows
   [the iOS workflow](../ship-ios/SKILL.md). A simulator run does not prove device
   behaviour, haptics or performance.

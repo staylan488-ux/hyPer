@@ -1,14 +1,25 @@
 import { NativeTabs } from 'expo-router/native-tabs';
+import { useEffect } from 'react';
 
 import { WorkoutAccessory } from '~/components/WorkoutAccessory';
+import { useAccountData } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
-import { useRestFinish } from '~/lib/rest';
-import { useSessionModel } from '~/lib/session';
+import { useRestFinish, useRestStore } from '~/lib/rest';
+import { useFocusStore, useSessionModel } from '~/lib/session';
 import { dynamicInk } from '~/theme/blanc';
 
 export default function TabsLayout() {
   const session = useSessionModel();
   useRestFinish();
+  useAccountData();
+  // The tabs unmount only on sign-out: leave nothing of this account behind.
+  useEffect(
+    () => () => {
+      useRestStore.getState().stop();
+      useFocusStore.getState().focus(null);
+    },
+    [],
+  );
 
   return (
     <NativeTabs

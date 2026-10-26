@@ -64,13 +64,30 @@ have repeated that pattern.
    - The native app keeps its own scheme `hyper-native` until cutover. Its
      bridge supplies `hyper-native://auth/callback`, which the shared callback
      parser then accepts.
+   Sign-in built (2026-10-26, not yet on the owner's phone):
+   - Sign-in screen with the web form's rules and words (email and password,
+     create account, verification resend, existing-account prompt), Google and
+     Apple through iOS's web-authentication sheet with PKCE, an offline screen
+     for a saved session without a network, and sign-out in You.
+   - The session lives in the Keychain through `native/modules/hyper-keychain`,
+     which writes the web app's items (service `<bundle ID>.auth`, account =
+     storage key, after first unlock, this device only), so cutover keeps people
+     signed in. The shared `nativeSecureStorage` logic (timeouts, cache,
+     sign-out tombstone) now takes its Keychain as a parameter.
+   - After sign-in the tab layout loads the account like web Today (program,
+     workout, targets, volume, mode, nutrition profile, today's food) through
+     the shared `useTodayRefresh`.
+   - `crypto.getRandomValues` and SHA-256 `crypto.subtle.digest` come from
+     expo-crypto; without them Google and Apple sign-in failed to start.
+   - Checked end to end in the simulator against a local Supabase backend (the
+     reference schema, a throwaway test account): sign in, relaunch still
+     signed in, start a session and log a set (saved), sign out, relaunch still
+     signed out; the Google sheet opens and closing it shows nothing.
    Still needed, each production change with the owner's approval:
    - Supabase Auth redirect allow-list: add `hyper-native://auth/callback`
-     before Google sign-in (it is also the email confirmation return).
-   - Keychain storage that writes the web app's items (service
-     `<bundle ID>.auth`, account = storage key, after first unlock, this device
-     only), so cutover keeps people signed in. Check expo-secure-store against
-     that, or add a small module.
+     before Google or Apple sign-in work (it is also the email confirmation
+     return).
+   - A Release build pointed at production for the owner's phone.
    - WHOOP connect waits for cutover: its function accepts only
      `app.hyper.mobile://settings`. Health permission and Live Activities are
      granted again under the final bundle ID.

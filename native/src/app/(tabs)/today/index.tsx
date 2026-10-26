@@ -1,6 +1,5 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
-import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
@@ -15,7 +14,7 @@ import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { today, useFuelStore } from '~/lib/fuel';
+import { useFuelStore } from '~/lib/fuel';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -25,11 +24,6 @@ export default function TodayScreen() {
   const target = useAppStore((state) => state.macroTarget);
   const weekly = useAppStore((state) => state.weeklyVolume);
   const totals = useFuelStore((state) => state.totals);
-  const loadFuel = useFuelStore((state) => state.load);
-
-  useEffect(() => {
-    void loadFuel(today());
-  }, [loadFuel]);
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;

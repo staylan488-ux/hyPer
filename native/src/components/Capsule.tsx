@@ -1,4 +1,5 @@
-import { ActivityIndicator, Pressable, type ViewStyle } from 'react-native';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, Pressable, View, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { haptics } from '~/lib/haptics';
@@ -9,6 +10,8 @@ import { BlancText } from './BlancText';
 type CapsuleProps = {
   title: string;
   onPress: () => void;
+  /** A small mark before the title, such as a provider logo. */
+  icon?: ReactNode;
   /** Ink fill for the screen's main action; a quiet fill for the rest. */
   variant?: 'primary' | 'quiet';
   size?: 'regular' | 'large';
@@ -26,6 +29,7 @@ const pressSpring = { damping: 20, stiffness: 420, mass: 0.6 };
 export function Capsule({
   title,
   onPress,
+  icon,
   variant = 'primary',
   size = 'regular',
   busy,
@@ -76,13 +80,16 @@ export function Capsule({
       {busy ? (
         <ActivityIndicator color={primary ? c.onCapsule : c.ink} />
       ) : (
-        <BlancText
-          variant="headline"
-          tone={primary ? 'onCapsule' : 'ink'}
-          size={size === 'large' ? 17 : 16}
-          style={{ lineHeight: size === 'large' ? 22 : 20 }}>
-          {title}
-        </BlancText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {icon}
+          <BlancText
+            variant="headline"
+            tone={primary ? 'onCapsule' : 'ink'}
+            size={size === 'large' ? 17 : 16}
+            style={{ lineHeight: size === 'large' ? 22 : 20 }}>
+            {title}
+          </BlancText>
+        </View>
       )}
     </AnimatedPressable>
   );

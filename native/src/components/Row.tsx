@@ -59,8 +59,10 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, o
   };
 
   if (!onPress) {
+    // Read as one element, unless it holds a control (a Start button, say)
+    // that VoiceOver must still reach on its own.
     return (
-      <View style={rowStyle} accessible accessibilityLabel={accessibilityLabel}>
+      <View style={rowStyle} accessible={!trailing} accessibilityLabel={trailing ? undefined : accessibilityLabel}>
         {content}
       </View>
     );

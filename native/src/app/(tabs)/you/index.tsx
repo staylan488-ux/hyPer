@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { View } from 'react-native';
+import { ActionSheetIOS, View } from 'react-native';
 
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -10,6 +10,7 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { formatWhole } from '~/lib/format';
+import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
 export default function YouScreen() {
@@ -18,6 +19,7 @@ export default function YouScreen() {
   const profile = useAuthStore((state) => state.profile);
   const target = useAppStore((state) => state.macroTarget);
   const split = useAppStore((state) => state.activeSplit);
+  const signOut = useAuthStore((state) => state.signOut);
   const name =
     profile?.display_name ?? (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? 'You';
   const initials = name
@@ -73,6 +75,30 @@ export default function YouScreen() {
               <Row title="Program" value={split.name} />
               <Hairline />
               <Row title="Days per week" value={String(split.days_per_week)} />
+            </Label>
+          </Section>
+        ) : null}
+
+        {!isPreviewActive() ? (
+          <Section title="Account">
+            <Label>
+              <Row
+                title="Sign out"
+                onPress={() => {
+                  haptics.tap();
+                  ActionSheetIOS.showActionSheetWithOptions(
+                    {
+                      title: user?.email ? `Signed in as ${user.email}` : undefined,
+                      options: ['Sign out', 'Cancel'],
+                      destructiveButtonIndex: 0,
+                      cancelButtonIndex: 1,
+                    },
+                    (index) => {
+                      if (index === 0) void signOut();
+                    },
+                  );
+                }}
+              />
             </Label>
           </Section>
         ) : null}
