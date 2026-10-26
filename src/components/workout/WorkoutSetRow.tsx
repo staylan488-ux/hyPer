@@ -6,6 +6,7 @@ import { celebrationHaptic, tapHaptic } from '@/lib/haptics';
 import { emitBurstFrom } from '@/lib/fx';
 import { springs } from '@/lib/animations';
 import { compareSetPerformance, describeSetGain, formatSetPerformanceTarget, isLoggableSetEntry } from '@/lib/workoutProgress';
+import { recordAuthDiagnostic } from '@/lib/authDiagnostics';
 import type { WorkoutSet } from '@/types';
 import type { AutofillSetValues } from '@/lib/setAutofill';
 import { notifySetEntries, registerSetEntry, type SetEntryField, type SetEntryState, type SetEntryValues } from './setEntryRegistry';
@@ -105,11 +106,12 @@ export function WorkoutSetRow({ set, setNumber, autofillValues, previousTarget, 
         }
       }
       const liveWorkout = useAppStore.getState().currentWorkout;
-      const liveSet = liveWorkout?.sets.find((candidate) => candidate.exercise_id === originalSet.exercise_id && candidate.set_number === originalSet.set_number);
-      if (liveWorkout?.id !== originalSet.workout_id || liveSet?.id !== originalSet.id) {
+      const liveSet = liveWorkout?.sets.find((candidate) => candidate.id === originalSet.id);
+      if (liveWorkout?.id !== originalSet.workout_id || !liveSet || liveSet.exercise_id !== originalSet.exercise_id) {
+        recordAuthDiagnostic('set-save:error', { outcome: 'inactive-local-row' });
         throw new Error('This workout set is no longer active.');
       }
-      await logSet(originalSet.exercise_id, originalSet.set_number, Number(entry.weight), Number(entry.reps), entry.rpe ? Number(entry.rpe) : undefined);
+      await logSet(originalSet.id, Number(entry.weight), Number(entry.reps), entry.rpe ? Number(entry.rpe) : undefined);
       hasDraft.current = false;
       releaseEditorFocus();
       const gain = !originalSet.completed && previousTarget

@@ -47,7 +47,7 @@ interface HarnessProps {
   initiallyEditing?: boolean;
   onComplete: (set: WorkoutSet) => void;
   onSelect: () => void;
-  onBeforeComplete?: (set: WorkoutSet) => true | string;
+  onBeforeComplete?: (set: WorkoutSet) => Promise<true | string> | true | string;
 }
 
 /** Workout.tsx's wiring in miniature: the rows, the capsule hook and the shell's capsule. */
@@ -108,6 +108,58 @@ afterEach(async () => {
 });
 
 describe('command capsule logging', () => {
+  it.each(['inline', 'capsule'])('saves the selected row through %s when another set has the same number', async (path) => {
+    const logSet = vi.fn(() => Promise.resolve());
+    store.state.logSet = logSet;
+    const onComplete = vi.fn();
+    const set = rowSet(200, 5, null);
+    await render({ set, onComplete, onSelect: vi.fn(), initiallyEditing: true });
+    // Two overlapping Add set requests can produce distinct rows with the
+    // same set_number. The ledger displays their positions as set 3 / set 4.
+    store.state.currentWorkout!.sets.unshift({ ...set, id: 'earlier-set', completed: true });
+
+    await click(path === 'inline' ? inlineCheck() : ring());
+
+    expect(logSet).toHaveBeenCalledWith(set.id, 200, 5, undefined);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(getSetEntry(set.id)!.read().error).toBeNull();
+  });
+
+  it('keeps the same row identity if set numbers change while the superset guard is pending', async () => {
+    const logSet = vi.fn(() => Promise.resolve());
+    store.state.logSet = logSet;
+    const set = rowSet(200, 5, null);
+    const onComplete = vi.fn();
+    let allow!: (verdict: true) => void;
+    const verdict = new Promise<true>((resolve) => { allow = resolve; });
+    await render({ set, onComplete, onSelect: vi.fn(), onBeforeComplete: () => verdict });
+    await click(ring());
+    expect(logSet).not.toHaveBeenCalled();
+    // A successful guard may await data while another edit compacts numbers.
+    store.state.currentWorkout!.sets = [{ ...set, set_number: 2 }];
+    await act(async () => { allow(true); await verdict; });
+    expect(logSet).toHaveBeenCalledWith(set.id, 200, 5, undefined);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('never saves a replacement row after the selected row is removed', async () => {
+    const logSet = vi.fn(() => Promise.resolve());
+    store.state.logSet = logSet;
+    const onComplete = vi.fn();
+    const set = rowSet(200, 5, null);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await render({ set, onComplete, onSelect: vi.fn() });
+    store.state.currentWorkout!.sets = [{ ...set, id: 'replacement-row' }];
+
+    await click(ring());
+
+    expect(logSet).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(getSetEntry(set.id)!.read()).toMatchObject({ weight: '200', reps: '5' });
+    expect(getSetEntry(set.id)!.read().error).toMatch(/Couldn’t confirm/);
+    consoleError.mockRestore();
+  });
+
   it('the ring and the inline check run the same save with the same arguments', async () => {
     const logSet = vi.fn(() => Promise.resolve());
     store.state.logSet = logSet;
@@ -119,7 +171,7 @@ describe('command capsule logging', () => {
     expect(inlineCheck().getAttribute('aria-label')).toBe('Save set 1 of Barbell Row');
     await click(inlineCheck());
     const inlineCall = logSet.mock.calls[0];
-    expect(inlineCall).toEqual(['ex-row', 1, 80, 10, 7]);
+    expect(inlineCall).toEqual(['set-row-1', 80, 10, 7]);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith(set);
 
@@ -140,7 +192,7 @@ describe('command capsule logging', () => {
     await render({ set: rowSet(80, 10, null), onComplete, onSelect });
 
     await click(ring());
-    expect(logSet).toHaveBeenCalledWith('ex-row', 1, 80, 10, undefined);
+    expect(logSet).toHaveBeenCalledWith('set-row-1', 80, 10, undefined);
     expect(onSelect).not.toHaveBeenCalled();
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
@@ -158,7 +210,7 @@ describe('command capsule logging', () => {
     expect(container.querySelectorAll('[data-command-capsule] .metal-capsule-value.is-suggested')).toHaveLength(3);
 
     await click(ring());
-    expect(logSet).toHaveBeenLastCalledWith('ex-row', 1, 75, 9, 8);
+    expect(logSet).toHaveBeenLastCalledWith('set-row-1', 75, 9, 8);
     expect(onComplete).not.toHaveBeenCalled(); // no rest timer after a failed save
     const entry = getSetEntry(set.id)!.read();
     expect(entry).toMatchObject({ weight: '75', reps: '9', rpe: '8', hasDraft: true, saving: false });
@@ -169,7 +221,7 @@ describe('command capsule logging', () => {
 
     await click(ring());
     expect(logSet).toHaveBeenCalledTimes(2);
-    expect(logSet).toHaveBeenLastCalledWith('ex-row', 1, 75, 9, 8);
+    expect(logSet).toHaveBeenLastCalledWith('set-row-1', 75, 9, 8);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(getSetEntry(set.id)!.read()).toMatchObject({ error: null, hasDraft: false });
     expect(consoleError).toHaveBeenCalledWith('Failed to log set:', expect.any(Error));
@@ -181,7 +233,7 @@ describe('command capsule logging', () => {
     store.state.logSet = logSet;
     await render({ set: rowSet(0, 0, null), onComplete: vi.fn(), onSelect: vi.fn() });
     await click(ring());
-    expect(logSet).toHaveBeenCalledWith('ex-row', 1, 0, 0, undefined);
+    expect(logSet).toHaveBeenCalledWith('set-row-1', 0, 0, undefined);
   });
 
   it('runs the superset order guard before saving', async () => {

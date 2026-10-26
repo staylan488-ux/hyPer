@@ -81,7 +81,19 @@ export async function saveWorkoutSet(
     .abortSignal(signal)
     .single());
 
-  if (result.error) throw result.error;
-  if (!result.data) throw new Error('The saved set was not returned.');
+  if (result.error) {
+    // Distinguish a rejected/missing row from an auth/transport stall on the
+    // device. Never persist server messages, payloads, row ids or credentials.
+    const code: unknown = result.error.code;
+    recordAuthDiagnostic('set-save:error', {
+      outcome: `http:${result.status}`,
+      detail: typeof code === 'string' && /^(PGRST[0-9]{3}|[0-9A-Z]{5})$/.test(code) ? code : 'unclassified',
+    });
+    throw result.error;
+  }
+  if (!result.data) {
+    recordAuthDiagnostic('set-save:error', { outcome: 'missing-response-row' });
+    throw new Error('The saved set was not returned.');
+  }
   return result.data as WorkoutSet;
 }

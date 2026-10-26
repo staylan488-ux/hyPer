@@ -18,6 +18,7 @@ vi.mock('@/lib/supabase', async () => {
 import { AUTH_REFRESH_TIMEOUT_MS } from '@/lib/authResume';
 import { supabase } from '@/lib/supabase';
 import { SET_SAVE_TIMEOUT_MS } from '@/lib/saveWorkoutSet';
+import { clearAuthDiagnostics, readAuthDiagnostics } from '@/lib/authDiagnostics';
 import { useAppStore } from '@/stores/appStore';
 
 const firstSet: WorkoutSet = {
@@ -42,6 +43,7 @@ function deferred<T>() {
 beforeEach(() => {
   vi.useFakeTimers();
   fetchMock.mockReset();
+  clearAuthDiagnostics();
   useAppStore.setState({ currentWorkout: workout });
 });
 
@@ -51,11 +53,45 @@ afterEach(() => {
 });
 
 describe('workout set save recovery', () => {
+  it('saves by row id when two sets share an exercise and internal set number', async () => {
+    const earlier = { ...firstSet, id: 'earlier-set', weight: 200, reps: 6, completed: true };
+    useAppStore.setState({ currentWorkout: { ...workout, sets: [earlier, firstSet] } });
+    fetchMock.mockImplementation(async (_url, init) => responseFor(init));
+
+    await useAppStore.getState().logSet(firstSet.id, 200, 5);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('id')).toBe(`eq.${firstSet.id}`);
+    expect(useAppStore.getState().currentWorkout?.sets).toEqual([
+      earlier, expect.objectContaining({ id: firstSet.id, weight: 200, reps: 5, completed: true }),
+    ]);
+  });
+
+  it('records a missing server row without persisting its error contents or workout identifiers', async () => {
+    fetchMock.mockResolvedValue(Response.json({
+      code: 'PGRST116', message: 'private-server-message', details: 'private-server-details', hint: 'private-hint',
+    }, { status: 406 }));
+    await expect(useAppStore.getState().logSet(firstSet.id, 200, 5)).rejects.toMatchObject({ code: 'PGRST116' });
+
+    expect(readAuthDiagnostics()).toEqual([
+      expect.objectContaining({ event: 'set-save:error', outcome: 'http:406', detail: 'PGRST116' }),
+    ]);
+    expect(JSON.stringify(readAuthDiagnostics())).not.toMatch(/private|set-1|workout-1|"weight"/);
+  });
+
+  it('does not copy an arbitrary server error code into the device diagnostics', async () => {
+    fetchMock.mockResolvedValue(Response.json({ code: 'private-token-or-email', message: 'private' }, { status: 403 }));
+    await expect(useAppStore.getState().logSet(firstSet.id, 200, 5)).rejects.toMatchObject({ code: 'private-token-or-email' });
+    expect(readAuthDiagnostics()).toEqual([
+      expect.objectContaining({ event: 'set-save:error', outcome: 'http:403', detail: 'unclassified' }),
+    ]);
+  });
+
   it('aborts a hung request and retries the same row, values, and timestamp', async () => {
     fetchMock.mockImplementationOnce(() => new Promise(() => {}));
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
 
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    const save = useAppStore.getState().logSet('set-1', 185, 8, 8.5);
     await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
     await save;
 
@@ -74,7 +110,7 @@ describe('workout set save recovery', () => {
 
   it('settles after two hung attempts and allows another save without reloading', async () => {
     fetchMock.mockImplementation(() => new Promise(() => {}));
-    const result = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5)
+    const result = useAppStore.getState().logSet('set-1', 185, 8, 8.5)
       .then(() => 'saved', () => 'failed');
     let settled = false;
     void result.then(() => { settled = true; });
@@ -87,13 +123,13 @@ describe('workout set save recovery', () => {
     expect(useAppStore.getState().currentWorkout?.sets[0]).toEqual(firstSet);
 
     fetchMock.mockImplementation(async (_url, init) => responseFor(init));
-    await useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    await useAppStore.getState().logSet('set-1', 185, 8, 8.5);
     expect(useAppStore.getState().currentWorkout?.sets[0].completed).toBe(true);
   });
 
   it('bounds a stalled session lookup before fetch even starts', async () => {
     vi.spyOn(supabase.auth, 'getSession').mockImplementation(() => new Promise(() => {}));
-    const result = useAppStore.getState().logSet('exercise-1', 1, 185, 8)
+    const result = useAppStore.getState().logSet('set-1', 185, 8)
       .then(() => 'saved', () => 'failed');
     let settled = false;
     void result.then(() => { settled = true; });
@@ -109,10 +145,10 @@ describe('workout set save recovery', () => {
     const late = deferred<Response>();
     fetchMock.mockImplementationOnce(() => late.promise);
     fetchMock.mockImplementation(async (_url, init) => responseFor(init));
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    const save = useAppStore.getState().logSet('set-1', 185, 8, 8.5);
     await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
     await save;
-    await useAppStore.getState().logSet('exercise-1', 1, 195, 6, 9);
+    await useAppStore.getState().logSet('set-1', 195, 6, 9);
 
     late.resolve(responseFor(fetchMock.mock.calls[0][1]));
     await vi.advanceTimersByTimeAsync(0);
@@ -126,28 +162,28 @@ describe('workout set save recovery', () => {
     });
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
 
-    await useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    await useAppStore.getState().logSet('set-1', 185, 8);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(useAppStore.getState().currentWorkout?.sets[0]).toMatchObject({ completed: true, rpe: null });
   });
 
   it.each([400, 401, 403, 406])('reports status %s without retrying or marking the set complete', async (status) => {
     fetchMock.mockResolvedValue(Response.json({ message: 'Save rejected' }, { status }));
-    await expect(useAppStore.getState().logSet('exercise-1', 1, 185, 8)).rejects.toMatchObject({ message: 'Save rejected' });
+    await expect(useAppStore.getState().logSet('set-1', 185, 8)).rejects.toMatchObject({ message: 'Save rejected' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useAppStore.getState().currentWorkout?.sets[0]).toEqual(firstSet);
   });
 
   it('does not report success when the server returns no saved row', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
-    await expect(useAppStore.getState().logSet('exercise-1', 1, 185, 8)).rejects.toThrow('not returned');
+    await expect(useAppStore.getState().logSet('set-1', 185, 8)).rejects.toThrow('not returned');
     expect(useAppStore.getState().currentWorkout?.sets[0].completed).toBe(false);
   });
 
   it('does not write a delayed result into a different current workout', async () => {
     const delayed = deferred<Response>();
     fetchMock.mockReturnValue(delayed.promise);
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    const save = useAppStore.getState().logSet('set-1', 185, 8);
     await vi.advanceTimersByTimeAsync(0);
     const replacement = { ...workout, id: 'workout-2', sets: [{ ...firstSet, id: 'set-2', workout_id: 'workout-2' }] };
     useAppStore.setState({ currentWorkout: replacement });
@@ -162,9 +198,9 @@ describe('workout set save recovery', () => {
     const first = deferred<Response>();
     fetchMock.mockReturnValueOnce(first.promise);
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init, secondSet));
-    const firstSave = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    const firstSave = useAppStore.getState().logSet('set-1', 185, 8);
     await vi.advanceTimersByTimeAsync(0);
-    await useAppStore.getState().logSet('exercise-1', 2, 195, 6);
+    await useAppStore.getState().logSet('set-2', 195, 6);
     first.resolve(responseFor(fetchMock.mock.calls[0][1]));
     await firstSave;
     expect(useAppStore.getState().currentWorkout?.sets.map(s => [s.weight, s.reps, s.completed]))
@@ -174,7 +210,7 @@ describe('workout set save recovery', () => {
   it('does not resurrect a workout completed while a save was pending', async () => {
     const delayed = deferred<Response>();
     fetchMock.mockReturnValue(delayed.promise);
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    const save = useAppStore.getState().logSet('set-1', 185, 8);
     await vi.advanceTimersByTimeAsync(0);
     useAppStore.setState({ currentWorkout: null });
     delayed.resolve(responseFor(fetchMock.mock.calls[0][1]));
@@ -183,9 +219,9 @@ describe('workout set save recovery', () => {
   });
 
   it('rejects missing workouts or sets instead of reporting success', async () => {
-    await expect(useAppStore.getState().logSet('missing', 1, 185, 8)).rejects.toThrow('no longer');
+    await expect(useAppStore.getState().logSet('missing', 185, 8)).rejects.toThrow('no longer');
     useAppStore.setState({ currentWorkout: null });
-    await expect(useAppStore.getState().logSet('exercise-1', 1, 185, 8)).rejects.toThrow('No active workout');
+    await expect(useAppStore.getState().logSet('set-1', 185, 8)).rejects.toThrow('No active workout');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -209,7 +245,7 @@ describe('auth recovery after a set save timeout', () => {
     fetchMock.mockImplementationOnce(() => new Promise(() => {}));
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
 
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    const save = useAppStore.getState().logSet('set-1', 185, 8, 8.5);
     await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
     await save;
 
@@ -227,7 +263,7 @@ describe('auth recovery after a set save timeout', () => {
     fetchMock.mockImplementationOnce(() => new Promise(() => {}));
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
 
-    const save = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    const save = useAppStore.getState().logSet('set-1', 185, 8);
     await vi.advanceTimersByTimeAsync(SET_SAVE_TIMEOUT_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(AUTH_REFRESH_TIMEOUT_MS);
@@ -243,13 +279,13 @@ describe('auth recovery after a set save timeout', () => {
     auth.refresh.mockResolvedValueOnce(refreshed).mockReturnValueOnce(lastRecovery.promise);
     fetchMock.mockImplementation(() => new Promise(() => {}));
 
-    const failed = useAppStore.getState().logSet('exercise-1', 1, 185, 8).then(() => 'saved', () => 'failed');
+    const failed = useAppStore.getState().logSet('set-1', 185, 8).then(() => 'saved', () => 'failed');
     await vi.advanceTimersByTimeAsync(2 * SET_SAVE_TIMEOUT_MS);
     expect(await failed).toBe('failed');
     expect(auth.refresh).toHaveBeenCalledTimes(2);
 
     fetchMock.mockImplementation(async (_url, init) => responseFor(init));
-    const retry = useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    const retry = useAppStore.getState().logSet('set-1', 185, 8);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -263,7 +299,7 @@ describe('auth recovery after a set save timeout', () => {
     const auth = spyAuth();
     fetchMock.mockImplementationOnce(async () => { throw new TypeError('Failed to fetch'); });
     fetchMock.mockImplementationOnce(async (_url, init) => responseFor(init));
-    await useAppStore.getState().logSet('exercise-1', 1, 185, 8);
+    await useAppStore.getState().logSet('set-1', 185, 8);
     expect(auth.refresh).not.toHaveBeenCalled();
   });
 });

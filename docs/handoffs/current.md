@@ -1,4 +1,78 @@
-# Current work snapshot — native session-read failure and workout save recovery
+# Current work snapshot — a single set stuck on every retry
+
+Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable
+Lat Pulldown set and reported that deleting/re-adding it worked. They requested
+root-cause investigation and implementation. Work starts from freshly fetched
+`origin/main` at `002d9f8` (merged #150), in the isolated local checkout
+`/Users/sinan/orca/hyPer/.tmp/stuck-set-save-20261025`, branch
+`codex/stuck-set-save` (moved there after validation from an isolated `/private/tmp` clone).
+The saved `/Users/sinan/orca/hyPer` checkout remains on its older `main`; its
+unrelated untracked files are preserved. After validation, the owner authorized
+opening a pull request and merging it. The owner will handle the iOS TestFlight
+release; production-data writes and backend deployment remain outside this task.
+
+**Reproduced cause:** `addWorkoutSet` allocated the next `set_number` from the
+local snapshot without guarding overlapping taps. Two requests could create
+distinct rows with the same number; the schema has no uniqueness rule for this
+metadata. The workout renders ledger positions as `idx + 1`, but both the row
+preflight and `logSet` looked up the first `(exercise_id, set_number)` match.
+The later duplicate then failed every Retry locally, before any PATCH. Replacing
+it allocated a fresh number and removed the ambiguity. The screenshot's visible
+"Set 4" paired with "Next … set 3" is consistent with this exact mismatch.
+The owner's actual database rows/device logs were not inspected, so this remains
+a reproduced defect that fits the incident, not proof of the phone's cause.
+
+- `WorkoutSetRow` and `logSet` now address the immutable set ID throughout.
+  Already duplicated rows can save without being deleted or renumbered. Deleted
+  or replaced rows remain guarded, and automatic retries still use the same
+  PATCH payload and completion timestamp.
+- Live and History Add set actions share one in-flight addition per account
+  generation/workout/exercise. Overlapping taps join it; a later deliberate tap
+  allocates the next number. A failure releases the guard. Other movements,
+  workouts, and later sign-ins proceed independently.
+- History set-count edits now merge confirmed inserted and deleted IDs into
+  the active workout. Previously they could retain deleted IDs or omit new ones
+  until a successful reload. Only server-confirmed deletions are removed, so a
+  set logged while a shrink is pending survives.
+- Removing a single set or exercise now updates active rows immediately after
+  a successful delete, including already-absent requested rows. Later compaction or plan failures still report errors,
+  but cannot leave those deleted IDs saveable. Renumbering merges only server
+  snapshots/confirmed updates and preserves newer set values and additions.
+- Local stale-row failures and rejected server writes enter the existing
+  capped `hyper:auth-diagnostics` trail. Only fixed outcome labels, HTTP status
+  and validated PostgREST/SQLSTATE codes are added; no row IDs, entered values,
+  server messages, credentials, or account data.
+
+Four initial ID regression cases failed before the fix: inline/capsule save
+with duplicate numbers, renumbering during an asynchronous guard, and selecting
+the correct duplicate through the real SDK. The Add regression showed two POSTs
+both allocating number 2; four History lifecycle cases and six partial-delete
+cases also failed before their fixes. Two additional empty-delete regressions
+failed before the repeated-delete correction. Coverage protects failed retries, edits, concurrent saves,
+account/workout changes, saved sets during deletes, and diagnostic redaction.
+
+Validation passed: all **1,839 tests across 151 files** (33 new regressions),
+`npm run lint` including instruction checks/test typechecking, the production
+web build, Capacitor sync, and the iOS simulator build for **arm64 and x86_64**.
+The full suite's existing worker boot tests required permitted local loopback
+access. Native compilation required normal Xcode caches/simulator services and
+used a copied public package cache pinned to Capacitor 8.4.2 at
+`9b9fb0af76b2b653f6e9b999f658adc132b9ab4c`, matching `Package.resolved`, with
+package updates disabled. Runtime Supabase settings were passed from the existing
+workspace environment without copying an `.env` or printing values. Generated
+iOS/dependency files have no tracked changes. Existing chunk-size/Browserslist
+and Node warnings remain. Independent final review found no blocking issue.
+
+No auth flow or database schema was changed. There is no cross-device lock on
+set-number allocation, so simultaneous additions from different clients can
+still share a number; ID-based saving handles those existing rows. iOS bundles
+`dist` locally (`capacitor.config.ts`); a merged PR does not update installed
+TestFlight apps. The previous handoff records no release of #150. The screenshot
+does not identify its build, and physical-device/production persistence remains
+unverified. The next authorized iOS build should exercise duplicate-row saving,
+rapid Add taps, and background/foreground recovery, then confirm History values.
+
+# Previous work snapshot — native session-read failure and workout save recovery
 
 Recorded 2026-10-24 (Pacific). The owner and Alex still see set-save errors mid-workout after the earlier race/auth fixes. The owner requested investigation and a scoped fix from the latest remote source, followed by a PR and merge after validation. Work starts from a fresh clone of `origin/main` at `531bf2d` (merged #147), on branch `fix/workout-save-auth-stall`. No production data writes or iOS release were performed during validation.
 
