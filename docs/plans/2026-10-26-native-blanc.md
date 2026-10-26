@@ -83,11 +83,13 @@ have repeated that pattern.
      reference schema, a throwaway test account): sign in, relaunch still
      signed in, start a session and log a set (saved), sign out, relaunch still
      signed out; the Google sheet opens and closing it shows nothing.
-   Still needed, each production change with the owner's approval:
-   - Supabase Auth redirect allow-list: add `hyper-native://auth/callback`
-     before Google or Apple sign-in work (it is also the email confirmation
-     return).
-   - A Release build pointed at production for the owner's phone.
+   Done with the owner's approval (2026-10-26):
+   - `hyper-native://auth/callback` added to the production project's Auth
+     redirect allow-list (Hypertrophy-App; 31 URLs before, 32 after, nothing
+     else changed). It is also the email confirmation return.
+   - A Release build pointed at production is on the owner's phone. Signing in
+     there, and Google or Apple end to end, are the owner's checks.
+   Still later:
    - WHOOP connect waits for cutover: its function accepts only
      `app.hyper.mobile://settings`. Health permission and Live Activities are
      granted again under the final bundle ID.

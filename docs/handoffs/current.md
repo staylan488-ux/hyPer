@@ -107,11 +107,12 @@ that uses production. The phone build reads the web app's `.env` only inside
 the build command (`EXPO_PUBLIC_HYPER_PREVIEW=0` plus URL and anon key); nothing
 is written to the repo. That build (production host present in the bundle, no
 local test hosts) is installed on the owner's iPhone and launched without
-crashing; signing in there is the owner's step. The allow-list change waits for the owner to sign in to
-Supabase in the app's browser: `supabase config push` would overwrite the whole
-production auth config (providers included), and reading the CLI's saved token
-was refused by the session's safety check. Email sign-in does not need the
-allow-list. CocoaPods was installed via Homebrew for native builds.
+crashing; signing in there is the owner's step. The allow-list change was made in the Supabase dashboard
+after the owner signed in to Supabase in the app's browser (`supabase config
+push` would overwrite the whole production auth config, providers included, and
+reading the CLI's saved token was refused by the session's safety check). After
+a reload the list shows `hyper-native://auth/callback`: 32 URLs, previously 31,
+the others and the Site URL unchanged. CocoaPods was installed via Homebrew for native builds.
 
 # Previous work snapshot — a single set stuck on every retry
 
