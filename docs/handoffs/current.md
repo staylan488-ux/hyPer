@@ -79,8 +79,8 @@ the plan's milestone 2 entry lists it:
   callback (tested).
 - Sample-data mode still logs sets and starts rest in the simulator.
 
-The owner then asked to build sign-in. Built and **not yet committed** (details
-in the plan's milestone 2 entry): sign-in and offline screens behind Expo
+The owner then asked to build sign-in. Built and, with the owner's approval,
+committed (7052cf6) to draft PR #152 (details in the plan's milestone 2 entry): sign-in and offline screens behind Expo
 Router guards, Keychain session storage (`native/modules/hyper-keychain`, same
 items as the Capacitor app), Google and Apple through iOS's sign-in sheet,
 account loading after sign-in, sign-out in You, and the missing Web Crypto parts
@@ -100,10 +100,18 @@ frameworks that are swapped per configuration, and `pod install` drops the
 markers. Run `native/scripts/use-rn-core.sh Debug|Release` before a build whose
 configuration changed (a mismatch failed to link, then crashed at launch).
 
-Next, each with the owner's approval: add `hyper-native://auth/callback` to
-Supabase's redirect allow-list (Google and Apple), and install a Release build
-that uses the owner's real account. CocoaPods was installed via Homebrew for
-native builds.
+The owner approved setting up sign-in on the phone with the real account: add
+`hyper-native://auth/callback` to the production project's (Hypertrophy-App,
+`nnwfaaxmyvqsdnfcdxom`) Auth redirect allow-list, and install a Release build
+that uses production. The phone build reads the web app's `.env` only inside
+the build command (`EXPO_PUBLIC_HYPER_PREVIEW=0` plus URL and anon key); nothing
+is written to the repo. That build (production host present in the bundle, no
+local test hosts) is installed on the owner's iPhone and launched without
+crashing; signing in there is the owner's step. The allow-list change waits for the owner to sign in to
+Supabase in the app's browser: `supabase config push` would overwrite the whole
+production auth config (providers included), and reading the CLI's saved token
+was refused by the session's safety check. Email sign-in does not need the
+allow-list. CocoaPods was installed via Homebrew for native builds.
 
 # Previous work snapshot — a single set stuck on every retry
 
