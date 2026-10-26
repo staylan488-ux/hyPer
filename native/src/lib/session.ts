@@ -1,6 +1,7 @@
 // The live workout as the screens need it, derived from the shared app store.
-// Nothing here writes; logging a set goes through the store's own logSet.
+// Writes go through the store's own actions (startWorkout, logSet).
 import { useEffect, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
@@ -8,6 +9,7 @@ import { fetchPreviousSetTargets } from '@/lib/previousSetTargets';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
+import { haptics } from './haptics';
 import { buildSessionModel, type SessionModel } from './sessionModel';
 
 export type { Movement, SessionModel } from './sessionModel';
@@ -55,4 +57,26 @@ export function useNow(intervalMs = 1000): number {
     return () => clearInterval(timer);
   }, [intervalMs]);
   return now;
+}
+
+/** Starts a program day's session; the same feedback wherever it is started from. */
+export function useStartSession() {
+  const startWorkout = useAppStore((state) => state.startWorkout);
+  const [starting, setStarting] = useState<string | null>(null);
+  const start = async (dayId: string): Promise<boolean> => {
+    setStarting(dayId);
+    try {
+      const workout = await startWorkout(dayId);
+      if (!workout) throw new Error('not started');
+      haptics.success();
+      return true;
+    } catch {
+      haptics.error();
+      Alert.alert('Could not start', 'Check your connection and try again.');
+      return false;
+    } finally {
+      setStarting(null);
+    }
+  };
+  return { starting, start };
 }

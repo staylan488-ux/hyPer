@@ -60,6 +60,10 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   stitches and numbered label on 2026-10-26).
 - No costume luxury: no serif type, Roman numerals, faux-editorial copy, glow,
   3D or particles. Sentence case. Touch targets at least 44 pt.
+- Restraint over completeness (the owner found the web app bloated: numbers and
+  text everywhere). A card carries one title, at most one quiet line and at most
+  one action. Leave out zeros, placeholders ("– lb × –") and figures that repeat
+  another; add a row only when it changes what the person does next.
 - Motion is native transitions plus Reanimated springs for press feedback and
   the tally. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is

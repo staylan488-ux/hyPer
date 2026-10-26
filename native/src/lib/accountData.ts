@@ -1,11 +1,20 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
+import { create } from 'zustand';
 
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
+import { todayKey } from '@/lib/todayRefresh';
 import { useAppStore } from '@/stores/appStore';
 
 import { useFuelStore } from './fuel';
 
 const noNewDayWork = () => {};
+
+/** The account load's day and timing, for screens that read the same day. */
+export const useAccountDay = create<{ dayKey: string; refreshedAt: number; loading: boolean }>(() => ({
+  dayKey: todayKey(new Date()),
+  refreshedAt: Date.now(),
+  loading: true,
+}));
 
 /**
  * Loads the signed-in account into the shared stores the way the web Today
@@ -30,5 +39,8 @@ export function useAccountData() {
     void useAppStore.getState().refreshAdaptiveTargets();
     return day;
   }, []);
-  return useTodayRefresh(load, noNewDayWork);
+  const { dayKey, refreshedAt, loading } = useTodayRefresh(load, noNewDayWork);
+  useEffect(() => {
+    useAccountDay.setState({ dayKey, refreshedAt, loading });
+  }, [dayKey, refreshedAt, loading]);
 }

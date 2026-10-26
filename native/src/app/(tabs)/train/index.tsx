@@ -20,7 +20,7 @@ import { useFinishedStore, summarize } from '~/lib/finished';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useRestStore } from '~/lib/rest';
-import { useFocusStore, useNow, usePreviousTargets, useSessionModel, type SessionModel } from '~/lib/session';
+import { useFocusStore, useNow, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -459,22 +459,7 @@ function KeyBar({ step, onMinus, onPlus }: { step: string; onMinus: () => void; 
 /** No live workout: start one of the program's days. */
 function StartWorkout() {
   const split = useAppStore((state) => state.activeSplit);
-  const startWorkout = useAppStore((state) => state.startWorkout);
-  const [starting, setStarting] = useState<string | null>(null);
-
-  const start = async (dayId: string) => {
-    setStarting(dayId);
-    try {
-      const workout = await startWorkout(dayId);
-      if (!workout) throw new Error('not started');
-      haptics.success();
-    } catch {
-      haptics.error();
-      Alert.alert('Could not start', 'Check your connection and try again.');
-    } finally {
-      setStarting(null);
-    }
-  };
+  const { starting, start } = useStartSession();
 
   return (
     <>

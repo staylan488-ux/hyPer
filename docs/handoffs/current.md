@@ -100,6 +100,19 @@ frameworks that are swapped per configuration, and `pod install` drops the
 markers. Run `native/scripts/use-rn-core.sh Debug|Release` before a build whose
 configuration changed (a mismatch failed to link, then crashed at launch).
 
+After signing in on the phone, the owner found Today too empty: with no live
+session it showed only Fuel. Today now has the web's training card by the same
+rule, moved into shared code (`todayHero`, `nextPlannedSession`,
+`weekSessionTarget` in `src/components/dashboard/todayModel.ts`, tested in
+`tests/todayHero.test.ts`; the web Dashboard calls them unchanged). One card: the
+planned day with Start (starts it and opens Train), a rest day or "Trained
+today" with the next session, or a short prompt. "This week" always shows
+sessions done of planned, plus a muscles row once something is trained. The
+owner asked to avoid the web's bloat, so the blanc-native skill now has a
+restraint rule. Checked in the simulator against the local backend (planned,
+live, finished, rest day) and in sample mode. Committed to draft PR #152 with
+the owner's approval.
+
 The owner approved setting up sign-in on the phone with the real account: add
 `hyper-native://auth/callback` to the production project's (Hypertrophy-App,
 `nnwfaaxmyvqsdnfcdxom`) Auth redirect allow-list, and install a Release build

@@ -1,8 +1,9 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
+import { pickInsight, summarizeWeekVolume, type HeroState } from '@/components/dashboard/todayModel';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -15,12 +16,14 @@ import { Track } from '~/components/Track';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useFuelStore } from '~/lib/fuel';
-import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
+import { useNow, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
 
 export default function TodayScreen() {
   const now = useNow(30_000);
   const session = useSessionModel();
+  const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
   const weekly = useAppStore((state) => state.weeklyVolume);
   const totals = useFuelStore((state) => state.totals);
@@ -52,7 +55,7 @@ export default function TodayScreen() {
           {format(now, 'EEEE, MMMM d')}
         </BlancText>
 
-        {session ? <SessionLabel session={session} now={now} /> : null}
+        {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} />}
 
         <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push('/log-food') }}>
           {target && kcalLeft !== null ? (
@@ -77,22 +80,29 @@ export default function TodayScreen() {
           )}
         </Section>
 
-        {week.trained > 0 ? (
-          <Section title="This week">
-            <Label>
-              <Row
-                title={`${week.inRange} of ${week.trained} muscles in range`}
-                detail={`${week.under} under · ${week.over} over`}
-              />
-              {insight ? (
-                <>
-                  <Hairline />
-                  <Row title={insight.muscle} detail={sentence(insight.flag)} />
-                </>
-              ) : null}
-            </Label>
-          </Section>
-        ) : null}
+        <Section title="This week">
+          <Label>
+            <Row
+              title="Sessions"
+              value={
+                plan.weekDone === null
+                  ? undefined
+                  : plan.weekTarget
+                    ? `${plan.weekDone} of ${plan.weekTarget}`
+                    : String(plan.weekDone)
+              }
+            />
+            {week.trained > 0 ? (
+              <>
+                <Hairline />
+                <Row
+                  title={`${week.inRange} of ${week.trained} muscles in range`}
+                  detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                />
+              </>
+            ) : null}
+          </Label>
+        </Section>
       </TabScroll>
     </>
   );
@@ -131,14 +141,107 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
             {current ? current.movement.name : 'All sets done'}
           </BlancText>
           <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-            {current
-              ? `Set ${current.setNumber} of ${current.movement.sets.length} · ${formatLoad(current.set.weight)} lb × ${current.set.reps ?? '–'}`
-              : 'Finish to save the session'}
+            {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
           </BlancText>
         </View>
         <Capsule title={current ? 'Resume' : 'Finish'} onPress={() => router.navigate('/train')} />
       </View>
     </Label>
+  );
+}
+
+// Today's training in one card: a title, at most one quiet line, at most one
+// button. Same rule as the web (todayHero), fewer words.
+const PLAN_CARD_HEIGHT = 78;
+
+function PlanCard({ hero, next }: { hero: HeroState; next: string | null }) {
+  const { starting, start } = useStartSession();
+  const toTrain = () => router.navigate('/train');
+
+  let title: string;
+  let detail: string | null = null;
+  let action: { title: string; onPress: () => void; primary?: boolean; busy?: boolean } | null = null;
+  switch (hero.kind) {
+    case 'loading':
+    case 'resume':
+      // Holds the card's place so Fuel does not jump when the plan arrives.
+      return <View style={{ height: PLAN_CARD_HEIGHT, marginTop: 18 }} />;
+    case 'planned': {
+      const day = hero.day;
+      const movements = day.exercises.length;
+      title = day.day_name;
+      detail = `${movements} ${movements === 1 ? 'movement' : 'movements'}`;
+      action = {
+        title: 'Start',
+        primary: true,
+        busy: starting === day.id,
+        onPress: () => {
+          void start(day.id).then((started) => {
+            if (started) toTrain();
+          });
+        },
+      };
+      break;
+    }
+    case 'rest':
+      title = 'Rest day';
+      detail = next ? `Next: ${next}` : null;
+      break;
+    case 'done':
+      title = 'Trained today';
+      detail = next ? `Next: ${next}` : null;
+      break;
+    case 'flexible':
+      title = 'Flexible mode';
+      action = { title: 'Train', onPress: toTrain };
+      break;
+    case 'no-schedule':
+      title = 'Choose today’s session';
+      action = { title: 'Choose', onPress: toTrain };
+      break;
+    case 'first-run':
+      title = 'No program yet';
+      detail = 'Create one on the web for now.';
+      break;
+    case 'schedule-error':
+      title = 'Couldn’t load your plan';
+      action = { title: 'Retry', onPress: hero.retry };
+      break;
+  }
+
+  return (
+    <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
+      <Label
+        style={{
+          marginTop: 18,
+          minHeight: PLAN_CARD_HEIGHT,
+          paddingHorizontal: 18,
+          paddingVertical: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+        }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <BlancText variant="headline" numberOfLines={1}>
+            {title}
+          </BlancText>
+          {detail ? (
+            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 2 }}>
+              {detail}
+            </BlancText>
+          ) : null}
+        </View>
+        {action ? (
+          <Capsule
+            title={action.title}
+            variant={action.primary ? 'primary' : 'quiet'}
+            busy={action.busy}
+            disabled={starting !== null && !action.busy}
+            onPress={action.onPress}
+          />
+        ) : null}
+      </Label>
+    </Animated.View>
   );
 }
 
@@ -163,4 +266,13 @@ function Meter({ label, value, of, progress }: { label: string; value: string; o
   );
 }
 
-const sentence = (text: string) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : text);
+/** "Set 2 of 3", with the load only once it is known. */
+function setLine(setNumber: number, sets: number, weight: number | null, reps: number | null): string {
+  const base = `Set ${setNumber} of ${sets}`;
+  return weight !== null && reps !== null ? `${base} · ${formatLoad(weight)} lb × ${reps}` : base;
+}
+
+/** "2 under · 1 over", leaving out zeros. */
+function muscleCounts(under: number, over: number): string | undefined {
+  return [under ? `${under} under` : null, over ? `${over} over` : null].filter(Boolean).join(' · ') || undefined;
+}
