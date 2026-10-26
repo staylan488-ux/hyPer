@@ -132,8 +132,10 @@ the others and the Site URL unchanged. CocoaPods was installed via Homebrew for 
 The owner then asked for the startup animation and the old hyPer logo back:
 the red P as the app's symbol and home-screen icon, upgraded rather than copied.
 From the [mark board](https://claude.ai/artifact/P393qgKxM7heBwoRKZRhf1) they
-chose direction C (P monogram) with a longer hold on the spelled-out word. Built,
-not yet committed (ask before committing or installing):
+chose direction C (P monogram) with a longer hold on the spelled-out word. With
+the owner's approval it is committed (45636a4) to draft PR #152, and a
+real-account Release build with it is installed on the owner's phone (launched,
+still running after the intro; the owner has not reported on it yet):
 - The red italic P (Fraunces Mark Medium Italic, subset to five glyphs, OFL in
   `native/assets/fonts`) is the app icon (light, dark, tinted), sits in Today's
   top-left header slot, and replaces the tally on sign-in and offline. Red now
@@ -156,9 +158,10 @@ run) from screen recordings checked frame by frame: light and dark, Today and
 sign-in landings, the hand-over to the resting P within half a point (softened
 by a 180 ms fade), tap-to-skip, Reduce Motion, the new home-screen icon. Checks:
 1,873 tests, lint with instruction checks, test type-check, web build, native
-type-check. Not verified: a device or Release build (timing, haptic), the
-offline screen (needs a saved session without a network), and the dark and
-tinted icons on a home screen (the simulator shows light icons).
+type-check. Not verified: how it looks and feels on the phone (timing, haptic)
+until the owner opens it, the offline screen (needs a saved session without a
+network), and the dark and tinted icons on a home screen (the simulator shows
+light icons).
 
 # Previous work snapshot — a single set stuck on every retry
 
