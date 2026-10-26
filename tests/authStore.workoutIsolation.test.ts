@@ -96,7 +96,7 @@ it('saves sets while a preference lookup triggered by session refresh is still p
   let save: Promise<void> | undefined;
   try {
     await vi.waitFor(() => expect(userLookupPending).toBe(true));
-    save = useAppStore.getState().logSet('exercise-1', 1, 185, 8, 8.5);
+    save = useAppStore.getState().logSet('set-1', 185, 8, 8.5);
     await vi.waitFor(() => {
       expect(useAppStore.getState().currentWorkout?.sets[0]).toMatchObject({
         weight: 185, reps: 8, rpe: 8.5, completed: true,

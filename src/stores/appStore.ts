@@ -334,7 +334,7 @@ interface AppState {
   switchBackWorkoutExercise: (exerciseId: string) => Promise<void>;
   addWorkoutSet: (exerciseId: string) => Promise<void>;
   removeLastUncompletedSet: (exerciseId: string) => Promise<void>;
-  logSet: (exerciseId: string, setNumber: number, weight: number, reps: number, rpe?: number) => Promise<void>;
+  logSet: (setId: string, weight: number, reps: number, rpe?: number) => Promise<void>;
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => Promise<void>;
   completeWorkout: () => Promise<void>;
   fetchWorkoutsByMonth: (month: Date) => Promise<Workout[]>;
@@ -491,6 +491,13 @@ const workoutModeFlight = createReadFlight();
 const flexTemplatesFlight = createReadFlight();
 const currentWorkoutFlight = createKeyedSingleFlight<void>();
 const workoutDayPlanFlight = createKeyedSingleFlight<void>();
+// A double tap must join the pending add, before either caller can allocate
+// the same set number. Live workout and History additions share this guard.
+const workoutSetAddFlight = createKeyedSingleFlight<WorkoutSet | null>();
+
+function workoutSetAddKey(workoutId: string, exerciseId: string): string {
+  return JSON.stringify([getAccountScopeGeneration(), workoutId, exerciseId]);
+}
 
 /**
  * The current workout write sequence. A value saved before a read and compared
@@ -1278,35 +1285,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentWorkout } = get();
     if (!currentWorkout) return;
 
-    const existingSets = currentWorkout.sets.filter((set) => set.exercise_id === exerciseId);
-    const nextSetNumber = existingSets.length > 0
-      ? Math.max(...existingSets.map((set) => set.set_number)) + 1
-      : 1;
+    await workoutSetAddFlight.run(workoutSetAddKey(currentWorkout.id, exerciseId), async () => {
+      const existingSets = currentWorkout.sets.filter((set) => set.exercise_id === exerciseId);
+      const nextSetNumber = existingSets.length > 0
+        ? Math.max(...existingSets.map((set) => set.set_number)) + 1
+        : 1;
 
-    const { data: createdSet, error } = await supabase
-      .from('sets')
-      .insert({
-        workout_id: currentWorkout.id,
-        exercise_id: exerciseId,
-        set_number: nextSetNumber,
-        completed: false,
-      })
-      .select('*, exercise:exercises!exercise_id(*)')
-      .single();
+      const { data: createdSet, error } = await supabase
+        .from('sets')
+        .insert({
+          workout_id: currentWorkout.id,
+          exercise_id: exerciseId,
+          set_number: nextSetNumber,
+          completed: false,
+        })
+        .select('*, exercise:exercises!exercise_id(*)')
+        .single();
 
-    if (error || !createdSet) {
-      if (error) console.error('Error adding workout set:', error);
-      return;
-    }
+      if (error || !createdSet) {
+        if (error) console.error('Error adding workout set:', error);
+        return null;
+      }
 
-    const latestWorkout = get().currentWorkout;
-    if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
+      const latestWorkout = get().currentWorkout;
+      if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return null;
 
-    set({
-      currentWorkout: {
-        ...latestWorkout,
-        sets: [...latestWorkout.sets, createdSet as WorkoutSet],
-      },
+      // A concurrent workout read may already contain the inserted row.
+      // Keep that row (and any later logged values) instead of duplicating it.
+      if (!latestWorkout.sets.some((row) => row.id === createdSet.id)) {
+        set({
+          currentWorkout: {
+            ...latestWorkout,
+            sets: [...latestWorkout.sets, createdSet as WorkoutSet],
+          },
+        });
+      }
+      return createdSet as WorkoutSet;
     });
   }),
 
@@ -1739,11 +1753,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   }),
 
-  logSet: writesWorkout(async (exerciseId, setNumber, weight, reps, rpe) => {
+  logSet: writesWorkout(async (setId, weight, reps, rpe) => {
     const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) throw new Error('No active workout to log this set.');
-    const target = currentWorkout.sets.find(s => s.exercise_id === exerciseId && s.set_number === setNumber);
+    // Numbers are display/round metadata: concurrent additions or History
+    // compaction can duplicate or change them. Only the row id is identity.
+    const target = currentWorkout.sets.find(s => s.id === setId);
     if (!target) throw new Error('This set is no longer in the workout.');
 
     const updatedSet = await saveWorkoutSet(target, { weight, reps, rpe: rpe ?? null });
@@ -2535,64 +2551,87 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addSetToWorkout: writesWorkout(async (workoutId, exerciseId) => {
     const isAccountCurrent = captureAccountScope();
-    const { data: existingSets, error: fetchError } = await supabase
-      .from('sets')
-      .select('set_number')
-      .eq('workout_id', workoutId)
-      .eq('exercise_id', exerciseId)
-      .order('set_number', { ascending: true });
+    return workoutSetAddFlight.run(workoutSetAddKey(workoutId, exerciseId), async () => {
+      const { data: existingSets, error: fetchError } = await supabase
+        .from('sets')
+        .select('set_number')
+        .eq('workout_id', workoutId)
+        .eq('exercise_id', exerciseId)
+        .order('set_number', { ascending: true });
 
-    if (fetchError) {
-      console.error('Error fetching existing sets:', fetchError);
-      return null;
-    }
+      if (fetchError) {
+        console.error('Error fetching existing sets:', fetchError);
+        return null;
+      }
 
-    const nextSetNumber = existingSets && existingSets.length > 0
-      ? Math.max(...existingSets.map((set) => Number(set.set_number) || 0)) + 1
-      : 1;
+      const nextSetNumber = existingSets && existingSets.length > 0
+        ? Math.max(...existingSets.map((set) => Number(set.set_number) || 0)) + 1
+        : 1;
 
-    const { data: createdSet, error } = await supabase
-      .from('sets')
-      .insert({
-        workout_id: workoutId,
-        exercise_id: exerciseId,
-        set_number: nextSetNumber,
-        completed: false,
-      })
-      .select('*, exercise:exercises!exercise_id(*)')
-      .single();
+      const { data: createdSet, error } = await supabase
+        .from('sets')
+        .insert({
+          workout_id: workoutId,
+          exercise_id: exerciseId,
+          set_number: nextSetNumber,
+          completed: false,
+        })
+        .select('*, exercise:exercises!exercise_id(*)')
+        .single();
 
-    if (error || !createdSet) {
-      if (error) console.error('Error adding set to workout:', error);
-      return null;
-    }
+      if (error || !createdSet) {
+        if (error) console.error('Error adding set to workout:', error);
+        return null;
+      }
 
-    const { currentWorkout } = get();
-    if (isAccountCurrent() && currentWorkout?.id === workoutId) {
-      set({
-        currentWorkout: {
-          ...currentWorkout,
-          sets: [...currentWorkout.sets, createdSet as WorkoutSet],
-        },
-      });
-    }
+      const { currentWorkout } = get();
+      if (isAccountCurrent() && currentWorkout?.id === workoutId && !currentWorkout.sets.some((row) => row.id === createdSet.id)) {
+        set({
+          currentWorkout: {
+            ...currentWorkout,
+            sets: [...currentWorkout.sets, createdSet as WorkoutSet],
+          },
+        });
+      }
 
-    return createdSet as WorkoutSet;
+      return createdSet as WorkoutSet;
+    });
   }),
 
   removeSetFromWorkout: writesWorkout(async (workoutId, exerciseId, setId) => {
     const isAccountCurrent = captureAccountScope();
-    const { error: deleteError } = await supabase
+    const { data: deletedRows, error: deleteError } = await supabase
       .from('sets')
       .delete()
       .eq('id', setId)
       .eq('workout_id', workoutId)
-      .eq('exercise_id', exerciseId);
+      .eq('exercise_id', exerciseId)
+      .select('id');
 
     if (deleteError) {
       console.error('Error removing set from workout:', deleteError);
       throw new Error('Could not save that change.');
     }
+
+    // The delete has already committed even if the following read or a later
+    // renumber fails. Do not leave its dead id available to the live editor.
+    const current = get().currentWorkout;
+    // A repeated DELETE can succeed with no rows if a prior attempt already
+    // removed it. Its requested absence still clears that local ghost.
+    const deletedIds = new Set([setId, ...(deletedRows ?? []).map((row) => row.id)]);
+    if (isAccountCurrent() && current?.id === workoutId && deletedIds.size > 0) {
+      set({ currentWorkout: { ...current, sets: current.sets.filter((row) => row.exercise_id !== exerciseId || !deletedIds.has(row.id)) } });
+    }
+    if (!isAccountCurrent()) return;
+
+    const mergeSetNumbers = (confirmedRows: Array<Pick<WorkoutSet, 'id' | 'set_number'>>) => {
+      const latest = get().currentWorkout;
+      if (!isAccountCurrent() || latest?.id !== workoutId || confirmedRows.length === 0) return;
+      const numbers = new Map(confirmedRows.map((row) => [row.id, row.set_number]));
+      set({ currentWorkout: { ...latest, sets: latest.sets.map((row) => numbers.has(row.id)
+        ? { ...row, set_number: numbers.get(row.id)! }
+        : row) } });
+    };
 
     const { data: remainingSets, error: remainingError } = await supabase
       .from('sets')
@@ -2606,36 +2645,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw new Error('Could not save that change.');
     }
 
+    mergeSetNumbers(remainingSets ?? []);
     for (const [index, row] of (remainingSets || []).entries()) {
+      if (!isAccountCurrent()) return;
       const desiredSetNumber = index + 1;
       if ((row.set_number as number) === desiredSetNumber) continue;
 
-      const { error: renumberError } = await supabase
+      const { data: renumberedRows, error: renumberError } = await supabase
         .from('sets')
         .update({ set_number: desiredSetNumber })
-        .eq('id', row.id);
+        .eq('id', row.id)
+        .eq('workout_id', workoutId)
+        .eq('exercise_id', exerciseId)
+        .select('id, set_number');
 
       if (renumberError) {
         console.error('Error compacting set numbers:', renumberError);
         throw new Error('Could not save that change.');
       }
+
+      // Reflect each confirmed update separately. Rows added after the read
+      // keep their own numbers, and a partial failure keeps prior successes.
+      mergeSetNumbers(renumberedRows ?? []);
     }
-
-    const { currentWorkout } = get();
-    if (!isAccountCurrent() || currentWorkout?.id !== workoutId) return;
-
-    const otherExerciseSets = currentWorkout.sets.filter((set) => set.exercise_id !== exerciseId);
-    const compactedExerciseSets = currentWorkout.sets
-      .filter((set) => set.exercise_id === exerciseId && set.id !== setId)
-      .sort((a, b) => a.set_number - b.set_number)
-      .map((set, index) => ({ ...set, set_number: index + 1 }));
-
-    set({
-      currentWorkout: {
-        ...currentWorkout,
-        sets: [...otherExerciseSets, ...compactedExerciseSets],
-      },
-    });
   }),
 
   addExerciseToWorkout: writesWorkout(async (workoutId, exercise) => {
@@ -2678,16 +2710,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeExerciseFromWorkout: writesWorkout(async (workoutId, exerciseId) => {
     const isAccountCurrent = captureAccountScope();
-    const { error } = await supabase
+    const startingWorkout = get().currentWorkout;
+    const requestedIds = startingWorkout?.id === workoutId
+      ? startingWorkout.sets.filter((row) => row.exercise_id === exerciseId).map((row) => row.id)
+      : [];
+    const { data: deletedRows, error } = await supabase
       .from('sets')
       .delete()
       .eq('workout_id', workoutId)
-      .eq('exercise_id', exerciseId);
+      .eq('exercise_id', exerciseId)
+      .select('id');
 
     if (error) {
       console.error('Error removing exercise from workout:', error);
       throw new Error('Could not save that change.');
     }
+
+    const current = get().currentWorkout;
+    const deletedIds = new Set([...requestedIds, ...(deletedRows ?? []).map((row) => row.id)]);
+    if (isAccountCurrent() && current?.id === workoutId && deletedIds.size > 0) {
+      // Include already-absent requested ids, but preserve new sets that
+      // arrived after deletion and are outside both the request and response.
+      set({ currentWorkout: { ...current, sets: current.sets.filter((row) => !deletedIds.has(row.id)) } });
+    }
+    if (!isAccountCurrent()) return;
 
     const plan = await get().fetchWorkoutDayPlanByWorkoutId(workoutId, { throwOnError: true });
     if (plan) {
@@ -2707,16 +2753,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
-    }
-
-    const { currentWorkout } = get();
-    if (isAccountCurrent() && currentWorkout?.id === workoutId) {
-      set({
-        currentWorkout: {
-          ...currentWorkout,
-          sets: currentWorkout.sets.filter((set) => set.exercise_id !== exerciseId),
-        },
-      });
     }
   }),
 
@@ -3074,9 +3110,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   updateWorkoutExerciseTargetSets: writesWorkout(async (workoutId, exerciseId, targetSets) => {
+    const isAccountCurrent = captureAccountScope();
     const desiredSets = normalizeTargetSets(targetSets);
     const plan = await get().ensureWorkoutDayPlan(workoutId);
-    if (!plan) return;
+    if (!plan || !isAccountCurrent()) return;
 
     const source = plan.items.find((item) => item.exercise_id === exerciseId);
     if (!source) return;
@@ -3093,6 +3130,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     await get().updateWorkoutDayPlanItems(workoutId, nextItems, plan);
+    if (!isAccountCurrent()) return;
 
     const affectedExerciseIds = sourceGroupId
       ? nextItems.filter((item) => !item.hidden && item.superset_group_id === sourceGroupId).map((item) => item.exercise_id)
@@ -3121,23 +3159,42 @@ export const useAppStore = create<AppState>((set, get) => ({
       removedIds.push(...deleteIds);
     }
 
-    const { error: insertError } = await insertPlaceholderSets(workoutId, additions);
+    if (!isAccountCurrent()) return;
+    const { data: createdSets, error: insertError } = await insertPlaceholderSets(workoutId, additions, true);
     if (insertError) {
       console.error('Error adding sets to match target sets:', insertError);
       throw new Error('Could not add the workout sets. Try again.');
     }
 
-    if (removedIds.length > 0) {
+    // History can edit an active workout too. Keep its live rows synchronized
+    // after each confirmed write, including when a later write fails. Merge
+    // into the latest state so sets logged or added meanwhile keep their data.
+    const latest = get().currentWorkout;
+    if (isAccountCurrent() && latest?.id === workoutId && createdSets.length > 0) {
+      const existingIds = new Set(latest.sets.map((row) => row.id));
+      set({ currentWorkout: { ...latest, sets: [
+        ...latest.sets, ...createdSets.filter((row) => !existingIds.has(row.id)),
+      ] } });
+    }
+
+    if (removedIds.length > 0 && isAccountCurrent()) {
       // Only unfinished sets, so a set logged since the read above survives.
-      const { error: deleteError } = await supabase
+      const { data: deletedRows, error: deleteError } = await supabase
         .from('sets')
         .delete()
         .eq('completed', false)
-        .in('id', removedIds);
+        .in('id', removedIds)
+        .select('id');
 
       if (deleteError) {
         console.error('Error removing sets to match target sets:', deleteError);
         throw new Error('Could not remove the workout sets. Try again.');
+      }
+
+      const current = get().currentWorkout;
+      const deletedIds = new Set((deletedRows ?? []).map((row) => row.id));
+      if (isAccountCurrent() && current?.id === workoutId && deletedIds.size > 0) {
+        set({ currentWorkout: { ...current, sets: current.sets.filter((row) => !deletedIds.has(row.id)) } });
       }
     }
   }),

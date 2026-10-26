@@ -179,9 +179,9 @@ describe('preview uses real program and workout store paths', () => {
     client = createMockClient({ setSaveFailures: 2 });
     await useAppStore.getState().fetchCurrentWorkout();
     const original = useAppStore.getState().currentWorkout!.sets.find((set) => !set.completed)!;
-    await expect(useAppStore.getState().logSet(original.exercise_id, original.set_number, 82.5, 10, 7)).rejects.toMatchObject({ code: 'PREVIEW_FAILURE' });
+    await expect(useAppStore.getState().logSet(original.id, 82.5, 10, 7)).rejects.toMatchObject({ code: 'PREVIEW_FAILURE' });
     expect(previewTables.sets.find((set) => set.id === original.id)?.completed).toBe(false);
-    await useAppStore.getState().logSet(original.exercise_id, original.set_number, 82.5, 10, 7);
+    await useAppStore.getState().logSet(original.id, 82.5, 10, 7);
     const updated = useAppStore.getState().currentWorkout!.sets;
     expect(updated).toHaveLength(9);
     expect(updated.find((set) => set.id === original.id)).toMatchObject({ weight: 82.5, reps: 10, completed: true });

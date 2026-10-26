@@ -920,7 +920,7 @@ describe('must-work store contracts', () => {
       throw new Error(`Unexpected table: ${table}`);
     });
 
-    const logSetPromise = useAppStore.getState().logSet('exercise-1', 1, 225, 6, 8.5);
+    const logSetPromise = useAppStore.getState().logSet('set-1', 225, 6, 8.5);
 
     useAppStore.setState({
       currentWorkout: {
@@ -1151,6 +1151,7 @@ describe('must-work store contracts', () => {
     });
 
     const deleteChain = createChain();
+    Object.assign(deleteChain, { data: [{ id: 'set-2' }] });
     const remainingChain = createChain({
       order: vi.fn().mockResolvedValue({
         data: [
@@ -1161,6 +1162,7 @@ describe('must-work store contracts', () => {
       }),
     });
     const renumberChain = createChain();
+    Object.assign(renumberChain, { data: [{ id: 'set-3', set_number: 2 }] });
 
     let setsCalls = 0;
     supabaseMock.from.mockImplementation((table: string) => {
@@ -1288,6 +1290,7 @@ describe('must-work store contracts', () => {
     });
 
     const setsChain = createChain();
+    Object.assign(setsChain, { data: [{ id: 'set-a' }] });
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
       throw new Error(`Unexpected table: ${table}`);
@@ -1383,10 +1386,11 @@ describe('must-work store contracts', () => {
       expect(useAppStore.getState().currentWorkout).toEqual(before);
     });
 
-    it('removeSetFromWorkout rejects when the compaction read fails', async () => {
+    it('removeSetFromWorkout retains the confirmed deletion when the compaction read fails', async () => {
       const before = workoutWithTwoSets();
       useAppStore.setState({ currentWorkout: before });
       const deleteChain = createChain();
+      Object.assign(deleteChain, { data: [{ id: 'set-2' }] });
       const remainingChain = createChain({
         order: vi.fn().mockResolvedValue({ data: null, error: failure }),
       });
@@ -1397,7 +1401,7 @@ describe('must-work store contracts', () => {
       });
 
       await expect(useAppStore.getState().removeSetFromWorkout('workout-1', 'exercise-1', 'set-2')).rejects.toThrow();
-      expect(useAppStore.getState().currentWorkout).toEqual(before);
+      expect(useAppStore.getState().currentWorkout).toEqual({ ...before, sets: [before.sets[0]] });
     });
 
     it('removeExerciseFromWorkout rejects and does not touch the plan', async () => {

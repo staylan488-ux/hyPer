@@ -193,7 +193,7 @@ describe('shared store reads', () => {
 
     const logged = { ...openSet, weight: 100, reps: 8, rpe: 8, completed: true, completed_at: '2026-09-30T10:00:00.000Z' };
     answer('sets', { data: logged, error: null, status: 200 });
-    await useAppStore.getState().logSet('exercise-1', 1, 100, 8, 8);
+    await useAppStore.getState().logSet('set-1', 100, 8, 8);
 
     answer('workouts', { data: workoutWith(logged), error: null });
     answer('workout_day_plans', { data: livePlan, error: null });

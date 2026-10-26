@@ -98,7 +98,7 @@ describe('fetchCurrentWorkout against overlapping workout writes', () => {
     await flush();
 
     answer('sets', { data: loggedSet, error: null, status: 200 });
-    await useAppStore.getState().logSet('exercise-1', 1, 100, 8, 8);
+    await useAppStore.getState().logSet('set-1', 100, 8, 8);
     expect(useAppStore.getState().currentWorkout?.sets[0].completed).toBe(true);
 
     // The read saw the row from before the save.
@@ -111,7 +111,7 @@ describe('fetchCurrentWorkout against overlapping workout writes', () => {
 
   it('drops a read that started while the set was saving and answered after it', async () => {
     const releaseSave = hold('sets');
-    const save = useAppStore.getState().logSet('exercise-1', 1, 100, 8, 8);
+    const save = useAppStore.getState().logSet('set-1', 100, 8, 8);
     await flush();
 
     const releaseRead = hold('workouts');
