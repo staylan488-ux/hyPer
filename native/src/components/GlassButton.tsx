@@ -1,0 +1,40 @@
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
+import { Pressable, View } from 'react-native';
+
+import { haptics } from '~/lib/haptics';
+import { useBlanc } from '~/theme/blanc';
+
+type GlassButtonProps = {
+  symbol: SFSymbol;
+  onPress: () => void;
+  accessibilityLabel: string;
+  size?: number;
+};
+
+/** A round Liquid Glass button for custom bars (sheets); a quiet fill before iOS 26. */
+export function GlassButton({ symbol, onPress, accessibilityLabel, size = 44 }: GlassButtonProps) {
+  const c = useBlanc();
+  const glass = isLiquidGlassAvailable();
+  const face = { width: size, height: size, borderRadius: size / 2, alignItems: 'center' as const, justifyContent: 'center' as const };
+  const icon = <SymbolView name={symbol} size={17} weight="semibold" tintColor={c.ink} />;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={6}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}>
+      {glass ? (
+        <GlassView isInteractive style={face}>
+          {icon}
+        </GlassView>
+      ) : (
+        <View style={[face, { backgroundColor: c.fill }]}>{icon}</View>
+      )}
+    </Pressable>
+  );
+}

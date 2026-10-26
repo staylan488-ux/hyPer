@@ -1,0 +1,24 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["es2023", "dom"],
+    "paths": {
+      "@/lib/supabase": ["./src/platform/supabase.ts"],
+      "@/lib/nativeBridge": ["./src/platform/nativeBridge.ts"],
+      "@/lib/nativeAuth": ["./src/platform/nativeAuth.ts"],
+      "@/preview/flag": ["./src/platform/previewFlag.ts"],
+      "@/*": ["../src/*"],
+      "~/*": ["./src/*"],
+      "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"],
+      "date-fns": ["./node_modules/date-fns"],
+      "date-fns/*": ["./node_modules/date-fns/*"],
+      "zustand": ["./node_modules/zustand"],
+      "zustand/*": ["./node_modules/zustand/*"],
+      "@capacitor/core": ["./src/types/capacitor-stub.d.ts"],
+      "@capacitor/app": ["./src/types/capacitor-stub.d.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules", "babel", "metro.config.js", "babel.config.js"]
+}

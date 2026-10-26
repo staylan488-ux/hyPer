@@ -1,4 +1,63 @@
-# Current work snapshot — a single set stuck on every retry
+# Current work snapshot — native rebuild in Blanc (React Native + Expo)
+
+Recorded 2026-10-26 (Pacific). The owner said the UI never felt right after many
+redesigns, chose the Blanc direction from the
+[Native Reset board](https://claude.ai/artifact/BpCMr6sj8G1i18zFP1atkk), and set
+the goal as a full native app. They also ruled out copying existing designs:
+the first draft's Margiela stitches and circled numbered label were replaced by
+hyPer's own set tally (also the test app's icon). Plan:
+[native rebuild](../plans/2026-10-26-native-blanc.md); guide:
+[blanc-native skill](../../.agents/skills/blanc-native/SKILL.md).
+
+Work is on `feat/native-blanc` (from origin/main af16add) in
+`.claude/worktrees/native-blanc`; nothing is committed yet, and no PR, merge,
+release or production step was requested.
+
+Built (milestone 1, preview data only): Expo SDK 58 app in `native/` reusing
+`src` through a Metro alias, with native swaps in `native/src/platform`; Blanc
+theme and components; Today, live workout (log set, RPE action sheet, rest
+after a successful save, Retry on failure, change movement, finish with a
+full-screen tally summary), Fuel day, Log food sheet (saved foods and USDA
+search) and a basic You. Native tab bar with the live-workout accessory, large
+titles, form sheet, SF Symbols, haptics. The USDA food-row rule was ported from
+FoodLogger with a TODO to move it into `src/lib`.
+
+Checks: `native` type-check (including the shared code it imports); 1,847 web
+tests including `tests/nativeSessionModel.test.ts`; eslint (now ignoring
+`native/`); test type-check; web build. Simulator runs (iPhone 17 Pro Max, light
+and dark) covered Today, Train, logging two sets, finish, Fuel, the food sheet,
+adding a food and You, driven by Debug launch arguments. A signed Release build
+(`app.hyper.native`, "hyPer Native", preview mode) was installed on the owner's
+iPhone over Wi-Fi and launched. Touch interaction, haptics and the keyboard bar
+were not exercised on a device.
+
+Owner feedback on the phone build (same day) and fixes:
+- Tab switches had no haptic (iOS's tab bar is silent). Tabs, header items, the
+  live-workout bar, the RPE chip and the keyboard Done key now tap, matching the
+  web app's haptic rule.
+- Choosing another movement made the screen twitch: the code scrolled a
+  large-title page to y = 0, which short pages cannot hold, so it snapped back.
+  A scroll trace showed the old path jumping from −166 toward 0 and back to
+  −116; the screen now scrolls only when the card is hidden, and the trace shows
+  no movement.
+- The iOS 26 tab bar stuck on Train (it stayed small on the way up, then opened
+  on the way down) and never shrank on Today. UI tests with real swipes on
+  iPhone 17 Pro and 17 Pro Max simulators showed a plain SwiftUI tab app does
+  the same at the same page lengths: iOS needs roughly 170 points of scroll
+  travel, and the workout accessory moving inline cuts travel by 57 points.
+  Tab root pages now use `native/src/components/TabScroll.tsx`, which tops up
+  any page that scrolls to 200 points of travel and leaves pages that fit alone.
+  Repeated drags at the very bottom still open and close the bar, as in Apple's
+  control. Shrinking stays on for every tab (the owner wants it there).
+- From the parity inventory: food saves now use the day's meal groups ("Adds to"
+  defaults to the meal that fits the time, or Unassigned), retry-safe entry ids,
+  and the session user id; `crypto.randomUUID` is provided via expo-crypto.
+
+Next: owner feedback on the phone build; milestone 2 (real sign-in and data) needs
+a decision on testing with a separate account first, and the must-fix list in the
+plan. CocoaPods was installed via Homebrew for native builds.
+
+# Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable
 Lat Pulldown set and reported that deleting/re-adding it worked. They requested

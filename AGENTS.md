@@ -2,7 +2,8 @@
 
 Mobile-first workout and nutrition tracking with React, TypeScript, Zustand,
 Supabase and Capacitor for iOS. See package.json for current dependency versions
-and commands.
+and commands. A full native rebuild (React Native + Expo, in native/) is replacing
+the Capacitor app screen by screen and reuses the logic in src.
 
 ## Working rules
 
@@ -27,7 +28,8 @@ Read only the guide relevant to the task. Shared skill sources live in
 
 | Task | Guide |
 |---|---|
-| UI changes | [Approved Studio design](.agents/skills/studio-design/SKILL.md) |
+| Web app UI changes | [Approved Studio design](.agents/skills/studio-design/SKILL.md) |
+| Native app (native/) screens, design or checks | [Blanc native app](.agents/skills/blanc-native/SKILL.md) |
 | Native verification, requested iOS release, app icon | [iOS workflow](.agents/skills/ship-ios/SKILL.md) |
 | Requested Supabase deployment or migration | [Backend workflow](.agents/skills/supabase-deploy/SKILL.md) |
 | Resuming unfinished work | [Current handoff](docs/handoffs/current.md) |

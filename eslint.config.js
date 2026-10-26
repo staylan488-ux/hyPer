@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // native/ is the Expo app; it has its own lint and TypeScript setup.
+  globalIgnores(['dist', 'native']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
