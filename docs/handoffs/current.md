@@ -111,7 +111,9 @@ sessions done of planned, plus a muscles row once something is trained. The
 owner asked to avoid the web's bloat, so the blanc-native skill now has a
 restraint rule. Checked in the simulator against the local backend (planned,
 live, finished, rest day) and in sample mode. Committed to draft PR #152 with
-the owner's approval.
+the owner's approval, and a new real-account Release build with it is installed
+on the owner's phone (launched and running; the owner's own schedule not yet
+seen).
 
 The owner approved setting up sign-in on the phone with the real account: add
 `hyper-native://auth/callback` to the production project's (Hypertrophy-App,
