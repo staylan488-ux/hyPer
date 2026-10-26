@@ -8,6 +8,11 @@
       "@/lib/nativeBridge": ["./src/platform/nativeBridge.ts"],
       "@/lib/nativeAuth": ["./src/platform/nativeAuth.ts"],
       "@/preview/flag": ["./src/platform/previewFlag.ts"],
+      "@/lib/appVisibility": ["./src/platform/appVisibility.ts"],
+      "@/lib/haptics": ["./src/platform/haptics.ts"],
+      "@/lib/keepAwake": ["./src/platform/keepAwake.ts"],
+      "@/lib/restNotifications": ["./src/platform/restNotifications.ts"],
+      "@/lib/commitFocusedField": ["./src/platform/commitFocusedField.ts"],
       "@/*": ["../src/*"],
       "~/*": ["./src/*"],
       "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"],
@@ -16,7 +21,11 @@
       "zustand": ["./node_modules/zustand"],
       "zustand/*": ["./node_modules/zustand/*"],
       "@capacitor/core": ["./src/types/capacitor-stub.d.ts"],
-      "@capacitor/app": ["./src/types/capacitor-stub.d.ts"]
+      "@capacitor/app": ["./src/types/capacitor-stub.d.ts"],
+      "@capacitor/status-bar": ["./src/types/capacitor-stub.d.ts"],
+      "@capacitor/haptics": ["./src/types/capacitor-stub.d.ts"],
+      "@capacitor/local-notifications": ["./src/types/capacitor-stub.d.ts"],
+      "@capacitor-community/keep-awake": ["./src/types/capacitor-stub.d.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],

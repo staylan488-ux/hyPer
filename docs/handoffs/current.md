@@ -10,8 +10,10 @@ hyPer's own set tally (also the test app's icon). Plan:
 [blanc-native skill](../../.agents/skills/blanc-native/SKILL.md).
 
 Work is on `feat/native-blanc` (from origin/main af16add) in
-`.claude/worktrees/native-blanc`; nothing is committed yet, and no PR, merge,
-release or production step was requested.
+`.claude/worktrees/native-blanc`. With the owner's approval, milestone 1 is
+committed (37637a1), pushed, and open as draft PR #152
+(https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
+production step was requested.
 
 Built (milestone 1, preview data only): Expo SDK 58 app in `native/` reusing
 `src` through a Metro alias, with native swaps in `native/src/platform`; Blanc
@@ -53,9 +55,34 @@ Owner feedback on the phone build (same day) and fixes:
   defaults to the meal that fits the time, or Unassigned), retry-safe entry ids,
   and the session user id; `crypto.randomUUID` is provided via expo-crypto.
 
-Next: owner feedback on the phone build; milestone 2 (real sign-in and data) needs
-a decision on testing with a separate account first, and the must-fix list in the
-plan. CocoaPods was installed via Homebrew for native builds.
+The owner confirmed the tab bar on the phone ("Looks great now!") and approved
+saving the work and starting milestone 2 with its safety work. That work is done
+and, with the owner's approval, committed to the same branch and draft PR #152;
+the plan's milestone 2 entry lists it:
+- The native Supabase client uses the web client's `timedFetch` deadlines and
+  refresh diagnostics, and runs the shared `authResume` steps on iOS app state
+  (active resumes; inactive or background pauses, as the Capacitor shell did).
+  Simulator check: with `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server
+  that never answers, `-hyperAction probeTimeout` logged status 0 with an
+  AbortError after 30,041 ms; the server saw the app close the connection at
+  29,971 ms.
+- New native swaps in `native/src/platform`: haptics (iOS haptic engine),
+  keep-awake (`expo-keep-awake`, now a direct dependency, already linked),
+  rest notifications (no-op until milestone 3), `commitFocusedField` (no
+  react-dom) and app visibility; `@capacitor/status-bar` is shimmed.
+- `src/lib/appVisibility.ts` is new shared code: Today refresh, WHOOP foreground
+  sync and the program draft autosave use it instead of `document`. Web
+  behaviour is unchanged (their existing tests pass; new tests cover the
+  helper).
+- The native bridge now uses the app's own scheme, so the shared OAuth callback
+  parser accepts `hyper-native://auth/callback` and rejects the Capacitor app's
+  callback (tested).
+- Sample-data mode still logs sets and starts rest in the simulator.
+
+Next: sign-in. Before Google sign-in, the owner must approve adding
+`hyper-native://auth/callback` to Supabase's redirect allow-list, and decide
+whether testing starts with a separate account. CocoaPods was installed via
+Homebrew for native builds.
 
 # Previous work snapshot — a single set stuck on every retry
 

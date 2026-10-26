@@ -19,9 +19,14 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   code imports its own files as `~/…`. Logic that lives inside a web component
   moves to `src/lib` first, then both apps import it.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
-  cannot run in React Native (Supabase client, native bridge, OAuth, preview flag,
-  Capacitor shim). Add a swap rather than importing React Native into `src`.
-  TypeScript mirrors the swaps in `native/tsconfig.json` paths.
+  cannot run in React Native: the Supabase client, native bridge, OAuth, preview
+  flag, haptics, keep-awake, rest notifications, focused-field commit, app
+  visibility, plus Capacitor shims. Add a swap rather than importing React Native
+  into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
+- Shared code that reacts to the app coming back or going away uses
+  `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
+- The native Supabase client keeps the web client's safety: `timedFetch`
+  deadlines, refresh diagnostics and the shared `authResume` steps.
 - Preview mode is the default: the shared stores run on the in-memory sample
   backend. `EXPO_PUBLIC_HYPER_PREVIEW=0` with `EXPO_PUBLIC_SUPABASE_URL` and
   `EXPO_PUBLIC_SUPABASE_ANON_KEY` uses the real project.
@@ -83,6 +88,10 @@ inventory before rebuilding a flow.
   `xcrun simctl launch <udid> app.hyper.native -hyperRoute /train -hyperAction logSet`,
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
   (`xcrun simctl ui <udid> appearance dark`).
+- Request deadlines: start Metro with `EXPO_PUBLIC_HYPER_PREVIEW=0` and
+  `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server that accepts connections
+  and never answers, then launch with `-hyperAction probeTimeout`. Metro should log
+  `status=0` after about 30 s.
 - Phone installs use bundle ID `app.hyper.native` until cutover; signing follows
   [the iOS workflow](../ship-ios/SKILL.md). A simulator run does not prove device
   behaviour, haptics or performance.

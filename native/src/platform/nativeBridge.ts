@@ -5,7 +5,10 @@
 // until each feature is rebuilt as a native module here. The plugin shapes
 // below match the web bridge so shared code type-checks unchanged.
 
-export const NATIVE_AUTH_CALLBACK_SCHEME = 'app.hyper.mobile';
+// This app's own URL scheme (app.json "scheme") while it installs beside the
+// Capacitor app; at cutover it takes over app.hyper.mobile. The shared OAuth
+// callback parser checks returns against NATIVE_AUTH_REDIRECT_URL.
+export const NATIVE_AUTH_CALLBACK_SCHEME = 'hyper-native';
 export const NATIVE_AUTH_REDIRECT_URL = `${NATIVE_AUTH_CALLBACK_SCHEME}://auth/callback`;
 
 export function isNativeIOS(): boolean {

@@ -5,10 +5,12 @@
 // the browser redirect the web app uses.
 import type { Provider } from '@supabase/supabase-js';
 
+import { NATIVE_AUTH_REDIRECT_URL } from './nativeBridge';
+
 export type HyperOAuthProvider = Extract<Provider, 'google' | 'apple'>;
 
 export function getAuthRedirectTo(): string | undefined {
-  return 'hyper-native://auth/callback';
+  return NATIVE_AUTH_REDIRECT_URL;
 }
 
 export async function signInWithOAuthProvider(

@@ -20,6 +20,11 @@ const replacements = {
   'lib/nativeBridge': 'nativeBridge.ts',
   'lib/nativeAuth': 'nativeAuth.ts',
   'preview/flag': 'previewFlag.ts',
+  'lib/appVisibility': 'appVisibility.ts',
+  'lib/haptics': 'haptics.ts',
+  'lib/keepAwake': 'keepAwake.ts',
+  'lib/restNotifications': 'restNotifications.ts',
+  'lib/commitFocusedField': 'commitFocusedField.ts',
 };
 const replacementByFile = new Map();
 for (const [shared, native] of Object.entries(replacements)) {
@@ -32,6 +37,8 @@ for (const [shared, native] of Object.entries(replacements)) {
 const packageReplacements = {
   '@capacitor/core': path.join(platformDir, 'capacitorShim.ts'),
   '@capacitor/app': path.join(platformDir, 'capacitorShim.ts'),
+  // themeStore sets the status bar style only inside the Capacitor shell.
+  '@capacitor/status-bar': path.join(platformDir, 'capacitorShim.ts'),
 };
 
 const config = getDefaultConfig(projectRoot);

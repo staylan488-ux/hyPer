@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { onAppVisible } from '@/lib/appVisibility';
 import { useAppStore } from '@/stores/appStore';
 import { shouldAttemptWhoopAutoSync } from '@/lib/whoopForegroundSync';
 
@@ -39,15 +40,11 @@ export function useWhoopForegroundSync(userId: string | undefined): void {
         syncing = false;
       }
     };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void reconcile();
-    };
-
     void reconcile();
-    document.addEventListener('visibilitychange', handleVisibility);
+    const stopWatching = onAppVisible(() => void reconcile());
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
+      stopWatching();
     };
   }, [fetchWhoopConnection, syncWhoop, userId]);
 }

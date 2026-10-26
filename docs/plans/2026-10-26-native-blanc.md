@@ -48,20 +48,34 @@ have repeated that pattern.
    summary), Fuel day, Log food sheet (saved and USDA search), basic You. Simulator
    build and phone install.
 2. **Real accounts.** Email and Google sign-in (system web-auth sheet + PKCE), secure
-   session storage, foreground auth resume through AppState with the shared
-   `authResume` recovery, offline restore. Decide with the owner whether testing
-   uses a separate account first. From the parity inventory, before any real
-   data:
-   - give the native Supabase client the web client's request deadlines
-     (`timedFetch`) and refresh diagnostics; the set-save stall fixes rely on them;
-   - add swaps for the remaining Capacitor packages (haptics, status bar, local
-     notifications, keep-awake) and AppState versions of the five
-     `document`-based hooks before any screen reuses them;
-   - settle the bundle-ID-bound pieces: the OAuth callback parser and WHOOP
-     function accept only `app.hyper.mobile://`, and the Keychain session,
-     Health permission and Live Activities belong to that bundle ID.
-   Already done: `crypto.randomUUID` is provided (expo-crypto), food saves use
-   retry-safe ids, the session user id and the day's meal groups.
+   session storage, offline restore. Decide with the owner whether testing uses a
+   separate account first.
+   Safety work done first (2026-10-26):
+   - The native Supabase client has the web client's request deadlines
+     (`timedFetch`) and refresh diagnostics, and runs the shared `authResume`
+     steps on iOS app state. In the simulator, a request to a server that never
+     answers failed at 30 s with status 0 instead of hanging.
+   - Native versions replace the shared haptics, keep-awake, rest-notification
+     (a no-op until milestone 3) and focused-field wrappers, and the status bar
+     import is shimmed. Shared hooks learn that the app came back or went away
+     through `src/lib/appVisibility.ts`, which the native app backs with
+     AppState (Today refresh, WHOOP foreground sync, program draft autosave).
+     The run tracker stays web-only until milestone 8.
+   - The native app keeps its own scheme `hyper-native` until cutover. Its
+     bridge supplies `hyper-native://auth/callback`, which the shared callback
+     parser then accepts.
+   Still needed, each production change with the owner's approval:
+   - Supabase Auth redirect allow-list: add `hyper-native://auth/callback`
+     before Google sign-in (it is also the email confirmation return).
+   - Keychain storage that writes the web app's items (service
+     `<bundle ID>.auth`, account = storage key, after first unlock, this device
+     only), so cutover keeps people signed in. Check expo-secure-store against
+     that, or add a small module.
+   - WHOOP connect waits for cutover: its function accepts only
+     `app.hyper.mobile://settings`. Health permission and Live Activities are
+     granted again under the final bundle ID.
+   Earlier: `crypto.randomUUID` (expo-crypto), retry-safe food entry ids, the
+   session user id and the day's meal groups.
 3. **Train complete.** Start/schedule, flexible mode, supersets, drag reorder with
    restore on failure, session swap and switch back, notes, add/remove sets and
    movements, editing logged sets, rest Live Activity.

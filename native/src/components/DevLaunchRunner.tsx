@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 
+import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
 import { loadSavedFoods, suggestedGroup, useFuelStore } from '~/lib/fuel';
@@ -21,6 +22,23 @@ export function DevLaunchRunner() {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (route) timers.push(setTimeout(() => router.navigate(route as never), 400));
+
+    if (action === 'probeTimeout') {
+      // With EXPO_PUBLIC_SUPABASE_URL pointing at a server that never answers,
+      // a request must fail at timedFetch's deadline instead of hanging.
+      timers.push(
+        setTimeout(() => {
+          const startedAt = Date.now();
+          void supabase
+            .from('profiles')
+            .select('id')
+            .limit(1)
+            .then(({ status, error }) => {
+              console.log(`[probe] status=${status} error=${error?.message ?? 'none'} after ${Date.now() - startedAt} ms`);
+            });
+        }, 1000),
+      );
+    }
 
     if (action === 'logSet' || action === 'logTwoSets') {
       const logNext = async () => {

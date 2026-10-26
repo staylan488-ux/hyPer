@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { onAppHidden } from '@/lib/appVisibility';
 import { createSplitDraftAutosaver } from '@/lib/splitDraftStorage';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 
@@ -18,14 +19,9 @@ export function useSplitDraftAutosave(): void {
     };
     saver.update(read());
     const unsubscribe = useSplitEditStore.subscribe(() => saver.update(read()));
-    const onHidden = () => {
-      if (document.visibilityState === 'hidden') saver.flush();
-    };
-    document.addEventListener('visibilitychange', onHidden);
-    window.addEventListener('pagehide', saver.flush);
+    const stopWatching = onAppHidden(saver.flush);
     return () => {
-      document.removeEventListener('visibilitychange', onHidden);
-      window.removeEventListener('pagehide', saver.flush);
+      stopWatching();
       unsubscribe();
       saver.flush();
     };
