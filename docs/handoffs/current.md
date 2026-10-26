@@ -129,6 +129,37 @@ reading the CLI's saved token was refused by the session's safety check). After
 a reload the list shows `hyper-native://auth/callback`: 32 URLs, previously 31,
 the others and the Site URL unchanged. CocoaPods was installed via Homebrew for native builds.
 
+The owner then asked for the startup animation and the old hyPer logo back:
+the red P as the app's symbol and home-screen icon, upgraded rather than copied.
+From the [mark board](https://claude.ai/artifact/P393qgKxM7heBwoRKZRhf1) they
+chose direction C (P monogram) with a longer hold on the spelled-out word. Built,
+not yet committed (ask before committing or installing):
+- The red italic P (Fraunces Mark Medium Italic, subset to five glyphs, OFL in
+  `native/assets/fonts`) is the app icon (light, dark, tinted), sits in Today's
+  top-left header slot, and replaces the tally on sign-in and offline. Red now
+  also marks the brand P; Fraunces appears nowhere else; the tally stays for
+  set progress. The launch screen is plain chalk (black in dark mode).
+- Cold-launch intro (`native/src/components/BrandIntro.tsx`): once the first
+  screen has mounted and frames run smoothly, the P blooms, "hyPer" unfolds out
+  of it and holds about 0.9 s, the letters fold back, and the P flies to its
+  resting mark as the screen rises in under a lifting veil, with a soft haptic.
+  A tap skips ahead; Reduce Motion and scripted dev launches leave it out.
+  Geometry comes from the font metrics (`native/src/lib/brandGeometry.ts`,
+  tested in `tests/nativeBrandMark.test.ts`); the landing spot is read from
+  UIKit by a new local module, `native/modules/hyper-view`.
+- React Native's new renderer drops the italic when a font is named by its face
+  name and picks the family's upright face; the mark names family, weight and
+  style instead.
+
+Verified in the iPhone 17 Pro simulator (Debug, sample data and a signed-out
+run) from screen recordings checked frame by frame: light and dark, Today and
+sign-in landings, the hand-over to the resting P within half a point (softened
+by a 180 ms fade), tap-to-skip, Reduce Motion, the new home-screen icon. Checks:
+1,873 tests, lint with instruction checks, test type-check, web build, native
+type-check. Not verified: a device or Release build (timing, haptic), the
+offline screen (needs a saved session without a network), and the dark and
+tinted icons on a home screen (the simulator shows light icons).
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

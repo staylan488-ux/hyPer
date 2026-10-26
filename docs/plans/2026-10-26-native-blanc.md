@@ -47,6 +47,13 @@ have repeated that pattern.
    Today, live workout (log set, RPE, rest, change movement, finish with the tally
    summary), Fuel day, Log food sheet (saved and USDA search), basic You. Simulator
    build and phone install.
+   Brand (2026-10-26, the owner chose direction C on the
+   [mark board](https://claude.ai/artifact/P393qgKxM7heBwoRKZRhf1), with a longer
+   hold on the word): the red italic P (Fraunces, subset to five glyphs, OFL) is
+   the app icon (light, dark and tinted) and sits in Today's top-left corner; the
+   tally stays for set progress. On a cold launch the P blooms, "hyPer" unfolds
+   out of it and holds, folds back, and the P flies to its corner as the app
+   rises in. The launch screen is plain chalk so the intro starts seamlessly.
 2. **Real accounts.** Email and Google sign-in (system web-auth sheet + PKCE), secure
    session storage, offline restore. Decide with the owner whether testing uses a
    separate account first.

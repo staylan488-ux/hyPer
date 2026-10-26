@@ -32,6 +32,9 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
   the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
+- `native/modules/hyper-view` reads a view's real window frame from UIKit. React
+  Native's own measure works from its layout tree, which does not know where iOS
+  put an item inside a navigation bar.
 - Preview mode is the default: the shared stores run on the in-memory sample
   backend. `EXPO_PUBLIC_HYPER_PREVIEW=0` with `EXPO_PUBLIC_SUPABASE_URL` and
   `EXPO_PUBLIC_SUPABASE_ANON_KEY` uses the real project.
@@ -46,20 +49,24 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   Section 20/600, title 24/600, body 17, secondary 15, footnote 13, Menlo 12 for
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
-  colour; red only for live state, errors and over-limit.
+  colour; red only for live state, errors, over-limit and the brand P.
 - The white [Label](../../../native/src/components/Label.tsx) is the one container
   (10 pt continuous corners). Sections are separated by space, rows by hairlines
   with an iOS press highlight. Ink capsules are primary actions; quiet fill
   capsules are secondary.
-- hyPer's one signature is the set [Tally](../../../native/src/components/Tally.tsx):
-  sets counted like a paper training log, one stroke per set in groups of five,
-  the next set's stroke taller, a finished group closed with a diagonal. Use it
-  for set progress and finished-session summaries, not as decoration.
+- The brand mark is the red italic P ([BrandMark](../../../native/src/components/BrandMark.tsx),
+  Fraunces Mark Medium Italic, approved 2026-10-26): the app icon, Today's top-left
+  corner and the sign-in and offline emblem. Fraunces appears nowhere else.
+- The set [Tally](../../../native/src/components/Tally.tsx) counts sets like a
+  paper training log: one stroke per set in groups of five, the next set's stroke
+  taller, a finished group closed with a diagonal. Use it for set progress and
+  finished-session summaries only, never as a logo or decoration.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).
-- No costume luxury: no serif type, Roman numerals, faux-editorial copy, glow,
-  3D or particles. Sentence case. Touch targets at least 44 pt.
+- No costume luxury: no serif type outside the P, no Roman numerals,
+  faux-editorial copy, glow, 3D or particles. Sentence case. Touch targets at
+  least 44 pt.
 - Restraint over completeness (the owner found the web app bloated: numbers and
   text everywhere). A card carries one title, at most one quiet line and at most
   one action. Leave out zeros, placeholders ("– lb × –") and figures that repeat
@@ -68,6 +75,13 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   the tally. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
   hidden.
+- The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):
+  the P blooms, "hyPer" unfolds from it and holds (longer while the account
+  loads), folds back, and the P flies to the first screen's anchored BrandMark as
+  the content rises in, with a soft haptic on landing. Geometry comes from the
+  font metrics in `native/src/lib/brandGeometry.ts`. A tap skips it; Reduce
+  Motion and scripted dev launches (`-hyperIntro off`, or any `-hyperRoute` or
+  `-hyperAction`) leave it out. It never replays on return from the background.
 - Haptics match the web app's rule: a light tap on every tab, button, header
   item and chip; select for value changes; success or error for saves; none
   for typing or scrolling. iOS's own tab bar and header items are silent, so
@@ -92,6 +106,9 @@ inventory before rebuilding a flow.
   `npx expo run:ios --device <udid> --no-bundler` (CocoaPods required). Prefer
   this development build over Expo Go: links opened with `xcrun simctl openurl`
   stop at an "Open in …?" prompt that a script cannot answer.
+- Motion: record a cold launch with `xcrun simctl io <udid> recordVideo`, slice it
+  with ffmpeg and check the frames; a still screenshot cannot show a handover
+  jump or a stutter.
 - Debug builds accept launch arguments for headless checks
   ([devLaunch](../../../native/src/platform/devLaunch.ts)), for example
   `xcrun simctl launch <udid> app.hyper.native -hyperRoute /train -hyperAction logSet`,

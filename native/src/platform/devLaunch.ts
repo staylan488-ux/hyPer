@@ -9,7 +9,7 @@
 // Release builds ignore all of this.
 import { Settings } from 'react-native';
 
-export type DevLaunch = { route?: string; action?: string };
+export type DevLaunch = { route?: string; action?: string; skipIntro?: boolean };
 
 /** Debug only: while enabled, the workout screen logs every scroll offset to Metro. */
 export const devScrollTrace = { enabled: false };
@@ -19,9 +19,14 @@ export function readDevLaunch(): DevLaunch {
   try {
     const route = Settings.get('hyperRoute');
     const action = Settings.get('hyperAction');
+    const devRoute = typeof route === 'string' && route.startsWith('/') ? route : undefined;
+    const devAction = typeof action === 'string' ? action : undefined;
     return {
-      route: typeof route === 'string' && route.startsWith('/') ? route : undefined,
-      action: typeof action === 'string' ? action : undefined,
+      route: devRoute,
+      action: devAction,
+      // A scripted check wants its screen at once; `-hyperIntro off` skips the
+      // launch intro for any other run (UI test probes).
+      skipIntro: Boolean(devRoute || devAction) || Settings.get('hyperIntro') === 'off',
     };
   } catch {
     return {};

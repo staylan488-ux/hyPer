@@ -13,7 +13,8 @@
       "supportsTablet": false,
       "icon": {
         "light": "./assets/images/icon.png",
-        "dark": "./assets/images/icon-dark.png"
+        "dark": "./assets/images/icon-dark.png",
+        "tinted": "./assets/images/icon-tinted.png"
       }
     },
     "plugins": [
@@ -22,15 +23,24 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#F2F1ED",
-          "image": "./assets/images/splash-mark.png",
-          "imageWidth": 120,
+          "image": "./assets/images/splash-blank.png",
+          "imageWidth": 1,
           "dark": {
             "backgroundColor": "#000000",
-            "image": "./assets/images/splash-mark-dark.png"
+            "image": "./assets/images/splash-blank.png"
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/FrauncesMark-Light.ttf",
+            "./assets/fonts/FrauncesMark-MediumItalic.ttf"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

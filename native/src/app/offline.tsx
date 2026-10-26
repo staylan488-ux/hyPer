@@ -1,8 +1,8 @@
 import { View } from 'react-native';
 
 import { BlancText } from '~/components/BlancText';
+import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
-import { Tally } from '~/components/Tally';
 import { useSignInInstead } from '~/lib/auth';
 import { space } from '~/theme/blanc';
 
@@ -15,7 +15,7 @@ export default function Offline() {
   const choose = useSignInInstead((state) => state.choose);
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18, padding: space.gutter }}>
-      <Tally marks={[true, true, true, true, true]} current={null} height={22} accessibilityLabel="hyPer" />
+      <BrandMark size={EMBLEM_MARK_SIZE} anchor tight style={{ marginBottom: 6 }} />
       <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center' }}>
         Offline, waiting for a connection
       </BlancText>

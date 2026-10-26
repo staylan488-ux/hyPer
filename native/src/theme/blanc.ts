@@ -1,10 +1,12 @@
-// Blanc: Apple's structure, quiet white labels, and one mark of hyPer's own,
-// the set tally from a paper training log.
+// Blanc: Apple's structure, quiet white labels, and two things of hyPer's own:
+// the red italic P that marks the app, and the set tally from a paper
+// training log.
 //
-// SF Pro only (the system font). Big figures use its Thin weight, the way the
-// Weather app draws temperatures. Small label details use Menlo, the closest
-// monospaced face apps can name. Chalk ground, white labels, black ink; no
-// accent colour, with red reserved for "live" and "over the limit".
+// SF Pro for everything except the P (Fraunces, in BrandMark). Big figures use
+// SF's Thin weight, the way the Weather app draws temperatures. Small label
+// details use Menlo, the closest monospaced face apps can name. Chalk ground,
+// white labels, black ink; no accent colour. Red is reserved for "live",
+// "over the limit" and the P.
 import { DynamicColorIOS, Platform, useColorScheme, type TextStyle } from 'react-native';
 
 export const palettes = {
@@ -22,6 +24,7 @@ export const palettes = {
     capsule: '#0B0B0B',
     onCapsule: '#FFFFFF',
     live: '#D23B2E',
+    brand: '#A8352A',
   },
   dark: {
     ground: '#000000',
@@ -37,6 +40,7 @@ export const palettes = {
     capsule: '#F4F4F2',
     onCapsule: '#0B0B0B',
     live: '#FF5A4C',
+    brand: '#E58477',
   },
 } as const;
 

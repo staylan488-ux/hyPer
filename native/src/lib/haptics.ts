@@ -10,4 +10,6 @@ export const haptics = {
   success: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
   /** A save that failed. */
   error: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
+  /** The launch intro's P settling into its corner. */
+  land: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {}),
 };

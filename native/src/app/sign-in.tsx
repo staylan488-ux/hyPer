@@ -3,14 +3,16 @@ import { SymbolView } from 'expo-symbols';
 import { useRef, useState, type ComponentRef, type Ref } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
+import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
-import { Tally } from '~/components/Tally';
+import { useIntroRise } from '~/lib/brand';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, useBlanc } from '~/theme/blanc';
@@ -25,6 +27,7 @@ type Provider = 'apple' | 'google';
 export default function SignIn() {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
+  const rise = useIntroRise();
   const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
 
   const [isLogin, setIsLogin] = useState(true);
@@ -132,146 +135,151 @@ export default function SignIn() {
       keyboardShouldPersistTaps="handled"
       style={{ flex: 1, backgroundColor: c.ground }}
       contentContainerStyle={{ paddingTop: insets.top + 44, paddingBottom: insets.bottom + 28 }}>
-      <View style={{ paddingHorizontal: space.gutter, gap: 10 }}>
-        <Tally marks={[true, true, true, true, true]} current={null} height={20} accessibilityLabel="hyPer" />
-        <BlancText variant="title" size={34} weight="700" accessibilityRole="header">
-          hyPer
-        </BlancText>
-        <BlancText variant="secondary" tone="graphite">
-          Your training and food, in one log.
-        </BlancText>
+      {/* The launch intro lands on the mark; the rest rises in under it. */}
+      <View style={{ paddingHorizontal: space.gutter, alignItems: 'flex-start' }}>
+        <BrandMark size={EMBLEM_MARK_SIZE} anchor tight />
       </View>
-
-      <BlancText variant="section" style={{ marginHorizontal: space.gutter, marginTop: 36, marginBottom: 10 }}>
-        {isLogin ? 'Sign in' : 'Create account'}
-      </BlancText>
-
-      <Label>
-        {!isLogin ? (
-          <>
-            <Field
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Name"
-              accessibilityLabel="Name"
-              textContentType="name"
-              autoComplete="name"
-              autoCapitalize="words"
-              returnKeyType="next"
-              submitBehavior="submit"
-              onSubmitEditing={() => emailRef.current?.focus()}
-            />
-            <Hairline />
-          </>
-        ) : null}
-        <Field
-          ref={emailRef}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Email"
-          accessibilityLabel="Email"
-          keyboardType="email-address"
-          textContentType="username"
-          autoComplete="email"
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="next"
-          submitBehavior="submit"
-          onSubmitEditing={() => passwordRef.current?.focus()}
-        />
-        <Hairline />
-        <Field
-          ref={passwordRef}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          accessibilityLabel="Password"
-          secureTextEntry
-          textContentType={isLogin ? 'password' : 'newPassword'}
-          autoComplete={isLogin ? 'current-password' : 'new-password'}
-          passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
-          returnKeyType="go"
-          onSubmitEditing={() => void submit()}
-        />
-      </Label>
-
-      <View style={{ marginHorizontal: space.gutter, marginTop: 14, gap: 8 }}>
-        {!isLogin && signupSuccess ? (
-          <>
-            <BlancText variant="secondary">{signupSuccess}</BlancText>
-            <BlancText variant="footnote" tone="graphite">
-              Verification emails can land in spam, junk, or promotions.
-            </BlancText>
-            {pendingVerificationEmail || trimmedEmail ? (
-              <TextLink
-                title={resendingVerification ? 'Resending…' : 'Resend verification email'}
-                onPress={() => void resendVerification()}
-                disabled={resendingVerification}
-              />
-            ) : null}
-          </>
-        ) : null}
-        {error ? (
-          <BlancText variant="secondary" tone="live" accessibilityRole="alert">
-            {error}
+      <Animated.View style={rise}>
+        <View style={{ paddingHorizontal: space.gutter, gap: 10, marginTop: 18 }}>
+          <BlancText variant="title" size={34} weight="700" accessibilityRole="header">
+            hyPer
           </BlancText>
-        ) : null}
-        {!isLogin && showSignInPrompt ? <TextLink title="Go to sign in" onPress={() => switchMode(true)} /> : null}
-      </View>
-
-      <View style={{ marginHorizontal: space.inset, marginTop: 18, gap: 12 }}>
-        <Capsule
-          title={isLogin ? 'Sign in' : signupButtonLocked ? 'Check your email' : 'Create account'}
-          size="large"
-          fill
-          busy={loading && provider === null && !(signupButtonLocked && !isLogin)}
-          disabled={!canSubmit || provider !== null || (!isLogin && signupButtonLocked)}
-          onPress={() => void submit()}
-        />
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 6 }}>
-          <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.hairline }} />
-          <BlancText variant="footnote" tone="graphite">
-            or
+          <BlancText variant="secondary" tone="graphite">
+            Your training and food, in one log.
           </BlancText>
-          <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.hairline }} />
         </View>
 
-        <Capsule
-          title="Continue with Apple"
-          variant="quiet"
-          size="large"
-          fill
-          busy={provider === 'apple'}
-          disabled={busy && provider !== 'apple'}
-          icon={<SymbolView name="apple.logo" size={17} tintColor={c.ink} />}
-          onPress={() => void continueWith('apple')}
-        />
-        <Capsule
-          title="Continue with Google"
-          variant="quiet"
-          size="large"
-          fill
-          busy={provider === 'google'}
-          disabled={busy && provider !== 'google'}
-          icon={
-            <Image
-              source={require('../../assets/images/google-g.svg')}
-              tintColor={c.ink}
-              style={{ width: 15, height: 15 }}
-              accessible={false}
-            />
-          }
-          onPress={() => void continueWith('google')}
-        />
-      </View>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 26 }}>
-        <BlancText variant="secondary" tone="graphite">
-          {isLogin ? 'No account?' : 'Have an account?'}
+        <BlancText variant="section" style={{ marginHorizontal: space.gutter, marginTop: 36, marginBottom: 10 }}>
+          {isLogin ? 'Sign in' : 'Create account'}
         </BlancText>
-        <TextLink title={isLogin ? 'Sign up' : 'Sign in'} onPress={() => switchMode(!isLogin)} />
-      </View>
+
+        <Label>
+          {!isLogin ? (
+            <>
+              <Field
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Name"
+                accessibilityLabel="Name"
+                textContentType="name"
+                autoComplete="name"
+                autoCapitalize="words"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => emailRef.current?.focus()}
+              />
+              <Hairline />
+            </>
+          ) : null}
+          <Field
+            ref={emailRef}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email"
+            accessibilityLabel="Email"
+            keyboardType="email-address"
+            textContentType="username"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+          />
+          <Hairline />
+          <Field
+            ref={passwordRef}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Password"
+            accessibilityLabel="Password"
+            secureTextEntry
+            textContentType={isLogin ? 'password' : 'newPassword'}
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+            passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+            returnKeyType="go"
+            onSubmitEditing={() => void submit()}
+          />
+        </Label>
+
+        <View style={{ marginHorizontal: space.gutter, marginTop: 14, gap: 8 }}>
+          {!isLogin && signupSuccess ? (
+            <>
+              <BlancText variant="secondary">{signupSuccess}</BlancText>
+              <BlancText variant="footnote" tone="graphite">
+                Verification emails can land in spam, junk, or promotions.
+              </BlancText>
+              {pendingVerificationEmail || trimmedEmail ? (
+                <TextLink
+                  title={resendingVerification ? 'Resending…' : 'Resend verification email'}
+                  onPress={() => void resendVerification()}
+                  disabled={resendingVerification}
+                />
+              ) : null}
+            </>
+          ) : null}
+          {error ? (
+            <BlancText variant="secondary" tone="live" accessibilityRole="alert">
+              {error}
+            </BlancText>
+          ) : null}
+          {!isLogin && showSignInPrompt ? <TextLink title="Go to sign in" onPress={() => switchMode(true)} /> : null}
+        </View>
+
+        <View style={{ marginHorizontal: space.inset, marginTop: 18, gap: 12 }}>
+          <Capsule
+            title={isLogin ? 'Sign in' : signupButtonLocked ? 'Check your email' : 'Create account'}
+            size="large"
+            fill
+            busy={loading && provider === null && !(signupButtonLocked && !isLogin)}
+            disabled={!canSubmit || provider !== null || (!isLogin && signupButtonLocked)}
+            onPress={() => void submit()}
+          />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 6 }}>
+            <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.hairline }} />
+            <BlancText variant="footnote" tone="graphite">
+              or
+            </BlancText>
+            <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.hairline }} />
+          </View>
+
+          <Capsule
+            title="Continue with Apple"
+            variant="quiet"
+            size="large"
+            fill
+            busy={provider === 'apple'}
+            disabled={busy && provider !== 'apple'}
+            icon={<SymbolView name="apple.logo" size={17} tintColor={c.ink} />}
+            onPress={() => void continueWith('apple')}
+          />
+          <Capsule
+            title="Continue with Google"
+            variant="quiet"
+            size="large"
+            fill
+            busy={provider === 'google'}
+            disabled={busy && provider !== 'google'}
+            icon={
+              <Image
+                source={require('../../assets/images/google-g.svg')}
+                tintColor={c.ink}
+                style={{ width: 15, height: 15 }}
+                accessible={false}
+              />
+            }
+            onPress={() => void continueWith('google')}
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 26 }}>
+          <BlancText variant="secondary" tone="graphite">
+            {isLogin ? 'No account?' : 'Have an account?'}
+          </BlancText>
+          <TextLink title={isLogin ? 'Sign up' : 'Sign in'} onPress={() => switchMode(!isLogin)} />
+        </View>
+      </Animated.View>
     </KeyboardAwareScrollView>
   );
 }

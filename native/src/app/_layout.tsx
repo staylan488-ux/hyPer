@@ -1,14 +1,18 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { useAuthStore } from '@/stores/authStore';
+import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useAuthScreen } from '~/lib/auth';
+import { introPlayed } from '~/lib/brand';
+import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { palettes } from '~/theme/blanc';
 
@@ -18,7 +22,8 @@ maybeSeedPreview();
 // Otherwise restore the saved session (Keychain) and follow auth changes, as
 // the web app does on launch.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();
-// Keep the launch screen up until it is known whether someone is signed in.
+// Keep the launch screen up until the intro takes over, or without the intro
+// until it is known whether someone is signed in.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
@@ -30,10 +35,13 @@ export default function RootLayout() {
     colors: { ...base.colors, primary: p.ink, background: p.ground, card: p.ground, text: p.ink, border: p.hairline },
   };
   const screen = useAuthScreen();
+  // Cold launch only, and never under Reduce Motion or a scripted dev check.
+  const reducedMotion = useReducedMotion();
+  const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro));
 
   useEffect(() => {
-    if (screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
-  }, [screen]);
+    if (introDone && screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
+  }, [introDone, screen]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -66,6 +74,7 @@ export default function RootLayout() {
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
         </Stack>
+        {introDone ? null : <BrandIntro ready={screen !== 'boot'} onDone={() => setIntroDone(true)} />}
         {__DEV__ ? <DevLaunchRunner /> : null}
       </ThemeProvider>
       </KeyboardProvider>

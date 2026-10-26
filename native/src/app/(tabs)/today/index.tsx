@@ -6,6 +6,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume, type HeroState } from '@/components/dashboard/todayModel';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
+import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
@@ -13,6 +14,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { useIntroRise } from '~/lib/brand';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useFuelStore } from '~/lib/fuel';
@@ -30,12 +32,21 @@ export default function TodayScreen() {
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
+  const rise = useIntroRise();
 
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Today',
+          // The mark the launch intro lands on.
+          unstable_headerLeftItems: () => [
+            {
+              type: 'custom',
+              element: <BrandMark size={HEADER_MARK_SIZE} anchor style={headerMarkSlot} />,
+              hidesSharedBackground: true,
+            },
+          ],
           unstable_headerRightItems: () => [
             {
               type: 'button',
@@ -51,58 +62,60 @@ export default function TodayScreen() {
         }}
       />
       <TabScroll>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {format(now, 'EEEE, MMMM d')}
-        </BlancText>
+        <Animated.View style={rise}>
+          <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+            {format(now, 'EEEE, MMMM d')}
+          </BlancText>
 
-        {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} />}
+          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} />}
 
-        <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push('/log-food') }}>
-          {target && kcalLeft !== null ? (
-            <View style={{ paddingHorizontal: space.gutter }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                <BlancText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
-                  {formatWhole(Math.abs(kcalLeft))}
-                </BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {kcalLeft >= 0 ? 'kcal left' : 'kcal over'}
-                </BlancText>
+          <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push('/log-food') }}>
+            {target && kcalLeft !== null ? (
+              <View style={{ paddingHorizontal: space.gutter }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                  <BlancText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
+                    {formatWhole(Math.abs(kcalLeft))}
+                  </BlancText>
+                  <BlancText variant="secondary" tone="graphite">
+                    {kcalLeft >= 0 ? 'kcal left' : 'kcal over'}
+                  </BlancText>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
+                  <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} />
+                  <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} />
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} />
-                <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} />
-              </View>
-            </View>
-          ) : (
-            <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter }}>
-              Set a calorie target in You to see what's left today.
-            </BlancText>
-          )}
-        </Section>
+            ) : (
+              <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter }}>
+                Set a calorie target in You to see what's left today.
+              </BlancText>
+            )}
+          </Section>
 
-        <Section title="This week">
-          <Label>
-            <Row
-              title="Sessions"
-              value={
-                plan.weekDone === null
-                  ? undefined
-                  : plan.weekTarget
-                    ? `${plan.weekDone} of ${plan.weekTarget}`
-                    : String(plan.weekDone)
-              }
-            />
-            {week.trained > 0 ? (
-              <>
-                <Hairline />
-                <Row
-                  title={`${week.inRange} of ${week.trained} muscles in range`}
-                  detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
-                />
-              </>
-            ) : null}
-          </Label>
-        </Section>
+          <Section title="This week">
+            <Label>
+              <Row
+                title="Sessions"
+                value={
+                  plan.weekDone === null
+                    ? undefined
+                    : plan.weekTarget
+                      ? `${plan.weekDone} of ${plan.weekTarget}`
+                      : String(plan.weekDone)
+                }
+              />
+              {week.trained > 0 ? (
+                <>
+                  <Hairline />
+                  <Row
+                    title={`${week.inRange} of ${week.trained} muscles in range`}
+                    detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                  />
+                </>
+              ) : null}
+            </Label>
+          </Section>
+        </Animated.View>
       </TabScroll>
     </>
   );
