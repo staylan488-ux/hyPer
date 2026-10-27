@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, TextInput, View } from 'react-native';
 
 import { getBodyWeightHistorySince } from '@/lib/healthWeights';
-import { buildCoachContext, requestCoachRecommendation, type CoachRecommendation } from '@/lib/nutritionCoach';
+import { buildCoachContext, coachSource, requestTargetSuggestion, type CoachRecommendation } from '@/lib/nutritionCoach';
 import { COACH_GOALS_KEY } from '@/lib/photoAnalysis';
 import { supabase } from '@/lib/supabase';
 import { buildWeightTrend } from '@/lib/weightTrend';
@@ -33,8 +33,9 @@ const PREVIEW_SUGGESTION: CoachRecommendation = {
 };
 
 /**
- * Suggest targets: describe the goal in your words and the coach (on your
- * Mac worker) proposes numbers, which open in the edit sheet to review.
+ * Suggest targets: describe the goal in your words and the coach proposes
+ * numbers, which open in the edit sheet to review. The coach is whichever AI
+ * Food analysis names: Gemini (hosted) or the Mac worker.
  */
 export default function TargetsCoachSheet() {
   const c = useBlanc();
@@ -76,7 +77,7 @@ export default function TargetsCoachSheet() {
           // A missing trend does not stop a suggestion from the basic stats.
         }
       }
-      const suggestion = await requestCoachRecommendation({
+      const suggestion = await requestTargetSuggestion({
         goals,
         context: buildCoachContext(profile, latestKg, target, { trendKgPerWeek, shareMeasured: share }),
         accessToken,
@@ -134,7 +135,10 @@ export default function TargetsCoachSheet() {
       <Label style={{ marginTop: 16 }}>
         <ToggleRow label="Share daily burn and weight trend" value={share} disabled={asking} onChange={setShare} />
       </Label>
-      <FormNote>Your profile, current targets and goal are sent either way. The coach runs on your Mac worker.</FormNote>
+      <FormNote>
+        Your profile, current targets and goal are sent either way.{' '}
+        {coachSource() === 'gemini' ? 'Gemini answers; it counts toward the daily analysis limit.' : 'Your Mac worker answers.'}
+      </FormNote>
 
       {error ? (
         <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">

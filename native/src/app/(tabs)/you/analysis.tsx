@@ -68,7 +68,7 @@ export default function AnalysisScreen() {
         <Label style={{ marginTop: space.section }}>
           <Row title="Mac worker" value={worker ? hostOf(worker) : 'Not set'} chevron onPress={() => router.push('/you/worker')} />
         </Label>
-        <FormNote>Suggest targets in Targets runs on the worker, so it appears with Your Mac.</FormNote>
+        <FormNote>Suggest targets in Targets uses the same choice.</FormNote>
       </TabScroll>
     </>
   );

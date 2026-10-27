@@ -32,10 +32,10 @@ export default function TargetsScreen() {
   const ready = status === 'ready' || target !== null;
   const mode = targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
   const burn = expenditureSummary(profile);
-  // The coach runs only on the Mac worker, so it shows only for someone who
-  // chose Your Mac in Food analysis and has a worker to ask.
+  // The coach is the AI chosen in Food analysis: Gemini needs nothing set
+  // up, the Mac worker needs its address.
   const analysis = useAnalysisModeStore((state) => state.mode);
-  const coachAvailable = analysis === 'worker' && (isPreviewActive() || Boolean(getPhotoWorkerSettings().url));
+  const coachAvailable = analysis === 'gemini' || isPreviewActive() || Boolean(getPhotoWorkerSettings().url);
 
   useEffect(() => {
     void loadTargets();

@@ -16,6 +16,7 @@
  * disposes.
  */
 
+import { getFoodAnalysisMode, requestHostedTargetSuggestion } from '@/lib/foodTrial';
 import { patientPost } from '@/lib/patientFetch';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { getPhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
@@ -180,4 +181,26 @@ export async function requestCoachRecommendation(input: {
     throw new Error(String(payload?.error ?? `The coach returned ${response.status}.`));
   }
   return normalizeCoachResult(payload, String(payload?.provider ?? 'unknown'));
+}
+
+/**
+ * Where suggestions come from follows the Food analysis choice: Gemini (hosted)
+ * or the Mac worker. Each needs something different to be ready.
+ */
+export function coachSource(): 'gemini' | 'worker' {
+  return getFoodAnalysisMode();
+}
+
+/** Asks whichever coach the Food analysis choice names. */
+export async function requestTargetSuggestion(input: {
+  goals: string;
+  context: CoachContext;
+  accessToken: string;
+}): Promise<CoachRecommendation> {
+  if (coachSource() === 'worker') return requestCoachRecommendation(input);
+  const goals = input.goals.trim();
+  if (goals.length < 5) throw new Error('Describe your goals in a bit more detail.');
+  if (goals.length > 2000) throw new Error('Keep your goals under 2,000 characters.');
+  const raw = await requestHostedTargetSuggestion(goals, input.context, input.accessToken);
+  return normalizeCoachResult(raw, 'gemini');
 }

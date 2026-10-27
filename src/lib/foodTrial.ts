@@ -119,6 +119,27 @@ export async function interpretFoodServing(food: ServingFood, text: string, acce
   }
 }
 
+/**
+ * Target suggestions from the hosted Gemini service: the raw numbers and
+ * words, which src/lib/nutritionCoach normalizes. Counts toward the same
+ * daily request limit as meal analysis; an identical request on the same UTC
+ * date replays its answer instead of starting another.
+ */
+export async function requestHostedTargetSuggestion(goals: string, context: unknown, accessToken: string): Promise<Record<string, unknown>> {
+  try {
+    const payload = await post({ action: 'suggest-targets', goals, context }, accessToken);
+    if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL || !payload.recommendation || typeof payload.recommendation !== 'object') {
+      throw new Error('Target suggestions need a service update. Try again later.');
+    }
+    return payload.recommendation as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof TypeError || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
+      throw new Error('Connection interrupted. Ask again with the same goal to check this attempt without starting another.');
+    }
+    throw error;
+  }
+}
+
 /** The log source for a Gemini item: label-based or estimated. */
 export function trialLogSource(item: TrialItem): 'gemini_label' | 'gemini_estimate' {
   return item.evidence === 'label' ? 'gemini_label' : 'gemini_estimate';

@@ -1,3 +1,4 @@
+import { normalizeCoachInput, type CoachInput } from './coach.ts';
 import { normalizeServingInput, type ServingInput } from './serving.ts';
 
 export interface MealInput {
@@ -23,6 +24,7 @@ interface Dependencies {
   ledger: TrialLedger;
   analyze(input: MealInput): Promise<unknown>;
   interpretServing?(input: ServingInput): Promise<unknown>;
+  suggestTargets?(input: CoachInput): Promise<unknown>;
   now?: () => number;
 }
 
@@ -115,7 +117,7 @@ export function normalizeInput(body: Record<string, unknown>): MealInput {
   return { images, hint, clarificationUsed: body.clarificationUsed === true || /(?:^|\n)Answer:/i.test(hint) };
 }
 
-async function inputHash(input: MealInput | ServingInput, version: string): Promise<string> {
+async function inputHash(input: MealInput | ServingInput | CoachInput, version: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ version, input })));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -144,7 +146,7 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       const userId = await deps.authenticate(auth.slice(7));
       if (!userId || !UUID.test(userId)) return respond(401, { code: 'unauthorized', error: 'Sign in to analyze a meal.' });
       const body = await boundedJson(request);
-      if (body.action !== undefined && body.action !== 'analyze' && body.action !== 'status' && body.action !== 'interpret-serving') throw new RequestError(400, 'invalid_request', 'Unknown food analysis action.');
+      if (body.action !== undefined && body.action !== 'analyze' && body.action !== 'status' && body.action !== 'interpret-serving' && body.action !== 'suggest-targets') throw new RequestError(400, 'invalid_request', 'Unknown food analysis action.');
       // Identity comes only from getUser. Each UTC date gets its own fixed quota.
       const date = new Date(now()).toISOString().slice(0, 10);
       const base = `food-v1/${userId.toLowerCase()}/${date}`;
@@ -165,13 +167,19 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
         }));
         return respond(200, { date, maxAttempts: config.maxAttempts, attemptsUsed: attempts.length, attempts });
       }
-      let input: MealInput | ServingInput;
+      let input: MealInput | ServingInput | CoachInput;
       const isServing = body.action === 'interpret-serving';
-      const analysisVersion = isServing ? 'gemini-serving-v1' : ANALYSIS_VERSION;
+      const isCoach = body.action === 'suggest-targets';
+      // Target suggestions share the daily request limit with meal analysis.
+      const analysisVersion = isServing ? 'gemini-serving-v1' : isCoach ? 'gemini-coach-v1' : ANALYSIS_VERSION;
       if (isServing) {
         try { input = normalizeServingInput(body); }
         catch { throw new RequestError(400, 'invalid_request', 'Describe an amount using a food with a valid serving definition.'); }
         if (!deps.interpretServing) throw new RequestError(503, 'serving_unavailable', 'Serving interpretation is unavailable. Enter the amount manually.');
+      } else if (isCoach) {
+        try { input = normalizeCoachInput(body); }
+        catch { throw new RequestError(400, 'invalid_request', 'Describe your goal (5–2,000 characters) and complete your nutrition profile.'); }
+        if (!deps.suggestTargets) throw new RequestError(503, 'coach_unavailable', 'Target suggestions are unavailable right now.');
       } else input = normalizeInput(body);
       const requestId = await inputHash(input, analysisVersion);
       const resultPath = `${base}/results/${requestId}.json`;
@@ -191,12 +199,14 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       if (!reserved) response = { status: 429, body: { code: 'daily_quota_exhausted', error: 'Today’s food analysis request limit has been reached. It resets at midnight UTC.', requestId, analysisVersion } };
       else {
         try {
-          const result = 'action' in input ? await deps.interpretServing!(input) : await deps.analyze(input);
+          const result = !('action' in input)
+            ? await deps.analyze(input)
+            : input.action === 'suggest-targets' ? await deps.suggestTargets!(input) : await deps.interpretServing!(input);
           if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Invalid model result');
           // The adapter returns normalized meal JSON and provenance. Explicitly
           // exclude internal tool transcripts, fetched pages and research snippets.
           const normalized: Record<string, unknown> = {};
-          for (const field of ['provider', 'model', 'modelVersion', 'responseId', 'researchProvider', 'summary', 'clarification', 'items', 'sources', 'originalText', 'usage', ...(isServing ? ['interpretation'] : [])]) {
+          for (const field of ['provider', 'model', 'modelVersion', 'responseId', 'researchProvider', 'summary', 'clarification', 'items', 'sources', 'originalText', 'usage', ...(isServing ? ['interpretation'] : []), ...(isCoach ? ['recommendation'] : [])]) {
             if (field in result) normalized[field] = (result as Record<string, unknown>)[field];
           }
           response = { status: 200, body: { ...normalized, searchSuggestionsHtml: null, requestId, analysisVersion, limits: { date, maxAttempts: config.maxAttempts } } };
