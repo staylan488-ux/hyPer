@@ -288,6 +288,10 @@ sheet clears its pending order on failure, so the saved order shows again),
 anything on a phone, and against a real database (flexible writes, quick
 starts, schedule sync). Metro once served stale copies of two edited files;
 `npx expo start --clear` fixed it.
+With the owner's approval, a real-account Release build of this commit is
+installed on the owner's iPhone (production host in the bundle, no local test
+backend). iOS refused to open it after install, most likely because the phone
+was locked, so it has not been opened yet.
 
 # Previous work snapshot — a single set stuck on every retry
 
