@@ -12,10 +12,13 @@ import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { palettes } from '~/theme/blanc';
 
+// Light or Dark chosen in You applies before anything draws.
+restoreAppearance();
 // Preview mode: fill the shared stores with the sample account before the
 // first screen renders (no-op when preview is off).
 maybeSeedPreview();
@@ -145,6 +148,51 @@ export default function RootLayout() {
               options={{
                 presentation: 'formSheet',
                 sheetAllowedDetents: [0.72, 1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="log-weight"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="targets-edit"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="targets-calculate"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="targets-coach"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="saved-meal"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
                 sheetGrabberVisible: true,
                 contentStyle: { backgroundColor: p.ground },
               }}

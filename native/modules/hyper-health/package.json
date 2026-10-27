@@ -1,0 +1,8 @@
+{
+  "name": "hyper-health",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reads body-weight samples from Apple Health.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

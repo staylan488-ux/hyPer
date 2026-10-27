@@ -16,6 +16,8 @@ type RowProps = {
   chevron?: boolean;
   /** Finished or secondary rows read in graphite. */
   quiet?: boolean;
+  /** A row that removes something (Sign out, Disconnect) reads in red. */
+  destructive?: boolean;
   onPress?: () => void;
   /** A second action under a long press, offered to VoiceOver as a custom action. */
   onLongPress?: { label: string; run: () => void };
@@ -23,7 +25,7 @@ type RowProps = {
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, onPress, onLongPress, accessibilityLabel }: RowProps) {
+export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, accessibilityLabel }: RowProps) {
   const c = useBlanc();
   // Spoken as its words only: icons such as the chevron add nothing.
   const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
@@ -31,7 +33,7 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, o
     <>
       {leading}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <BlancText variant={quiet ? 'body' : 'bodyStrong'} tone={quiet ? 'graphite' : 'ink'} numberOfLines={1}>
+        <BlancText variant={quiet ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={1}>
           {title}
         </BlancText>
         {detail ? (

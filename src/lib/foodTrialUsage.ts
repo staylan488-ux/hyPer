@@ -81,3 +81,18 @@ export function summarizeFoodTrialStatus(value: unknown): string {
   lines.push('Unknown usage is not zero. Estimates are not a billing statement; Tavily pricing depends on your plan.');
   return lines.join(' ');
 }
+
+/** One line for a phone: how many hosted analyses today's limit has left. */
+export function foodTrialUsageLine(value: unknown): string {
+  if (!value || typeof value !== 'object') throw new Error('The analysis usage response was incomplete.');
+  if ('preview' in value && value.preview === true) return 'Sample data: no analyses counted.';
+  const status = record(value);
+  const used = status.attemptsUsed;
+  const max = status.maxAttempts;
+  if (!Number.isInteger(used) || !Number.isInteger(max) || (max as number) < 1 || (used as number) < 0) {
+    throw new Error('The analysis usage response was incomplete.');
+  }
+  return (used as number) >= (max as number)
+    ? `Daily limit reached: ${used} of ${max} used today.`
+    : `${used} of ${max} analyses used today.`;
+}

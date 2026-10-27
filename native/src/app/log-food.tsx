@@ -35,6 +35,7 @@ import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
@@ -54,18 +55,32 @@ type Tab = 'saved' | 'search' | 'scan' | 'manual' | 'photo';
  * `group` (the meal to add to).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
+  // A built meal opened from You's Saved meals, to change for future logs.
+  const [savedMeal] = useState<Food | null>(() =>
+    params.savedMeal ? useYouMealsStore.getState().meals?.find((meal) => meal.id === params.savedMeal) ?? null : null,
+  );
   const selectedKey = editing?.date ?? params.day ?? today();
   if (!userId) return <Empty text="Sign in to log food." />;
-  return <LoggerSession key={`${userId}:${editing?.id ?? 'new'}`} userId={userId} editing={editing} selectedKey={selectedKey} groupParam={params.group ?? null} />;
+  return (
+    <LoggerSession
+      key={`${userId}:${editing?.id ?? savedMeal?.id ?? 'new'}`}
+      userId={userId}
+      editing={editing}
+      savedMeal={savedMeal}
+      selectedKey={selectedKey}
+      groupParam={params.group ?? null}
+    />
+  );
 }
 
-function LoggerSession({ userId, editing, selectedKey, groupParam }: {
+function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: {
   userId: string;
   editing: FoodLog | null;
+  savedMeal: Food | null;
   selectedKey: string;
   groupParam: string | null;
 }) {
@@ -181,6 +196,13 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
     },
     [makeDraft, userId],
   );
+  // Opened from You to change a built meal: straight into its builder.
+  const openedSaved = useRef(false);
+  useEffect(() => {
+    if (!savedMeal || openedSaved.current || !decodeMealComposition(savedMeal.description)) return;
+    openedSaved.current = true;
+    startMeal(savedMeal, true);
+  }, [savedMeal, startMeal]);
 
   const discardMeal = () => {
     if (meal?.locked) return;
@@ -189,7 +211,7 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
     setSavedTarget(undefined);
     setMealReview(false);
     setMealError('');
-    if (editing) router.back();
+    if (editing || savedMeal) router.back();
   };
 
   const capturing = Boolean(meal) && !mealReview && !paused;
@@ -382,7 +404,10 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
             onPause={() => setPaused(true)}
             onSaved={() => {
               clearMealDraft(userId, draftKey);
-              if (savedTarget) void reloadSavedMeals();
+              if (savedTarget) {
+                void reloadSavedMeals();
+                void loadYouMeals();
+              }
               complete();
             }}
           />

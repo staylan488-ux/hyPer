@@ -15,6 +15,13 @@
         "light": "./assets/images/icon.png",
         "dark": "./assets/images/icon-dark.png",
         "tinted": "./assets/images/icon-tinted.png"
+      },
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.background-delivery": true
       }
     },
     "plugins": [

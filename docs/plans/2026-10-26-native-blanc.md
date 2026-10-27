@@ -163,6 +163,18 @@ have repeated that pattern.
 7. **You.** Profile, targets and calculator, coach, saved meals, food analysis
    worker, connections (WHOOP OAuth), Health weight sync, appearance, adaptive
    scheduling.
+   Built 2026-10-27: You (name, body weight with a 30-day line and Log,
+   targets, saved meals, food analysis, connections, appearance menu,
+   adaptive scheduling switch, about), Body weight (trend, 3-week rate,
+   90-day chart to tap or hold, recent weigh-ins with swipe to delete typed
+   ones, units), Targets (edit sheet, one-page calculator, coach on the Mac
+   worker, resume adaptive), saved meals (swipe Edit and Delete; a built meal
+   opens the meal builder), Mac worker, WHOOP and Apple Health (new
+   `hyper-health` module, HealthKit entitlement), account and sign-out. The
+   web page's rules moved to `settingsUx`, `bodyWeightSummary`,
+   `nutritionWizard`, `whoopStatus`, `healthWeights` and `foodTrialUsage`.
+   Left out on purpose: You's search (a short list needs none) and Start a
+   run (milestone 8).
 8. **Run tracker and widgets.** Port the Swift run, Live Activity and widget targets
    as Expo modules and config plugins.
 9. **Parity check and cutover.** Walk the parity inventory, switch the bundle ID,

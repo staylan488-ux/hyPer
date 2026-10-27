@@ -1,4 +1,4 @@
-import { NativeHealth, isNativeIOS } from '@/lib/nativeBridge';
+import { NativeHealth, hasNativeHealth } from '@/lib/nativeBridge';
 import {
   buildManualWeightMeasurement,
   normalizeNativeWeightSample,
@@ -91,6 +91,20 @@ export async function recordManualBodyWeight(
   return data as BodyWeightMeasurement;
 }
 
+/**
+ * Removes a weigh-in the person typed. Apple Health readings are left alone:
+ * they belong to Health, and a later sync could bring them back.
+ */
+export async function deleteManualBodyWeight(userId: string, measurementId: string): Promise<void> {
+  const { error } = await supabase
+    .from('body_weight_measurements')
+    .delete()
+    .eq('id', measurementId)
+    .eq('user_id', userId)
+    .eq('source', 'manual');
+  if (error) throw new Error(error.message);
+}
+
 /** The native reader returns at most this many samples, oldest first. */
 const HEALTH_WEIGHT_PAGE_SIZE = 500;
 /** Catch-up bound per sync (10,000 samples); a later trigger continues from the cursor. */
@@ -105,7 +119,7 @@ function advanceCursor(userId: string, candidate: string): void {
 }
 
 export async function syncNativeBodyWeights(userId: string): Promise<HealthWeightSyncResult> {
-  if (!isNativeIOS()) return { imported: 0, latest: await getLatestBodyWeight(userId) };
+  if (!hasNativeHealth()) return { imported: 0, latest: await getLatestBodyWeight(userId) };
 
   const previousCursor = localStorage.getItem(cursorKey(userId));
   let since = previousCursor
@@ -153,10 +167,26 @@ export async function syncNativeBodyWeights(userId: string): Promise<HealthWeigh
 }
 
 export async function enableNativeBodyWeightSync(userId: string): Promise<HealthWeightSyncResult> {
-  if (!isNativeIOS()) throw new Error('Apple Health is only available in the iPhone app.');
+  if (!hasNativeHealth()) throw new Error('Apple Health is only available in the iPhone app.');
   const access = await NativeHealth.requestBodyMeasurementAccess();
   if (!access.available) throw new Error('Apple Health is unavailable on this device.');
   await NativeHealth.enableWeightUpdates();
   setHealthWeightSyncEnabled(true);
   return syncNativeBodyWeights(userId);
 }
+
+/**
+ * You's Apple Health button: the first tap asks for access and turns on
+ * automatic sync; later taps sync now.
+ */
+export function connectOrSyncHealthWeights(userId: string, enabled: boolean): Promise<HealthWeightSyncResult> {
+  return enabled ? syncNativeBodyWeights(userId) : enableNativeBodyWeightSync(userId);
+}
+
+export function healthSyncMessage(result: HealthWeightSyncResult): string {
+  return result.imported > 0
+    ? `Imported ${result.imported} Apple Health weight entr${result.imported === 1 ? 'y' : 'ies'}.`
+    : 'Apple Health weight is up to date.';
+}
+
+export const HEALTH_SYNC_STOPPED_MESSAGE = 'Automatic weight sync stopped. Existing measurements were kept.';

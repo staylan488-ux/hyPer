@@ -3,36 +3,31 @@ import { ChevronLeft, Minus, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/shared';
 import { springs } from '@/lib/animations';
+import { kgToLbs, macroCaloriePercentages } from '@/lib/nutritionCalculator';
+import type { NutritionProfile } from '@/lib/nutritionProfile';
 import {
-  GOAL_RATE_PRESETS,
-  GOAL_RATE_RANGES,
-  calculateMacroTargets,
-  cmToFeetInches,
-  feetInchesToCm,
-  kgToLbs,
-  lbsToKg,
-  macroCaloriePercentages,
-  type ActivityLevel,
-  type BiologicalSex,
-  type MacroTargetInput,
-  type MacroTargetResult,
-  type NutritionGoal,
-  type UnitSystem,
-} from '@/lib/nutritionCalculator';
-import {
-  ageFromBirthYear,
-  birthYearFromAge,
-  todayIsoDate,
-  type NutritionProfile,
-  type NutritionProfileInput,
-} from '@/lib/nutritionProfile';
+  ACTIVITY_OPTIONS,
+  GOAL_OPTIONS,
+  SEX_OPTIONS,
+  UNIT_OPTIONS,
+  initialWizardDraft,
+  selectWizardGoal,
+  stepWizardRate,
+  switchWizardUnits,
+  wizardBodyFatPct,
+  wizardBodyReady,
+  wizardMethodNote,
+  wizardOutcome,
+  wizardRateBounds,
+  wizardRateDisplay,
+  wizardResult,
+  wizardWeightKg,
+  type NutritionWizardOutcome,
+  type WizardDraft,
+  type WizardOption,
+} from '@/lib/nutritionWizard';
 
-export interface NutritionWizardOutcome {
-  targets: { calories: number; protein: number; carbs: number; fat: number };
-  profile: NutritionProfileInput;
-  weightKg: number;
-  computed: MacroTargetResult;
-}
+export type { NutritionWizardOutcome } from '@/lib/nutritionWizard';
 
 interface NutritionWizardProps {
   /** Saved profile, so the wizard resumes instead of resetting to defaults. */
@@ -48,47 +43,9 @@ interface NutritionWizardProps {
 
 type WizardStep = 'units' | 'body' | 'composition' | 'activity' | 'goal' | 'review';
 
-type Option<T extends string> = { value: T; label: string; hint: string };
-
-const SEX_OPTIONS: Option<BiologicalSex>[] = [
-  { value: 'male', label: 'Male', hint: 'Biological male metabolism' },
-  { value: 'female', label: 'Female', hint: 'Biological female metabolism' },
-];
-
-const UNIT_OPTIONS: Option<UnitSystem>[] = [
-  { value: 'imperial', label: 'Imperial', hint: 'lbs, feet & inches' },
-  { value: 'metric', label: 'Metric', hint: 'kg, cm' },
-];
-
-const ACTIVITY_OPTIONS: Option<ActivityLevel>[] = [
-  { value: 'sedentary', label: 'Sedentary', hint: 'Desk job, no training' },
-  { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job, 1–3 sessions a week' },
-  { value: 'moderately_active', label: 'Moderately Active', hint: 'On your feet some, 3–5 sessions' },
-  { value: 'very_active', label: 'Very Active', hint: 'Active job or 6–7 hard sessions' },
-  { value: 'extra_active', label: 'Extra Active', hint: 'Physical job plus daily training' },
-];
-
-const GOAL_OPTIONS: Option<NutritionGoal>[] = [
-  { value: 'cut', label: 'Cut', hint: 'Lose fat, preserve muscle' },
-  { value: 'maintain', label: 'Maintain', hint: 'Stay at current composition' },
-  { value: 'lean_bulk', label: 'Lean Bulk', hint: 'Slow, controlled muscle gain' },
-  { value: 'bulk', label: 'Bulk', hint: 'Maximise muscle growth' },
-];
+type Option<T extends string> = WizardOption<T>;
 
 const STEPS: WizardStep[] = ['units', 'body', 'composition', 'activity', 'goal', 'review'];
-
-const RATE_STEP = 0.05;
-const WEEKS_PER_MONTH = 4.345;
-
-function clampInput(value: string, min: number, max: number): number {
-  const parsed = parseFloat(value);
-  if (Number.isNaN(parsed)) return min;
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function roundRate(value: number): number {
-  return Math.round(value / RATE_STEP) * RATE_STEP;
-}
 
 export function NutritionWizard({
   initialProfile,
@@ -100,10 +57,22 @@ export function NutritionWizard({
   onDraftChange,
 }: NutritionWizardProps) {
   const inputId = useId();
-  const savedUnits = initialProfile?.unit_system ?? 'imperial';
-  const savedWeightKg = initialWeightKg ?? 77;
-  const savedHeightCm = initialProfile?.height_cm ?? 178;
-  const savedHeight = cmToFeetInches(savedHeightCm);
+  const [draft, setDraft] = useState<WizardDraft>(() => initialWizardDraft(initialProfile, initialWeightKg));
+  const update = (patch: Partial<WizardDraft>) => setDraft((current) => ({ ...current, ...patch }));
+  const { unitSystem, sex, age, activity, goal } = draft;
+  const weightInput = draft.weight;
+  const heightFeet = draft.heightFeet;
+  const heightInches = draft.heightInches;
+  const heightCmInput = draft.heightCm;
+  const bodyFatInput = draft.bodyFat;
+  const setSex = (next: WizardDraft['sex']) => update({ sex: next });
+  const setAge = (next: string) => update({ age: next });
+  const setWeightInput = (next: string) => update({ weight: next });
+  const setHeightFeet = (next: string) => update({ heightFeet: next });
+  const setHeightInches = (next: string) => update({ heightInches: next });
+  const setHeightCmInput = (next: string) => update({ heightCm: next });
+  const setBodyFatInput = (next: string) => update({ bodyFat: next });
+  const setActivity = (next: WizardDraft['activity']) => update({ activity: next });
 
   const [step, setStep] = useState<WizardStep>('units');
   const stepHeading = useRef<HTMLHeadingElement>(null);
@@ -116,27 +85,6 @@ export function NutritionWizard({
     heading.focus({ preventScroll: true });
     heading.scrollIntoView({ block: 'start', behavior: 'instant' });
   }, [step]);
-  const [unitSystem, setUnitSystem] = useState<UnitSystem>(savedUnits);
-  const [sex, setSex] = useState<BiologicalSex>(initialProfile?.sex ?? 'male');
-  const [age, setAge] = useState(
-    String(initialProfile ? ageFromBirthYear(initialProfile.birth_year) : 25)
-  );
-  const [weightInput, setWeightInput] = useState(
-    String(savedUnits === 'imperial' ? Math.round(kgToLbs(savedWeightKg)) : Math.round(savedWeightKg))
-  );
-  const [heightFeet, setHeightFeet] = useState(String(savedHeight.feet));
-  const [heightInches, setHeightInches] = useState(String(savedHeight.inches));
-  const [heightCmInput, setHeightCmInput] = useState(String(Math.round(savedHeightCm)));
-  const [bodyFatInput, setBodyFatInput] = useState(
-    initialProfile?.body_fat_pct != null ? String(initialProfile.body_fat_pct) : ''
-  );
-  const [activity, setActivity] = useState<ActivityLevel>(
-    initialProfile?.activity ?? 'moderately_active'
-  );
-  const [goal, setGoal] = useState<NutritionGoal>(initialProfile?.goal ?? 'lean_bulk');
-  const [rate, setRate] = useState<number>(
-    initialProfile?.rate_pct_per_week ?? GOAL_RATE_PRESETS[initialProfile?.goal ?? 'lean_bulk']
-  );
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -149,92 +97,24 @@ export function NutritionWizard({
     if (stepIndex < STEPS.length - 1) setStep(STEPS[stepIndex + 1]);
   };
 
-  const selectGoal = (next: NutritionGoal) => {
-    setGoal(next);
-    setRate(GOAL_RATE_PRESETS[next]);
-  };
+  const selectGoal = (next: WizardDraft['goal']) => setDraft((current) => selectWizardGoal(current, next));
 
-  const weightKg = useMemo(
-    () =>
-      unitSystem === 'imperial'
-        ? lbsToKg(clampInput(weightInput, 60, 700))
-        : clampInput(weightInput, 30, 300),
-    [unitSystem, weightInput]
-  );
-
-  const heightCm = useMemo(
-    () =>
-      unitSystem === 'imperial'
-        ? feetInchesToCm(clampInput(heightFeet, 3, 8), clampInput(heightInches, 0, 11))
-        : clampInput(heightCmInput, 100, 250),
-    [unitSystem, heightFeet, heightInches, heightCmInput]
-  );
-
-  const bodyFatPct = useMemo(() => {
-    const trimmed = bodyFatInput.trim();
-    if (!trimmed) return null;
-    const parsed = parseFloat(trimmed);
-    return Number.isFinite(parsed) ? Math.max(3, Math.min(60, parsed)) : null;
-  }, [bodyFatInput]);
-
-  const input: MacroTargetInput = useMemo(
-    () => ({
-      sex,
-      age: clampInput(age, 13, 100),
-      heightCm,
-      weightKg,
-      bodyFatPct,
-      activity,
-      goal,
-      ratePctPerWeek: rate,
-      expenditureKcal: initialProfile?.adaptive_enabled ? initialProfile.expenditure_kcal : null,
-    }),
-    [sex, age, heightCm, weightKg, bodyFatPct, activity, goal, rate, initialProfile]
-  );
-
-  const result = useMemo(() => calculateMacroTargets(input), [input]);
+  const weightKg = useMemo(() => wizardWeightKg(draft), [draft]);
+  const bodyFatPct = useMemo(() => wizardBodyFatPct(draft), [draft]);
+  const result = useMemo(() => wizardResult(draft, initialProfile), [draft, initialProfile]);
   const percentages = useMemo(() => macroCaloriePercentages(result), [result]);
 
-  const [rateMin, rateMax] = GOAL_RATE_RANGES[goal];
+  const rateBounds = wizardRateBounds(draft);
   const showsRateControl = goal !== 'maintain';
   const gainGoal = goal === 'lean_bulk' || goal === 'bulk';
 
   // Gains are legible per month, losses per week.
-  const displayedRate = gainGoal ? rate * WEEKS_PER_MONTH : rate;
-  const weeklyChangeInUnit = Math.abs(
-    unitSystem === 'imperial' ? kgToLbs(result.projectedKgPerWeek) : result.projectedKgPerWeek
-  );
-  const weightUnitLabel = unitSystem === 'imperial' ? 'lb' : 'kg';
+  const rateDisplay = wizardRateDisplay(draft, result);
+  const displayedRate = rateDisplay.value;
+  const weeklyChangeInUnit = rateDisplay.weeklyChange;
+  const weightUnitLabel = rateDisplay.unit;
 
-  const handleApply = () => {
-    const profile: NutritionProfileInput = {
-      sex,
-      birth_year: birthYearFromAge(clampInput(age, 13, 100)),
-      height_cm: Math.round(heightCm * 10) / 10,
-      body_fat_pct: bodyFatPct,
-      activity,
-      goal,
-      rate_pct_per_week: Math.round(rate * 100) / 100,
-      unit_system: unitSystem,
-      adaptive_enabled: initialProfile?.adaptive_enabled ?? true,
-      phase_started_on: initialProfile?.phase_started_on ?? todayIsoDate(),
-      expenditure_kcal: initialProfile?.expenditure_kcal ?? null,
-      expenditure_confidence: initialProfile?.expenditure_confidence ?? null,
-      expenditure_updated_at: initialProfile?.expenditure_updated_at ?? null,
-    };
-
-    onApply({
-      targets: {
-        calories: result.calories,
-        protein: result.protein,
-        carbs: result.carbs,
-        fat: result.fat,
-      },
-      profile,
-      weightKg,
-      computed: result,
-    });
-  };
+  const handleApply = () => onApply(wizardOutcome(draft, initialProfile));
 
   const renderOptionRow = <T extends string>(
     options: Option<T>[],
@@ -309,12 +189,7 @@ export function NutritionWizard({
     </div>
   );
 
-  const canProceedFromBody =
-    parseFloat(age) >= 13 &&
-    parseFloat(weightInput) > 0 &&
-    (unitSystem === 'imperial'
-      ? parseFloat(heightFeet) >= 3
-      : parseFloat(heightCmInput) >= 100);
+  const canProceedFromBody = wizardBodyReady(draft);
 
   return (
     <div className="space-y-7">
@@ -358,21 +233,7 @@ export function NutritionWizard({
             <p className="t-label mb-2">Unit system</p>
             {renderOptionRow(UNIT_OPTIONS, unitSystem, (v) => {
               if (v === unitSystem) return;
-              setUnitSystem(v);
-              if (v === 'metric') {
-                const kg = Math.round(lbsToKg(parseFloat(weightInput) || 170));
-                setWeightInput(String(kg));
-                const cm = Math.round(
-                  feetInchesToCm(parseFloat(heightFeet) || 5, parseFloat(heightInches) || 10)
-                );
-                setHeightCmInput(String(cm));
-              } else {
-                const lbs = Math.round(kgToLbs(parseFloat(weightInput) || 77));
-                setWeightInput(String(lbs));
-                const { feet, inches } = cmToFeetInches(parseFloat(heightCmInput) || 178);
-                setHeightFeet(String(feet));
-                setHeightInches(String(inches));
-              }
+              setDraft((current) => switchWizardUnits(current, v));
             })}
           </div>
 
@@ -562,11 +423,11 @@ export function NutritionWizard({
                 <button
                   type="button"
                   aria-label="Slower"
-                  disabled={roundRate(rate) <= rateMin + 1e-9}
+                  disabled={!rateBounds.slower}
                   className="pressable metal-step-btn shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => {
                     onDraftChange?.(true);
-                    setRate(Math.max(rateMin, roundRate(rate - RATE_STEP)));
+                    setDraft((current) => stepWizardRate(current, -1));
                   }}
                 >
                   <Minus className="w-4 h-4" strokeWidth={1.75} />
@@ -588,11 +449,11 @@ export function NutritionWizard({
                 <button
                   type="button"
                   aria-label="Faster"
-                  disabled={roundRate(rate) >= rateMax - 1e-9}
+                  disabled={!rateBounds.faster}
                   className="pressable metal-step-btn shrink-0 w-11 h-11 flex items-center justify-center disabled:opacity-30 transition-opacity"
                   onClick={() => {
                     onDraftChange?.(true);
-                    setRate(Math.min(rateMax, roundRate(rate + RATE_STEP)));
+                    setDraft((current) => stepWizardRate(current, 1));
                   }}
                 >
                   <Plus className="w-4 h-4" strokeWidth={1.75} />
@@ -689,9 +550,7 @@ export function NutritionWizard({
 
           {/* Methodology note */}
           <p className="text-sm leading-relaxed text-[var(--color-text-dim)] max-w-[44ch]">
-            {result.bmrMethod === 'katch_mcardle'
-              ? `Katch-McArdle resting rate (${result.bmr} kcal) from your lean mass, protein set per kg of fat-free mass.`
-              : `Mifflin-St Jeor resting rate (${result.bmr} kcal), protein set per kg of bodyweight. Add body fat for a lean-mass-based estimate.`}
+            {wizardMethodNote(result)}
           </p>
 
           <div className="space-y-3">

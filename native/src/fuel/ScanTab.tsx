@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, View } from 'react-native';
 
 import { lookupBarcode } from '@/lib/barcodeLookup';
@@ -25,13 +25,14 @@ import { useLogger } from './context';
 type ScanState = 'starting' | 'idle' | 'looking-up' | 'error';
 
 /**
- * Scan: VisionKit's scanner opens on arrival, as the web app's native scanner
- * does; digits can be typed instead. A miss offers to create the product.
+ * Scan: Scan barcode opens VisionKit's scanner (the camera never opens just
+ * because the tab did; the owner asked for that on 2026-10-27); digits can be
+ * typed instead. A miss offers to create the product.
  */
 export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string | null) => void }) {
   const logger = useLogger();
-  const [state, setState] = useState<ScanState>('starting');
-  const [message, setMessage] = useState('Opening the camera…');
+  const [state, setState] = useState<ScanState>('idle');
+  const [message, setMessage] = useState('Scan a barcode or enter its digits.');
   const [available, setAvailable] = useState(true);
   const [digits, setDigits] = useState('');
   const [missed, setMissed] = useState<string | null>(null);
@@ -113,14 +114,20 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
     }
   }, [resolve]);
 
-  // Starts once, a frame after the tab opens.
-  const started = useRef(false);
+  // Whether this phone can scan at all, asked without opening the camera.
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    const frame = requestAnimationFrame(() => void scan());
-    return () => cancelAnimationFrame(frame);
-  }, [scan]);
+    let current = true;
+    void withTimeout(HyperBarcode.getAvailability(), BARCODE_AVAILABILITY_TIMEOUT_MS, 'The camera did not respond.')
+      .then(({ available: ok }) => {
+        if (!current || ok) return;
+        setAvailable(false);
+        setMessage('Barcode scanning is not available on this device. Enter the digits below.');
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, []);
 
   const typed = normalizeBarcode(digits);
   const typedValid = Boolean(normalizeFoodBarcode(typed));
@@ -137,7 +144,13 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
 
       {available ? (
         <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
-          <Capsule title={state === 'idle' && message === BARCODE_MESSAGES.found ? 'Scan again' : 'Scan barcode'} onPress={() => void scan()} disabled={busy} />
+          <Capsule
+            title={state === 'idle' && message === BARCODE_MESSAGES.found ? 'Scan again' : 'Scan barcode'}
+            size="large"
+            fill
+            onPress={() => void scan()}
+            disabled={busy}
+          />
         </View>
       ) : null}
 

@@ -6,6 +6,7 @@
 // below match the web bridge so shared code type-checks unchanged.
 
 import { HyperBarcode } from '../../modules/hyper-barcode';
+import { HyperHealth } from '../../modules/hyper-health';
 
 // This app's own URL scheme (app.json "scheme") while it installs beside the
 // Capacitor app; at cutover it takes over app.hyper.mobile. The shared OAuth
@@ -15,6 +16,11 @@ export const NATIVE_AUTH_REDIRECT_URL = `${NATIVE_AUTH_CALLBACK_SCHEME}://auth/c
 
 export function isNativeIOS(): boolean {
   return false;
+}
+
+/** Apple Health is read through native/modules/hyper-health. */
+export function hasNativeHealth(): boolean {
+  return true;
 }
 
 type PluginListenerHandle = { remove: () => Promise<void> };
@@ -118,6 +124,7 @@ function unavailable<T extends object>(name: string): T {
 
 export const NativeAuth = unavailable<NativeAuthPlugin>('HyperAuth');
 export const NativeRun = unavailable<NativeRunPlugin>('HyperRun');
-export const NativeHealth = unavailable<NativeHealthPlugin>('HyperHealth');
+// HealthKit body weight through native/modules/hyper-health.
+export const NativeHealth: NativeHealthPlugin = HyperHealth;
 // VisionKit's data scanner through native/modules/hyper-barcode.
 export const NativeBarcode: NativeBarcodePlugin = HyperBarcode;

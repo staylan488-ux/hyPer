@@ -495,6 +495,50 @@ locked. Build output was deleted afterwards (simulator DerivedData, the
 phone build folder); the Release React Native frameworks are in place, so
 run `use-rn-core.sh Debug` before the next simulator build.
 
+The owner confirmed milestone 6 on the phone. Milestone 7, You, followed
+(2026-10-27), in this session's own worktree
+(`.claude/worktrees/trusting-euler-be9eef`, pushed to `feat/native-blanc`):
+- Shared rules first, used by the web You page too: target defaults, hand
+  edits, drift, daily-burn wording, resume and sign-out wording in
+  `settingsUx`; weigh-in wording, parsing and unit switch in the new
+  `bodyWeightSummary`; the calculator's draft rules in the new
+  `nutritionWizard` (the web wizard now runs on them); WHOOP wording and the
+  consent return in the new `whoopStatus`; `connectOrSyncHealthWeights`,
+  `healthSyncMessage` and `deleteManualBodyWeight` in `healthWeights`;
+  `foodTrialUsageLine` in `foodTrialUsage`. `useNativeHealthSync` uses
+  `appVisibility`, and Health checks `hasNativeHealth()` instead of the
+  Capacitor test. Covered by `tests/youShared.test.ts`.
+- Deliberate changes: the calculator prefills weight to one decimal (it used
+  to round to whole numbers, so saving it recorded a made-up weigh-in, on the
+  web too); typed weigh-ins can be deleted (swipe), Health ones cannot (a
+  later sync would bring them back); the coach row shows only with a Mac
+  worker set; You has no search; Appearance reads Automatic, Light, Dark.
+- You (see the blanc-native skill for the routes): name and account, body
+  weight with Log, targets, saved meals (a built meal opens the meal builder
+  through `log-food?savedMeal=`), food analysis and the Mac worker,
+  connections, appearance menu, adaptive scheduling switch, about. The tab
+  layout now runs WHOOP foreground sync and Apple Health weight sync, as the
+  web shell does.
+- Apple Health: `native/modules/hyper-health` (HealthKit read of body mass,
+  observer, background delivery), entitlements and the usage text in
+  `app.json`. Needs `expo prebuild --clean`; the phone build registers
+  HealthKit for `app.hyper.native` through automatic signing.
+- Fuel's Scan tab no longer opens the camera on arrival (the owner's
+  request); Scan barcode does.
+Checked in a temporary iPhone 17 Pro simulator (sample data) with scripted
+UI tests: You, Body weight (chart tap readout, full-swipe and button delete
+of weigh-ins, Log weight with the unit switch), targets edit with the drift
+note and the discard question, the calculator through to saved targets, the
+coach's sample suggestion into the edit sheet, saved meals (edit numbers,
+full-swipe delete, a built meal edited and saved from You), food analysis,
+Mac worker, WHOOP connect (sample), Apple Health permission sheet and sync,
+appearance Dark persisting across a relaunch and back to Automatic, account
+name, about; dark mode for the new screens. Checks: 1,977 tests, lint with
+instruction checks and test type-check, web build, native type-check. Not
+verified: anything against a real database, WHOOP's real consent screen and
+return, Apple Health with real samples (the simulator had none), the Scan
+button on a phone, and the web You page in a browser.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

@@ -21,7 +21,10 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
   flag, haptics, keep-awake, rest notifications, the workout Live Activity,
-  focused-field commit, app visibility, plus Capacitor shims. Add a swap rather than importing React Native
+  focused-field commit, app visibility, plus Capacitor shims. The bridge's
+  `NativeHealth` is `native/modules/hyper-health` (HealthKit body weight, a
+  port of the Capacitor plugin), so `hasNativeHealth()` is true here while
+  `isNativeIOS()` (the Capacitor shell) stays false. Add a swap rather than importing React Native
   into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
@@ -82,7 +85,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   nutritionDay, savedMeals); never copy them into `native/`. Log food is one
   sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`) with
   Saved, Search, Scan, Manual and Photo, a review for a chosen food, and the
-  meal builder; a day's entries swipe for More and Delete and hold for the same
+  meal builder (Scan opens the camera only when Scan barcode is tapped, the
+  owner's call on 2026-10-27); a day's entries swipe for More and Delete and hold for the same
   menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
@@ -162,6 +166,21 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   which runs the web's edit protocol one edit at a time per workout. Delete a
   workout only after `confirmDeleteWorkout` asks. The muscle figure draws the
   shared maquette shapes with react-native-svg.
+- You (milestone 7) is the You tab's stack (`you/weight`, `targets`,
+  `adaptation`, `meals`, `analysis`, `worker`, `connections`, `account`,
+  `about`) plus root sheets (`log-weight`, `targets-edit`,
+  `targets-calculate`, `targets-coach`, `saved-meal`). Screen state shared
+  between them lives in `native/src/lib/you.ts`; the rules come from
+  `settingsUx`, `bodyWeightSummary`, `nutritionWizard`, `healthWeights`,
+  `whoopStatus` and `foodTrialUsage`, which the web You page also uses. The
+  calculator and coach hand their numbers to the edit sheet (`stageTargets`);
+  nothing is saved until Save there. Appearance (Automatic, Light, Dark) keeps
+  the web's `hyper-theme` key and applies through `Appearance.setColorScheme`
+  before the first screen draws. WHOOP connects through iOS's sign-in sheet
+  with the return address `app.hyper.mobile://settings` (the only one the
+  whoop-oauth function accepts; the sheet catches it, so it never reaches the
+  other app). The tab layout runs the shared WHOOP foreground sync and Apple
+  Health weight sync, as the web shell does.
 - A sideways swipe on a pushed screen is iOS 26's swipe-back. Horizontal
   paging there (History's calendar) uses a paging ScrollView, which iOS lets
   win, never a gesture-handler fling.

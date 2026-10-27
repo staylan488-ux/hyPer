@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { captureAccountScope } from '@/lib/accountScope';
 import { guardActivityEdit } from '@/lib/activitySessions';
 import { fetchHistoryMonth, historyDayKey, type HistoryWorkout } from '@/lib/historyMonth';
+import { whoopSyncMessage } from '@/lib/whoopStatus';
 import { runWorkoutEdit } from '@/lib/workoutEdit';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { useAppStore } from '@/stores/appStore';
@@ -252,9 +253,8 @@ export async function mergeActivities(chosen: ActivitySession[]): Promise<boolea
 export async function syncActivities(): Promise<string> {
   try {
     const result = await useAppStore.getState().syncWhoop();
-    if (!result) return 'Sync unavailable';
-    await loadHistoryMonth();
-    return result.created + result.updated > 0 ? `${result.created} new · ${result.updated} updated` : 'Up to date';
+    if (result) await loadHistoryMonth();
+    return whoopSyncMessage(result);
   } catch {
     return 'Sync failed';
   }
