@@ -5,6 +5,7 @@ import {
   GOAL_RATE_PRESETS,
   GOAL_RATE_RANGES,
   calculateMacroTargets,
+  resolveRatePctPerWeek,
   cmToFeetInches,
   feetInchesToCm,
   kgToLbs,
@@ -26,6 +27,8 @@ import {
 
 export interface NutritionWizardOutcome {
   targets: { calories: number; protein: number; carbs: number; fat: number };
+  /** How the targets are kept once saved (see wizardTargetSource). */
+  source: 'calculated' | 'manual';
   profile: NutritionProfileInput;
   weightKg: number;
   computed: MacroTargetResult;
@@ -61,6 +64,14 @@ export const GOAL_OPTIONS: WizardOption<NutritionGoal>[] = [
 export const RATE_STEP = 0.05;
 const WEEKS_PER_MONTH = 4.345;
 
+/** A learned burn the calculator can use: adaptive on and past the profile-only estimate. */
+export function learnedBurn(profile: NutritionProfile | null | undefined): number | null {
+  if (!profile?.adaptive_enabled) return null;
+  const kcal = profile.expenditure_kcal;
+  if (typeof kcal !== 'number' || !Number.isFinite(kcal) || kcal <= 0) return null;
+  return profile.expenditure_confidence === 'predicted' ? null : Math.round(kcal);
+}
+
 /** Everything the calculator holds as typed text, so a half-typed field stays as typed. */
 export interface WizardDraft {
   unitSystem: UnitSystem;
@@ -74,6 +85,11 @@ export interface WizardDraft {
   activity: ActivityLevel;
   goal: NutritionGoal;
   rate: number;
+  /**
+   * The daily burn to build on: what the app learned from the person's logs
+   * and weigh-ins, or the activity formula. Learned only when there is one.
+   */
+  burn: 'learned' | 'formula';
 }
 
 /**
@@ -117,7 +133,9 @@ export function initialWizardDraft(
     bodyFat: profile?.body_fat_pct != null ? String(profile.body_fat_pct) : '',
     activity: profile?.activity ?? 'moderately_active',
     goal,
-    rate: profile?.rate_pct_per_week ?? GOAL_RATE_PRESETS[goal],
+    // A saved rate outside today's range starts at its nearest edge.
+    rate: resolveRatePctPerWeek(goal, profile?.rate_pct_per_week),
+    burn: learnedBurn(profile) === null ? 'formula' : 'learned',
   };
 }
 
@@ -205,8 +223,17 @@ export function wizardInput(draft: WizardDraft, profile: NutritionProfile | null
     activity: draft.activity,
     goal: draft.goal,
     ratePctPerWeek: draft.rate,
-    expenditureKcal: profile?.adaptive_enabled ? profile.expenditure_kcal : null,
+    expenditureKcal: draft.burn === 'learned' ? learnedBurn(profile) : null,
   };
+}
+
+/** Both daily burns, so the person can see what each one gives and choose. */
+export function wizardBurns(draft: WizardDraft, profile: NutritionProfile | null | undefined): {
+  learned: number | null;
+  formula: number;
+} {
+  const formula = calculateMacroTargets({ ...wizardInput(draft, profile), expenditureKcal: null }).tdee;
+  return { learned: learnedBurn(profile), formula: Math.round(formula) };
 }
 
 export function wizardResult(draft: WizardDraft, profile: NutritionProfile | null | undefined): MacroTargetResult {
@@ -214,21 +241,21 @@ export function wizardResult(draft: WizardDraft, profile: NutritionProfile | nul
 }
 
 /**
- * The rate as people read it: gains per month, losses per week, and roughly
- * how much weight that is a week in the chosen unit.
+ * The rate as people read it: % of bodyweight a week, and roughly how much
+ * weight that is a week and a month in the chosen unit.
  */
 export function wizardRateDisplay(draft: WizardDraft, result: MacroTargetResult): {
   value: number;
-  per: 'week' | 'month';
   weeklyChange: number;
+  monthlyChange: number;
   unit: 'lb' | 'kg';
 } {
-  const gain = draft.goal === 'lean_bulk' || draft.goal === 'bulk';
   const imperial = draft.unitSystem === 'imperial';
+  const weekly = Math.abs(imperial ? kgToLbs(result.projectedKgPerWeek) : result.projectedKgPerWeek);
   return {
-    value: gain ? draft.rate * WEEKS_PER_MONTH : draft.rate,
-    per: gain ? 'month' : 'week',
-    weeklyChange: Math.abs(imperial ? kgToLbs(result.projectedKgPerWeek) : result.projectedKgPerWeek),
+    value: draft.rate,
+    weeklyChange: weekly,
+    monthlyChange: weekly * WEEKS_PER_MONTH,
     unit: imperial ? 'lb' : 'kg',
   };
 }
@@ -238,6 +265,15 @@ export function wizardMethodNote(result: MacroTargetResult): string {
   return result.bmrMethod === 'katch_mcardle'
     ? `Katch-McArdle resting rate (${result.bmr} kcal) from your lean mass, protein set per kg of fat-free mass.`
     : `Mifflin-St Jeor resting rate (${result.bmr} kcal), protein set per kg of bodyweight. Add body fat for a lean-mass-based estimate.`;
+}
+
+/**
+ * How the targets should be kept: from the learned burn they can keep
+ * adapting; from the formula they are set by hand, or the weekly adaptive
+ * update would pull them straight back to the learned burn.
+ */
+export function wizardTargetSource(draft: WizardDraft, profile: NutritionProfile | null | undefined): 'calculated' | 'manual' {
+  return draft.burn === 'formula' && learnedBurn(profile) !== null ? 'manual' : 'calculated';
 }
 
 /** The profile to save and the targets to review, from the finished draft. */
@@ -250,6 +286,7 @@ export function wizardOutcome(
   const heightCm = wizardHeightCm(draft);
   return {
     targets: { calories: result.calories, protein: result.protein, carbs: result.carbs, fat: result.fat },
+    source: wizardTargetSource(draft, profile),
     profile: {
       sex: draft.sex,
       birth_year: birthYearFromAge(clampInput(draft.age, 13, 100), now),

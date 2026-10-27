@@ -368,7 +368,11 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       // weigh-ins for You; WHOOP starts disconnected and saved meals stay as
       // Fuel knows them.
       const { nutrition_profiles, body_weight_measurements } = buildYouFixtures('populated');
-      Object.assign(previewTables, { nutrition_profiles, body_weight_measurements });
+      // Adaptive on, so the calculator offers the learned burn beside the formula.
+      Object.assign(previewTables, {
+        nutrition_profiles: nutrition_profiles.map((row) => ({ ...row, adaptive_enabled: true })),
+        body_weight_measurements,
+      });
     }
   }
   // DEV mock-only QA: enter /preview?previewSetSave=fail, then Save set.

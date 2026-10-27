@@ -98,20 +98,25 @@ export const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
   extra_active: 1.8,
 };
 
-/** Signed % of bodyweight per week. Negative loses, positive gains. */
+/**
+ * Signed % of bodyweight per week. Negative loses, positive gains. Gains were
+ * raised on 2026-10-27 at the owner's request: a light lifter bulking needs
+ * about 0.5% a week (2–3 lb a month at 130 lb), and the old ceiling of 0.3%
+ * left no way to ask for that without typing targets by hand.
+ */
 export const GOAL_RATE_PRESETS: Record<NutritionGoal, number> = {
   cut: -0.7,
   maintain: 0,
-  lean_bulk: 0.1,
-  bulk: 0.2,
+  lean_bulk: 0.25,
+  bulk: 0.5,
 };
 
 /** Inclusive [min, max] on `ratePctPerWeek`, per goal. */
 export const GOAL_RATE_RANGES: Record<NutritionGoal, [number, number]> = {
   cut: [-1, -0.25],
   maintain: [0, 0],
-  lean_bulk: [0.05, 0.15],
-  bulk: [0.15, 0.3],
+  lean_bulk: [0.15, 0.35],
+  bulk: [0.35, 0.75],
 };
 
 /** Energy density of tissue change. Asymmetric — gained and lost tissue differ. */

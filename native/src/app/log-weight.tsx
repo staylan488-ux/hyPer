@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { router, useNavigation, usePreventRemove } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
 
@@ -11,14 +11,13 @@ import { Capsule } from '~/components/Capsule';
 import { FigureInput } from '~/components/FigureInput';
 import { GlassButton } from '~/components/GlassButton';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { logWeighIn, setWeightUnit, useWeightStore } from '~/lib/you';
 import { useBlanc } from '~/theme/blanc';
 
 /** Log weight: one number in the unit you weigh in, saved as a typed weigh-in. */
 export default function LogWeightSheet() {
   const c = useBlanc();
-  const navigation = useNavigation();
   const latest = useWeightStore((state) => state.history[0] ?? null);
   const failedHistory = useWeightStore((state) => state.failed);
   const unit = useWeightStore((state) => state.unit);
@@ -28,17 +27,7 @@ export default function LogWeightSheet() {
   const [saved, setSaved] = useState(false);
 
   // A typed number holds the sheet: closing asks before it goes.
-  usePreventRemove(draft.trim() !== '' && !saved, ({ data }) => {
-    if (saving) return;
-    void confirmAlert({
-      title: 'Discard this weigh-in?',
-      confirmLabel: 'Discard',
-      cancelLabel: 'Keep editing',
-      destructive: true,
-    }).then((discard) => {
-      if (discard) navigation.dispatch(data.action);
-    });
-  });
+  useLeaveGuard(draft.trim() !== '' && !saved, { title: 'Discard this weigh-in?' }, { busy: saving });
 
   const switchUnit = (next: WeightUnit) => {
     if (next === unit) return;

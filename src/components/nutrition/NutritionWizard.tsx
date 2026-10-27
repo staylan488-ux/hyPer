@@ -16,6 +16,7 @@ import {
   switchWizardUnits,
   wizardBodyFatPct,
   wizardBodyReady,
+  wizardBurns,
   wizardMethodNote,
   wizardOutcome,
   wizardRateBounds,
@@ -106,9 +107,8 @@ export function NutritionWizard({
 
   const rateBounds = wizardRateBounds(draft);
   const showsRateControl = goal !== 'maintain';
-  const gainGoal = goal === 'lean_bulk' || goal === 'bulk';
+  const burns = wizardBurns(draft, initialProfile);
 
-  // Gains are legible per month, losses per week.
   const rateDisplay = wizardRateDisplay(draft, result);
   const displayedRate = rateDisplay.value;
   const weeklyChangeInUnit = rateDisplay.weeklyChange;
@@ -442,7 +442,7 @@ export function NutritionWizard({
                     %
                   </span>
                   <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-1">
-                    of bodyweight per {gainGoal ? 'month' : 'week'}
+                    of bodyweight per week
                   </p>
                 </div>
 
@@ -461,7 +461,8 @@ export function NutritionWizard({
               </div>
 
               <p className="text-sm leading-relaxed text-[var(--color-text-dim)] mt-5 max-w-[38ch]">
-                About {weeklyChangeInUnit.toFixed(2)} {weightUnitLabel} a week at your current
+                About {weeklyChangeInUnit.toFixed(2)} {weightUnitLabel} a week
+                ({rateDisplay.monthlyChange.toFixed(1)} {weightUnitLabel} a month) at your current
                 bodyweight.
               </p>
             </div>
@@ -499,6 +500,21 @@ export function NutritionWizard({
               {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
             </p>
           </div>
+
+          {/* Which daily burn to build on, when the app has learned one */}
+          {burns.learned !== null && (
+            <div>
+              <p className="t-label mb-2">Daily burn</p>
+              {renderOptionRow<WizardDraft['burn']>(
+                [
+                  { value: 'learned', label: `Learned · ${burns.learned.toLocaleString()} kcal`, hint: 'From your food logs and weigh-ins; targets keep adapting' },
+                  { value: 'formula', label: `Formula · ${burns.formula.toLocaleString()} kcal`, hint: 'From your body and activity; targets stay as set' },
+                ],
+                draft.burn,
+                (burn) => update({ burn }),
+              )}
+            </div>
+          )}
 
           {/* Macro breakdown */}
           <dl>

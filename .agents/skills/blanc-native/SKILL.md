@@ -181,6 +181,10 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   whoop-oauth function accepts; the sheet catches it, so it never reaches the
   other app). The tab layout runs the shared WHOOP foreground sync and Apple
   Health weight sync, as the web shell does.
+- A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
+  closing asks first, and after Discard it steps aside before closing. Never
+  re-dispatch the held action straight from `usePreventRemove`'s callback;
+  the guard is still on and asks again forever.
 - A sideways swipe on a pushed screen is iOS 26's swipe-back. Horizontal
   paging there (History's calendar) uses a paging ScrollView, which iOS lets
   win, never a gesture-handler fling.

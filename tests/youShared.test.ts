@@ -19,6 +19,7 @@ import {
   switchWizardUnits,
   wizardBodyFatPct,
   wizardBodyReady,
+  wizardBurns,
   wizardOutcome,
   wizardRateBounds,
   wizardRateDisplay,
@@ -126,7 +127,9 @@ describe('target calculator draft', () => {
   it('starts from the profile and the latest weigh-in, at one decimal', () => {
     const draft = initialWizardDraft(profile, 78.4, now);
     expect(draft).toMatchObject({ unitSystem: 'imperial', age: '34', weight: '172.8', heightFeet: '5', heightInches: '10' });
-    expect(initialWizardDraft(null, null, now)).toMatchObject({ unitSystem: 'imperial', weight: '169.8', goal: 'lean_bulk', rate: 0.1 });
+    expect(initialWizardDraft(null, null, now)).toMatchObject({ unitSystem: 'imperial', weight: '169.8', goal: 'lean_bulk', rate: 0.25, burn: 'formula' });
+    // A rate saved under the old, slower bulk range starts at today's floor.
+    expect(initialWizardDraft({ ...profile, goal: 'bulk', rate_pct_per_week: 0.2 }, 59, now)).toMatchObject({ rate: 0.35, burn: 'learned' });
   });
 
   it('does not log a new weigh-in when the prefilled weight is saved untouched', () => {
@@ -152,9 +155,13 @@ describe('target calculator draft', () => {
     for (let i = 0; i < 20; i += 1) fastest = stepWizardRate(fastest, -1);
     expect(fastest.rate).toBeCloseTo(-1);
     expect(wizardRateBounds(fastest)).toEqual({ slower: false, faster: true });
-    const lean = selectWizardGoal(cut, 'lean_bulk');
-    expect(wizardRateDisplay(lean, wizardResult(lean, profile))).toMatchObject({ per: 'month', unit: 'lb' });
-    expect(wizardRateDisplay(cut, wizardResult(cut, profile)).per).toBe('week');
+    const bulk = selectWizardGoal(cut, 'bulk');
+    expect(bulk.rate).toBe(0.5);
+    // 0.5% a week of 172.8 lb is about 0.86 lb a week, 3.75 lb a month.
+    const shown = wizardRateDisplay(bulk, wizardResult(bulk, profile));
+    expect(shown).toMatchObject({ value: 0.5, unit: 'lb' });
+    expect(shown.weeklyChange).toBeCloseTo(0.86, 1);
+    expect(shown.monthlyChange).toBeCloseTo(shown.weeklyChange * 4.345, 5);
   });
 
   it('holds inputs to their limits and builds the profile to save', () => {
@@ -165,6 +172,30 @@ describe('target calculator draft', () => {
     const outcome = wizardOutcome({ ...draft, age: '34' }, profile, now);
     expect(outcome.profile).toMatchObject({ birth_year: 1992, height_cm: 177.8, adaptive_enabled: true, phase_started_on: '2026-09-01' });
     expect(outcome.targets.calories).toBe(outcome.computed.calories);
+  });
+});
+
+describe('learned or formula burn in the calculator', () => {
+  const now = new Date('2026-10-27T12:00:00');
+  // The owner's case: 130 lb, 5'9", 12% body fat, moderately active, bulking,
+  // with a learned burn of about 2,060 kcal.
+  const owner: NutritionProfile = { ...profile, sex: 'male', height_cm: 175.3, body_fat_pct: 12, goal: 'bulk', rate_pct_per_week: 0.5, expenditure_kcal: 2060 };
+  const draft = { ...initialWizardDraft(owner, lbsToKg(130), now), weight: '130' };
+
+  it('offers both burns and builds on the chosen one', () => {
+    expect(wizardBurns(draft, owner)).toEqual({ learned: 2060, formula: 2236 });
+    expect(wizardResult(draft, owner).tdee).toBe(2060);
+    const formula = { ...draft, burn: 'formula' as const };
+    expect(wizardResult(formula, owner).tdee).toBe(2236);
+    // A 0.5%-a-week bulk adds about 250 kcal a day for them.
+    expect(wizardResult(formula, owner).calories).toBeGreaterThan(2450);
+  });
+
+  it('keeps formula targets by hand so the weekly adaptive update leaves them', () => {
+    expect(wizardOutcome(draft, owner, now).source).toBe('calculated');
+    expect(wizardOutcome({ ...draft, burn: 'formula' }, owner, now).source).toBe('manual');
+    expect(wizardBurns(draft, { ...owner, adaptive_enabled: false }).learned).toBeNull();
+    expect(wizardOutcome({ ...draft, burn: 'formula' }, { ...owner, expenditure_confidence: 'predicted' }, now).source).toBe('calculated');
   });
 });
 

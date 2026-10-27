@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { Stack, useNavigation, usePreventRemove } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { Keyboard, View } from 'react-native';
 
@@ -12,27 +12,19 @@ import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space } from '~/theme/blanc';
 
 /** The Mac worker: its address and photo provider, saved and tested together. */
 export default function WorkerScreen() {
-  const navigation = useNavigation();
   const [saved, setSaved] = useState<PhotoWorkerSettings>(getPhotoWorkerSettings);
   const [draft, setDraft] = useState<PhotoWorkerSettings>(saved);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
   const dirty = draft.url !== saved.url || draft.provider !== saved.provider;
 
-  usePreventRemove(dirty, ({ data }) => {
-    if (busy) return;
-    void confirmAlert({ title: 'Discard your changes?', confirmLabel: 'Discard', cancelLabel: 'Keep editing', destructive: true }).then(
-      (discard) => {
-        if (discard) navigation.dispatch(data.action);
-      },
-    );
-  });
+  useLeaveGuard(dirty, undefined, { busy });
 
   const save = async () => {
     if (busy) return;

@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { router, useNavigation, usePreventRemove } from 'expo-router';
+import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
@@ -15,6 +15,7 @@ import {
   stepWizardRate,
   switchWizardUnits,
   wizardBodyReady,
+  wizardBurns,
   wizardMethodNote,
   wizardOutcome,
   wizardRateBounds,
@@ -34,7 +35,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadWeights, stageTargets, useWeightStore } from '~/lib/you';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -45,7 +46,6 @@ import { type as typeScale, useBlanc } from '~/theme/blanc';
  */
 export default function TargetsCalculateSheet() {
   const c = useBlanc();
-  const navigation = useNavigation();
   const profile = useAppStore((state) => state.nutritionProfile);
   const latestKg = useWeightStore((state) => (state.history[0] ? Number(state.history[0].kilograms) : null));
   const [initial] = useState(() => initialWizardDraft(profile, latestKg));
@@ -58,20 +58,11 @@ export default function TargetsCalculateSheet() {
   const split = macroCaloriePercentages(result);
   const rate = wizardRateDisplay(draft, result);
   const rateBounds = wizardRateBounds(draft);
+  const burns = wizardBurns(draft, profile);
   const ready = wizardBodyReady(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
 
-  usePreventRemove(dirty && !done, ({ data }) => {
-    if (saving) return;
-    void confirmAlert({
-      title: 'Discard these changes?',
-      confirmLabel: 'Discard',
-      cancelLabel: 'Keep editing',
-      destructive: true,
-    }).then((discard) => {
-      if (discard) navigation.dispatch(data.action);
-    });
-  });
+  useLeaveGuard(dirty && !done, { title: 'Discard these changes?' }, { busy: saving });
 
   useEffect(() => {
     if (done) router.replace('/targets-edit');
@@ -101,7 +92,7 @@ export default function TargetsCalculateSheet() {
       }
     }
     haptics.success();
-    stageTargets({ ...outcome.targets, source: 'calculated' }, { profileSaved: true });
+    stageTargets({ ...outcome.targets, source: outcome.source }, { profileSaved: true });
     setDone(true);
   };
 
@@ -200,13 +191,16 @@ export default function TargetsCalculateSheet() {
               <Hairline />
               <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingHorizontal: 12, gap: 8 }}>
                 <StepButton symbol="minus" label="Decrease rate" disabled={!rateBounds.slower} onPress={() => setDraft((current) => stepWizardRate(current, -1))} />
-                <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityLabel={`${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a ${rate.per}`}>
+                <View
+                  style={{ flex: 1, alignItems: 'center' }}
+                  accessible
+                  accessibilityLabel={`${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a week, about ${rate.monthlyChange.toFixed(1)} ${rate.unit} a month`}>
                   <BlancText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
                     {rate.value > 0 ? '+' : ''}
-                    {rate.value.toFixed(2)}% a {rate.per}
+                    {rate.value.toFixed(2)}% a week
                   </BlancText>
-                  <BlancText variant="footnote" tone="graphite">
-                    About {rate.weeklyChange.toFixed(2)} {rate.unit} a week
+                  <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+                    About {rate.weeklyChange.toFixed(2)} {rate.unit} a week · {rate.monthlyChange.toFixed(1)} a month
                   </BlancText>
                 </View>
                 <StepButton symbol="plus" label="Increase rate" disabled={!rateBounds.faster} onPress={() => setDraft((current) => stepWizardRate(current, 1))} />
@@ -227,10 +221,32 @@ export default function TargetsCalculateSheet() {
                 kcal a day
               </BlancText>
             </View>
-            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, marginBottom: 6 }}>
-              {result.tdeeIsMeasured ? 'Learned daily burn' : 'Estimated daily burn'} {formatWhole(result.tdee)} kcal
-            </BlancText>
+            {burns.learned === null ? (
+              <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, marginBottom: 6 }}>
+                Estimated daily burn {formatWhole(result.tdee)} kcal
+              </BlancText>
+            ) : (
+              <View style={{ height: 8 }} />
+            )}
           </View>
+          {burns.learned !== null ? (
+            <>
+              <Hairline />
+              <CheckRow
+                title={`Learned burn · ${formatWhole(burns.learned)} kcal`}
+                detail="From your food logs and weigh-ins; keeps adapting"
+                checked={draft.burn === 'learned'}
+                onPress={() => update({ burn: 'learned' })}
+              />
+              <Hairline />
+              <CheckRow
+                title={`Formula burn · ${formatWhole(burns.formula)} kcal`}
+                detail="From your body and activity; stays as set"
+                checked={draft.burn === 'formula'}
+                onPress={() => update({ burn: 'formula' })}
+              />
+            </>
+          ) : null}
           <Hairline />
           <Row title="Protein" value={`${result.protein} g · ${split.protein}%`} />
           <Hairline />

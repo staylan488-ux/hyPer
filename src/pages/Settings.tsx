@@ -777,7 +777,7 @@ export function Settings() {
         }
       }
       setMacroMessage('Profile saved. Review and save the suggested targets.');
-      stageTargets({ ...outcome.targets, source: 'calculated' });
+      stageTargets({ ...outcome.targets, source: outcome.source });
     } catch {
       setMacroError('Could not save your profile. Your entries are kept; try again.');
     } finally {

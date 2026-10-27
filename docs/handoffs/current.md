@@ -548,6 +548,28 @@ this session's simulator DerivedData and the temporary simulator were
 deleted afterwards; the Release React Native frameworks are in place, so run
 `use-rn-core.sh Debug` before the next simulator build.
 
+After trying it on the phone (2026-10-27), the owner asked for three fixes,
+all on `feat/native-blanc`:
+- Suggest targets follows the Food analysis choice. With the owner's
+  approval, `analyze-food-trial` gained a `suggest-targets` action (Gemini,
+  the Mac worker coach's reasoning rules, the same daily limit and replay)
+  and was deployed to Hypertrophy-App. The deploy used the live copy of
+  `model.ts`, which is older than main's (main's parallel Tavily searches
+  are still undeployed); a later full deploy of the function ships them.
+  Checked live only to the sign-in gate (401 without a session).
+- Calculate targets: gain rates raised at the owner's request (lean bulk
+  0.15–0.35% a week, starting 0.25; bulk 0.35–0.75%, starting 0.5), rates
+  shown per week with lb a month, and a choice between the learned burn and
+  the formula when a learned one exists. Formula targets are saved as set by
+  hand, or the weekly adaptive update would pull them back to the learned
+  burn. The owner's case (130 lb, 5'9", 12% body fat, bulk) gave 2,160 kcal
+  from a learned burn near 2,060 and a +100 kcal bulk. A saved rate outside
+  the new ranges is moved to the nearest edge the next time targets adapt.
+- "Discard these changes?" asked again after Discard and never closed: the
+  guard stopped its own re-sent close. Every You sheet now uses
+  `useLeaveGuard` in `native/src/lib/leaveGuard.ts`, which steps aside
+  before closing.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

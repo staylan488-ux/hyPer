@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams, useNavigation, usePreventRemove } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Keyboard, ScrollView, View } from 'react-native';
 
@@ -11,7 +11,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { useBlanc } from '~/theme/blanc';
 
@@ -33,7 +33,6 @@ const oneDecimal = (value: unknown) => String(Math.round((Number(value) || 0) * 
  */
 export default function SavedMealSheet() {
   const c = useBlanc();
-  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [meal] = useState(() => useYouMealsStore.getState().meals?.find((entry) => entry.id === id) ?? null);
   const [initial] = useState<Draft>(() => ({
@@ -49,14 +48,7 @@ export default function SavedMealSheet() {
   const [done, setDone] = useState(false);
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
 
-  usePreventRemove(changed && !done, ({ data }) => {
-    if (saving) return;
-    void confirmAlert({ title: 'Discard your changes?', confirmLabel: 'Discard', cancelLabel: 'Keep editing', destructive: true }).then(
-      (discard) => {
-        if (discard) navigation.dispatch(data.action);
-      },
-    );
-  });
+  useLeaveGuard(changed && !done, undefined, { busy: saving });
 
   useEffect(() => {
     if (done) router.back();

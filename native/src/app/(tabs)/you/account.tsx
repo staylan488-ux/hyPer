@@ -1,4 +1,4 @@
-import { Stack, useNavigation, usePreventRemove } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { ActionSheetIOS, Keyboard, View } from 'react-native';
 
@@ -10,13 +10,12 @@ import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space } from '~/theme/blanc';
 
 /** Account: the name the app greets you by, and signing out. */
 export default function AccountScreen() {
-  const navigation = useNavigation();
   const user = useAuthStore((state) => state.user);
   const profile = useAuthStore((state) => state.profile);
   const saved = profile?.display_name || '';
@@ -26,13 +25,7 @@ export default function AccountScreen() {
   const draft = name ?? saved;
   const changed = draft.trim() !== saved;
 
-  usePreventRemove(changed && !saving, ({ data }) => {
-    void confirmAlert({ title: 'Discard your new name?', confirmLabel: 'Discard', cancelLabel: 'Keep editing', destructive: true }).then(
-      (discard) => {
-        if (discard) navigation.dispatch(data.action);
-      },
-    );
-  });
+  useLeaveGuard(changed, { title: 'Discard your new name?' }, { busy: saving });
 
   const save = async () => {
     if (saving || !changed) return;

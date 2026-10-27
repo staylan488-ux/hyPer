@@ -129,16 +129,16 @@ describe('golden values', () => {
   it('lean bulk with body fat supplied', () => {
     // FFM  = 75 x 0.86 = 64.5; BMR = 370 + 21.6(64.5) = 1763.2
     // TDEE = 1763.2 x 1.65 = 2909.3
-    // +0.10 %/wk of 75 kg = 0.075 kg/wk -> +64 kcal/day, well inside the cap
-    // Protein 2.0 x 64.5 = 129 -> 130 g; fat 25% of 2973.6 = 82.6 -> 85 g
+    // +0.25 %/wk of 75 kg = 0.1875 kg/wk -> +161 kcal/day, well inside the cap
+    // Protein 2.0 x 64.5 = 129 -> 130 g; fat 25% of 3070 = 85.3 -> 85 g
     const r = calculateMacroTargets(LEAN_BULK_WITH_BODY_FAT);
 
     expect(r.bmr).toBe(1763);
     expect(r.tdee).toBe(2909);
     expect(r.protein).toBe(130);
-    expect(r.carbs).toBe(420);
+    expect(r.carbs).toBe(445);
     expect(r.fat).toBe(85);
-    expect(r.calories).toBe(2965);
+    expect(r.calories).toBe(3065);
     expect(r.notes).toEqual([]);
     expect(r.projectedKgPerWeek).toBeGreaterThan(0);
   });

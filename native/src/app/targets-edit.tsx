@@ -1,4 +1,4 @@
-import { router, useNavigation, usePreventRemove } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
 
@@ -21,7 +21,7 @@ import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadTargets, useTargetsStore } from '~/lib/you';
 import { useBlanc } from '~/theme/blanc';
 
@@ -39,7 +39,6 @@ const FIELDS: { key: keyof TargetNumbers; label: string; unit: string }[] = [
  */
 export default function TargetsEditSheet() {
   const c = useBlanc();
-  const navigation = useNavigation();
   const target = useAppStore((state) => state.macroTarget);
   // Taken once: suggestions handed over by the calculator or the coach.
   const [staged] = useState(() => useTargetsStore.getState().staged);
@@ -55,20 +54,16 @@ export default function TargetsEditSheet() {
     useTargetsStore.setState({ staged: null });
   }, []);
 
-  usePreventRemove(targetsChanged(draft, base) && !saved, ({ data }) => {
-    if (saving) return;
-    void confirmAlert({
+  useLeaveGuard(
+    targetsChanged(draft, base) && !saved,
+    {
       title: 'Discard these targets?',
       message: staged?.profileSaved
         ? 'Your profile and weight are already saved. Discarding the targets does not undo those.'
         : undefined,
-      confirmLabel: 'Discard',
-      cancelLabel: 'Keep editing',
-      destructive: true,
-    }).then((discard) => {
-      if (discard) navigation.dispatch(data.action);
-    });
-  });
+    },
+    { busy: saving },
+  );
 
   useEffect(() => {
     if (saved) router.back();
