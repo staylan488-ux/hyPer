@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import { foodMacroLine } from '@/lib/foodUnits';
@@ -15,6 +16,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
 import { Hairline } from '~/components/Row';
+import { SwipeRow } from '~/components/SwipeRow';
 import { saveFoodEntry } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
@@ -63,7 +65,7 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
 }
 
 /** One food: tap to review it; the round button logs one serving at once. */
-function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete }: {
+function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLongPress }: {
   food: Food;
   state?: AddState;
   onOpen: () => void;
@@ -71,12 +73,13 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete }: {
   editing?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onLongPress?: () => void;
 }) {
   const c = useBlanc();
   const composed = Boolean(decodeMealComposition(food.description));
   const line = state === 'error' ? 'Not saved. Tap + to try again.' : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${food.name}, ${line}`}
@@ -84,6 +87,14 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete }: {
           haptics.tap();
           (editing ? onEdit : onOpen)?.();
         }}
+        onLongPress={
+          onLongPress && !editing
+            ? () => {
+                haptics.select();
+                onLongPress();
+              }
+            : undefined
+        }
         style={({ pressed }) => ({
           flex: 1,
           minWidth: 0,
@@ -210,31 +221,58 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     else logger.chooseFood(meal);
   };
 
+  // A deleted meal folds away at once and comes back if retiring it fails.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const retire = async (meal: Food) => {
+    setMessage(null);
+    setHidden((current) => new Set(current).add(meal.id));
+    const userId = await getSessionUserId();
+    const { error } = userId ? await retireSavedMeal(userId, meal.id) : { error: new Error('signed out') };
+    if (error) {
+      haptics.error();
+      setHidden((current) => {
+        const next = new Set(current);
+        next.delete(meal.id);
+        return next;
+      });
+      setMessage({ text: userId ? 'Could not delete saved meal. Please try again.' : 'Please sign in again to delete saved meals.', alert: true });
+      return;
+    }
+    setMessage({ text: 'Saved meal deleted. Past logs were not changed.' });
+    await logger.reloadSavedMeals();
+  };
+
   const remove = (meal: Food) => {
     Alert.alert(`Delete ${meal.name}?`, 'It leaves your saved meals. Past logged entries stay unchanged.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const userId = await getSessionUserId();
-          if (!userId) {
-            setMessage({ text: 'Please sign in again to delete saved meals.', alert: true });
-            return;
-          }
-          const { error } = await retireSavedMeal(userId, meal.id);
-          if (error) {
-            haptics.error();
-            setMessage({ text: 'Could not delete saved meal. Please try again.', alert: true });
-            return;
-          }
-          haptics.success();
-          setMessage({ text: 'Saved meal deleted. Past logs were not changed.' });
-          await logger.reloadSavedMeals();
-        },
-      },
+      { text: 'Delete', style: 'destructive', onPress: () => void retire(meal) },
     ]);
   };
+
+  const canQuickAdd = (meal: Food) => quick.enabled && !decodeMealComposition(meal.description);
+  const menu = (meal: Food) => {
+    const actions: { label: string; run: () => void }[] = [];
+    if (canQuickAdd(meal)) actions.push({ label: logger.purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', run: () => void quick.add(meal.id, meal) });
+    actions.push({ label: 'Review and log', run: () => open(meal) });
+    if (logger.purpose === 'log') {
+      actions.push({ label: 'Edit saved meal', run: () => onEditSavedMeal(meal) });
+      actions.push({ label: 'Delete', run: () => void retire(meal) });
+    }
+    const options = [...actions.map((action) => action.label), 'Cancel'];
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: meal.name,
+        message: logger.purpose === 'log' ? 'Deleting it keeps past logged entries.' : undefined,
+        options,
+        cancelButtonIndex: actions.length,
+        destructiveButtonIndex: logger.purpose === 'log' ? actions.length - 1 : undefined,
+      },
+      (index) => {
+        if (index < actions.length) actions[index].run();
+      },
+    );
+  };
+  const visible = list.filter((meal) => !hidden.has(meal.id));
 
   return (
     <View>
@@ -251,22 +289,39 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
         </View>
       </View>
       {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
-      {list.map((meal, index) => (
-        <View key={meal.id}>
-          {index > 0 ? <Hairline inset={20} /> : null}
+      {visible.map((meal, index) => {
+        const row = (
           <FoodRow
             food={meal}
             state={quick.added[meal.id]}
             onOpen={() => open(meal)}
-            onAdd={quick.enabled && !decodeMealComposition(meal.description) ? () => void quick.add(meal.id, meal) : undefined}
+            onAdd={canQuickAdd(meal) ? () => void quick.add(meal.id, meal) : undefined}
             editing={managing}
             onEdit={() => onEditSavedMeal(meal)}
             onDelete={() => remove(meal)}
+            onLongPress={() => menu(meal)}
           />
-        </View>
-      ))}
+        );
+        return (
+          <Animated.View key={meal.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+            {index > 0 ? <Hairline inset={20} /> : null}
+            {logger.purpose === 'log' && !managing ? (
+              <SwipeRow
+                name={meal.name}
+                actions={[
+                  { label: 'Edit', onPress: () => onEditSavedMeal(meal) },
+                  { label: 'Delete', destructive: true, onPress: () => void retire(meal) },
+                ]}>
+                {row}
+              </SwipeRow>
+            ) : (
+              row
+            )}
+          </Animated.View>
+        );
+      })}
       {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-      {meals !== null && list.length === 0 ? <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} /> : null}
+      {meals !== null && visible.length === 0 ? <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} /> : null}
     </View>
   );
 }

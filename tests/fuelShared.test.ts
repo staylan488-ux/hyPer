@@ -37,6 +37,7 @@ import { offersMoveToPreviousDay } from '@/lib/nutritionDay';
 import { servingLabel, sortLedgerEntries, sourceLabel } from '@/lib/nutritionLedger';
 import { buildPhotoHint, groundPhotoItems, logPhotoItems, photoItemStatus, photoItemTotals, type PhotoReviewItem } from '@/lib/photoReview';
 import { buildEntryPayload, chosenFoodLogSource } from '@/lib/saveNutritionEntry';
+import { trialIngredientFood, trialItemFood, trialLogSource } from '@/lib/foodTrial';
 import { filterSavedMeals, foodValuesMatch, savedMealSuggestions } from '@/lib/savedMeals';
 
 const food = (overrides: Partial<Food> = {}): Food => ({
@@ -304,5 +305,22 @@ describe('day ledger and calendar', () => {
     const entries = [{ date: '2026-10-27', logged_at: new Date(2026, 9, 27, 0, 40).toISOString() }];
     expect(offersMoveToPreviousDay(entries, late)).toBe(true);
     expect(offersMoveToPreviousDay(entries, new Date(2026, 9, 27, 6))).toBe(false);
+  });
+});
+
+describe('Gemini items', () => {
+  const item = {
+    name: ' Samosas ', quantity: 6, unit: 'piece', basisQuantity: 3, calories: 180, protein: 6, carbs: 24, fat: 7,
+    evidence: 'label' as const, notes: 'From the box.', sourceIndexes: [], amountConfirmed: true,
+  };
+
+  it('saves the eaten amount as one serving, with its evidence recorded', () => {
+    const food = trialItemFood(item, true, 1);
+    expect(food).toMatchObject({ id: 'photo-gemini-1', name: 'Samosas', calories: 360, protein: 12, serving_size: 6, serving_unit: 'piece', source: 'saved_meal' });
+    expect(food.description).toBe('Label-based nutrition. Amount supplied or adjusted by user. From the box.');
+    expect(trialItemFood({ ...item, evidence: 'estimate', amountConfirmed: false }, false, 1).source).toBe('manual_entry');
+    expect(trialLogSource(item)).toBe('gemini_label');
+    expect(trialLogSource({ ...item, evidence: 'estimate' })).toBe('gemini_estimate');
+    expect(trialIngredientFood(item, () => 'x')).toMatchObject({ id: 'photo-x', calories: 360, description: 'From the box.' });
   });
 });

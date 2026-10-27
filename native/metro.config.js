@@ -43,7 +43,10 @@ const packageReplacements = {
 };
 
 const config = getDefaultConfig(projectRoot);
-config.watchFolders = [...(config.watchFolders ?? []), sharedSrc];
+// The Gemini food analyzer's shapes and serving rules live with its edge
+// function and are shared by the web app (src/lib/foodTrial) and this one.
+const foodTrialShared = path.resolve(projectRoot, '..', 'supabase', 'functions', 'analyze-food-trial');
+config.watchFolders = [...(config.watchFolders ?? []), sharedSrc, foodTrialShared];
 
 const upstreamResolve = config.resolver.resolveRequest;
 
@@ -60,7 +63,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   } else if (moduleName.startsWith('~/')) {
     request = path.join(projectRoot, 'src', moduleName.slice(2));
   } else if (
-    context.originModulePath.startsWith(sharedSrc + path.sep) &&
+    (context.originModulePath.startsWith(sharedSrc + path.sep) || context.originModulePath.startsWith(foodTrialShared + path.sep)) &&
     !moduleName.startsWith('.') &&
     !path.isAbsolute(moduleName)
   ) {

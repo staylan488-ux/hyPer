@@ -86,6 +86,15 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
+- "This should work, and it does" (the owner, 2026-10-27): every list item
+  that can be removed swipes left for its actions, with the destructive one in
+  red and a full swipe running it ([SwipeRow](../../../native/src/components/SwipeRow.tsx)),
+  and folds away with an exiting animation; anything with more to do offers it
+  on a long press too (an action sheet). VoiceOver gets the same actions.
+  Apply it wherever it fits; an app-wide interaction audit follows parity.
+- Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
+  native app defaults to it (AI tab, Manual's hand-off, Describe amount); a
+  device set to the worker gets the Photo tab instead.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a long press on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12

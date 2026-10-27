@@ -19,6 +19,7 @@ import {
   type MealDraft,
   type MealIngredient,
 } from '@/lib/mealComposition';
+import { getFoodAnalysisMode } from '@/lib/foodTrial';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { loadSavedMeals } from '@/lib/savedMeals';
@@ -39,6 +40,7 @@ import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { emptyManual, manualFromFood, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
+import { aiHasDraft, AiTab, emptyAi, type AiDraft } from '~/fuel/AiTab';
 import { emptyPhoto, PhotoTab, type PhotoDraft } from '~/fuel/PhotoTab';
 import { ScanTab } from '~/fuel/ScanTab';
 import { useBlanc } from '~/theme/blanc';
@@ -98,8 +100,12 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
   const [photo, setPhoto] = useState<PhotoDraft>(emptyPhoto);
+  // The owner logs food with Gemini; the worker photo flow stays for a device set to it.
+  const [analysisMode] = useState(getFoodAnalysisMode);
+  const gemini = analysisMode === 'gemini';
+  const [ai, setAi] = useState<AiDraft>(() => emptyAi());
   const [busy, setBusy] = useState(false);
-  const photoWaiting = tab !== 'photo' && photo.items.length > 0;
+  const photoWaiting = tab !== 'photo' && photo.items.length > 0 && getFoodAnalysisMode() !== 'gemini';
 
   // Saved meals: the last list at once, refetched on open.
   const [savedMeals, setSavedMeals] = useState<Food[] | null>(() => readSavedFoodsCache(userId));
@@ -210,6 +216,7 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
       setChosen(null);
       setManual(emptyManual);
       setPhoto(emptyPhoto());
+      setAi(emptyAi());
       setCaptureKey((key) => key + 1);
       setMealError('');
     },
@@ -343,7 +350,7 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
                 <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
                 <SwiftText modifiers={[tag('scan')]}>Scan</SwiftText>
                 <SwiftText modifiers={[tag('manual')]}>Manual</SwiftText>
-                <SwiftText modifiers={[tag('photo')]}>{photoWaiting ? 'Photo •' : 'Photo'}</SwiftText>
+                <SwiftText modifiers={[tag('photo')]}>{gemini ? 'AI' : photoWaiting ? 'Photo •' : 'Photo'}</SwiftText>
               </Picker>
             </Host>
           ) : null}
@@ -420,8 +427,32 @@ function LoggerSession({ userId, editing, selectedKey, groupParam }: {
                 }}
               />
             ) : null}
-            {tab === 'manual' ? <ManualTab draft={manual} setDraft={(update) => setManual(update)} /> : null}
-            {tab === 'photo' ? <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} /> : null}
+            {tab === 'manual' ? (
+              <ManualTab
+                draft={manual}
+                setDraft={(update) => setManual(update)}
+                onGeminiHandoff={
+                  gemini
+                    ? (description) => {
+                        const handOff = () => {
+                          setAi(emptyAi(description));
+                          setTab('photo');
+                        };
+                        if (!aiHasDraft(ai)) {
+                          handOff();
+                          return;
+                        }
+                        Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
+                          { text: 'Keep', style: 'cancel' },
+                          { text: 'Replace', style: 'destructive', onPress: handOff },
+                        ]);
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
+            {tab === 'photo' && gemini ? <AiTab draft={ai} setDraft={(update) => setAi(update)} /> : null}
+            {tab === 'photo' && !gemini ? <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} /> : null}
           </View>
         )}
       </KeyboardAwareScrollView>

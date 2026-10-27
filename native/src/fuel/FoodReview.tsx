@@ -27,6 +27,7 @@ import { haptics } from '~/lib/haptics';
 import { space } from '~/theme/blanc';
 
 import { useLogger, type ChosenMeta } from './context';
+import { ServingHelper } from './ServingHelper';
 import { WhenBlock } from './WhenBlock';
 
 /** The chosen food: how much, when, then log it (or add it to the meal). */
@@ -35,6 +36,8 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
   const [amount, setAmount] = useState('1');
   const [unit, setUnit] = useState<MeasurementUnit>('serving');
   const [saving, setSaving] = useState(false);
+  // the amount helper's answer must be applied or closed before logging
+  const [helperOpen, setHelperOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // one retry-safe id until this entry's save is confirmed
   const pending = useRef(createPendingEntryId()).current;
@@ -118,6 +121,16 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
           <Row title="Unit" value={unit} chevron onPress={units.length > 1 ? chooseUnit : undefined} />
         </Label>
         {invalid ? <FormNote alert>{invalid}</FormNote> : null}
+        <ServingHelper
+          key={`${food.id}:${food.serving_size}:${food.serving_unit}`}
+          food={food}
+          disabled={saving}
+          onOpenChange={setHelperOpen}
+          onApply={(next) => {
+            setUnit('serving');
+            setAmount(String(next));
+          }}
+        />
       </View>
 
       <WhenBlock disabled={saving} />
@@ -144,7 +157,7 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
           title={logger.purpose === 'ingredients' ? 'Add ingredient' : logger.editing ? 'Save changes' : 'Log entry'}
           onPress={() => void save()}
           busy={saving}
-          disabled={servings === null}
+          disabled={servings === null || helperOpen}
           style={{ flex: 1, alignSelf: 'stretch' }}
         />
       </View>

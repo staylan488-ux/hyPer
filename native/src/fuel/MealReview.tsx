@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
-import { SymbolView } from 'expo-symbols';
-import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
+import { ActionSheetIOS, TextInput, View } from 'react-native';
+import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
@@ -14,6 +14,7 @@ import { FieldRow, FormNote, PickerRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
 import { groupsForDay } from '~/lib/fuel';
@@ -111,7 +112,7 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
       <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
         <Label>
           {draft.ingredients.map((item, index) => (
-            <View key={item.id}>
+            <Animated.View key={item.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
               {index > 0 ? <Hairline /> : null}
               <IngredientRow
                 item={item}
@@ -125,7 +126,7 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
                   setInvalidRows((rows) => rows.filter((id) => id !== item.id));
                 }}
               />
-            </View>
+            </Animated.View>
           ))}
           {draft.ingredients.length === 0 ? <Row title="No ingredients yet" quiet /> : null}
         </Label>
@@ -184,8 +185,8 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const c = useBlanc();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
-  return (
-    <View style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 12 }}>
+  const content = (
+    <View style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
@@ -216,18 +217,6 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
         <BlancText variant="body" tone="graphite" numberOfLines={1} style={{ maxWidth: 64 }}>
           {item.food.serving_unit}
         </BlancText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${item.food.name}`}
-          disabled={disabled}
-          hitSlop={6}
-          onPress={() => {
-            haptics.tap();
-            onRemove();
-          }}
-          style={({ pressed }) => ({ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : pressed ? 0.5 : 1 })}>
-          <SymbolView name="xmark" size={13} weight="semibold" tintColor={c.graphite} />
-        </Pressable>
       </View>
       {!valid ? (
         <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }}>
@@ -235,5 +224,11 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
         </BlancText>
       ) : null}
     </View>
+  );
+  // swipe to remove, like any list on iOS
+  return disabled ? content : (
+    <SwipeRow name={item.food.name} actions={[{ label: 'Remove', destructive: true, onPress: onRemove }]}>
+      {content}
+    </SwipeRow>
   );
 }

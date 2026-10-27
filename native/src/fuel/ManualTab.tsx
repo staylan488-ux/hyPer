@@ -58,7 +58,12 @@ export function manualFromFood(food: Pick<Food, 'name' | 'calories' | 'protein' 
 const DESCRIBE_LIMIT = 1500;
 
 /** Manual entry: describe it to the AI, or type the name and macros per serving. */
-export function ManualTab({ draft, setDraft }: { draft: ManualDraft; setDraft: (update: (draft: ManualDraft) => ManualDraft) => void }) {
+export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
+  draft: ManualDraft;
+  setDraft: (update: (draft: ManualDraft) => ManualDraft) => void;
+  /** Gemini mode: the description goes to the AI tab instead of filling these fields. */
+  onGeminiHandoff?: (description: string) => void;
+}) {
   const c = useBlanc();
   const logger = useLogger();
   const [nameFocused, setNameFocused] = useState(false);
@@ -278,7 +283,12 @@ export function ManualTab({ draft, setDraft }: { draft: ManualDraft; setDraft: (
                 <BlancText variant="footnote" tone="graphite">
                   {description.trim().length < 5 ? 'At least 5 characters' : `${description.length} / ${DESCRIBE_LIMIT}`}
                 </BlancText>
-                <Capsule title="Estimate" busy={describing} disabled={description.trim().length < 5} onPress={() => void describe()} />
+                <Capsule
+                  title={onGeminiHandoff ? 'Review with Gemini' : 'Estimate'}
+                  busy={describing}
+                  disabled={description.trim().length < 5}
+                  onPress={() => (onGeminiHandoff ? onGeminiHandoff(description) : void describe())}
+                />
               </View>
             </View>
           ) : (

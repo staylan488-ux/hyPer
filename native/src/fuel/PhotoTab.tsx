@@ -65,7 +65,7 @@ export const emptyPhoto = (): PhotoDraft => ({
 });
 
 /** Re-encodes a photo as JPEG at most 2576 px on its long edge, within the worker's size budget. */
-async function prepareImage(photo: PickedPhoto): Promise<{ imageBase64: string; mimeType: string }> {
+export async function prepareImage(photo: PickedPhoto): Promise<{ imageBase64: string; mimeType: string }> {
   const scale = Math.min(1, MAX_ANALYSIS_IMAGE_DIMENSION / Math.max(photo.width || 1, photo.height || 1));
   const actions = scale < 1 ? [{ resize: { width: Math.max(1, Math.round(photo.width * scale)) } }] : [];
   let quality = 0.82;

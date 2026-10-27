@@ -53,7 +53,7 @@ import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescri
 import { ServingEntry } from './ServingEntry';
 import { FoodTrialLogger, type FoodTrialDraftState } from './FoodTrialLogger';
 import './fuel.css';
-import { getFoodAnalysisMode, trialFoodTotals, type TrialFoodItem } from '@/lib/foodTrial';
+import { getFoodAnalysisMode, trialIngredientFood, trialItemFood, trialLogSource, type TrialFoodItem } from '@/lib/foodTrial';
 import { createMealIngredient, decodeMealComposition, type MealIngredient } from '@/lib/mealComposition';
 import { nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { bindFoodToBarcode } from '@/lib/savedBarcodeFoods';
@@ -854,11 +854,7 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
 
   const handleSaveTrialItems = async (items: TrialFoodItem[], onItemSaved: (item: TrialFoodItem) => void, saveAsReusableMeal: boolean) => {
     if (onAddIngredients) {
-      onAddIngredients(items.map((item) => createMealIngredient({
-        id: `photo-${crypto.randomUUID()}`, user_id: null, name: item.name.trim(),
-        ...trialFoodTotals(item), serving_size: item.quantity, serving_unit: item.unit,
-        source: 'manual_entry', fdc_id: null, description: item.notes,
-      }, 1)));
+      onAddIngredients(items.map((item) => createMealIngredient(trialIngredientFood(item), 1)));
       return;
     }
     if (!timeValue) throw new Error('Choose a logging time.');
@@ -866,21 +862,10 @@ export function FoodLogger({ selectedDate, onComplete, initialEntry = null, grou
     for (const item of items) {
       const entryId = trialEntryIds.current.get(item) || crypto.randomUUID();
       trialEntryIds.current.set(item, entryId);
-      const totals = trialFoodTotals(item);
-      const foodId = trialSavedFoods.current.get(item) || await upsertFoodIfNeeded({
-        id: `photo-gemini-${Date.now()}`,
-        user_id: null,
-        name: item.name.trim(),
-        ...totals,
-        serving_size: item.quantity,
-        serving_unit: item.unit,
-        source: saveAsReusableMeal ? 'saved_meal' : 'manual_entry',
-        fdc_id: null,
-        description: `${item.evidence === 'label' ? 'Label-based nutrition.' : 'Estimated nutrition.'} ${item.amountConfirmed ? 'Amount supplied or adjusted by user.' : 'Estimated amount reviewed when saved.'} ${item.notes}`,
-      });
+      const foodId = trialSavedFoods.current.get(item) || await upsertFoodIfNeeded(trialItemFood(item, saveAsReusableMeal));
       if (!foodId) throw new Error(`Could not save ${item.name}.`);
       trialSavedFoods.current.set(item, foodId);
-      if (!await saveNutritionEntry(foodId, 1, item.evidence === 'label' ? 'gemini_label' : 'gemini_estimate', false, entryId)) throw new Error(`Could not log ${item.name}.`);
+      if (!await saveNutritionEntry(foodId, 1, trialLogSource(item), false, entryId)) throw new Error(`Could not log ${item.name}.`);
       onItemSaved(item);
     }
     onComplete();

@@ -1,10 +1,10 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { ActionSheetIOS, Pressable, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { getLogDate } from '@/components/nutrition/nutritionLogUtils';
 import { fuelDaySummary, fuelDayTitle } from '@/lib/fuelSummary';
@@ -21,6 +21,7 @@ import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
@@ -289,10 +290,10 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
       }>
       <Label style={{ overflow: 'hidden' }}>
         {logs.map((log, index) => (
-          <View key={log.id}>
+          <Animated.View key={log.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
             {index > 0 ? <Hairline /> : null}
             <EntryRow log={log} groups={groups} lateNight={lateNight} />
-          </View>
+          </Animated.View>
         ))}
         {logs.length === 0 && group ? <Row title="Nothing here yet" quiet onPress={() => logFood(day, group.id)} /> : null}
       </Label>
@@ -308,31 +309,16 @@ function entryDetail(log: FoodLog): string {
   return [time, amount, protein ? `${formatWhole(protein)} g protein` : null].filter(Boolean).join(' · ');
 }
 
-/** One entry: tap to edit; swipe for Delete and More; hold for the same menu. */
+/** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
 function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean }) {
   const c = useBlanc();
-  const swipeable = useRef<SwipeableMethods>(null);
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
-  const remove = () => {
-    swipeable.current?.close();
+  const remove = () =>
     void useFuelStore
       .getState()
       .deleteEntry(log.id)
-      .then((ok) => (ok ? haptics.success() : haptics.error()));
-  };
-
-  const menu = () => {
-    swipeable.current?.close();
-    const store = useFuelStore.getState();
-    const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }, { label: 'Move to…', run: () => moveMenu() }];
-    if (lateNight) actions.push({ label: 'Move to yesterday', run: () => void store.moveEntryToYesterday(log.id).then((ok) => (ok ? haptics.success() : haptics.error())) });
-    actions.push({ label: 'Delete', run: remove });
-    const options = [...actions.map((action) => action.label), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions({ title: name, options, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 }, (index) => {
-      if (index < actions.length) actions[index].run();
-    });
-  };
+      .then((ok) => (ok ? undefined : haptics.error()));
 
   const moveMenu = () => {
     const targets: { id: string | null; label: string }[] = [
@@ -350,44 +336,37 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
     });
   };
 
-  const action = (label: string, color: string, tint: string, onPress: () => void) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${label} ${name}`}
-      onPress={() => {
-        haptics.tap();
-        onPress();
-      }}
-      style={{ width: 84, alignItems: 'center', justifyContent: 'center', backgroundColor: color }}>
-      <BlancText variant="footnote" weight="600" style={{ color: tint }}>
-        {label}
-      </BlancText>
-    </Pressable>
-  );
+  const menu = () => {
+    const store = useFuelStore.getState();
+    const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }, { label: 'Move to…', run: moveMenu }];
+    if (lateNight) actions.push({ label: 'Move to yesterday', run: () => void store.moveEntryToYesterday(log.id).then((ok) => (ok ? haptics.success() : haptics.error())) });
+    actions.push({ label: 'Delete', run: remove });
+    const options = [...actions.map((action) => action.label), 'Cancel'];
+    ActionSheetIOS.showActionSheetWithOptions({ title: name, options, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 }, (index) => {
+      if (index < actions.length) actions[index].run();
+    });
+  };
 
+  const detail = entryDetail(log);
+  const kcal = formatWhole(logMacro(log, 'calories') ?? 0);
   return (
-    <ReanimatedSwipeable
-      ref={swipeable}
-      friction={1.6}
-      rightThreshold={44}
-      overshootRight={false}
-      renderRightActions={() => (
-        <View style={{ flexDirection: 'row' }}>
-          {action('More', c.fill, c.ink, menu)}
-          {action('Delete', c.live, '#FFFFFF', remove)}
-        </View>
-      )}>
+    <SwipeRow
+      name={name}
+      actions={[
+        { label: 'More', onPress: menu },
+        { label: 'Delete', destructive: true, onPress: remove },
+      ]}>
       <View style={{ backgroundColor: c.label }}>
         <Row
           title={name}
-          detail={entryDetail(log)}
-          value={formatWhole(logMacro(log, 'calories') ?? 0)}
+          detail={detail}
+          value={kcal}
           onPress={edit}
           onLongPress={{ label: 'More actions', run: menu }}
-          accessibilityLabel={`${name}, ${entryDetail(log)}, ${formatWhole(logMacro(log, 'calories') ?? 0)} kcal`}
+          accessibilityLabel={`${name}, ${detail}, ${kcal} kcal`}
         />
       </View>
-    </ReanimatedSwipeable>
+    </SwipeRow>
   );
 }
 

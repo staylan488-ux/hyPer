@@ -1,6 +1,7 @@
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import type { PhotoAnalysisImage } from '@/lib/photoAnalysis';
-import { FOOD_TRIAL_MODEL, validateTrialItems, type FoodTrialResult } from '../../supabase/functions/analyze-food-trial/model';
+import type { Food } from '@/types';
+import { FOOD_TRIAL_MODEL, trialFoodTotals as itemTotals, validateTrialItems, type FoodTrialResult, type TrialFoodItem as TrialItem } from '../../supabase/functions/analyze-food-trial/model';
 export { trialFoodTotals } from '../../supabase/functions/analyze-food-trial/model';
 export type { FoodTrialResult, TrialFoodItem, TrialUsage } from '../../supabase/functions/analyze-food-trial/model';
 
@@ -116,4 +117,43 @@ export async function interpretFoodServing(food: ServingFood, text: string, acce
     }
     throw error;
   }
+}
+
+/** The log source for a Gemini item: label-based or estimated. */
+export function trialLogSource(item: TrialItem): 'gemini_label' | 'gemini_estimate' {
+  return item.evidence === 'label' ? 'gemini_label' : 'gemini_estimate';
+}
+
+/**
+ * The foods row a reviewed Gemini item saves as: its eaten amount is one
+ * serving, a saved meal when "Save as reusable meal" is on, and its
+ * description records the evidence and whether the amount was confirmed.
+ */
+export function trialItemFood(item: TrialItem, saveAsReusableMeal: boolean, stamp = Date.now()): Food {
+  return {
+    id: `photo-gemini-${stamp}`,
+    user_id: null,
+    name: item.name.trim(),
+    ...itemTotals(item),
+    serving_size: item.quantity,
+    serving_unit: item.unit,
+    source: saveAsReusableMeal ? 'saved_meal' : 'manual_entry',
+    fdc_id: null,
+    description: `${item.evidence === 'label' ? 'Label-based nutrition.' : 'Estimated nutrition.'} ${item.amountConfirmed ? 'Amount supplied or adjusted by user.' : 'Estimated amount reviewed when saved.'} ${item.notes}`,
+  };
+}
+
+/** A reviewed Gemini item as a meal-builder ingredient food. */
+export function trialIngredientFood(item: TrialItem, newId: () => string = () => crypto.randomUUID()): Food {
+  return {
+    id: `photo-${newId()}`,
+    user_id: null,
+    name: item.name.trim(),
+    ...itemTotals(item),
+    serving_size: item.quantity,
+    serving_unit: item.unit,
+    source: 'manual_entry',
+    fdc_id: null,
+    description: item.notes,
+  };
 }

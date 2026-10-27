@@ -342,10 +342,23 @@ blocks editing `.claude/worktrees/native-blanc` from here):
   with an unseen estimate asks first.
 - Camera permission (`expo-image-picker` config, the Capacitor app's wording);
   `build-phone.sh` now also passes the web `.env` photo worker URL.
-Not ported, recorded: the hosted Gemini mode and its "Describe amount" helper
-(production runs the worker mode; the Gemini function's deploy is still a
-pending production step), drag to move entries or groups (menus instead), and
-the "Entry saved" toast (a success haptic instead).
+Not ported: drag to move entries or groups (menus instead) and the "Entry
+saved" toast (a success haptic instead).
+The owner then said they log food only with Gemini, never the private photo
+worker (Alex's). The native app now defaults to Gemini (`VITE_FOOD_ANALYSIS_MODE`
+falls back to `gemini` in `native/babel/vite-env.js`; a stored device choice
+still wins): the AI tab (`native/src/fuel/AiTab.tsx`, the web FoodTrialLogger:
+text and up to two photos, one follow-up question, item review, sources,
+Save as reusable), Manual's "Review with Gemini" hand-off, and "Describe
+amount" on the food review. The item-to-food rules moved to `src/lib/foodTrial`
+(`trialItemFood`, `trialLogSource`, `trialIngredientFood`). Metro watches
+`supabase/functions/analyze-food-trial`; native setup adds
+`AbortSignal.timeout` and `structuredClone` when Hermes lacks them.
+The owner also set the interaction standard ("This should work, and it does"):
+saved meals now swipe for Edit and Delete (a full swipe deletes, no confirm;
+the row folds away and returns if it fails) and hold for a menu; entries,
+meal ingredients and AI items use the same `SwipeRow`. An app-wide
+interaction audit is deferred until parity.
 Checked in a new "hyPer Fuel" simulator (iPhone 17 Pro, sample data, light and
 dark) with a scripted UI test: swipe actions, More and Move to, delete,
 saved review and log, one-tap add, Scan by digits (VisionKit is unavailable in

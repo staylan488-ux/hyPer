@@ -16,6 +16,12 @@ module.exports = function viteEnvPlugin({ types: t }) {
       t.objectProperty(t.identifier('VITE_SUPABASE_URL'), publicEnv('EXPO_PUBLIC_SUPABASE_URL')),
       t.objectProperty(t.identifier('VITE_SUPABASE_ANON_KEY'), publicEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY')),
       t.objectProperty(t.identifier('VITE_PHOTO_WORKER_URL'), publicEnv('EXPO_PUBLIC_PHOTO_WORKER_URL')),
+      // The owner logs food with Gemini (2026-10-27), so it is this app's
+      // default; a stored device choice still wins (src/lib/foodTrial).
+      t.objectProperty(
+        t.identifier('VITE_FOOD_ANALYSIS_MODE'),
+        t.logicalExpression('||', publicEnv('EXPO_PUBLIC_FOOD_ANALYSIS_MODE'), t.stringLiteral('gemini')),
+      ),
     ]);
 
   const isImportMeta = (node) =>

@@ -30,3 +30,17 @@ if (!globalCrypto.subtle) {
     },
   } as SubtleCrypto;
 }
+
+// The Gemini food analyzer (src/lib/foodTrial) bounds its request with
+// AbortSignal.timeout and copies its preview fixture with structuredClone;
+// Hermes may lack either.
+if (typeof (AbortSignal as { timeout?: unknown }).timeout !== 'function') {
+  (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout = (ms: number) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error('The operation timed out.')), ms);
+    return controller.signal;
+  };
+}
+if (typeof globalThis.structuredClone !== 'function') {
+  globalThis.structuredClone = (<T>(value: T): T => JSON.parse(JSON.stringify(value)) as T) as typeof structuredClone;
+}

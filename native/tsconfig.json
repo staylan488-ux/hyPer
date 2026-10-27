@@ -3,6 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "lib": ["es2023", "dom"],
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/lib/supabase": ["./src/platform/supabase.ts"],
       "@/lib/nativeBridge": ["./src/platform/nativeBridge.ts"],
