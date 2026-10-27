@@ -538,6 +538,13 @@ instruction checks and test type-check, web build, native type-check. Not
 verified: anything against a real database, WHOOP's real consent screen and
 return, Apple Health with real samples (the simulator had none), the Scan
 button on a phone, and the web You page in a browser.
+With the owner's approval, a real-account Release build of d0a233b is
+installed on the owner's iPhone over Wi-Fi (production host in the bundle,
+no local test backend; HealthKit entitlements signed for `app.hyper.native`);
+iOS refused to open it because the phone was locked. The phone build folder,
+this session's simulator DerivedData and the temporary simulator were
+deleted afterwards; the Release React Native frameworks are in place, so run
+`use-rn-core.sh Debug` before the next simulator build.
 
 # Previous work snapshot — a single set stuck on every retry
 
