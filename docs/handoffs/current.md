@@ -569,6 +569,11 @@ all on `feat/native-blanc`:
   guard stopped its own re-sent close. Every You sheet now uses
   `useLeaveGuard` in `native/src/lib/leaveGuard.ts`, which steps aside
   before closing.
+Checked in a temporary simulator (sample data with adaptive on): the bulk
+rate and its weekly and monthly wording, the burn choice, and Discard closing
+both the calculator and the edit sheet. A real-account Release build of
+ff86dc6 is installed and opened on the owner's iPhone; the build folder, the
+simulator and its DerivedData were deleted afterwards.
 
 # Previous work snapshot — a single set stuck on every retry
 
