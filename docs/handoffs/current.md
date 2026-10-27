@@ -488,6 +488,12 @@ instruction checks and test type-check, web build, native type-check, and
 the web Program page in the browser (sandbox). Not verified: saves against
 a real database (only the sample backend), custom exercise insert on save,
 and the first-run card (sample data always has a program).
+With the owner's approval, a real-account Release build of 721b963 is
+installed on the owner's iPhone over Wi-Fi (production host in the bundle,
+no local test backend); iOS refused to open it because the phone was
+locked. Build output was deleted afterwards (simulator DerivedData, the
+phone build folder); the Release React Native frameworks are in place, so
+run `use-rn-core.sh Debug` before the next simulator build.
 
 # Previous work snapshot — a single set stuck on every retry
 
