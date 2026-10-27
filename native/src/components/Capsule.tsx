@@ -65,7 +65,9 @@ export function Capsule({
       style={[
         {
           height,
-          paddingHorizontal: size === 'large' ? 26 : 20,
+          // A capsule that fills its space only needs room for its round ends,
+          // so short titles fit when several share a row.
+          paddingHorizontal: fill ? 12 : size === 'large' ? 26 : 20,
           borderRadius: height / 2,
           borderCurve: 'continuous',
           alignItems: 'center',
@@ -86,6 +88,7 @@ export function Capsule({
             variant="headline"
             tone={primary ? 'onCapsule' : 'ink'}
             size={size === 'large' ? 17 : 16}
+            numberOfLines={1}
             style={{ lineHeight: size === 'large' ? 22 : 20 }}>
             {title}
           </BlancText>

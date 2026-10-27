@@ -39,6 +39,7 @@ import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { emitBurstFrom } from '@/lib/fx';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
+import { workoutActivityDetailLine } from '@/lib/workoutActivitySync';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { createNoteAutosaver, flexiblePlanNoteToWrite, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
 import { captureAccountScope } from '@/lib/accountScope';
@@ -1088,11 +1089,12 @@ export function Workout() {
     // Same rule as the completion sheet's tonnage.
     const tonnage = sessionTonnage(currentWorkout.sets);
 
-    const detailLine = [
-      activeName && nextSetNumber ? `set ${nextSetNumber}` : null,
-      `${completedSets} of ${totalSets} sets`,
-      tonnage > 0 ? `${Math.round(tonnage).toLocaleString('en-US')} lb` : null,
-    ].filter(Boolean).join(' · ');
+    const detailLine = workoutActivityDetailLine({
+      nextSetNumber: activeName ? nextSetNumber : null,
+      completedSets,
+      totalSets,
+      tonnage,
+    });
 
     syncWorkoutActivity({
       exerciseName: activeName ?? currentSessionTitle,

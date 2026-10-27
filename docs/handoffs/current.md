@@ -193,8 +193,44 @@ With the owner's approval, the Train work is committed (3c952f7) to draft PR
 phone (production host in the bundle, no local test hosts or test-account
 values; launched and still running after the intro). Not yet tried there.
 Still to build for milestone 3: start or schedule a session, flexible mode,
-supersets, reorder, add or remove movements, rest pause and the rest Live
-Activity.
+supersets, reorder, and add or remove movements.
+
+The owner then asked for rest on a locked phone: the "Rest over" alert, pause,
+and the lock-screen countdown. Built and not yet committed (ask first):
+- The rest is now the web's stored rest session (`src/lib/restTimer.ts`, plus
+  a new `extendRestTimerSession` for +30 s): it runs, pauses and resumes, and
+  survives leaving Train and a force quit. The rest sheet has +30 s, Pause or
+  Resume, and End rest; the workout bar shows a paused rest.
+- "Rest over" uses expo-notifications through the native swap of
+  `src/lib/restNotifications.ts`, with the web's words and single slot. It is
+  local only (`enableRemoteNotifications: false`, so no push entitlement) and
+  asks for permission on the first rest. In the app it plays the sound with no
+  banner, alongside the haptic.
+- The workout Live Activity is a SwiftUI widget extension (HyperWidgets,
+  `app.hyper.native.widgets`) added on prebuild by
+  `native/plugins/withHyperWidgets.js` from `native/targets/widgets`, driven by
+  a local ActivityKit module, `native/modules/hyper-activity`. As on the web,
+  the card shows the movement that's up, the shared detail line, the session
+  clock and a rest countdown with a draining bar; a paused rest shows its time
+  left still. It uses Blanc's tokens and the red P (font bundled in the
+  extension). The ordering rules moved from `src/lib/liveActivity.ts` into
+  `src/lib/workoutActivitySync.ts`, which the web file now wraps (same
+  behaviour, its tests pass); `restTimerWorkoutGuard` gained an optional
+  callback so native drops its copy of a cleared rest.
+Checked with UI tests in the iPhone 17 Pro simulator (sample data, light and
+dark): the notification prompt, pause and resume, the Dynamic Island (P and
+countdown, paused), the lock-screen card (running and paused), "Rest over"
+delivered while locked, the card counting down on its own while locked, a
+rest surviving a force quit, and finishing the workout removing the card. The
+earlier rest and set-count test still passes. Checks: 1,894 tests, lint with
+instruction checks, web build, native type-check. Not verified: anything on a
+phone (sound, haptic, the card's look on a real lock screen), and the card's
+"rest over" state after a rest ends with the app away (iOS redraws a stale
+card on its own schedule; the simulator's always-on display draws lock-screen
+frames ahead of time, so its captures run ahead of the real clock). iOS asks
+"Allow Live Activities?" the first time the card reaches the lock screen.
+Building this needs a regenerated iOS project (`expo prebuild --clean`); a
+phone build also registers the extension's App ID through automatic signing.
 
 # Previous work snapshot — a single set stuck on every retry
 

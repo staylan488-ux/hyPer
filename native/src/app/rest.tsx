@@ -7,7 +7,17 @@ import { Capsule } from '~/components/Capsule';
 import { GlassButton } from '~/components/GlassButton';
 import { formatClock } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { remainingSeconds, restSecondsFor, setRestLength, startRest, useRestStore } from '~/lib/rest';
+import {
+  extendRest,
+  pauseRest,
+  restLeft,
+  restSecondsFor,
+  resumeRest,
+  setRestLength,
+  startRest,
+  stopRest,
+  useRestStore,
+} from '~/lib/rest';
 import { useNow, useSessionModel } from '~/lib/session';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -15,24 +25,26 @@ import { space, useBlanc } from '~/theme/blanc';
 const PRESETS = [60, 120, 180, 300];
 
 /**
- * Rest between sets, opened from the clock in Train's header: start one without
- * logging a set, change a movement's rest length, or end a rest early.
+ * Rest between sets, opened from the timer button in Train's header: start one
+ * without logging a set, pause it, add time, change a movement's rest length,
+ * or end it early.
  */
 export default function RestSheet() {
   const c = useBlanc();
   const now = useNow(250);
   const session = useSessionModel();
-  const endsAt = useRestStore((state) => state.endsAt);
-  const restSeconds = useRestStore((state) => state.seconds);
-  const restExerciseId = useRestStore((state) => state.exerciseId);
+  const rest = useRestStore((state) => state.session);
   const prefs = useRestStore((state) => state.prefs);
+  const chosen = useRestStore((state) => state.chosen);
 
-  const left = remainingSeconds(endsAt, now);
-  const resting = left !== null && left > 0;
-  // A running rest belongs to the movement it follows; otherwise the next one.
-  const exerciseId = resting ? restExerciseId : (session?.current?.movement.exerciseId ?? null);
+  const left = restLeft(rest, now);
+  const paused = rest?.status === 'paused' && left !== null;
+  const running = rest?.status === 'running' && left !== null && left > 0;
+  // A rest in progress belongs to the movement it follows; otherwise the next one.
+  const exerciseId = running || paused ? (rest?.exerciseId ?? null) : (session?.current?.movement.exerciseId ?? null);
   const movementName = session?.movements.find((movement) => movement.exerciseId === exerciseId)?.name ?? null;
-  const length = resting ? restSeconds : restSecondsFor(exerciseId, prefs);
+  // The movement's saved length; +30 s changes only this rest.
+  const length = restSecondsFor(exerciseId, prefs, chosen);
   const custom = !PRESETS.includes(length);
 
   const choose = (seconds: number) => {
@@ -66,6 +78,9 @@ export default function RestSheet() {
     );
   };
 
+  const figure = running || paused ? left : length;
+  const caption = running ? 'left' : paused ? 'paused' : 'Rest length';
+
   return (
     <View style={{ backgroundColor: c.ground, paddingBottom: 36 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
@@ -86,13 +101,23 @@ export default function RestSheet() {
       <View
         style={{ alignItems: 'center', marginTop: 18 }}
         accessible
-        accessibilityLabel={resting ? `${formatClock(left)} of rest left` : `Rest length ${formatClock(length)}`}
+        accessibilityLabel={
+          running
+            ? `${formatClock(figure)} of rest left`
+            : paused
+              ? `Rest paused, ${formatClock(figure)} left`
+              : `Rest length ${formatClock(figure)}`
+        }
         accessibilityLiveRegion="polite">
-        <BlancText variant="figure" size={84} style={{ letterSpacing: -2 }}>
-          {formatClock(resting ? left : length)}
+        <BlancText
+          variant="figure"
+          size={84}
+          tone={paused ? 'graphite' : 'ink'}
+          style={{ letterSpacing: -2 }}>
+          {formatClock(figure)}
         </BlancText>
         <BlancText variant="secondary" tone="graphite">
-          {resting ? 'left' : 'Rest length'}
+          {caption}
         </BlancText>
       </View>
 
@@ -104,7 +129,7 @@ export default function RestSheet() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: space.inset }}>
-        {resting ? (
+        {running || paused ? (
           <>
             <View style={{ flex: 1 }}>
               <Capsule
@@ -113,11 +138,18 @@ export default function RestSheet() {
                 size="large"
                 fill
                 accessibilityLabel="Add 30 seconds"
-                onPress={() => useRestStore.getState().extend(30)}
+                onPress={() => extendRest(30)}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Capsule title="End rest" size="large" fill onPress={() => useRestStore.getState().stop()} />
+              {running ? (
+                <Capsule title="Pause" variant="quiet" size="large" fill onPress={pauseRest} />
+              ) : (
+                <Capsule title="Resume" size="large" fill onPress={resumeRest} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Capsule title="End rest" variant={running ? undefined : 'quiet'} size="large" fill onPress={stopRest} />
             </View>
           </>
         ) : (

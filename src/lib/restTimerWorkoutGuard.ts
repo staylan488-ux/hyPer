@@ -17,8 +17,9 @@ interface SignedInUserStore {
  * (deleted in History, finished on another device) must not leave a
  * "Rest over" notification or lock-screen countdown armed. Reacts only when a
  * known workout id goes away: the cold-start null → id restore is left alone.
+ * `onRestCleared` lets an app that holds the rest in memory (native) drop it too.
  */
-export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore): () => void {
+export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore, onRestCleared?: () => void): () => void {
   let activeId = store.getState().currentWorkout?.id ?? null;
 
   return store.subscribe((state) => {
@@ -33,6 +34,7 @@ export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore): () => void 
       clearRestTimerSession();
       void cancelRestEndNotification();
       syncWorkoutActivityRest(null);
+      onRestCleared?.();
     }
     // No workout left: take the card down, as the Train page does on return.
     if (!nextId) endWorkoutActivity();
@@ -43,7 +45,7 @@ export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore): () => void 
  * Signing out keeps the workout store as is, so the watcher above never sees
  * it. A signed-out device must not chime "Rest over" or keep the card up.
  */
-export function watchRestTimerSignOut(store: SignedInUserStore): () => void {
+export function watchRestTimerSignOut(store: SignedInUserStore, onRestCleared?: () => void): () => void {
   let signedIn = store.getState().user !== null;
 
   return store.subscribe((state) => {
@@ -55,5 +57,6 @@ export function watchRestTimerSignOut(store: SignedInUserStore): () => void {
     clearRestTimerSession();
     void cancelRestEndNotification();
     endWorkoutActivity();
+    onRestCleared?.();
   });
 }

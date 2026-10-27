@@ -24,6 +24,7 @@ const replacements = {
   'lib/haptics': 'haptics.ts',
   'lib/keepAwake': 'keepAwake.ts',
   'lib/restNotifications': 'restNotifications.ts',
+  'lib/liveActivity': 'liveActivity.ts',
   'lib/commitFocusedField': 'commitFocusedField.ts',
 };
 const replacementByFile = new Map();

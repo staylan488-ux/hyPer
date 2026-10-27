@@ -196,6 +196,37 @@ export function resumeRestTimerSession(
   };
 }
 
+/**
+ * Adds time to a rest: a running rest ends later, a paused one has more left.
+ * The full length grows too, so progress still reads against the whole rest.
+ * A finished rest is left alone.
+ */
+export function extendRestTimerSession(
+  session: RestTimerSession,
+  seconds: number,
+  now: Date = new Date(),
+): RestTimerSession {
+  const extra = Math.round(seconds);
+  if (!(extra > 0) || session.status === 'completed') return session;
+
+  if (session.status === 'paused') {
+    return {
+      ...session,
+      durationSeconds: session.durationSeconds + extra,
+      remainingSeconds: session.remainingSeconds + extra,
+    };
+  }
+
+  const endsAt = toDate(session.endsAt);
+  if (!endsAt) return session;
+  const extended = {
+    ...session,
+    durationSeconds: session.durationSeconds + extra,
+    endsAt: new Date(endsAt.getTime() + extra * 1000).toISOString(),
+  };
+  return { ...extended, remainingSeconds: getRestTimerRemainingSeconds(extended, now) };
+}
+
 export const MIN_REST_INPUT_SECONDS = 5;
 export const MAX_REST_INPUT_SECONDS = 3600;
 

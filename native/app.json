@@ -40,7 +40,14 @@
             "./assets/fonts/FrauncesMark-MediumItalic.ttf"
           ]
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
+      "./plugins/withHyperWidgets"
     ],
     "experiments": {
       "typedRoutes": true,

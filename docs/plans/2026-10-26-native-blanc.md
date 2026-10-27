@@ -113,8 +113,14 @@ have repeated that pattern.
    movement's rest length (shared with the web). Session order, swaps and set ranges now come from the shared
    `src/lib/sessionPlan.ts` (the web Train page uses it too, unchanged in
    behaviour), and later sets start from the set just logged, as on the web.
-   Still to build: start/schedule, flexible mode, supersets, reorder, adding
-   and removing movements, pausing a rest, and the rest Live Activity.
+   Rest on a locked phone next (2026-10-26, the owner's pick): the web's
+   "Rest over" notification, pause and resume, +30 s, and the workout Live
+   Activity on the lock screen and in the Dynamic Island, as SwiftUI in a widget
+   extension that `native/plugins/withHyperWidgets.js` adds on prebuild. The
+   rest is the web's stored rest session (`src/lib/restTimer.ts`) and the card
+   follows the shared ordering rules in `src/lib/workoutActivitySync.ts`.
+   Still to build: start/schedule, flexible mode, supersets, reorder, and
+   adding and removing movements.
 4. **Fuel complete.** Barcode (VisionKit), photo and describe analysis, manual entry,
    build a meal, edit/delete with swipe actions and menus, time picker, saved
    meals, month view.

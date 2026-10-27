@@ -5,19 +5,23 @@ import { WorkoutAccessory } from '~/components/WorkoutAccessory';
 import { useAccountData } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { useNotesStore } from '~/lib/notes';
-import { useRestFinish, useRestPreferences, useRestStore } from '~/lib/rest';
+import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
 import { useFocusStore, useSessionModel } from '~/lib/session';
+import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { dynamicInk } from '~/theme/blanc';
 
 export default function TabsLayout() {
   const session = useSessionModel();
+  useRestLifecycle();
   useRestFinish();
   useRestPreferences();
+  useWorkoutActivity(session);
   useAccountData();
   // The tabs unmount only on sign-out: leave nothing of this account behind.
+  // (The rest, its notification and the lock-screen card are cleared by the
+  // shared sign-out guard in useRestLifecycle.)
   useEffect(
     () => () => {
-      useRestStore.getState().stop();
       useFocusStore.getState().focus(null);
       useNotesStore.setState({ workoutId: null, drafts: {}, base: null, status: {} });
     },

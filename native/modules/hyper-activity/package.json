@@ -1,0 +1,8 @@
+{
+  "name": "hyper-activity",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The workout Live Activity on the lock screen and in the Dynamic Island.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

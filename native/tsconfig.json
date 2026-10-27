@@ -12,6 +12,7 @@
       "@/lib/haptics": ["./src/platform/haptics.ts"],
       "@/lib/keepAwake": ["./src/platform/keepAwake.ts"],
       "@/lib/restNotifications": ["./src/platform/restNotifications.ts"],
+      "@/lib/liveActivity": ["./src/platform/liveActivity.ts"],
       "@/lib/commitFocusedField": ["./src/platform/commitFocusedField.ts"],
       "@/*": ["../src/*"],
       "~/*": ["./src/*"],

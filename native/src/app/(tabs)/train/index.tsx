@@ -20,7 +20,7 @@ import { useFinishedStore, summarize } from '~/lib/finished';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { flushNotes } from '~/lib/notes';
-import { startRest, useRestStore } from '~/lib/rest';
+import { startRest, stopRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { devScrollTrace } from '~/platform/devLaunch';
@@ -173,7 +173,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           try {
             await completeWorkout();
             setFinished(summary);
-            useRestStore.getState().stop();
+            stopRest();
             haptics.success();
             router.push('/session-done');
           } catch {

@@ -71,6 +71,23 @@ describe('watchRestTimerWorkoutEnd', () => {
     expect(liveActivity.endWorkoutActivity).toHaveBeenCalledTimes(1);
   });
 
+  it('tells an in-memory rest holder only when the stored rest is cleared', () => {
+    saveRestTimerSession(createRestTimerSession('workout-1', 90));
+    const store = createStore<State>({ currentWorkout: null });
+    const onRestCleared = vi.fn();
+    watchRestTimerWorkoutEnd(store, onRestCleared);
+
+    // Cold-start restore, then a workout that does not own the rest ending.
+    store.set({ currentWorkout: { id: 'workout-2' } });
+    saveRestTimerSession(createRestTimerSession('workout-1', 90));
+    store.set({ currentWorkout: { id: 'workout-1' } });
+    expect(onRestCleared).not.toHaveBeenCalled();
+
+    store.set({ currentWorkout: null });
+    expect(onRestCleared).toHaveBeenCalledTimes(1);
+    expect(readRestTimerSession()).toBeNull();
+  });
+
   it('drops the lock-screen rest but keeps the card when another workout takes over', () => {
     saveRestTimerSession(createRestTimerSession('workout-1', 90));
     const store = createStore<State>({ currentWorkout: { id: 'workout-1' } });
@@ -131,6 +148,19 @@ describe('watchRestTimerSignOut', () => {
     expect(readRestTimerSession()).toBeNull();
     expect(notifications.cancelRestEndNotification).toHaveBeenCalledTimes(1);
     expect(liveActivity.endWorkoutActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells an in-memory rest holder when signing out clears the rest', () => {
+    saveRestTimerSession(createRestTimerSession('workout-1', 90));
+    const store = createStore<AuthState>({ user: { id: 'user-1' } });
+    const onRestCleared = vi.fn();
+    watchRestTimerSignOut(store, onRestCleared);
+
+    store.set({ user: { id: 'user-1' } });
+    expect(onRestCleared).not.toHaveBeenCalled();
+
+    store.set({ user: null });
+    expect(onRestCleared).toHaveBeenCalledTimes(1);
   });
 
   it('leaves a restored rest alone while the session is being restored', () => {

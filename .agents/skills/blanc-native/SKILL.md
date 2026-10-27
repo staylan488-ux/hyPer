@@ -20,8 +20,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   moves to `src/lib` first, then both apps import it.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
-  flag, haptics, keep-awake, rest notifications, focused-field commit, app
-  visibility, plus Capacitor shims. Add a swap rather than importing React Native
+  flag, haptics, keep-awake, rest notifications, the workout Live Activity,
+  focused-field commit, app visibility, plus Capacitor shims. Add a swap rather than importing React Native
   into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
@@ -85,10 +85,32 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   for this workout or switch back. Tapping an unfinished row still makes it
   the next movement.
 - Rest: the timer button in Train's header opens the rest sheet to start a rest
-  without logging a set, change the movement's rest length (1, 2, 3 or 5 min,
-  or a custom time) or end a rest. Lengths are kept per movement through the
-  shared `src/lib/restPreferences.ts`, as on the web (own length, else the last
-  one chosen, else 90 s), and a logged set starts rest at its movement's length.
+  without logging a set, pause or resume it, add 30 seconds, change the
+  movement's rest length (1, 2, 3 or 5 min, or a custom time) or end it. The
+  rest is the web's stored rest session (`src/lib/restTimer.ts`), so it
+  survives leaving Train and relaunching. Lengths are kept per movement through
+  the shared `src/lib/restPreferences.ts`, as on the web (own length, else the
+  last one chosen, else 90 s), and a logged set starts rest at its movement's
+  length.
+- Away from the app ([lib/rest.ts](../../../native/src/lib/rest.ts)): a running
+  rest schedules the web's "Rest over" notification (expo-notifications, local
+  only: `enableRemoteNotifications: false` keeps push out of the entitlements),
+  and the workout's Live Activity counts it down on the lock screen and in the
+  Dynamic Island. Pause cancels the notification and shows the time left still;
+  End rest and a finished workout clear both; a rest that runs out leaves the
+  notification to fire. In the app, rest ends with a haptic and the sound, no
+  banner. The shared `restTimerWorkoutGuard` clears a rest whose workout ends
+  elsewhere and on sign-out. Card updates go through the shared ordering rules
+  in `src/lib/workoutActivitySync.ts` (also behind the web shell's card).
+- The Live Activity is SwiftUI in a widget extension, added on prebuild by
+  [plugins/withHyperWidgets.js](../../../native/plugins/withHyperWidgets.js)
+  from [targets/widgets](../../../native/targets/widgets/). The card's data,
+  `WorkoutActivityAttributes`, has one definition in
+  `native/modules/hyper-activity/ios`, compiled into the app's module and copied
+  into the extension; ActivityKit matches the two by name and fields. The card
+  uses Blanc's tokens and the P's font (bundled into the extension). Prebuild
+  with `--clean` after adding or removing extension files. Milestone 8's run
+  card and home-screen widgets join the same extension.
 - Motion is native transitions plus Reanimated springs for press feedback and
   the tally. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
@@ -132,6 +154,13 @@ inventory before rebuilding a flow.
   `xcrun simctl launch <udid> app.hyper.native -hyperRoute /train -hyperAction logSet`,
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
   (`xcrun simctl ui <udid> appearance dark`).
+- Lock screen and Dynamic Island: a UI test presses Home
+  (`XCUIDevice.shared.press(.home)`) or locks the simulator with the private
+  `pressLockButton` selector, then saves `XCUIScreen.main.screenshot()`. The
+  first rest brings iOS's notification prompt (tap Allow on SpringBoard), and
+  the card's first lock-screen showing asks "Allow Live Activities?". iOS can
+  take a while to redraw a card after its stale date, so a rest that ran out
+  with the app away may read 0:00 until the app returns.
 - Request deadlines: start Metro with `EXPO_PUBLIC_HYPER_PREVIEW=0` and
   `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server that accepts connections
   and never answers, then launch with `-hyperAction probeTimeout`. Metro should log
