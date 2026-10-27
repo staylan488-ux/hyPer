@@ -490,3 +490,31 @@ export async function loadScheduleWorkouts(userId: string, splitDays: SplitDay[]
     if (!data || data.length < pageSize) return workouts;
   }
 }
+
+// ── Plan-start prompt ──────────────────────────────────────────────
+// After a program is created or set active, Program offers to set Day 1 and
+// the rhythm, unless the program already has a schedule (here or in the
+// cloud) or the person chose Later for it on this device.
+
+function planStartPromptKey(userId: string, splitId: string): string {
+  return `plan-start-prompt:dismissed:${userId}:${splitId}`;
+}
+
+export function dismissPlanStartPrompt(userId: string, splitId: string): void {
+  try {
+    globalThis.localStorage?.setItem(planStartPromptKey(userId, splitId), '1');
+  } catch {
+    // Storage unavailable: the prompt may show again next time.
+  }
+}
+
+/** True when the program has no schedule and Later was not chosen for it. A failed cloud read counts as no schedule. */
+export async function shouldPromptPlanStart(userId: string, splitId: string): Promise<boolean> {
+  const schedule = await loadPlanScheduleAsync(userId, splitId).catch(() => null);
+  if (schedule) return false;
+  try {
+    return globalThis.localStorage?.getItem(planStartPromptKey(userId, splitId)) !== '1';
+  } catch {
+    return true;
+  }
+}

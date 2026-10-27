@@ -63,7 +63,8 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       break;
     case 'first-run':
       title = 'No program yet';
-      detail = 'Create one on the web for now.';
+      detail = 'Five questions, or start blank';
+      action = { title: 'Create', primary: true, onPress: () => router.push('/train/program') };
       break;
     case 'schedule-error':
       title = 'Couldn’t load your plan';

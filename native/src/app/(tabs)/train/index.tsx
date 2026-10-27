@@ -591,18 +591,10 @@ function StartWorkout() {
   return mode === 'flexible' ? <StartFlexible /> : <StartPlanned />;
 }
 
-/** Header items before a session: the schedule, and how Train works (program days or flexible sessions). */
+/** Header items before a session: History, then the schedule and Program (programs, quick starts, training mode). */
 function useStartHeader(title: string) {
   const mode = useAppStore((state) => state.workoutMode);
   const hasSplit = useAppStore((state) => Boolean(state.activeSplit));
-  const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
-  const switchMode = (next: 'split' | 'flexible') => {
-    if (next === mode) return;
-    haptics.select();
-    void setWorkoutMode(next).then((result) => {
-      if (!result.ok) Alert.alert('Mode not changed', result.reason ?? 'Try again.');
-    });
-  };
   // Built once per mode, so typing on the screen never re-sends the header.
   const options = useMemo(
     () => ({
@@ -637,13 +629,14 @@ function useStartHeader(title: string) {
                     ]
                   : []),
                 {
-                  type: 'submenu',
-                  label: 'Train by',
-                  inline: true,
-                  items: [
-                    { type: 'action', label: 'Program days', state: mode === 'split' ? 'on' : 'off', onPress: () => switchMode('split') },
-                    { type: 'action', label: 'Flexible sessions', state: mode === 'flexible' ? 'on' : 'off', onPress: () => switchMode('flexible') },
-                  ],
+                  // Programs, quick starts and how Train works.
+                  type: 'action',
+                  label: 'Program',
+                  icon: { type: 'sfSymbol', name: 'list.bullet.rectangle' },
+                  onPress: () => {
+                    haptics.tap();
+                    router.push('/train/program');
+                  },
                 },
               ],
             },

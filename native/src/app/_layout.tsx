@@ -129,6 +129,26 @@ export default function RootLayout() {
                 contentStyle: { backgroundColor: p.ground },
               }}
             />
+            {/* The program editor: its own stack (program, then a day) in a page sheet. */}
+            <Stack.Screen name="program-edit" options={{ presentation: 'modal', contentStyle: { backgroundColor: p.ground } }} />
+            <Stack.Screen
+              name="program-exercise"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="program-reorder"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [0.72, 1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
             <Stack.Screen
               name="swap"
               options={{

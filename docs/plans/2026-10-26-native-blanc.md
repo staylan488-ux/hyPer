@@ -153,6 +153,13 @@ have repeated that pattern.
    owner wants to view, edit and delete past workouts here, including a
    set-less test workout now in their account (noted 2026-10-27).
 6. **Program.** Programs list, split editor (drag reorder, multi-add picker), schedule.
+   Built 2026-10-27: Program from Train's ⋯ menu (training mode, programs
+   with a view, swipe and hold menus, quick starts), the shared editor in a
+   page sheet (chooser, days, exercises, sets and reps, reorder with iOS's
+   handles, multi-add and custom exercises, Undo, unsaved-edit questions and
+   device draft), and the plan-start question. The page's rules moved to
+   `src/lib/programSummary.ts` and `programQuestions.ts`; the schedule sheet
+   came with milestone 3.
 7. **You.** Profile, targets and calculator, coach, saved meals, food analysis
    worker, connections (WHOOP OAuth), Health weight sync, appearance, adaptive
    scheduling.

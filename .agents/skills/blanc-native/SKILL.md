@@ -88,7 +88,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   `LANG=en_US.UTF-8`.
 - "This should work, and it does" (the owner, 2026-10-27): every list item
   that can be removed swipes left for its actions, with the destructive one in
-  red and a full swipe running it ([SwipeRow](../../../native/src/components/SwipeRow.tsx)),
+  red and a full swipe running it ([SwipeRow](../../../native/src/components/SwipeRow.tsx),
+  decided at release, since the row springs back past the threshold),
   and folds away with an exiting animation; anything with more to do offers it
   on a long press too (an action sheet). VoiceOver gets the same actions.
   Apply it wherever it fits; an app-wide interaction audit follows parity.
@@ -107,8 +108,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   (shared with Today), then every other day to start. Its header menu holds the
   schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
   choices, saved through the shared `buildPlanSchedule`; saving bumps
-  `useScheduleRevision` so open screens re-read it) and the training mode,
-  until Program arrives. Flexible mode names the session or starts a quick
+  `useScheduleRevision` so open screens re-read it) and Program, which
+  holds the training mode. Flexible mode names the session or starts a quick
   start; the session grows with Add movement, the pencil renames it, and
   Finish offers to keep it as a quick start. Adding and removing movements is
   a flexible-session feature, as on the web.
@@ -147,6 +148,14 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   uses Blanc's tokens and the P's font (bundled into the extension). Prebuild
   with `--clean` after adding or removing extension files. Milestone 8's run
   card and home-screen widgets join the same extension.
+- Program lives in Train's stack (`train/program`, `train/program-view`)
+  and holds the training mode. Editing goes through the shared
+  `splitEditStore` in the `program-edit` page sheet (its own stack: the
+  program, then a day); `usePreventRemove` in its layout asks before
+  unsaved edits go, through `discardSplitEdit(confirmAlert)`. Sets and
+  reps (`program-exercise`), reorder (`program-reorder`) and the picker
+  (`swap` with `program=add|swap|superset`) are root sheets over it and
+  change the draft only; nothing is written until Save or Create.
 - History lives in Train's stack (`train/history`, `train/past`) and Progress
   in Today's (`today/progress`). Past-workout edits go through
   `editPastWorkout` in [lib/history.ts](../../../native/src/lib/history.ts),

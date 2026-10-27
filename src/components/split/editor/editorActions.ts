@@ -33,6 +33,6 @@ export async function saveSplitEdit({
 }
 
 /** Cancel and the sheet's close controls: asks before dropping unsaved edits. */
-export async function cancelSplitEdit(onClose: () => void): Promise<void> {
-  if (await discardSplitEdit()) onClose();
+export async function cancelSplitEdit(onClose: () => void, confirm?: Parameters<typeof discardSplitEdit>[0]): Promise<void> {
+  if (await discardSplitEdit(confirm)) onClose();
 }

@@ -430,6 +430,65 @@ writes against a real database (only the sample backend ran), WHOOP sync and
 attach with a real connection, and anything on a phone until the build
 below. Building needs `expo prebuild --clean` for react-native-svg.
 
+The owner confirmed milestone 5 on the phone and asked to keep going.
+Milestone 6, Program, followed (2026-10-27), in this session's own worktree
+(`.claude/worktrees/great-varahamihira-1cfca3`, pushed to `feat/native-blanc`;
+a hook blocks writing into other worktrees, and its native folders were
+cloned copy-on-write from objective-banach):
+- Shared rules first: `src/lib/programSummary.ts` (counts, which program
+  shows as active, set and rep labels, quick-start labels, rename with the
+  overwrite question), `src/lib/programQuestions.ts` (the five guided
+  questions, blank day choices, the guided draft with its "left out"
+  notice), `shouldPromptPlanStart` and `dismissPlanStartPrompt` in
+  `planSchedule`, and `dayLabel`, `daySummary`, `blockStartIndexes`,
+  `pickerTargetFor` in `splitDraft` (`exerciseBlocks` is now generic).
+  `discardSplitEdit` takes the confirm to use (the web sheet by default).
+  The web Program page, chooser, editor sheet and day card use them,
+  unchanged in behaviour; `tests/programShared.test.ts` covers them.
+- Program (`train/program`, from Train's ⋯ menu, which now holds Schedule
+  and Program; "Train by" moved here as a segmented control, locked during
+  a workout). Programs: tap to view (`train/program-view`: days and
+  exercises, Edit, Set active or Make active, Delete), swipe for Edit and
+  Delete, hold for Set active, Edit, Delete. Delete asks first, as on the
+  web, and refuses the program of a workout in progress (deliberate change:
+  the web allows it and the workout then drops off Train). Quick starts in
+  flexible mode: Start, tap or hold for the list and Start, Rename (iOS text
+  prompt; a clashing name asks to replace) and Delete; swipe for Rename and
+  Delete (a full swipe deletes with no question; the row folds away and
+  returns if it fails). Today's and Train's "No program yet" card now
+  offers Create.
+- The editor (`native/src/app/program-edit`, a page sheet with its own
+  stack) runs the shared `splitEditStore`, device draft autosave and save
+  protocol: the chooser (resume an unsaved program, five questions with a
+  live plan name, or blank days), name and description, days (tap to open,
+  swipe to remove with Undo, hold for rename, move or remove, Reorder with
+  iOS's list handles), a day's exercises (tap for the sets and reps sheet
+  with steppers and a set range, swipe to swap or remove with Undo, hold for
+  everything incl. superset and move), the restore offer for unsaved edits,
+  and Cancel or swipe-down asking before unsaved edits go. The picker
+  (`swap.tsx`, now built on `native/src/components/ExercisePicker.tsx`)
+  adds several exercises at once and creates a custom exercise from the
+  search text (it joins the library on save). After create or Set active,
+  the web's plan-start question offers the schedule.
+- Fixed for every swipe list: a full swipe never ran its destructive action
+  (the row sprang back past the threshold and disarmed itself before
+  settling); `SwipeRow` now decides at release.
+Checked in the iPhone 17 Pro simulator (sample data) with scripted UI tests
+using real taps, drags and swipes: list, view, swipe and full swipe, delete
+with its question and the in-progress guard, edit (sets stepper, range,
+swap, multi-add, remove and Undo, day drag), save through the snapshot
+(view shows the change), guided and blank create with the plan-start
+question and Set now, the unsaved-program offer after a relaunch, Cancel
+and swipe-down discard questions, Make active, flexible mode with a saved,
+renamed quick start; dark mode for list, editor, picker and sets sheet.
+Found and fixed on the way: the picker sheet drew blank (its root was not
+a scroll view; Add moved to the header), long names were clipped, and Sets
++ made a range when there was none. Checks: 1,959 tests, lint with
+instruction checks and test type-check, web build, native type-check, and
+the web Program page in the browser (sandbox). Not verified: saves against
+a real database (only the sample backend), custom exercise insert on save,
+and the first-run card (sample data always has a program).
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

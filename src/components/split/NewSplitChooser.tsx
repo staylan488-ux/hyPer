@@ -1,51 +1,25 @@
 import { useMemo, useState } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Button, SegmentedControl } from '@/components/shared';
-import { getExerciseLibrary } from '@/lib/exerciseLibrary';
-import { splitTemplates } from '@/lib/splitTemplates';
-import { blankSplitDraft, templateSplitDraft } from '@/lib/splitDraftSeed';
+import { blankSplitDraft } from '@/lib/splitDraftSeed';
 import { NEW_SPLIT_DRAFT_ID, clearSplitDraft, readSplitDraft, type StoredSplitDraft } from '@/lib/splitDraftStorage';
+import type { ProgramDesignAnswers } from '@/lib/programDesigner';
 import {
-  buildGuidedTemplate,
-  recommendProgramTemplate,
-  type EquipmentProfile,
-  type ExperienceLevel,
-  type ProgramDesignAnswers,
-  type ProgramFocus,
-  type SessionLength,
-} from '@/lib/programDesigner';
+  BLANK_DAY_OPTIONS,
+  DAYS_QUESTION as DAYS,
+  DEFAULT_BLANK_DAYS,
+  DEFAULT_PROGRAM_ANSWERS,
+  EQUIPMENT_QUESTION as EQUIPMENT,
+  EXPERIENCE_QUESTION as EXPERIENCE,
+  FOCUS_QUESTION as FOCUS,
+  LIBRARY_LOAD_FAILED,
+  SESSION_QUESTION as SESSION,
+  guidedTemplate,
+  seedGuidedDraft,
+  templateExerciseCount,
+  type ProgramQuestion as Question,
+} from '@/lib/programQuestions';
 import type { DraftSplit } from '@/lib/splitDraft';
-
-const LIBRARY_MAX_AGE_MS = 5 * 60_000;
-
-type Question<K extends keyof ProgramDesignAnswers, T extends string> = {
-  key: K;
-  label: string;
-  options: Array<{ value: T; label: string }>;
-};
-
-const DAYS: Question<'daysPerWeek', string> = {
-  key: 'daysPerWeek', label: 'Days per week',
-  options: ['3', '4', '5', '6'].map((value) => ({ value, label: value })),
-};
-const FOCUS: Question<'focus', ProgramFocus> = {
-  key: 'focus', label: 'Emphasis',
-  options: [{ value: 'no_focus', label: 'Balanced' }, { value: 'upper_focus', label: 'Upper' }, { value: 'lower_focus', label: 'Lower' }],
-};
-const EQUIPMENT: Question<'equipment', EquipmentProfile> = {
-  key: 'equipment', label: 'Equipment',
-  options: [{ value: 'full_gym', label: 'Full gym' }, { value: 'dumbbell_only', label: 'Dumbbells' }],
-};
-const SESSION: Question<'sessionLength', SessionLength> = {
-  key: 'sessionLength', label: 'Session length',
-  options: [{ value: 'short', label: '45 min' }, { value: 'moderate', label: '60 min' }, { value: 'long', label: '75+ min' }],
-};
-const EXPERIENCE: Question<'experience', ExperienceLevel> = {
-  key: 'experience', label: 'Experience',
-  options: [{ value: 'beginner', label: 'Beginner' }, { value: 'intermediate', label: 'Intermediate' }, { value: 'advanced', label: 'Advanced' }],
-};
-
-const BLANK_DAY_OPTIONS = ['1', '2', '3', '4', '5', '6', '7'].map((value) => ({ value, label: value }));
 
 /**
  * Where a new program starts: the guided recommendation, or blank days. Both
@@ -61,22 +35,13 @@ export function NewSplitChooser({
   onResume: (stored: StoredSplitDraft) => void;
 }) {
   const [stored, setStored] = useState(() => (userId ? readSplitDraft(userId, NEW_SPLIT_DRAFT_ID) : null));
-  const [answers, setAnswers] = useState<ProgramDesignAnswers>({
-    daysPerWeek: 4,
-    focus: 'no_focus',
-    equipment: 'full_gym',
-    sessionLength: 'moderate',
-    experience: 'intermediate',
-  });
-  const [blankDays, setBlankDays] = useState('4');
+  const [answers, setAnswers] = useState<ProgramDesignAnswers>(DEFAULT_PROGRAM_ANSWERS);
+  const [blankDays, setBlankDays] = useState(String(DEFAULT_BLANK_DAYS));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const guided = useMemo(
-    () => buildGuidedTemplate(recommendProgramTemplate(splitTemplates, answers), answers),
-    [answers],
-  );
-  const guidedExercises = guided.days.reduce((sum, day) => sum + day.exercises.length, 0);
+  const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  const guidedExercises = templateExerciseCount(guided);
 
   const answer = <K extends keyof ProgramDesignAnswers>(key: K, value: ProgramDesignAnswers[K]) => {
     setAnswers((current) => ({ ...current, [key]: value }));
@@ -86,13 +51,10 @@ export function NewSplitChooser({
     setLoading(true);
     setError(null);
     try {
-      const library = await getExerciseLibrary({ maxAgeMs: LIBRARY_MAX_AGE_MS });
-      const { draft, missing } = templateSplitDraft(guided, library);
-      onSeed(draft, missing.length > 0
-        ? `Not in your exercise library, so left out: ${missing.join(', ')}.`
-        : undefined);
+      const { draft, notice } = await seedGuidedDraft(guided);
+      onSeed(draft, notice ?? undefined);
     } catch {
-      setError("Couldn't load the exercise library. Check your connection and try again.");
+      setError(LIBRARY_LOAD_FAILED);
     } finally {
       setLoading(false);
     }

@@ -43,7 +43,9 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
         rightThreshold={44}
         overshootRight={Boolean(destructive)}
         overshootFriction={1}
-        onSwipeableOpen={() => {
+        // Decided at release: the row then springs back past the threshold
+        // to its open width, which would disarm it before it settles.
+        onSwipeableWillOpen={() => {
           if (armed.current && destructive) {
             armed.current = false;
             haptics.success();
