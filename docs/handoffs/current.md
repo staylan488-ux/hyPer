@@ -359,6 +359,9 @@ saved meals now swipe for Edit and Delete (a full swipe deletes, no confirm;
 the row folds away and returns if it fails) and hold for a menu; entries,
 meal ingredients and AI items use the same `SwipeRow`. An app-wide
 interaction audit is deferred until parity.
+A real-account Release build of 434ccca is installed on the owner's phone
+(the first install attempt failed with an iOS install error and a retry
+worked); iOS refused to open it, most likely because the phone was locked.
 Checked in a new "hyPer Fuel" simulator (iPhone 17 Pro, sample data, light and
 dark) with a scripted UI test: swipe actions, More and Move to, delete,
 saved review and log, one-tap add, Scan by digits (VisionKit is unavailable in
