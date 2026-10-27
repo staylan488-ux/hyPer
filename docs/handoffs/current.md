@@ -356,6 +356,13 @@ type-check, web build, native type-check. Not verified: the camera scanner
 and photo capture on a phone, and writes against a real database (only the
 sample backend ran). The iOS project needs `expo prebuild --clean` for the
 new module and permission; pod install needs `LANG=en_US.UTF-8`.
+With the owner's approval, a real-account Release build of this commit is
+installed on the owner's iPhone and opened there. The Mac's disk filled during
+that build (1.9 GB free); with the owner's go-ahead only rebuildable output
+was deleted (Xcode DerivedData for hyPerNative, an old session's scratch
+builds, the test simulator), leaving about 18 GB. Builds and simulators from
+the native work had used roughly 55 GB; keep one simulator and delete scratch
+build folders when a session ends.
 
 # Previous work snapshot — a single set stuck on every retry
 
