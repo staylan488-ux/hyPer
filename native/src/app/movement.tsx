@@ -15,7 +15,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { changeSetCount, errorMessage, switchBack } from '~/lib/movement';
+import { changeSetCount, errorMessage, removeMovement, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
 import { useSessionModel, type Movement } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
@@ -23,7 +23,8 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
  * One movement of the live workout: correct a logged set, change how many
- * sets it has, keep a note, or swap it for this workout only.
+ * sets it has, keep a note, or swap it for this workout only. In a flexible
+ * session it can also be paired as a superset or taken out.
  */
 export default function MovementSheet() {
   const c = useBlanc();
@@ -69,6 +70,7 @@ export default function MovementSheet() {
           movement={movement}
           isCurrent={session.current?.movement.exerciseId === movement.exerciseId}
           inWorkout={live !== null}
+          flexible={session.flexible}
         />
       ) : (
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 24 }}>
@@ -79,9 +81,10 @@ export default function MovementSheet() {
   );
 }
 
-/** "Instead of Bench Press" for a swap, else the rep target. */
+/** "Instead of Bench Press" for a swap, the superset, else the rep target. */
 function movementLine(movement: Movement): string {
   if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
+  if (movement.superset) return `Superset ${movement.superset.role} · with ${movement.superset.partnerName}`;
   return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${movement.sets.length} sets`;
 }
 
@@ -97,17 +100,21 @@ function MovementDetail({
   movement,
   isCurrent,
   inWorkout,
+  flexible,
 }: {
   workoutId: string;
   movement: Movement;
   isCurrent: boolean;
   /** False once the movement has left the workout and the sheet is closing. */
   inWorkout: boolean;
+  /** A flexible session: pair, unpair and remove movements. */
+  flexible: boolean;
 }) {
   const c = useBlanc();
   const [editing, setEditing] = useState<string | null>(null);
   const [changing, setChanging] = useState<'add' | 'remove' | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<'unlink' | 'remove' | null>(null);
   const note = useMovementNote(workoutId, movement.exerciseId, movement.note);
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
 
@@ -139,6 +146,46 @@ function MovementDetail({
       setSwitching(false);
       Alert.alert('Not switched back', errorMessage(error, 'Could not switch back. Try again.'));
     }
+  };
+
+  const runUnlink = async () => {
+    if (editingPlan) return;
+    setEditingPlan('unlink');
+    try {
+      await unlinkSuperset(workoutId, movement.exerciseId);
+      haptics.success();
+    } catch (error) {
+      haptics.error();
+      Alert.alert('Not unlinked', errorMessage(error, 'Could not unlink the superset. Try again.'));
+    } finally {
+      setEditingPlan(null);
+    }
+  };
+
+  const confirmRemove = () => {
+    Alert.alert(
+      `Remove ${movement.name}?`,
+      movement.done ? 'Its logged sets stay in this workout.' : 'It comes out of this workout only.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setEditingPlan('remove');
+            try {
+              await removeMovement(workoutId, movement.exerciseId);
+              haptics.success();
+              router.back();
+            } catch (error) {
+              haptics.error();
+              setEditingPlan(null);
+              Alert.alert('Not removed', errorMessage(error, 'Could not remove the exercise. Try again.'));
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -221,6 +268,34 @@ function MovementDetail({
           <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
             Your program stays the same.
           </BlancText>
+        </Section>
+      ) : null}
+
+      {flexible && inWorkout ? (
+        <Section title="Session">
+          <Label>
+            {movement.superset ? (
+              <Row
+                title="Unlink superset"
+                detail={`With ${movement.superset.partnerName}`}
+                trailing={editingPlan === 'unlink' ? <ActivityIndicator /> : undefined}
+                onPress={editingPlan ? undefined : () => void runUnlink()}
+              />
+            ) : (
+              <Row
+                title="Add a superset"
+                detail="Alternate sets with another movement"
+                chevron
+                onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId, mode: 'superset' } })}
+              />
+            )}
+            <Hairline />
+            <Row
+              title="Remove from workout"
+              trailing={editingPlan === 'remove' ? <ActivityIndicator /> : undefined}
+              onPress={editingPlan ? undefined : confirmRemove}
+            />
+          </Label>
         </Section>
       ) : null}
     </>

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 import { mealForTime } from '../native/src/lib/meals';
-import { buildSessionModel } from '../native/src/lib/sessionModel';
+import { afterLoggedSet, buildSessionModel } from '../native/src/lib/sessionModel';
 
 // The native app's live-workout model decides which set "Log set" saves to.
 
@@ -223,6 +223,63 @@ describe('buildSessionModel with the session plan', () => {
     const flexible = workout([set(row, 1, false)], { split_day_id: null });
     const model = buildSessionModel(flexible, { split, plan: dayPlan([item(row, 0)], { day_label: 'Push day' }) }, null);
     expect(model?.dayName).toBe('Push day');
+  });
+});
+
+describe('buildSessionModel with supersets and flexible sessions', () => {
+  const curl = exercise('curl', 'Dumbbell Curl');
+  const item = (exerciseRow: Exercise, order: number, extra: Partial<FlexiblePlanItem> = {}): FlexiblePlanItem => ({
+    exercise_id: exerciseRow.id,
+    exercise_name: exerciseRow.name,
+    order,
+    target_sets: 2,
+    notes: null,
+    hidden: false,
+    ...extra,
+  });
+  const flexPlan = (items: FlexiblePlanItem[]): WorkoutDayPlan => ({ id: 'plan-1', workout_id: 'workout-1', day_label: 'Push', items });
+  const paired = flexPlan([item(bench, 0, { superset_group_id: 'g1' }), item(row, 1, { superset_group_id: 'g1' }), item(curl, 2)]);
+  const flexWorkout = (sets: WorkoutSet[]) => workout(sets, { split_day_id: null });
+
+  it('marks a flexible session and its superset pair', () => {
+    const model = buildSessionModel(flexWorkout([set(bench, 1, false), set(row, 1, false), set(curl, 1, false)]), { split, plan: paired }, null);
+    expect(model?.flexible).toBe(true);
+    expect(model?.movements[0].superset).toEqual({ groupId: 'g1', role: 'A', partnerId: 'row', partnerName: 'Barbell Row' });
+    expect(model?.movements[1].superset?.role).toBe('B');
+    expect(model?.movements[2].superset).toBeNull();
+    expect(buildSessionModel(midSession(), { split }, null)?.flexible).toBe(false);
+  });
+
+  it('goes A1, B1, A2 and rests only after B', () => {
+    const sets = [set(bench, 1, true), set(bench, 2, false), set(row, 1, false), set(row, 2, false)];
+    const model = buildSessionModel(flexWorkout(sets), { split, plan: paired }, null);
+    // Without a choice, B1 is next: A2 waits for it.
+    expect(model?.current?.set.id).toBe('row-1');
+    expect(model?.current?.blocked).toBeNull();
+    expect(afterLoggedSet(model!, set(bench, 1, true), sets)).toEqual({ nextExerciseId: 'row', rest: false });
+    const afterB = [set(bench, 1, true), set(bench, 2, false), set(row, 1, true), set(row, 2, false)];
+    expect(afterLoggedSet(model!, set(row, 1, true), afterB)).toEqual({ nextExerciseId: 'bench', rest: true });
+  });
+
+  it('explains why a chosen superset set has to wait', () => {
+    const sets = [set(bench, 1, true), set(bench, 2, false), set(row, 1, false), set(row, 2, false)];
+    const model = buildSessionModel(flexWorkout(sets), { split, plan: paired }, 'bench');
+    expect(model?.current?.set.id).toBe('bench-2');
+    expect(model?.current?.blocked).toBe('Complete B1 before starting A2.');
+  });
+
+  it('leaves a removed movement out of the list but keeps its logged sets in the totals', () => {
+    const plan = flexPlan([item(bench, 0), item(curl, 1, { hidden: true })]);
+    const model = buildSessionModel(flexWorkout([set(bench, 1, false), set(curl, 1, true)]), { split, plan }, null);
+    expect(model?.movements.map((movement) => movement.exerciseId)).toEqual(['bench']);
+    expect(model?.doneCount).toBe(1);
+    expect(model?.sets).toHaveLength(2);
+  });
+
+  it('starts empty when nothing has been added yet', () => {
+    const model = buildSessionModel(flexWorkout([]), { split, plan: flexPlan([]) }, null);
+    expect(model?.movements).toEqual([]);
+    expect(model?.current).toBeNull();
   });
 });
 

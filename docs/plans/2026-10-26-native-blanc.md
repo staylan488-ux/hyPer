@@ -119,13 +119,26 @@ have repeated that pattern.
    extension that `native/plugins/withHyperWidgets.js` adds on prebuild. The
    rest is the web's stored rest session (`src/lib/restTimer.ts`) and the card
    follows the shared ordering rules in `src/lib/workoutActivitySync.ts`.
-   Still to build: start/schedule, flexible mode, supersets, reorder, and
-   adding and removing movements.
+   The rest of Train (2026-10-27), by the web's rules: Train before a session
+   shows today's card from the schedule (shared with Today) and every other
+   day to start; a schedule sheet sets Day 1 and the rhythm (the web's
+   editor, saved through the shared `buildPlanSchedule`); a header menu holds
+   the schedule and the training mode (program days or flexible sessions,
+   until Program arrives in milestone 6). Flexible sessions are named or
+   started from a quick start, built with Add movement, paired as supersets,
+   renamed, and can be kept as a quick start on finish. Supersets in either
+   mode alternate A1, B1, A2 and rest after B, through the shared
+   `supersetFlows` and `supersetLogBlock` (the web page uses them too). A
+   reorder sheet drags movements with iOS's own list handles, pairs moving as
+   one, and puts the order back if the save fails. Adding and removing
+   movements stays a flexible-session feature, as on the web.
 4. **Fuel complete.** Barcode (VisionKit), photo and describe analysis, manual entry,
    build a meal, edit/delete with swipe actions and menus, time picker, saved
    meals, month view.
 5. **History and Progress.** Calendar, day ledger, editing past workouts and
-   nutrition, activities and WHOOP merge, charts, volume map and trends.
+   nutrition, activities and WHOOP merge, charts, volume map and trends. The
+   owner wants to view, edit and delete past workouts here, including a
+   set-less test workout now in their account (noted 2026-10-27).
 6. **Program.** Programs list, split editor (drag reorder, multi-add picker), schedule.
 7. **You.** Profile, targets and calculator, coach, saved meals, food analysis
    worker, connections (WHOOP OAuth), Health weight sync, appearance, adaptive

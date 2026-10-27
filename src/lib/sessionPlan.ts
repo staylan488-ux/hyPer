@@ -89,3 +89,57 @@ export function setCountChanges(
     canRemove: sets.length > minSets && sets.some((set) => !set.completed),
   };
 }
+
+/** A superset member's place in its pair: A leads each round, B closes it. */
+export type SupersetRole = 'A' | 'B';
+
+export interface SupersetFlow {
+  groupId: string;
+  role: SupersetRole;
+  partnerExerciseId: string;
+}
+
+/**
+ * Superset pairs in session order: the first member of a group is A, the
+ * second B. A group without exactly two movements is not a pair.
+ */
+export function supersetFlows(
+  orderedExerciseIds: readonly string[],
+  groupByExerciseId: ReadonlyMap<string, string>,
+): Map<string, SupersetFlow> {
+  const groups = new Map<string, string[]>();
+  for (const exerciseId of orderedExerciseIds) {
+    const groupId = groupByExerciseId.get(exerciseId);
+    if (!groupId) continue;
+    groups.set(groupId, [...(groups.get(groupId) ?? []), exerciseId]);
+  }
+  const flows = new Map<string, SupersetFlow>();
+  for (const [groupId, members] of groups) {
+    if (members.length !== 2) continue;
+    const [a, b] = members;
+    flows.set(a, { groupId, role: 'A', partnerExerciseId: b });
+    flows.set(b, { groupId, role: 'B', partnerExerciseId: a });
+  }
+  return flows;
+}
+
+/**
+ * Why a superset set cannot be logged yet, or null. Rounds go A1, B1, A2, B2:
+ * A waits for the partner's previous round, B for the same round of A.
+ * Correcting a logged set is never blocked.
+ */
+export function supersetLogBlock(
+  candidate: Pick<WorkoutSet, 'completed' | 'set_number'>,
+  flow: SupersetFlow | undefined,
+  sets: readonly Pick<WorkoutSet, 'exercise_id' | 'set_number' | 'completed'>[],
+): string | null {
+  if (candidate.completed || !flow) return null;
+  const round = candidate.set_number;
+  const partner = sets.filter((set) => set.exercise_id === flow.partnerExerciseId);
+  if (flow.role === 'A') {
+    const previous = partner.find((set) => set.set_number === round - 1);
+    return round > 1 && !previous?.completed ? `Complete B${round - 1} before starting A${round}.` : null;
+  }
+  const matching = partner.find((set) => set.set_number === round);
+  return matching?.completed ? null : `Complete A${round} before logging B${round}.`;
+}

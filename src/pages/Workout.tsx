@@ -47,8 +47,8 @@ import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, sav
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
-import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
-import { orderSessionSets, sessionExercises as sessionExercisesFor, sessionOrder, sessionPlanItems, sessionSetRanges, sessionSubstitutions, setCountChanges } from '@/lib/sessionPlan';
+import { buildFixedWeekdays, buildPlanSchedule, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
+import { orderSessionSets, sessionExercises as sessionExercisesFor, sessionOrder, sessionPlanItems, sessionSetRanges, sessionSubstitutions, setCountChanges, supersetFlows, supersetLogBlock } from '@/lib/sessionPlan';
 import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
@@ -66,14 +66,6 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
 
 /** The rest bar's "Next ·" label is the movement name, this, and the set number. */
 const REST_NEXT_UP_SET = ' · set ';
-
-type SupersetRole = 'A' | 'B';
-
-type SupersetFlow = {
-  groupId: string;
-  role: SupersetRole;
-  partnerExerciseId: string;
-};
 
 type CompletionSummary = {
   title: string;
@@ -191,20 +183,6 @@ function SessionPin({ title, createdAt, finishing, onBack, onFinish }: {
       </button>
     </div>
   );
-}
-
-function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
-  const map = new Map<string, SupersetFlow>();
-
-  for (const group of orderedExerciseIdsByGroup) {
-    if (group.exerciseIds.length !== 2) continue;
-
-    const [exerciseA, exerciseB] = group.exerciseIds;
-    map.set(exerciseA, { groupId: group.groupId, role: 'A', partnerExerciseId: exerciseB });
-    map.set(exerciseB, { groupId: group.groupId, role: 'B', partnerExerciseId: exerciseA });
-  }
-
-  return map;
 }
 
 export function Workout() {
@@ -738,28 +716,12 @@ export function Workout() {
     setSavingPlanSchedule(true);
 
     try {
-      const splitDayCount = activeSplit.days.length;
-      const computedWeekdays =
-        setupMode === 'fixed'
-          ? buildFixedWeekdays(setupAnchorDay, activeSplit.days_per_week)
-          : [];
-
-      let computedAnchorDay: number | undefined;
-
-      if (setupMode === 'fixed') {
-        computedAnchorDay = setupAnchorDay;
-      } else if (splitDayCount > 0) {
-        computedAnchorDay = normalizeIndex(setupFlexDayIndex, splitDayCount);
-      }
-
-      const schedule: PlanSchedule = {
-        splitId: activeSplit.id,
+      const schedule = buildPlanSchedule(activeSplit, {
         startDate: setupStartDate,
         mode: setupMode,
-        weekdays: computedWeekdays,
-        anchorDay: setupMode === 'fixed' ? computedAnchorDay : 0,
-        flexAnchorIndex: setupMode === 'flex' ? computedAnchorDay : undefined,
-      };
+        anchorDay: setupAnchorDay,
+        flexDayIndex: setupFlexDayIndex,
+      });
 
       setPlanSchedule(savePlanSchedule(userId, schedule));
       setShowScheduleEditor(false);
@@ -882,25 +844,12 @@ export function Workout() {
     ? flexibleSupersetByExerciseId
     : splitSupersetByExerciseId;
 
-  const orderedSupersetGroups = useMemo(() => {
-    const orderedExerciseIds = workoutMode === 'flexible' && currentWorkout?.split_day_id === null
+  const supersetFlowMap = useMemo(() => supersetFlows(
+    workoutMode === 'flexible' && currentWorkout?.split_day_id === null
       ? activeFlexibleItems.map((item) => item.exercise_id)
-      : orderedExerciseEntries.map(([exerciseId]) => exerciseId);
-
-    const grouped = new Map<string, string[]>();
-    for (const exerciseId of orderedExerciseIds) {
-      const groupId = supersetByExerciseId.get(exerciseId);
-      if (!groupId) continue;
-
-      const current = grouped.get(groupId) || [];
-      current.push(exerciseId);
-      grouped.set(groupId, current);
-    }
-
-    return Array.from(grouped.entries()).map(([groupId, exerciseIds]) => ({ groupId, exerciseIds }));
-  }, [activeFlexibleItems, currentWorkout?.split_day_id, orderedExerciseEntries, supersetByExerciseId, workoutMode]);
-
-  const supersetFlowMap = useMemo(() => buildSupersetFlowMap(orderedSupersetGroups), [orderedSupersetGroups]);
+      : orderedExerciseEntries.map(([exerciseId]) => exerciseId),
+    supersetByExerciseId,
+  ), [activeFlexibleItems, currentWorkout?.split_day_id, orderedExerciseEntries, supersetByExerciseId, workoutMode]);
 
   const workoutExerciseMap = useMemo(() => {
     const map = new Map<string, Exercise>();
@@ -1043,31 +992,9 @@ export function Workout() {
     return partnerMap;
   }, [sessionExercises]);
 
-  const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => {
-    if (candidateSet.completed) return true;
-
-    const supersetFlow = supersetFlowMap.get(candidateSet.exercise_id);
-    if (!supersetFlow || !currentWorkout) return true;
-
-    const candidateNumber = candidateSet.set_number;
-    const partnerSets = currentWorkout.sets
-      .filter((set) => set.exercise_id === supersetFlow.partnerExerciseId);
-
-    if (supersetFlow.role === 'A') {
-      const partnerPrevRound = partnerSets.find((set) => set.set_number === candidateNumber - 1);
-      if (candidateNumber > 1 && !partnerPrevRound?.completed) {
-        return `Complete B${candidateNumber - 1} before starting A${candidateNumber}.`;
-      }
-      return true;
-    }
-
-    const matchingA = partnerSets.find((set) => set.set_number === candidateNumber);
-    if (!matchingA?.completed) {
-      return `Complete A${candidateNumber} before logging B${candidateNumber}.`;
-    }
-
-    return true;
-  };
+  const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => (
+    (currentWorkout && supersetLogBlock(candidateSet, supersetFlowMap.get(candidateSet.exercise_id), currentWorkout.sets)) || true
+  );
 
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;

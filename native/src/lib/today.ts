@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { create } from 'zustand';
 
 import { nextPlannedSession, todayHero, weekSessionTarget } from '@/components/dashboard/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
@@ -10,6 +11,12 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
 import { useAccountDay } from './accountData';
+
+/** Bumped after the schedule is saved on this device, so screens re-read it. */
+export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
+  revision: 0,
+  bump: () => set((state) => ({ revision: state.revision + 1 })),
+}));
 
 /**
  * Today's training plan by the web app's rules (todayModel's todayHero): the
@@ -25,7 +32,8 @@ export function useTodayPlan() {
   const workoutMode = useAppStore((state) => state.workoutMode);
   const hydratedForUserId = useAppStore((state) => state.hydratedForUserId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
-  const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplit?.id);
+  const revision = useScheduleRevision((state) => state.revision);
+  const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplit?.id, revision);
   const {
     workouts: scheduleWorkouts,
     loading: scheduleWorkoutsLoading,
@@ -86,6 +94,8 @@ export function useTodayPlan() {
   return {
     hero,
     next,
+    schedule,
+    adaptiveSchedulingEnabled,
     weekDone: week.dates?.length ?? null,
     weekTarget: weekSessionTarget(workoutMode, schedule, activeSplit),
   };

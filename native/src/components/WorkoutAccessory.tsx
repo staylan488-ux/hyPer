@@ -33,7 +33,9 @@ export function WorkoutAccessory() {
       ? `Rest paused · ${formatClock(left)}`
       : session.current
         ? `Set ${session.current.index + 1} of ${session.sets.length} · ${session.current.movement.name}`
-        : 'All sets done';
+        : session.movements.length === 0
+          ? 'No movements yet'
+          : 'All sets done';
 
   return (
     <Pressable

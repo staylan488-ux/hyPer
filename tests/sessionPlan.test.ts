@@ -8,6 +8,8 @@ import {
   sessionSetRanges,
   sessionSubstitutions,
   setCountChanges,
+  supersetFlows,
+  supersetLogBlock,
 } from '@/lib/sessionPlan';
 import type { FlexiblePlanItem, SplitExercise, WorkoutSet } from '@/types';
 
@@ -73,5 +75,33 @@ describe('session plan', () => {
     expect(setCountChanges(ranges.get('row'), [set('row', 1), set('row', 2), set('row', 3)])).toEqual({ canAdd: true, canRemove: true });
     expect(setCountChanges(ranges.get('bench'), [set('bench', 1), set('bench', 2), set('bench', 3)])).toEqual({ canAdd: false, canRemove: false });
     expect(setCountChanges(undefined, [set('curl', 1, true), set('curl', 2, true)])).toEqual({ canAdd: true, canRemove: false });
+  });
+});
+
+describe('superset rounds', () => {
+  const groups = new Map([['bench', 'g1'], ['row', 'g1'], ['curl', 'g2']]);
+
+  it('pairs the two members of a group in session order, A first', () => {
+    const flows = supersetFlows(['row', 'press', 'bench', 'curl'], groups);
+    expect(flows.get('row')).toEqual({ groupId: 'g1', role: 'A', partnerExerciseId: 'bench' });
+    expect(flows.get('bench')).toEqual({ groupId: 'g1', role: 'B', partnerExerciseId: 'row' });
+    // A group of one is not a pair.
+    expect(flows.has('curl')).toBe(false);
+    expect(flows.has('press')).toBe(false);
+  });
+
+  it('alternates A1, B1, A2: each side waits for the other', () => {
+    const flows = supersetFlows(['bench', 'row'], groups);
+    const sets = [set('bench', 1, true), set('bench', 2), set('row', 1), set('row', 2)];
+    expect(supersetLogBlock({ set_number: 1, completed: false }, flows.get('row'), sets)).toBeNull();
+    expect(supersetLogBlock({ set_number: 2, completed: false }, flows.get('bench'), sets)).toBe('Complete B1 before starting A2.');
+    expect(supersetLogBlock({ set_number: 2, completed: false }, flows.get('row'), sets)).toBe('Complete A2 before logging B2.');
+    expect(supersetLogBlock({ set_number: 1, completed: false }, flows.get('bench'), sets)).toBeNull();
+  });
+
+  it('never blocks correcting a logged set or a movement outside a pair', () => {
+    const flows = supersetFlows(['bench', 'row'], groups);
+    expect(supersetLogBlock({ set_number: 3, completed: true }, flows.get('row'), [])).toBeNull();
+    expect(supersetLogBlock({ set_number: 3, completed: false }, undefined, [])).toBeNull();
   });
 });

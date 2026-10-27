@@ -1,14 +1,15 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume, type HeroState } from '@/components/dashboard/todayModel';
+import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { PlanCard } from '~/components/PlanCard';
 import { Tally } from '~/components/Tally';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -18,7 +19,7 @@ import { useIntroRise } from '~/lib/brand';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useFuelStore } from '~/lib/fuel';
-import { useNow, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -67,7 +68,7 @@ export default function TodayScreen() {
             {format(now, 'EEEE, MMMM d')}
           </BlancText>
 
-          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} />}
+          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" />}
 
           <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push('/log-food') }}>
             {target && kcalLeft !== null ? (
@@ -160,101 +161,6 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         <Capsule title={current ? 'Resume' : 'Finish'} onPress={() => router.navigate('/train')} />
       </View>
     </Label>
-  );
-}
-
-// Today's training in one card: a title, at most one quiet line, at most one
-// button. Same rule as the web (todayHero), fewer words.
-const PLAN_CARD_HEIGHT = 78;
-
-function PlanCard({ hero, next }: { hero: HeroState; next: string | null }) {
-  const { starting, start } = useStartSession();
-  const toTrain = () => router.navigate('/train');
-
-  let title: string;
-  let detail: string | null = null;
-  let action: { title: string; onPress: () => void; primary?: boolean; busy?: boolean } | null = null;
-  switch (hero.kind) {
-    case 'loading':
-    case 'resume':
-      // Holds the card's place so Fuel does not jump when the plan arrives.
-      return <View style={{ height: PLAN_CARD_HEIGHT, marginTop: 18 }} />;
-    case 'planned': {
-      const day = hero.day;
-      const movements = day.exercises.length;
-      title = day.day_name;
-      detail = `${movements} ${movements === 1 ? 'movement' : 'movements'}`;
-      action = {
-        title: 'Start',
-        primary: true,
-        busy: starting === day.id,
-        onPress: () => {
-          void start(day.id).then((started) => {
-            if (started) toTrain();
-          });
-        },
-      };
-      break;
-    }
-    case 'rest':
-      title = 'Rest day';
-      detail = next ? `Next: ${next}` : null;
-      break;
-    case 'done':
-      title = 'Trained today';
-      detail = next ? `Next: ${next}` : null;
-      break;
-    case 'flexible':
-      title = 'Flexible mode';
-      action = { title: 'Train', onPress: toTrain };
-      break;
-    case 'no-schedule':
-      title = 'Choose today’s session';
-      action = { title: 'Choose', onPress: toTrain };
-      break;
-    case 'first-run':
-      title = 'No program yet';
-      detail = 'Create one on the web for now.';
-      break;
-    case 'schedule-error':
-      title = 'Couldn’t load your plan';
-      action = { title: 'Retry', onPress: hero.retry };
-      break;
-  }
-
-  return (
-    <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
-      <Label
-        style={{
-          marginTop: 18,
-          minHeight: PLAN_CARD_HEIGHT,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="headline" numberOfLines={1}>
-            {title}
-          </BlancText>
-          {detail ? (
-            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 2 }}>
-              {detail}
-            </BlancText>
-          ) : null}
-        </View>
-        {action ? (
-          <Capsule
-            title={action.title}
-            variant={action.primary ? 'primary' : 'quiet'}
-            busy={action.busy}
-            disabled={starting !== null && !action.busy}
-            onPress={action.onPress}
-          />
-        ) : null}
-      </Label>
-    </Animated.View>
   );
 }
 

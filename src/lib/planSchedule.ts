@@ -37,6 +37,33 @@ export function defaultWeekdays(daysPerWeek: number): number[] {
   return [1, 2, 3, 4, 5, 6];
 }
 
+/** The schedule editor's choices, before they become a saved schedule. */
+export interface PlanScheduleChoices {
+  startDate: string;
+  mode: PlanMode;
+  /** Fixed: the weekday of the first training day (0 = Sunday). */
+  anchorDay: number;
+  /** Flexible: the split day that is up next. */
+  flexDayIndex: number;
+}
+
+/** Turns the editor's choices into the schedule to save, for the web and native editors alike. */
+export function buildPlanSchedule(
+  split: { id: string; days_per_week: number; days: readonly unknown[] },
+  choices: PlanScheduleChoices,
+): PlanSchedule {
+  const dayCount = split.days.length;
+  const flexIndex = dayCount > 0 ? normalizeBySize(choices.flexDayIndex, dayCount) : undefined;
+  return {
+    splitId: split.id,
+    startDate: choices.startDate,
+    mode: choices.mode,
+    weekdays: choices.mode === 'fixed' ? buildFixedWeekdays(choices.anchorDay, split.days_per_week) : [],
+    anchorDay: choices.mode === 'fixed' ? choices.anchorDay : 0,
+    flexAnchorIndex: choices.mode === 'flex' ? flexIndex : undefined,
+  };
+}
+
 export function buildFixedWeekdays(anchorDay: number, daysPerWeek: number): number[] {
   const offsetsByFrequency: Record<number, number[]> = {
     2: [0, 3],

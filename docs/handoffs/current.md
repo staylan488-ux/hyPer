@@ -238,6 +238,57 @@ frames ahead of time, so its captures run ahead of the real clock). iOS asks
 Building this needs a regenerated iOS project (`expo prebuild --clean`); a
 phone build also registers the extension's App ID through automatic signing.
 
+The owner confirmed the locked-phone rest build works on the phone. The rest
+of milestone 3 followed (2026-10-27), matching the web's Train rules:
+- Before a session, Train shows today's card from the schedule (the same
+  `PlanCard` as Today: planned day with Start, rest day or trained today with
+  the next session, or "Set your schedule"), the program's week, and every
+  other day with Start plus the web's note on how that shifts the plan.
+- A header menu (⋯) holds Schedule and "Train by": program days or flexible
+  sessions (`setWorkoutMode`; the web keeps this on Program, which native
+  builds in milestone 6). The schedule sheet has the web editor's choices
+  (Day 1 today, tomorrow or a picked date; set weekdays from a first day, or
+  in order from a chosen day) and saves through the new shared
+  `buildPlanSchedule`, which the web Train page now also uses. The shared
+  `usePlanSchedule` takes an optional revision so native screens re-read a
+  schedule saved on the device (web unchanged).
+- Flexible mode: name the session or pick one of up to six quick starts, then
+  Add movement (the exercise picker now serves swap, add and superset), pair
+  a superset or remove a movement from its movement sheet, rename from the
+  header pencil, and on Finish choose "Finish and save as quick start".
+  Adding and removing movements stays flexible-only, as on the web.
+- Supersets (program or flexible) alternate A1, B1, A2 and rest only after B,
+  with the reason shown when a set is out of turn. The rules moved out of
+  the web page into `supersetFlows` and `supersetLogBlock` in
+  `src/lib/sessionPlan.ts`; both apps use them.
+- Reorder: a sheet from "Reorder" on the Movements section, built on SwiftUI's
+  List in edit mode (Expo UI), so the handles and drag are Apple's. Pairs move
+  as one row; each drop saves the session order at once
+  (`reorderWorkoutExercises`, program untouched) and a failed save puts the
+  previous order back with a note.
+Work moved to this session's own worktree
+(`.claude/worktrees/pensive-gagarin-e7e1ec`, branch
+`claude/pensive-gagarin-e7e1ec` tracking `origin/feat/native-blanc`) because
+the session may not write into `.claude/worktrees/native-blanc`; it was pushed
+to `feat/native-blanc`, so that worktree's local branch is now behind origin.
+Checked with UI-test taps in the iPhone 17 Pro simulator (sample data): the
+start screen, the menu, the schedule sheet (both rhythms, a picked date,
+saved and re-read); a flexible session from empty through Add movement (two),
+a superset (A1 logged moved to B1 with no rest, B1 started rest), reorder by
+dragging a handle (the curl moved to the top and stayed), remove with its
+confirm, rename, and "Finish and save as quick start" with the quick start
+offered afterwards. Dark mode checked for the live workout, reorder, start
+screen and schedule. Fixed during the check: typing the session name quickly
+could put the cursor back mid-word (the field now keeps its own text), and
+the workout bar says "No movements yet" for an empty session. Checks: 1,904
+tests (new ones for superset rounds, the flexible model and the schedule
+builder), lint with instruction checks, web build, native type-check. Not
+verified: a reorder save that fails (the sample backend never fails; the
+sheet clears its pending order on failure, so the saved order shows again),
+anything on a phone, and against a real database (flexible writes, quick
+starts, schedule sync). Metro once served stale copies of two edited files;
+`npx expo start --clear` fixed it.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

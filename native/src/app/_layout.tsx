@@ -85,6 +85,24 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="schedule"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="reorder"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [0.72, 1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
               name="swap"
               options={{
                 presentation: 'formSheet',

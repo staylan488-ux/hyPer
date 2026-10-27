@@ -82,8 +82,26 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   row: logged sets to correct (never starts rest), the set count from 1 to 12
   whatever the program says (the owner's call on 2026-10-26; the web keeps to
   the program's range; only unfinished sets are removed), the note, and swap
-  for this workout or switch back. Tapping an unfinished row still makes it
-  the next movement.
+  for this workout or switch back. In a flexible session the same sheet pairs
+  a superset, unlinks it, or removes the movement (logged sets stay in the
+  workout). Tapping an unfinished row still makes it the next movement.
+- Before a session, Train shows today's [PlanCard](../../../native/src/components/PlanCard.tsx)
+  (shared with Today), then every other day to start. Its header menu holds the
+  schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
+  choices, saved through the shared `buildPlanSchedule`; saving bumps
+  `useScheduleRevision` so open screens re-read it) and the training mode,
+  until Program arrives. Flexible mode names the session or starts a quick
+  start; the session grows with Add movement, the pencil renames it, and
+  Finish offers to keep it as a quick start. Adding and removing movements is
+  a flexible-session feature, as on the web.
+- Supersets in either mode follow the shared `supersetFlows` and
+  `supersetLogBlock`: rounds go A1, B1, A2, rest comes after B only, and a set
+  out of turn shows why instead of logging. The one exercise picker
+  (`native/src/app/swap.tsx`) serves swap, add and superset through its
+  `mode` parameter.
+- Reorder (`native/src/app/reorder.tsx`) uses SwiftUI's List in edit mode
+  through Expo UI, so the drag handles and lift are Apple's; a pair moves as
+  one row, each drop saves at once, and a failed save puts the order back.
 - Rest: the timer button in Train's header opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
   movement's rest length (1, 2, 3 or 5 min, or a custom time) or end it. The

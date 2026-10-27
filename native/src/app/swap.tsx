@@ -8,10 +8,11 @@ import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { GlassButton } from '~/components/GlassButton';
 import { Hairline } from '~/components/Row';
 import { haptics } from '~/lib/haptics';
-import { errorMessage, swapMovement } from '~/lib/movement';
+import { addMovement, addSupersetPartner, errorMessage, swapMovement } from '~/lib/movement';
 import { useSessionModel } from '~/lib/session';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -19,16 +20,28 @@ const MUSCLES = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
 // The library rarely changes: cached rows show at once, refreshed at most this often.
 const LIBRARY_MAX_AGE_MS = 5 * 60_000;
 
+type PickMode = 'swap' | 'add' | 'superset';
+
+const COPY: Record<PickMode, { title: string; verb: string; failed: string; fallback: string }> = {
+  swap: { title: 'Swap for this workout', verb: 'Swap to', failed: 'Not swapped', fallback: 'Could not swap the exercise. Try again.' },
+  add: { title: 'Add a movement', verb: 'Add', failed: 'Not added', fallback: 'Could not add the exercise. Try again.' },
+  superset: { title: 'Add a superset', verb: 'Pair with', failed: 'Not added', fallback: 'Could not add the superset. Try again.' },
+};
+
 /**
- * Swap a movement for this workout only. Opens on the movement's muscle and
- * leaves out exercises already in the workout, as on the web.
+ * Picks an exercise to swap a movement for this workout only, to add to a
+ * flexible session, or to pair with a movement as a superset. Leaves out
+ * exercises already in the workout, as on the web; a swap opens on the
+ * movement's muscle.
  */
-export default function SwapSheet() {
+export default function PickExerciseSheet() {
   const c = useBlanc();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string; mode?: string }>();
+  const mode: PickMode = params.mode === 'add' || params.mode === 'superset' ? params.mode : 'swap';
+  const copy = COPY[mode];
   const session = useSessionModel();
-  const movement = session?.movements.find((entry) => entry.exerciseId === id) ?? null;
-  const sourceMuscle = movement?.sets[0]?.exercise?.muscle_group;
+  const movement = session?.movements.find((entry) => entry.exerciseId === params.id) ?? null;
+  const sourceMuscle = mode === 'swap' ? movement?.sets[0]?.exercise?.muscle_group : undefined;
 
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
   const [loadFailed, setLoadFailed] = useState(false);
@@ -72,22 +85,29 @@ export default function SwapSheet() {
   const skillsOpen = showSkills || searching || gym.length === 0;
 
   const choose = async (exercise: Exercise) => {
-    if (!session || !movement || swapping) return;
+    if (!session || swapping || (mode !== 'add' && !movement)) return;
     setSwapping(exercise.id);
     try {
-      await swapMovement(
-        session.workoutId,
-        movement.exerciseId,
-        exercise,
-        session.current?.movement.exerciseId === movement.exerciseId,
-      );
+      if (mode === 'add') {
+        await addMovement(session.workoutId, exercise);
+      } else if (movement && mode === 'superset') {
+        await addSupersetPartner(session.workoutId, movement.exerciseId, exercise);
+      } else if (movement) {
+        await swapMovement(
+          session.workoutId,
+          movement.exerciseId,
+          exercise,
+          session.current?.movement.exerciseId === movement.exerciseId,
+        );
+      }
       haptics.success();
-      // Back to the workout, past the movement sheet this picker opened from.
-      router.dismiss(2);
+      // Back to the workout, past the movement sheet a swap or superset opened from.
+      if (mode === 'add') router.back();
+      else router.dismiss(2);
     } catch (error) {
       haptics.error();
       setSwapping(null);
-      Alert.alert('Not swapped', errorMessage(error, 'Could not swap the exercise. Try again.'));
+      Alert.alert(copy.failed, errorMessage(error, copy.fallback));
     }
   };
 
@@ -96,7 +116,7 @@ export default function SwapSheet() {
       {index > 0 ? <Hairline inset={20} /> : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Swap to ${exercise.name}`}
+        accessibilityLabel={`${copy.verb} ${exercise.name}`}
         disabled={swapping !== null}
         onPress={() => {
           haptics.tap();
@@ -139,11 +159,11 @@ export default function SwapSheet() {
           <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
           <View style={{ flex: 1, alignItems: 'center' }}>
             <BlancText variant="headline" accessibilityRole="header">
-              Swap for this workout
+              {copy.title}
             </BlancText>
-            {movement ? (
+            {movement && mode !== 'add' ? (
               <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
-                Replacing {movement.name}
+                {mode === 'swap' ? `Replacing ${movement.name}` : `With ${movement.name}`}
               </BlancText>
             ) : null}
           </View>
@@ -243,26 +263,5 @@ export default function SwapSheet() {
         </BlancText>
       ) : null}
     </ScrollView>
-  );
-}
-
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        height: 34,
-        paddingHorizontal: 14,
-        borderRadius: 17,
-        justifyContent: 'center',
-        backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.fill,
-      })}>
-      <BlancText variant="footnote" weight="600" tone={selected ? 'onCapsule' : 'ink'}>
-        {label}
-      </BlancText>
-    </Pressable>
   );
 }

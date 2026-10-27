@@ -1,17 +1,22 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { differenceInCalendarWeeks, parseISO } from 'date-fns';
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
+import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { movementBlocks } from '@/components/workout/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
 import { Label } from '~/components/Label';
+import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
@@ -19,12 +24,15 @@ import { Tally } from '~/components/Tally';
 import { useFinishedStore, summarize } from '~/lib/finished';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { errorMessage, renameSession } from '~/lib/movement';
 import { flushNotes } from '~/lib/notes';
 import { startRest, stopRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { useTodayPlan } from '~/lib/today';
 import { devScrollTrace } from '~/platform/devLaunch';
-import { space, useBlanc } from '~/theme/blanc';
+import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 type Current = NonNullable<SessionModel['current']>;
 /** The numbers for the set about to be logged. `touched` once the person edits them. */
@@ -63,6 +71,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const previous = usePreviousTargets(session);
   const logSet = useAppStore((state) => state.logSet);
   const completeWorkout = useAppStore((state) => state.completeWorkout);
+  const saveTemplateFromWorkout = useAppStore((state) => state.saveFlexibleTemplateFromCurrentWorkout);
+  const fetchFlexTemplates = useAppStore((state) => state.fetchFlexTemplates);
   const focus = useFocusStore((state) => state.focus);
   const setFinished = useFinishedStore((state) => state.set);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -125,15 +135,23 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
 
+  const blocked = current?.blocked ?? null;
+
   const log = async () => {
-    if (!current || !draft || weight === null || reps === null || saving) return;
+    if (!current || !draft || weight === null || reps === null || saving || blocked) return;
     Keyboard.dismiss();
     setSaving(true);
     setFailed(false);
+    const logged = current.set;
     try {
-      await logSet(current.set.id, weight, Math.round(reps), draft.rpe ?? undefined);
+      await logSet(logged.id, weight, Math.round(reps), draft.rpe ?? undefined);
       haptics.success();
-      startRest(current.movement.exerciseId);
+      // The web's order: a superset's partner for the same round, else more of
+      // this movement, else the next in turn. A superset rests after B only.
+      const after = afterLoggedSet(session, logged, useAppStore.getState().currentWorkout?.sets ?? []);
+      const chosen = useFocusStore.getState().exerciseId;
+      if (after.nextExerciseId && (!chosen || chosen === logged.exercise_id)) focus(after.nextExerciseId);
+      if (after.rest) startRest(current.movement.exerciseId);
     } catch {
       haptics.error();
       setFailed(true);
@@ -158,32 +176,67 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const openMovement = (exerciseId: string) => router.push({ pathname: '/movement', params: { id: exerciseId } });
 
   const finish = () => {
+    const close = async (saveTemplate: boolean) => {
+      // Notes typed during the workout land before it closes, as on the web.
+      if (!(await flushNotes())) {
+        haptics.error();
+        Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
+        return;
+      }
+      const summary = summarize(session);
+      try {
+        // A flexible session can be kept as a quick start, notes included.
+        if (saveTemplate) await saveTemplateFromWorkout();
+        await completeWorkout();
+        if (saveTemplate) void fetchFlexTemplates({ force: true });
+        setFinished(summary);
+        stopRest();
+        haptics.success();
+        router.push('/session-done');
+      } catch {
+        haptics.error();
+        Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
+      }
+    };
     Alert.alert('Finish workout?', `${session.doneCount} of ${session.sets.length} sets logged.`, [
-      { text: 'Keep going', style: 'cancel' },
-      {
-        text: 'Finish',
-        onPress: async () => {
-          // Notes typed during the workout land before it closes, as on the web.
-          if (!(await flushNotes())) {
-            haptics.error();
-            Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
-            return;
-          }
-          const summary = summarize(session);
-          try {
-            await completeWorkout();
-            setFinished(summary);
-            stopRest();
-            haptics.success();
-            router.push('/session-done');
-          } catch {
-            haptics.error();
-            Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
-          }
-        },
-      },
+      ...(session.flexible && session.movements.length > 0
+        ? [{ text: 'Finish and save as quick start', onPress: () => void close(true) }]
+        : []),
+      { text: 'Finish', onPress: () => void close(false) },
+      { text: 'Keep going', style: 'cancel' as const },
     ]);
   };
+
+  const rename = () => {
+    Alert.prompt(
+      'Workout name',
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            const name = text?.trim().slice(0, 40);
+            if (!name || name === session.dayName) return;
+            renameSession(session.workoutId, name).then(
+              () => haptics.success(),
+              (error: unknown) => {
+                haptics.error();
+                Alert.alert('Not renamed', errorMessage(error, 'Could not save the workout name. Try again.'));
+              },
+            );
+          },
+        },
+      ],
+      'plain-text',
+      session.dayName,
+    );
+  };
+
+  const blockCount = movementBlocks(
+    session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
+  ).length;
+  const addMovement = () => router.push({ pathname: '/swap', params: { mode: 'add' } });
 
   return (
     <>
@@ -211,6 +264,20 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 router.push('/rest');
               },
             },
+            // A flexible session is named by the person; it can be renamed.
+            ...(session.flexible
+              ? [
+                  {
+                    type: 'button' as const,
+                    label: 'Rename workout',
+                    icon: { type: 'sfSymbol' as const, name: 'pencil' as const },
+                    onPress: () => {
+                      haptics.tap();
+                      rename();
+                    },
+                  },
+                ]
+              : []),
           ],
         }}
       />
@@ -262,9 +329,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
               {[
                 `Set ${current.setNumber} of ${current.movement.sets.length}`,
-                current.movement.substitutesFor
-                  ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-                  : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+                current.movement.superset
+                  ? `superset with ${current.movement.superset.partnerName}`
+                  : current.movement.substitutesFor
+                    ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+                    : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
               ]
                 .filter(Boolean)
                 .join(' · ')}
@@ -325,6 +394,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               <BlancText variant="footnote" tone="live" style={{ marginTop: 14 }}>
                 Not saved. Your numbers are kept; try again.
               </BlancText>
+            ) : blocked ? (
+              <BlancText variant="footnote" tone="graphite" accessibilityLiveRegion="polite" style={{ marginTop: 14 }}>
+                {blocked}
+              </BlancText>
             ) : null}
 
             <Capsule
@@ -332,13 +405,19 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               size="large"
               fill
               busy={saving}
-              disabled={!ready}
+              disabled={!ready || Boolean(blocked)}
               onPress={() => void log()}
               style={{ marginTop: 16 }}
             />
             </Animated.View>
           </Label>
           </View>
+        ) : session.movements.length === 0 ? (
+          // A flexible session starts empty and is built as it goes.
+          <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
+            <BlancText variant="headline">Add your first movement</BlancText>
+            <Capsule title="Add movement" size="large" fill onPress={addMovement} />
+          </Label>
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <BlancText variant="headline">All sets logged</BlancText>
@@ -346,7 +425,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           </Label>
         )}
 
-        <Section title="Movements">
+        {session.movements.length > 0 ? (
+        <Section
+          title="Movements"
+          action={blockCount > 1 ? { title: 'Reorder', onPress: () => router.push('/reorder') } : undefined}>
           <Label>
             {session.movements.map((movement, index) => {
               const isCurrent = movement.exerciseId === current?.movement.exerciseId;
@@ -372,7 +454,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                       title={movement.name}
                       detail={[
                         isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-                        movement.substitutesFor
+                        movement.superset
+                          ? `superset ${movement.superset.role}`
+                          : movement.substitutesFor
                           ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
                           : plan && plan.target_reps_min && plan.target_reps_max
                             ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
@@ -389,8 +473,19 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 </View>
               );
             })}
+            {session.flexible ? (
+              <>
+                <Hairline />
+                <Row
+                  title="Add movement"
+                  leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
+                  onPress={addMovement}
+                />
+              </>
+            ) : null}
           </Label>
         </Section>
+        ) : null}
       </TabScroll>
 
       {editing ? (
@@ -490,20 +585,96 @@ function KeyBar({ step, onMinus, onPlus }: { step: string; onMinus: () => void; 
   );
 }
 
-/** No live workout: start one of the program's days. */
+/** No live workout: start today's planned day or any other, or a flexible session. */
 function StartWorkout() {
+  const mode = useAppStore((state) => state.workoutMode);
+  return mode === 'flexible' ? <StartFlexible /> : <StartPlanned />;
+}
+
+/** Header items before a session: the schedule, and how Train works (program days or flexible sessions). */
+function useStartHeader(title: string) {
+  const mode = useAppStore((state) => state.workoutMode);
+  const hasSplit = useAppStore((state) => Boolean(state.activeSplit));
+  const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
+  const switchMode = (next: 'split' | 'flexible') => {
+    if (next === mode) return;
+    haptics.select();
+    void setWorkoutMode(next).then((result) => {
+      if (!result.ok) Alert.alert('Mode not changed', result.reason ?? 'Try again.');
+    });
+  };
+  // Built once per mode, so typing on the screen never re-sends the header.
+  const options = useMemo(
+    () => ({
+        title,
+        unstable_headerRightItems: () => [
+          {
+            type: 'menu',
+            label: 'Training options',
+            icon: { type: 'sfSymbol', name: 'ellipsis' },
+            menu: {
+              items: [
+                ...(mode === 'split' && hasSplit
+                  ? [
+                      {
+                        type: 'action' as const,
+                        label: 'Schedule',
+                        icon: { type: 'sfSymbol' as const, name: 'calendar' as const },
+                        onPress: () => {
+                          haptics.tap();
+                          router.push('/schedule');
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  type: 'submenu',
+                  label: 'Train by',
+                  inline: true,
+                  items: [
+                    { type: 'action', label: 'Program days', state: mode === 'split' ? 'on' : 'off', onPress: () => switchMode('split') },
+                    { type: 'action', label: 'Flexible sessions', state: mode === 'flexible' ? 'on' : 'off', onPress: () => switchMode('flexible') },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      }) satisfies ComponentProps<typeof Stack.Screen>['options'],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [title, mode, hasSplit],
+  );
+  return <Stack.Screen options={options} />;
+}
+
+/** Program mode: today's card by the schedule, then any other day to start instead. */
+function StartPlanned() {
   const split = useAppStore((state) => state.activeSplit);
   const { starting, start } = useStartSession();
+  const plan = useTodayPlan();
+  const header = useStartHeader('Train');
+  const week = plan.schedule
+    ? differenceInCalendarWeeks(new Date(), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
+    : null;
+  // How finishing another day moves the plan, by the web's rule.
+  const otherNote = !plan.schedule
+    ? null
+    : !plan.adaptiveSchedulingEnabled
+      ? 'Your saved schedule stays as it is.'
+      : plan.schedule.mode === 'fixed'
+        ? 'Finishing a different day shifts the sessions after it.'
+        : 'Finishing a different day moves the next session on from it.';
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Train', unstable_headerRightItems: () => [] }} />
+      {header}
       <TabScroll>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {split ? `${split.name} · ${split.days.length} days` : 'No program yet'}
+          {split ? [split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ') : 'No program yet'}
         </BlancText>
-        {split ? (
-          <Section title="Start a session">
+        <PlanCard hero={plan.hero} next={plan.next} place="train" />
+        {split && split.days.length > 0 ? (
+          <Section title="Other days">
             <Label>
               {split.days.map((day, index) => (
                 <View key={day.id}>
@@ -524,7 +695,124 @@ function StartWorkout() {
                 </View>
               ))}
             </Label>
+            {otherNote ? (
+              <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+                {otherNote}
+              </BlancText>
+            ) : null}
           </Section>
+        ) : null}
+      </TabScroll>
+    </>
+  );
+}
+
+const FLEX_NAME_LIMIT = 40;
+
+/** Flexible mode: name the session (or pick a quick start) and build it as you go. */
+function StartFlexible() {
+  const c = useBlanc();
+  const templates = useAppStore((state) => state.flexTemplates);
+  const fetchFlexTemplates = useAppStore((state) => state.fetchFlexTemplates);
+  const startFlexibleWorkout = useAppStore((state) => state.startFlexibleWorkout);
+  const header = useStartHeader('Train');
+  const [name, setName] = useState('');
+  // The field keeps its own text while typing (a controlled field can lose
+  // keystrokes typed during a re-render); a quick start remounts it filled.
+  const [field, setField] = useState({ key: 0, text: '' });
+  const [template, setTemplate] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const label = name.trim();
+
+  useEffect(() => {
+    void fetchFlexTemplates();
+  }, [fetchFlexTemplates]);
+
+  const start = async () => {
+    if (!label || starting) return;
+    Keyboard.dismiss();
+    setStarting(true);
+    try {
+      const workout = await startFlexibleWorkout(label, template);
+      if (!workout) {
+        haptics.error();
+        Alert.alert('Finish your other workout first', 'A program session from today is still open.');
+        return;
+      }
+      haptics.success();
+    } catch (error) {
+      haptics.error();
+      Alert.alert('Could not start', errorMessage(error, 'Check your connection and try again.'));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  return (
+    <>
+      {header}
+      <TabScroll keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+          Flexible · build today as you go
+        </BlancText>
+
+        <Section title="What are you training?" style={{ marginTop: 18 }}>
+          <Label style={{ paddingHorizontal: 18, paddingVertical: 14 }}>
+            <TextInput
+              key={field.key}
+              defaultValue={field.text}
+              onChangeText={(text) => {
+                setName(text);
+                // Typing a different name leaves the quick start, as on the web.
+                if (template && text !== template) setTemplate(null);
+              }}
+              placeholder="Upper, push, arms…"
+              placeholderTextColor={c.graphite}
+              maxLength={FLEX_NAME_LIMIT}
+              autoCorrect={false}
+              returnKeyType="go"
+              onSubmitEditing={() => void start()}
+              selectionColor={c.ink}
+              accessibilityLabel="What are you training?"
+              style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 24 }]}
+            />
+          </Label>
+        </Section>
+
+        {templates.length > 0 ? (
+          <Section title="Quick start">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: space.inset }}>
+              {templates.slice(0, 6).map((entry) => (
+                <Chip
+                  key={entry.id}
+                  label={entry.label}
+                  selected={template === entry.label}
+                  onPress={() => {
+                    haptics.select();
+                    const chosen = template === entry.label ? null : entry.label;
+                    setTemplate(chosen);
+                    setName(chosen ?? '');
+                    setField((value) => ({ key: value.key + 1, text: chosen ?? '' }));
+                  }}
+                />
+              ))}
+            </View>
+          </Section>
+        ) : null}
+
+        <Capsule
+          title={label ? `Start ${label}` : 'Start session'}
+          size="large"
+          fill
+          busy={starting}
+          disabled={!label}
+          onPress={() => void start()}
+          style={{ marginHorizontal: space.inset, marginTop: space.section }}
+        />
+        {template ? (
+          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+            Starts with its movements and notes.
+          </BlancText>
         ) : null}
       </TabScroll>
     </>
