@@ -175,6 +175,13 @@ inventory before rebuilding a flow.
   `authenticated` role there (newer local stacks no longer do), create a test
   user through the local auth admin API, and point Metro at it with
   `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and the local anon key.
+- Real-account phone builds: `native/scripts/build-phone.sh [device-id]` builds
+  Release against production (the Supabase URL and anon key come from the web
+  app's `.env`, only inside the build), checks that the bundle has the
+  production host and no local test backend, and with a device id
+  (`xcrun devicectl list devices`) installs and opens it. Ask the owner before
+  installing. A locked phone refuses the launch, but the install lands. Run
+  `use-rn-core.sh Debug` before the next simulator build.
 - Phone installs use bundle ID `app.hyper.native` until cutover; signing follows
   [the iOS workflow](../ship-ios/SKILL.md). A simulator run does not prove device
   behaviour, haptics or performance.
