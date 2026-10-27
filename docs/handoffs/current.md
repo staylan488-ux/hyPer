@@ -300,6 +300,8 @@ search placeholder is fine. The hint is now plain text behind the empty
 field (also a VoiceOver hint), checked in light and dark. This Mac has no
 watchman, so Metro can miss edits made by scripts: restart it with
 `npx expo start --clear` before trusting a simulator check.
+A real-account Release build with this fix is installed on the owner's phone
+and opened there.
 
 # Previous work snapshot — a single set stuck on every retry
 
