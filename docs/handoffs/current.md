@@ -292,6 +292,14 @@ With the owner's approval, a real-account Release build of this commit is
 installed on the owner's iPhone (production host in the bundle, no local test
 backend). iOS refused to open it after install, most likely because the phone
 was locked, so it has not been opened yet.
+The owner then saw the flexible name field's hint ("Upper, push, arms…")
+drawn with its letters squeezed together on the phone (dark mode). The
+simulator showed the same; iOS's own placeholder in that field misdrew, and
+a version without a line height drew nothing at all, while the picker's
+search placeholder is fine. The hint is now plain text behind the empty
+field (also a VoiceOver hint), checked in light and dark. This Mac has no
+watchman, so Metro can miss edits made by scripts: restart it with
+`npx expo start --clear` before trusting a simulator check.
 
 # Previous work snapshot — a single set stuck on every retry
 
