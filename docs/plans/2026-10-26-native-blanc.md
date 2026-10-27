@@ -105,6 +105,16 @@ have repeated that pattern.
 3. **Train complete.** Start/schedule, flexible mode, supersets, drag reorder with
    restore on failure, session swap and switch back, notes, add/remove sets and
    movements, editing logged sets, rest Live Activity.
+   In-workout essentials built first (2026-10-26, the owner's pick): a movement
+   sheet to correct a logged set, add or remove sets (1 to 12, past the
+   program's count, at the owner's request), keep a movement note and swap a
+   movement for this workout or switch back; a rest sheet from the timer button
+   in Train's header starts a rest without logging a set and sets each
+   movement's rest length (shared with the web). Session order, swaps and set ranges now come from the shared
+   `src/lib/sessionPlan.ts` (the web Train page uses it too, unchanged in
+   behaviour), and later sets start from the set just logged, as on the web.
+   Still to build: start/schedule, flexible mode, supersets, reorder, adding
+   and removing movements, pausing a rest, and the rest Live Activity.
 4. **Fuel complete.** Barcode (VisionKit), photo and describe analysis, manual entry,
    build a meal, edit/delete with swipe actions and menus, time picker, saved
    meals, month view.

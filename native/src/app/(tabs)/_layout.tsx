@@ -4,19 +4,22 @@ import { useEffect } from 'react';
 import { WorkoutAccessory } from '~/components/WorkoutAccessory';
 import { useAccountData } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
-import { useRestFinish, useRestStore } from '~/lib/rest';
+import { useNotesStore } from '~/lib/notes';
+import { useRestFinish, useRestPreferences, useRestStore } from '~/lib/rest';
 import { useFocusStore, useSessionModel } from '~/lib/session';
 import { dynamicInk } from '~/theme/blanc';
 
 export default function TabsLayout() {
   const session = useSessionModel();
   useRestFinish();
+  useRestPreferences();
   useAccountData();
   // The tabs unmount only on sign-out: leave nothing of this account behind.
   useEffect(
     () => () => {
       useRestStore.getState().stop();
       useFocusStore.getState().focus(null);
+      useNotesStore.setState({ workoutId: null, drafts: {}, base: null, status: {} });
     },
     [],
   );

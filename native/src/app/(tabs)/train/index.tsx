@@ -1,12 +1,12 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActionSheetIOS, Alert, Keyboard, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -19,8 +19,10 @@ import { Tally } from '~/components/Tally';
 import { useFinishedStore, summarize } from '~/lib/finished';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { useRestStore } from '~/lib/rest';
+import { flushNotes } from '~/lib/notes';
+import { startRest, useRestStore } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -28,25 +30,26 @@ type Current = NonNullable<SessionModel['current']>;
 /** The numbers for the set about to be logged. `touched` once the person edits them. */
 type Draft = { setId: string; weight: string; reps: string; rpe: number | null; touched: boolean };
 
-const RPE_CHOICES = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
-
+/**
+ * The web's autofill rule: set 1 starts from last workout's set 1, later sets
+ * from the latest set logged in this workout.
+ */
 function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draft {
-  const last = previous[current.movement.exerciseId]?.[current.set.set_number];
-  const weight = current.set.weight ?? last?.weight ?? null;
-  const reps = current.set.reps ?? last?.reps ?? null;
+  const autofill = getSetAutofillValues({
+    exerciseId: current.movement.exerciseId,
+    setNumber: current.set.set_number,
+    currentExerciseSets: current.movement.sets,
+    previousWorkoutSetsByExercise: previous,
+  });
+  const rpe = current.set.rpe ?? (autofill?.rpe ? Number(autofill.rpe) : null);
   return {
     setId: current.set.id,
-    weight: weight === null ? '' : String(weight),
-    reps: reps === null ? '' : String(reps),
-    rpe: current.set.rpe ?? last?.rpe ?? null,
+    weight: current.set.weight !== null ? String(current.set.weight) : (autofill?.weight ?? ''),
+    reps: current.set.reps !== null ? String(current.set.reps) : (autofill?.reps ?? ''),
+    rpe: rpe !== null && Number.isFinite(rpe) ? rpe : null,
     touched: false,
   };
 }
-
-const parseNumber = (text: string) => {
-  const value = Number.parseFloat(text.replace(',', '.'));
-  return Number.isFinite(value) && value >= 0 ? value : null;
-};
 
 export default function TrainScreen() {
   const session = useSessionModel();
@@ -60,7 +63,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const previous = usePreviousTargets(session);
   const logSet = useAppStore((state) => state.logSet);
   const completeWorkout = useAppStore((state) => state.completeWorkout);
-  const startRest = useRestStore((state) => state.start);
   const focus = useFocusStore((state) => state.focus);
   const setFinished = useFinishedStore((state) => state.set);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -131,7 +133,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     try {
       await logSet(current.set.id, weight, Math.round(reps), draft.rpe ?? undefined);
       haptics.success();
-      startRest();
+      startRest(current.movement.exerciseId);
     } catch {
       haptics.error();
       setFailed(true);
@@ -149,22 +151,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     haptics.select();
   };
 
-  const chooseRpe = () => {
-    haptics.tap();
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: 'How hard was that set?',
-        options: ['Cancel', ...RPE_CHOICES.map((value) => `RPE ${value}`), 'No RPE'],
-        cancelButtonIndex: 0,
-      },
-      (index) => {
-        if (index === 0) return;
-        haptics.select();
-        const rpe = index <= RPE_CHOICES.length ? RPE_CHOICES[index - 1] : null;
-        setDraft((existing) => (existing ? { ...existing, rpe, touched: true } : existing));
-      },
-    );
-  };
+  const pickRpe = () =>
+    chooseRpe((rpe) => setDraft((existing) => (existing ? { ...existing, rpe, touched: true } : existing)));
+
+  /** Sets, note and swap for one movement. */
+  const openMovement = (exerciseId: string) => router.push({ pathname: '/movement', params: { id: exerciseId } });
 
   const finish = () => {
     Alert.alert('Finish workout?', `${session.doneCount} of ${session.sets.length} sets logged.`, [
@@ -172,6 +163,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       {
         text: 'Finish',
         onPress: async () => {
+          // Notes typed during the workout land before it closes, as on the web.
+          if (!(await flushNotes())) {
+            haptics.error();
+            Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
+            return;
+          }
           const summary = summarize(session);
           try {
             await completeWorkout();
@@ -202,6 +199,16 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               onPress: () => {
                 haptics.tap();
                 finish();
+              },
+            },
+            {
+              // Rest without logging a set, or change a movement's rest length.
+              type: 'button',
+              label: 'Rest timer',
+              icon: { type: 'sfSymbol', name: 'timer' },
+              onPress: () => {
+                haptics.tap();
+                router.push('/rest');
               },
             },
           ],
@@ -236,14 +243,37 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           <Label style={{ marginTop: 18, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
-            <BlancText variant="title" numberOfLines={2}>
-              {current.movement.name}
-            </BlancText>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <BlancText variant="title" numberOfLines={2} style={{ flex: 1 }}>
+                {current.movement.name}
+              </BlancText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${current.movement.name}: sets, note and swap`}
+                hitSlop={10}
+                onPress={() => {
+                  haptics.tap();
+                  openMovement(current.movement.exerciseId);
+                }}
+                style={({ pressed }) => ({ marginTop: 2, marginRight: -4, opacity: pressed ? 0.45 : 1 })}>
+                <SymbolView name="ellipsis.circle" size={24} weight="regular" tintColor={c.graphite} />
+              </Pressable>
+            </View>
             <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
-              {[`Set ${current.setNumber} of ${current.movement.sets.length}`, formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max)]
+              {[
+                `Set ${current.setNumber} of ${current.movement.sets.length}`,
+                current.movement.substitutesFor
+                  ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+                  : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </BlancText>
+            {current.movement.note ? (
+              <BlancText variant="footnote" tone="graphite" numberOfLines={2} style={{ marginTop: 6 }}>
+                {current.movement.note}
+              </BlancText>
+            ) : null}
 
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
               <BigValue
@@ -272,7 +302,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
-                onPress={chooseRpe}
+                onPress={pickRpe}
                 style={({ pressed }) => ({
                   height: 32,
                   paddingHorizontal: 12,
@@ -327,29 +357,33 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 <View key={movement.exerciseId}>
                   {index > 0 ? <Hairline /> : null}
                   {complete ? (
+                    // Finished movements open their sets, to correct one.
                     <Row
                       quiet
                       title={movement.name}
                       value={`Done · ${movement.done} of ${movement.sets.length}`}
                       leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
-                      accessibilityLabel={`${movement.name}, done, ${movement.done} sets`}
+                      accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
+                      onPress={() => openMovement(movement.exerciseId)}
                     />
                   ) : (
+                    // Tap to work on a movement next; hold for its sets, note and swap.
                     <Row
                       title={movement.name}
                       detail={[
                         isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-                        plan ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}` : null,
+                        movement.substitutesFor
+                          ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+                          : plan && plan.target_reps_min && plan.target_reps_max
+                            ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
+                            : null,
                         lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
                       chevron={!isCurrent}
-                      onPress={
-                        isCurrent
-                          ? undefined
-                          : () => focus(movement.exerciseId)
-                      }
+                      onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
+                      onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
                     />
                   )}
                 </View>

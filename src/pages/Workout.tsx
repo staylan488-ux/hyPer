@@ -47,7 +47,7 @@ import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, save
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
 import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
-import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import { orderSessionSets, sessionExercises as sessionExercisesFor, sessionOrder, sessionPlanItems, sessionSetRanges, sessionSubstitutions, setCountChanges } from '@/lib/sessionPlan';
 import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
@@ -789,39 +789,15 @@ export function Workout() {
 
   // ── Exercise ordering (must be before early returns for hook rules) ──
   const splitDay = activeSplit?.days.find((day) => day.id === currentWorkout?.split_day_id) ?? null;
-  const sessionPlanItems = currentWorkoutDayPlan?.workout_id === currentWorkout?.id ? currentWorkoutDayPlan?.items : undefined;
-  const sessionExercises = useMemo(() => sessionPlanItems?.map((item) => ({
-    ...item, exercise_order: item.order, target_sets: item.target_sets ?? 3,
-    notes: item.notes ?? null,
-  })) ?? splitDay?.exercises ?? [], [sessionPlanItems, splitDay?.exercises]);
-  const substitutionByExerciseId = useMemo(() => new Map(
-    (sessionPlanItems ?? []).flatMap((item) => (
-      item.substitutes_for && !item.hidden ? [[item.exercise_id, item.substitutes_for] as const] : []
-    ))
-  ), [sessionPlanItems]);
-  const exerciseOrderById = useMemo(() => new Map(
-    sessionExercises.map((exercise, index) => [
-      exercise.exercise_id,
-      exercise.exercise_order ?? index,
-    ])
-  ), [sessionExercises]);
+  const sessionPlan = sessionPlanItems(currentWorkoutDayPlan, currentWorkout?.id);
+  const sessionExercises = useMemo(() => sessionExercisesFor(sessionPlan, splitDay?.exercises), [sessionPlan, splitDay?.exercises]);
+  const substitutionByExerciseId = useMemo(() => sessionSubstitutions(sessionPlan), [sessionPlan]);
+  const exerciseOrderById = useMemo(() => sessionOrder(sessionExercises), [sessionExercises]);
+  const exerciseSetRanges = useMemo(() => sessionSetRanges(sessionExercises), [sessionExercises]);
 
-  const exerciseSetRanges = useMemo(() => new Map(
-    sessionExercises.map((exercise) => {
-      const parsedRange = parseSetRangeNotes(exercise.notes, exercise.target_sets);
-      return [exercise.exercise_id, parsedRange] as const;
-    })
-  ), [sessionExercises]);
-
-  const orderedSets = useMemo(() => {
-    if (!currentWorkout) return [];
-    return [...currentWorkout.sets].sort((a, b) => {
-      const orderA = exerciseOrderById.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-      const orderB = exerciseOrderById.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.set_number - b.set_number;
-    });
-  }, [currentWorkout, exerciseOrderById]);
+  const orderedSets = useMemo(() => (
+    currentWorkout ? orderSessionSets(currentWorkout.sets, exerciseOrderById) : []
+  ), [currentWorkout, exerciseOrderById]);
 
   const exerciseGroups = useMemo(() => orderedSets.reduce<Record<string, WorkoutSet[]>>((acc, set) => {
     if (!acc[set.exercise_id]) {
@@ -1951,9 +1927,8 @@ export function Workout() {
               : null;
             const supersetRole = supersetFlowMap.get(exerciseId)?.role;
             const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: 1, targetSets: sets.length, maxSets: 12 };
-            const canAddSet = sets.length < setRange.maxSets;
+            const { canAdd: canAddSet, canRemove: canRemoveSet } = setCountChanges(setRange, sets);
             const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
-            const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
             const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
             const prescription = sessionExercises.find((entry) => entry.exercise_id === exerciseId);
             const repTarget = formatRepTarget(prescription?.target_reps_min, prescription?.target_reps_max);

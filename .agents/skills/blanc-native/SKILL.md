@@ -32,6 +32,12 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
   the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
+- The live workout follows the shared session plan rules in `src/lib/sessionPlan.ts`
+  (order, swaps, set ranges), the same ones the web Train page uses. Writes go
+  through the store's own actions (`logSet`, `addWorkoutSet`,
+  `removeLastUncompletedSet`, `substituteWorkoutExercise`,
+  `switchBackWorkoutExercise`); movement notes use the shared `noteAutosave`
+  through `native/src/lib/notes.ts`, and a swap waits for pending notes.
 - `native/modules/hyper-view` reads a view's real window frame from UIKit. React
   Native's own measure works from its layout tree, which does not know where iOS
   put an item inside a navigation bar.
@@ -71,6 +77,18 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   text everywhere). A card carries one title, at most one quiet line and at most
   one action. Leave out zeros, placeholders ("– lb × –") and figures that repeat
   another; add a row only when it changes what the person does next.
+- Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
+  from ⋯ on the current card, a finished movement's row, or a long press on any
+  row: logged sets to correct (never starts rest), the set count from 1 to 12
+  whatever the program says (the owner's call on 2026-10-26; the web keeps to
+  the program's range; only unfinished sets are removed), the note, and swap
+  for this workout or switch back. Tapping an unfinished row still makes it
+  the next movement.
+- Rest: the timer button in Train's header opens the rest sheet to start a rest
+  without logging a set, change the movement's rest length (1, 2, 3 or 5 min,
+  or a custom time) or end a rest. Lengths are kept per movement through the
+  shared `src/lib/restPreferences.ts`, as on the web (own length, else the last
+  one chosen, else 90 s), and a logged set starts rest at its movement's length.
 - Motion is native transitions plus Reanimated springs for press feedback and
   the tally. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is

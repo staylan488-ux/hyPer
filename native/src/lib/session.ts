@@ -23,8 +23,9 @@ export const useFocusStore = create<{ exerciseId: string | null; focus: (id: str
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
+  const plan = useAppStore((state) => state.currentWorkoutDayPlan);
   const focused = useFocusStore((state) => state.exerciseId);
-  return useMemo(() => buildSessionModel(workout, split, focused), [workout, split, focused]);
+  return useMemo(() => buildSessionModel(workout, { split, plan }, focused), [workout, split, plan, focused]);
 }
 
 /** Last time's weight, reps and RPE per exercise and set number, from the shared lookup. */

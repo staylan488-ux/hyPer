@@ -17,12 +17,16 @@ type RowProps = {
   /** Finished or secondary rows read in graphite. */
   quiet?: boolean;
   onPress?: () => void;
+  /** A second action under a long press, offered to VoiceOver as a custom action. */
+  onLongPress?: { label: string; run: () => void };
   accessibilityLabel?: string;
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, onPress, accessibilityLabel }: RowProps) {
+export function Row({ title, detail, value, leading, trailing, chevron, quiet, onPress, onLongPress, accessibilityLabel }: RowProps) {
   const c = useBlanc();
+  // Spoken as its words only: icons such as the chevron add nothing.
+  const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
   const content = (
     <>
       {leading}
@@ -62,7 +66,7 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, o
     // Read as one element, unless it holds a control (a Start button, say)
     // that VoiceOver must still reach on its own.
     return (
-      <View style={rowStyle} accessible={!trailing} accessibilityLabel={trailing ? undefined : accessibilityLabel}>
+      <View style={rowStyle} accessible={!trailing} accessibilityLabel={trailing ? undefined : label}>
         {content}
       </View>
     );
@@ -71,11 +75,23 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, o
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={label}
+      accessibilityActions={onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : undefined}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'longpress') onLongPress?.run();
+      }}
       onPress={() => {
         haptics.tap();
         onPress();
       }}
+      onLongPress={
+        onLongPress
+          ? () => {
+              haptics.select();
+              onLongPress.run();
+            }
+          : undefined
+      }
       style={({ pressed }) => [rowStyle, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
       {content}
     </Pressable>

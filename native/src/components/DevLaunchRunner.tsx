@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
 import { loadSavedFoods, suggestedGroup, useFuelStore } from '~/lib/fuel';
-import { useRestStore } from '~/lib/rest';
+import { startRest } from '~/lib/rest';
 import { useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
 import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
@@ -46,7 +46,7 @@ export function DevLaunchRunner() {
         const next = workout?.sets.find((set) => !set.completed);
         if (!next) return;
         await useAppStore.getState().logSet(next.id, next.weight ?? 0, next.reps ?? 0, next.rpe ?? undefined);
-        useRestStore.getState().start();
+        startRest(next.exercise_id);
       };
       timers.push(
         setTimeout(() => {
@@ -65,7 +65,7 @@ export function DevLaunchRunner() {
       timers.push(
         setTimeout(() => {
           const app = useAppStore.getState();
-          const session = buildSessionModel(app.currentWorkout, app.activeSplit, null);
+          const session = buildSessionModel(app.currentWorkout, { split: app.activeSplit, plan: app.currentWorkoutDayPlan }, null);
           const other = session?.movements.find(
             (movement) => movement.exerciseId !== session.current?.movement.exerciseId && movement.done < movement.sets.length,
           );
@@ -100,7 +100,7 @@ export function DevLaunchRunner() {
       timers.push(
         setTimeout(() => {
           const app = useAppStore.getState();
-          const session = buildSessionModel(app.currentWorkout, app.activeSplit, null);
+          const session = buildSessionModel(app.currentWorkout, { split: app.activeSplit, plan: app.currentWorkoutDayPlan }, null);
           if (!session) return;
           const summary = summarize(session);
           void app.completeWorkout().then(() => {

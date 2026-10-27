@@ -134,8 +134,8 @@ the red P as the app's symbol and home-screen icon, upgraded rather than copied.
 From the [mark board](https://claude.ai/artifact/P393qgKxM7heBwoRKZRhf1) they
 chose direction C (P monogram) with a longer hold on the spelled-out word. With
 the owner's approval it is committed (45636a4) to draft PR #152, and a
-real-account Release build with it is installed on the owner's phone (launched,
-still running after the intro; the owner has not reported on it yet):
+real-account Release build with it is installed on the owner's phone, where the
+owner confirmed it works:
 - The red italic P (Fraunces Mark Medium Italic, subset to five glyphs, OFL in
   `native/assets/fonts`) is the app icon (light, dark, tinted), sits in Today's
   top-left header slot, and replaces the tally on sign-in and offline. Red now
@@ -158,10 +158,35 @@ run) from screen recordings checked frame by frame: light and dark, Today and
 sign-in landings, the hand-over to the resting P within half a point (softened
 by a 180 ms fade), tap-to-skip, Reduce Motion, the new home-screen icon. Checks:
 1,873 tests, lint with instruction checks, test type-check, web build, native
-type-check. Not verified: how it looks and feels on the phone (timing, haptic)
-until the owner opens it, the offline screen (needs a saved session without a
+type-check. Not verified: the offline screen (needs a saved session without a
 network), and the dark and tinted icons on a home screen (the simulator shows
 light icons).
+
+Milestone 3 started with the owner's pick, the in-workout essentials (not yet
+committed; ask first). A movement sheet (⋯ on the current card, a finished
+movement's row, or a long press on any row) corrects a logged set, adds or
+removes sets within the program's range, keeps a movement note (saved after a
+pause, on close and in the background) and swaps a movement for this workout or
+switches it back. Session order, swaps and set ranges come from the new shared
+`src/lib/sessionPlan.ts`, which the web Train page now also uses (same
+behaviour); later sets start from the set just logged, as on the web. Checked
+with UI-test taps in sample mode and against a throwaway local Supabase
+backend, where the database held each change in the web's format (corrected
+set, set count, `workouts.notes` JSON, the swap in `workout_day_plans` with
+`substitutes_for`) and a relaunch restored the note and the swap before
+switching back. Dark mode checked.
+
+The owner then asked for three changes, also built and not yet committed:
+- Sets can be added or removed whatever the program says (1 to 12; only
+  unfinished sets are removed). The web still keeps to the program's range.
+- Rest length editing is back: a rest sheet with 1, 2, 3 and 5 minutes or a
+  custom time, kept per movement through the shared `restPreferences` (synced
+  to `exercise_rest_preferences`, as on the web); a logged set now rests at its
+  movement's length instead of a fixed 2 minutes.
+- A timer button in Train's header (beside Finish) opens that sheet to start a
+  rest without logging a set, add 30 seconds or end it.
+UI-test taps in sample mode covered these (a chosen 3:00 survived a relaunch);
+the rest-length sync was not checked against a database.
 
 # Previous work snapshot — a single set stuck on every retry
 

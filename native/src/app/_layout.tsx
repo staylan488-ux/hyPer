@@ -66,6 +66,33 @@ export default function RootLayout() {
                 contentStyle: { backgroundColor: p.label },
               }}
             />
+            <Stack.Screen
+              name="movement"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [0.72, 1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="rest"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="swap"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.label },
+              }}
+            />
           </Stack.Protected>
           <Stack.Protected guard={screen === 'sign-in'}>
             <Stack.Screen name="sign-in" options={{ contentStyle: { backgroundColor: p.ground } }} />
