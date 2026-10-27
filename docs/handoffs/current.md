@@ -380,6 +380,56 @@ builds, the test simulator), leaving about 18 GB. Builds and simulators from
 the native work had used roughly 55 GB; keep one simulator and delete scratch
 build folders when a session ends.
 
+Milestone 5, History and Progress, followed with the owner's go-ahead
+(2026-10-27), in this session's own worktree
+(`.claude/worktrees/objective-banach-56ee89`, pushed to `feat/native-blanc`):
+- Shared rules first: `src/lib/historyMonth.ts` (month load with day names,
+  Sunday-first grid, movement order with superset partners and plan notes,
+  neighbour moves, the past-set update rule, day summary),
+  `buildActivityInput` and `guardActivityEdit` in `activitySessions`,
+  `src/lib/volumeCoaching.ts` (coaching call and order),
+  `src/lib/trainingHours.ts` and `averageLoggedDays`. The web History,
+  Coaching and WeeklyNutrition use them unchanged in behaviour; covered by
+  `tests/historyMonth.test.ts` and `tests/progressShared.test.ts`.
+- History (Train header, clock button, before a session): a month calendar
+  in a native paging scroll view (swipe or arrows; a turned page selects its
+  first day or today), Today and WHOOP Sync header buttons, and the day's
+  workouts and activities. Workouts: tap to open, swipe to delete (asks
+  first), hold for Open/Delete. Activities: tap to edit, swipe for Merge and
+  Delete, hold for Edit, Merge with… and Delete; WHOOP-known activities are
+  hidden rather than deleted, as on the web. Add activity sheet
+  (`native/src/app/activity.tsx`).
+- A past workout (`native/src/app/(tabs)/train/past.tsx`): every movement's
+  sets (tap to correct in `past-set`, swipe to delete, hold for a menu), Add
+  set, a ⋯ menu per movement (Add set, note via iOS's text prompt, Move up or
+  down, Superset with… or Unlink, Remove movement), Add movement (the shared
+  picker now also serves past workouts), WHOOP stats attach and remove, and
+  Delete workout (header menu or the red row; asks first, then returns).
+  Every edit runs the web's protocol (`runWorkoutEdit`: edit, reload,
+  completion only after a clean save), one at a time per workout
+  (`native/src/lib/history.ts`). Deliberate difference from the web: after a
+  past-workout edit or delete, this week's volume is recalculated.
+- Progress (Today's "This week" → Progress): the flat front and back muscle
+  figure from the web's maquette shapes (react-native-svg, new native
+  dependency), tap a muscle to open its row; muscles by coaching priority
+  with a landmark rail and, opened, the landmarks in plain words and the
+  recommendation; training time over eight weeks; calories and protein over
+  the last seven days against target.
+Checked in the iPhone 17 Pro simulator (sample data) with a scripted UI test
+using real touches: calendar paging both ways and the arrows, opening a
+workout, correcting a set (the figure selects on tap), swipe-delete with
+renumbering, Add set, Move down, Add movement from the picker, a note, Delete
+workout with its confirm, adding an activity, the long-press menus, the
+header menu, Progress, and dark mode for Progress and a past workout. Found
+and fixed: the set sheet's auto-focused weight appended typed digits instead
+of replacing them; a sideways swipe on the calendar triggered iOS 26's
+swipe-back (now a paging scroll view, which iOS lets win); the old day stayed
+selected after a month turn. Checks: 1,945 tests, lint with instruction
+checks and test type-check, web build, native type-check. Not verified:
+writes against a real database (only the sample backend ran), WHOOP sync and
+attach with a real connection, and anything on a phone until the build
+below. Building needs `expo prebuild --clean` for react-native-svg.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

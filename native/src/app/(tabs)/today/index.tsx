@@ -93,7 +93,7 @@ export default function TodayScreen() {
             )}
           </Section>
 
-          <Section title="This week">
+          <Section title="This week" action={{ title: 'Progress', onPress: () => router.push('/today/progress') }}>
             <Label>
               <Row
                 title="Sessions"
@@ -111,6 +111,8 @@ export default function TodayScreen() {
                   <Row
                     title={`${week.inRange} of ${week.trained} muscles in range`}
                     detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                    chevron
+                    onPress={() => router.push('/today/progress')}
                   />
                 </>
               ) : null}

@@ -609,6 +609,15 @@ function useStartHeader(title: string) {
         title,
         unstable_headerRightItems: () => [
           {
+            type: 'button',
+            label: 'History',
+            icon: { type: 'sfSymbol', name: 'clock.arrow.circlepath' },
+            onPress: () => {
+              haptics.tap();
+              router.push('/train/history');
+            },
+          },
+          {
             type: 'menu',
             label: 'Training options',
             icon: { type: 'sfSymbol', name: 'ellipsis' },

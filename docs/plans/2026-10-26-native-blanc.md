@@ -143,7 +143,13 @@ have repeated that pattern.
    the hosted Gemini mode and Describe amount (production uses the worker),
    drag moves (menus instead).
 5. **History and Progress.** Calendar, day ledger, editing past workouts and
-   nutrition, activities and WHOOP merge, charts, volume map and trends. The
+   nutrition, activities and WHOOP merge, charts, volume map and trends.
+   Built 2026-10-27: History from Train's header (paging month calendar, day
+   ledger, a past workout to correct, extend, reorder, annotate or delete,
+   activities with merge and WHOOP stats) and Progress from Today (muscle
+   figure, muscles by coaching priority, training time, last week's eating).
+   Past nutrition is edited in Fuel, as on the web. The rules moved to
+   `src/lib/historyMonth.ts`, `volumeCoaching.ts` and `trainingHours.ts`. The
    owner wants to view, edit and delete past workouts here, including a
    set-less test workout now in their account (noted 2026-10-27).
 6. **Program.** Programs list, split editor (drag reorder, multi-add picker), schedule.

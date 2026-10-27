@@ -147,6 +147,15 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   uses Blanc's tokens and the P's font (bundled into the extension). Prebuild
   with `--clean` after adding or removing extension files. Milestone 8's run
   card and home-screen widgets join the same extension.
+- History lives in Train's stack (`train/history`, `train/past`) and Progress
+  in Today's (`today/progress`). Past-workout edits go through
+  `editPastWorkout` in [lib/history.ts](../../../native/src/lib/history.ts),
+  which runs the web's edit protocol one edit at a time per workout. Delete a
+  workout only after `confirmDeleteWorkout` asks. The muscle figure draws the
+  shared maquette shapes with react-native-svg.
+- A sideways swipe on a pushed screen is iOS 26's swipe-back. Horizontal
+  paging there (History's calendar) uses a paging ScrollView, which iOS lets
+  win, never a gesture-handler fling.
 - Motion is native transitions plus Reanimated springs for press feedback and
   the tally. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is

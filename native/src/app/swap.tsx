@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, TextInput, View } from
 
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
+import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -12,6 +13,7 @@ import { Chip } from '~/components/Chip';
 import { GlassButton } from '~/components/GlassButton';
 import { Hairline } from '~/components/Row';
 import { haptics } from '~/lib/haptics';
+import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { addMovement, addSupersetPartner, errorMessage, swapMovement } from '~/lib/movement';
 import { useSessionModel } from '~/lib/session';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
@@ -32,15 +34,21 @@ const COPY: Record<PickMode, { title: string; verb: string; failed: string; fall
  * Picks an exercise to swap a movement for this workout only, to add to a
  * flexible session, or to pair with a movement as a superset. Leaves out
  * exercises already in the workout, as on the web; a swap opens on the
- * movement's muscle.
+ * movement's muscle. With a past workout (`workout`), it adds a movement or
+ * a superset to that workout instead, as History does.
  */
 export default function PickExerciseSheet() {
   const c = useBlanc();
-  const params = useLocalSearchParams<{ id?: string; mode?: string }>();
-  const mode: PickMode = params.mode === 'add' || params.mode === 'superset' ? params.mode : 'swap';
+  const params = useLocalSearchParams<{ id?: string; mode?: string; workout?: string }>();
+  const pastId = params.workout ?? null;
+  const mode: PickMode = params.mode === 'add' || params.mode === 'superset' ? params.mode : pastId ? 'add' : 'swap';
   const copy = COPY[mode];
-  const session = useSessionModel();
+  const live = useSessionModel();
+  const session = pastId ? null : live;
+  const past = useHistoryStore((state) => (pastId ? state.workouts.find((entry) => entry.id === pastId) ?? null : null));
+  const pastBase = past?.sets.find((set) => set.exercise_id === params.id);
   const movement = session?.movements.find((entry) => entry.exerciseId === params.id) ?? null;
+  const baseName = movement?.name ?? (pastBase?.exercise as { name?: string } | undefined)?.name ?? null;
   const sourceMuscle = mode === 'swap' ? movement?.sets[0]?.exercise?.muscle_group : undefined;
 
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
@@ -67,7 +75,10 @@ export default function PickExerciseSheet() {
     };
   }, [attempt]);
 
-  const inWorkout = useMemo(() => new Set(session?.movements.map((entry) => entry.exerciseId)), [session?.movements]);
+  const inWorkout = useMemo(
+    () => new Set(past ? past.sets.map((set) => set.exercise_id) : session?.movements.map((entry) => entry.exerciseId)),
+    [past, session?.movements],
+  );
   const searching = search.trim().length > 0;
   const { gym, skills } = useMemo(() => {
     const allowed = (library ?? []).filter(
@@ -84,7 +95,30 @@ export default function PickExerciseSheet() {
   // Everyday gym movements first; bodyweight skills on request, or whenever a search finds them.
   const skillsOpen = showSkills || searching || gym.length === 0;
 
+  const choosePast = async (exercise: Exercise) => {
+    if (!past || swapping || (mode === 'superset' && !params.id)) return;
+    setSwapping(exercise.id);
+    const store = useAppStore.getState();
+    const saved = await editPastWorkout(past.id, async () => {
+      if (mode === 'superset' && params.id) {
+        await store.addSupersetToWorkout(past.id, params.id, exercise);
+      } else {
+        const created = await store.addExerciseToWorkout(past.id, exercise);
+        if (!created) throw new Error('Could not add that exercise.');
+      }
+    });
+    if (saved) {
+      haptics.success();
+      router.back();
+    } else {
+      haptics.error();
+      setSwapping(null);
+      Alert.alert(copy.failed, copy.fallback);
+    }
+  };
+
   const choose = async (exercise: Exercise) => {
+    if (pastId) return choosePast(exercise);
     if (!session || swapping || (mode !== 'add' && !movement)) return;
     setSwapping(exercise.id);
     try {
@@ -161,9 +195,9 @@ export default function PickExerciseSheet() {
             <BlancText variant="headline" accessibilityRole="header">
               {copy.title}
             </BlancText>
-            {movement && mode !== 'add' ? (
+            {baseName && mode !== 'add' ? (
               <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
-                {mode === 'swap' ? `Replacing ${movement.name}` : `With ${movement.name}`}
+                {mode === 'swap' ? `Replacing ${baseName}` : `With ${baseName}`}
               </BlancText>
             ) : null}
           </View>

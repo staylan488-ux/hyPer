@@ -112,6 +112,24 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="past-set"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="activity"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
               name="swap"
               options={{
                 presentation: 'formSheet',

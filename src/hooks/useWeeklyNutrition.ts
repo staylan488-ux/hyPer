@@ -94,3 +94,9 @@ async function fetchWeeklyNutrition() {
     return null;
   }
 }
+
+/** The daily average over days with something logged; empty days do not count. */
+export function averageLoggedDays(days: DailyNutrition[], key: 'calories' | 'protein'): number {
+  const logged = days.filter((day) => day[key] > 0);
+  return logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
+}

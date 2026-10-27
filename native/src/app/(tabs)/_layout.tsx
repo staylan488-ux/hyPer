@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { WorkoutAccessory } from '~/components/WorkoutAccessory';
 import { useAccountData } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
+import { resetHistory } from '~/lib/history';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
 import { useFocusStore, useSessionModel } from '~/lib/session';
@@ -24,6 +25,7 @@ export default function TabsLayout() {
     () => () => {
       useFocusStore.getState().focus(null);
       useNotesStore.setState({ workoutId: null, drafts: {}, base: null, status: {} });
+      resetHistory();
     },
     [],
   );

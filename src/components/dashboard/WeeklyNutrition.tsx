@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { MetalSection } from '@/components/metal';
 import { BarChart } from '@/components/shared/charts';
-import { useWeeklyNutrition } from '@/hooks/useWeeklyNutrition';
+import { averageLoggedDays, useWeeklyNutrition } from '@/hooks/useWeeklyNutrition';
 import { useAppStore } from '@/stores/appStore';
 import { DEFAULT_MACRO_TARGET } from '@/types';
 
@@ -32,8 +32,7 @@ export function WeeklyNutrition() {
             { key: 'calories', label: 'Calories', unit: 'kcal', target: macroTarget.calories },
             { key: 'protein', label: 'Protein', unit: 'g', target: macroTarget.protein },
           ] as const).map(({ key, label, unit, target }, index) => {
-            const logged = weeklyNutrition.filter((day) => day[key] > 0);
-            const average = logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
+            const average = averageLoggedDays(weeklyNutrition, key);
             return (
               <div key={key} className={index > 0 ? 'mt-7' : 'mt-4'}>
                 <p className="flex items-baseline justify-between gap-3">
