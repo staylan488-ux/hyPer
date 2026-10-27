@@ -196,7 +196,13 @@ Still to build for milestone 3: start or schedule a session, flexible mode,
 supersets, reorder, and add or remove movements.
 
 The owner then asked for rest on a locked phone: the "Rest over" alert, pause,
-and the lock-screen countdown. Built and not yet committed (ask first):
+and the lock-screen countdown. With the owner's approval it is committed
+(2735031) to draft PR #152, and a real-account Release build with it is
+installed on the owner's phone (production host in the bundle, no local test
+hosts or test-account values; the widget signs as `app.hyper.native.widgets`
+under the team's wildcard profile, and the app has no push entitlement). The
+launch after install was refused because the phone was locked, so the build
+has not been opened yet. What it does:
 - The rest is now the web's stored rest session (`src/lib/restTimer.ts`, plus
   a new `extendRestTimerSession` for +30 s): it runs, pauses and resumes, and
   survives leaving Train and a force quit. The rest sheet has +30 s, Pause or
