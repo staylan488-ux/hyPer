@@ -162,8 +162,8 @@ type-check. Not verified: the offline screen (needs a saved session without a
 network), and the dark and tinted icons on a home screen (the simulator shows
 light icons).
 
-Milestone 3 started with the owner's pick, the in-workout essentials (not yet
-committed; ask first). A movement sheet (⋯ on the current card, a finished
+Milestone 3 started with the owner's pick, the in-workout essentials. A
+movement sheet (⋯ on the current card, a finished
 movement's row, or a long press on any row) corrects a logged set, adds or
 removes sets within the program's range, keeps a movement note (saved after a
 pause, on close and in the background) and swaps a movement for this workout or
@@ -176,7 +176,7 @@ set, set count, `workouts.notes` JSON, the swap in `workout_day_plans` with
 `substitutes_for`) and a relaunch restored the note and the swap before
 switching back. Dark mode checked.
 
-The owner then asked for three changes, also built and not yet committed:
+The owner then asked for three changes:
 - Sets can be added or removed whatever the program says (1 to 12; only
   unfinished sets are removed). The web still keeps to the program's range.
 - Rest length editing is back: a rest sheet with 1, 2, 3 and 5 minutes or a
@@ -187,6 +187,14 @@ The owner then asked for three changes, also built and not yet committed:
   rest without logging a set, add 30 seconds or end it.
 UI-test taps in sample mode covered these (a chosen 3:00 survived a relaunch);
 the rest-length sync was not checked against a database.
+
+With the owner's approval, the Train work is committed (3c952f7) to draft PR
+#152, and a real-account Release build with it is installed on the owner's
+phone (production host in the bundle, no local test hosts or test-account
+values; launched and still running after the intro). Not yet tried there.
+Still to build for milestone 3: start or schedule a session, flexible mode,
+supersets, reorder, add or remove movements, rest pause and the rest Live
+Activity.
 
 # Previous work snapshot — a single set stuck on every retry
 
