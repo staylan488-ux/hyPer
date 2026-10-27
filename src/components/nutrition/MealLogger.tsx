@@ -6,7 +6,7 @@ import { Chevron } from '@/components/metal';
 import { useAuthStore } from '@/stores/authStore';
 import { FoodLogger, type FoodLoggerProps, type FoodCaptureMethod } from './FoodLogger';
 import { toLocalTimeInput } from './foodLoggerUtils';
-import { clearMealDraft, decodeMealComposition, getMealTotals, loadMealDraft, saveMealDraft, scaleMealIngredients, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
+import { clearMealDraft, decodeMealComposition, expandMealIngredients, getMealTotals, loadMealDraft, saveMealDraft, scaleMealIngredients, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { saveComposedMeal } from '@/lib/saveMealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
@@ -105,10 +105,7 @@ function MealLoggerSession({ userId, initialSavedMeal, onBusyChange, onCancel, o
   };
   const addIngredients = (ingredients: MealIngredient[]) => {
     if (!draft) return;
-    const nextIngredients = ingredients.flatMap((item) => {
-      const composition = decodeMealComposition(item.food.description);
-      return composition ? scaleMealIngredients(composition.ingredients, item.servings).map((part) => ({ ...part, id: crypto.randomUUID() })) : [item];
-    });
+    const nextIngredients = expandMealIngredients(ingredients);
     try {
       getMealTotals([...draft.ingredients, ...nextIngredients]);
       update({ ingredients: [...draft.ingredients, ...nextIngredients] });

@@ -3,21 +3,24 @@ import { Barcode, Flashlight, Keyboard, Loader2, ScanLine } from 'lucide-react';
 import { BarcodeDetector, prepareZXingModule } from 'barcode-detector/ponyfill';
 import zxingReaderWasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { Button, Input } from '@/components/shared';
-import { normalizeBarcode, normalizeFoodBarcode } from '@/lib/barcodes';
+import {
+  BARCODE_AVAILABILITY_TIMEOUT_MS,
+  BARCODE_LOOKUP_TIMEOUT_MS,
+  BARCODE_MESSAGES,
+  BARCODE_SCAN_TIMEOUT_MS,
+  normalizeBarcode,
+  normalizeFoodBarcode,
+} from '@/lib/barcodes';
 import { tapHaptic } from '@/lib/haptics';
 import { NativeBarcode, isNativeIOS } from '@/lib/nativeBridge';
 import { withTimeout } from '@/lib/withTimeout';
 import './fuel.css';
 
 const SCAN_INTERVAL_MS = 180;
-// hard ceilings so no await can strand the UI in a disabled busy state: the
-// catalog lookup (saved first, then FatSecret, USDA and OFF queried
-// concurrently with that priority preserved) has no per-leg client timeouts,
-// and a native plugin call whose bridge callback is lost would
-// otherwise leave 'starting' stuck forever with the button unusable
-const LOOKUP_TIMEOUT_MS = 45_000;
-const NATIVE_AVAILABILITY_TIMEOUT_MS = 10_000;
-const NATIVE_SCAN_TIMEOUT_MS = 300_000;
+// hard ceilings so no await can strand the UI in a disabled busy state (see barcodeLookup)
+const LOOKUP_TIMEOUT_MS = BARCODE_LOOKUP_TIMEOUT_MS;
+const NATIVE_AVAILABILITY_TIMEOUT_MS = BARCODE_AVAILABILITY_TIMEOUT_MS;
+const NATIVE_SCAN_TIMEOUT_MS = BARCODE_SCAN_TIMEOUT_MS;
 const FOOD_BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'] as const;
 
 prepareZXingModule({
@@ -88,7 +91,7 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
     const barcode = normalizeFoodBarcode(rawValue, format);
     if (!barcode) {
       setState('error');
-      setMessage('That barcode is incomplete or failed its checksum. Try again or enter the digits below.');
+      setMessage(BARCODE_MESSAGES.invalid);
       return;
     }
 
@@ -101,20 +104,20 @@ export function BarcodeScanner({ onDetected }: BarcodeScannerProps) {
       const found = await withTimeout(
         onDetected(barcode),
         LOOKUP_TIMEOUT_MS,
-        'The lookup took too long. Check your connection and scan again.',
+        BARCODE_MESSAGES.timeout,
       );
       if (found) {
         // without a terminal state here the UI stayed on the 'looking-up'
         // spinner forever after a successful scan
         setState('idle');
-        setMessage('Product found — review the details below.');
+        setMessage(BARCODE_MESSAGES.found);
       } else {
         setState('error');
-        setMessage('Barcode read, but USDA and Open Food Facts had no product record. Use Describe with AI or add it manually.');
+        setMessage(BARCODE_MESSAGES.miss);
       }
     } catch (error) {
       setState('error');
-      setMessage(error instanceof Error ? error.message : 'Food lookup failed. Try again.');
+      setMessage(error instanceof Error ? error.message : BARCODE_MESSAGES.failed);
     }
   }, [onDetected, stopCamera]);
 

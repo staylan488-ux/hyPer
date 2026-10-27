@@ -12,12 +12,14 @@ type SectionProps = {
   action?: { title: string; onPress: () => void };
   /** Extra text after the title, in graphite. */
   note?: string;
+  /** A control on the right instead of a text action, such as a menu button. */
+  accessory?: ReactNode;
   children: ReactNode;
   style?: ViewStyle;
 };
 
 /** A titled block of a screen. Sections are separated by space, never boxes. */
-export function Section({ title, action, note, children, style }: SectionProps) {
+export function Section({ title, action, note, accessory, children, style }: SectionProps) {
   return (
     <View style={[{ marginTop: space.section }, style]}>
       <View
@@ -50,7 +52,9 @@ export function Section({ title, action, note, children, style }: SectionProps) 
               {action.title}
             </BlancText>
           </Pressable>
-        ) : null}
+        ) : (
+          accessory ?? null
+        )}
       </View>
       <View style={{ marginTop: 6 }}>{children}</View>
     </View>

@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
-import { loadSavedFoods, suggestedGroup, useFuelStore } from '~/lib/fuel';
 import { startRest } from '~/lib/rest';
 import { useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
@@ -78,21 +77,6 @@ export function DevLaunchRunner() {
             console.log('[switch] trace end');
           }, 2500);
         }, 2500),
-      );
-    }
-
-    if (action === 'addFood') {
-      timers.push(
-        setTimeout(() => {
-          void loadSavedFoods().then((foods) => {
-            const fuel = useFuelStore.getState();
-            if (!foods[0]) return;
-            return fuel.logFood(foods[0] as never, {
-              groupId: suggestedGroup(fuel.groups)?.id ?? null,
-              entryId: crypto.randomUUID(),
-            });
-          });
-        }, 1200),
       );
     }
 

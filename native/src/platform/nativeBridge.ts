@@ -5,6 +5,8 @@
 // until each feature is rebuilt as a native module here. The plugin shapes
 // below match the web bridge so shared code type-checks unchanged.
 
+import { HyperBarcode } from '../../modules/hyper-barcode';
+
 // This app's own URL scheme (app.json "scheme") while it installs beside the
 // Capacitor app; at cutover it takes over app.hyper.mobile. The shared OAuth
 // callback parser checks returns against NATIVE_AUTH_REDIRECT_URL.
@@ -117,4 +119,5 @@ function unavailable<T extends object>(name: string): T {
 export const NativeAuth = unavailable<NativeAuthPlugin>('HyperAuth');
 export const NativeRun = unavailable<NativeRunPlugin>('HyperRun');
 export const NativeHealth = unavailable<NativeHealthPlugin>('HyperHealth');
-export const NativeBarcode = unavailable<NativeBarcodePlugin>('HyperBarcode');
+// VisionKit's data scanner through native/modules/hyper-barcode.
+export const NativeBarcode: NativeBarcodePlugin = HyperBarcode;

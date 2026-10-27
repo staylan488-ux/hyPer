@@ -135,6 +135,13 @@ have repeated that pattern.
 4. **Fuel complete.** Barcode (VisionKit), photo and describe analysis, manual entry,
    build a meal, edit/delete with swipe actions and menus, time picker, saved
    meals, month view.
+   Built 2026-10-27: the web logger's food rules now live in `src/lib` and both
+   apps call them; the Fuel tab (week strip, month sheet, meals with swipe and
+   hold menus, meal ⋯ menu), the Log food sheet (Saved, Search, Scan through
+   the `hyper-barcode` VisionKit module, Manual with Describe with AI, Photo,
+   review with iOS date and time pickers, Build a meal). Left out on purpose:
+   the hosted Gemini mode and Describe amount (production uses the worker),
+   drag moves (menus instead).
 5. **History and Progress.** Calendar, day ledger, editing past workouts and
    nutrition, activities and WHOOP merge, charts, volume map and trends. The
    owner wants to view, edit and delete past workouts here, including a
@@ -156,8 +163,8 @@ every screen, flow and rule the native app must keep.
 
 - **Data integrity.** Set and food saves reuse the shared code, so its retry and
   recovery rules carry over; logic still living inside web components must move to
-  `src/lib` before reuse rather than being copied (first case: USDA food creation,
-  ported in `native/src/lib/fuel.ts` with a TODO).
+  `src/lib` before reuse rather than being copied (USDA food creation and the
+  rest of the food logger's rules moved there in milestone 4).
 - **Auth.** No backend or schema change is planned; the native sign-in must keep
   session restore and offline behaviour identical.
 - **Native ports.** Run tracking, Health, barcode and Live Activities are Swift

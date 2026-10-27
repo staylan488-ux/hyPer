@@ -10,17 +10,19 @@ import { NutritionGroupLedger } from '@/components/nutrition/NutritionGroupLedge
 import '@/components/nutrition/fuel.css';
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
+import { missingDefaultNamedMeals, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
+import { buildCalendarDays, getDateKey } from '@/lib/nutritionCalendar';
 import {
-  changedGroupOrders,
-  insertNutritionGroupByTime,
-  legacyMealTypeForGroup,
-  missingDefaultNamedMeals,
-  moveNutritionGroup,
-  normalizeNutritionGroupOrder,
-  nutritionGroupLabel,
-  sortNutritionGroups,
-} from '@/lib/nutritionGroups';
-import { isLateNightEntry, planEntryDayMove } from '@/lib/entryDay';
+  createNutritionGroup,
+  deleteNutritionEntry,
+  deleteNutritionGroup,
+  ensureDefaultGroups,
+  mergeGroups,
+  moveEntryToGroup,
+  moveEntryToPreviousDay,
+  offersMoveToPreviousDay,
+  reorderNutritionGroup,
+} from '@/lib/nutritionDay';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { sumMacros } from '@/lib/nutritionMacros';
 import { createLatestRequestGate, nextMonthGroups, nutritionMonthKey, shouldEnsureDefaultGroups } from '@/lib/nutritionMonthLoad';
@@ -29,7 +31,6 @@ import {
   addDays,
   addMonths,
   endOfMonth,
-  endOfWeek,
   format,
   isSameDay,
   isSameMonth,
@@ -64,25 +65,6 @@ interface NutritionLogEntry {
     serving_size?: number;
     serving_unit?: string;
   } | null;
-}
-
-function getDateKey(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
-}
-
-function buildCalendarDays(baseDate: Date): Date[] {
-  const monthStart = startOfMonth(baseDate);
-  const monthEnd = endOfMonth(baseDate);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
-
-  const days: Date[] = [];
-  let day = startDate;
-  while (day <= endDate) {
-    days.push(day);
-    day = addDays(day, 1);
-  }
-  return days;
 }
 
 export function Nutrition() {
@@ -196,21 +178,14 @@ export function Nutrition() {
 
   const handleDeleteEntry = async (logId: string) => {
     setDeletedId(logId);
-    try {
-      const { error } = await supabase.from('nutrition_logs').delete().eq('id', logId);
-      if (error) {
-        console.error('Error deleting entry:', error);
-        setDeletedId(null);
-      } else {
-        setTimeout(() => {
-          setMonthLogs((prev) => prev.filter((log) => log.id !== logId));
-          setDeletedId(null);
-        }, 300);
-      }
-    } catch (error) {
-      console.error('Error deleting entry:', error);
+    if (!await deleteNutritionEntry(logId)) {
       setDeletedId(null);
+      return;
     }
+    setTimeout(() => {
+      setMonthLogs((prev) => prev.filter((log) => log.id !== logId));
+      setDeletedId(null);
+    }, 300);
   };
 
   const pickDate = (day: Date) => {
@@ -237,22 +212,6 @@ export function Nutrition() {
     [monthGroups, selectedDateKey],
   );
 
-  const persistGroupOrder = useCallback(async (groups: NutritionGroup[]): Promise<boolean> => {
-    const results = await Promise.all(groups.map((group) => (
-      supabase
-        .from('nutrition_groups')
-        .update({ sort_order: group.sort_order })
-        .eq('id', group.id)
-        .eq('user_id', group.user_id)
-    )));
-    const failed = results.find((result) => result.error);
-    if (failed?.error) {
-      console.error('Error ordering nutrition groups:', failed.error);
-      return false;
-    }
-    return true;
-  }, []);
-
   useEffect(() => {
     if (!shouldEnsureDefaultGroups({
       loading,
@@ -267,55 +226,31 @@ export function Nutrition() {
     defaultGroupsInFlight.current.add(selectedDateKey);
     let cancelled = false;
 
-    const ensureDefaultGroups = async () => {
+    const createDefaults = async () => {
       try {
         const userId = await getSessionUserId();
         if (!userId) return;
 
-        const { data, error } = await supabase.from('nutrition_groups').insert(
-          missingLabels.map((label, index) => ({
-            user_id: userId,
-            date: selectedDateKey,
-            kind: 'meal' as const,
-            label,
-            sort_order: selectedDayGroups.length + index,
-          })),
-        ).select('*');
-
-        if (error || !data) {
-          console.error('Error creating default nutrition groups:', error);
-          defaultGroupsFailed.current.add(selectedDateKey);
-          if (cancelled) return;
-          await fetchMonthLogs(selectedMonthRef.current);
-          return;
-        }
-
-        const inserted = data as NutritionGroup[];
-        const normalized = normalizeNutritionGroupOrder([...selectedDayGroups, ...inserted]);
-        if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, ...inserted], normalized))) {
+        const result = await ensureDefaultGroups(userId, selectedDateKey, selectedDayGroups);
+        if (!result) return;
+        if (!result.ok) {
+          if (!result.inserted) defaultGroupsFailed.current.add(selectedDateKey);
           if (cancelled) return;
           await fetchMonthLogs(selectedMonthRef.current);
           return;
         }
         if (cancelled) return;
-
-        const normalizedById = new Map(normalized.map((group) => [group.id, group]));
-        setMonthGroups((current) => [
-          ...current.map((group) => normalizedById.get(group.id) || group),
-          ...inserted
-            .filter((group) => !current.some((candidate) => candidate.id === group.id))
-            .map((group) => normalizedById.get(group.id) || group),
-        ]);
+        setMonthGroups((current) => mergeGroups(current, result.groups));
       } finally {
         defaultGroupsInFlight.current.delete(selectedDateKey);
       }
     };
 
-    void ensureDefaultGroups();
+    void createDefaults();
     return () => {
       cancelled = true;
     };
-  }, [fetchMonthLogs, loadedMonthKey, loading, persistGroupOrder, selectedDateKey, selectedDayGroups, selectedMonth]);
+  }, [fetchMonthLogs, loadedMonthKey, loading, selectedDateKey, selectedDayGroups, selectedMonth]);
 
   const dayTotals = useMemo(() => sumMacros(selectedDayLogs), [selectedDayLogs]);
 
@@ -330,96 +265,46 @@ export function Nutrition() {
   const createGroup = async (kind: 'meal' | 'snack') => {
     const userId = await getSessionUserId();
     if (!userId) return;
-    const { data, error } = await supabase.from('nutrition_groups').insert({
-      user_id: userId,
-      date: selectedDateKey,
-      kind,
-      label: null,
-      sort_order: selectedDayGroups.length,
-    }).select('*').single();
-
-    if (error || !data) {
-      console.error('Error creating nutrition group:', error);
+    const result = await createNutritionGroup(userId, selectedDateKey, kind, selectedDayGroups);
+    if (!result.ok) {
+      if (result.inserted) await fetchMonthLogs(selectedMonthRef.current);
       return;
     }
-
-    const normalized = insertNutritionGroupByTime(selectedDayGroups, data as NutritionGroup);
-    if (!await persistGroupOrder(changedGroupOrders([...selectedDayGroups, data as NutritionGroup], normalized))) {
-      await fetchMonthLogs(selectedMonthRef.current);
-      return;
-    }
-
-    const normalizedById = new Map(normalized.map((group) => [group.id, group]));
-    setMonthGroups((current) => [
-      ...current.map((group) => normalizedById.get(group.id) || group),
-      ...(current.some((group) => group.id === data.id) ? [] : [normalizedById.get(data.id) || data as NutritionGroup]),
-    ]);
+    setMonthGroups((current) => mergeGroups(current, result.groups));
     setShowGroupSheet(false);
   };
 
   // Food eaten after midnight on a night that has not ended yet belongs to the
   // day before. Offered only on late-night entries, so it cannot be mis-tapped
   // on an ordinary lunch.
-  const moveEntryToPreviousDay = async (logId: string) => {
+  const moveLogToPreviousDay = async (logId: string) => {
     const log = selectedDayLogs.find((candidate) => candidate.id === logId);
     if (!log) return;
-    const patch = planEntryDayMove({ date: log.date, logged_at: log.logged_at }, -1);
-    if (!patch) return;
-
-    const { error } = await supabase.from('nutrition_logs').update(patch).eq('id', logId);
-    if (error) {
-      console.error('Error moving nutrition entry to the previous day:', error);
-      return;
-    }
+    if (!await moveEntryToPreviousDay(log)) return;
     await fetchMonthLogs(selectedMonthRef.current);
   };
 
   const moveEntry = async (logId: string, groupId: string | null) => {
-    const group = groupId ? selectedDayGroups.find((candidate) => candidate.id === groupId) || null : null;
-    const nextSortOrder = selectedDayLogs.filter((log) => (log.group_id || null) === groupId).length;
-    const patch = {
-      group_id: groupId,
-      sort_order: nextSortOrder,
-      meal_type: legacyMealTypeForGroup(group),
-    };
-    const { error } = await supabase.from('nutrition_logs').update(patch).eq('id', logId);
-    if (error) {
-      console.error('Error moving nutrition entry:', error);
-      return;
-    }
+    const patch = await moveEntryToGroup(logId, groupId, selectedDayGroups, selectedDayLogs);
+    if (!patch) return;
     setMonthLogs((current) => current.map((log) => log.id === logId ? { ...log, ...patch } : log));
   };
 
   const reorderGroup = async (groupId: string, direction: -1 | 1) => {
-    const reordered = moveNutritionGroup(selectedDayGroups, groupId, direction);
-    if (!reordered) return;
-
-    if (!await persistGroupOrder(changedGroupOrders(selectedDayGroups, reordered))) {
+    const result = await reorderNutritionGroup(selectedDayGroups, groupId, direction);
+    if (!result) return;
+    if (!result.ok) {
       await fetchMonthLogs(selectedMonthRef.current);
       return;
     }
-
-    const reorderedById = new Map(reordered.map((group) => [group.id, group]));
-    setMonthGroups((current) => current.map((group) => reorderedById.get(group.id) || group));
+    setMonthGroups((current) => mergeGroups(current, result.groups));
   };
 
   const deleteGroup = async (group: NutritionGroup) => {
     if (group.label) return;
     const name = nutritionGroupLabel(group, selectedDayGroups);
     if (!confirm(`Delete ${name}? Its foods will move to Unassigned.`)) return;
-    const { error: moveError } = await supabase.from('nutrition_logs')
-      .update({ group_id: null, meal_type: null })
-      .eq('user_id', group.user_id)
-      .eq('group_id', group.id);
-    if (moveError) {
-      console.error('Error unassigning group entries:', moveError);
-      return;
-    }
-    const { error } = await supabase.from('nutrition_groups').delete().eq('id', group.id).eq('user_id', group.user_id);
-    if (error) {
-      console.error('Error deleting nutrition group:', error);
-      return;
-    }
+    if (!await deleteNutritionGroup(group)) return;
     setMonthGroups((current) => current.filter((candidate) => candidate.id !== group.id));
     setMonthLogs((current) => current.map((log) => log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log));
   };
@@ -648,8 +533,8 @@ export function Nutrition() {
             onDelete={(id) => void handleDeleteEntry(id)}
             onMove={(id, groupId) => void moveEntry(id, groupId)}
             onMoveToPreviousDay={
-              selectedDayLogs.some((log) => isLateNightEntry({ date: log.date, logged_at: log.logged_at }, new Date()))
-                ? (id) => void moveEntryToPreviousDay(id)
+              offersMoveToPreviousDay(selectedDayLogs)
+                ? (id) => void moveLogToPreviousDay(id)
                 : undefined
             }
             onReorderGroup={(groupId, direction) => void reorderGroup(groupId, direction)}

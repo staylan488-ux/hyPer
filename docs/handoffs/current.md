@@ -303,6 +303,60 @@ watchman, so Metro can miss edits made by scripts: restart it with
 A real-account Release build with this fix is installed on the owner's phone
 and opened there.
 
+Milestone 4, Fuel, followed with the owner's go-ahead (2026-10-27). Built on
+`feat/native-blanc` in this session's own worktree (another session's hook
+blocks editing `.claude/worktrees/native-blanc` from here):
+- Shared rules first. The web logger's food-row choice moved out of
+  components into `src/lib`: `ensureFoodRow` (foodPersistence, the USDA
+  basis rule that native/src/lib/fuel.ts had copied; that TODO is closed),
+  `buildEntryPayload` and `chosenFoodLogSource` (saveNutritionEntry),
+  `lookupBarcode` (new barcodeLookup), `resolveManualFood` (new manualFood),
+  `loadSavedMeals`, `replaceSavedMeal`, suggestions and matching (savedMeals),
+  photo grounding, totals and the combined or per-item save (new photoReview),
+  day changes for groups and entries (new nutritionDay), the calendar, ledger
+  labels, day summary and units (new nutritionCalendar, nutritionLedger,
+  fuelSummary, foodUnits). FoodLogger, MealLogger, BarcodeScanner,
+  NutritionGroupLedger and the Fuel page call them, with the same behaviour;
+  `tests/fuelShared.test.ts` covers them.
+- Fuel tab: Sunday-first week strip (swipe for another week; future days off),
+  eaten kcal of target with the web's left/over line on today, macros, meal
+  sections (Unassigned first; empty Breakfast/Lunch/Dinner hidden, a hand-made
+  meal or snack stays), a calendar sheet with dots (`fuel-month`), Add meal or
+  snack. Entries: tap to edit; swipe for More and Delete (no confirm, as on the
+  web); hold for Edit, Move to…, Move to yesterday (before 05:00 only) and
+  Delete. A meal's ⋯ logs food into it, moves it up or down, or deletes a
+  hand-made one. The Fuel store now loads a month (`useFuelStore.select`), and
+  Today reads `todayTotals`.
+- Log food sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`):
+  Saved (filter, review, one-tap +, Edit to change or delete, New), Search
+  (USDA as you type, Retry), Scan (VisionKit through the new local module
+  `native/modules/hyper-barcode`, a port of the Capacitor plugin; digits too;
+  a miss creates a saved product bound to the code), Manual (Describe with AI
+  through the photo worker, saved-meal suggestions, servings stepper, Save as
+  reusable or Update saved meal), Photo (top and 45° photos from camera or
+  library, re-encoded to the worker's JPEG budget, item review with USDA
+  sources, Log as one meal). A chosen food gets the review (amount and unit,
+  When, "This entry"). When = iOS date and time pickers plus Add to; another
+  day logs Unassigned. Build a meal keeps the web draft key and rules
+  (resume, destination check, retry save, discard). Closing mid-analysis or
+  with an unseen estimate asks first.
+- Camera permission (`expo-image-picker` config, the Capacitor app's wording);
+  `build-phone.sh` now also passes the web `.env` photo worker URL.
+Not ported, recorded: the hosted Gemini mode and its "Describe amount" helper
+(production runs the worker mode; the Gemini function's deploy is still a
+pending production step), drag to move entries or groups (menus instead), and
+the "Entry saved" toast (a success haptic instead).
+Checked in a new "hyPer Fuel" simulator (iPhone 17 Pro, sample data, light and
+dark) with a scripted UI test: swipe actions, More and Move to, delete,
+saved review and log, one-tap add, Scan by digits (VisionKit is unavailable in
+the simulator), photo analyze and Log 1 meal, Describe with AI then log,
+build a meal and log it, editing an entry, month sheet, adding a snack, USDA
+search. Checks: 1,929 tests, lint with instruction checks and test
+type-check, web build, native type-check. Not verified: the camera scanner
+and photo capture on a phone, and writes against a real database (only the
+sample backend ran). The iOS project needs `expo prebuild --clean` for the
+new module and permission; pod install needs `LANG=en_US.UTF-8`.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

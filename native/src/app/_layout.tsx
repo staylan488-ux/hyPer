@@ -61,9 +61,18 @@ export default function RootLayout() {
               name="log-food"
               options={{
                 presentation: 'formSheet',
-                sheetAllowedDetents: [0.72, 1],
+                sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                contentStyle: { backgroundColor: p.label },
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
+              name="fuel-month"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
               }}
             />
             <Stack.Screen

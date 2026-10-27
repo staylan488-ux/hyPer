@@ -77,6 +77,15 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   text everywhere). A card carries one title, at most one quiet line and at most
   one action. Leave out zeros, placeholders ("– lb × –") and figures that repeat
   another; add a row only when it changes what the person does next.
+- Fuel follows the web logger through shared `src/lib` rules (foodPersistence
+  `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
+  nutritionDay, savedMeals); never copy them into `native/`. Log food is one
+  sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`) with
+  Saved, Search, Scan, Manual and Photo, a review for a chosen food, and the
+  meal builder; a day's entries swipe for More and Delete and hold for the same
+  menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
+  (unavailable in the simulator: type the digits there). Pod install needs
+  `LANG=en_US.UTF-8`.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a long press on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12

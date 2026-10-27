@@ -18,7 +18,7 @@ import { Track } from '~/components/Track';
 import { useIntroRise } from '~/lib/brand';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { useFuelStore } from '~/lib/fuel';
+import { today, useFuelStore } from '~/lib/fuel';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
@@ -29,7 +29,7 @@ export default function TodayScreen() {
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
   const weekly = useAppStore((state) => state.weeklyVolume);
-  const totals = useFuelStore((state) => state.totals);
+  const totals = useFuelStore((state) => state.todayTotals);
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
@@ -70,7 +70,7 @@ export default function TodayScreen() {
 
           {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" />}
 
-          <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push('/log-food') }}>
+          <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
               <View style={{ paddingHorizontal: space.gutter }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>

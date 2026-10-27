@@ -33,7 +33,7 @@ export function useAccountData() {
       app.fetchCurrentWorkout(),
       app.fetchWorkoutMode(),
       app.fetchNutritionProfile(),
-      useFuelStore.getState().load(day),
+      useFuelStore.getState().loadToday(day),
     ]);
     // Re-learn expenditure at most weekly, after the screens are already up.
     void useAppStore.getState().refreshAdaptiveTargets();

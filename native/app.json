@@ -47,6 +47,14 @@
           "enableRemoteNotifications": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "hyPer uses the camera to scan food barcodes and analyze food photos you choose to log.",
+          "photosPermission": "hyPer lets you select food photos for nutrition analysis.",
+          "microphonePermission": false
+        }
+      ],
       "./plugins/withHyperWidgets"
     ],
     "experiments": {

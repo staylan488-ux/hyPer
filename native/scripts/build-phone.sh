@@ -6,7 +6,7 @@
 #   native/scripts/build-phone.sh <device-id>    # then install and open
 # `xcrun devicectl list devices` shows the device id.
 #
-# The Supabase URL and anon key come from the web app's .env (in the main
+# The Supabase URL, anon key and food photo worker URL come from the web app's .env (in the main
 # checkout, which worktrees share) and go only into this build's environment;
 # nothing is printed or written to the repo. Run
 # `npx expo prebuild --platform ios --clean` in native/ first if ios/ is missing
@@ -37,6 +37,8 @@ read_env() {
 }
 url="$(read_env VITE_SUPABASE_URL)"
 key="$(read_env VITE_SUPABASE_ANON_KEY)"
+# The food photo and describe worker; optional (Photo then asks for its URL).
+worker="$(read_env VITE_PHOTO_WORKER_URL || true)"
 [ -n "$url" ] && [ -n "$key" ] || { echo "Missing Supabase settings in $ENV_FILE."; exit 1; }
 case "$url" in
   "https://$PROJECT_HOST"*) ;;
@@ -50,7 +52,7 @@ rm -rf "$DD/Build/Products/Release-iphoneos/XCFrameworkIntermediates"
 echo "Building Release for the phone (log: $LOG)..."
 if ! (
   cd "$NATIVE/ios" &&
-    EXPO_PUBLIC_HYPER_PREVIEW=0 EXPO_PUBLIC_SUPABASE_URL="$url" EXPO_PUBLIC_SUPABASE_ANON_KEY="$key" LANG=en_US.UTF-8 \
+    EXPO_PUBLIC_HYPER_PREVIEW=0 EXPO_PUBLIC_SUPABASE_URL="$url" EXPO_PUBLIC_SUPABASE_ANON_KEY="$key" EXPO_PUBLIC_PHOTO_WORKER_URL="$worker" LANG=en_US.UTF-8 \
       xcodebuild -workspace hyPerNative.xcworkspace -scheme hyPerNative -configuration Release \
       -destination 'generic/platform=iOS' -derivedDataPath "$DD" -allowProvisioningUpdates \
       DEVELOPMENT_TEAM="$team" build > "$LOG" 2>&1
