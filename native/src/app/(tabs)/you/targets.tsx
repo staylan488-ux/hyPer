@@ -15,7 +15,7 @@ import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { loadTargets, useTargetsStore } from '~/lib/you';
+import { loadTargets, useAnalysisModeStore, useTargetsStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
 
 /**
@@ -32,8 +32,10 @@ export default function TargetsScreen() {
   const ready = status === 'ready' || target !== null;
   const mode = targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
   const burn = expenditureSummary(profile);
-  // The coach runs on the Mac worker; without one there is nothing to ask.
-  const coachAvailable = isPreviewActive() || Boolean(getPhotoWorkerSettings().url);
+  // The coach runs only on the Mac worker, so it shows only for someone who
+  // chose Your Mac in Food analysis and has a worker to ask.
+  const analysis = useAnalysisModeStore((state) => state.mode);
+  const coachAvailable = analysis === 'worker' && (isPreviewActive() || Boolean(getPhotoWorkerSettings().url));
 
   useEffect(() => {
     void loadTargets();

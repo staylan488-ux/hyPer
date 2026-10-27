@@ -511,8 +511,10 @@ The owner confirmed milestone 6 on the phone. Milestone 7, You, followed
 - Deliberate changes: the calculator prefills weight to one decimal (it used
   to round to whole numbers, so saving it recorded a made-up weigh-in, on the
   web too); typed weigh-ins can be deleted (swipe), Health ones cannot (a
-  later sync would bring them back); the coach row shows only with a Mac
-  worker set; You has no search; Appearance reads Automatic, Light, Dark.
+  later sync would bring them back); Suggest targets shows only when
+  Food analysis is Your Mac and a worker is set (the coach has no Gemini
+  path yet; the owner asked on 2026-10-27 why it ignores Gemini, and a
+  hosted coach needs a production function deploy); You has no search; Appearance reads Automatic, Light, Dark.
 - You (see the blanc-native skill for the routes): name and account, body
   weight with Log, targets, saved meals (a built meal opens the meal builder
   through `log-food?savedMeal=`), food analysis and the Mac worker,
