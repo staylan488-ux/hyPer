@@ -607,6 +607,9 @@ targets for everyone on the next calculation, and the adaptive estimator's
 Checked in a temporary simulator: the calculator with the owner's numbers
 (3,125 kcal, "2,791 burn + 334 to gain"), the rest bar opening the rest
 panel, and last time's note on the card and in the sheet.
+A real-account Release build of 3e809d1 is installed on the owner's iPhone
+(iOS did not open it, likely a locked phone); the build folder, simulator
+and DerivedData were deleted.
 
 # Previous work snapshot — a single set stuck on every retry
 
