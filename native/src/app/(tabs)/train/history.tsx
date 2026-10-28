@@ -326,24 +326,40 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
 
 function activityDetail(activity: ActivitySession): string {
   const duration = formatActivityDuration(activity.duration_seconds);
-  return [formatActivityStartTime(activity.started_at), duration === '-' ? null : duration, formatDistanceMi(activity.distance_m)]
+  return [
+    formatActivityStartTime(activity.started_at),
+    duration === '-' ? null : duration,
+    formatDistanceMi(activity.distance_m),
+    activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
+  ]
     .filter(Boolean)
     .join(' · ');
 }
 
-/** An activity: tap to edit; swipe to merge or delete; hold for the menu. */
+/** An activity: tap to open it; swipe to merge or delete (asks first); hold for the menu. */
 function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay: ActivitySession[] }) {
   const c = useBlanc();
   const title = resolveActivityTitle(activity);
   const others = sameDay.filter((entry) => entry.id !== activity.id);
+  const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
+  // As on the web, and as workouts do: an activity added by hand is gone for good.
   const remove = () =>
-    void deleteActivity(activity).then((ok) => {
-      if (!ok) {
-        haptics.error();
-        Alert.alert('Not deleted', 'Check your connection and try again.');
-      }
-    });
+    Alert.alert(`Delete ${title}?`, activity.source === 'whoop' ? 'It is hidden from History; WHOOP will not bring it back.' : 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void deleteActivity(activity).then((ok) => {
+            if (ok) haptics.success();
+            else {
+              haptics.error();
+              Alert.alert('Not deleted', 'Check your connection and try again.');
+            }
+          }),
+      },
+    ]);
   const merge = () => {
     const options = [...others.map((entry) => `${resolveActivityTitle(entry)}${entry.started_at ? ` · ${formatActivityStartTime(entry.started_at)}` : ''}`), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions(
@@ -361,7 +377,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
     );
   };
   const menu = () => {
-    const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }];
+    const actions: { label: string; run: () => void }[] = [{ label: 'Open', run: open }, { label: 'Edit', run: edit }];
     if (others.length > 0) actions.push({ label: 'Merge with…', run: merge });
     actions.push({ label: 'Delete', run: remove });
     ActionSheetIOS.showActionSheetWithOptions(
@@ -378,7 +394,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
       name={title}
       actions={[...(others.length > 0 ? [{ label: 'Merge', onPress: merge }] : []), { label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail || undefined} onPress={edit} onLongPress={{ label: 'More actions', run: menu }} />
+        <Row title={title} detail={detail || undefined} chevron onPress={open} onLongPress={{ label: 'More actions', run: menu }} />
       </View>
     </SwipeRow>
   );

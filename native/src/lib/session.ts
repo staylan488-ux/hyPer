@@ -20,6 +20,16 @@ export const useFocusStore = create<{ exerciseId: string | null; focus: (id: str
   focus: (exerciseId) => set({ exerciseId }),
 }));
 
+// A choice belongs to one workout: the next workout (or another account's)
+// starts on its own first movement. A reload of the same workout keeps it.
+let focusWorkoutId: string | null = null;
+useAppStore.subscribe((state) => {
+  const id = state.currentWorkout?.id ?? null;
+  if (!id || id === focusWorkoutId) return;
+  if (focusWorkoutId !== null) useFocusStore.setState({ exerciseId: null });
+  focusWorkoutId = id;
+});
+
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
@@ -28,24 +38,42 @@ export function useSessionModel(): SessionModel | null {
   return useMemo(() => buildSessionModel(workout, { split, plan }, focused), [workout, split, plan, focused]);
 }
 
+/**
+ * Mounted once (tab layout): the live workout's day plan (swaps, order, a
+ * flexible session's movements) follows the workout, as the web Train page
+ * does. Resuming through Start leaves the store without one otherwise.
+ */
+export function useWorkoutDayPlan() {
+  const workoutId = useAppStore((state) => state.currentWorkout?.id ?? null);
+  const planWorkoutId = useAppStore((state) => state.currentWorkoutDayPlan?.workout_id ?? null);
+  useEffect(() => {
+    if (workoutId && planWorkoutId !== workoutId) void useAppStore.getState().fetchCurrentWorkoutDayPlan(workoutId);
+  }, [workoutId, planWorkoutId]);
+}
+
 /** Last time's weight, reps and RPE per exercise and set number, from the shared lookup. */
 export function usePreviousTargets(session: SessionModel | null): PreviousWorkoutSetMap {
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const [targets, setTargets] = useState<PreviousWorkoutSetMap>({});
+  const [failed, setFailed] = useState(false);
   const exerciseKey = session ? session.movements.map((movement) => movement.exerciseId).sort().join(',') : '';
   const workoutId = session?.workoutId ?? null;
   const date = session?.date ?? null;
+  // As on the web: a failed lookup tries again on the next logged set.
+  const retry = failed ? (session?.doneCount ?? 0) : -1;
 
   useEffect(() => {
     if (!userId || !workoutId || !date || !exerciseKey) return;
     let cancelled = false;
     void fetchPreviousSetTargets({ userId, workoutId, date, exerciseIds: exerciseKey.split(',') }).then((result) => {
-      if (!cancelled && result) setTargets(result);
+      if (cancelled) return;
+      if (result) setTargets(result);
+      setFailed(!result);
     });
     return () => {
       cancelled = true;
     };
-  }, [userId, workoutId, date, exerciseKey]);
+  }, [userId, workoutId, date, exerciseKey, retry]);
 
   return targets;
 }

@@ -43,6 +43,7 @@ import {
   activityTypeLabel,
   customActivityTypeSuggestions,
   formatClockDuration,
+  formatSegmentDistance,
   formatDistanceMi,
   formatPace,
   paceSecondsPerMile,
@@ -164,12 +165,6 @@ interface ActivityLedgerRowProps {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelected?: () => void;
-}
-
-function formatSegmentDistance(distanceM: number | null): string | null {
-  if (distanceM == null || distanceM <= 0) return null;
-  if (distanceM < 1000) return `${Math.round(distanceM)} m`;
-  return formatDistanceMi(distanceM);
 }
 
 const ACTIVITY_OPTIONS = ACTIVITY_TYPES.map((type) => ({

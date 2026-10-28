@@ -15,6 +15,117 @@ committed (37637a1), pushed, and open as draft PR #152
 (https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
 production step was requested.
 
+## Milestone 9: parity check and cutover prep (2026-10-28)
+
+Worked in `.claude/worktrees/gifted-dijkstra-fbf451` (fast-forwarded to
+`origin/feat/native-blanc` 254a0d6, pushed back to `feat/native-blanc`).
+
+Parity walk: five read-only passes against the web app (Today and Train, Fuel,
+History/Progress/Program, You/sign-in/WHOOP/Health/Run, and every database
+write the native app can make). Nothing put saved data at risk. Zero-weight and
+zero-rep sets (Alex) are accepted, saved and shown everywhere. Every food AI
+path defaults to Gemini and needs no Mac worker; a fresh install (and the
+cutover, which cannot read the web view's storage) lands on Gemini.
+
+Real-database checks: a throwaway local Supabase (OrbStack, `supabase start`
+from a scratch workdir with `schema.sql` plus the additive migrations, grants
+for `authenticated` and `service_role`) and a vitest harness that signs in and
+calls the shared stores (kept out of the repo, in the worktree's ignored
+`.tmp/`). Passed: a program saved through the shared editor with a superset,
+start a day, log 0 lb × 10, 40 lb × 0 and 0 × 0 (RPE 8), correct a set,
+add/remove sets, swap and switch back, a note, finish; rest length saved to
+`exercise_rest_preferences` and read back on a fresh device; a long run and an
+8-lap splits run saved (retry idempotent) and their laps loaded; food saved
+through the native `saveFoodEntry`, including a meal deleted on another
+device; a flexible session's set count kept in its quick start. Production was
+read only: zero-row `select … limit=0` reads with the anon key confirmed every
+column the native app writes exists (macro_targets.source/updated_at,
+nutrition_profiles, foods.description, workouts' WHOOP columns,
+exercises.category and the rest). No production data was read or written.
+
+Fixed:
+- Fuel: one-tap + now refreshes Fuel, Today and the widgets, cannot log the
+  same row twice, and on Search logs exactly the basis it shows ("165 kcal
+  per 100 g"); before, it logged a household portion it never showed.
+- Gemini review: decimals can be typed (Amount eaten, Nutrition per,
+  macros; also the worker Photo tab's grams) through `useDecimalText`.
+- The AI tab stays mounted while hidden, so an analysis in flight and each
+  food's retry-safe ids survive a tab switch; a Manual hand-off waits for a
+  running analysis.
+- A new entry on a past day starts Unassigned (no meal guessed from the clock);
+  an edit without a saved time reads its day at noon, as on the web; the
+  sheet picks up the day's meals when they land late; a meal deleted on
+  another device saves the entry Unassigned instead of failing every retry.
+- Fuel shows a dash, not 0, before the day loads; AI entries say "Estimate"
+  or "From label"; the analysis usage line says when the UTC-day count starts
+  over locally.
+- Train: the screen stays awake during a live workout (Train and its sheets);
+  the next workout no longer opens on the last movement chosen; Finish cannot
+  be tapped twice; ± keys round to two decimals; a failed "Last time" lookup
+  retries on the next set; resuming through Start reloads the day plan; a
+  flexible session's set changes go into its plan (so a quick start keeps
+  them), and finishing says when it replaces a quick start of the same name.
+- Finish summary: no "Volume 0 lb" for a bodyweight session; the best set
+  ranks load, then weight, then reps ("12 reps" when bodyweight).
+- Number fields show "–" when empty: a "0" placeholder looked like a value
+  but saved nothing (the past-set sheet left the set unlogged).
+- History: an activity opens `train/activity-view` (type, start, duration,
+  distance, pace, strain, heart rate, energy, source, notes and a run's
+  splits); rows show strain; deleting an activity asks first.
+- Sign-up's email link (`<scheme>://auth/callback`) now signs in through
+  `native/src/app/+native-intent.tsx` instead of an unmatched route.
+- Sign-out clears Fuel's day, the finish summary and the account-day state.
+- Health sync carries over: the released app turns it on once for an account
+  that has Apple Health weights (`native/src/lib/healthCarryOver.ts`).
+- Shared: `formatSegmentDistance` moved into `src/lib/activityMetrics.ts`
+  (web History uses it); `foodTrialUsageLine` takes a clock.
+
+Cutover prepared (not done; needs the owner's approval):
+- `native/app.config.js`: `HYPER_APP=release` builds the released app
+  (`app.hyper.mobile`, scheme `app.hyper.mobile`, extension
+  `app.hyper.mobile.HyperWidgets`, "hyPer", version 2.0.0) and
+  `HYPER_BUILD_NUMBER` the build number; without it, the test app as before.
+  `ITSAppUsesNonExemptEncryption` is now false in both.
+- The scheme follows the bundle ID iOS reports (JavaScript through
+  `modules/hyper-keychain/bundle.ts`, widgets through
+  `WidgetSnapshotStore.appScheme`), so the sign-in return becomes
+  `app.hyper.mobile://auth/callback` (the Capacitor app's, already allowed in
+  Supabase) and WHOOP's `app.hyper.mobile://settings` reaches the app.
+- Release builds default to the real account (sample data only with
+  `EXPO_PUBLIC_HYPER_PREVIEW=1`).
+- `scripts/ship.sh` (the ship bot's script, run from main) now ships the
+  native app through `native/fastlane/Fastfile` and
+  `native/scripts/check-release.sh`; the Capacitor `ios/` app is no longer
+  shipped once this is on main. `build-phone.sh` builds either variant.
+- Carry-over at cutover: the Keychain session (service `<bundle ID>.auth`),
+  HealthKit, location, notification and Live Activity permissions, the run
+  recorder's files and controls. Lost (web view storage): theme (back to
+  Automatic), weight unit (back to lb), a live rest, drafts, a run in
+  progress at update time, and the food analysis choice (back to Gemini).
+- Apple account: automatic signing must add the App Group `group.app.hyper`
+  to the `app.hyper.mobile` and `app.hyper.mobile.HyperWidgets` App IDs (the
+  Capacitor app had none); no new App ID is needed.
+
+Checked in a temporary iPhone 17 Pro simulator (sample data, scripted UI
+tests): an activity opens its view (summary, notes, eight splits), a full
+swipe on an activity asks before deleting, a Search row reads "165 kcal /
+100 g" and turns to "Added · 165 kcal" with its tick inert, and "1.5" types
+into a Gemini item's Amount eaten. The released variant (prebuilt with
+`HYPER_APP=release`) built for the simulator, ran as `app.hyper.mobile`
+("hyPer", 2.0.0, extension `app.hyper.mobile.HyperWidgets`, encryption flag
+off), opened Fuel from `app.hyper.mobile://fuel`, and an
+`app.hyper.mobile://auth/callback` link landed on Today instead of an
+unmatched route. Not exercised: an App Store archive and upload (needs the
+owner's approval and the Apple account change above), anything on the phone
+under the released bundle ID, a real sign-up email, and WHOOP consent under
+the new identity.
+
+Not changed on purpose (minor, recorded for later): merge of 3+ activities in
+one step, the Target sets field in History, RPE below 6, Train's week strip,
+"beat last time" marks, Progress's training-time detail, You's About build
+number, and an account deletion row (an App Store review need, with backend
+work).
+
 Built (milestone 1, preview data only): Expo SDK 58 app in `native/` reusing
 `src` through a Metro alias, with native swaps in `native/src/platform`; Blanc
 theme and components; Today, live workout (log set, RPE action sheet, rest

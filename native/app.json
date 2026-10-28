@@ -35,6 +35,9 @@
         "com.apple.security.application-groups": [
           "group.app.hyper"
         ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "plugins": [

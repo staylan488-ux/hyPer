@@ -87,7 +87,8 @@ export default function FuelScreen() {
         <View style={{ paddingHorizontal: space.gutter, marginTop: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
             <BlancText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
-              {formatWhole(totals.calories)}
+              {/* never a 0 that only means "not loaded yet" */}
+              {loaded ? formatWhole(totals.calories) : '–'}
             </BlancText>
             <BlancText variant="secondary" tone="graphite">
               of {formatWhole(summary.targets.calories)} kcal
@@ -306,7 +307,10 @@ function entryDetail(log: FoodLog): string {
   const time = format(getLogDate(log), 'h:mm a');
   const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
   const protein = logMacro(log, 'protein');
-  return [time, amount, protein ? `${formatWhole(protein)} g protein` : null].filter(Boolean).join(' · ');
+  // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
+  const raw = log.source as string | undefined;
+  const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
+  return [time, amount, protein ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */

@@ -1,9 +1,14 @@
 #!/bin/bash
-# Builds hyPer Native for the owner's iPhone against the real account
+# Builds the native app for the owner's iPhone against the real account
 # (production Supabase), checks the bundle, and with a device id installs and
 # opens it. Ask the owner before installing.
 #   native/scripts/build-phone.sh                # build and check only
 #   native/scripts/build-phone.sh <device-id>    # then install and open
+# By default it builds the test app "hyPer Native" (app.hyper.native), which
+# installs beside the Capacitor app. HYPER_APP=release builds the released app
+# (app.hyper.mobile), which REPLACES the installed hyPer app: only with the
+# owner's approval. ios/ must be prebuilt for the same variant
+# (HYPER_APP=… npx expo prebuild --platform ios --clean).
 # `xcrun devicectl list devices` shows the device id.
 #
 # The Supabase URL, anon key and food photo worker URL come from the web app's .env (in the main
@@ -45,6 +50,11 @@ case "$url" in
   *) echo "The .env points at an unexpected Supabase project."; exit 1 ;;
 esac
 team="$(node -p 'require(process.argv[1]).expo.ios.appleTeamId' "$NATIVE/app.json")"
+bundle_id="$(cd "$NATIVE" && npx expo config --type public --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).ios.bundleIdentifier))')"
+"$GREP" -q "PRODUCT_BUNDLE_IDENTIFIER = \"\?$bundle_id\"\?;" "$NATIVE/ios/hyPerNative.xcodeproj/project.pbxproj" || {
+  echo "ios/ was prebuilt for another variant than $bundle_id: run HYPER_APP=${HYPER_APP:-} npx expo prebuild --platform ios --clean in native/."
+  exit 1
+}
 
 mkdir -p "$DD"
 "$NATIVE/scripts/use-rn-core.sh" Release > /dev/null
@@ -75,7 +85,7 @@ echo "Built $APP (production host present, no local test backend)."
 [ -n "$DEVICE" ] || exit 0
 xcrun devicectl device install app --device "$DEVICE" "$APP" > /dev/null
 echo "Installed on $DEVICE."
-if xcrun devicectl device process launch --device "$DEVICE" --terminate-existing app.hyper.native > /dev/null 2>&1; then
+if xcrun devicectl device process launch --device "$DEVICE" --terminate-existing "$bundle_id" > /dev/null 2>&1; then
   echo "Opened on the phone."
 else
   echo "Installed, but iOS refused to open it (usually a locked phone). Open it on the phone."

@@ -166,7 +166,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     setDraft((existing) => {
       if (!existing) return existing;
       const value = parseNumber(existing[field]) ?? 0;
-      return { ...existing, [field]: String(Math.max(0, value + delta)), touched: true };
+      // 12.7 − 5 is 7.7, not 7.699999999999999
+      const next = Math.round(Math.max(0, value + delta) * 100) / 100;
+      return { ...existing, [field]: String(next), touched: true };
     });
     haptics.select();
   };
@@ -177,8 +179,23 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   /** Sets, note and swap for one movement. */
   const openMovement = (exerciseId: string) => router.push({ pathname: '/movement', params: { id: exerciseId } });
 
+  // One finish at a time: a second tap while it saves does nothing.
+  const finishing = useRef(false);
+  const [closing, setClosing] = useState(false);
   const finish = () => {
+    if (finishing.current) return;
     const close = async (saveTemplate: boolean) => {
+      if (finishing.current) return;
+      finishing.current = true;
+      setClosing(true);
+      try {
+        await closeWorkout(saveTemplate);
+      } finally {
+        finishing.current = false;
+        setClosing(false);
+      }
+    };
+    const closeWorkout = async (saveTemplate: boolean) => {
       // Notes typed during the workout land before it closes, as on the web.
       if (!(await flushNotes())) {
         haptics.error();
@@ -200,7 +217,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
       }
     };
-    Alert.alert('Finish workout?', `${session.doneCount} of ${session.sets.length} sets logged.`, [
+    // As on the web: keeping it as a quick start replaces one with the same name.
+    const label = useAppStore.getState().currentWorkoutDayPlan?.day_label.trim() ?? '';
+    const replaces = session.flexible && label !== ''
+      && useAppStore.getState().flexTemplates.some((template) => template.label === label);
+    const counted = `${session.doneCount} of ${session.sets.length} sets logged.`;
+    Alert.alert('Finish workout?', replaces ? `${counted} Saving as a quick start replaces your “${session.dayName}” quick start.` : counted, [
       ...(session.flexible && session.movements.length > 0
         ? [{ text: 'Finish and save as quick start', onPress: () => void close(true) }]
         : []),
@@ -248,9 +270,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           unstable_headerRightItems: () => [
             {
               type: 'button',
-              label: 'Finish',
+              label: closing ? 'Saving…' : 'Finish',
               variant: 'prominent',
               tintColor: c.ink,
+              disabled: closing,
               onPress: () => {
                 haptics.tap();
                 finish();

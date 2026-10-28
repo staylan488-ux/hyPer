@@ -1,9 +1,12 @@
 # TestFlight release
 
 [scripts/ship.sh](../../../../scripts/ship.sh) is the maintained release entrypoint.
-It fetches remote main, resets an isolated build clone, builds and syncs the web
-app, then runs fastlane to archive and upload. Calling it performs the upload.
-It does not ship uncommitted work or the current feature branch.
+It fetches remote main, resets an isolated build clone, runs the tests, lint and
+the native type-check, then runs [native/fastlane](../../../../native/fastlane/Fastfile)
+to prebuild, archive, check and upload the React Native app in `native/` as
+`app.hyper.mobile` (the Capacitor shell in `ios/` is no longer shipped once this
+script is on main). Calling it performs the upload. It does not ship
+uncommitted work or the current feature branch.
 
 For an authorized release, compare remote main's tip with the authorized release
 revision and inspect the script and current non-secret configuration. A commit
@@ -16,10 +19,12 @@ Its configuration and environment seed live outside the public repository;
 check prerequisites without printing values. Do not change the saved checkout
 to main solely to run this pipeline.
 
-[Fastfile](../../../../ios/App/fastlane/Fastfile) chooses the latest TestFlight
-build number plus one and updates every `CURRENT_PROJECT_VERSION` in the build
-clone. App and widget versions must match. Do not copy this generated build-number
-diff into an unrelated feature commit.
+The native Fastfile chooses the latest TestFlight build number plus one and
+passes it to the prebuild (`HYPER_BUILD_NUMBER`), which gives the app and its
+widget extension the same number; nothing is written back to the repository.
+`native/scripts/check-release.sh` refuses an archive with the wrong bundle or
+extension IDs, mismatched build numbers, no production host or a local test
+backend.
 
 If upload status is uncertain, inspect the existing submission before retrying
 to avoid duplicate releases. If credentials or signing access are unavailable,

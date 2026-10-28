@@ -5,8 +5,11 @@ description: Build or validate hyPer's native iOS app, regenerate its app icon, 
 
 # hyPer iOS
 
-The native app uses Capacitor with Swift Package Manager. Web changes reach
-the installed app after a web build, Capacitor sync, and a native run or release.
+The released app is the React Native app in `native/` (bundle ID
+`app.hyper.mobile`); its builds, checks and phone installs follow the
+[blanc-native skill](../blanc-native/SKILL.md). The older Capacitor shell in
+`ios/` (Swift Package Manager; web build, Capacitor sync, then a native run) is
+no longer released.
 Inspect the intended checkout; local validation does not require switching to main.
 
 Read only the route needed for the task:

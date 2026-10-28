@@ -33,7 +33,7 @@ import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
-import { loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
+import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
@@ -86,8 +86,11 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
 }) {
   const c = useBlanc();
   const [groups, setGroups] = useState<NutritionGroup[]>(() => useFuelStore.getState().groups.filter((group) => group.date === selectedKey));
+  // A new entry today goes to the meal that fits the clock; on another day the
+  // clock says nothing about the meal, so it starts Unassigned, as on the web.
+  const suggest = (list: NutritionGroup[]) => (selectedKey === today() ? suggestedGroup(list)?.id ?? null : null);
   const [when, setWhenState] = useState<When>(() =>
-    initialWhen(editing, selectedKey, groups, groupParam ?? suggestedGroup(groups)?.id ?? null),
+    initialWhen(editing, selectedKey, groups, groupParam ?? suggest(groups)),
   );
   const groupTouched = useRef(Boolean(editing || groupParam));
   const setWhen = useCallback((next: When) => {
@@ -102,12 +105,24 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     void loadDayGroups(selectedKey).then((loaded) => {
       if (!current) return;
       setGroups(loaded);
-      if (!groupTouched.current) setWhenState((value) => ({ ...value, groupId: suggestedGroup(loaded)?.id ?? null }));
+      if (!groupTouched.current) setWhenState((value) => ({ ...value, groupId: suggest(loaded) }));
     });
     return () => {
       current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
+
+  // The day's groups can land after the sheet opened (the month was still
+  // loading): pick them up instead of offering only Unassigned.
+  const storeGroups = useFuelStore((state) => state.groups);
+  useEffect(() => {
+    const fromStore = groupsForDay(selectedKey);
+    if (fromStore.length === 0) return;
+    setGroups((current) => (current.map((group) => group.id).join() === fromStore.map((group) => group.id).join() ? current : fromStore));
+    if (!groupTouched.current) setWhenState((value) => (value.groupId ? value : { ...value, groupId: suggest(fromStore) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeGroups, selectedKey]);
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : 'saved');
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta } | null>(null);
@@ -459,6 +474,10 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
                 onGeminiHandoff={
                   gemini
                     ? (description) => {
+                        if (busy) {
+                          Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
+                          return;
+                        }
                         const handOff = () => {
                           setAi(emptyAi(description));
                           setTab('photo');
@@ -476,10 +495,16 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
                 }
               />
             ) : null}
-            {tab === 'photo' && gemini ? <AiTab draft={ai} setDraft={(update) => setAi(update)} /> : null}
             {tab === 'photo' && !gemini ? <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} /> : null}
           </View>
         )}
+        {/* Stays mounted while hidden, as on the web: an analysis in flight and
+            each food's retry-safe ids survive a tab switch or a food review. */}
+        {gemini ? (
+          <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
+            <AiTab draft={ai} setDraft={(update) => setAi(update)} />
+          </View>
+        ) : null}
       </KeyboardAwareScrollView>
     </LoggerContext.Provider>
   );

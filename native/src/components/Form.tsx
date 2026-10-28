@@ -1,6 +1,6 @@
 import { DatePicker, Host } from '@expo/ui/swift-ui';
 import { datePickerStyle, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Switch, TextInput, View, type TextInputProps } from 'react-native';
 
 import { haptics } from '~/lib/haptics';
@@ -51,6 +51,38 @@ export function FieldRow({ label, unit, wide, invalid, ...input }: FieldRowProps
       ) : null}
     </View>
   );
+}
+
+/**
+ * What a number field shows while it is typed ("1.", "0.", ""), with the
+ * number underneath kept valid. Writing the number straight back into the
+ * field turned "1." into "1", so a decimal could not be typed.
+ */
+export function useDecimalText(value: number, onChangeValue: (value: number) => void) {
+  const [text, setText] = useState(() => (Number.isFinite(value) ? String(value) : ''));
+  useEffect(() => {
+    // Follow outside changes (a rescale, a new estimate), never the typing itself.
+    setText((current) => {
+      const shown = current.trim() === '' || current.trim() === '.' ? 0 : Number(current);
+      return shown === value ? current : Number.isFinite(value) ? String(value) : '';
+    });
+  }, [value]);
+  const onChangeText = (next: string) => {
+    const cleaned = next.replace(',', '.');
+    if (!/^\d*\.?\d*$/.test(cleaned)) return;
+    setText(cleaned);
+    onChangeValue(cleaned === '' || cleaned === '.' ? 0 : Number(cleaned));
+  };
+  return { text, onChangeText };
+}
+
+/** FieldRow for a decimal number; see useDecimalText. */
+export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRowProps, 'value' | 'onChangeText'> & {
+  value: number;
+  onChangeValue: (value: number) => void;
+}) {
+  const { text, onChangeText } = useDecimalText(value, onChangeValue);
+  return <FieldRow {...props} keyboardType="decimal-pad" value={text} onChangeText={onChangeText} />;
 }
 
 /** A labelled switch row, with an optional quiet line under the label. */

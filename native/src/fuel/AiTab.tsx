@@ -19,7 +19,7 @@ import { createMealIngredient } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, ToggleRow } from '~/components/Form';
+import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -408,34 +408,31 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                     <Hairline />
                     <FieldRow label="Food name" wide value={item.name} editable={!frozen} onChangeText={(name) => update(index, { name })} />
                     <Hairline />
-                    <FieldRow
+                    <NumberFieldRow
                       label="Amount eaten"
-                      value={String(item.quantity)}
+                      value={item.quantity}
                       editable={!frozen}
-                      keyboardType="decimal-pad"
-                      onChangeText={(text) => update(index, { quantity: Number(text), amountConfirmed: true })}
+                      onChangeValue={(quantity) => update(index, { quantity, amountConfirmed: true })}
                     />
                     <Hairline />
                     <FieldRow label="Unit" value={item.unit} editable={!frozen} onChangeText={(unit) => update(index, { unit, amountConfirmed: true })} />
                     <Hairline />
-                    <FieldRow
+                    <NumberFieldRow
                       label="Nutrition per"
                       unit={item.unit || 'units'}
-                      value={String(item.basisQuantity)}
+                      value={item.basisQuantity}
                       editable={!frozen}
-                      keyboardType="decimal-pad"
-                      onChangeText={(text) => update(index, { basisQuantity: Number(text) })}
+                      onChangeValue={(basisQuantity) => update(index, { basisQuantity })}
                     />
                     {(['calories', 'protein', 'carbs', 'fat'] as const).map((key) => (
                       <View key={key}>
                         <Hairline />
-                        <FieldRow
+                        <NumberFieldRow
                           label={key[0].toUpperCase() + key.slice(1)}
                           unit={key === 'calories' ? 'kcal' : 'g'}
-                          value={String(item[key])}
+                          value={item[key]}
                           editable={!frozen}
-                          keyboardType="decimal-pad"
-                          onChangeText={(text) => update(index, { [key]: Number(text) })}
+                          onChangeValue={(amount) => update(index, { [key]: amount })}
                         />
                       </View>
                     ))}

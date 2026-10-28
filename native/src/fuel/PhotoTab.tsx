@@ -27,7 +27,7 @@ import {
 } from '@/lib/photoReview';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, ToggleRow } from '~/components/Form';
+import { FieldRow, FormNote, ToggleRow, useDecimalText } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -385,13 +385,10 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                       accessibilityLabel="Food"
                       style={[typeScale.bodyStrong, { flex: 1, color: c.ink, padding: 0, minHeight: 36 }]}
                     />
-                    <TextInput
-                      value={formatMeasurementAmount(item.amountGrams)}
-                      onChangeText={(text) => updateItem(item.id, { amountGrams: Math.max(0, Number(text)), persistedFoodId: undefined })}
-                      keyboardType="decimal-pad"
-                      accessibilityLabel={`Grams of ${item.name}`}
-                      selectTextOnFocus
-                      style={[typeScale.body, { color: c.ink, padding: 0, minWidth: 52, minHeight: 36, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
+                    <GramsInput
+                      grams={item.amountGrams}
+                      label={`Grams of ${item.name}`}
+                      onChange={(amountGrams) => updateItem(item.id, { amountGrams, persistedFoodId: undefined })}
                     />
                     <BlancText variant="body" tone="graphite">
                       g
@@ -495,5 +492,21 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
         />
       </View>
     </View>
+  );
+}
+
+/** An item's grams; keeps "1." while typing (see useDecimalText). */
+function GramsInput({ grams, label, onChange }: { grams: number; label: string; onChange: (grams: number) => void }) {
+  const c = useBlanc();
+  const { text, onChangeText } = useDecimalText(grams, (value) => onChange(Math.max(0, value)));
+  return (
+    <TextInput
+      value={text}
+      onChangeText={onChangeText}
+      keyboardType="decimal-pad"
+      accessibilityLabel={label}
+      selectTextOnFocus
+      style={[typeScale.body, { color: c.ink, padding: 0, minWidth: 52, minHeight: 36, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
+    />
   );
 }

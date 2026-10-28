@@ -4,7 +4,7 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, TextInput, View } 
 import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
-import { foodMacroLine } from '@/lib/foodUnits';
+import { foodMacroLine, formatMeasurementAmount } from '@/lib/foodUnits';
 import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
 import { createPendingEntryId, type PendingEntryId } from '@/lib/pendingEntryId';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
@@ -18,6 +18,7 @@ import { FormNote } from '~/components/Form';
 import { Hairline } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { saveFoodEntry } from '~/lib/foodLogger';
+import { useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -65,9 +66,11 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
 }
 
 /** One food: tap to review it; the round button logs one serving at once. */
-function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLongPress }: {
+function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis }: {
   food: Food;
   state?: AddState;
+  /** Search results: say what one serving is, since + logs exactly that. */
+  showBasis?: boolean;
   onOpen: () => void;
   onAdd?: () => void;
   editing?: boolean;
@@ -77,7 +80,13 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
 }) {
   const c = useBlanc();
   const composed = Boolean(decodeMealComposition(food.description));
-  const line = state === 'error' ? 'Not saved. Tap + to try again.' : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
+  const line = state === 'error'
+    ? 'Not saved. Tap + to try again.'
+    : state === 'done'
+      ? `Added · ${Math.round(food.calories)} kcal`
+      : showBasis
+        ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
+        : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
@@ -119,6 +128,7 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
           label={state === 'done' ? `${food.name} added` : `Add ${food.name}`}
           quiet={state === 'done'}
           busy={state === 'saving'}
+          done={state === 'done'}
           onPress={onAdd}
         />
       ) : null}
@@ -126,11 +136,13 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
   );
 }
 
-function RoundButton({ symbol, label, quiet, busy, onPress }: {
+function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
   symbol: 'plus' | 'checkmark' | 'trash';
   label: string;
   quiet?: boolean;
   busy?: boolean;
+  /** Already logged: the tick stays put so a second tap can't log it twice. */
+  done?: boolean;
   onPress: () => void;
 }) {
   const c = useBlanc();
@@ -138,7 +150,8 @@ function RoundButton({ symbol, label, quiet, busy, onPress }: {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      disabled={busy}
+      disabled={busy || done}
+      accessibilityState={{ disabled: Boolean(busy || done) }}
       hitSlop={8}
       onPress={() => {
         haptics.tap();
@@ -173,6 +186,8 @@ function useQuickAdd() {
   const pendingIds = useRef(new Map<string, PendingEntryId>());
 
   const add = async (key: string, food: Food) => {
+    const current = added[key];
+    if (current === 'saving' || current === 'done') return;
     if (logger.purpose === 'ingredients') {
       logger.addIngredients([createMealIngredient(food, 1)]);
       return;
@@ -181,13 +196,13 @@ function useQuickAdd() {
     pendingIds.current.set(key, pending);
     setAdded((state) => ({ ...state, [key]: 'saving' }));
     try {
-      const resolved = await withUsdaPortion(food);
-      const foodId = await ensureFoodRow(resolved);
+      // One serving of exactly what the row shows (its basis), never a portion it did not show.
+      const foodId = await ensureFoodRow(food);
       if (!foodId) throw new Error('not saved');
       await saveFoodEntry({
         foodId,
         servings: 1,
-        source: chosenFoodLogSource(resolved),
+        source: chosenFoodLogSource(food),
         when: logger.when,
         groups: logger.groups,
         pending,
@@ -195,6 +210,8 @@ function useQuickAdd() {
       pendingIds.current.delete(key);
       haptics.success();
       setAdded((state) => ({ ...state, [key]: 'done' }));
+      // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
+      void useFuelStore.getState().refresh();
     } catch {
       haptics.error();
       setAdded((state) => ({ ...state, [key]: 'error' }));
@@ -405,6 +422,7 @@ export function SearchTab() {
             <FoodRow
               food={food}
               state={quick.added[key]}
+              showBasis
               onOpen={() => void open(food)}
               onAdd={quick.enabled ? () => void quick.add(key, food) : undefined}
             />

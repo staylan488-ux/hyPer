@@ -10,7 +10,7 @@ type FigureInputProps = Omit<TextInputProps, 'style'> & { value: string; fontSiz
  * first given, so an invisible copy of the text measures the width the
  * number needs and the field hugs it as the value changes.
  */
-export function FigureInput({ value, fontSize, placeholder = '0', ...rest }: FigureInputProps) {
+export function FigureInput({ value, fontSize, placeholder = '–', ...rest }: FigureInputProps) {
   const c = useBlanc();
   const [width, setWidth] = useState(0);
   const style: TextStyle[] = [

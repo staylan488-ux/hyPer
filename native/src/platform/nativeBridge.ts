@@ -7,12 +7,15 @@
 
 import { HyperBarcode } from '../../modules/hyper-barcode';
 import { HyperHealth } from '../../modules/hyper-health';
+import { runningBundleIdentifier } from '../../modules/hyper-keychain/bundle';
 import { HyperRun } from '../../modules/hyper-run';
 
-// This app's own URL scheme (app.json "scheme") while it installs beside the
-// Capacitor app; at cutover it takes over app.hyper.mobile. The shared OAuth
-// callback parser checks returns against NATIVE_AUTH_REDIRECT_URL.
-export const NATIVE_AUTH_CALLBACK_SCHEME = 'hyper-native';
+// The app's URL scheme (app.config.js "scheme"): `hyper-native` for the test
+// app that installs beside the Capacitor app, `app.hyper.mobile` for the
+// released app that takes over its bundle ID. Read from the bundle ID iOS
+// reports, so it cannot drift from the build. The shared OAuth callback parser
+// checks returns against NATIVE_AUTH_REDIRECT_URL.
+export const NATIVE_AUTH_CALLBACK_SCHEME = runningBundleIdentifier() === 'app.hyper.mobile' ? 'app.hyper.mobile' : 'hyper-native';
 export const NATIVE_AUTH_REDIRECT_URL = `${NATIVE_AUTH_CALLBACK_SCHEME}://auth/callback`;
 
 export function isNativeIOS(): boolean {

@@ -31,3 +31,17 @@ describe('native app sign-in callback', () => {
     );
   });
 });
+
+describe('released native app sign-in callback', () => {
+  it("takes over the Capacitor app's scheme when it runs as app.hyper.mobile", async () => {
+    vi.resetModules();
+    vi.doMock('../native/modules/hyper-keychain/bundle', () => ({ runningBundleIdentifier: () => 'app.hyper.mobile' }));
+    vi.doMock('@/lib/nativeBridge', () => import('../native/src/platform/nativeBridge'));
+    const bridge = await import('../native/src/platform/nativeBridge');
+    const { parseNativeOAuthCallback: parse } = await import('@/lib/nativeOAuthCallback');
+    expect(bridge.NATIVE_AUTH_CALLBACK_SCHEME).toBe('app.hyper.mobile');
+    expect(parse('app.hyper.mobile://auth/callback?code=pkce-code')).toEqual({ code: 'pkce-code' });
+    expect(() => parse('hyper-native://auth/callback?code=pkce-code')).toThrow('did not belong to hyPer');
+    vi.doUnmock('../native/modules/hyper-keychain/bundle');
+  });
+});

@@ -14,6 +14,11 @@ public class HyperKeychainModule: Module {
   public func definition() -> ModuleDefinition {
     Name("HyperKeychain")
 
+    // The bundle ID this build runs as (app.hyper.native for the test app,
+    // app.hyper.mobile once released): the Keychain service below and the
+    // app's URL scheme both follow it.
+    Constant("bundleIdentifier") { Bundle.main.bundleIdentifier ?? "" }
+
     AsyncFunction("getValue") { (key: String) -> [String: Any] in
       guard Self.isValid(key) else { return ["error": "INVALID_KEY"] }
       var query = Self.baseQuery(for: key)

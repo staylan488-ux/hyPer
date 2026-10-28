@@ -192,6 +192,17 @@ have repeated that pattern.
 9. **Parity check and cutover.** Walk the parity inventory, switch the bundle ID,
    TestFlight, then retire the Capacitor app. Each release and production step needs
    the owner's explicit approval.
+   Parity walked 2026-10-28 (five areas read against the web app, every native
+   database write checked against the schema, and the live database's columns
+   confirmed with zero-row reads). No saved data was at risk; the gaps fixed
+   are listed in the handoff (Fuel quick add not refreshing, decimals in the
+   Gemini review, the screen locking mid-workout, a past set left unlogged by
+   a "0" placeholder, run splits and WHOOP numbers in History, delete without
+   asking, sign-up links, sign-out leaving food on screen, Health sync at
+   cutover, and smaller ones). Zero-weight and zero-rep sets save and show
+   everywhere. Cutover prepared: `native/app.config.js` builds either the test
+   app or the released `app.hyper.mobile`, and `scripts/ship.sh` with
+   `native/fastlane` uploads the native app. Waiting for the owner's approval.
 
 The parity inventory (`docs/plans/2026-10-26-native-parity-inventory.md`) lists
 every screen, flow and rule the native app must keep.

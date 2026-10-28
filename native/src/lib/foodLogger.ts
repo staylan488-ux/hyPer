@@ -25,7 +25,9 @@ export function initialWhen(entry: FoodLog | null, selectedKey: string, groups: 
   const day = entry?.date ?? selectedKey;
   const parsed = new Date(`${day}T12:00:00`);
   const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-  const clockSource = isToday(date) ? new Date() : startOfDay(date);
+  // An edit without a saved time reads its day at noon, as the web does; a new
+  // entry on a past day starts at that day's midnight.
+  const clockSource = isToday(date) ? new Date() : entry ? date : startOfDay(date);
   const groupId = entry
     ? entry.group_id || groups.find((group) => group.label === entry.meal_type)?.id || null
     : fallbackGroupId;
@@ -52,15 +54,24 @@ export async function saveFoodEntry(input: {
   retryId?: string;
 }): Promise<void> {
   const group = input.groups.find((candidate) => candidate.id === input.when.groupId) ?? null;
-  const payload = buildEntryPayload({
+  const payloadFor = (target: NutritionGroup | null) => buildEntryPayload({
     foodId: input.foodId,
     servings: input.servings,
     source: input.source,
     entryDate: input.when.date,
     time: input.when.time,
-    group,
+    group: target,
   });
-  await persistNutritionEntry(payload, input.editingId, entryWriteId(Boolean(input.editingId), input.retryId, input.pending));
+  const writeId = entryWriteId(Boolean(input.editingId), input.retryId, input.pending);
+  try {
+    await persistNutritionEntry(payloadFor(group), input.editingId, writeId);
+  } catch (failure) {
+    // The meal was deleted on another device (its foreign key is gone): save
+    // the entry Unassigned, as the web's meal builder does, instead of failing
+    // on every retry.
+    if (!group || (failure as { code?: string } | null)?.code !== '23503') throw failure;
+    await persistNutritionEntry(payloadFor(null), input.editingId, writeId);
+  }
   // confirmed: the next save is a new entry
   if (!input.retryId) input.pending.clear();
 }

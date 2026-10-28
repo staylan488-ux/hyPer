@@ -46,9 +46,23 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - `native/modules/hyper-view` reads a view's real window frame from UIKit. React
   Native's own measure works from its layout tree, which does not know where iOS
   put an item inside a navigation bar.
-- Preview mode is the default: the shared stores run on the in-memory sample
-  backend. `EXPO_PUBLIC_HYPER_PREVIEW=0` with `EXPO_PUBLIC_SUPABASE_URL` and
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY` uses the real project.
+- Preview mode is the default in development builds: the shared stores run on
+  the in-memory sample backend. `EXPO_PUBLIC_HYPER_PREVIEW=0` with
+  `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` uses the real
+  project. A Release build uses the real project unless the flag is `1`, so an
+  archive cannot ship the sample data.
+- Two builds of one app ([app.config.js](../../../native/app.config.js) over
+  app.json): the test app by default ("hyPer Native", `app.hyper.native`,
+  scheme `hyper-native`, beside the Capacitor app) and, with
+  `HYPER_APP=release`, the released app that takes over the Capacitor app's
+  identity (`app.hyper.mobile`, scheme `app.hyper.mobile`, widget extension
+  `app.hyper.mobile.HyperWidgets`, shown as "hyPer"). `HYPER_BUILD_NUMBER` sets
+  the build number. Prebuild with `--clean` when switching variant. The URL
+  scheme in JavaScript and Swift follows the bundle ID iOS reports
+  (`modules/hyper-keychain/bundle.ts`, `WidgetSnapshotStore.appScheme`), never
+  a hard-coded value. Links from outside go through
+  [+native-intent](../../../native/src/app/+native-intent.tsx): the email
+  confirmation's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
   the live workout, header items with SF Symbols, Expo UI SwiftUI controls,
@@ -165,7 +179,9 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   reps (`program-exercise`), reorder (`program-reorder`) and the picker
   (`swap` with `program=add|swap|superset`) are root sheets over it and
   change the draft only; nothing is written until Save or Create.
-- History lives in Train's stack (`train/history`, `train/past`) and Progress
+- History lives in Train's stack (`train/history`, `train/past`,
+  `train/activity-view` for an activity's numbers, notes and a run's splits)
+  and Progress
   in Today's (`today/progress`). Past-workout edits go through
   `editPastWorkout` in [lib/history.ts](../../../native/src/lib/history.ts),
   which runs the web's edit protocol one edit at a time per workout. Delete a
@@ -296,6 +312,12 @@ inventory before rebuilding a flow.
   `authenticated` role there (newer local stacks no longer do), create a test
   user through the local auth admin API, and point Metro at it with
   `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and the local anon key.
+- TestFlight: `scripts/ship.sh` (the ship bot's script, from main) builds this
+  app as `app.hyper.mobile` through [native/fastlane](../../../native/fastlane/Fastfile):
+  the next TestFlight build number, a clean prebuild, an App Store archive,
+  [check-release.sh](../../../native/scripts/check-release.sh) (bundle and
+  extension IDs, build numbers, production host, no local backend), upload.
+  Every upload needs the owner's approval.
 - Real-account phone builds: `native/scripts/build-phone.sh [device-id]` builds
   Release against production (the Supabase URL and anon key come from the web
   app's `.env`, only inside the build), checks that the bundle has the

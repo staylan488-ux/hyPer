@@ -59,9 +59,12 @@ export default function SessionDone() {
   const slots = Math.max(planned ?? 0, weekCount ?? 0);
   const rows: [string, string][] = [
     ['Sets', String(summary.sets)],
-    ['Volume', `${formatWhole(summary.volume)} lb`],
+    // A bodyweight session moves no load: leave the zero out.
+    ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
     ['Time', `${summary.minutes} min`],
-    ...(summary.best ? [['Best set', `${formatLoad(summary.best.weight)} × ${summary.best.reps}`] as [string, string]] : []),
+    ...(summary.best
+      ? [['Best set', summary.best.weight > 0 ? `${formatLoad(summary.best.weight)} × ${summary.best.reps}` : `${summary.best.reps} reps`] as [string, string]]
+      : []),
   ];
 
   return (

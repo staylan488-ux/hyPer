@@ -67,7 +67,8 @@ type FuelState = {
 // The latest month request wins; an older answer is dropped.
 let monthRequest = 0;
 const defaultsFailed = new Set<string>();
-const defaultsInFlight = new Set<string>();
+// A second caller waits for the same creation instead of reading before it lands.
+const defaultsInFlight = new Map<string, Promise<void>>();
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
@@ -155,11 +156,12 @@ export const useFuelStore = create<FuelState>((set, get) => {
       if (!error && data && get().todayKey === key) set({ todayTotals: sumMacros(data) });
     },
 
-    ensureDayGroups: async (key) => {
-      if (get().loadedMonth !== monthOf(key) || defaultsFailed.has(key) || defaultsInFlight.has(key)) return;
+    ensureDayGroups: (key) => {
+      if (get().loadedMonth !== monthOf(key) || defaultsFailed.has(key)) return Promise.resolve();
+      const running = defaultsInFlight.get(key);
+      if (running) return running;
       const groups = dayGroups(key);
-      defaultsInFlight.add(key);
-      try {
+      const task = (async () => {
         const userId = await getSessionUserId();
         if (!userId) return;
         const result = await ensureDefaultGroups(userId, key, groups);
@@ -170,9 +172,11 @@ export const useFuelStore = create<FuelState>((set, get) => {
           return;
         }
         if (get().loadedMonth === monthOf(key)) set({ groups: mergeGroups(get().groups, result.groups) });
-      } finally {
+      })().finally(() => {
         defaultsInFlight.delete(key);
-      }
+      });
+      defaultsInFlight.set(key, task);
+      return task;
     },
 
     deleteEntry: async (id) => {
@@ -275,4 +279,13 @@ export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
 export function suggestedGroup(groups: NutritionGroup[], at = new Date()): NutritionGroup | null {
   const meal = mealForTime(at);
   return groups.find((group) => group.label === meal) ?? null;
+}
+
+/** Sign-out: nothing of this account's food stays on screen or reaches the next account's widget. */
+export function resetFuel() {
+  monthRequest += 1;
+  defaultsFailed.clear();
+  defaultsInFlight.clear();
+  const key = today();
+  useFuelStore.setState({ selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key, todayTotals: emptyTotals });
 }

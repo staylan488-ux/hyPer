@@ -15,6 +15,12 @@ export type FinishedSummary = {
   best: { name: string; weight: number; reps: number } | null;
 };
 
+function beats(a: { weight: number; reps: number }, b: { weight: number; reps: number }): boolean {
+  if (a.weight * a.reps !== b.weight * b.reps) return a.weight * a.reps > b.weight * b.reps;
+  if (a.weight !== b.weight) return a.weight > b.weight;
+  return a.reps > b.reps;
+}
+
 export function summarize(session: SessionModel, finishedAt = new Date()): FinishedSummary {
   const done = session.sets.filter((set) => set.completed);
   let best: FinishedSummary['best'] = null;
@@ -23,7 +29,9 @@ export function summarize(session: SessionModel, finishedAt = new Date()): Finis
     const weight = Number(set.weight ?? 0);
     const reps = Number(set.reps ?? 0);
     volume += weight * reps;
-    if (!best || weight * reps > best.weight * best.reps) {
+    // The heaviest work first; a bodyweight session (weight 0) picks its most reps.
+    if (weight === 0 && reps === 0) continue;
+    if (!best || beats({ weight, reps }, best)) {
       best = { name: set.exercise?.name ?? 'Set', weight, reps };
     }
   }
