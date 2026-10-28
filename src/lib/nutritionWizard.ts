@@ -47,7 +47,7 @@ export const UNIT_OPTIONS: WizardOption<UnitSystem>[] = [
 ];
 
 export const ACTIVITY_OPTIONS: WizardOption<ActivityLevel>[] = [
-  { value: 'sedentary', label: 'Sedentary', hint: 'Desk job, no training' },
+  { value: 'sedentary', label: 'Sedentary', hint: 'Desk job, little walking, no training' },
   { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job, 1–3 sessions a week' },
   { value: 'moderately_active', label: 'Moderately Active', hint: 'On your feet some, 3–5 sessions' },
   { value: 'very_active', label: 'Very Active', hint: 'Active job or 6–7 hard sessions' },
@@ -262,9 +262,9 @@ export function wizardRateDisplay(draft: WizardDraft, result: MacroTargetResult)
 
 /** One line on how the resting rate and protein were worked out. */
 export function wizardMethodNote(result: MacroTargetResult): string {
-  return result.bmrMethod === 'katch_mcardle'
-    ? `Katch-McArdle resting rate (${result.bmr} kcal) from your lean mass, protein set per kg of fat-free mass.`
-    : `Mifflin-St Jeor resting rate (${result.bmr} kcal), protein set per kg of bodyweight. Add body fat for a lean-mass-based estimate.`;
+  return result.bmrMethod === 'cunningham'
+    ? `Resting burn ${result.bmr} kcal from your lean mass (Cunningham, the best fit for lean lifters), protein set per kg of lean mass.`
+    : `Resting burn ${result.bmr} kcal (Mifflin-St Jeor), protein set per kg of bodyweight. Add body fat for a lean-mass estimate.`;
 }
 
 /**
@@ -310,4 +310,20 @@ export function wizardOutcome(
 /** Whether a recorded weight differs enough from the calculator's to log a new weigh-in. */
 export function wizardWeightChanged(latestKg: number | null, weightKg: number): boolean {
   return latestKg == null || Math.abs(latestKg - weightKg) > 0.05;
+}
+
+/**
+ * The calorie target in two parts that add up exactly: the daily burn it
+ * builds on, and what the goal adds or takes away.
+ */
+export function wizardBreakdown(result: MacroTargetResult): { burn: number; change: number } {
+  return { burn: result.tdee, change: result.calories - result.tdee };
+}
+
+/**
+ * When the learned burn sits well below the formula, the usual reason is
+ * food that never got logged; the calculator says so beside the choice.
+ */
+export function learnedBurnLooksLow(burns: { learned: number | null; formula: number }): boolean {
+  return burns.learned !== null && burns.learned < burns.formula * 0.85;
 }

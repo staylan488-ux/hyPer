@@ -16,6 +16,7 @@ import {
   switchWizardUnits,
   wizardBodyFatPct,
   wizardBodyReady,
+  wizardBreakdown,
   wizardBurns,
   wizardMethodNote,
   wizardOutcome,
@@ -108,6 +109,7 @@ export function NutritionWizard({
   const rateBounds = wizardRateBounds(draft);
   const showsRateControl = goal !== 'maintain';
   const burns = wizardBurns(draft, initialProfile);
+  const breakdown = wizardBreakdown(result);
 
   const rateDisplay = wizardRateDisplay(draft, result);
   const displayedRate = rateDisplay.value;
@@ -495,7 +497,10 @@ export function NutritionWizard({
               <span className="metal-unit">kcal</span>
             </div>
             <p className="text-[12.5px] tabular-nums text-[var(--metal-ink-2)] mt-2">
-              {result.tdeeIsMeasured ? 'Learned daily-burn estimate' : 'Estimated daily burn'} {result.tdee.toLocaleString()} kcal
+              {result.tdeeIsMeasured ? 'Learned burn' : 'Daily burn'} {result.tdee.toLocaleString()} kcal
+              {breakdown.change !== 0 && goal !== 'maintain'
+                ? ` ${breakdown.change > 0 ? '+' : '−'} ${Math.abs(breakdown.change).toLocaleString()} to ${breakdown.change > 0 ? 'gain' : 'lose'}`
+                : ''}
               {' · '}
               {GOAL_OPTIONS.find((o) => o.value === goal)?.label}
             </p>

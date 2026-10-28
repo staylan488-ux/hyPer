@@ -575,6 +575,32 @@ both the calculator and the edit sheet. A real-account Release build of
 ff86dc6 is installed and opened on the owner's iPhone; the build folder, the
 simulator and its DerivedData were deleted afterwards.
 
+The owner then found the targets still low (about 2,300 kcal for a 0.5%
+bulk) and asked to redo the calculation from the evidence. Rebuilt in
+`src/lib/nutritionCalculator.ts` (shared with the web app):
+- Resting rate: Cunningham (500 + 22 x fat-free mass) when body fat is
+  known, which tracks lean, trained people best against calorimetry
+  (Tinsley et al. 2019; Katch-McArdle read about 150 kcal low); Mifflin-St
+  Jeor otherwise.
+- Activity levels inside the doubly-labelled-water ranges (FAO/WHO/UNU
+  2004): 1.4, 1.55, 1.7, 1.85, 2.0, up from 1.25 to 1.8.
+- About 7,700 kcal per kg for gains as well as losses (overfeeding studies
+  measure about 8,000 kcal per kg gained, Forbes et al. 1986); it was 6,000.
+  The adaptive estimator uses the same figure.
+- Unchanged: the 10–20% surplus ceiling (Iraki et al. 2019), protein 2.0 g
+  per kg of lean mass (2.4 when cutting), fat about 25%.
+- The calculator shows the target as burn plus change ("2,791 burn + 334 to
+  gain") and says when the learned burn sits more than 15% under the
+  formula (usually unlogged food).
+For the owner (130 lb, 5'9", 12% body fat, 0.5% a week): 3,125 kcal
+moderately active, 2,860 lightly active, 2,385 on their learned burn of
+about 2,060. Golden tests in `tests/nutritionCalculator.test.ts` were
+recomputed by hand. Raising activity levels also raises cut and maintenance
+targets for everyone on the next calculation, and the adaptive estimator's
+"predicted" burn rises with them.
+- Train: tapping the workout bar during a rest now opens the rest panel
+  (the owner's request); otherwise it still returns to the workout.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

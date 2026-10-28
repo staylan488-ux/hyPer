@@ -13,8 +13,10 @@ import { BlancText } from './BlancText';
 
 /**
  * The live workout above the tab bar, like Music's now-playing bar: what's
- * next, or the rest countdown. Tap to return to the workout. iOS shows two
- * copies (full and inline), so all state comes from the stores.
+ * next, or the rest countdown. Tap to return to the workout; during a rest the
+ * tap also opens the rest panel (pause, +30 s, length, end), as the timer
+ * button in Train's header does. iOS shows two copies (full and inline), so
+ * all state comes from the stores.
  */
 export function WorkoutAccessory() {
   const c = useBlanc();
@@ -40,10 +42,11 @@ export function WorkoutAccessory() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${session.dayName}, ${status}. Open workout.`}
+      accessibilityLabel={`${session.dayName}, ${status}. ${resting || paused ? 'Open rest timer.' : 'Open workout.'}`}
       onPress={() => {
         haptics.tap();
         router.navigate('/train');
+        if (resting || paused) router.push('/rest');
       }}
       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 }}>
       {placement === 'inline' ? (

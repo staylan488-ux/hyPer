@@ -125,7 +125,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - Reorder (`native/src/app/reorder.tsx`) uses SwiftUI's List in edit mode
   through Expo UI, so the drag handles and lift are Apple's; a pair moves as
   one row, each drop saves at once, and a failed save puts the order back.
-- Rest: the timer button in Train's header opens the rest sheet to start a rest
+- Rest: the timer button in Train's header, or the workout bar tapped during
+  a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
   movement's rest length (1, 2, 3 or 5 min, or a custom time) or end it. The
   rest is the web's stored rest session (`src/lib/restTimer.ts`), so it

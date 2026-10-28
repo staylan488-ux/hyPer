@@ -14,7 +14,9 @@ import {
   selectWizardGoal,
   stepWizardRate,
   switchWizardUnits,
+  learnedBurnLooksLow,
   wizardBodyReady,
+  wizardBreakdown,
   wizardBurns,
   wizardMethodNote,
   wizardOutcome,
@@ -99,7 +101,7 @@ export default function TargetsCalculateSheet() {
   const imperial = draft.unitSystem === 'imperial';
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -221,13 +223,10 @@ export default function TargetsCalculateSheet() {
                 kcal a day
               </BlancText>
             </View>
-            {burns.learned === null ? (
-              <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, marginBottom: 6 }}>
-                Estimated daily burn {formatWhole(result.tdee)} kcal
-              </BlancText>
-            ) : (
-              <View style={{ height: 8 }} />
-            )}
+            {/* The target explains itself: the burn it builds on, plus or minus the goal. */}
+            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, marginBottom: 10, fontVariant: ['tabular-nums'] }}>
+              {ready ? breakdownLine(wizardBreakdown(result), draft.goal) : ' '}
+            </BlancText>
           </View>
           {burns.learned !== null ? (
             <>
@@ -245,6 +244,12 @@ export default function TargetsCalculateSheet() {
                 checked={draft.burn === 'formula'}
                 onPress={() => update({ burn: 'formula' })}
               />
+              {learnedBurnLooksLow(burns) ? (
+                <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: 18, marginBottom: 12 }}>
+                  Your learned burn is well below the formula. That usually means some food isn’t being logged, so the
+                  formula is the safer start.
+                </BlancText>
+              ) : null}
             </>
           ) : null}
           <Hairline />
@@ -271,6 +276,12 @@ export default function TargetsCalculateSheet() {
       <FormNote>Keeps these details (and a changed weight) in your profile. The targets wait for Save on the next screen.</FormNote>
     </ScrollView>
   );
+}
+
+/** "2,791 burn + 334 to gain", the target in its two parts. */
+function breakdownLine({ burn, change }: { burn: number; change: number }, goal: WizardDraft['goal']): string {
+  if (goal === 'maintain' || Math.abs(change) < 1) return `${formatWhole(burn)} kcal daily burn`;
+  return `${formatWhole(burn)} burn ${change > 0 ? '+' : '−'} ${formatWhole(Math.abs(change))} to ${change > 0 ? 'gain' : 'lose'}`;
 }
 
 /** "Lean Bulk" → "Lean bulk": Blanc writes in sentence case. */

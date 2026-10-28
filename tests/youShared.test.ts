@@ -19,6 +19,8 @@ import {
   switchWizardUnits,
   wizardBodyFatPct,
   wizardBodyReady,
+  learnedBurnLooksLow,
+  wizardBreakdown,
   wizardBurns,
   wizardOutcome,
   wizardRateBounds,
@@ -183,12 +185,16 @@ describe('learned or formula burn in the calculator', () => {
   const draft = { ...initialWizardDraft(owner, lbsToKg(130), now), weight: '130' };
 
   it('offers both burns and builds on the chosen one', () => {
-    expect(wizardBurns(draft, owner)).toEqual({ learned: 2060, formula: 2236 });
+    expect(wizardBurns(draft, owner)).toEqual({ learned: 2060, formula: 2791 });
+    expect(learnedBurnLooksLow(wizardBurns(draft, owner))).toBe(true);
+    expect(learnedBurnLooksLow({ learned: 2700, formula: 2791 })).toBe(false);
     expect(wizardResult(draft, owner).tdee).toBe(2060);
     const formula = { ...draft, burn: 'formula' as const };
-    expect(wizardResult(formula, owner).tdee).toBe(2236);
-    // A 0.5%-a-week bulk adds about 250 kcal a day for them.
-    expect(wizardResult(formula, owner).calories).toBeGreaterThan(2450);
+    const result = wizardResult(formula, owner);
+    expect(result.tdee).toBe(2791);
+    // A 0.5%-a-week bulk adds about 325 kcal a day for them; the parts add up.
+    expect(wizardBreakdown(result)).toEqual({ burn: 2791, change: 334 });
+    expect(result.calories).toBe(3125);
   });
 
   it('keeps formula targets by hand so the weekly adaptive update leaves them', () => {
