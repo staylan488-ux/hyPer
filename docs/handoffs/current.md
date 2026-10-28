@@ -15,6 +15,18 @@ committed (37637a1), pushed, and open as draft PR #152
 (https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
 production step was requested.
 
+## Ship pipeline fix (2026-10-28)
+
+The 13:02 /ship uploaded the retired Capacitor app as hyPer 1.0 build 59, after
+native 2.0 build 58: the bot runs `scripts/ship.sh` from the main checkout,
+which was still at af16add (before the cutover), and that old script built
+`ios/App` from the freshly reset clone. The 15:28 /ship built native 2.0 build 60
+from main c175fdc (processed and in internal testing for the Team group). On `claude/project-thread-srpn39`: ship.sh now hands over to
+the build clone's own copy right after resetting it, cleans up on any exit
+(the Xcode build folder now lives in `native/build`), and the bot reads the
+native build number and keeps a log per ship. The running bot keeps its old
+code until it is restarted after merge (`install-launchd.sh`, not during a ship).
+
 ## Interaction audit (2026-10-28)
 
 The owner asked for an app-wide interaction audit of the native app against

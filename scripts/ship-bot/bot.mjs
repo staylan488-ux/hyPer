@@ -11,6 +11,9 @@
 // again (reboot, power or internet outage).
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { spawn } from 'node:child_process';
+import { createWriteStream, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const APP_ID = process.env.DISCORD_APP_ID;
@@ -18,6 +21,8 @@ const CHANNEL_ID = process.env.DISCORD_DEPLOYS_CHANNEL_ID;
 const ALLOWED = (process.env.DISCORD_ALLOWED_USER_IDS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const SHIP_SCRIPT = process.env.SHIP_SCRIPT;
+// Each ship's full output, so a run can be checked afterwards.
+const LOG_DIR = join(homedir(), '.hyper-ship', 'logs');
 
 for (const [name, val] of Object.entries({ TOKEN, APP_ID, CHANNEL_ID, SHIP_SCRIPT })) {
   if (!val) { console.error(`FATAL: missing ${name} in environment`); process.exit(1); }
@@ -79,19 +84,32 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     const child = spawn('bash', [SHIP_SCRIPT], { env: process.env });
+    let log = null;
+    try {
+      mkdirSync(LOG_DIR, { recursive: true });
+      const logPath = join(LOG_DIR, `ship-${stamp().replace(/[:.]/g, '-')}.log`);
+      log = createWriteStream(logPath);
+      log.on('error', (err) => { console.error('ship log failed:', err.message); log = null; });
+      console.log(`  -> output in ${logPath}`);
+    } catch (err) {
+      console.error('could not open ship log:', err.message);
+    }
     let out = '';
-    child.stdout.on('data', (d) => { out += d.toString(); });
-    child.stderr.on('data', (d) => { out += d.toString(); });
+    const collect = (d) => { out += d.toString(); log?.write(d); };
+    child.stdout.on('data', collect);
+    child.stderr.on('data', collect);
 
     child.on('error', async (err) => {
       shipping = false;
+      log?.end();
       console.error(`[${stamp()}] ship by ${tag} could not start:`, err);
       try { await channel?.send(`❌ Ship by **${who}** couldn't start: ${err.message}`); } catch {}
     });
 
     child.on('close', async (code) => {
       shipping = false;
-      const build = (out.match(/Shipping hyPer build (\d+)/) || [])[1] || '?';
+      log?.end();
+      const build = (out.match(/Shipping (?:native )?hyPer build (\d+)/) || [])[1] || '?';
       const ok = code === 0 && /Successfully uploaded the new binary/.test(out);
       console.log(`[${stamp()}] ship by ${tag} finished: exit ${code}, ok=${ok}, build=${build}`);
       const msg = ok

@@ -1,8 +1,10 @@
 # TestFlight release
 
 [scripts/ship.sh](../../../../scripts/ship.sh) is the maintained release entrypoint.
-It fetches remote main, resets an isolated build clone, runs the tests, lint and
-the native type-check, then runs [native/fastlane](../../../../native/fastlane/Fastfile)
+It fetches remote main, resets an isolated build clone and continues with that
+clone's copy of the script, so a stale copy elsewhere cannot ship an old
+pipeline. It runs the tests, lint and the native type-check, then runs
+[native/fastlane](../../../../native/fastlane/Fastfile)
 to prebuild, archive, check and upload the React Native app in `native/` as
 `app.hyper.mobile` (the Capacitor shell in `ios/` is no longer shipped once this
 script is on main). Calling it performs the upload. It does not ship
@@ -25,6 +27,10 @@ widget extension the same number; nothing is written back to the repository.
 `native/scripts/check-release.sh` refuses an archive with the wrong bundle or
 extension IDs, mismatched build numbers, no production host or a local test
 backend.
+On exit, worked or not, the script removes the generated `native/ios`, the IPA
+and the Xcode build folder (`native/build`); the archive stays in Xcode's
+Archives for crash symbols. The ship bot saves each run's output as
+`~/.hyper-ship/logs/ship-<time>.log`.
 
 If upload status is uncertain, inspect the existing submission before retrying
 to avoid duplicate releases. If credentials or signing access are unavailable,
