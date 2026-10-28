@@ -2,6 +2,7 @@ import { addMonths, endOfMonth, format, isAfter, isSameDay, isSameMonth, startOf
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { buildCalendarDays } from '@/lib/nutritionCalendar';
 import { getSessionUserId } from '@/lib/sessionUser';
@@ -49,11 +50,22 @@ export default function FuelMonthSheet() {
     };
   }, [month]);
 
-  const step = (months: number) => {
-    haptics.select();
-    setMonth((value) => addMonths(value, months));
-  };
   const canGoForward = !isAfter(startOfMonth(addMonths(month, 1)), today);
+  // The chevrons tap on their own; a swipe ticks as the month changes.
+  const step = (months: number) => setMonth((value) => addMonths(value, months));
+  const swipe = Gesture.Pan()
+    .activeOffsetX([-24, 24])
+    .failOffsetY([-14, 14])
+    .runOnJS(true)
+    .onEnd((event) => {
+      if (event.translationX < -50 && canGoForward) {
+        haptics.select();
+        step(1);
+      } else if (event.translationX > 50) {
+        haptics.select();
+        step(-1);
+      }
+    });
 
   return (
     <View style={{ backgroundColor: c.ground, paddingBottom: 28 }}>
@@ -62,64 +74,66 @@ export default function FuelMonthSheet() {
         <BlancText variant="headline" accessibilityRole="header">
           {format(month, 'MMMM yyyy')}
         </BlancText>
-        <View style={{ opacity: canGoForward ? 1 : 0.3 }} pointerEvents={canGoForward ? 'auto' : 'none'}>
-          <GlassButton symbol="chevron.right" accessibilityLabel="Next month" onPress={() => step(1)} />
+        <GlassButton symbol="chevron.right" accessibilityLabel="Next month" disabled={!canGoForward} onPress={() => step(1)} />
+      </View>
+
+      <GestureDetector gesture={swipe}>
+        <View>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 12, marginTop: 18 }}>
+            {WEEKDAYS.map((label, index) => (
+              <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
+                {label}
+              </BlancText>
+            ))}
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, marginTop: 6 }}>
+            {days.map((day) => {
+              const key = dayKey(day);
+              const inMonth = isSameMonth(day, month);
+              const future = isAfter(startOfDay(day), today);
+              const isSelected = isSameDay(day, selected);
+              return (
+                <View key={key} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 3 }}>
+                  {inMonth ? (
+                    <Pressable
+                      disabled={future}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${format(day, 'EEEE, MMMM d')}${logged.has(key) ? ', has entries' : ''}`}
+                      accessibilityState={{ selected: isSelected, disabled: future }}
+                      onPress={() => {
+                        haptics.select();
+                        useFuelStore.getState().select(key);
+                        router.back();
+                      }}
+                      style={({ pressed }) => ({
+                        width: 44,
+                        height: 48,
+                        borderRadius: 22,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 3,
+                        opacity: future ? 0.3 : pressed ? 0.5 : 1,
+                        backgroundColor: isSelected ? c.capsule : 'transparent',
+                      })}>
+                      <BlancText
+                        variant="body"
+                        weight={isSameDay(day, today) || isSelected ? '600' : '400'}
+                        tone={isSelected ? 'onCapsule' : 'ink'}
+                        style={{ fontVariant: ['tabular-nums'] }}>
+                        {format(day, 'd')}
+                      </BlancText>
+                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged.has(key) ? (isSelected ? c.onCapsule : c.graphite) : 'transparent' }} />
+                    </Pressable>
+                  ) : (
+                    <View style={{ height: 48 }} />
+                  )}
+                </View>
+              );
+            })}
+          </View>
         </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, marginTop: 18 }}>
-        {WEEKDAYS.map((label, index) => (
-          <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
-            {label}
-          </BlancText>
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, marginTop: 6 }}>
-        {days.map((day) => {
-          const key = dayKey(day);
-          const inMonth = isSameMonth(day, month);
-          const future = isAfter(startOfDay(day), today);
-          const isSelected = isSameDay(day, selected);
-          return (
-            <View key={key} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 3 }}>
-              {inMonth ? (
-                <Pressable
-                  disabled={future}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${format(day, 'EEEE, MMMM d')}${logged.has(key) ? ', has entries' : ''}`}
-                  accessibilityState={{ selected: isSelected, disabled: future }}
-                  onPress={() => {
-                    haptics.select();
-                    useFuelStore.getState().select(key);
-                    router.back();
-                  }}
-                  style={({ pressed }) => ({
-                    width: 44,
-                    height: 48,
-                    borderRadius: 22,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 3,
-                    opacity: future ? 0.3 : pressed ? 0.5 : 1,
-                    backgroundColor: isSelected ? c.capsule : 'transparent',
-                  })}>
-                  <BlancText
-                    variant="body"
-                    weight={isSameDay(day, today) || isSelected ? '600' : '400'}
-                    tone={isSelected ? 'onCapsule' : 'ink'}
-                    style={{ fontVariant: ['tabular-nums'] }}>
-                    {format(day, 'd')}
-                  </BlancText>
-                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged.has(key) ? (isSelected ? c.onCapsule : c.graphite) : 'transparent' }} />
-                </Pressable>
-              ) : (
-                <View style={{ height: 48 }} />
-              )}
-            </View>
-          );
-        })}
-      </View>
+      </GestureDetector>
     </View>
   );
 }

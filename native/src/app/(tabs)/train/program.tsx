@@ -2,8 +2,8 @@ import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
-import { ActionSheetIOS, Alert, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { ActionSheetIOS, Alert, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { exerciseTotal, plural, shownActiveProgram, templateItemLabel, visibleTemplateItems } from '@/lib/programSummary';
 import { useAppStore } from '@/stores/appStore';
@@ -16,7 +16,8 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
-import { deleteProgram, editProgram, newProgram, renameQuickStart, setActiveProgram, startQuickStart } from '~/lib/program';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { deleteProgram, editProgram, newProgram, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -30,6 +31,8 @@ export default function ProgramScreen() {
   const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
   const flexible = mode === 'flexible';
   const active = shownActiveProgram(splits, mode);
+  // Only while the person's own pull runs.
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const store = useAppStore.getState();
@@ -45,6 +48,13 @@ export default function ProgramScreen() {
     });
   };
 
+  const refresh = async () => {
+    setRefreshing(true);
+    const store = useAppStore.getState();
+    await Promise.allSettled([store.fetchSplits({ force: true }), store.fetchFlexTemplates({ force: true })]);
+    setRefreshing(false);
+  };
+
   // Built once per mode, so the header is not re-sent on every render.
   const options = useMemo(
     () => ({
@@ -57,7 +67,11 @@ export default function ProgramScreen() {
                   type: 'button',
                   label: 'New program',
                   icon: { type: 'sfSymbol', name: 'plus' },
-                  onPress: newProgram,
+                  // iOS's header items are silent.
+                  onPress: () => {
+                    haptics.tap();
+                    newProgram();
+                  },
                 },
               ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
@@ -67,7 +81,7 @@ export default function ProgramScreen() {
   return (
     <>
       <Stack.Screen options={options} />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           {flexible ? 'Flexible · build each session as you go' : active ? `${active.name} · active` : splits.length > 0 ? 'None active' : 'No program yet'}
         </BlancText>
@@ -92,10 +106,12 @@ export default function ProgramScreen() {
 
 function Programs({ splits }: { splits: Split[] }) {
   const c = useBlanc();
-  // Rows being deleted fold away at once and come back if the delete fails.
-  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
+  // A program being deleted folds away once Delete is chosen, here or on its
+  // own screen, and comes back if the delete fails.
+  const deleting = useDeletingPrograms((state) => state.ids);
+  const shown = splits.filter((split) => !deleting.has(split.id));
 
-  if (splits.length === 0) {
+  if (shown.length === 0) {
     return (
       <Label style={{ marginTop: space.section, padding: 18, gap: 14 }}>
         <View style={{ gap: 2 }}>
@@ -109,17 +125,13 @@ function Programs({ splits }: { splits: Split[] }) {
     );
   }
 
-  const remove = async (split: Split) => {
-    const deleted = await deleteProgram(split);
-    if (!deleted) return;
-    setLeaving((current) => new Set(current).add(split.id));
-  };
+  const remove = (split: Split) => void deleteProgram(split);
 
   const menu = (split: Split) => {
     const actions: { label: string; run: () => void }[] = [
       ...(split.is_active ? [] : [{ label: 'Set active', run: () => void setActiveProgram(split) }]),
       { label: 'Edit', run: () => editProgram(split) },
-      { label: 'Delete', run: () => void remove(split) },
+      { label: 'Delete', run: () => remove(split) },
     ];
     ActionSheetIOS.showActionSheetWithOptions(
       {
@@ -134,18 +146,17 @@ function Programs({ splits }: { splits: Split[] }) {
     );
   };
 
-  const shown = splits.filter((split) => !leaving.has(split.id));
   return (
     <Section title="Programs">
-      <Label style={{ overflow: 'hidden' }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((split, index) => (
-          <Animated.View key={split.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+          <Animated.View key={split.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
             <SwipeRow
               name={split.name}
               actions={[
                 { label: 'Edit', onPress: () => editProgram(split) },
-                { label: 'Delete', destructive: true, onPress: () => void remove(split) },
+                { label: 'Delete', destructive: true, onPress: () => remove(split) },
               ]}>
               <View style={{ backgroundColor: c.label }}>
                 <Row
@@ -171,8 +182,9 @@ function QuickStarts() {
   const templates = useAppStore((state) => state.flexTemplates);
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   const [starting, setStarting] = useState<string | null>(null);
+  const shown = templates.filter((template) => !leaving.has(template.id));
 
-  if (templates.length === 0) {
+  if (shown.length === 0) {
     return (
       <Label style={{ marginTop: space.section, padding: 18, gap: 2 }}>
         <BlancText variant="headline">No quick starts yet</BlancText>
@@ -202,7 +214,7 @@ function QuickStarts() {
         if (still) {
           haptics.error();
           Alert.alert('Not deleted', 'Check your connection and try again.');
-        }
+        } else haptics.success();
         setLeaving((current) => {
           const next = new Set(current);
           next.delete(template.id);
@@ -229,14 +241,13 @@ function QuickStarts() {
     );
   };
 
-  const shown = templates.filter((template) => !leaving.has(template.id));
   return (
     <Section title="Quick starts">
-      <Label style={{ overflow: 'hidden' }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((template, index) => {
           const items = visibleTemplateItems(template);
           return (
-            <Animated.View key={template.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+            <Animated.View key={template.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
               {index > 0 ? <Hairline /> : null}
               <SwipeRow
                 name={template.label}

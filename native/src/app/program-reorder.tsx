@@ -47,7 +47,8 @@ export default function ProgramReorderSheet() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ground }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
-        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
+        {/* Changes apply as they are made: Done only, trailing as in iOS 26 sheets. */}
+        <View style={{ width: 44 }} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <BlancText variant="headline" accessibilityRole="header">
             {day ? 'Reorder exercises' : 'Reorder days'}
@@ -56,7 +57,7 @@ export default function ProgramReorderSheet() {
             {day ? dayLabel(day, draft?.days.indexOf(day) ?? 0) : draft?.name.trim() || 'New program'}
           </BlancText>
         </View>
-        <View style={{ width: 44 }} />
+        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
       </View>
 
       <Host style={{ flex: 1, marginTop: 4 }}>

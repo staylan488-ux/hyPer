@@ -5,6 +5,8 @@ import { initialWindowMetrics } from 'react-native-safe-area-context';
 import { scrollRoomExtra } from '~/lib/scrollRoom';
 import { useSessionModel } from '~/lib/session';
 
+import { dismissOpenSwipeRow } from './SwipeRow';
+
 const END_SPACE = 48;
 // What iOS 26 covers beyond the window's safe area on a tab page, measured
 // from scroll offsets on iPhone 17 Pro. The safe-area hooks can't be used:
@@ -51,6 +53,11 @@ export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
       contentInsetAdjustmentBehavior="automatic"
       scrollEventThrottle={16}
       {...props}
+      // Scrolling closes a row left swiped open, as iOS lists do.
+      onScrollBeginDrag={(event) => {
+        dismissOpenSwipeRow();
+        props.onScrollBeginDrag?.(event);
+      }}
       onLayout={(event) => {
         setViewport(event.nativeEvent.layout.height);
         onLayout?.(event);

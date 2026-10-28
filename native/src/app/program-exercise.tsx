@@ -57,7 +57,8 @@ export default function ProgramExerciseSheet() {
   return (
     <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} scrollEnabled={false}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
-        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
+        {/* Changes apply as they are made: Done only, trailing as in iOS 26 sheets. */}
+        <View style={{ width: 44 }} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <BlancText variant="headline" numberOfLines={1} accessibilityRole="header">
             {exercise.exercise.name}
@@ -66,7 +67,7 @@ export default function ProgramExerciseSheet() {
             {partner ? `Superset with ${partner.exercise.name}` : 'Sets and reps'}
           </BlancText>
         </View>
-        <View style={{ width: 44 }} />
+        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
       </View>
 
       <Label style={{ marginTop: 18 }}>
@@ -193,6 +194,8 @@ function StepButton({ symbol, disabled, accessibilityLabel, onPress, onHold, onR
       onLongPress={onHold}
       delayLongPress={350}
       onPressOut={onRelease}
+      // 36 points drawn, 44 to touch.
+      hitSlop={{ top: 4, bottom: 4 }}
       style={({ pressed }) => ({
         width: 44,
         height: 36,

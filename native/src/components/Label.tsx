@@ -1,17 +1,21 @@
-import { View, type ViewProps } from 'react-native';
+import type { ComponentProps } from 'react';
+import Animated from 'react-native-reanimated';
 
 import { radius, space, useBlanc } from '~/theme/blanc';
 
-type LabelProps = ViewProps & {
+type LabelProps = ComponentProps<typeof Animated.View> & {
   /** Sit flush with the screen gutter instead of the card inset. */
   bleed?: boolean;
 };
 
-/** The white label: Blanc's one container. */
+/**
+ * The white label: Blanc's one container. It takes Reanimated's `layout`, so
+ * a card grows and shrinks with its rows instead of snapping.
+ */
 export function Label({ bleed, style, children, ...rest }: LabelProps) {
   const c = useBlanc();
   return (
-    <View
+    <Animated.View
       {...rest}
       style={[
         {
@@ -24,6 +28,6 @@ export function Label({ bleed, style, children, ...rest }: LabelProps) {
         style,
       ]}>
       {children}
-    </View>
+    </Animated.View>
   );
 }

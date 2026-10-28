@@ -3,7 +3,8 @@ import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -102,11 +103,11 @@ function close() {
  * iOS's header, because a modal that shows and hides its header is rebuilt by
  * iOS, which would drop the run in progress.
  */
-function TopBar({ title }: { title?: string }) {
+function TopBar({ title, onClose = close }: { title?: string; onClose?: () => void }) {
   const insets = useSafeAreaInsets();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: insets.top + 6, paddingHorizontal: space.inset, paddingBottom: 6 }}>
-      <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={close} />
+      <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={onClose} />
       <BlancText variant="headline" accessibilityRole="header" style={{ flex: 1, textAlign: 'center' }}>
         {title ?? ''}
       </BlancText>
@@ -171,7 +172,7 @@ function Setup({ tracker }: { tracker: Tracker }) {
     <>
       <View style={{ flex: 1, backgroundColor: c.ground }}>
         <TopBar title="Run" />
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
           {tracker.resumable ? (
             <Label style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -260,13 +261,16 @@ function Setup({ tracker }: { tracker: Tracker }) {
           ) : null}
         </ScrollView>
 
-        <View style={{ paddingHorizontal: space.inset, paddingTop: 8, paddingBottom: insets.bottom + 12 }}>
-          {tracker.resumable ? (
-            <Capsule title="Resume run" size="large" fill onPress={() => tracker.resume()} />
-          ) : (
-            <Capsule title="Start run" size="large" fill busy={starting} disabled={!valid} onPress={() => void start()} />
-          )}
-        </View>
+        {/* Rides above the keyboard while a split distance is typed, so Start stays in reach. */}
+        <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+          <View style={{ paddingHorizontal: space.inset, paddingTop: 8, paddingBottom: insets.bottom + 12, backgroundColor: c.ground }}>
+            {tracker.resumable ? (
+              <Capsule title="Resume run" size="large" fill onPress={() => tracker.resume()} />
+            ) : (
+              <Capsule title="Start run" size="large" fill busy={starting} disabled={!valid} onPress={() => void start()} />
+            )}
+          </View>
+        </KeyboardStickyView>
       </View>
     </>
   );
@@ -319,6 +323,17 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '—';
   const [figure, unit] = restHero ? [formatRunClock(currentLapSeconds(state, now)), ''] : splitFigure(pace);
   const lastLap = state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
+
+  // Split confirms only a lap the tracker took: a tap inside its debounce
+  // changes nothing, so it says nothing. The tracker commits a split before
+  // the next render, which reads whether one landed.
+  const pendingSplit = useRef<{ before: number | null } | null>(null);
+  useEffect(() => {
+    const pending = pendingSplit.current;
+    if (!pending) return;
+    pendingSplit.current = null;
+    if (state.lastManualSplitMs !== pending.before) haptics.success();
+  });
 
   return (
     <>
@@ -401,10 +416,13 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
               title="Split"
               primary
               onPress={() => {
-                haptics.tap();
+                pendingSplit.current = { before: state.lastManualSplitMs };
                 tracker.split();
               }}
             />
+          ) : intervals ? (
+            // Resting keeps Split's place, so Resume and the finish hold never move under a finger.
+            <View style={{ flex: 1 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           ) : null}
           <BigButton
             title={tracker.resting ? 'Resume' : 'Rest'}
@@ -483,6 +501,7 @@ const HOLD_TO_FINISH_MS = 800;
 function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   const c = useBlanc();
   const [holding, setHolding] = useState(false);
+  const [width, setWidth] = useState(0);
   const progress = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -509,26 +528,45 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   };
 
   const fill = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  // VoiceOver cannot hold, so its double tap asks instead.
+  const confirmFinish = () =>
+    Alert.alert('Finish this run?', undefined, [
+      { text: 'Keep running', style: 'cancel' },
+      {
+        text: 'Finish',
+        onPress: () => {
+          haptics.success();
+          onFinish();
+        },
+      },
+    ]);
+  const title = holding ? 'Keep holding…' : 'Hold to finish';
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Finish run"
-      accessibilityHint="Hold to finish"
-      accessibilityActions={[{ name: 'activate', label: 'Finish run' }]}
-      onAccessibilityAction={() =>
-        Alert.alert('Finish this run?', undefined, [
-          { text: 'Keep running', style: 'cancel' },
-          { text: 'Finish', onPress: onFinish },
-        ])
-      }
+      accessibilityHint="Asks before the run ends"
+      accessibilityActions={[{ name: 'finish', label: 'Finish run' }]}
+      onAccessibilityTap={confirmFinish}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'finish') confirmFinish();
+      }}
       onPressIn={begin}
       onPressOut={cancel}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       style={{ flex: 1.3, height: 64, borderRadius: 32, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.fill, justifyContent: 'center' }}>
-      <Animated.View style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: c.ink, opacity: 0.16 }, fill]} />
       <BlancText variant="headline" size={18} style={{ textAlign: 'center' }}>
-        {holding ? 'Keep holding…' : 'Hold to finish'}
+        {title}
       </BlancText>
+      {/* The hold fills the capsule in ink, the words turning over as it passes them. */}
+      <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, overflow: 'hidden', backgroundColor: c.capsule }, fill]}>
+        <View style={{ width, height: '100%', justifyContent: 'center' }}>
+          <BlancText variant="headline" size={18} tone="onCapsule" style={{ textAlign: 'center' }}>
+            {title}
+          </BlancText>
+        </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -584,13 +622,36 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
   const exportDiagnostics = () => {
     setExportError(false);
     const { filename, content } = gpsDiagnosticsExport(run, new Date());
-    void NativeRun.shareDiagnostics({ filename, content }).catch(() => setExportError(true));
+    void NativeRun.shareDiagnostics({ filename, content }).catch(() => {
+      haptics.error();
+      setExportError(true);
+    });
+  };
+
+  // Closing an unsaved run says so, and offers what to do with it.
+  const closeFinished = () => {
+    if (saving) return;
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: 'Save this run?',
+        // The tracker keeps a finished run for 7 days (FINISHED_RUN_RECOVERY_MAX_AGE_MS).
+        message: 'A run kept for later waits on the run screen for up to a week.',
+        options: ['Save run', 'Discard run', 'Keep for later', 'Cancel'],
+        destructiveButtonIndex: 1,
+        cancelButtonIndex: 3,
+      },
+      (index) => {
+        if (index === 0) void save();
+        if (index === 1) confirmDiscard();
+        if (index === 2) close();
+      },
+    );
   };
 
   return (
     <>
       <View style={{ flex: 1, backgroundColor: c.ground }}>
-        <TopBar />
+        <TopBar onClose={closeFinished} />
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ paddingHorizontal: space.gutter, paddingTop: 8 }}>
             <BlancText variant="secondary" tone="graphite">

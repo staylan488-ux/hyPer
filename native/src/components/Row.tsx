@@ -6,6 +6,7 @@ import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
+import { closeOpenSwipeRow, useSwipeActions } from './SwipeRow';
 
 type RowProps = {
   title: string;
@@ -21,14 +22,26 @@ type RowProps = {
   onPress?: () => void;
   /** A second action under a long press, offered to VoiceOver as a custom action. */
   onLongPress?: { label: string; run: () => void };
+  /** Shown but not usable for now (a save is running): dimmed and inert. */
+  disabled?: boolean;
   accessibilityLabel?: string;
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, accessibilityLabel }: RowProps) {
+export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, disabled, accessibilityLabel }: RowProps) {
   const c = useBlanc();
   // Spoken as its words only: icons such as the chevron add nothing.
   const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
+  // VoiceOver offers the long-press action and any swipe actions around the row.
+  const swipe = useSwipeActions() ?? [];
+  const actions = [
+    ...(onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : []),
+    ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
+  ];
+  const onAction = (name: string) => {
+    if (name === 'longpress') onLongPress?.run();
+    else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
+  };
   const content = (
     <>
       {leading}
@@ -64,11 +77,16 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     paddingRight: 16,
   };
 
-  if (!onPress) {
+  if (!onPress && !onLongPress) {
     // Read as one element, unless it holds a control (a Start button, say)
     // that VoiceOver must still reach on its own.
     return (
-      <View style={rowStyle} accessible={!trailing} accessibilityLabel={trailing ? undefined : label}>
+      <View
+        style={rowStyle}
+        accessible={!trailing}
+        accessibilityLabel={trailing ? undefined : label}
+        accessibilityActions={!trailing && actions.length > 0 ? actions : undefined}
+        onAccessibilityAction={(event) => onAction(event.nativeEvent.actionName)}>
         {content}
       </View>
     );
@@ -78,23 +96,27 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityActions={onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : undefined}
-      onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === 'longpress') onLongPress?.run();
-      }}
+      accessibilityState={disabled ? { disabled: true } : undefined}
+      disabled={disabled}
+      accessibilityActions={actions.length > 0 ? actions : undefined}
+      onAccessibilityAction={(event) => onAction(event.nativeEvent.actionName)}
       onPress={() => {
+        // A tap while another row stands open only closes that row, as in Mail.
+        if (closeOpenSwipeRow()) return;
+        if (!onPress) return;
         haptics.tap();
         onPress();
       }}
       onLongPress={
         onLongPress
           ? () => {
+              if (closeOpenSwipeRow()) return;
               haptics.select();
               onLongPress.run();
             }
           : undefined
       }
-      style={({ pressed }) => [rowStyle, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
+      style={({ pressed }) => [rowStyle, { backgroundColor: pressed ? c.pressed : 'transparent', opacity: disabled ? 0.4 : 1 }]}>
       {content}
     </Pressable>
   );

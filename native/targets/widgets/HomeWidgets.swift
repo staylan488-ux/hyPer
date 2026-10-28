@@ -250,7 +250,8 @@ private struct FuelView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     .widgetGround(blanc.ground)
-    .widgetURL(appURL("fuel"))
+    // With no calorie target yet, the tap goes where one is set.
+    .widgetURL(appURL(entry.snapshot != nil && entry.fuel == nil ? "you/targets" : "fuel"))
   }
 
   private func figure(_ left: Double, blanc: Blanc, size: CGFloat) -> some View {

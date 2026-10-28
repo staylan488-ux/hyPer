@@ -58,7 +58,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
             title="Add to"
             quiet={false}
             value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'}
-            chevron
+            chevron={!disabled}
             onPress={disabled ? undefined : chooseGroup}
           />
         ) : (

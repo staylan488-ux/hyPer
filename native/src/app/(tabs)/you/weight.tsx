@@ -3,8 +3,8 @@ import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActionSheetIOS, Alert, View } from 'react-native';
-import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import type { BodyWeightMeasurement } from '@/lib/healthWeights';
@@ -18,7 +18,8 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
 import { haptics } from '~/lib/haptics';
-import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, useWeightStore } from '~/lib/you';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
 const RECENT = 6;
@@ -34,6 +35,7 @@ export default function WeightScreen() {
   const latest = history[0] ?? null;
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
   const showTrend = trend.latestEwmaKg !== null && trend.fittedDayCount >= 2;
+  const { refreshing, refresh } = usePullRefresh(loadWeights);
 
   useEffect(() => {
     void loadWeights();
@@ -57,20 +59,31 @@ export default function WeightScreen() {
           ],
         }}
       />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {latest ? (
           <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-              <BlancText variant="figure" size={64}>
-                {formatWeight(Number(latest.kilograms), unit)}
-              </BlancText>
+            {/* The figure is where a weigh-in starts: a tap logs the next one. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest)}`}
+              accessibilityHint="Logs a weigh-in"
+              onPress={() => {
+                haptics.tap();
+                router.push('/log-weight');
+              }}
+              style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                <BlancText variant="figure" size={64}>
+                  {formatWeight(Number(latest.kilograms), unit)}
+                </BlancText>
+                <BlancText variant="secondary" tone="graphite">
+                  {unit}
+                </BlancText>
+              </View>
               <BlancText variant="secondary" tone="graphite">
-                {unit}
+                {measuredLabel(latest)}
               </BlancText>
-            </View>
-            <BlancText variant="secondary" tone="graphite">
-              {measuredLabel(latest)}
-            </BlancText>
+            </Pressable>
           </View>
         ) : (
           <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
@@ -106,18 +119,25 @@ export default function WeightScreen() {
           </Label>
         ) : null}
 
-        {history.length > 0 ? <Recent entries={history.slice(0, RECENT)} unit={unit} /> : null}
-
-        <Label style={{ marginTop: space.section }}>
-          <UnitRow unit={unit} />
-          <Hairline />
-          <Row title="Apple Health" value={health ? 'On' : 'Off'} chevron onPress={() => router.push('/you/connections')} />
-        </Label>
-        {failed && latest ? (
-          <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 8 }} accessibilityRole="alert">
-            Couldn’t refresh your weigh-ins. Earlier ones are kept.
-          </BlancText>
+        {history.length > 0 ? (
+          <Animated.View layout={rowLayout}>
+            <Recent entries={history.slice(0, RECENT)} unit={unit} />
+          </Animated.View>
         ) : null}
+
+        {/* Slides up with the list as a weigh-in leaves it. */}
+        <Animated.View layout={rowLayout}>
+          <Label style={{ marginTop: space.section }}>
+            <UnitRow unit={unit} />
+            <Hairline />
+            <Row title="Apple Health" value={health ? 'On' : 'Off'} chevron onPress={() => router.push('/you/connections')} />
+          </Label>
+          {failed && latest ? (
+            <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 8 }} accessibilityRole="alert">
+              Couldn’t refresh your weigh-ins. Earlier ones are kept.
+            </BlancText>
+          ) : null}
+        </Animated.View>
       </TabScroll>
     </>
   );
@@ -137,7 +157,9 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
   const remove = (entry: BodyWeightMeasurement) => {
     setLeaving((current) => new Set(current).add(entry.id));
     void deleteWeighIn(entry).then((deleted) => {
-      if (!deleted) {
+      if (deleted) {
+        haptics.success();
+      } else {
         haptics.error();
         Alert.alert('Not deleted', 'Check your connection and try again.');
       }
@@ -167,7 +189,7 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
   const shown = entries.filter((entry) => !leaving.has(entry.id));
   return (
     <Section title="Recent">
-      <Label style={{ overflow: 'hidden' }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((entry, index) => {
           const title = `${formatWeight(Number(entry.kilograms), unit)} ${unit}`;
           const row = (
@@ -181,7 +203,7 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
             </View>
           );
           return (
-            <Animated.View key={entry.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+            <Animated.View key={entry.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
               {index > 0 ? <Hairline /> : null}
               {entry.source === 'manual' ? (
                 <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: () => remove(entry) }]}>

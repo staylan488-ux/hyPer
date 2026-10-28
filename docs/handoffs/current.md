@@ -15,6 +15,68 @@ committed (37637a1), pushed, and open as draft PR #152
 (https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
 production step was requested.
 
+## Interaction audit (2026-10-28)
+
+The owner asked for an app-wide interaction audit of the native app against
+"This should work, and it does": native iOS swipes with clean motion, long
+presses, taps that do the obvious thing, haptics, nothing lost. Four read-only
+passes (Train and Today; Fuel and Log food; History and Program; You, Run,
+sign-in and widgets) found about 120 gaps; fixes are on
+`claude/project-thread-yy0lu9` (from main 36aa522), checked by two review
+passes and in the iPhone 17 Pro simulator (sample data, real touches).
+
+Shared:
+- SwipeRow: one row open at a time (a scroll, a tap on another row or leaving
+  the screen closes it), the row follows the finger 1:1, a full swipe arms at
+  about half the row with one tick, fills the row red and then runs the action;
+  the press the swiping finger also produces is ignored (it used to open the
+  row's editor after a partial swipe). Rows inside take its actions for
+  VoiceOver. No success haptic on release: actions report their own result.
+- `native/src/lib/motion.ts`: removed rows slide off left and fade, rows below
+  close up, cards (Label is now an Animated.View) resize with them.
+- Chip ticks itself and touches at 44 pt; FieldRow focuses on a tap anywhere
+  on the row and number pads get iOS's Done/Next bar (`numberPadReturnKey`);
+  FigureInput is at least 44 pt wide; ToggleRow keeps a flipped switch while
+  it saves; Row and GlassButton have a disabled state.
+- Finishing a workout is one hook (`native/src/lib/finishWorkout.ts`) shared by
+  Train's header, its All sets logged card and Today (Today's Finish now
+  finishes), one save at a time across all of them.
+
+By screen (main points): Train's header is built once (no longer re-sent every
+second), the set card's name opens its movement sheet, Next goes from weight
+to reps, movement rows swipe to Swap (and Remove in a flexible session), the
+rest time opens its length editor, reorder's ✓ sits on the right; Today's
+session and plan cards, Fuel figure and target hint lead to their screens;
+pull to refresh on Today, Train, Progress, Fuel, History, Program and You
+screens; Log food asks before an unlogged estimate or typed entry is lost,
+AI items have stable ids, Saved deletes cleanly (no message pushing the list),
+photo taps ask before removing; past-set, activity, schedule, picker and set
+corrections ask before edits go; past sets and History/Program deletes leave
+at once and come back on failure; the muscle figure picks the nearest muscle;
+the run controls keep their places while resting, a finished run's ✕ offers
+Save, Discard or Keep, the workout Live Activity opens Train, the Fuel widget
+without a target opens You › Targets; targets and the latest weight open
+their editors; WHOOP's row swipes for Sync and Disconnect.
+
+Not changed on purpose: logged sets in a live workout are corrected, not
+deleted (as on the web; History deletes them); the Appearance row's whole-row
+menu (needs a SwiftUI row); a long press on Fuel's meal headers (Section has
+no long press); removing an activity's start time; quick start chips' long
+press; header ⋯ menus stay silent (iOS gives them no tap callback).
+
+Checks: native type-check; 2,010 web tests, lint with instruction checks, web
+build (after `npm install` brought this worktree's packages up to date);
+simulator Debug build of the released variant including the widget extension.
+Simulator runs (light and dark): partial and full swipes, one row open, a tap
+that only closes a row, swipe-to-Swap, Saved full-swipe delete recorded and
+checked frame by frame, logging from Saved closing without a question, a typed
+Manual entry asking before closing, past-set autofocus replacing the number,
+a past set deleted then the next set opened at once, the program editor asking
+once and closing on Discard, the rest length prompt, Today's card, targets
+opening the editor on the tapped macro. Not exercised: anything on a phone
+(haptics, real finger swipes), VoiceOver, the lock-screen card and widget
+taps, and real-database writes (sample backend only).
+
 ## Describe amount converts units (2026-10-28)
 
 The owner typed "272 ML" for orange juice whose serving is "1 cup" and Gemini

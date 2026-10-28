@@ -3,7 +3,7 @@ import { datePickerStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { addDays, format, parseISO } from 'date-fns';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { buildFixedWeekdays, buildPlanSchedule, defaultWeekdays, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
@@ -17,6 +17,7 @@ import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { haptics } from '~/lib/haptics';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { useScheduleRevision, useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -62,12 +63,26 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
   const startDate = choice === 'today' ? ymd(new Date()) : choice === 'tomorrow' ? ymd(addDays(new Date(), 1)) : ymd(picked);
   const rhythm = buildFixedWeekdays(anchorDay, split.days_per_week).map((day) => WEEKDAYS[day]).join(' / ');
 
+  // Closing with changes asks first; Save closes once, after the guard steps aside.
+  const [opened] = useState(() => ({ choice, startDate, mode, anchorDay, flexDayIndex }));
+  const changed =
+    choice !== opened.choice ||
+    startDate !== opened.startDate ||
+    mode !== opened.mode ||
+    anchorDay !== opened.anchorDay ||
+    flexDayIndex !== opened.flexDayIndex;
+  const [done, setDone] = useState(false);
+  useLeaveGuard(changed && !done, { title: 'Discard schedule changes?' });
+  useEffect(() => {
+    if (done) router.back();
+  }, [done]);
+
   const save = () => {
-    if (!userId) return;
+    if (!userId || done) return;
     savePlanSchedule(userId, buildPlanSchedule(split, { startDate, mode, anchorDay, flexDayIndex }));
     bump();
     haptics.success();
-    router.back();
+    setDone(true);
   };
 
   const select = <T,>(setter: (value: T) => void) => (value: T) => {
@@ -105,7 +120,7 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
                 title="Starts"
                 selection={picked}
                 displayedComponents={['date']}
-                onDateChange={setPicked}
+                onDateChange={select(setPicked)}
                 modifiers={[datePickerStyle('compact')]}
               />
             </Host>

@@ -1,5 +1,5 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import {
@@ -31,7 +31,18 @@ const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded i
  */
 export default function ActivityViewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const activity = useHistoryStore((state) => state.activities.find((entry) => entry.id === id) ?? null);
+  const stored = useHistoryStore((state) => state.activities.find((entry) => entry.id === id) ?? null);
+  // The last one seen: deleted from its edit sheet, it stays drawn under the
+  // sheet, and this screen goes back as soon as it is showing again.
+  const [seen, setSeen] = useState(stored);
+  if (stored && stored !== seen) setSeen(stored);
+  const activity = stored ?? seen;
+  const gone = stored === null && seen !== null;
+  useFocusEffect(
+    useCallback(() => {
+      if (gone) router.back();
+    }, [gone]),
+  );
   const [segments, setSegments] = useState<ActivitySegment[] | null | undefined>(undefined);
 
   useEffect(() => {

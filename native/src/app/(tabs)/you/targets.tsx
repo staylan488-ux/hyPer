@@ -1,6 +1,6 @@
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, RefreshControl, View } from 'react-native';
 
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { baseTargets, expenditureSummary, resumeAdaptiveMessage, targetModeLabel } from '@/lib/settingsUx';
@@ -15,7 +15,7 @@ import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { loadTargets, useAnalysisModeStore, useTargetsStore } from '~/lib/you';
+import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
 
 /**
@@ -36,6 +36,9 @@ export default function TargetsScreen() {
   // up, the Mac worker needs its address.
   const analysis = useAnalysisModeStore((state) => state.mode);
   const coachAvailable = analysis === 'gemini' || isPreviewActive() || Boolean(getPhotoWorkerSettings().url);
+  const { refreshing, refresh } = usePullRefresh(loadTargets);
+  // A number opens the edit sheet with its own field ready to type.
+  const edit = (focus: 'calories' | 'protein' | 'carbs' | 'fat') => router.push({ pathname: '/targets-edit', params: { focus } });
 
   useEffect(() => {
     void loadTargets();
@@ -82,7 +85,7 @@ export default function TargetsScreen() {
               : [],
         }}
       />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {status === 'error' && !target ? (
           <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
             <View style={{ gap: 2 }}>
@@ -96,24 +99,40 @@ export default function TargetsScreen() {
         ) : (
           <>
             <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <BlancText variant="figure" size={64}>
-                  {ready ? formatWhole(base.calories) : ' '}
-                </BlancText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={ready ? `${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}` : 'Calories'}
+                accessibilityHint={ready ? 'Edits your targets' : undefined}
+                accessibilityState={ready ? undefined : { disabled: true }}
+                disabled={!ready}
+                onPress={() => {
+                  haptics.tap();
+                  edit('calories');
+                }}
+                style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                  <BlancText variant="figure" size={64}>
+                    {ready ? formatWhole(base.calories) : ' '}
+                  </BlancText>
+                  <BlancText variant="secondary" tone="graphite">
+                    kcal a day
+                  </BlancText>
+                </View>
                 <BlancText variant="secondary" tone="graphite">
-                  kcal a day
+                  {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}
                 </BlancText>
-              </View>
-              <BlancText variant="secondary" tone="graphite">
-                {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}
-              </BlancText>
+              </Pressable>
             </View>
             <Label style={{ marginTop: 24 }}>
-              <Row title="Protein" value={ready ? `${formatWhole(base.protein)} g` : undefined} />
+              <Row
+                title="Protein"
+                value={ready ? `${formatWhole(base.protein)} g` : undefined}
+                onPress={ready ? () => edit('protein') : undefined}
+              />
               <Hairline />
-              <Row title="Carbs" value={ready ? `${formatWhole(base.carbs)} g` : undefined} />
+              <Row title="Carbs" value={ready ? `${formatWhole(base.carbs)} g` : undefined} onPress={ready ? () => edit('carbs') : undefined} />
               <Hairline />
-              <Row title="Fat" value={ready ? `${formatWhole(base.fat)} g` : undefined} />
+              <Row title="Fat" value={ready ? `${formatWhole(base.fat)} g` : undefined} onPress={ready ? () => edit('fat') : undefined} />
             </Label>
           </>
         )}

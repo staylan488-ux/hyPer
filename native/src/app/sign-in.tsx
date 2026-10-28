@@ -20,6 +20,7 @@ import { space, useBlanc } from '~/theme/blanc';
 // Same rules and words as the web sign-in form (src/components/auth/AuthForm.tsx).
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 const MIN_PASSWORD_LENGTH = 6;
+const SHORT_PASSWORD_MESSAGE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
 
 type InputRef = ComponentRef<typeof TextInput>;
 type Provider = 'apple' | 'google';
@@ -112,6 +113,22 @@ export default function SignIn() {
     }
   };
 
+  // Go on the keyboard with the form not ready says what is missing; the
+  // button stays disabled meanwhile, as before.
+  const submitFromKeyboard = () => {
+    if (busy) return;
+    if (!trimmedEmail) {
+      emailRef.current?.focus();
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      haptics.error();
+      setError(SHORT_PASSWORD_MESSAGE);
+      return;
+    }
+    void submit();
+  };
+
   const resendVerification = async () => {
     const targetEmail = pendingVerificationEmail || trimmedEmail;
     if (!targetEmail || resendingVerification) return;
@@ -120,9 +137,11 @@ export default function SignIn() {
     try {
       const { error: resendError } = await resendSignupConfirmation(targetEmail);
       if (resendError) {
+        haptics.error();
         setError(resendError.message);
         return;
       }
+      haptics.success();
       setSignupSuccess(`Verification email resent to ${targetEmail}. Check spam or promotions if it doesn't appear.`);
     } finally {
       setResendingVerification(false);
@@ -133,6 +152,7 @@ export default function SignIn() {
     <KeyboardAwareScrollView
       bottomOffset={24}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: c.ground }}
       contentContainerStyle={{ paddingTop: insets.top + 44, paddingBottom: insets.bottom + 28 }}>
       {/* The launch intro lands on the mark; the rest rises in under it. */}
@@ -182,6 +202,8 @@ export default function SignIn() {
             autoComplete="email"
             autoCapitalize="none"
             autoCorrect={false}
+            // Return stays dim until there is something to send (the name is optional).
+            enablesReturnKeyAutomatically
             returnKeyType="next"
             submitBehavior="submit"
             onSubmitEditing={() => passwordRef.current?.focus()}
@@ -190,15 +212,19 @@ export default function SignIn() {
           <Field
             ref={passwordRef}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(next) => {
+              if (error === SHORT_PASSWORD_MESSAGE && next.length >= MIN_PASSWORD_LENGTH) setError(null);
+              setPassword(next);
+            }}
             placeholder="Password"
             accessibilityLabel="Password"
             secureTextEntry
             textContentType={isLogin ? 'password' : 'newPassword'}
             autoComplete={isLogin ? 'current-password' : 'new-password'}
             passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+            enablesReturnKeyAutomatically
             returnKeyType="go"
-            onSubmitEditing={() => void submit()}
+            onSubmitEditing={submitFromKeyboard}
           />
         </Label>
 

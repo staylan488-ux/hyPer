@@ -3,9 +3,12 @@
 // removing and pairing movements and naming the session. Writes go through the
 // shared store actions, the same ones the web Train page uses, after any notes
 // typed before them have saved.
+import { Alert } from 'react-native';
+
 import { useAppStore } from '@/stores/appStore';
 import type { Exercise } from '@/types';
 
+import { haptics } from './haptics';
 import { afterNotes } from './notes';
 import { useFocusStore } from './session';
 
@@ -102,6 +105,40 @@ export async function removeMovement(workoutId: string, exerciseId: string) {
   if (inPlan(exerciseId)) throw new Error('Could not remove the exercise. Try again.');
   const focus = useFocusStore.getState();
   if (focus.exerciseId === exerciseId) focus.focus(null);
+}
+
+/**
+ * Flexible session: asks, then takes a movement out (from its sheet, or a
+ * swipe on its row). `onRemoved` runs once it is out.
+ */
+export function confirmRemoveMovement(
+  workoutId: string,
+  movement: { exerciseId: string; name: string; done: number },
+  hooks: { onStart?: () => void; onRemoved?: () => void; onFailed?: () => void } = {},
+) {
+  Alert.alert(
+    `Remove ${movement.name}?`,
+    movement.done ? 'Its logged sets stay in this workout.' : 'It comes out of this workout only.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          hooks.onStart?.();
+          try {
+            await removeMovement(workoutId, movement.exerciseId);
+            haptics.success();
+            hooks.onRemoved?.();
+          } catch (error) {
+            haptics.error();
+            hooks.onFailed?.();
+            Alert.alert('Not removed', errorMessage(error, 'Could not remove the exercise. Try again.'));
+          }
+        },
+      },
+    ],
+  );
 }
 
 /** Flexible session: renames it (an empty name keeps the old one). */

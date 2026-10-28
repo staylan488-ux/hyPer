@@ -1,7 +1,7 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
@@ -31,15 +31,17 @@ import { Capsule } from '~/components/Capsule';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
+import { dismissOpenSwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
-import { emptyManual, manualFromFood, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
+import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
 import { aiHasDraft, AiTab, emptyAi, type AiDraft } from '~/fuel/AiTab';
 import { emptyPhoto, PhotoTab, type PhotoDraft } from '~/fuel/PhotoTab';
@@ -129,12 +131,22 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
+  // What the sheet itself last put in Manual: typing away from it is work to keep.
+  const [manualBase, setManualBase] = useState(manual);
+  const loadManual = useCallback((next: ManualDraft) => {
+    setManual(next);
+    setManualBase(next);
+  }, []);
   const [photo, setPhoto] = useState<PhotoDraft>(emptyPhoto);
   // The owner logs food with Gemini; the worker photo flow stays for a device set to it.
   const [analysisMode] = useState(getFoodAnalysisMode);
   const gemini = analysisMode === 'gemini';
   const [ai, setAi] = useState<AiDraft>(() => emptyAi());
   const [busy, setBusy] = useState(false);
+  // A confirmed save (or a discarded meal edit) closes the sheet without
+  // asking about the work it settled: the guard sees `closing` first, then an
+  // effect closes.
+  const [closing, setClosing] = useState(false);
   const photoWaiting = tab !== 'photo' && photo.items.length > 0 && getFoodAnalysisMode() !== 'gemini';
 
   // Saved meals: the last list at once, refetched on open.
@@ -226,7 +238,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     setSavedTarget(undefined);
     setMealReview(false);
     setMealError('');
-    if (editing || savedMeal) router.back();
+    if (editing || savedMeal) setClosing(true);
   };
 
   const capturing = Boolean(meal) && !mealReview && !paused;
@@ -234,7 +246,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
 
   const complete = useCallback(() => {
     void useFuelStore.getState().refresh();
-    router.back();
+    setClosing(true);
   }, []);
 
   const addIngredients = useCallback(
@@ -251,13 +263,13 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
       updateMeal({ ingredients: [...meal.ingredients, ...next] });
       // the capture starts fresh for the next ingredient, as the web logger remounts
       setChosen(null);
-      setManual(emptyManual);
+      loadManual(emptyManual);
       setPhoto(emptyPhoto());
       setAi(emptyAi());
       setCaptureKey((key) => key + 1);
       setMealError('');
     },
-    [meal, updateMeal],
+    [meal, updateMeal, loadManual],
   );
 
   const context = useMemo<LoggerContextValue>(
@@ -279,22 +291,35 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     [purpose, editing, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete],
   );
 
-  // Closing mid-analysis, or with a photo estimate unseen, asks first.
-  const guarded = busy || photoWaiting;
-  const close = () => {
-    if (!guarded) {
-      router.back();
-      return;
-    }
-    Alert.alert(busy ? 'Stop the analysis?' : 'Discard the photo estimate?', busy ? 'The result is lost if you close now.' : 'You have not logged it yet.', [
-      { text: 'Keep', style: 'cancel' },
-      { text: 'Close', style: 'destructive', onPress: () => router.back() },
-    ]);
-  };
+  // Closing (✕, swipe down) with work that is not logged yet asks first: an
+  // analysis running, an estimate, typed or changed Manual fields, or a meal
+  // this device could not keep. A built meal is kept for next time anyway.
+  const estimate = ai.items.length > 0 || photo.items.length > 0;
+  const unsaved =
+    busy ||
+    aiHasDraft(ai) ||
+    (!gemini && (photo.items.length > 0 || Boolean(photo.photos.top || photo.photos.side))) ||
+    manualHasChanges(manual, manualBase, savedMeals) ||
+    (Boolean(meal) && storageFailed);
+  useLeaveGuard(
+    unsaved && !closing,
+    busy
+      ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
+      : estimate
+        ? { title: 'Discard this estimate?', message: 'You have not logged it yet.' }
+        : editing
+          ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
+          : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
+  );
+  // Closes once the guard has seen `closing`, as the other sheets do.
+  useEffect(() => {
+    if (closing) router.back();
+  }, [closing]);
 
   const sameDay = usesDayGroups(when, selectedKey);
   const destination = sameDay ? groups.find((group) => group.id === when.groupId) ?? null : null;
   const chooseDestination = () => {
+    haptics.tap();
     const options = ['Unassigned', ...groups.map((group) => nutritionGroupLabel(group, groups)), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
       if (index === options.length - 1) return;
@@ -325,20 +350,21 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
 
   return (
     <LoggerContext.Provider value={context}>
-      <Stack.Screen options={{ gestureEnabled: !guarded }} />
       <KeyboardAwareScrollView
         bottomOffset={24}
         style={{ flex: 1, backgroundColor: c.ground }}
         contentContainerStyle={{ paddingBottom: 48 }}
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive">
+        keyboardDismissMode="interactive"
+        // Scrolling closes a row left swiped open, as iOS lists do.
+        onScrollBeginDrag={() => dismissOpenSwipeRow()}>
         <View style={{ backgroundColor: c.ground, paddingBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16 }}>
             {chosen ? (
               <GlassButton symbol="chevron.left" accessibilityLabel="Back" onPress={() => setChosen(null)} />
             ) : (
-              <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={close} />
+              <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
             )}
             <View style={{ alignItems: 'center', flex: 1 }}>
               <BlancText variant="headline" accessibilityRole="header" numberOfLines={1}>
@@ -346,10 +372,11 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
               </BlancText>
               {subtitle ? (
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${subtitle}. Change`}
+                  accessibilityRole={sameDay && !inMeal ? 'button' : 'text'}
+                  accessibilityLabel={sameDay && !inMeal ? `${subtitle}. Change` : subtitle}
                   disabled={!sameDay || inMeal}
-                  hitSlop={10}
+                  // a 13-point line, 44 points to touch
+                  hitSlop={{ top: 13, bottom: 13, left: 16, right: 16 }}
                   onPress={chooseDestination}
                   style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.5 : 1 })}>
                   <BlancText variant="footnote" tone="graphite">
@@ -437,7 +464,8 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
                     title={paused ? 'Resume pending meal' : 'Build a meal'}
                     detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
                     chevron
-                    onPress={busy ? undefined : () => (paused ? setPaused(false) : startMeal())}
+                    disabled={busy}
+                    onPress={() => (paused ? setPaused(false) : startMeal())}
                   />
                 </Label>
               </View>
@@ -445,7 +473,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
             {tab === 'saved' ? (
               <SavedTab
                 onNewSavedMeal={() => {
-                  setManual({ ...emptyManual, saveAsReusable: true });
+                  loadManual({ ...emptyManual, saveAsReusable: true });
                   setTab('manual');
                 }}
                 onEditSavedMeal={(saved) => {
@@ -453,7 +481,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
                     startMeal(saved, true);
                     return;
                   }
-                  setManual({ ...emptyManual, fields: manualFromFood(saved), selectedSavedMealId: saved.id });
+                  loadManual({ ...emptyManual, fields: manualFromFood(saved), selectedSavedMealId: saved.id });
                   setTab('manual');
                 }}
               />
@@ -462,7 +490,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
             {tab === 'scan' ? (
               <ScanTab
                 onCreateProduct={(barcode) => {
-                  setManual({ ...emptyManual, saveAsReusable: true, barcodeBinding: barcode });
+                  loadManual({ ...emptyManual, saveAsReusable: true, barcodeBinding: barcode });
                   setTab('manual');
                 }}
               />

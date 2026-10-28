@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
-import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import { foodMacroLine, formatMeasurementAmount } from '@/lib/foodUnits';
@@ -14,12 +14,12 @@ import { searchUsdaFoodsSecureStrict, withUsdaPortion } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FormNote } from '~/components/Form';
 import { Hairline } from '~/components/Row';
-import { SwipeRow } from '~/components/SwipeRow';
+import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
 import { saveFoodEntry } from '~/lib/foodLogger';
 import { useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
@@ -66,9 +66,11 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
 }
 
 /** One food: tap to review it; the round button logs one serving at once. */
-function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis }: {
+function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis }: {
   food: Food;
   state?: AddState;
+  /** Tapped and loading its review: the round button spins meanwhile. */
+  opening?: boolean;
   /** Search results: say what one serving is, since + logs exactly that. */
   showBasis?: boolean;
   onOpen: () => void;
@@ -79,6 +81,12 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
   onLongPress?: () => void;
 }) {
   const c = useBlanc();
+  // VoiceOver offers the hold menu and the swipe actions as the row's own.
+  const swipe = useSwipeActions() ?? [];
+  const actions = [
+    ...(onLongPress && !editing ? [{ name: 'longpress', label: 'More actions' }] : []),
+    ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
+  ];
   const composed = Boolean(decodeMealComposition(food.description));
   const line = state === 'error'
     ? 'Not saved. Tap + to try again.'
@@ -92,13 +100,22 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${food.name}, ${line}`}
+        accessibilityActions={actions.length > 0 ? actions : undefined}
+        onAccessibilityAction={(event) => {
+          const name = event.nativeEvent.actionName;
+          if (name === 'longpress') onLongPress?.();
+          else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
+        }}
         onPress={() => {
+          // a tap while another row stands open only closes that row, as in Mail
+          if (closeOpenSwipeRow()) return;
           haptics.tap();
           (editing ? onEdit : onOpen)?.();
         }}
         onLongPress={
           onLongPress && !editing
             ? () => {
+                if (closeOpenSwipeRow()) return;
                 haptics.select();
                 onLongPress();
               }
@@ -122,14 +139,14 @@ function FoodRow({ food, state, onOpen, onAdd, editing, onEdit, onDelete, onLong
       </Pressable>
       {editing ? (
         <RoundButton symbol="trash" label={`Delete ${food.name}`} quiet onPress={() => onDelete?.()} />
-      ) : onAdd ? (
+      ) : onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
-          label={state === 'done' ? `${food.name} added` : `Add ${food.name}`}
+          label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
           quiet={state === 'done'}
-          busy={state === 'saving'}
+          busy={state === 'saving' || opening}
           done={state === 'done'}
-          onPress={onAdd}
+          onPress={() => onAdd?.()}
         />
       ) : null}
     </View>
@@ -228,7 +245,6 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   const logger = useLogger();
   const [filter, setFilter] = useState('');
   const [managing, setManaging] = useState(false);
-  const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
   const quick = useQuickAdd();
   const meals = logger.savedMeals;
   const list = filterSavedMeals(meals ?? [], filter);
@@ -238,13 +254,15 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     else logger.chooseFood(meal);
   };
 
-  // A deleted meal folds away at once and comes back if retiring it fails.
+  // A deleted meal slides away at once (no question, as a swipe in Mail; past
+  // logs keep it) and comes back if retiring it fails.
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const retire = async (meal: Food) => {
-    setMessage(null);
     setHidden((current) => new Set(current).add(meal.id));
     const userId = await getSessionUserId();
-    const { error } = userId ? await retireSavedMeal(userId, meal.id) : { error: new Error('signed out') };
+    const { error } = userId
+      ? await retireSavedMeal(userId, meal.id).catch((failure: unknown) => ({ error: failure }))
+      : { error: new Error('signed out') };
     if (error) {
       haptics.error();
       setHidden((current) => {
@@ -252,14 +270,14 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
         next.delete(meal.id);
         return next;
       });
-      setMessage({ text: userId ? 'Could not delete saved meal. Please try again.' : 'Please sign in again to delete saved meals.', alert: true });
+      Alert.alert('Not deleted', userId ? 'Check your connection and try again.' : 'Please sign in again to delete saved meals.');
       return;
     }
-    setMessage({ text: 'Saved meal deleted. Past logs were not changed.' });
+    haptics.success();
     await logger.reloadSavedMeals();
   };
-
-  const remove = (meal: Food) => {
+  // The Edit list's small trash button is one tap with no swipe behind it, so it asks.
+  const confirmRetire = (meal: Food) => {
     Alert.alert(`Delete ${meal.name}?`, 'It leaves your saved meals. Past logged entries stay unchanged.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void retire(meal) },
@@ -290,56 +308,68 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     );
   };
   const visible = list.filter((meal) => !hidden.has(meal.id));
+  const savedCount = (meals ?? []).filter((meal) => !hidden.has(meal.id)).length;
 
+  // Leaving the tab drops the list at once; only a deleted meal slides away.
   return (
-    <View>
-      <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 10, minHeight: 44 }}>
-        <BlancText variant="footnote" tone="graphite">
-          {meals === null ? 'Loading' : `${meals.length} saved`}
-        </BlancText>
-        <View style={{ flexDirection: 'row', gap: 20 }}>
-          {meals && meals.length > 0 && logger.purpose === 'log' ? (
-            <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} />
-          ) : null}
-          {logger.purpose === 'log' && !logger.editing ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
+    <LayoutAnimationConfig skipEntering skipExiting>
+      <View>
+        <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 10, minHeight: 44 }}>
+          <BlancText variant="footnote" tone="graphite">
+            {meals === null ? 'Loading' : `${savedCount} saved`}
+          </BlancText>
+          <View style={{ flexDirection: 'row', gap: 20 }}>
+            {meals && meals.length > 0 && logger.purpose === 'log' ? (
+              <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} />
+            ) : null}
+            {logger.purpose === 'log' && !logger.editing ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
+          </View>
         </View>
+        {/* A new filter swaps the rows without motion; a deleted meal slides away. */}
+        <LayoutAnimationConfig key={filter} skipEntering skipExiting>
+          <View>
+            {visible.map((meal, index) => {
+              const row = (
+                <FoodRow
+                  food={meal}
+                  state={quick.added[meal.id]}
+                  onOpen={() => open(meal)}
+                  onAdd={canQuickAdd(meal) ? () => void quick.add(meal.id, meal) : undefined}
+                  editing={managing}
+                  onEdit={() => onEditSavedMeal(meal)}
+                  onDelete={() => confirmRetire(meal)}
+                  onLongPress={() => menu(meal)}
+                />
+              );
+              return (
+                <Animated.View key={meal.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {index > 0 ? <Hairline inset={20} /> : null}
+                  {logger.purpose === 'log' && !managing ? (
+                    <SwipeRow
+                      name={meal.name}
+                      actions={[
+                        { label: 'Edit', onPress: () => onEditSavedMeal(meal) },
+                        { label: 'Delete', destructive: true, onPress: () => void retire(meal) },
+                      ]}>
+                      {row}
+                    </SwipeRow>
+                  ) : (
+                    row
+                  )}
+                </Animated.View>
+              );
+            })}
+            {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
+            {meals !== null && visible.length === 0 ? (
+              <Animated.View entering={rowEnter} layout={rowLayout}>
+                <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} />
+              </Animated.View>
+            ) : null}
+          </View>
+        </LayoutAnimationConfig>
       </View>
-      {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
-      {visible.map((meal, index) => {
-        const row = (
-          <FoodRow
-            food={meal}
-            state={quick.added[meal.id]}
-            onOpen={() => open(meal)}
-            onAdd={canQuickAdd(meal) ? () => void quick.add(meal.id, meal) : undefined}
-            editing={managing}
-            onEdit={() => onEditSavedMeal(meal)}
-            onDelete={() => remove(meal)}
-            onLongPress={() => menu(meal)}
-          />
-        );
-        return (
-          <Animated.View key={meal.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
-            {index > 0 ? <Hairline inset={20} /> : null}
-            {logger.purpose === 'log' && !managing ? (
-              <SwipeRow
-                name={meal.name}
-                actions={[
-                  { label: 'Edit', onPress: () => onEditSavedMeal(meal) },
-                  { label: 'Delete', destructive: true, onPress: () => void retire(meal) },
-                ]}>
-                {row}
-              </SwipeRow>
-            ) : (
-              row
-            )}
-          </Animated.View>
-        );
-      })}
-      {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-      {meals !== null && visible.length === 0 ? <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} /> : null}
-    </View>
+    </LayoutAnimationConfig>
   );
 }
 
@@ -422,6 +452,7 @@ export function SearchTab() {
             <FoodRow
               food={food}
               state={quick.added[key]}
+              opening={opening === key}
               showBasis
               onOpen={() => void open(food)}
               onAdd={quick.enabled ? () => void quick.add(key, food) : undefined}

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState, type ComponentProps } from 'react';
+import { useMemo, useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
 import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
@@ -19,7 +19,10 @@ import { space } from '~/theme/blanc';
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
 export default function ProgramViewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const split = useAppStore((state) => state.splits.find((entry) => entry.id === id) ?? null);
+  const stored = useAppStore((state) => state.splits.find((entry) => entry.id === id) ?? null);
+  // Deleted from here: the screen keeps showing it while it slides away.
+  const [leaving, setLeaving] = useState<Split | null>(null);
+  const split = stored ?? leaving;
   if (!split) {
     return (
       <>
@@ -30,19 +33,31 @@ export default function ProgramViewScreen() {
       </>
     );
   }
-  return <ProgramView split={split} />;
+  return (
+    <ProgramView
+      split={split}
+      onLeave={() => {
+        setLeaving(split);
+        router.back();
+      }}
+    />
+  );
 }
 
-function ProgramView({ split }: { split: Split }) {
+function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) {
   const [activating, setActivating] = useState(false);
+  // The header's closures are built once per program, so a ref guards a second tap.
+  const activatingNow = useRef(false);
   const activate = async () => {
+    if (activatingNow.current) return;
+    activatingNow.current = true;
     setActivating(true);
     await setActiveProgram(split);
+    activatingNow.current = false;
     setActivating(false);
   };
-  const remove = async () => {
-    if (await deleteProgram(split)) router.back();
-  };
+  // Goes back as soon as Delete is chosen; the list brings it back if the delete fails.
+  const remove = () => void deleteProgram(split, onLeave);
 
   const options = useMemo(
     () => ({
@@ -51,7 +66,11 @@ function ProgramView({ split }: { split: Split }) {
           {
             type: 'button',
             label: 'Edit',
-            onPress: () => editProgram(split),
+            // iOS's header items are silent.
+            onPress: () => {
+              haptics.tap();
+              editProgram(split);
+            },
           },
           {
             type: 'menu',
@@ -66,6 +85,7 @@ function ProgramView({ split }: { split: Split }) {
                         type: 'action' as const,
                         label: 'Set active',
                         icon: { type: 'sfSymbol' as const, name: 'checkmark.circle' as const },
+                        disabled: activating,
                         onPress: () => {
                           haptics.tap();
                           void activate();
@@ -79,7 +99,7 @@ function ProgramView({ split }: { split: Split }) {
                   destructive: true,
                   onPress: () => {
                     haptics.tap();
-                    void remove();
+                    remove();
                   },
                 },
               ],
@@ -88,7 +108,7 @@ function ProgramView({ split }: { split: Split }) {
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [split],
+    [split, activating],
   );
 
   return (

@@ -24,6 +24,8 @@ export default function LogWeightSheet() {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A save that failed (not a number to fix) makes the button Retry.
+  const [saveFailed, setSaveFailed] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // A typed number holds the sheet: closing asks before it goes.
@@ -51,6 +53,7 @@ export default function LogWeightSheet() {
     if (failure) {
       haptics.error();
       setError(failure);
+      setSaveFailed(true);
       setSaving(false);
       return;
     }
@@ -82,13 +85,17 @@ export default function LogWeightSheet() {
             autoFocus
             onChangeText={(text) => {
               setError(null);
+              setSaveFailed(false);
               setDraft(text);
             }}
             keyboardType="decimal-pad"
             maxLength={6}
             placeholder={latest ? formatWeight(Number(latest.kilograms), unit) : unit === 'lb' ? '180.5' : '82.0'}
             accessibilityLabel={`Weight in ${unit === 'lb' ? 'pounds' : 'kilograms'}`}
-            onSubmitEditing={() => void save()}
+            // The pad's Done saves a typed weight; with nothing typed it only closes the pad.
+            onSubmitEditing={() => {
+              if (draft.trim() !== '') void save();
+            }}
           />
           <BlancText variant="secondary" tone="graphite">
             {unit}
@@ -113,7 +120,7 @@ export default function LogWeightSheet() {
         ) : null}
 
         <View style={{ marginTop: 22 }}>
-          <Capsule title="Save" fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
+          <Capsule title={saveFailed ? 'Retry' : 'Save'} fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
         </View>
       </View>
     </ScrollView>

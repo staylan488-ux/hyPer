@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { HeroState } from '@/components/dashboard/todayModel';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { haptics } from '~/lib/haptics';
 import { useStartSession } from '~/lib/session';
+import { useBlanc } from '~/theme/blanc';
 
 // Today's training in one card: a title, at most one quiet line, at most one
 // button. Same rule as the web (todayHero), fewer words. Shown on Today and
@@ -14,6 +16,7 @@ import { useStartSession } from '~/lib/session';
 const PLAN_CARD_HEIGHT = 78;
 
 export function PlanCard({ hero, next, place }: { hero: HeroState; next: string | null; place: 'today' | 'train' }) {
+  const c = useBlanc();
   const { starting, start } = useStartSession();
   const toTrain = () => router.navigate('/train');
   const openSchedule = () => router.push('/schedule');
@@ -72,18 +75,9 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       break;
   }
 
-  return (
-    <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
-      <Label
-        style={{
-          marginTop: 18,
-          minHeight: PLAN_CARD_HEIGHT,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}>
+  const face = { minHeight: PLAN_CARD_HEIGHT, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 };
+  const content = (
+    <>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="headline" numberOfLines={1}>
             {title}
@@ -103,7 +97,31 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
             onPress={action.onPress}
           />
         ) : null}
-      </Label>
+    </>
+  );
+
+  return (
+    <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
+      {place === 'today' ? (
+        // On Today the whole card leads to Train, where the day is; its button still acts.
+        <Label style={{ marginTop: 18, overflow: 'hidden' }}>
+          <Pressable
+            // With a button inside, VoiceOver reaches the button on its own.
+            accessible={!action}
+            accessibilityRole="button"
+            accessibilityLabel={[title, detail].filter(Boolean).join(', ')}
+            accessibilityHint="Opens Train"
+            onPress={() => {
+              haptics.tap();
+              toTrain();
+            }}
+            style={({ pressed }) => [face, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
+            {content}
+          </Pressable>
+        </Label>
+      ) : (
+        <Label style={[{ marginTop: 18 }, face]}>{content}</Label>
+      )}
     </Animated.View>
   );
 }

@@ -3,7 +3,7 @@ import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, RefreshControl, View } from 'react-native';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
@@ -23,12 +23,11 @@ import { haptics } from '~/lib/haptics';
 import {
   APPEARANCE_LABELS,
   chooseAppearance,
-  loadTargets,
-  loadWeights,
-  loadYouMeals,
+  loadYou,
   useAnalysisModeStore,
   useAppearanceStore,
   useHealthStore,
+  usePullRefresh,
   useTargetsStore,
   useWeightStore,
   useYouMealsStore,
@@ -49,12 +48,10 @@ export default function YouScreen() {
   const health = useHealthStore((state) => state.enabled);
   const meals = useYouMealsStore((state) => state.meals);
   const analysis = useAnalysisModeStore((state) => state.mode);
+  const { refreshing, refresh } = usePullRefresh(loadYou);
 
   useEffect(() => {
-    void loadWeights();
-    void loadTargets();
-    void loadYouMeals();
-    void useAppStore.getState().fetchWhoopConnection();
+    void loadYou();
   }, []);
 
   const name = profile?.display_name || (user?.user_metadata?.full_name as string | undefined) || user?.email || 'You';
@@ -69,7 +66,7 @@ export default function YouScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'You' }} />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Label style={{ marginTop: 8 }}>
           <Row
             title={name}
@@ -246,6 +243,7 @@ function SchedulingSetting() {
     setFailed(false);
     try {
       await saveAdaptiveSplitScheduling(next);
+      haptics.success();
     } catch {
       haptics.error();
       setFailed(true);

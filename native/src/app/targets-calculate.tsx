@@ -2,7 +2,7 @@ import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { recordManualBodyWeight } from '@/lib/healthWeights';
@@ -30,7 +30,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote } from '~/components/Form';
+import { FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
@@ -99,6 +99,12 @@ export default function TargetsCalculateSheet() {
   };
 
   const imperial = draft.unitSystem === 'imperial';
+  // The rate reads and steps like the buttons beside it, for VoiceOver too.
+  const stepRate = (direction: 1 | -1) => {
+    if (direction === 1 ? !rateBounds.faster : !rateBounds.slower) return;
+    haptics.select();
+    setDraft((current) => stepWizardRate(current, direction));
+  };
 
   return (
     <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
@@ -196,7 +202,16 @@ export default function TargetsCalculateSheet() {
                 <View
                   style={{ flex: 1, alignItems: 'center' }}
                   accessible
-                  accessibilityLabel={`${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a week, about ${rate.monthlyChange.toFixed(1)} ${rate.unit} a month`}>
+                  accessibilityRole="adjustable"
+                  accessibilityLabel="Rate"
+                  accessibilityValue={{
+                    text: `${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a week, about ${rate.monthlyChange.toFixed(1)} ${rate.unit} a month`,
+                  }}
+                  accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+                  onAccessibilityAction={(event) => {
+                    if (event.nativeEvent.actionName === 'increment') stepRate(1);
+                    if (event.nativeEvent.actionName === 'decrement') stepRate(-1);
+                  }}>
                   <BlancText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
                     {rate.value > 0 ? '+' : ''}
                     {rate.value.toFixed(2)}% a week
@@ -302,23 +317,51 @@ function SegmentRow({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+/** Feet and inches, as FieldRow: a tap on the row starts with feet, Next goes on to inches. */
 function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: string; onFeet: (value: string) => void; onInches: (value: string) => void }) {
   const c = useBlanc();
-  const input = [typeScale.body, { color: c.ink, padding: 0, minHeight: 44, minWidth: 28, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] }];
+  const feetField = useRef<TextField>(null);
+  const inchesField = useRef<TextField>(null);
+  const input = [typeScale.body, { color: c.ink, padding: 0, minHeight: 44, minWidth: 44, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] }];
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
+    <Pressable
+      accessible={false}
+      onPress={() => feetField.current?.focus()}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
       <BlancText variant="body" style={{ flex: 1 }}>
         Height
       </BlancText>
-      <TextInput value={feet} onChangeText={onFeet} keyboardType="number-pad" maxLength={1} selectTextOnFocus accessibilityLabel="Height, feet" style={input} />
+      <TextInput
+        ref={feetField}
+        value={feet}
+        onChangeText={onFeet}
+        keyboardType="number-pad"
+        maxLength={1}
+        selectTextOnFocus
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => inchesField.current?.focus()}
+        accessibilityLabel="Height, feet"
+        style={input}
+      />
       <BlancText variant="body" tone="graphite">
         ft
       </BlancText>
-      <TextInput value={inches} onChangeText={onInches} keyboardType="number-pad" maxLength={2} selectTextOnFocus accessibilityLabel="Height, inches" style={input} />
+      <TextInput
+        ref={inchesField}
+        value={inches}
+        onChangeText={onInches}
+        keyboardType="number-pad"
+        maxLength={2}
+        selectTextOnFocus
+        returnKeyType="done"
+        accessibilityLabel="Height, inches"
+        style={input}
+      />
       <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }}>
         in
       </BlancText>
-    </View>
+    </Pressable>
   );
 }
 

@@ -15,6 +15,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { haptics } from '~/lib/haptics';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { stageTargets, useWeightStore } from '~/lib/you';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
@@ -47,6 +48,9 @@ export default function TargetsCoachSheet() {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CoachRecommendation | null>(null);
+
+  // Closing while the coach works would drop its answer; ask first.
+  useLeaveGuard(asking, { title: 'Stop waiting for suggestions?', message: 'The goal you wrote is kept.' });
 
   useEffect(() => {
     if (!result) return;
@@ -95,7 +99,12 @@ export default function TargetsCoachSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+    <ScrollView
+      style={{ backgroundColor: c.ground }}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -130,7 +139,7 @@ export default function TargetsCoachSheet() {
           placeholder="For example: keep my weight while getting stronger. I lift four times a week."
           placeholderTextColor={c.upcoming}
           accessibilityLabel="Your goal"
-          style={[typeScale.body, { color: c.ink, minHeight: 120, textAlignVertical: 'top', padding: 4 }]}
+          style={[typeScale.body, { color: c.ink, minHeight: 120, textAlignVertical: 'top', padding: 4, opacity: asking ? 0.5 : 1 }]}
         />
       </Label>
 

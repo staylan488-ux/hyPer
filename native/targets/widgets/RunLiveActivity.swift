@@ -64,12 +64,21 @@ private struct RunControls: View {
   let state: RunActivityAttributes.ContentState
   let tint: Color
   let finishTint: Color
+  /// The lock screen has room for bigger targets; the Dynamic Island does not.
+  var large = false
 
   var body: some View {
     HStack(spacing: 8) {
-      if state.isSplits && !state.isResting {
-        Button(intent: RunControlIntent(.split)) {
-          Label("Split", systemImage: "flag.fill").frame(maxWidth: .infinity)
+      if state.isSplits {
+        if state.isResting {
+          // Resting keeps Split's place, so Resume and Finish never move under a thumb.
+          Color.clear
+            .frame(maxWidth: .infinity, maxHeight: 1)
+            .accessibilityHidden(true)
+        } else {
+          Button(intent: RunControlIntent(.split)) {
+            Label("Split", systemImage: "flag.fill").frame(maxWidth: .infinity)
+          }
         }
       }
       Button(intent: RunControlIntent(.rest)) {
@@ -82,6 +91,7 @@ private struct RunControls: View {
       .tint(state.finishArmed ? finishTint : tint)
     }
     .buttonStyle(.bordered)
+    .controlSize(large ? .large : .regular)
     .tint(tint)
     .font(.system(size: 13, weight: .semibold))
     .labelStyle(.titleOnly)
@@ -133,7 +143,7 @@ struct RunLockScreenView: View {
       }
 
       if #available(iOS 17.0, *), !context.isStale {
-        RunControls(state: state, tint: blanc.ink, finishTint: blanc.live)
+        RunControls(state: state, tint: blanc.ink, finishTint: blanc.live, large: true)
       }
     }
     .padding(.horizontal, 18)

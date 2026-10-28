@@ -45,6 +45,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
     async (rawValue: string, format?: string) => {
       const barcode = normalizeFoodBarcode(rawValue, format);
       if (!barcode) {
+        haptics.error();
         setState('error');
         setMessage(BARCODE_MESSAGES.invalid);
         return;
@@ -70,6 +71,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         chooseFood(result.food, { source: 'barcode', barcode, provider: result.provider });
       } catch (error) {
         if (!isCurrent()) return;
+        haptics.error();
         setState('error');
         setMessage(error instanceof Error ? error.message : BARCODE_MESSAGES.failed);
       } finally {
@@ -103,6 +105,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         setMessage('Scan a barcode or enter its digits.');
         return;
       }
+      haptics.error();
       setState('error');
       setMessage(
         code === 'SCAN_FAILED'
@@ -177,8 +180,11 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
             onChangeText={(text) => setDigits(text.replace(/\D/g, '').slice(0, 14))}
             keyboardType="number-pad"
             placeholder="0 41570 05416 1"
+            // The number pad's bar then carries Search, which looks the digits up.
             returnKeyType="search"
-            onSubmitEditing={() => typedValid && void resolve(typed)}
+            onSubmitEditing={() => {
+              if (typed && !busy) void resolve(typed);
+            }}
           />
         </Label>
         <View style={{ paddingHorizontal: space.gutter, marginTop: 12 }}>

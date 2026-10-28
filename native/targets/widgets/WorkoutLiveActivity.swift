@@ -43,6 +43,8 @@ private func caption(_ phase: RestPhase) -> String {
 
 // MARK: - Lock screen
 
+// Tapping the card, or the Dynamic Island, opens Train's workout.
+
 struct WorkoutLockScreenView: View {
   let context: ActivityViewContext<WorkoutActivityAttributes>
   @Environment(\.colorScheme) private var scheme
@@ -94,6 +96,7 @@ struct WorkoutLockScreenView: View {
     .padding(.vertical, 16)
     .activityBackgroundTint(blanc.ground)
     .activitySystemActionForegroundColor(blanc.ink)
+    .widgetURL(appURL("train"))
   }
 
   @ViewBuilder
@@ -231,6 +234,7 @@ struct WorkoutLiveActivity: Widget {
         IslandFigure(phase: phase, state: state, size: 12, maxWidth: 36)
           .minimumScaleFactor(0.5)
       }
+      .widgetURL(appURL("train"))
       .keylineTint(brand)
     }
   }

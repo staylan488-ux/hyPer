@@ -98,9 +98,13 @@ export default function RestSheet() {
         <View style={{ width: 44 }} />
       </View>
 
-      <View
-        style={{ alignItems: 'center', marginTop: 18 }}
+      {/* The big time is the rest length: tap it to type another, like Custom. */}
+      <Pressable
+        onPress={chooseCustom}
+        style={({ pressed }) => ({ alignItems: 'center', marginTop: 18, opacity: pressed ? 0.5 : 1 })}
         accessible
+        accessibilityRole="button"
+        accessibilityHint="Change the rest length"
         accessibilityLabel={
           running
             ? `${formatClock(figure)} of rest left`
@@ -119,7 +123,7 @@ export default function RestSheet() {
         <BlancText variant="secondary" tone="graphite">
           {caption}
         </BlancText>
-      </View>
+      </Pressable>
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset }}>
         {PRESETS.map((preset) => (
