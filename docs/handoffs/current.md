@@ -15,6 +15,24 @@ committed (37637a1), pushed, and open as draft PR #152
 (https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
 production step was requested.
 
+## Describe amount converts units (2026-10-28)
+
+The owner typed "272 ML" for orange juice whose serving is "1 cup" and Gemini
+asked for cups or ounces: the serving rules had no cup, tbsp, tsp, fl oz, oz
+or lb, and Gemini is told never to convert. `supabase/functions/analyze-food-trial/serving.ts`
+now converts every weight and volume (US customary measures), reads a label
+beside a plain serving ("1 cup (8 oz)") as that serving with oz as fl oz, and
+`resolveServingLocally` answers a plain "number unit" amount on the device
+(`interpretFoodServing`) and on the server without a Gemini call. Ounces of a
+drink read as fluid ounces, and grams of a drink convert at about 1 g per ml;
+both show their assumption under the result. Gemini now returns the user's
+unit plus an optional density and assumption, and code does the arithmetic.
+With the owner's approval, `analyze-food-trial` was deployed to Hypertrophy-App
+(version 4) from the live copy with only `serving.ts` replaced; main's newer
+`model.ts` (parallel Tavily searches) is still undeployed. Checked live only to
+the sign-in gate (401). The released app (app.hyper.mobile 2.0.0) with this fix
+is installed on the owner's phone (locked, not opened).
+
 ## Milestone 9: parity check and cutover prep (2026-10-28)
 
 Worked in `.claude/worktrees/gifted-dijkstra-fbf451` (fast-forwarded to

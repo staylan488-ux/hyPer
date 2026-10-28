@@ -122,6 +122,11 @@ export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
                       {display(result.servings)} servings
                     </BlancText>
                   </BlancText>
+                  {result.assumption ? (
+                    <BlancText variant="footnote" tone="graphite">
+                      {result.assumption}
+                    </BlancText>
+                  ) : null}
                   {Math.abs(logServings - result.servings) > 1e-9 ? (
                     <BlancText variant="footnote" tone="graphite">
                       {logServings > 0 ? `Will log ${display(logServings)} servings, rounded to two decimals.` : 'This amount is too small to log. Enter at least 0.01 servings.'}
