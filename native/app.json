@@ -18,6 +18,7 @@
       },
       "infoPlist": {
         "NSHealthShareUsageDescription": "hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife.",
+        "NSHealthUpdateUsageDescription": "hyPer only reads weight from Apple Health; it does not save anything there.",
         "NSLocationWhenInUseUsageDescription": "hyPer uses your location during a run to measure route, distance, pace, and splits.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "hyPer uses your location during an active run, including when the screen is locked, to measure route, distance, pace, and splits.",
         "NSLocationTemporaryUsageDescriptionDictionary": {

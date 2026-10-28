@@ -127,7 +127,25 @@ simulator, the local Supabase, the build folders and the test harness were
 removed afterwards; the iOS project is prebuilt for the test app with Release
 frameworks in place (run `use-rn-core.sh Debug` before a simulator build).
 The cutover steps were put to the owner for one approval in the thread on
-2026-10-28; none has been taken.
+2026-10-28, and the owner approved all four the same day:
+- PR #152 merged into main (59a9075); `scripts/ship.sh` and the ship bot now
+  build the native app.
+- The released app (`app.hyper.mobile` 2.0.0, real account) was built with
+  `HYPER_APP=release native/scripts/build-phone.sh` and installed over hyPer
+  on the owner's iPhone, and it opened. That build, through the Xcode account,
+  registered App Groups (`group.app.hyper`) for `app.hyper.mobile` and
+  `app.hyper.mobile.HyperWidgets`; the ship lane's API key alone could not
+  (the first archive failed on the widget's wildcard profile).
+- Seven finished native worktrees (dazzling-edison, elegant-joliot,
+  great-varahamihira, native-blanc, objective-banach, trusting-euler, plus
+  their caches) and a stale 2 GB DerivedData folder were removed (about
+  9 GB); pensive-gagarin was in use and kept.
+- TestFlight: build 58 archived and exported for the App Store (release check
+  passed) but App Store Connect refused the upload without
+  `NSHealthUpdateUsageDescription` (required by the HealthKit entitlement), and
+  the lane's `export_xcargs` repeated the key options. Both are fixed in PR
+  #153; once it is merged, `scripts/ship.sh` uploads 2.0. Sign-in carry-over
+  on the phone and WHOOP under the new identity are the owner's to confirm.
 
 Not changed on purpose (minor, recorded for later): merge of 3+ activities in
 one step, the Target sets field in History, RPE below 6, Train's week strip,

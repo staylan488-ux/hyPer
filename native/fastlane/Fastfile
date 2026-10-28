@@ -45,10 +45,9 @@ platform :ios do
       output_directory: "#{native}/build",
       output_name: "hyPer.ipa",
       clean: true,
+      # gym passes these to the App Store export as well; giving them again
+      # (export_xcargs) makes xcodebuild refuse the duplicate options.
       xcargs: signing,
-      # The export signs for the App Store too, and may need a new profile
-      # (the App Group): the same automatic-signing access as the archive.
-      export_xcargs: signing,
     )
 
     # The archive must be the real app: the production host, no local test
