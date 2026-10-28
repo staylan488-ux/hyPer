@@ -27,6 +27,11 @@ platform :ios do
     ).to_i + 1
     UI.important("Shipping native hyPer build #{next_build}")
 
+    signing = "-allowProvisioningUpdates " \
+              "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
+              "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']} " \
+              "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}"
+
     # A fresh native project for the released identity and this build number.
     sh({ "HYPER_BUILD_NUMBER" => next_build.to_s, "LANG" => "en_US.UTF-8" },
        "cd '#{native}' && npx expo prebuild --platform ios --clean")
@@ -40,10 +45,10 @@ platform :ios do
       output_directory: "#{native}/build",
       output_name: "hyPer.ipa",
       clean: true,
-      xcargs: "-allowProvisioningUpdates " \
-              "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
-              "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']} " \
-              "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}",
+      xcargs: signing,
+      # The export signs for the App Store too, and may need a new profile
+      # (the App Group): the same automatic-signing access as the archive.
+      export_xcargs: signing,
     )
 
     # The archive must be the real app: the production host, no local test
