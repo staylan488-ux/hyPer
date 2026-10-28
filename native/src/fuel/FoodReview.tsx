@@ -65,6 +65,7 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
       try {
         logger.addIngredients([createMealIngredient(food, servings)]);
       } catch (cause) {
+        haptics.error();
         setError(cause instanceof Error ? cause.message : 'Could not add ingredient.');
       }
       return;
@@ -116,15 +117,18 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
             keyboardType="decimal-pad"
             selectTextOnFocus
             invalid={Boolean(invalid)}
+            // Typing the amount by hand sets the helper aside, so Log entry is ready.
+            onFocus={() => setHelperOpen(false)}
           />
           <Hairline />
-          <Row title="Unit" value={unit} chevron onPress={units.length > 1 ? chooseUnit : undefined} />
+          <Row title="Unit" value={unit} chevron={units.length > 1} onPress={units.length > 1 ? chooseUnit : undefined} />
         </Label>
         {invalid ? <FormNote alert>{invalid}</FormNote> : null}
         <ServingHelper
           key={`${food.id}:${food.serving_size}:${food.serving_unit}`}
           food={food}
           disabled={saving}
+          open={helperOpen}
           onOpenChange={setHelperOpen}
           onApply={(next) => {
             setUnit('serving');

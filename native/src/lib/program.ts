@@ -3,6 +3,7 @@
 // web uses its confirm sheet or window prompts.
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
+import { create } from 'zustand';
 
 import type { ConfirmOptions } from '@/lib/confirmDialog';
 import { dismissPlanStartPrompt, shouldPromptPlanStart } from '@/lib/planSchedule';
@@ -27,16 +28,17 @@ export function confirmAlert({ title, message, confirmLabel = 'OK', cancelLabel 
 
 const userId = () => useAuthStore.getState().user?.id ?? null;
 
+// The caller's control plays the tap (a row, a capsule, a swipe action, or
+// the screen's own tap for a header item), so these two stay silent.
+
 /** Opens the editor on a saved program. */
 export function editProgram(split: Split) {
-  haptics.tap();
   useSplitEditStore.getState().startEdit(split, { userId: userId() });
   router.push({ pathname: '/program-edit', params: { mode: 'edit' } });
 }
 
 /** Opens the new-program chooser. */
 export function newProgram() {
-  haptics.tap();
   useSplitEditStore.getState().cancelEdit();
   router.push({ pathname: '/program-edit', params: { mode: 'new' } });
 }
@@ -80,8 +82,28 @@ function programInUse(split: Split): boolean {
   return split.days.some((day) => day.id === workout.split_day_id);
 }
 
-/** Asks first, as on the web. Resolves true once deleted. */
-export async function deleteProgram(split: Split): Promise<boolean> {
+/**
+ * Programs on their way out: off the list from the moment Delete is chosen,
+ * back if the delete fails. A deleted one stays off, even before the list
+ * reloads.
+ */
+export const useDeletingPrograms = create<{ ids: ReadonlySet<string> }>(() => ({ ids: new Set<string>() }));
+
+function markDeleting(id: string, deleting: boolean) {
+  useDeletingPrograms.setState((state) => {
+    const ids = new Set(state.ids);
+    if (deleting) ids.add(id);
+    else ids.delete(id);
+    return { ids };
+  });
+}
+
+/**
+ * Asks first, as on the web. Once Delete is chosen the program leaves the
+ * list and `onConfirmed` runs (its own screen closes there); a failure brings
+ * it back. Resolves true once deleted.
+ */
+export async function deleteProgram(split: Split, onConfirmed?: () => void): Promise<boolean> {
   if (programInUse(split)) {
     haptics.error();
     Alert.alert('Finish your workout first', `Today's workout is from ${split.name}.`);
@@ -94,8 +116,14 @@ export async function deleteProgram(split: Split): Promise<boolean> {
     destructive: true,
   });
   if (!confirmed) return false;
-  const result = await useAppStore.getState().deleteSplit(split.id);
+  markDeleting(split.id, true);
+  onConfirmed?.();
+  const result = await useAppStore
+    .getState()
+    .deleteSplit(split.id)
+    .catch((): { ok: boolean; reason?: string } => ({ ok: false }));
   if (!result.ok) {
+    markDeleting(split.id, false);
     haptics.error();
     Alert.alert('Not deleted', result.reason ?? 'Could not delete the program.');
     return false;

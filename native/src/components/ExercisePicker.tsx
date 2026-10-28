@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
@@ -13,6 +13,7 @@ import { type as typeScale, useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 import { Capsule } from './Capsule';
 import { Chip } from './Chip';
+import type { TextField } from './Form';
 import { GlassButton } from './GlassButton';
 import { Hairline } from './Row';
 
@@ -50,6 +51,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState('');
   const search = useDeferredValue(query);
+  const searchField = useRef<TextField>(null);
   const [muscle, setMuscle] = useState<MuscleGroup | 'all'>(initialMuscle ?? 'all');
   const [showSkills, setShowSkills] = useState(false);
 
@@ -105,6 +107,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
       { title: `Main muscle for “${typed.slice(0, 80)}”`, options: [...options, 'Cancel'], cancelButtonIndex: options.length },
       (index) => {
         if (index >= options.length) return;
+        haptics.select();
         onPick(customExercise(typed.slice(0, 80), MUSCLES[index], library));
         setQuery('');
       },
@@ -203,7 +206,10 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             )}
           </View>
 
-          <View
+          {/* The whole pill is the field: a tap on the glass or beside the text types too. */}
+          <Pressable
+            accessible={false}
+            onPress={() => searchField.current?.focus()}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -218,6 +224,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             }}>
             <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} />
             <TextInput
+              ref={searchField}
               value={query}
               onChangeText={setQuery}
               placeholder="Search exercises"
@@ -228,7 +235,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               accessibilityLabel="Search exercises"
               style={[typeScale.body, { flex: 1, color: c.ink, padding: 0 }]}
             />
-          </View>
+          </Pressable>
 
           <ScrollView
             horizontal
@@ -240,10 +247,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                 key={group}
                 label={group === 'all' ? 'All' : MUSCLE_GROUP_LABELS[group]}
                 selected={muscle === group}
-                onPress={() => {
-                  haptics.select();
-                  setMuscle(group);
-                }}
+                onPress={() => setMuscle(group)}
               />
             ))}
           </ScrollView>

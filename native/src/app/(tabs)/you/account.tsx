@@ -62,13 +62,16 @@ export default function AccountScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Account' }} />
-      <TabScroll keyboardShouldPersistTaps="handled">
+      <TabScroll keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <Label style={{ marginTop: 12 }}>
           <FieldRow
             label="Name"
             wide
             value={draft}
             placeholder="Your name"
+            autoCapitalize="words"
+            textContentType="name"
+            autoComplete="name"
             returnKeyType="done"
             onSubmitEditing={() => void save()}
             onChangeText={(text) => {

@@ -6,7 +6,7 @@ import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import { captureAccountScope } from '@/lib/accountScope';
-import { guardActivityEdit } from '@/lib/activitySessions';
+import { guardActivityEdit, resolveActivityTitle } from '@/lib/activitySessions';
 import { fetchHistoryMonth, historyDayKey, type HistoryWorkout } from '@/lib/historyMonth';
 import { whoopSyncMessage } from '@/lib/whoopStatus';
 import { runWorkoutEdit } from '@/lib/workoutEdit';
@@ -50,6 +50,17 @@ let monthRequest = 0;
 // Edits to one workout run one after another, notes included, so a note save
 // and a set edit never overwrite each other.
 const queues = new Map<string, Promise<unknown>>();
+// Workouts, sets and activities taken off the screen whose delete has not
+// run yet: a reload meanwhile (an earlier edit's, a pull to refresh) must not
+// bring them back.
+const removing = new Set<string>();
+// How many reloads have landed per workout, so a delete can tell whether the
+// screen already shows what the server holds.
+const reloads = new Map<string, number>();
+
+function withoutRemoving(workout: HistoryWorkout): HistoryWorkout {
+  return workout.sets.some((set) => removing.has(set.id)) ? { ...workout, sets: workout.sets.filter((set) => !removing.has(set.id)) } : workout;
+}
 
 function enqueue<T>(workoutId: string, run: () => Promise<T>): Promise<T> {
   const previous = queues.get(workoutId) ?? Promise.resolve();
@@ -65,18 +76,28 @@ function enqueue<T>(workoutId: string, run: () => Promise<T>): Promise<T> {
 export function resetHistory() {
   monthRequest += 1;
   queues.clear();
+  removing.clear();
+  reloads.clear();
   useHistoryStore.setState(initial());
 }
 
 export async function loadHistoryMonth(month = useHistoryStore.getState().month) {
   const request = ++monthRequest;
   const isCurrent = captureAccountScope();
-  const changed = !isSameMonth(month, useHistoryStore.getState().month);
-  useHistoryStore.setState(changed ? { month, loading: true, failed: false, workouts: [], activities: [] } : { month, failed: false });
+  const state = useHistoryStore.getState();
+  const changed = !isSameMonth(month, state.month);
+  // A retry after a failure shows Loading, not "Nothing logged", until it answers.
+  useHistoryStore.setState(
+    changed ? { month, loading: true, failed: false, workouts: [], activities: [] } : { month, failed: false, loading: state.loading || state.failed },
+  );
   try {
     const { workouts, activities } = await fetchHistoryMonth(month);
     if (request !== monthRequest || !isCurrent()) return;
-    useHistoryStore.setState({ workouts, activities, loading: false });
+    useHistoryStore.setState({
+      workouts: workouts.filter((workout) => !removing.has(workout.id)).map(withoutRemoving),
+      activities: activities.filter((activity) => !removing.has(activity.id)),
+      loading: false,
+    });
   } catch {
     if (request !== monthRequest || !isCurrent()) return;
     useHistoryStore.setState({ loading: false, failed: true });
@@ -114,9 +135,12 @@ async function refreshWorkout(workoutId: string, syncCompletion: boolean) {
   }
   const [workout, plan] = await Promise.all([store.fetchWorkoutById(workoutId), store.fetchWorkoutDayPlanByWorkoutId(workoutId)]);
   if (workout) {
+    reloads.set(workoutId, (reloads.get(workoutId) ?? 0) + 1);
     useHistoryStore.setState((state) => ({
       workouts: state.workouts.map((item) =>
-        item.id === workoutId ? { ...workout, split_day: item.split_day, day_label: plan?.day_label ?? item.day_label ?? null } : item,
+        item.id === workoutId
+          ? withoutRemoving({ ...workout, split_day: item.split_day, day_label: plan?.day_label ?? item.day_label ?? null })
+          : item,
       ),
       plans: { ...state.plans, [workoutId]: plan ?? null },
     }));
@@ -150,41 +174,113 @@ export function savePastNote(workoutId: string, exerciseId: string, text: string
   });
 }
 
-/** Deletes a workout with its sets and plan. Clears the live workout if it was this one. */
+/**
+ * Deletes one set of a past workout. The row leaves at once; the delete then
+ * runs in the workout's queue and reloads it, so a failed delete brings the
+ * set back (from here when even the reload could not run). Resolves true
+ * once the set is gone.
+ */
+export async function removePastSet(workoutId: string, exerciseId: string, setId: string): Promise<boolean> {
+  const isCurrent = captureAccountScope();
+  const set = useHistoryStore.getState().workouts.find((entry) => entry.id === workoutId)?.sets.find((entry) => entry.id === setId) ?? null;
+  removing.add(setId);
+  useHistoryStore.setState((state) => ({ workouts: state.workouts.map((entry) => (entry.id === workoutId ? withoutRemoving(entry) : entry)) }));
+  let deleted = false;
+  let reloadsBefore = 0;
+  await editPastWorkout(workoutId, async () => {
+    reloadsBefore = reloads.get(workoutId) ?? 0;
+    try {
+      await useAppStore.getState().removeSetFromWorkout(workoutId, exerciseId, setId);
+      deleted = true;
+    } finally {
+      // From here a reload shows what the server holds.
+      removing.delete(setId);
+    }
+  });
+  if (!isCurrent()) return false;
+  const reloaded = (reloads.get(workoutId) ?? 0) > reloadsBefore;
+  const shown = (useHistoryStore.getState().workouts.find((entry) => entry.id === workoutId)?.sets ?? []).some((entry) => entry.id === setId);
+  if (reloaded) return !shown;
+  if (!deleted && set && !shown) {
+    useHistoryStore.setState((state) => ({
+      workouts: state.workouts.map((entry) => (entry.id === workoutId ? { ...entry, sets: [...entry.sets, set] } : entry)),
+    }));
+  }
+  return deleted;
+}
+
+/**
+ * Deletes a workout with its sets and plan. It leaves History at once and
+ * comes back if the delete fails. Clears the live workout if it was this one.
+ */
 export async function deletePastWorkout(workoutId: string): Promise<boolean> {
+  const isCurrent = captureAccountScope();
+  const { month, workouts } = useHistoryStore.getState();
+  const workout = workouts.find((entry) => entry.id === workoutId) ?? null;
+  removing.add(workoutId);
+  useHistoryStore.setState((state) => ({ workouts: state.workouts.filter((entry) => entry.id !== workoutId) }));
   try {
     await enqueue(workoutId, () => useAppStore.getState().deleteWorkout(workoutId));
   } catch {
+    removing.delete(workoutId);
+    if (workout && isCurrent()) {
+      useHistoryStore.setState((state) =>
+        isSameMonth(state.month, month) && !state.workouts.some((entry) => entry.id === workoutId) ? { workouts: [...state.workouts, workout] } : {},
+      );
+    }
     return false;
   }
+  removing.delete(workoutId);
   useHistoryStore.setState((state) => {
     const plans = { ...state.plans };
     delete plans[workoutId];
-    return { workouts: state.workouts.filter((workout) => workout.id !== workoutId), plans };
+    return { workouts: state.workouts.filter((entry) => entry.id !== workoutId), plans };
   });
   void useAppStore.getState().calculateWeeklyVolume();
   return true;
 }
 
-/** Asks before deleting a workout; it cannot be undone. */
-export function confirmDeleteWorkout(title: string, workoutId: string, onDeleted?: () => void) {
-  Alert.alert(`Delete ${title}?`, 'Its sets are deleted too. This can’t be undone.', [
-    { text: 'Cancel', style: 'cancel' },
-    {
-      text: 'Delete',
-      style: 'destructive',
-      onPress: async () => {
-        const deleted = await deletePastWorkout(workoutId);
-        if (deleted) {
-          haptics.success();
-          onDeleted?.();
-        } else {
-          haptics.error();
-          Alert.alert('Not deleted', 'Check your connection and try again.');
-        }
-      },
-    },
-  ]);
+type DeleteHooks = {
+  /** Runs as soon as Delete is chosen (the row has left by then): a screen showing it can close. */
+  onConfirmed?: () => void;
+  /** Runs once the delete has gone through. */
+  onDeleted?: () => void;
+};
+
+/** Asks before deleting; it cannot be undone. Resolves true once deleted, false when kept or not deleted. */
+function confirmDelete(title: string, message: string, run: () => Promise<boolean>, hooks: DeleteHooks): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      `Delete ${title}?`,
+      message,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            hooks.onConfirmed?.();
+            void run().then((deleted) => {
+              if (deleted) {
+                haptics.success();
+                hooks.onDeleted?.();
+              } else {
+                haptics.error();
+                Alert.alert('Not deleted', 'Check your connection and try again.');
+              }
+              resolve(deleted);
+            });
+          },
+        },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
+/** Asks before deleting a workout with its sets. */
+export function confirmDeleteWorkout(title: string, workoutId: string, hooks: DeleteHooks = {}): Promise<boolean> {
+  return confirmDelete(title, 'Its sets are deleted too. This can’t be undone.', () => deletePastWorkout(workoutId), hooks);
 }
 
 export function workoutsOnDay(workouts: HistoryWorkout[], day: string): HistoryWorkout[] {
@@ -231,6 +327,36 @@ export async function deleteActivity(activity: ActivitySession): Promise<boolean
   }
   useHistoryStore.setState((state) => ({ activities: state.activities.filter((entry) => entry.id !== activity.id) }));
   return true;
+}
+
+/** Deletes an activity off the screen at once; it comes back if the delete fails. */
+async function removeActivity(activity: ActivitySession): Promise<boolean> {
+  const isCurrent = captureAccountScope();
+  const { month, activities } = useHistoryStore.getState();
+  const shown = activities.find((entry) => entry.id === activity.id) ?? activity;
+  removing.add(activity.id);
+  useHistoryStore.setState((state) => ({ activities: state.activities.filter((entry) => entry.id !== activity.id) }));
+  const deleted = await deleteActivity(shown);
+  removing.delete(activity.id);
+  if (!deleted && isCurrent()) {
+    useHistoryStore.setState((state) =>
+      isSameMonth(state.month, month) && !state.activities.some((entry) => entry.id === activity.id) ? { activities: [...state.activities, shown] } : {},
+    );
+  }
+  return deleted;
+}
+
+/**
+ * Asks before deleting an activity, in the same words wherever it is
+ * deleted (as on the web: one added by hand is gone for good).
+ */
+export function confirmDeleteActivity(activity: ActivitySession, hooks: DeleteHooks = {}): Promise<boolean> {
+  return confirmDelete(
+    resolveActivityTitle(activity),
+    activity.source === 'whoop' ? 'It is hidden from History; WHOOP will not bring it back.' : 'This can’t be undone.',
+    () => removeActivity(activity),
+    hooks,
+  );
 }
 
 /** Merges same-day activities WHOOP recorded separately into one. */

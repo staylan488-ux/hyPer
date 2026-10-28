@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { isPendingExerciseId } from '@/lib/customExercises';
@@ -9,6 +9,7 @@ import { useSplitEditStore } from '@/stores/splitEditStore';
 import type { Exercise } from '@/types';
 import { ExercisePicker } from '~/components/ExercisePicker';
 import { haptics } from '~/lib/haptics';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { addMovement, addSupersetPartner, errorMessage, swapMovement } from '~/lib/movement';
 import { useSessionModel } from '~/lib/session';
@@ -29,7 +30,7 @@ const COPY: Record<PickMode, { title: string; verb: string; failed: string; fall
  * a superset to that workout instead, as History does.
  */
 export default function PickExerciseSheet() {
-  const params = useLocalSearchParams<{ id?: string; mode?: string; workout?: string; program?: string; day?: string }>();
+  const params = useLocalSearchParams<{ id?: string; mode?: string; workout?: string; program?: string; day?: string; from?: string }>();
   if (params.program && params.day) {
     const mode: ProgramPickMode = params.program === 'swap' || params.program === 'superset' ? params.program : 'add';
     return <ProgramPick mode={mode} dayId={params.day} exerciseId={params.id} />;
@@ -37,7 +38,7 @@ export default function PickExerciseSheet() {
   return <WorkoutPick params={params} />;
 }
 
-function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout?: string } }) {
+function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout?: string; from?: string } }) {
   const pastId = params.workout ?? null;
   const mode: PickMode = params.mode === 'add' || params.mode === 'superset' ? params.mode : pastId ? 'add' : 'swap';
   const copy = COPY[mode];
@@ -50,6 +51,14 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const sourceMuscle = mode === 'swap' ? movement?.sets[0]?.exercise?.muscle_group : undefined;
 
   const [swapping, setSwapping] = useState<string | null>(null);
+  // While a pick saves, the sheet holds still: closing it then would leave the
+  // save to close whatever screen is showing. After the save it steps aside.
+  const [exit, setExit] = useState<'back' | 'dismiss' | null>(null);
+  useLeaveGuard(swapping !== null && exit === null, undefined, { busy: true });
+  useEffect(() => {
+    if (exit === 'back') router.back();
+    if (exit === 'dismiss') router.dismiss(2);
+  }, [exit]);
 
   const inWorkout = useMemo(
     () => new Set(past ? past.sets.map((set) => set.exercise_id) : session?.movements.map((entry) => entry.exerciseId)),
@@ -70,7 +79,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     });
     if (saved) {
       haptics.success();
-      router.back();
+      setExit('back');
     } else {
       haptics.error();
       setSwapping(null);
@@ -96,9 +105,9 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
         );
       }
       haptics.success();
-      // Back to the workout, past the movement sheet a swap or superset opened from.
-      if (mode === 'add') router.back();
-      else router.dismiss(2);
+      // Back to the workout, past the movement sheet a swap or superset opened
+      // from (a swipe on Train's row opens this sheet straight from Train).
+      setExit(mode === 'add' || params.from === 'train' ? 'back' : 'dismiss');
     } catch (error) {
       haptics.error();
       setSwapping(null);
@@ -134,6 +143,14 @@ function ProgramPick({ mode, dayId, exerciseId }: { mode: ProgramPickMode; dayId
   );
   const [picked, setPicked] = useState<Exercise[]>([]);
   const [created, setCreated] = useState<Exercise[]>([]);
+  // One pick closes the sheet once; ticked picks are kept from a stray swipe down.
+  const done = useRef(false);
+  const [leaving, setLeaving] = useState(false);
+  useLeaveGuard(picked.length > 0 && !leaving, { title: 'Discard your picks?' });
+  // After Add, closes once the guard has stepped aside.
+  useEffect(() => {
+    if (leaving) router.back();
+  }, [leaving]);
   const exclude = useMemo(() => new Set(target?.excludeExerciseIds ?? []), [target]);
   const selected = useMemo(() => new Set(picked.map((exercise) => exercise.id)), [picked]);
   const extras = useMemo(() => [...created, ...(target?.extraExercises ?? [])], [created, target]);
@@ -149,7 +166,8 @@ function ProgramPick({ mode, dayId, exerciseId }: { mode: ProgramPickMode; dayId
       setPicked((current) => (current.some((entry) => entry.id === exercise.id) ? current.filter((entry) => entry.id !== exercise.id) : [...current, exercise]));
       return;
     }
-    if (!exerciseId) return;
+    if (!exerciseId || done.current) return;
+    done.current = true;
     if (mode === 'swap') store.swapExercise(dayId, exerciseId, exercise);
     else store.addSupersetExercise(dayId, exerciseId, exercise);
     haptics.success();
@@ -157,10 +175,11 @@ function ProgramPick({ mode, dayId, exerciseId }: { mode: ProgramPickMode; dayId
   };
 
   const add = () => {
-    if (picked.length === 0) return;
+    if (picked.length === 0 || done.current) return;
+    done.current = true;
     useSplitEditStore.getState().addExercises(dayId, picked);
     haptics.success();
-    router.back();
+    setLeaving(true);
   };
 
   return (

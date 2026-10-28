@@ -181,16 +181,21 @@ export const useFuelStore = create<FuelState>((set, get) => {
 
     deleteEntry: async (id) => {
       const removed = get().logs.find((log) => log.id === id);
-      // gone at once, back if the delete fails (no confirm, as on the web)
+      // gone at once, back if the delete fails (no confirm, as on the web);
+      // Today and the widgets follow at once too
       set({ logs: get().logs.filter((log) => log.id !== id) });
-      const ok = await deleteNutritionEntry(id);
-      if (!ok && removed && !get().logs.some((log) => log.id === id)) set({ logs: [...get().logs, removed] });
       syncTodayTotals();
+      const ok = await deleteNutritionEntry(id);
+      if (!ok && removed && !get().logs.some((log) => log.id === id)) {
+        set({ logs: [...get().logs, removed] });
+        syncTodayTotals();
+      }
       return ok;
     },
 
     moveEntry: async (id, groupId) => {
-      const patch = await moveEntryToGroup(id, groupId, dayGroups(), dayLogs());
+      // a dropped connection reports a failure instead of nothing at all
+      const patch = await moveEntryToGroup(id, groupId, dayGroups(), dayLogs()).catch(() => null);
       if (!patch) return false;
       set({ logs: get().logs.map((log) => (log.id === id ? { ...log, ...patch } : log)) });
       return true;
@@ -198,7 +203,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
 
     moveEntryToYesterday: async (id) => {
       const log = get().logs.find((candidate) => candidate.id === id);
-      if (!log || !(await moveEntryToPreviousDay(log))) return false;
+      if (!log || !(await moveEntryToPreviousDay(log).catch(() => null))) return false;
       await get().refresh();
       return true;
     },
@@ -216,7 +221,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     },
 
     reorderGroup: async (groupId, direction) => {
-      const result = await reorderNutritionGroup(dayGroups(), groupId, direction);
+      const result = await reorderNutritionGroup(dayGroups(), groupId, direction).catch(() => null);
       if (!result) return false;
       if (!result.ok) {
         await get().refresh();
@@ -227,7 +232,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     },
 
     deleteGroup: async (group) => {
-      if (!(await deleteNutritionGroup(group))) return false;
+      if (!(await deleteNutritionGroup(group).catch(() => false))) return false;
       set({
         groups: get().groups.filter((candidate) => candidate.id !== group.id),
         logs: get().logs.map((log) => (log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log)),

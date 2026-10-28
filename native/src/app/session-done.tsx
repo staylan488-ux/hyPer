@@ -1,6 +1,6 @@
 import { format, startOfWeek } from 'date-fns';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -43,7 +43,11 @@ export default function SessionDone() {
 
   const insets = useSafeAreaInsets();
 
+  // One close: a quick second tap must not dismiss what is underneath.
+  const closed = useRef(false);
   const done = () => {
+    if (closed.current) return;
+    closed.current = true;
     router.dismiss();
     router.navigate('/today');
   };

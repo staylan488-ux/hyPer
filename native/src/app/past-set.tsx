@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, View } from 'react-native';
 
 import { buildPastSetUpdate } from '@/lib/historyMonth';
@@ -7,9 +7,11 @@ import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FigureInput } from '~/components/FigureInput';
+import type { TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { haptics } from '~/lib/haptics';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { useBlanc } from '~/theme/blanc';
 
@@ -27,8 +29,19 @@ export default function PastSetSheet() {
   const [rpe, setRpe] = useState<number | null>(set?.rpe ?? null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const weightField = useRef<TextField>(null);
+  const selectedOnce = useRef(false);
   const number = params.number ?? String(set?.set_number ?? '');
   const name = (set?.exercise as { name?: string } | undefined)?.name ?? 'Set';
+
+  // Typed corrections hold the sheet: closing asks before they go.
+  const dirty =
+    set !== null &&
+    (weight.trim() !== (set.weight == null ? '' : String(set.weight)) ||
+      reps.trim() !== (set.reps == null ? '' : String(set.reps)) ||
+      rpe !== (set.rpe ?? null));
+  useLeaveGuard(dirty && !saved, { title: 'Discard this correction?' }, { busy: saving });
 
   const save = async () => {
     if (!workout || !set || saving) return;
@@ -38,18 +51,22 @@ export default function PastSetSheet() {
     const weightValue = weight.trim() ? parseNumber(weight) : null;
     const repsValue = reps.trim() ? parseNumber(reps) : null;
     const values = { weight: weightValue, reps: repsValue === null ? null : Math.round(repsValue), rpe };
-    const saved = await editPastWorkout(workout.id, () =>
+    const ok = await editPastWorkout(workout.id, () =>
       useAppStore.getState().updateSet(set.id, buildPastSetUpdate(set, values, workout.completed_at)),
     );
-    if (saved) {
+    if (ok) {
       haptics.success();
-      router.back();
+      setSaved(true);
     } else {
       haptics.error();
       setFailed(true);
       setSaving(false);
     }
   };
+  // Closes once the guard has seen the saved state.
+  useEffect(() => {
+    if (saved) router.back();
+  }, [saved]);
 
   return (
     <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled" scrollEnabled={false}>
@@ -71,11 +88,23 @@ export default function PastSetSheet() {
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
               <FigureInput
+                ref={weightField}
                 value={weight}
                 fontSize={56}
                 onChangeText={setWeight}
                 keyboardType="decimal-pad"
+                autoFocus
                 selectTextOnFocus
+                // iOS skips selectTextOnFocus for a field focused as the sheet
+                // opens, and typed digits then landed after the old weight
+                // (found in milestone 5). Selecting it once it has focus makes
+                // the first digit replace the number.
+                onFocus={() => {
+                  if (selectedOnce.current) return;
+                  selectedOnce.current = true;
+                  requestAnimationFrame(() => weightField.current?.setSelection(0, weight.length));
+                }}
+                editable={!saving}
                 maxLength={6}
                 accessibilityLabel="Weight in pounds"
               />
@@ -93,6 +122,7 @@ export default function PastSetSheet() {
                 onChangeText={setReps}
                 keyboardType="number-pad"
                 selectTextOnFocus
+                editable={!saving}
                 maxLength={4}
                 accessibilityLabel="Reps"
               />
@@ -105,6 +135,9 @@ export default function PastSetSheet() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
+            disabled={saving}
+            // 34 points drawn, 44 to touch.
+            hitSlop={{ top: 5, bottom: 5 }}
             onPress={() => chooseRpe(setRpe)}
             style={({ pressed }) => ({
               alignSelf: 'flex-start',

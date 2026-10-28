@@ -2,8 +2,8 @@ import { addMonths, format, isSameMonth, isToday, parseISO, startOfMonth } from 
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActionSheetIOS, Alert, Pressable, ScrollView, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { formatDistanceMi } from '@/lib/activityMetrics';
 import { formatActivityDuration, formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle, sortActivitySessionsByStart } from '@/lib/activitySessions';
@@ -19,8 +19,8 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
 import {
+  confirmDeleteActivity,
   confirmDeleteWorkout,
-  deleteActivity,
   loadHistoryMonth,
   mergeActivities,
   selectHistoryDay,
@@ -28,6 +28,7 @@ import {
   useHistoryStore,
   workoutsOnDay,
 } from '~/lib/history';
+import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc } from '~/theme/blanc';
 
@@ -43,6 +44,8 @@ export default function HistoryScreen() {
   const failed = useHistoryStore((state) => state.failed);
   const whoop = useAppStore((state) => state.whoopConnection);
   const [syncing, setSyncing] = useState(false);
+  // Only while the person's own pull runs.
+  const [refreshing, setRefreshing] = useState(false);
   const syncAvailable = isPreviewActive() || Boolean(whoop);
 
   useEffect(() => {
@@ -63,9 +66,17 @@ export default function HistoryScreen() {
     setSyncing(true);
     const message = await syncActivities();
     setSyncing(false);
-    if (message === 'Sync failed' || message === 'Sync unavailable') haptics.error();
-    else haptics.success();
-    Alert.alert(message);
+    // A sync that worked shows itself in the rows; only a failure needs words.
+    if (message === 'Sync failed' || message === 'Sync unavailable') {
+      haptics.error();
+      Alert.alert(message);
+    } else haptics.success();
+  };
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await loadHistoryMonth();
+    setRefreshing(false);
   };
 
   return (
@@ -103,30 +114,36 @@ export default function HistoryScreen() {
           ],
         }}
       />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Calendar month={month} day={day} workouts={workouts} activities={activities} />
 
         <Section
           title={format(date, 'EEEE, MMMM d')}
           accessory={<AddActivityButton day={day} />}>
-          <Label style={{ overflow: 'hidden' }}>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
             {loading ? (
-              <Row title="Loading…" quiet />
+              <Animated.View key="loading" entering={rowEnter} exiting={blockExit}>
+                <Row title="Loading…" quiet />
+              </Animated.View>
             ) : failed && dayWorkouts.length === 0 && dayActivities.length === 0 ? (
-              <Row title="Couldn't load this month" detail="Tap to try again" quiet onPress={() => void loadHistoryMonth()} />
+              <Animated.View key="failed" entering={rowEnter} exiting={blockExit}>
+                <Row title="Couldn't load this month" detail="Tap to try again" quiet onPress={() => void loadHistoryMonth()} />
+              </Animated.View>
             ) : dayWorkouts.length === 0 && dayActivities.length === 0 ? (
-              <Row title="Nothing logged" quiet />
+              <Animated.View key="empty" entering={rowEnter} exiting={blockExit}>
+                <Row title="Nothing logged" quiet />
+              </Animated.View>
             ) : null}
             {!loading &&
               dayWorkouts.map((workout, index) => (
-                <Animated.View key={workout.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+                <Animated.View key={workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                   {index > 0 ? <Hairline /> : null}
                   <WorkoutRow workout={workout} />
                 </Animated.View>
               ))}
             {!loading &&
               dayActivities.map((activity, index) => (
-                <Animated.View key={activity.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+                <Animated.View key={activity.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                   {index > 0 || dayWorkouts.length > 0 ? <Hairline /> : null}
                   <ActivityRow activity={activity} sameDay={dayActivities} />
                 </Animated.View>
@@ -146,6 +163,8 @@ export default function HistoryScreen() {
  */
 function Calendar({ month, day, workouts, activities }: { month: Date; day: string; workouts: HistoryWorkout[]; activities: ActivitySession[] }) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
+  const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
   const marks = useMemo(() => {
     const lifts = new Set(workouts.map(historyDayKey));
@@ -162,7 +181,8 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
 
   // A turned page selects its first day, or today in this month, like Calendar.
   const turn = (step: 1 | -1) => {
-    haptics.select();
+    if (arrowTurn.current) arrowTurn.current = false;
+    else haptics.select();
     const target = startOfMonth(addMonths(month, step));
     selectHistoryDay(isSameMonth(target, new Date()) ? new Date() : target);
   };
@@ -173,8 +193,22 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         <BlancText variant="headline" style={{ flex: 1 }} accessibilityRole="header">
           {format(month, 'MMMM yyyy')}
         </BlancText>
-        <MonthArrow symbol="chevron.left" label="Previous month" onPress={() => scroller.current?.scrollTo({ x: 0, animated: true })} />
-        <MonthArrow symbol="chevron.right" label="Next month" onPress={() => scroller.current?.scrollTo({ x: width * 2, animated: true })} />
+        <MonthArrow
+          symbol="chevron.left"
+          label="Previous month"
+          onPress={() => {
+            arrowTurn.current = width > 0;
+            scroller.current?.scrollTo({ x: 0, animated: true });
+          }}
+        />
+        <MonthArrow
+          symbol="chevron.right"
+          label="Next month"
+          onPress={() => {
+            arrowTurn.current = width > 0;
+            scroller.current?.scrollTo({ x: width * 2, animated: true });
+          }}
+        />
       </View>
       <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants">
         {WEEKDAYS.map((weekday, index) => (
@@ -192,6 +226,9 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         // As tall as this month's weeks; the neighbours clip while they slide in.
         style={{ height: (buildCalendarDays(month).length / 7) * 46 + 2 }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        onScrollBeginDrag={() => {
+          arrowTurn.current = false;
+        }}
         // Also fires after the arrows' animated scroll.
         onMomentumScrollEnd={(event) => {
           if (width <= 0) return;
@@ -271,7 +308,10 @@ function MonthArrow({ symbol, label, onPress }: { symbol: 'chevron.left' | 'chev
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      onPress={onPress}
+      onPress={() => {
+        haptics.select();
+        onPress();
+      }}
       style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
       <SymbolView name={symbol} size={16} weight="semibold" tintColor={c.ink} />
     </Pressable>
@@ -305,7 +345,7 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
   const detail = [duration === '—' ? null : duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
-  const remove = () => confirmDeleteWorkout(title, workout.id);
+  const remove = () => void confirmDeleteWorkout(title, workout.id);
   const menu = () =>
     ActionSheetIOS.showActionSheetWithOptions(
       { title, options: ['Open', 'Delete workout', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
@@ -343,23 +383,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
   const others = sameDay.filter((entry) => entry.id !== activity.id);
   const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
-  // As on the web, and as workouts do: an activity added by hand is gone for good.
-  const remove = () =>
-    Alert.alert(`Delete ${title}?`, activity.source === 'whoop' ? 'It is hidden from History; WHOOP will not bring it back.' : 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () =>
-          void deleteActivity(activity).then((ok) => {
-            if (ok) haptics.success();
-            else {
-              haptics.error();
-              Alert.alert('Not deleted', 'Check your connection and try again.');
-            }
-          }),
-      },
-    ]);
+  const remove = () => void confirmDeleteActivity(activity);
   const merge = () => {
     const options = [...others.map((entry) => `${resolveActivityTitle(entry)}${entry.started_at ? ` · ${formatActivityStartTime(entry.started_at)}` : ''}`), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions(

@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, Image as RNImage, TextInput, View } from 'react-native';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import { formatMeasurementAmount } from '@/lib/foodUnits';
@@ -31,9 +32,11 @@ import { FieldRow, FormNote, ToggleRow, useDecimalText } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -268,6 +271,10 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
 
   const updateItem = (id: string, patch: Partial<PhotoReviewItem>) =>
     setDraft((current) => ({ ...current, items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+  const removeItem = (id: string) => {
+    haptics.success();
+    setDraft((current) => ({ ...current, items: current.items.filter((candidate) => candidate.id !== id) }));
+  };
 
   const chooseSource = (item: PhotoReviewItem) => {
     const labels = [
@@ -315,6 +322,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
           ),
         );
       } catch (cause) {
+        haptics.error();
         setError(cause instanceof Error ? cause.message : 'Could not add ingredients.');
       }
       return;
@@ -350,40 +358,40 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
     }
   };
 
+  // Leaving the review (logged, or retaken) drops it at once; only a removed food slides away.
   return (
-    <View>
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 12 }}>
-        <BlancText variant="footnote" tone="graphite">
-          {providerName(draft.provider)}
-          {draft.model ? ` · ${draft.model}` : ''}
-        </BlancText>
-        <BlancText variant="title" style={{ marginTop: 2 }}>
-          {items.length} food{items.length === 1 ? '' : 's'} found
-        </BlancText>
-        {draft.summary ? (
-          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }}>
-            {draft.summary}
+    <LayoutAnimationConfig skipExiting>
+      <View>
+        <View style={{ paddingHorizontal: space.gutter, marginTop: 12 }}>
+          <BlancText variant="footnote" tone="graphite">
+            {providerName(draft.provider)}
+            {draft.model ? ` · ${draft.model}` : ''}
           </BlancText>
-        ) : null}
-        <BlancText variant="footnote" tone="graphite" style={{ marginTop: 6 }}>
-          Review every component and portion. USDA suggestions are never applied until you choose one.
-        </BlancText>
-      </View>
+          <BlancText variant="title" style={{ marginTop: 2 }}>
+            {items.length} food{items.length === 1 ? '' : 's'} found
+          </BlancText>
+          {draft.summary ? (
+            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }}>
+              {draft.summary}
+            </BlancText>
+          ) : null}
+          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 6 }}>
+            Review every component and portion. USDA suggestions are never applied until you choose one.
+          </BlancText>
+        </View>
 
-      <View style={{ marginTop: 18 }}>
-        <Label>
-          {items.map((item, index) => {
-            const totals = photoItemTotals(item);
-            return (
-              <View key={item.id}>
-                {index > 0 ? <Hairline /> : null}
-                <View style={{ paddingVertical: 12, paddingLeft: 18, paddingRight: 8 }}>
+        <View style={{ marginTop: 18 }}>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+            {items.map((item, index) => {
+              const totals = photoItemTotals(item);
+              const body = (
+                <View style={{ paddingVertical: 12, paddingLeft: 18, paddingRight: 8, backgroundColor: c.label }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <TextInput
                       value={item.name}
                       onChangeText={(name) => updateItem(item.id, { name, groundedFood: null, persistedFoodId: undefined })}
                       accessibilityLabel="Food"
-                      style={[typeScale.bodyStrong, { flex: 1, color: c.ink, padding: 0, minHeight: 36 }]}
+                      style={[typeScale.bodyStrong, { flex: 1, color: c.ink, padding: 0, minHeight: 44 }]}
                     />
                     <GramsInput
                       grams={item.amountGrams}
@@ -397,11 +405,9 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${item.name}`}
                       hitSlop={6}
-                      onPress={() => {
-                        haptics.tap();
-                        setDraft((current) => ({ ...current, items: current.items.filter((candidate) => candidate.id !== item.id) }));
-                      }}
-                      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                      disabled={saving}
+                      onPress={() => removeItem(item.id)}
+                      style={({ pressed }) => ({ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.4 : pressed ? 0.5 : 1 })}>
                       <SymbolView name="xmark" size={13} weight="semibold" tintColor={c.graphite} />
                     </Pressable>
                   </View>
@@ -419,7 +425,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                         haptics.tap();
                         chooseSource(item);
                       }}
-                      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, opacity: pressed ? 0.5 : 1, minHeight: 32 })}>
+                      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, opacity: pressed ? 0.5 : 1, minHeight: 44 })}>
                       <BlancText variant="footnote" weight="600">
                         Nutrition source: {item.groundedFood ? item.groundedFood.name : 'model estimate'}
                       </BlancText>
@@ -427,71 +433,86 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                     </Pressable>
                   ) : null}
                 </View>
-              </View>
-            );
-          })}
-        </Label>
-      </View>
-
-      {logger.purpose === 'log' && items.length > 1 ? (
-        <View style={{ marginTop: 18 }}>
-          <Label>
-            <ToggleRow
-              label="Log as one meal"
-              detail={combine ? `Combines all ${items.length} components into a single entry, with the description above attached.` : `Logs all ${items.length} components as separate entries.`}
-              value={combine}
-              onChange={(next) => {
-                setCombine(next);
-                try {
-                  globalThis.localStorage?.setItem(COMBINE_MEAL_KEY, next ? '1' : '0');
-                } catch {
-                  // a preference that cannot be kept is still used for this plate
-                }
-              }}
-            />
+              );
+              return (
+                <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {index > 0 ? <Hairline /> : null}
+                  {saving ? (
+                    body
+                  ) : (
+                    <SwipeRow name={item.name} actions={[{ label: 'Remove', destructive: true, onPress: () => removeItem(item.id) }]}>
+                      {body}
+                    </SwipeRow>
+                  )}
+                </Animated.View>
+              );
+            })}
           </Label>
         </View>
-      ) : null}
 
-      <WhenBlock disabled={saving} />
+        {/* Closes up under the foods as one is removed. */}
+        <Animated.View layout={rowLayout}>
+          {logger.purpose === 'log' && items.length > 1 ? (
+            <View style={{ marginTop: 18 }}>
+              <Label>
+                <ToggleRow
+                  label="Log as one meal"
+                  detail={combine ? `Combines all ${items.length} components into a single entry, with the description above attached.` : `Logs all ${items.length} components as separate entries.`}
+                  value={combine}
+                  onChange={(next) => {
+                    setCombine(next);
+                    try {
+                      globalThis.localStorage?.setItem(COMBINE_MEAL_KEY, next ? '1' : '0');
+                    } catch {
+                      // a preference that cannot be kept is still used for this plate
+                    }
+                  }}
+                />
+              </Label>
+            </View>
+          ) : null}
 
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 28, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-        <BlancText variant="figure" size={44}>
-          {formatWhole(total)}
-        </BlancText>
-        <BlancText variant="secondary" tone="graphite">
-          kcal plate total
-        </BlancText>
+          <WhenBlock disabled={saving} />
+
+          <View style={{ paddingHorizontal: space.gutter, marginTop: 28, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <BlancText variant="figure" size={44}>
+              {formatWhole(total)}
+            </BlancText>
+            <BlancText variant="secondary" tone="graphite">
+              kcal plate total
+            </BlancText>
+          </View>
+
+          {error ? <FormNote alert>{error}</FormNote> : null}
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+            <Capsule
+              title="Retake"
+              variant="quiet"
+              disabled={saving}
+              onPress={() =>
+                Alert.alert('Discard this estimate?', 'The photos and the review are cleared.', [
+                  { text: 'Keep', style: 'cancel' },
+                  { text: 'Discard', style: 'destructive', onPress: retake },
+                ])
+              }
+            />
+            <Capsule
+              title={
+                logger.purpose === 'ingredients'
+                  ? 'Add ingredients'
+                  : combine && items.length > 1
+                    ? 'Log 1 meal'
+                    : `Log ${items.length} item${items.length === 1 ? '' : 's'}`
+              }
+              busy={saving}
+              disabled={items.length === 0}
+              onPress={() => void save()}
+              style={{ flex: 1, alignSelf: 'stretch' }}
+            />
+          </View>
+        </Animated.View>
       </View>
-
-      {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-        <Capsule
-          title="Retake"
-          variant="quiet"
-          disabled={saving}
-          onPress={() =>
-            Alert.alert('Discard this estimate?', 'The photos and the review are cleared.', [
-              { text: 'Keep', style: 'cancel' },
-              { text: 'Discard', style: 'destructive', onPress: retake },
-            ])
-          }
-        />
-        <Capsule
-          title={
-            logger.purpose === 'ingredients'
-              ? 'Add ingredients'
-              : combine && items.length > 1
-                ? 'Log 1 meal'
-                : `Log ${items.length} item${items.length === 1 ? '' : 's'}`
-          }
-          busy={saving}
-          disabled={items.length === 0}
-          onPress={() => void save()}
-          style={{ flex: 1, alignSelf: 'stretch' }}
-        />
-      </View>
-    </View>
+    </LayoutAnimationConfig>
   );
 }
 
@@ -504,9 +525,10 @@ function GramsInput({ grams, label, onChange }: { grams: number; label: string; 
       value={text}
       onChangeText={onChangeText}
       keyboardType="decimal-pad"
+      returnKeyType="done"
       accessibilityLabel={label}
       selectTextOnFocus
-      style={[typeScale.body, { color: c.ink, padding: 0, minWidth: 52, minHeight: 36, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
+      style={[typeScale.body, { color: c.ink, padding: 0, minWidth: 52, minHeight: 44, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
     />
   );
 }

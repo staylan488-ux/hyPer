@@ -16,7 +16,8 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { changeSetCount, errorMessage, removeMovement, switchBack, unlinkSuperset } from '~/lib/movement';
+import { useLeaveGuard } from '~/lib/leaveGuard';
+import { changeSetCount, confirmRemoveMovement, errorMessage, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
 import { usePreviousNotesStore, useSessionModel, type Movement } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
@@ -42,7 +43,8 @@ export default function MovementSheet() {
   // header rides in the list as a sticky first item.
   return (
     <KeyboardAwareScrollView
-      bottomOffset={24}
+      // Room under a set being corrected for its Cancel and Save.
+      bottomOffset={96}
       style={{ flex: 1, backgroundColor: c.ground }}
       contentContainerStyle={{ paddingBottom: 40 }}
       stickyHeaderIndices={[0]}
@@ -165,31 +167,12 @@ function MovementDetail({
     }
   };
 
-  const confirmRemove = () => {
-    Alert.alert(
-      `Remove ${movement.name}?`,
-      movement.done ? 'Its logged sets stay in this workout.' : 'It comes out of this workout only.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setEditingPlan('remove');
-            try {
-              await removeMovement(workoutId, movement.exerciseId);
-              haptics.success();
-              router.back();
-            } catch (error) {
-              haptics.error();
-              setEditingPlan(null);
-              Alert.alert('Not removed', errorMessage(error, 'Could not remove the exercise. Try again.'));
-            }
-          },
-        },
-      ],
-    );
-  };
+  const confirmRemove = () =>
+    confirmRemoveMovement(workoutId, movement, {
+      onStart: () => setEditingPlan('remove'),
+      onRemoved: () => router.back(),
+      onFailed: () => setEditingPlan(null),
+    });
 
   return (
     <>
@@ -300,6 +283,7 @@ function MovementDetail({
             <Hairline />
             <Row
               title="Remove from workout"
+              destructive
               trailing={editingPlan === 'remove' ? <ActivityIndicator /> : undefined}
               onPress={editingPlan ? undefined : confirmRemove}
             />
@@ -352,6 +336,10 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
   const weightValue = parseNumber(weight);
   const repsValue = parseNumber(reps);
   const ready = weightValue !== null && repsValue !== null;
+  // Closing the sheet with a correction typed asks first; Save or Cancel closes the editor.
+  const dirty =
+    weight !== (set.weight === null ? '' : String(set.weight)) || reps !== (set.reps === null ? '' : String(set.reps)) || rpe !== set.rpe;
+  useLeaveGuard(dirty, { title: 'Discard this correction?' }, { busy: saving });
 
   const save = async () => {
     if (weightValue === null || repsValue === null || saving) return;
@@ -377,6 +365,8 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
           accessibilityRole="button"
           accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
           onPress={() => chooseRpe(setRpe)}
+          // 32 points drawn, 44 to touch.
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
           style={({ pressed }) => ({
             height: 32,
             paddingHorizontal: 12,

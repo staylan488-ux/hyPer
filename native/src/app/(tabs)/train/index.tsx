@@ -1,8 +1,8 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
+import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,18 +15,21 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
+import type { TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
-import { useFinishedStore, summarize } from '~/lib/finished';
+import { useAccountRefresh } from '~/lib/accountData';
+import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { errorMessage, renameSession } from '~/lib/movement';
-import { flushNotes } from '~/lib/notes';
-import { startRest, stopRest } from '~/lib/rest';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { confirmRemoveMovement, errorMessage, renameSession } from '~/lib/movement';
+import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
@@ -65,17 +68,26 @@ export default function TrainScreen() {
   return <LiveWorkout session={session} />;
 }
 
+/** The session clock; ticks on its own so the screen around it stays still. */
+function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; total: number }) {
+  const now = useNow(1000);
+  const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
+  return (
+    <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+      <BlancText variant="meta" size={14} tone="graphite">
+        {formatClock(elapsed)}
+      </BlancText>
+      {`  ·  ${done} of ${total} sets`}
+    </BlancText>
+  );
+}
+
 function LiveWorkout({ session }: { session: SessionModel }) {
   const c = useBlanc();
-  const now = useNow(1000);
   const previous = usePreviousTargets(session);
   const previousNotes = usePreviousNotes(session);
   const logSet = useAppStore((state) => state.logSet);
-  const completeWorkout = useAppStore((state) => state.completeWorkout);
-  const saveTemplateFromWorkout = useAppStore((state) => state.saveFlexibleTemplateFromCurrentWorkout);
-  const fetchFlexTemplates = useAppStore((state) => state.fetchFlexTemplates);
   const focus = useFocusStore((state) => state.focus);
-  const setFinished = useFinishedStore((state) => state.set);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrollOffset = useRef(0);
   const cardRef = useRef<ComponentRef<typeof View>>(null);
@@ -108,6 +120,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<'weight' | 'reps' | null>(null);
+  const weightField = useRef<TextField>(null);
+  const repsField = useRef<TextField>(null);
 
   // A new set starts from its suggested numbers; the same set keeps any edits,
   // including after a failed save.
@@ -130,7 +144,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previous]);
 
-  const elapsed = Math.max(0, (now - session.startedAt.getTime()) / 1000);
   const weight = draft ? parseNumber(draft.weight) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
@@ -179,57 +192,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   /** Sets, note and swap for one movement. */
   const openMovement = (exerciseId: string) => router.push({ pathname: '/movement', params: { id: exerciseId } });
 
-  // One finish at a time: a second tap while it saves does nothing.
-  const finishing = useRef(false);
-  const [closing, setClosing] = useState(false);
-  const finish = () => {
-    if (finishing.current) return;
-    const close = async (saveTemplate: boolean) => {
-      if (finishing.current) return;
-      finishing.current = true;
-      setClosing(true);
-      try {
-        await closeWorkout(saveTemplate);
-      } finally {
-        finishing.current = false;
-        setClosing(false);
-      }
-    };
-    const closeWorkout = async (saveTemplate: boolean) => {
-      // Notes typed during the workout land before it closes, as on the web.
-      if (!(await flushNotes())) {
-        haptics.error();
-        Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
-        return;
-      }
-      const summary = summarize(session);
-      try {
-        // A flexible session can be kept as a quick start, notes included.
-        if (saveTemplate) await saveTemplateFromWorkout();
-        await completeWorkout();
-        if (saveTemplate) void fetchFlexTemplates({ force: true });
-        setFinished(summary);
-        stopRest();
-        haptics.success();
-        router.push('/session-done');
-      } catch {
-        haptics.error();
-        Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
-      }
-    };
-    // As on the web: keeping it as a quick start replaces one with the same name.
-    const label = useAppStore.getState().currentWorkoutDayPlan?.day_label.trim() ?? '';
-    const replaces = session.flexible && label !== ''
-      && useAppStore.getState().flexTemplates.some((template) => template.label === label);
-    const counted = `${session.doneCount} of ${session.sets.length} sets logged.`;
-    Alert.alert('Finish workout?', replaces ? `${counted} Saving as a quick start replaces your “${session.dayName}” quick start.` : counted, [
-      ...(session.flexible && session.movements.length > 0
-        ? [{ text: 'Finish and save as quick start', onPress: () => void close(true) }]
-        : []),
-      { text: 'Finish', onPress: () => void close(false) },
-      { text: 'Keep going', style: 'cancel' as const },
-    ]);
-  };
+  const { finish, closing } = useFinishWorkout(session);
 
   const rename = () => {
     Alert.prompt(
@@ -257,6 +220,56 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     );
   };
 
+  // The header is built once per name and state, never per keystroke or
+  // clock tick, so its buttons are not re-sent to iOS under the finger.
+  const renameRef = useRef(rename);
+  renameRef.current = rename;
+  const flexible = session.flexible;
+  const headerOptions = useMemo(
+    () =>
+      ({
+        title: session.dayName,
+        unstable_headerRightItems: () => [
+          {
+            type: 'button',
+            label: closing ? 'Saving…' : 'Finish',
+            variant: 'prominent',
+            tintColor: c.ink,
+            disabled: closing,
+            onPress: () => {
+              haptics.tap();
+              finish();
+            },
+          },
+          {
+            // Rest without logging a set, or change a movement's rest length.
+            type: 'button',
+            label: 'Rest timer',
+            icon: { type: 'sfSymbol', name: 'timer' },
+            onPress: () => {
+              haptics.tap();
+              router.push('/rest');
+            },
+          },
+          // A flexible session is named by the person; it can be renamed.
+          ...(flexible
+            ? [
+                {
+                  type: 'button' as const,
+                  label: 'Rename workout',
+                  icon: { type: 'sfSymbol' as const, name: 'pencil' as const },
+                  onPress: () => {
+                    haptics.tap();
+                    renameRef.current();
+                  },
+                },
+              ]
+            : []),
+        ],
+      }) satisfies ComponentProps<typeof Stack.Screen>['options'],
+    [session.dayName, closing, c.ink, flexible, finish],
+  );
+
   const blockCount = movementBlocks(
     session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
   ).length;
@@ -264,48 +277,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: session.dayName,
-          unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: closing ? 'Saving…' : 'Finish',
-              variant: 'prominent',
-              tintColor: c.ink,
-              disabled: closing,
-              onPress: () => {
-                haptics.tap();
-                finish();
-              },
-            },
-            {
-              // Rest without logging a set, or change a movement's rest length.
-              type: 'button',
-              label: 'Rest timer',
-              icon: { type: 'sfSymbol', name: 'timer' },
-              onPress: () => {
-                haptics.tap();
-                router.push('/rest');
-              },
-            },
-            // A flexible session is named by the person; it can be renamed.
-            ...(session.flexible
-              ? [
-                  {
-                    type: 'button' as const,
-                    label: 'Rename workout',
-                    icon: { type: 'sfSymbol' as const, name: 'pencil' as const },
-                    onPress: () => {
-                      haptics.tap();
-                      rename();
-                    },
-                  },
-                ]
-              : []),
-          ],
-        }}
-      />
+      <Stack.Screen options={headerOptions} />
       <TabScroll
         ref={scroll}
         keyboardShouldPersistTaps="handled"
@@ -315,12 +287,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          <BlancText variant="meta" size={14} tone="graphite">
-            {formatClock(elapsed)}
-          </BlancText>
-          {`  ·  ${session.doneCount} of ${session.sets.length} sets`}
-        </BlancText>
+        <Elapsed startedAt={session.startedAt} done={session.doneCount} total={session.sets.length} />
 
         <Tally
           marks={session.sets.map((set) => set.completed)}
@@ -336,9 +303,36 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <BlancText variant="title" numberOfLines={2} style={{ flex: 1 }}>
-                {current.movement.name}
-              </BlancText>
+              {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${current.movement.name}, set ${current.setNumber} of ${current.movement.sets.length}`}
+                accessibilityHint="Opens its sets, note and swap"
+                onPress={() => {
+                  haptics.tap();
+                  openMovement(current.movement.exerciseId);
+                }}
+                onLongPress={() => {
+                  haptics.select();
+                  openMovement(current.movement.exerciseId);
+                }}
+                style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.55 : 1 })}>
+                <BlancText variant="title" numberOfLines={2}>
+                  {current.movement.name}
+                </BlancText>
+                <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
+                  {[
+                    `Set ${current.setNumber} of ${current.movement.sets.length}`,
+                    current.movement.superset
+                      ? `superset with ${current.movement.superset.partnerName}`
+                      : current.movement.substitutesFor
+                        ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+                        : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </BlancText>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${current.movement.name}: sets, note and swap`}
@@ -351,18 +345,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 <SymbolView name="ellipsis.circle" size={24} weight="regular" tintColor={c.graphite} />
               </Pressable>
             </View>
-            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
-              {[
-                `Set ${current.setNumber} of ${current.movement.sets.length}`,
-                current.movement.superset
-                  ? `superset with ${current.movement.superset.partnerName}`
-                  : current.movement.substitutesFor
-                    ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-                    : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </BlancText>
             {current.movement.note ? (
               <BlancText variant="footnote" tone="graphite" numberOfLines={2} style={{ marginTop: 6 }}>
                 {current.movement.note}
@@ -371,6 +353,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
               <BigValue
+                ref={weightField}
                 value={draft.weight}
                 unit="lb"
                 accessibilityLabel="Weight in pounds"
@@ -382,6 +365,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 ×
               </BlancText>
               <BigValue
+                ref={repsField}
                 value={draft.reps}
                 unit="reps"
                 integer
@@ -397,6 +381,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 accessibilityRole="button"
                 accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
                 onPress={pickRpe}
+                // 32 points drawn, 44 to touch.
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                 style={({ pressed }) => ({
                   height: 32,
                   paddingHorizontal: 12,
@@ -451,7 +437,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <BlancText variant="headline">All sets logged</BlancText>
-            <Capsule title="Finish workout" size="large" fill onPress={finish} />
+            <Capsule title="Finish workout" size="large" fill busy={closing} onPress={finish} />
           </Label>
         )}
 
@@ -459,59 +445,77 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         <Section
           title="Movements"
           action={blockCount > 1 ? { title: 'Reorder', onPress: () => router.push('/reorder') } : undefined}>
-          <Label>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
             {session.movements.map((movement, index) => {
               const isCurrent = movement.exerciseId === current?.movement.exerciseId;
               const complete = movement.done === movement.sets.length;
               const plan = movement.plan;
               const lastSet = previous[movement.exerciseId]?.[1];
+              // Swipe to swap a movement with sets to go and, in a flexible
+              // session, to take it out (asks first).
+              const swipe: SwipeAction[] = [
+                ...(movement.sets.some((set) => !set.completed)
+                  ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
+                  : []),
+                ...(session.flexible
+                  ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
+                  : []),
+              ];
+              const row = complete ? (
+                // Finished movements open their sets, to correct one.
+                <Row
+                  quiet
+                  title={movement.name}
+                  value={`Done · ${movement.done} of ${movement.sets.length}`}
+                  leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
+                  accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
+                  onPress={() => openMovement(movement.exerciseId)}
+                  onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
+                />
+              ) : (
+                // Tap to work on a movement next; hold for its sets, note and swap.
+                <Row
+                  title={movement.name}
+                  detail={[
+                    isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
+                    movement.superset
+                      ? `superset ${movement.superset.role}`
+                      : movement.substitutesFor
+                      ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+                      : plan && plan.target_reps_min && plan.target_reps_max
+                        ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
+                        : null,
+                    lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  chevron={!isCurrent}
+                  onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
+                  onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
+                />
+              );
               return (
-                <View key={movement.exerciseId}>
+                <Animated.View key={movement.exerciseId} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                   {index > 0 ? <Hairline /> : null}
-                  {complete ? (
-                    // Finished movements open their sets, to correct one.
-                    <Row
-                      quiet
-                      title={movement.name}
-                      value={`Done · ${movement.done} of ${movement.sets.length}`}
-                      leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
-                      accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
-                      onPress={() => openMovement(movement.exerciseId)}
-                    />
+                  {swipe.length > 0 ? (
+                    <SwipeRow name={movement.name} actions={swipe}>
+                      <View style={{ backgroundColor: c.label }}>{row}</View>
+                    </SwipeRow>
                   ) : (
-                    // Tap to work on a movement next; hold for its sets, note and swap.
-                    <Row
-                      title={movement.name}
-                      detail={[
-                        isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-                        movement.superset
-                          ? `superset ${movement.superset.role}`
-                          : movement.substitutesFor
-                          ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-                          : plan && plan.target_reps_min && plan.target_reps_max
-                            ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
-                            : null,
-                        lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                      chevron={!isCurrent}
-                      onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
-                      onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
-                    />
+                    row
                   )}
-                </View>
+                </Animated.View>
               );
             })}
             {session.flexible ? (
-              <>
+              <Animated.View layout={rowLayout}>
                 <Hairline />
                 <Row
                   title="Add movement"
                   leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
                   onPress={addMovement}
                 />
-              </>
+              </Animated.View>
             ) : null}
           </Label>
         </Section>
@@ -524,6 +528,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             step={editing === 'weight' ? '5 lb' : '1'}
             onMinus={() => bump(editing, editing === 'weight' ? -5 : -1)}
             onPlus={() => bump(editing, editing === 'weight' ? 5 : 1)}
+            onNext={editing === 'weight' ? () => repsField.current?.focus() : undefined}
           />
         </KeyboardStickyView>
       ) : null}
@@ -532,6 +537,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 }
 
 function BigValue({
+  ref,
   value,
   unit,
   onChange,
@@ -540,6 +546,7 @@ function BigValue({
   accessibilityLabel,
   integer,
 }: {
+  ref: Ref<TextField>;
   value: string;
   unit: string;
   onChange: (text: string) => void;
@@ -548,9 +555,15 @@ function BigValue({
   accessibilityLabel: string;
   integer?: boolean;
 }) {
+  const field = useRef<TextField>(null);
+  useImperativeHandle(ref, () => field.current as TextField);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+    // The unit beside the number is part of the field: a tap there types too.
+    <Pressable accessible={false} onPress={() => field.current?.focus()} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
       <FigureInput
+        ref={field}
+        // The key bar below brings − / +, Next and Done; no system bar.
+        returnKeyType="default"
         value={value}
         fontSize={76}
         onChangeText={onChange}
@@ -564,18 +577,20 @@ function BigValue({
       <BlancText variant="secondary" tone="graphite">
         {unit}
       </BlancText>
-    </View>
+    </Pressable>
   );
 }
 
-/** Quick steps that ride on the number pad, plus Done (the pad has no return key). */
-function KeyBar({ step, onMinus, onPlus }: { step: string; onMinus: () => void; onPlus: () => void }) {
+/** Quick steps that ride on the number pad, plus Next (weight to reps) or Done (the pad has no return key). */
+function KeyBar({ step, onMinus, onPlus, onNext }: { step: string; onMinus: () => void; onPlus: () => void; onNext?: () => void }) {
   const c = useBlanc();
   const key = (label: string, onPress: () => void, accessibilityLabel: string) => (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
+      // 36 points drawn, 44 or more to touch.
+      hitSlop={{ top: 8, bottom: 8 }}
       style={({ pressed }) => ({
         height: 36,
         paddingHorizontal: 14,
@@ -603,14 +618,23 @@ function KeyBar({ step, onMinus, onPlus }: { step: string; onMinus: () => void; 
       {key(`− ${step}`, onMinus, `Minus ${step}`)}
       {key(`+ ${step}`, onPlus, `Plus ${step}`)}
       <View style={{ flex: 1 }} />
-      {key(
-        'Done',
-        () => {
-          haptics.tap();
-          Keyboard.dismiss();
-        },
-        'Done',
-      )}
+      {onNext
+        ? key(
+            'Next',
+            () => {
+              haptics.tap();
+              onNext();
+            },
+            'Next, reps',
+          )
+        : key(
+            'Done',
+            () => {
+              haptics.tap();
+              Keyboard.dismiss();
+            },
+            'Done',
+          )}
     </View>
   );
 }
@@ -694,6 +718,7 @@ function StartPlanned() {
   const { starting, start } = useStartSession();
   const plan = useTodayPlan();
   const header = useStartHeader('Train');
+  const { refreshing, refresh } = useAccountRefresh();
   const week = plan.schedule
     ? differenceInCalendarWeeks(new Date(), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
     : null;
@@ -709,7 +734,7 @@ function StartPlanned() {
   return (
     <>
       {header}
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           {split ? [split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ') : 'No program yet'}
         </BlancText>
@@ -764,6 +789,8 @@ function StartFlexible() {
   const [template, setTemplate] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const label = name.trim();
+  const refreshTemplates = useCallback(() => fetchFlexTemplates({ force: true }), [fetchFlexTemplates]);
+  const { refreshing, refresh } = useAccountRefresh(refreshTemplates);
 
   useEffect(() => {
     void fetchFlexTemplates();
@@ -792,13 +819,17 @@ function StartFlexible() {
   return (
     <>
       {header}
-      <TabScroll keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      <TabScroll
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           Flexible · build today as you go
         </BlancText>
 
         <Section title="What are you training?" style={{ marginTop: 18 }}>
-          <Label style={{ paddingHorizontal: 18, paddingVertical: 14 }}>
+          {/* The field fills the card's height, so a tap anywhere on it types. */}
+          <Label style={{ paddingHorizontal: 18, paddingVertical: 3 }}>
             {/* Drawn as plain text: iOS squeezed this field's own placeholder
                 together (letters nearly overlapping) on the new renderer. */}
             {name ? null : (
@@ -828,7 +859,7 @@ function StartFlexible() {
               selectionColor={c.ink}
               accessibilityLabel="What are you training?"
               accessibilityHint="For example upper, push or arms"
-              style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 22 }]}
+              style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 44 }]}
             />
           </Label>
         </Section>
@@ -842,7 +873,6 @@ function StartFlexible() {
                   label={entry.label}
                   selected={template === entry.label}
                   onPress={() => {
-                    haptics.select();
                     const chosen = template === entry.label ? null : entry.label;
                     setTemplate(chosen);
                     setName(chosen ?? '');

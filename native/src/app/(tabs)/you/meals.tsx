@@ -1,21 +1,21 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, View } from 'react-native';
-import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
+import { ActionSheetIOS, ActivityIndicator, Alert, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { retireSavedMeal } from '@/lib/savedMeals';
 import { useAuthStore } from '@/stores/authStore';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { editSavedMeal, loadYouMeals, useYouMealsStore } from '~/lib/you';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { editSavedMeal, loadYouMeals, usePullRefresh, useYouMealsStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -28,7 +28,7 @@ export default function SavedMealsScreen() {
   const meals = useYouMealsStore((state) => state.meals);
   const failed = useYouMealsStore((state) => state.failed);
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
-  const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
+  const { refreshing, refresh } = usePullRefresh(loadYouMeals);
 
   useEffect(() => {
     void loadYouMeals();
@@ -36,14 +36,16 @@ export default function SavedMealsScreen() {
 
   // A deleted meal folds away at once and comes back if retiring it fails.
   const remove = async (meal: Food) => {
-    setMessage(null);
     setLeaving((current) => new Set(current).add(meal.id));
     const userId = useAuthStore.getState().user?.id;
     const { error } = userId ? await retireSavedMeal(userId, meal.id) : { error: new Error('signed out') };
     if (error) {
       haptics.error();
-      setMessage({ text: 'Could not delete saved meal. Please try again.', alert: true });
+      Alert.alert('Not deleted', 'Check your connection and try again.');
     } else {
+      haptics.success();
+      // Gone from the list even if the reload after it fails.
+      useYouMealsStore.setState((state) => ({ meals: state.meals?.filter((candidate) => candidate.id !== meal.id) ?? null }));
       await loadYouMeals();
     }
     setLeaving((current) => {
@@ -74,7 +76,7 @@ export default function SavedMealsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Saved meals' }} />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {meals === null ? (
           <ActivityIndicator style={{ marginTop: 40 }} />
         ) : shown.length === 0 ? (
@@ -89,9 +91,9 @@ export default function SavedMealsScreen() {
             )}
           </Label>
         ) : (
-          <Label style={{ marginTop: 12, overflow: 'hidden' }}>
+          <Label style={{ marginTop: 12, overflow: 'hidden' }} layout={rowLayout}>
             {shown.map((meal, index) => (
-              <Animated.View key={meal.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+              <Animated.View key={meal.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                 {index > 0 ? <Hairline /> : null}
                 <SwipeRow
                   name={meal.name}
@@ -112,11 +114,12 @@ export default function SavedMealsScreen() {
             ))}
           </Label>
         )}
-        {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
         {shown.length > 0 ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter + 12, marginTop: 8 }}>
-            Deleting a meal keeps past logged entries.
-          </BlancText>
+          <Animated.View layout={rowLayout}>
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter + 12, marginTop: 8 }}>
+              Deleting a meal keeps past logged entries.
+            </BlancText>
+          </Animated.View>
         ) : null}
       </TabScroll>
     </>

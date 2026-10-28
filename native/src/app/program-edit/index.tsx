@@ -1,11 +1,11 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState, type ComponentProps } from 'react';
 import { ActionSheetIOS, Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { saveSplitEdit } from '@/components/split/editor/editorActions';
 import type { ProgramDesignAnswers } from '@/lib/programDesigner';
@@ -41,7 +41,8 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
 import { haptics } from '~/lib/haptics';
-import { afterProgramSaved } from '~/lib/program';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { afterProgramSaved, confirmAlert } from '~/lib/program';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
@@ -119,8 +120,17 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
                   variant="quiet"
                   fill
                   onPress={() => {
-                    if (userId) clearSplitDraft(userId, NEW_SPLIT_DRAFT_ID);
-                    setStored(null);
+                    void confirmAlert({
+                      title: 'Discard this program?',
+                      message: 'It has not been created yet. Discarding removes it from this device.',
+                      confirmLabel: 'Discard',
+                      destructive: true,
+                    }).then((discard) => {
+                      if (!discard) return;
+                      if (userId) clearSplitDraft(userId, NEW_SPLIT_DRAFT_ID);
+                      setStored(null);
+                      haptics.success();
+                    });
                   }}
                 />
               </View>
@@ -232,6 +242,8 @@ function Editor({ notice }: { notice: string | null }) {
   // Text fields keep their own text while typing; a restored draft refills them.
   const [formKey, setFormKey] = useState(0);
   const isNew = Boolean(draft?._isNew);
+  // The Undo bar belongs to the screen on top; a day pushed over this one shows its own.
+  const focused = useIsFocused();
 
   const save = () => {
     Keyboard.dismiss();
@@ -243,7 +255,11 @@ function Editor({ notice }: { notice: string | null }) {
       },
       onClose: () => router.back(),
     }).then(() => {
-      if (useSplitEditStore.getState().error) haptics.error();
+      // Said out loud too: the note under the name can be scrolled out of sight.
+      const failure = useSplitEditStore.getState().error;
+      if (!failure) return;
+      haptics.error();
+      Alert.alert('Not saved', failure);
     });
   };
 
@@ -272,8 +288,8 @@ function Editor({ notice }: { notice: string | null }) {
   if (!draft) return <Stack.Screen options={{ title: '' }} />;
 
   const store = useSplitEditStore.getState;
+  // The row plays the tap.
   const addDay = () => {
-    haptics.tap();
     store().addDay(`Day ${draft.days.length + 1}`);
     const added = store().draft?.days.at(-1);
     if (added) router.push({ pathname: '/program-edit/day', params: { id: added.id } });
@@ -300,7 +316,23 @@ function Editor({ notice }: { notice: string | null }) {
             ) : null}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Capsule title="Discard them" variant="quiet" fill onPress={() => store().dismissRestore()} />
+                <Capsule
+                  title="Discard them"
+                  variant="quiet"
+                  fill
+                  onPress={() => {
+                    void confirmAlert({
+                      title: 'Discard these edits?',
+                      message: 'The unsaved copy on this device is removed.',
+                      confirmLabel: 'Discard',
+                      destructive: true,
+                    }).then((discard) => {
+                      if (!discard) return;
+                      store().dismissRestore();
+                      haptics.success();
+                    });
+                  }}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Capsule
@@ -338,21 +370,21 @@ function Editor({ notice }: { notice: string | null }) {
         {error ? <FormNote alert>{error}</FormNote> : null}
 
         <Section title="Days" action={draft.days.length > 1 ? { title: 'Reorder', onPress: () => router.push('/program-reorder') } : undefined}>
-          <Label style={{ overflow: 'hidden' }}>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
             {draft.days.map((day, index) => (
-              <Animated.View key={day.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+              <Animated.View key={day.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                 {index > 0 ? <Hairline /> : null}
                 <DayRow day={day} index={index} total={draft.days.length} />
               </Animated.View>
             ))}
-            <Animated.View layout={LinearTransition.duration(220)}>
+            <Animated.View layout={rowLayout}>
               {draft.days.length > 0 ? <Hairline /> : null}
               <Row title="Add day" leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />} onPress={addDay} />
             </Animated.View>
           </Label>
         </Section>
       </ScrollView>
-      <UndoBar label={undo?.label ?? null} onUndo={() => store().undoRemoval()} />
+      <UndoBar label={focused ? (undo?.label ?? null) : null} onUndo={() => store().undoRemoval()} />
     </>
   );
 }
@@ -397,23 +429,37 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
   const label = dayLabel(day, index);
   const store = useSplitEditStore.getState;
   const open = () => router.push({ pathname: '/program-edit/day', params: { id: day.id } });
-  const remove = () => store().removeDay(day.id);
+  // A draft change: the Undo bar can bring it back.
+  const remove = () => {
+    store().removeDay(day.id);
+    haptics.success();
+  };
   const rename = () =>
     Alert.prompt(
       'Day name',
       undefined,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Save', onPress: (text?: string) => store().renameDay(day.id, (text ?? '').slice(0, 40)) },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            haptics.select();
+            store().renameDay(day.id, (text ?? '').slice(0, 40));
+          },
+        },
       ],
       'plain-text',
       day.day_name,
     );
+  const move = (direction: -1 | 1) => {
+    haptics.select();
+    store().reorderDays(day.id, direction);
+  };
   const menu = () => {
     const actions: { label: string; run: () => void }[] = [
       { label: 'Rename', run: rename },
-      ...(index > 0 ? [{ label: 'Move earlier', run: () => store().reorderDays(day.id, -1) }] : []),
-      ...(index < total - 1 ? [{ label: 'Move later', run: () => store().reorderDays(day.id, 1) }] : []),
+      ...(index > 0 ? [{ label: 'Move earlier', run: () => move(-1) }] : []),
+      ...(index < total - 1 ? [{ label: 'Move later', run: () => move(1) }] : []),
       { label: 'Remove day', run: remove },
     ];
     ActionSheetIOS.showActionSheetWithOptions(

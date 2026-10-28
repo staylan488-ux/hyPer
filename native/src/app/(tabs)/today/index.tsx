@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
-import { View } from 'react-native';
+import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
@@ -15,7 +15,9 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
+import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, useFuelStore } from '~/lib/fuel';
@@ -34,6 +36,7 @@ export default function TodayScreen() {
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
   const rise = useIntroRise();
+  const { refreshing, refresh } = useAccountRefresh();
 
   return (
     <>
@@ -62,7 +65,7 @@ export default function TodayScreen() {
           ],
         }}
       />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Animated.View style={rise}>
           <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
             {format(now, 'EEEE, MMMM d')}
@@ -72,7 +75,16 @@ export default function TodayScreen() {
 
           <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
-              <View style={{ paddingHorizontal: space.gutter }}>
+              // The day's figures open Fuel, where they come from.
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : 'over'}. Eaten ${formatWhole(totals.calories)} of ${formatWhole(target.calories)}, protein ${formatWhole(totals.protein)} of ${formatWhole(target.protein)} grams`}
+                accessibilityHint="Opens Fuel"
+                onPress={() => {
+                  haptics.tap();
+                  router.navigate('/fuel');
+                }}
+                style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
                   <BlancText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
@@ -85,11 +97,20 @@ export default function TodayScreen() {
                   <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} />
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} />
                 </View>
-              </View>
+              </Pressable>
             ) : (
-              <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter }}>
-                Set a calorie target in You to see what's left today.
-              </BlancText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint="Opens your targets"
+                onPress={() => {
+                  haptics.tap();
+                  router.push('/you/targets');
+                }}
+                style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
+                <BlancText variant="secondary" tone="graphite">
+                  Set a calorie target in You to see what's left today.
+                </BlancText>
+              </Pressable>
             )}
           </Section>
 
@@ -128,9 +149,23 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const c = useBlanc();
   const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
+  const { finish, closing } = useFinishWorkout(session);
+  const openWorkout = () => router.navigate('/train');
 
   return (
-    <Label style={{ marginTop: 18, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18 }}>
+    // The whole card returns to the workout; its button resumes or finishes.
+    <Label style={{ marginTop: 18, overflow: 'hidden' }}>
+    <Pressable
+      // VoiceOver reads the card's parts and reaches its button on its own.
+      accessible={false}
+      accessibilityRole="button"
+      accessibilityLabel={`${session.dayName}, in progress, ${minutes} min, ${session.doneCount} of ${session.sets.length} sets done`}
+      accessibilityHint="Opens the workout"
+      onPress={() => {
+        haptics.tap();
+        openWorkout();
+      }}
+      style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BlancText variant="headline">{session.dayName}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -160,8 +195,14 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
             {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
           </BlancText>
         </View>
-        <Capsule title={current ? 'Resume' : 'Finish'} onPress={() => router.navigate('/train')} />
+        {current ? (
+          <Capsule title="Resume" onPress={openWorkout} />
+        ) : (
+          // Every set is logged: Finish finishes here, as it does on Train.
+          <Capsule title="Finish" busy={closing} onPress={finish} />
+        )}
       </View>
+    </Pressable>
     </Label>
   );
 }

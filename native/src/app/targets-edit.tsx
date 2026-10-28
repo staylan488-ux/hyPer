@@ -1,6 +1,7 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Keyboard, ScrollView, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Keyboard, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   TARGET_DRIFT_WARNING_PCT,
@@ -15,7 +16,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote } from '~/components/Form';
+import { FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
@@ -36,10 +37,14 @@ const FIELDS: { key: keyof TargetNumbers; label: string; unit: string }[] = [
 /**
  * Edit targets: the four numbers, filled with the saved targets or with what
  * the calculator or coach suggested. Typing makes them targets set by hand;
- * nothing is saved until Save.
+ * nothing is saved until Save. Opened from one of the numbers (`focus`), that
+ * field is ready to type; Next walks the four, Done on the last puts the
+ * keyboard away.
  */
 export default function TargetsEditSheet() {
   const c = useBlanc();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const fields = useRef<(TextField | null)[]>([]);
   const target = useAppStore((state) => state.macroTarget);
   // Taken once: suggestions handed over by the calculator or the coach.
   const [staged] = useState(() => useTargetsStore.getState().staged);
@@ -89,7 +94,12 @@ export default function TargetsEditSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+    <KeyboardAwareScrollView
+      bottomOffset={24}
+      style={{ flex: 1, backgroundColor: c.ground }}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -105,12 +115,19 @@ export default function TargetsEditSheet() {
           <View key={field.key}>
             {index > 0 ? <Hairline /> : null}
             <FieldRow
+              ref={(node) => {
+                fields.current[index] = node;
+              }}
               label={field.label}
               unit={field.unit}
               value={String(draft[field.key])}
               keyboardType="number-pad"
               selectTextOnFocus
+              autoFocus={field.key === focus}
               maxLength={5}
+              returnKeyType={index < FIELDS.length - 1 ? 'next' : 'done'}
+              submitBehavior={index < FIELDS.length - 1 ? 'submit' : 'blurAndSubmit'}
+              onSubmitEditing={() => fields.current[index + 1]?.focus()}
               onChangeText={(text) => {
                 setError(null);
                 setDraft((current) => editTargetField(current, field.key, text));
@@ -155,6 +172,6 @@ export default function TargetsEditSheet() {
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule title={error ? 'Retry' : 'Save targets'} size="large" fill busy={saving} disabled={!changed} onPress={() => void save()} />
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }

@@ -1,9 +1,9 @@
 import { format, parseISO } from 'date-fns';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle } from '@/lib/activitySessions';
 import { historyDayKey, historyWorkoutTitle, moveHistoryMovement, orderHistoryMovements, type HistoryMovement, type HistoryWorkout } from '@/lib/historyMonth';
@@ -26,15 +26,20 @@ import {
   detachStats,
   editPastWorkout,
   loadPlan,
+  removePastSet,
   savePastNote,
   useHistoryStore,
 } from '~/lib/history';
+import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, useBlanc } from '~/theme/blanc';
 
 /** One past workout: correct any set, add or take out sets and movements, keep notes, or delete it. */
 export default function PastWorkoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const workout = useHistoryStore((state) => state.workouts.find((entry) => entry.id === id) ?? null);
+  const stored = useHistoryStore((state) => state.workouts.find((entry) => entry.id === id) ?? null);
+  // Deleted from here: the screen keeps showing it while it slides away.
+  const [leaving, setLeaving] = useState<HistoryWorkout | null>(null);
+  const workout = stored ?? leaving;
   const plan = useHistoryStore((state) => (id ? state.plans[id] : undefined));
   const activities = useHistoryStore((state) => state.activities);
 
@@ -60,7 +65,13 @@ export default function PastWorkoutScreen() {
   const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
   const day = historyDayKey(workout);
   const orderedIds = movements.map((movement) => movement.exerciseId);
-  const remove = () => confirmDeleteWorkout(title, workout.id, () => router.back());
+  const remove = () =>
+    void confirmDeleteWorkout(title, workout.id, {
+      onConfirmed: () => {
+        setLeaving(workout);
+        router.back();
+      },
+    });
 
   return (
     <>
@@ -78,14 +89,20 @@ export default function PastWorkoutScreen() {
                     type: 'action',
                     label: 'Add movement',
                     icon: { type: 'sfSymbol', name: 'plus' },
-                    onPress: () => addMovement(workout.id),
+                    onPress: () => {
+                      haptics.tap();
+                      addMovement(workout.id);
+                    },
                   },
                   {
                     type: 'action',
                     label: 'Delete workout',
                     icon: { type: 'sfSymbol', name: 'trash' },
                     destructive: true,
-                    onPress: remove,
+                    onPress: () => {
+                      haptics.tap();
+                      remove();
+                    },
                   },
                 ],
               },
@@ -109,12 +126,12 @@ export default function PastWorkoutScreen() {
         ) : null}
 
         {movements.map((movement) => (
-          <Animated.View key={movement.exerciseId} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+          <Animated.View key={movement.exerciseId} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
             <MovementBlock workout={workout} movement={movement} note={notes[movement.exerciseId] || movement.planNote} orderedIds={orderedIds} />
           </Animated.View>
         ))}
 
-        <Animated.View layout={LinearTransition.duration(220)}>
+        <Animated.View layout={rowLayout}>
           <Label style={{ marginTop: space.section }}>
             <Row title="Add movement" leading={<Plus />} onPress={() => addMovement(workout.id)} />
           </Label>
@@ -139,8 +156,8 @@ export default function PastWorkoutScreen() {
   );
 }
 
+/** Opens the picker; the control that calls it plays the tap. */
 function addMovement(workoutId: string) {
-  haptics.tap();
   router.push({ pathname: '/swap', params: { mode: 'add', workout: workoutId } });
 }
 
@@ -150,13 +167,14 @@ function Plus() {
 }
 
 /** Saves an edit, saying so when it did not save. */
-function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not saved') {
-  void editPastWorkout(workoutId, mutate).then((saved) => {
+function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not saved'): Promise<boolean> {
+  return editPastWorkout(workoutId, mutate).then((saved) => {
     if (saved) haptics.success();
     else {
       haptics.error();
       Alert.alert(failed, 'Check your connection and try again.');
     }
+    return saved;
   });
 }
 
@@ -164,6 +182,9 @@ function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not s
 function MovementBlock({ workout, movement, note, orderedIds }: { workout: HistoryWorkout; movement: HistoryMovement; note: string; orderedIds: string[] }) {
   const c = useBlanc();
   const store = useAppStore.getState;
+  // One Add set at a time: taps while one is saving do nothing.
+  const adding = useRef(false);
+  const [addingShown, setAddingShown] = useState(false);
   const line = [
     movement.substitutesFor ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}` : null,
     movement.partnerName ? `Superset with ${movement.partnerName}` : null,
@@ -200,7 +221,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => runEdit(workout.id, () => store().removeExerciseFromWorkout(workout.id, movement.exerciseId), 'Not removed'),
+        onPress: () => void runEdit(workout.id, () => store().removeExerciseFromWorkout(workout.id, movement.exerciseId), 'Not removed'),
       },
     ]);
 
@@ -211,10 +232,10 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
     ];
     const up = moveHistoryMovement(orderedIds, movement.exerciseId, -1);
     const down = moveHistoryMovement(orderedIds, movement.exerciseId, 1);
-    if (up) actions.push({ label: 'Move up', run: () => runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, up)) });
-    if (down) actions.push({ label: 'Move down', run: () => runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, down)) });
+    if (up) actions.push({ label: 'Move up', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, up)) });
+    if (down) actions.push({ label: 'Move down', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, down)) });
     if (movement.supersetGroupId) {
-      actions.push({ label: 'Unlink superset', run: () => runEdit(workout.id, () => store().clearWorkoutSuperset(workout.id, movement.exerciseId)) });
+      actions.push({ label: 'Unlink superset', run: () => void runEdit(workout.id, () => store().clearWorkoutSuperset(workout.id, movement.exerciseId)) });
     } else {
       actions.push({
         label: 'Superset with…',
@@ -235,15 +256,22 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
     );
   };
 
-  const addSet = () =>
-    runEdit(
+  const addSet = () => {
+    if (adding.current) return;
+    adding.current = true;
+    setAddingShown(true);
+    void runEdit(
       workout.id,
       async () => {
         const created = await store().addSetToWorkout(workout.id, movement.exerciseId);
         if (!created) throw new Error('Could not add that set.');
       },
       'Set not added',
-    );
+    ).then(() => {
+      adding.current = false;
+      setAddingShown(false);
+    });
+  };
 
   return (
     <Section
@@ -262,20 +290,42 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
         </Pressable>
       }>
       {line || note ? (
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: -4, marginBottom: 8 }}>
-          {[line, note].filter(Boolean).join('\n')}
-        </BlancText>
+        <View style={{ marginHorizontal: space.gutter, marginTop: -4, marginBottom: 8 }}>
+          {line ? (
+            <BlancText variant="secondary" tone="graphite">
+              {line}
+            </BlancText>
+          ) : null}
+          {note ? (
+            // The note itself opens it to edit.
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Note: ${note}`}
+              accessibilityHint="Edit note"
+              hitSlop={{ top: 6, bottom: 6 }}
+              onPress={() => {
+                haptics.tap();
+                editNote();
+              }}>
+              {({ pressed }) => (
+                <BlancText variant="secondary" tone="graphite" style={{ opacity: pressed ? 0.5 : 1 }}>
+                  {note}
+                </BlancText>
+              )}
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
-      <Label style={{ overflow: 'hidden' }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {movement.sets.map((set, index) => (
-          <Animated.View key={set.id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+          <Animated.View key={set.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
             <SetRow workoutId={workout.id} movement={movement} set={set} number={index + 1} />
           </Animated.View>
         ))}
-        <Animated.View layout={LinearTransition.duration(220)}>
+        <Animated.View layout={rowLayout}>
           <Hairline />
-          <Row title="Add set" quiet leading={<Plus />} onPress={addSet} />
+          <Row title={addingShown ? 'Adding…' : 'Add set'} quiet leading={<Plus />} onPress={addSet} />
         </Animated.View>
       </Label>
     </Section>
@@ -289,8 +339,15 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
   const logged = set.weight !== null && set.reps !== null;
   const numbers = logged ? `${formatLoad(set.weight)} lb × ${set.reps}` : 'Not logged';
   const edit = () => router.push({ pathname: '/past-set', params: { workout: workoutId, set: set.id, number: String(number) } });
+  // The row leaves at once; a delete that fails brings it back.
   const remove = () =>
-    runEdit(workoutId, () => useAppStore.getState().removeSetFromWorkout(workoutId, movement.exerciseId, set.id), 'Set not deleted');
+    void removePastSet(workoutId, movement.exerciseId, set.id).then((deleted) => {
+      if (deleted) haptics.success();
+      else {
+        haptics.error();
+        Alert.alert('Set not deleted', 'Check your connection and try again.');
+      }
+    });
   const menu = () =>
     ActionSheetIOS.showActionSheetWithOptions(
       { title: `Set ${number}`, options: ['Edit', 'Delete set', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
@@ -349,7 +406,7 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
     return (
       <Section title="Stats">
         <Label style={{ overflow: 'hidden' }}>
-          <SwipeRow name="WHOOP stats" actions={[{ label: 'Remove', onPress: removeStats }]}>
+          <SwipeRow name="WHOOP stats" actions={[{ label: 'Remove', destructive: true, onPress: removeStats }]}>
             <View style={{ backgroundColor: c.label }}>
               <Row
                 title={workout.strain != null ? `Strain ${workout.strain.toFixed(1)}` : 'WHOOP stats'}
@@ -394,7 +451,7 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
   return (
     <Section title="Stats">
       <Label>
-        <Row title="Add WHOOP stats" detail="From an activity on this day" chevron onPress={pick} />
+        <Row title="Add WHOOP stats" detail="From an activity on this day" onPress={pick} />
       </Label>
     </Section>
   );

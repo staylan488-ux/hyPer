@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
-import { useState } from 'react';
-import { ActionSheetIOS, TextInput, View } from 'react-native';
-import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
+import { useRef, useState } from 'react';
+import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
@@ -10,15 +10,16 @@ import { saveComposedMeal } from '@/lib/saveMealComposition';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, PickerRow, ToggleRow } from '~/components/Form';
+import { FieldRow, FormNote, PickerRow, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { SwipeRow } from '~/components/SwipeRow';
+import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
 import { groupsForDay } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 const amount = (value: number) => Number(value.toFixed(3));
@@ -110,9 +111,9 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
       </View>
 
       <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
-        <Label>
+        <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
-            <Animated.View key={item.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+            <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
               {index > 0 ? <Hairline /> : null}
               <IngredientRow
                 item={item}
@@ -122,55 +123,63 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
                   setInvalidRows((rows) => (invalid ? [...new Set([...rows, item.id])] : rows.filter((id) => id !== item.id)))
                 }
                 onRemove={() => {
+                  haptics.success();
                   update({ ingredients: draft.ingredients.filter((part) => part.id !== item.id) });
                   setInvalidRows((rows) => rows.filter((id) => id !== item.id));
                 }}
               />
             </Animated.View>
           ))}
-          {draft.ingredients.length === 0 ? <Row title="No ingredients yet" quiet /> : null}
+          {draft.ingredients.length === 0 ? (
+            <Animated.View entering={rowEnter} layout={rowLayout}>
+              <Row title="No ingredients yet" quiet />
+            </Animated.View>
+          ) : null}
         </Label>
       </Section>
 
-      {!savedTarget ? (
-        <Section title="When">
-          <Label>
-            <PickerRow
-              label="Day"
-              mode="date"
-              value={new Date(`${draft.date}T12:00:00`)}
-              max={new Date()}
-              disabled={frozen}
-              onChange={(date) => update({ date: format(date, 'yyyy-MM-dd'), groupId: null })}
-            />
-            <Hairline />
-            <PickerRow
-              label="Time"
-              mode="time"
-              value={timeAsDate(new Date(`${draft.date}T12:00:00`), draft.time)}
-              disabled={frozen}
-              onChange={(date) => update({ time: format(date, 'HH:mm') })}
-            />
-            <Hairline />
-            <Row title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron onPress={frozen ? undefined : chooseGroup} />
-            <Hairline />
-            <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
-          </Label>
-        </Section>
-      ) : null}
+      {/* Closes up under the ingredients as one is removed. */}
+      <Animated.View layout={rowLayout}>
+        {!savedTarget ? (
+          <Section title="When">
+            <Label>
+              <PickerRow
+                label="Day"
+                mode="date"
+                value={new Date(`${draft.date}T12:00:00`)}
+                max={new Date()}
+                disabled={frozen}
+                onChange={(date) => update({ date: format(date, 'yyyy-MM-dd'), groupId: null })}
+              />
+              <Hairline />
+              <PickerRow
+                label="Time"
+                mode="time"
+                value={timeAsDate(new Date(`${draft.date}T12:00:00`), draft.time)}
+                disabled={frozen}
+                onChange={(date) => update({ time: format(date, 'HH:mm') })}
+              />
+              <Hairline />
+              <Row title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
+              <Hairline />
+              <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
+            </Label>
+          </Section>
+        ) : null}
 
-      {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 20, gap: 12 }}>
-        <Capsule
-          title={draft.locked ? 'Retry save' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
-          size="large"
-          fill
-          busy={busy}
-          disabled={!valid}
-          onPress={() => void save()}
-        />
-        {draft.locked && !busy && !editingEntryId && !savedTarget ? <Capsule title="Back to food logging" variant="quiet" fill onPress={onPause} /> : null}
-      </View>
+        {error ? <FormNote alert>{error}</FormNote> : null}
+        <View style={{ paddingHorizontal: space.gutter, marginTop: 20, gap: 12 }}>
+          <Capsule
+            title={draft.locked ? 'Retry save' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
+            size="large"
+            fill
+            busy={busy}
+            disabled={!valid}
+            onPress={() => void save()}
+          />
+          {draft.locked && !busy && !editingEntryId && !savedTarget ? <Capsule title="Back to food logging" variant="quiet" fill onPress={onPause} /> : null}
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -184,9 +193,27 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
 }) {
   const c = useBlanc();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
+  const field = useRef<TextField>(null);
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
+  const menu = () =>
+    ActionSheetIOS.showActionSheetWithOptions({ title: item.food.name, options: ['Remove', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 }, (index) => {
+      if (index === 0) onRemove();
+    });
+  // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
-    <View style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
+    <Pressable
+      accessible={false}
+      disabled={disabled}
+      onPress={() => {
+        // a tap while another row stands open only closes that row
+        if (!closeOpenSwipeRow()) field.current?.focus();
+      }}
+      onLongPress={() => {
+        if (closeOpenSwipeRow()) return;
+        haptics.select();
+        menu();
+      }}
+      style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
@@ -197,11 +224,17 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           </BlancText>
         </View>
         <TextInput
+          ref={field}
           value={value}
           editable={!disabled}
           keyboardType="decimal-pad"
+          returnKeyType="done"
           selectTextOnFocus
           accessibilityLabel={`Amount of ${item.food.name} in ${item.food.serving_unit}`}
+          accessibilityActions={disabled ? undefined : [{ name: 'remove', label: 'Remove' }]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'remove') onRemove();
+          }}
           onChangeText={(next) => {
             setValue(next);
             const servings = Number(next) / item.food.serving_size;
@@ -212,7 +245,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
             onInvalid(invalid);
             if (!invalid) onChange(servings);
           }}
-          style={[typeScale.body, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 40, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
+          style={[typeScale.body, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
         />
         <BlancText variant="body" tone="graphite" numberOfLines={1} style={{ maxWidth: 64 }}>
           {item.food.serving_unit}
@@ -223,7 +256,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           Enter an amount greater than zero.
         </BlancText>
       ) : null}
-    </View>
+    </Pressable>
   );
   // swipe to remove, like any list on iOS
   return disabled ? content : (

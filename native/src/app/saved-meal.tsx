@@ -1,12 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, View } from 'react-native';
 
 import { replaceSavedMeal } from '@/lib/savedMeals';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote } from '~/components/Form';
+import { FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
@@ -46,6 +46,8 @@ export default function SavedMealSheet() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Next on the keyboard walks Name, then each number, in order.
+  const fields = useRef<(TextField | null)[]>([]);
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
 
   useLeaveGuard(changed && !done, undefined, { busy: saving });
@@ -94,7 +96,7 @@ export default function SavedMealSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -108,17 +110,31 @@ export default function SavedMealSheet() {
       {meal ? (
         <>
           <Label style={{ marginTop: 20 }}>
-            <FieldRow label="Name" wide value={draft.name} onChangeText={(name) => setDraft((current) => ({ ...current, name }))} />
+            <FieldRow
+              label="Name"
+              wide
+              value={draft.name}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => fields.current[0]?.focus()}
+              onChangeText={(name) => setDraft((current) => ({ ...current, name }))}
+            />
           </Label>
           <Label style={{ marginTop: 16 }}>
             {MACROS.map((field, index) => (
               <View key={field.key}>
                 {index > 0 ? <Hairline /> : null}
                 <FieldRow
+                  ref={(input) => {
+                    fields.current[index] = input;
+                  }}
                   label={field.label}
                   unit={field.unit}
                   value={draft[field.key]}
                   keyboardType="decimal-pad"
+                  returnKeyType={index < MACROS.length - 1 ? 'next' : 'done'}
+                  submitBehavior={index < MACROS.length - 1 ? 'submit' : 'blurAndSubmit'}
+                  onSubmitEditing={index < MACROS.length - 1 ? () => fields.current[index + 1]?.focus() : undefined}
                   selectTextOnFocus
                   maxLength={7}
                   onChangeText={(text) => {

@@ -66,6 +66,11 @@ export default function WorkerScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
+            textContentType="URL"
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (draft.url.trim()) void save();
+            }}
             onChangeText={(url) => setDraft((current) => ({ ...current, url }))}
           />
           <Hairline />

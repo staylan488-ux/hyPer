@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, type AccessibilityActionEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
@@ -16,7 +16,8 @@ const PAD_Y = 8;
 
 /**
  * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
- * hollow). The full chart reads any day: tap it, or hold and slide. The
+ * hollow). The full chart reads any day: tap it (tap that day again to let
+ * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * compact one is a quiet sparkline.
  */
 export function WeightChart({
@@ -58,12 +59,31 @@ export function WeightChart({
 
   if (series.length < 2) return null;
 
-  const select = (x: number) => {
-    const index = indexAtX(x, width, series.length, 'point');
-    if (index === null) return;
+  const choose = (index: number) =>
     setActive((current) => {
       if (current !== index) haptics.select();
       return index;
+    });
+  const select = (x: number) => {
+    const index = indexAtX(x, width, series.length, 'point');
+    if (index !== null) choose(index);
+  };
+  // A tap on the day already read puts the summary back.
+  const tap = (x: number) => {
+    const index = indexAtX(x, width, series.length, 'point');
+    if (index === null) return;
+    setActive((current) => {
+      haptics.select();
+      return current === index ? null : index;
+    });
+  };
+  // VoiceOver: the first swipe reads the latest day, then one day at a time.
+  const step = (direction: 1 | -1) => {
+    const last = series.length - 1;
+    setActive((current) => {
+      const next = current === null ? last : Math.min(last, Math.max(0, current + direction));
+      if (next !== current) haptics.select();
+      return next;
     });
   };
   // A tap reads one day; holding then sliding reads day by day. Sliding
@@ -79,7 +99,7 @@ export function WeightChart({
       .onEnd(() => setActive(null)),
     Gesture.Tap()
       .runOnJS(true)
-      .onEnd((event) => select(event.x)),
+      .onEnd((event) => tap(event.x)),
   );
 
   const selected = active !== null ? series[active] : null;
@@ -96,7 +116,17 @@ export function WeightChart({
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       accessible
       accessibilityLabel={`Body weight trend, last ${series.length} days`}
-      accessibilityHint={compact ? undefined : 'Tap or hold and slide to read a day.'}>
+      {...(compact
+        ? {}
+        : {
+            accessibilityRole: 'adjustable' as const,
+            accessibilityValue: { text: readout ?? '' },
+            accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+            onAccessibilityAction: (event: AccessibilityActionEvent) => {
+              if (event.nativeEvent.actionName === 'increment') step(1);
+              if (event.nativeEvent.actionName === 'decrement') step(-1);
+            },
+          })}>
       {geometry ? (
         <Svg width={width} height={height} style={{ overflow: 'visible' }}>
           {compact ? null : <Line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} />}

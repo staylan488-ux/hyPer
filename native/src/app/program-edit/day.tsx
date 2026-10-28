@@ -1,8 +1,8 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, type ComponentProps } from 'react';
 import { ActionSheetIOS, Alert, ScrollView, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { isPendingExerciseId } from '@/lib/customExercises';
 import { dayLabel, exerciseBlocks, type DraftExercise } from '@/lib/splitDraft';
@@ -14,6 +14,7 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
 import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { targetsLine } from '~/lib/program';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -24,6 +25,8 @@ export default function ProgramDayScreen() {
   const index = useSplitEditStore((state) => state.draft?.days.findIndex((day) => day.id === id) ?? -1);
   const day = useSplitEditStore((state) => state.draft?.days.find((entry) => entry.id === id) ?? null);
   const undo = useSplitEditStore((state) => state.undo);
+  // The Undo bar belongs to the screen on top.
+  const focused = useIsFocused();
   const blocks = useMemo(() => (day ? exerciseBlocks(day.exercises) : []), [day]);
   const label = day ? dayLabel(day, index) : '';
 
@@ -33,7 +36,13 @@ export default function ProgramDayScreen() {
       undefined,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Save', onPress: (text?: string) => useSplitEditStore.getState().renameDay(id, (text ?? '').slice(0, 40)) },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            haptics.select();
+            useSplitEditStore.getState().renameDay(id, (text ?? '').slice(0, 40));
+          },
+        },
       ],
       'plain-text',
       day?.day_name ?? '',
@@ -79,32 +88,30 @@ export default function ProgramDayScreen() {
           title="Exercises"
           style={{ marginTop: 12 }}
           action={blocks.length > 1 ? { title: 'Reorder', onPress: () => router.push({ pathname: '/program-reorder', params: { day: day.id } }) } : undefined}>
-          <Label style={{ overflow: 'hidden' }}>
-            {blocks.map((block, blockIndex) => (
-              <Animated.View key={block[0].id} entering={FadeIn.duration(160)} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
-                {blockIndex > 0 ? <Hairline /> : null}
-                {block.map((exercise, offset) => (
-                  <View key={exercise.id}>
-                    {offset > 0 ? <Hairline /> : null}
-                    <ExerciseRow
-                      dayId={day.id}
-                      exercise={exercise}
-                      partner={block.length > 1 ? block[offset === 0 ? 1 : 0] : null}
-                      canMoveUp={blockIndex > 0}
-                      canMoveDown={blockIndex < blocks.length - 1}
-                    />
-                  </View>
-                ))}
-              </Animated.View>
-            ))}
-            <Animated.View layout={LinearTransition.duration(220)}>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+            {/* One row per exercise, so taking one out of a pair folds that row alone. */}
+            {blocks.flatMap((block, blockIndex) =>
+              block.map((exercise, offset) => (
+                <Animated.View key={exercise.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {blockIndex > 0 || offset > 0 ? <Hairline /> : null}
+                  <ExerciseRow
+                    dayId={day.id}
+                    exercise={exercise}
+                    partner={block.length > 1 ? block[offset === 0 ? 1 : 0] : null}
+                    canMoveUp={blockIndex > 0}
+                    canMoveDown={blockIndex < blocks.length - 1}
+                  />
+                </Animated.View>
+              )),
+            )}
+            <Animated.View layout={rowLayout}>
               {blocks.length > 0 ? <Hairline /> : null}
               <Row title="Add exercises" leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />} onPress={add} />
             </Animated.View>
           </Label>
         </Section>
       </ScrollView>
-      <UndoBar label={undo?.label ?? null} onUndo={() => useSplitEditStore.getState().undoRemoval()} />
+      <UndoBar label={focused ? (undo?.label ?? null) : null} onUndo={() => useSplitEditStore.getState().undoRemoval()} />
     </>
   );
 }
@@ -122,16 +129,30 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
   const name = exercise.exercise.name;
   const open = () => router.push({ pathname: '/program-exercise', params: { day: dayId, exercise: exercise.id } });
   const swap = () => router.push({ pathname: '/swap', params: { program: 'swap', day: dayId, id: exercise.id } });
-  const remove = () => store().removeExercise(dayId, exercise.id);
+  // A draft change: the Undo bar can bring it back.
+  const remove = () => {
+    store().removeExercise(dayId, exercise.id);
+    haptics.success();
+  };
+  const move = (direction: -1 | 1) => {
+    haptics.select();
+    store().reorderExercise(dayId, exercise.id, direction);
+  };
   const menu = () => {
     const actions: { label: string; run: () => void }[] = [
       { label: 'Sets and reps', run: open },
       { label: 'Swap exercise', run: swap },
       partner
-        ? { label: 'Unlink superset', run: () => store().clearExerciseSuperset(dayId, exercise.id) }
+        ? {
+            label: 'Unlink superset',
+            run: () => {
+              haptics.select();
+              store().clearExerciseSuperset(dayId, exercise.id);
+            },
+          }
         : { label: 'Add superset', run: () => router.push({ pathname: '/swap', params: { program: 'superset', day: dayId, id: exercise.id } }) },
-      ...(canMoveUp ? [{ label: partner ? 'Move superset earlier' : 'Move earlier', run: () => store().reorderExercise(dayId, exercise.id, -1) }] : []),
-      ...(canMoveDown ? [{ label: partner ? 'Move superset later' : 'Move later', run: () => store().reorderExercise(dayId, exercise.id, 1) }] : []),
+      ...(canMoveUp ? [{ label: partner ? 'Move superset earlier' : 'Move earlier', run: () => move(-1) }] : []),
+      ...(canMoveDown ? [{ label: partner ? 'Move superset later' : 'Move later', run: () => move(1) }] : []),
       { label: 'Remove', run: remove },
     ];
     ActionSheetIOS.showActionSheetWithOptions(

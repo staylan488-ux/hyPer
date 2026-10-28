@@ -1,7 +1,7 @@
 import { format, parseISO, startOfWeek } from 'date-fns';
 import { router, Stack } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
@@ -31,22 +31,39 @@ export default function ProgressScreen() {
   const [volumeRead, setVolumeRead] = useState(false);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   const [open, setOpen] = useState<MuscleGroup | null>(null);
+  // Pull to refresh reads everything again; the nutrition block remounts to refetch.
+  const [round, setRound] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const active = useRef(true);
+
+  const load = useCallback(async () => {
+    await Promise.all([
+      Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
+        .catch(() => {})
+        .finally(() => {
+          if (active.current) setVolumeRead(true);
+        }),
+      fetchTrainingHours().then((points) => {
+        if (active.current) setHours(points);
+      }),
+      useAppStore.getState().fetchMacroTarget(),
+    ]);
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    void Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
-      .catch(() => {})
-      .finally(() => {
-        if (active) setVolumeRead(true);
-      });
-    void fetchTrainingHours().then((points) => {
-      if (active) setHours(points);
-    });
-    void useAppStore.getState().fetchMacroTarget();
+    active.current = true;
+    void load().catch(() => {});
     return () => {
-      active = false;
+      active.current = false;
     };
-  }, []);
+  }, [load]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setRound((value) => value + 1);
+    await load().catch(() => {});
+    if (active.current) setRefreshing(false);
+  };
 
   const coached = useMemo(() => coachMuscles(volume), [volume]);
   const week = summarizeWeekVolume(volume);
@@ -64,7 +81,7 @@ export default function ProgressScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Progress' }} />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMMM d')}
         </BlancText>
@@ -109,7 +126,7 @@ export default function ProgressScreen() {
           <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>{hours ? <HoursChart points={hours} /> : <View style={{ height: 150 }} />}</Label>
         </Section>
 
-        <NutritionSection />
+        <NutritionSection key={round} />
       </TabScroll>
     </>
   );
@@ -255,7 +272,7 @@ function NutritionSection() {
           <View style={{ height: 120 }} />
         ) : error ? (
           <BlancText variant="secondary" tone="live">
-            Couldn&apos;t load your nutrition. Open Progress again to retry.
+            Couldn&apos;t load your nutrition. Pull down to try again.
           </BlancText>
         ) : weeklyNutrition.length === 0 ? (
           <BlancText variant="secondary" tone="graphite">

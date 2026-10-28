@@ -106,13 +106,26 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
-- "This should work, and it does" (the owner, 2026-10-27): every list item
-  that can be removed swipes left for its actions, with the destructive one in
-  red and a full swipe running it ([SwipeRow](../../../native/src/components/SwipeRow.tsx),
-  decided at release, since the row springs back past the threshold),
-  and folds away with an exiting animation; anything with more to do offers it
-  on a long press too (an action sheet). VoiceOver gets the same actions.
-  Apply it wherever it fits; an app-wide interaction audit follows parity.
+- "This should work, and it does" (the owner, 2026-10-27; app-wide audit
+  2026-10-28): every list item that can be removed swipes left for its actions
+  ([SwipeRow](../../../native/src/components/SwipeRow.tsx)): the destructive
+  one in red, a full swipe (past about half the row, decided at release)
+  fills the row red and runs it, one row open at a time, and a scroll, a tap
+  on another row or leaving the screen closes it. The touch that swipes also
+  lifts as a press on the row under it, so a row's tap and long press start
+  with `if (closeOpenSwipeRow()) return;` (Row does). Actions report their own
+  success or error haptic; removals are optimistic and come back with an alert
+  on failure. Rows move with the shared motion in `native/src/lib/motion.ts`
+  (`rowEnter`, `rowExit` slides off left, `blockExit`, `rowLayout`), and the
+  Label around them (an Animated.View) takes `layout` with `overflow: hidden`.
+  Anything with more to do offers it on a long press (an action sheet); a Row
+  gives VoiceOver its swipe and hold actions. A value that looks editable
+  opens its editor when tapped, a card that leads somewhere is tappable as a
+  whole, a FieldRow focuses on a tap anywhere on the row, number pads get
+  iOS's Done (or Next) bar through `returnKeyType` (`numberPadReturnKey`),
+  sheets with unsaved work use `useLeaveGuard`, screens of server data pull
+  to refresh, and a small destructive button with no swipe behind it asks
+  first.
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
   native app defaults to it (AI tab, Manual's hand-off, Describe amount); a
   device set to the worker gets the Photo tab instead.

@@ -2,7 +2,8 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, Linking, Pressable, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, Linking, Pressable, TextInput, View } from 'react-native';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { buildClarifiedMealHint, isValidTrialReview } from '@/components/nutrition/foodTrialReview';
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -23,10 +24,11 @@ import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { SwipeRow } from '~/components/SwipeRow';
+import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -34,13 +36,16 @@ import { useLogger } from './context';
 import { prepareImage, type PickedPhoto } from './PhotoTab';
 import { WhenBlock } from './WhenBlock';
 
+/** A food from the estimate, with a key that stays with it while foods are removed. */
+export type AiItem = TrialFoodItem & { key: string };
+
 export type AiDraft = {
   hint: string;
   answer: string;
   photos: PickedPhoto[];
   clarificationUsed: boolean;
   result: FoodTrialResult | null;
-  items: TrialFoodItem[];
+  items: AiItem[];
   saveAsReusable: boolean;
   saveStarted: boolean;
 };
@@ -73,10 +78,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   const logger = useLogger();
   const [busy, setBusyState] = useState<'analysis' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
-  // retry-safe ids per item until its save is confirmed
-  const entryIds = useRef(new WeakMap<TrialFoodItem, string>());
-  const foodIds = useRef(new WeakMap<TrialFoodItem, string>());
+  // the food opened for adjusting, by its key
+  const [open, setOpen] = useState<string | null>(null);
+  // retry-safe ids per food (by its key) until its save is confirmed
+  const entryIds = useRef(new Map<string, string>());
+  const foodIds = useRef(new Map<string, string>());
   const pending = useRef(createPendingEntryId()).current;
   const { setBusy } = logger;
   useEffect(() => {
@@ -131,7 +137,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       });
       haptics.success();
       setOpen(null);
-      setDraft((current) => ({ ...current, answer: '', result: response, items: response.items.map((item) => ({ ...item })) }));
+      setDraft((current) => ({ ...current, answer: '', result: response, items: response.items.map((item) => ({ ...item, key: crypto.randomUUID() })) }));
     } catch (cause) {
       haptics.error();
       setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
@@ -140,14 +146,52 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     }
   };
 
-  const changeMeal = () => {
+  const clearEstimate = () => {
     setError(null);
     setOpen(null);
     setDraft((current) => ({ ...current, result: null, items: [], answer: '', clarificationUsed: false, saveAsReusable: false, saveStarted: false }));
   };
+  // An estimate (or a typed answer) is work: going back to the meal asks first.
+  const changeMeal = () => {
+    if (!result || (items.length === 0 && !draft.answer.trim())) {
+      clearEstimate();
+      return;
+    }
+    Alert.alert('Discard this estimate?', 'The analysis and your changes are cleared.', [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: clearEstimate },
+    ]);
+  };
 
-  const update = (index: number, patch: Partial<TrialFoodItem>) =>
-    setDraft((current) => ({ ...current, items: current.items.map((item, position) => (position === index ? { ...item, ...patch } : item)) }));
+  const update = (key: string, patch: Partial<TrialFoodItem>) =>
+    setDraft((current) => ({ ...current, items: current.items.map((item) => (item.key === key ? { ...item, ...patch } : item)) }));
+
+  const removeItem = (key: string) => {
+    haptics.success();
+    setOpen((current) => (current === key ? null : current));
+    setDraft((current) => ({ ...current, items: current.items.filter((item) => item.key !== key) }));
+  };
+
+  const itemMenu = (item: AiItem) => {
+    const expanded = open === item.key;
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: item.name, options: [expanded ? 'Close' : 'Adjust', 'Remove', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
+      (index) => {
+        if (index === 0) setOpen(expanded ? null : item.key);
+        else if (index === 1) removeItem(item.key);
+      },
+    );
+  };
+
+  const photoMenu = (photo: PickedPhoto, index: number) =>
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: `Photo ${index + 1}`, options: ['Remove photo', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 },
+      (choice) => {
+        if (choice !== 0) return;
+        haptics.success();
+        setDraft((current) => ({ ...current, photos: current.photos.filter((candidate) => candidate !== photo) }));
+      },
+    );
 
   const save = async () => {
     if (busy || !valid) return;
@@ -155,6 +199,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       try {
         logger.addIngredients(items.map((item) => createMealIngredient(trialIngredientFood(item), 1)));
       } catch (cause) {
+        haptics.error();
         setError(cause instanceof Error ? cause.message : 'Could not add ingredients.');
       }
       return;
@@ -164,11 +209,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     setDraft((current) => ({ ...current, saveStarted: true }));
     try {
       for (const item of items) {
-        const entryId = entryIds.current.get(item) ?? crypto.randomUUID();
-        entryIds.current.set(item, entryId);
-        const foodId = foodIds.current.get(item) ?? (await ensureFoodRow(trialItemFood(item, draft.saveAsReusable)));
+        const entryId = entryIds.current.get(item.key) ?? crypto.randomUUID();
+        entryIds.current.set(item.key, entryId);
+        const foodId = foodIds.current.get(item.key) ?? (await ensureFoodRow(trialItemFood(item, draft.saveAsReusable)));
         if (!foodId) throw new Error(`Could not save ${item.name}.`);
-        foodIds.current.set(item, foodId);
+        foodIds.current.set(item.key, foodId);
         try {
           await saveFoodEntry({
             foodId,
@@ -183,7 +228,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         } catch {
           throw new Error(`Could not log ${item.name}.`);
         }
-        setDraft((current) => ({ ...current, items: current.items.filter((candidate) => candidate !== item) }));
+        setDraft((current) => ({ ...current, items: current.items.filter((candidate) => candidate.key !== item.key) }));
       }
       haptics.success();
       if (draft.saveAsReusable) void logger.reloadSavedMeals();
@@ -204,13 +249,23 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           <Pressable
             key={photo.uri + index}
             accessibilityRole="button"
-            accessibilityLabel={`Remove photo ${index + 1}`}
+            accessibilityLabel={`Photo ${index + 1}`}
+            accessibilityHint="Offers to remove it"
+            accessibilityState={busy !== null ? { disabled: true } : undefined}
             disabled={busy !== null}
             onPress={() => {
               haptics.tap();
-              setDraft((current) => ({ ...current, photos: current.photos.filter((_, position) => position !== index) }));
+              photoMenu(photo, index);
             }}
-            style={{ width: 96, height: 96, borderRadius: 10, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.fill }}>
+            style={({ pressed }) => ({
+              width: 96,
+              height: 96,
+              borderRadius: 10,
+              borderCurve: 'continuous',
+              overflow: 'hidden',
+              backgroundColor: c.fill,
+              opacity: busy !== null ? 0.4 : pressed ? 0.7 : 1,
+            })}>
             <Image source={{ uri: photo.uri }} style={{ width: 96, height: 96 }} contentFit="cover" />
             <View style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <SymbolView name="xmark" size={10} weight="bold" tintColor="#FFFFFF" />
@@ -256,6 +311,9 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               onChangeText={(text) => setDraft((current) => ({ ...current, hint: text.slice(0, LIMIT) }))}
               editable={busy === null}
               multiline
+              // Return closes the keyboard; Analyze meal sends it.
+              returnKeyType="done"
+              submitBehavior="blurAndSubmit"
               placeholder="e.g. Six Trader Joe’s chicken tikka samosas"
               placeholderTextColor={c.upcoming}
               accessibilityLabel="Your meal"
@@ -306,6 +364,8 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                 editable={busy === null}
                 onChangeText={(answer) => setDraft((current) => ({ ...current, answer }))}
                 placeholder="Optional, or use an estimate"
+                returnKeyType="go"
+                onSubmitEditing={() => void analyze(true)}
               />
             </Label>
           </View>
@@ -335,59 +395,59 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     { calories: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
+  // Leaving the review (logged, or a new meal) drops it at once; only a removed food slides away.
   return (
-    <View>
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <BlancText variant="figure" size={56}>
-            {formatWhole(totals.calories)}
-          </BlancText>
+    <LayoutAnimationConfig skipExiting>
+      <View>
+        <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <BlancText variant="figure" size={56}>
+              {formatWhole(totals.calories)}
+            </BlancText>
+            <BlancText variant="secondary" tone="graphite">
+              kcal
+            </BlancText>
+          </View>
           <BlancText variant="secondary" tone="graphite">
-            kcal
+            P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
           </BlancText>
+          {result.summary ? (
+            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 8 }}>
+              {result.summary}
+            </BlancText>
+          ) : null}
         </View>
-        <BlancText variant="secondary" tone="graphite">
-          P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
-        </BlancText>
-        {result.summary ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 8 }}>
-            {result.summary}
-          </BlancText>
-        ) : null}
-      </View>
-      {editing && items.length > 1 ? <FormNote>Keep one food to replace this entry. Add other foods separately.</FormNote> : null}
+        {editing && items.length > 1 ? <FormNote>Keep one food to replace this entry. Add other foods separately.</FormNote> : null}
 
-      <View style={{ marginTop: 18 }}>
-        <Label>
-          {items.map((item, index) => {
-            const each = trialFoodTotals(item);
-            const expanded = open === index;
-            return (
-              <View key={index}>
-                {index > 0 ? <Hairline /> : null}
-                <SwipeRow
-                  name={item.name}
-                  actions={
-                    frozen
-                      ? []
-                      : [
-                          {
-                            label: 'Remove',
-                            destructive: true,
-                            onPress: () => {
-                              setOpen(null);
-                              setDraft((current) => ({ ...current, items: current.items.filter((_, position) => position !== index) }));
-                            },
-                          },
-                        ]
-                  }>
+        <View style={{ marginTop: 18 }}>
+          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+            {items.map((item, index) => {
+              const each = trialFoodTotals(item);
+              const expanded = open === item.key;
+              // Tap to adjust; hold for Adjust and Remove; swipe to remove.
+              const face = (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${item.name}, ${round1(each.calories)} kcal. ${expanded ? 'Close' : 'Adjust'}`}
-                  onPress={() => {
-                    haptics.tap();
-                    setOpen(expanded ? null : index);
+                  accessibilityActions={frozen ? undefined : [{ name: 'remove', label: 'Remove' }]}
+                  onAccessibilityAction={(event) => {
+                    if (event.nativeEvent.actionName === 'remove') removeItem(item.key);
                   }}
+                  onPress={() => {
+                    // a tap while another row stands open only closes that row
+                    if (closeOpenSwipeRow()) return;
+                    haptics.tap();
+                    setOpen(expanded ? null : item.key);
+                  }}
+                  onLongPress={
+                    frozen
+                      ? undefined
+                      : () => {
+                          if (closeOpenSwipeRow()) return;
+                          haptics.select();
+                          itemMenu(item);
+                        }
+                  }
                   style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label })}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <BlancText variant="bodyStrong" numberOfLines={1}>
@@ -402,109 +462,118 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                   </BlancText>
                   <SymbolView name={expanded ? 'chevron.up' : 'chevron.down'} size={12} weight="semibold" tintColor={c.upcoming} />
                 </Pressable>
-                </SwipeRow>
-                {expanded ? (
-                  <View style={{ paddingBottom: 12 }}>
-                    <Hairline />
-                    <FieldRow label="Food name" wide value={item.name} editable={!frozen} onChangeText={(name) => update(index, { name })} />
-                    <Hairline />
-                    <NumberFieldRow
-                      label="Amount eaten"
-                      value={item.quantity}
-                      editable={!frozen}
-                      onChangeValue={(quantity) => update(index, { quantity, amountConfirmed: true })}
-                    />
-                    <Hairline />
-                    <FieldRow label="Unit" value={item.unit} editable={!frozen} onChangeText={(unit) => update(index, { unit, amountConfirmed: true })} />
-                    <Hairline />
-                    <NumberFieldRow
-                      label="Nutrition per"
-                      unit={item.unit || 'units'}
-                      value={item.basisQuantity}
-                      editable={!frozen}
-                      onChangeValue={(basisQuantity) => update(index, { basisQuantity })}
-                    />
-                    {(['calories', 'protein', 'carbs', 'fat'] as const).map((key) => (
-                      <View key={key}>
-                        <Hairline />
-                        <NumberFieldRow
-                          label={key[0].toUpperCase() + key.slice(1)}
-                          unit={key === 'calories' ? 'kcal' : 'g'}
-                          value={item[key]}
-                          editable={!frozen}
-                          onChangeValue={(amount) => update(index, { [key]: amount })}
-                        />
-                      </View>
-                    ))}
-                    <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: 18, marginTop: 8 }}>
-                      Nutrition is per {item.basisQuantity} {item.unit}; the total scales with the amount eaten.{item.notes ? ` ${item.notes}` : ''}
-                    </BlancText>
-                    <View style={{ paddingHorizontal: 18, marginTop: 10 }}>
-                      <Capsule
-                        title="Remove food"
-                        variant="quiet"
-                        disabled={frozen}
-                        onPress={() => {
-                          setOpen(null);
-                          setDraft((current) => ({ ...current, items: current.items.filter((_, position) => position !== index) }));
-                        }}
+              );
+              return (
+                <Animated.View key={item.key} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {index > 0 ? <Hairline /> : null}
+                  {frozen ? (
+                    face
+                  ) : (
+                    <SwipeRow name={item.name} actions={[{ label: 'Remove', destructive: true, onPress: () => removeItem(item.key) }]}>
+                      {face}
+                    </SwipeRow>
+                  )}
+                  {expanded ? (
+                    <Animated.View entering={rowEnter} style={{ paddingBottom: 12 }}>
+                      <Hairline />
+                      <FieldRow label="Food name" wide value={item.name} editable={!frozen} onChangeText={(name) => update(item.key, { name })} />
+                      <Hairline />
+                      <NumberFieldRow
+                        label="Amount eaten"
+                        value={item.quantity}
+                        editable={!frozen}
+                        onChangeValue={(quantity) => update(item.key, { quantity, amountConfirmed: true })}
                       />
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </Label>
-      </View>
-
-      {result.sources.length > 0 ? (
-        <Section title="Sources" note={String(result.sources.length)}>
-          <Label>
-            {result.sources.map((source, index) => (
-              <View key={source.url}>
-                {index > 0 ? <Hairline /> : null}
-                <Pressable
-                  accessibilityRole="link"
-                  onPress={() => void Linking.openURL(source.url)}
-                  style={({ pressed }) => ({ paddingVertical: 12, paddingHorizontal: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-                  <BlancText variant="secondary" numberOfLines={2}>
-                    {source.title}
-                  </BlancText>
-                </Pressable>
-              </View>
-            ))}
-          </Label>
-        </Section>
-      ) : null}
-
-      <WhenBlock disabled={frozen} />
-
-      {logger.purpose === 'log' ? (
-        <View style={{ marginTop: 18 }}>
-          <Label>
-            <ToggleRow
-              label="Save as reusable meal"
-              detail={items.length > 1 ? 'Also add these foods to Saved meals.' : 'Also add this food to Saved meals.'}
-              value={draft.saveAsReusable}
-              disabled={frozen}
-              onChange={(saveAsReusable) => setDraft((current) => ({ ...current, saveAsReusable }))}
-            />
+                      <Hairline />
+                      <FieldRow label="Unit" value={item.unit} editable={!frozen} onChangeText={(unit) => update(item.key, { unit, amountConfirmed: true })} />
+                      <Hairline />
+                      <NumberFieldRow
+                        label="Nutrition per"
+                        unit={item.unit || 'units'}
+                        value={item.basisQuantity}
+                        editable={!frozen}
+                        onChangeValue={(basisQuantity) => update(item.key, { basisQuantity })}
+                      />
+                      {(['calories', 'protein', 'carbs', 'fat'] as const).map((key) => (
+                        <View key={key}>
+                          <Hairline />
+                          <NumberFieldRow
+                            label={key[0].toUpperCase() + key.slice(1)}
+                            unit={key === 'calories' ? 'kcal' : 'g'}
+                            value={item[key]}
+                            editable={!frozen}
+                            onChangeValue={(amount) => update(item.key, { [key]: amount })}
+                          />
+                        </View>
+                      ))}
+                      <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: 18, marginTop: 8 }}>
+                        Nutrition is per {item.basisQuantity} {item.unit}; the total scales with the amount eaten.{item.notes ? ` ${item.notes}` : ''}
+                      </BlancText>
+                      <View style={{ paddingHorizontal: 18, marginTop: 10 }}>
+                        <Capsule title="Remove food" variant="quiet" disabled={frozen} onPress={() => removeItem(item.key)} />
+                      </View>
+                    </Animated.View>
+                  ) : null}
+                </Animated.View>
+              );
+            })}
           </Label>
         </View>
-      ) : null}
 
-      {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-        <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} />
-        <Capsule
-          title={logger.purpose === 'ingredients' ? 'Add ingredients' : editing ? 'Save changes' : 'Log meal'}
-          busy={busy === 'save'}
-          disabled={!valid || busy !== null}
-          onPress={() => void save()}
-          style={{ flex: 1, alignSelf: 'stretch' }}
-        />
+        {/* Closes up under the foods as one is removed. */}
+        <Animated.View layout={rowLayout}>
+          {result.sources.length > 0 ? (
+            <Section title="Sources" note={String(result.sources.length)}>
+              <Label>
+                {result.sources.map((source, index) => (
+                  <View key={source.url}>
+                    {index > 0 ? <Hairline /> : null}
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() => {
+                        haptics.tap();
+                        void Linking.openURL(source.url);
+                      }}
+                      style={({ pressed }) => ({ paddingVertical: 12, paddingHorizontal: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+                      <BlancText variant="secondary" numberOfLines={2}>
+                        {source.title}
+                      </BlancText>
+                    </Pressable>
+                  </View>
+                ))}
+              </Label>
+            </Section>
+          ) : null}
+
+          <WhenBlock disabled={frozen} />
+
+          {logger.purpose === 'log' ? (
+            <View style={{ marginTop: 18 }}>
+              <Label>
+                <ToggleRow
+                  label="Save as reusable meal"
+                  detail={items.length > 1 ? 'Also add these foods to Saved meals.' : 'Also add this food to Saved meals.'}
+                  value={draft.saveAsReusable}
+                  disabled={frozen}
+                  onChange={(saveAsReusable) => setDraft((current) => ({ ...current, saveAsReusable }))}
+                />
+              </Label>
+            </View>
+          ) : null}
+
+          {error ? <FormNote alert>{error}</FormNote> : null}
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+            <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} />
+            <Capsule
+              title={logger.purpose === 'ingredients' ? 'Add ingredients' : editing ? 'Save changes' : 'Log meal'}
+              busy={busy === 'save'}
+              disabled={!valid || busy !== null}
+              onPress={() => void save()}
+              style={{ flex: 1, alignSelf: 'stretch' }}
+            />
+          </View>
+        </Animated.View>
       </View>
-    </View>
+    </LayoutAnimationConfig>
   );
 }

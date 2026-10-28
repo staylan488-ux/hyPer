@@ -1,7 +1,7 @@
-import { parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActionSheetIOS, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { activityTimeValue, buildActivityInput } from '@/lib/activitySessions';
@@ -13,7 +13,8 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { haptics } from '~/lib/haptics';
-import { deleteActivity, saveActivity, useHistoryStore } from '~/lib/history';
+import { confirmDeleteActivity, saveActivity, useHistoryStore } from '~/lib/history';
+import { useLeaveGuard } from '~/lib/leaveGuard';
 import { space, useBlanc } from '~/theme/blanc';
 
 const NOTES_LIMIT = 280;
@@ -22,19 +23,48 @@ const NOTES_LIMIT = 280;
 export default function ActivitySheet() {
   const c = useBlanc();
   const params = useLocalSearchParams<{ id?: string; day?: string }>();
-  const editing = useHistoryStore((state) => state.activities.find((activity) => activity.id === params.id) ?? null);
-  const [type, setType] = useState<ActivityType>(editing?.activity_type ?? 'bike_ride');
-  const [customType, setCustomType] = useState(editing?.custom_type ?? '');
-  const [title, setTitle] = useState(editing?.title ?? '');
-  const [date, setDate] = useState(() => parseISO(editing?.date ?? params.day ?? new Date().toISOString().slice(0, 10)));
-  const [start, setStart] = useState<Date | null>(() => (editing?.started_at ? new Date(editing.started_at) : null));
-  const [minutes, setMinutes] = useState(editing?.duration_seconds ? String(Math.round(editing.duration_seconds / 60)) : '');
-  const [notes, setNotes] = useState(editing?.notes ?? '');
+  const stored = useHistoryStore((state) => state.activities.find((activity) => activity.id === params.id) ?? null);
+  // A delete takes the activity off History at once; the sheet keeps it
+  // while the delete runs.
+  const [kept, setKept] = useState(stored);
+  if (stored && stored !== kept) setKept(stored);
+  const editing = params.id ? (stored ?? kept) : null;
+  const [initial] = useState(() => ({
+    type: editing?.activity_type ?? 'bike_ride',
+    customType: editing?.custom_type ?? '',
+    title: editing?.title ?? '',
+    date: editing?.date ?? params.day ?? new Date().toISOString().slice(0, 10),
+    start: editing?.started_at ? new Date(editing.started_at).getTime() : null,
+    minutes: editing?.duration_seconds ? String(Math.round(editing.duration_seconds / 60)) : '',
+    notes: editing?.notes ?? '',
+  }));
+  const [type, setType] = useState<ActivityType>(initial.type);
+  const [customType, setCustomType] = useState(initial.customType);
+  const [title, setTitle] = useState(initial.title);
+  const [date, setDate] = useState(() => parseISO(initial.date));
+  const [start, setStart] = useState<Date | null>(() => (initial.start === null ? null : new Date(initial.start)));
+  const [minutes, setMinutes] = useState(initial.minutes);
+  const [notes, setNotes] = useState(initial.notes);
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
   const [failed, setFailed] = useState(false);
+  const [done, setDone] = useState(false);
+
+  // Changes hold the sheet: closing asks before they go.
+  const dirty =
+    type !== initial.type ||
+    customType !== initial.customType ||
+    title !== initial.title ||
+    format(date, 'yyyy-MM-dd') !== initial.date ||
+    (start?.getTime() ?? null) !== initial.start ||
+    minutes !== initial.minutes ||
+    notes !== initial.notes;
+  useLeaveGuard(dirty && !done, { title: editing ? 'Discard your changes?' : 'Discard this activity?' }, { busy: busy !== null });
+  // Closes once the guard has seen the saved or deleted state.
+  useEffect(() => {
+    if (done) router.back();
+  }, [done]);
 
   const chooseType = () => {
-    haptics.tap();
     ActionSheetIOS.showActionSheetWithOptions(
       { title: 'Activity', options: [...ACTIVITY_TYPES.map((value) => ACTIVITY_TYPE_LABELS[value]), 'Cancel'], cancelButtonIndex: ACTIVITY_TYPES.length },
       (index) => {
@@ -56,7 +86,7 @@ export default function ActivitySheet() {
     const saved = await saveActivity(editing, input).catch(() => false);
     if (saved) {
       haptics.success();
-      router.back();
+      setDone(true);
     } else {
       haptics.error();
       setFailed(true);
@@ -64,27 +94,15 @@ export default function ActivitySheet() {
     }
   };
 
+  // The same question as History's swipe; the haptics and a failure's alert come with it.
   const remove = () => {
     if (!editing || busy) return;
-    Alert.alert('Delete this activity?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setBusy('delete');
-          const deleted = await deleteActivity(editing);
-          if (deleted) {
-            haptics.success();
-            router.back();
-          } else {
-            haptics.error();
-            setBusy(null);
-            Alert.alert('Not deleted', 'Check your connection and try again.');
-          }
-        },
-      },
-    ]);
+    void confirmDeleteActivity(editing, {
+      onConfirmed: () => setBusy('delete'),
+      onDeleted: () => setDone(true),
+    }).then((deleted) => {
+      if (!deleted) setBusy(null);
+    });
   };
 
   return (
@@ -99,11 +117,11 @@ export default function ActivitySheet() {
         <BlancText variant="headline" style={{ flex: 1, textAlign: 'center' }} accessibilityRole="header">
           {editing ? 'Edit activity' : 'Add activity'}
         </BlancText>
-        <Capsule title="Save" busy={busy === 'save'} onPress={() => void save()} />
+        <Capsule title="Save" busy={busy === 'save'} disabled={busy === 'delete'} onPress={() => void save()} />
       </View>
 
       <Label style={{ marginTop: 22 }}>
-        <Row title="Activity" quiet value={ACTIVITY_TYPE_LABELS[type]} chevron onPress={chooseType} />
+        <Row title="Activity" quiet value={ACTIVITY_TYPE_LABELS[type]} onPress={chooseType} />
         {type === 'other' ? (
           <>
             <Hairline />
@@ -134,9 +152,17 @@ export default function ActivitySheet() {
 
       {editing ? (
         <Label style={{ marginTop: 30 }}>
-          <Pressable accessibilityRole="button" disabled={busy !== null} onPress={remove} style={{ minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={busy !== null ? { disabled: true } : undefined}
+            disabled={busy !== null}
+            onPress={() => {
+              haptics.tap();
+              remove();
+            }}
+            style={{ minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 }}>
             {({ pressed }) => (
-              <BlancText variant="body" tone="live" style={{ opacity: pressed || busy === 'delete' ? 0.5 : 1 }}>
+              <BlancText variant="body" tone="live" style={{ opacity: pressed || busy !== null ? 0.5 : 1 }}>
                 Delete activity
               </BlancText>
             )}

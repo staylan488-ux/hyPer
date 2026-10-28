@@ -1,10 +1,10 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo } from 'react';
-import { ActionSheetIOS, Pressable, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/components/nutrition/nutritionLogUtils';
 import { fuelDaySummary, fuelDayTitle } from '@/lib/fuelSummary';
@@ -27,9 +27,35 @@ import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
 import { dayKey, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
+
+const CHECK_CONNECTION = 'Check your connection and try again.';
+
+/**
+ * A Fuel write's result: a success tick, or an error buzz and an alert, so a
+ * failed delete or move is never silent.
+ */
+function report(write: Promise<boolean>, failure: string) {
+  void write
+    .catch(() => false)
+    .then((ok) => {
+      if (ok) {
+        haptics.success();
+        return;
+      }
+      haptics.error();
+      Alert.alert(failure, CHECK_CONNECTION);
+    });
+}
+
+/** Opens the targets with that number's field ready to type, as You's Targets does. */
+const editTarget = (focus: 'calories' | 'protein' | 'carbs' | 'fat') => {
+  haptics.tap();
+  router.push({ pathname: '/targets-edit', params: { focus } });
+};
 
 export default function FuelScreen() {
   const target = useAppStore((state) => state.macroTarget);
@@ -49,6 +75,17 @@ export default function FuelScreen() {
   const sections = groups
     .map((group) => ({ group, logs: sortLedgerEntries(logs.filter((log) => log.group_id === group.id)) }))
     .filter((section) => section.logs.length > 0 || !section.group.label);
+
+  // Pull down: the shown day's month and the targets, fresh.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([useFuelStore.getState().refresh(), useAppStore.getState().fetchMacroTarget().catch(() => {})]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <>
@@ -77,14 +114,20 @@ export default function FuelScreen() {
           ],
         }}
       />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           {fuelDayTitle(selectedDate)}
         </BlancText>
 
         <WeekStrip selected={selectedDate} daysWithLogs={daysWithLogs} />
 
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 18 }}>
+        {/* The day's figure and the macros open the targets, the numbers they measure against. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={loaded ? `${formatWhole(totals.calories)} of ${formatWhole(summary.targets.calories)} kcal` : `Target ${formatWhole(summary.targets.calories)} kcal`}
+          accessibilityHint="Edits your calorie target"
+          onPress={() => editTarget('calories')}
+          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
             <BlancText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
               {/* never a 0 that only means "not loaded yet" */}
@@ -102,44 +145,54 @@ export default function FuelScreen() {
               {summary.logLine}
             </BlancText>
           ) : null}
-        </View>
+        </Pressable>
 
         <Section title="Macros">
-          <Label>
-            <MacroRow name="Protein" value={totals.protein} goal={summary.targets.protein} />
+          <Label style={{ overflow: 'hidden' }}>
+            <MacroRow name="Protein" value={totals.protein} goal={summary.targets.protein} onPress={() => editTarget('protein')} />
             <Hairline />
-            <MacroRow name="Carbs" value={totals.carbs} goal={summary.targets.carbs} />
+            <MacroRow name="Carbs" value={totals.carbs} goal={summary.targets.carbs} onPress={() => editTarget('carbs')} />
             <Hairline />
-            <MacroRow name="Fat" value={totals.fat} goal={summary.targets.fat} />
+            <MacroRow name="Fat" value={totals.fat} goal={summary.targets.fat} onPress={() => editTarget('fat')} />
           </Label>
         </Section>
 
-        {unassigned.length > 0 ? (
-          <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} />
-        ) : null}
-        {sections.map(({ group, logs: entries }) => (
-          <MealSection key={group.id} title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} />
-        ))}
+        {/* One day's list: rows and meals fold away and close up when removed.
+            Moving to another day swaps the whole list without that motion. */}
+        <LayoutAnimationConfig key={selected} skipEntering skipExiting>
+          <View>
+            {unassigned.length > 0 ? (
+              <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
+                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} />
+              </Animated.View>
+            ) : null}
+            {sections.map(({ group, logs: entries }) => (
+              <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
+                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} />
+              </Animated.View>
+            ))}
 
-        {loaded && logs.length === 0 ? (
-          <View style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
-            <BlancText variant="bodyStrong">Nothing logged yet</BlancText>
-            <BlancText variant="secondary" tone="graphite">
-              {live ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
-            </BlancText>
-            <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
-          </View>
-        ) : null}
+            {loaded && logs.length === 0 ? (
+              <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
+                <BlancText variant="bodyStrong">Nothing logged yet</BlancText>
+                <BlancText variant="secondary" tone="graphite">
+                  {live ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
+                </BlancText>
+                <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
+              </Animated.View>
+            ) : null}
 
-        {loaded ? (
-          <View style={{ alignItems: 'center', marginTop: 28 }}>
-            <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
+            {loaded ? (
+              <Animated.View layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
+                <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
+              </Animated.View>
+            ) : null}
           </View>
-        ) : null}
+        </LayoutAnimationConfig>
 
         {status === 'error' && !loaded ? (
           <BlancText variant="secondary" tone="live" style={{ margin: space.gutter }}>
-            This day's food could not load. Check your connection and try again.
+            This day's food could not load. Pull down to try again.
           </BlancText>
         ) : null}
       </TabScroll>
@@ -150,11 +203,7 @@ export default function FuelScreen() {
 function addMealOrSnack() {
   ActionSheetIOS.showActionSheetWithOptions({ title: 'Add a meal or snack', options: ['Meal', 'Snack', 'Cancel'], cancelButtonIndex: 2 }, (index) => {
     if (index === 2) return;
-    haptics.select();
-    void useFuelStore
-      .getState()
-      .addGroup(index === 0 ? 'meal' : 'snack')
-      .then((ok) => (ok ? haptics.success() : haptics.error()));
+    report(useFuelStore.getState().addGroup(index === 0 ? 'meal' : 'snack'), 'Not added');
   });
 }
 
@@ -204,7 +253,7 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
                 haptics.select();
                 useFuelStore.getState().select(key);
               }}
-              style={{ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : 1 }}>
+              style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : pressed ? 0.5 : 1 })}>
               <BlancText variant="footnote" tone="graphite">
                 {format(day, 'EEEEE')}
               </BlancText>
@@ -245,13 +294,13 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
     if (!group) return;
     const store = useFuelStore.getState();
     const actions: { label: string; run: () => void; destructive?: boolean }[] = [{ label: 'Log food here', run: () => logFood(day, group.id) }];
-    if (canReorderNutritionGroup(groups, group.id, -1)) actions.push({ label: 'Move up', run: () => void store.reorderGroup(group.id, -1) });
-    if (canReorderNutritionGroup(groups, group.id, 1)) actions.push({ label: 'Move down', run: () => void store.reorderGroup(group.id, 1) });
+    if (canReorderNutritionGroup(groups, group.id, -1)) actions.push({ label: 'Move up', run: () => report(store.reorderGroup(group.id, -1), 'Not moved') });
+    if (canReorderNutritionGroup(groups, group.id, 1)) actions.push({ label: 'Move down', run: () => report(store.reorderGroup(group.id, 1), 'Not moved') });
     if (!group.label) {
       actions.push({
         label: `Delete ${title}`,
         destructive: true,
-        run: () => void store.deleteGroup(group).then((ok) => (ok ? haptics.success() : haptics.error())),
+        run: () => report(store.deleteGroup(group), 'Not deleted'),
       });
     }
     const options = [...actions.map((action) => action.label), 'Cancel'];
@@ -289,14 +338,18 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
           </Pressable>
         ) : undefined
       }>
-      <Label style={{ overflow: 'hidden' }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {logs.map((log, index) => (
-          <Animated.View key={log.id} exiting={FadeOut.duration(180)} layout={LinearTransition.duration(220)}>
+          <Animated.View key={log.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
             <EntryRow log={log} groups={groups} lateNight={lateNight} />
           </Animated.View>
         ))}
-        {logs.length === 0 && group ? <Row title="Nothing here yet" quiet onPress={() => logFood(day, group.id)} /> : null}
+        {logs.length === 0 && group ? (
+          <Animated.View entering={rowEnter} layout={rowLayout}>
+            <Row title="Nothing here yet" quiet onPress={() => logFood(day, group.id)} />
+          </Animated.View>
+        ) : null}
       </Label>
     </Section>
   );
@@ -318,11 +371,8 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
   const c = useBlanc();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
-  const remove = () =>
-    void useFuelStore
-      .getState()
-      .deleteEntry(log.id)
-      .then((ok) => (ok ? undefined : haptics.error()));
+  // The row slides away at once; it comes back if the delete fails.
+  const remove = () => report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
 
   const moveMenu = () => {
     const targets: { id: string | null; label: string }[] = [
@@ -332,18 +382,14 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
     const options = [...targets.map((targetGroup) => targetGroup.label), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: `Move ${name}`, options, cancelButtonIndex: targets.length }, (index) => {
       if (index >= targets.length) return;
-      haptics.select();
-      void useFuelStore
-        .getState()
-        .moveEntry(log.id, targets[index].id)
-        .then((ok) => (ok ? undefined : haptics.error()));
+      report(useFuelStore.getState().moveEntry(log.id, targets[index].id), 'Not moved');
     });
   };
 
   const menu = () => {
     const store = useFuelStore.getState();
     const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }, { label: 'Move to…', run: moveMenu }];
-    if (lateNight) actions.push({ label: 'Move to yesterday', run: () => void store.moveEntryToYesterday(log.id).then((ok) => (ok ? haptics.success() : haptics.error())) });
+    if (lateNight) actions.push({ label: 'Move to yesterday', run: () => report(store.moveEntryToYesterday(log.id), 'Not moved') });
     actions.push({ label: 'Delete', run: remove });
     const options = [...actions.map((action) => action.label), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: name, options, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 }, (index) => {
@@ -374,9 +420,16 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
   );
 }
 
-function MacroRow({ name, value, goal }: { name: string; value: number; goal: number }) {
+/** One macro against its target; a tap opens that target to change. */
+function MacroRow({ name, value, goal, onPress }: { name: string; value: number; goal: number; onPress: () => void }) {
+  const c = useBlanc();
   return (
-    <View style={{ paddingHorizontal: 18, paddingVertical: 14, gap: 9 }}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(goal)} g`}
+      accessibilityHint={`Edits your ${name.toLowerCase()} target`}
+      onPress={onPress}
+      style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <BlancText variant="body">{name}</BlancText>
         <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
@@ -387,6 +440,6 @@ function MacroRow({ name, value, goal }: { name: string; value: number; goal: nu
         </BlancText>
       </View>
       <Track progress={goal > 0 ? value / goal : 0} />
-    </View>
+    </Pressable>
   );
 }

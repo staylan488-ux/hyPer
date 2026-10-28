@@ -1,7 +1,7 @@
 import { DatePicker, Host } from '@expo/ui/swift-ui';
 import { datePickerStyle, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
-import { useEffect, useState, type ReactNode } from 'react';
-import { Switch, TextInput, View, type TextInputProps } from 'react-native';
+import { useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
@@ -17,7 +17,21 @@ const rowStyle = {
   paddingRight: 16,
 };
 
+/** The instance a TextInput's ref holds. */
+export type TextField = ComponentRef<typeof TextInput>;
+
+const NUMBER_PADS = new Set<KeyboardTypeOptions>(['number-pad', 'decimal-pad', 'numeric', 'phone-pad']);
+
+/**
+ * iOS's number pads have no return key: with "done" React Native adds the
+ * system Done bar above the pad. A field that sets its own return key keeps it.
+ */
+export function numberPadReturnKey(keyboardType?: KeyboardTypeOptions, returnKeyType?: ReturnKeyTypeOptions) {
+  return returnKeyType ?? (keyboardType && NUMBER_PADS.has(keyboardType) ? 'done' : undefined);
+}
+
 type FieldRowProps = Omit<TextInputProps, 'style'> & {
+  ref?: Ref<TextField | null>;
   label: string;
   /** A unit after the value, such as kcal or g. */
   unit?: string;
@@ -26,21 +40,31 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
   invalid?: boolean;
 };
 
-/** A labelled field inside a Label, like an iOS settings form row. */
-export function FieldRow({ label, unit, wide, invalid, ...input }: FieldRowProps) {
+/**
+ * A labelled field inside a Label, like an iOS settings form row: a tap
+ * anywhere on the row puts the cursor in its field. A field that cannot be
+ * edited reads in graphite.
+ */
+export function FieldRow({ ref, label, unit, wide, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
   const c = useBlanc();
+  const field = useRef<TextField>(null);
+  useImperativeHandle(ref, () => field.current as TextField);
+  const locked = input.editable === false;
   return (
-    <View style={rowStyle}>
+    <Pressable accessible={false} onPress={() => field.current?.focus()} disabled={locked} style={rowStyle}>
       <BlancText variant="body" tone={invalid ? 'live' : 'ink'} style={wide ? undefined : { flex: 1 }}>
         {label}
       </BlancText>
       <TextInput
+        ref={field}
         placeholderTextColor={c.upcoming}
         accessibilityLabel={label}
+        keyboardType={keyboardType}
+        returnKeyType={numberPadReturnKey(keyboardType, returnKeyType)}
         {...input}
         style={[
           typeScale.body,
-          { color: c.ink, padding: 0, minHeight: 44, textAlign: wide ? 'left' : 'right' },
+          { color: locked ? c.graphite : c.ink, padding: 0, minHeight: 44, textAlign: wide ? 'left' : 'right' },
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },
         ]}
       />
@@ -49,7 +73,7 @@ export function FieldRow({ label, unit, wide, invalid, ...input }: FieldRowProps
           {unit}
         </BlancText>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -85,7 +109,11 @@ export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRow
   return <FieldRow {...props} keyboardType="decimal-pad" value={text} onChangeText={onChangeText} />;
 }
 
-/** A labelled switch row, with an optional quiet line under the label. */
+/**
+ * A labelled switch row, with an optional quiet line under the label. The
+ * switch stays where it was flipped while the change saves (the caller sets
+ * `disabled` meanwhile) and goes back only if the saved value differs.
+ */
 export function ToggleRow({ label, detail, value, onChange, disabled }: {
   label: string;
   detail?: string;
@@ -93,6 +121,10 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
   onChange: (value: boolean) => void;
   disabled?: boolean;
 }) {
+  const [pending, setPending] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!disabled) setPending(null);
+  }, [disabled, value]);
   return (
     <View style={[rowStyle, { paddingVertical: 10 }]}>
       <View style={{ flex: 1 }}>
@@ -105,10 +137,11 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
       </View>
       <Switch
         accessibilityLabel={label}
-        value={value}
+        value={pending ?? value}
         disabled={disabled}
         onValueChange={(next) => {
           haptics.select();
+          setPending(next);
           onChange(next);
         }}
       />

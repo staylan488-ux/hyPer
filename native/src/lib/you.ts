@@ -3,6 +3,7 @@
 // holds what the native screens share between them.
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import { useState } from 'react';
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
@@ -33,6 +34,34 @@ import { useAuthStore } from '@/stores/authStore';
 import type { Food } from '@/types';
 
 const currentUserId = () => useAuthStore.getState().user?.id ?? null;
+
+// ── Pull to refresh ──────────────────────────────────────────────────────
+
+/**
+ * Pull to refresh for a You screen: the spinner shows only while the pull's
+ * own reload runs (a reload started elsewhere never spins it), and a failed
+ * reload leaves what is shown, as each loader does.
+ */
+export function usePullRefresh(load: () => Promise<unknown>) {
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } catch {
+      // Each loader keeps what is shown and says so itself.
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  return { refreshing, refresh };
+}
+
+/** Everything the You page shows: weight, targets, saved meals and WHOOP. */
+export async function loadYou(): Promise<void> {
+  await Promise.allSettled([loadWeights(), loadTargets(), loadYouMeals(), useAppStore.getState().fetchWhoopConnection()]);
+}
 
 // ── Body weight ──────────────────────────────────────────────────────────
 

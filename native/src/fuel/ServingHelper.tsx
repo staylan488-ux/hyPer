@@ -21,14 +21,15 @@ const display = (value: number) => new Intl.NumberFormat(undefined, { maximumFra
  * "Describe amount" (the web ServingEntry): Gemini reads how much was eaten
  * against this food's own serving; the arithmetic stays here.
  */
-export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
+export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   food: Food;
   disabled: boolean;
+  /** Held by the review, which closes it when the amount is typed by hand. */
+  open: boolean;
   onApply: (servings: number) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const c = useBlanc();
-  const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -48,7 +49,6 @@ export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
   const toggle = (next: boolean) => {
     request.current++;
     setBusy(false);
-    setOpen(next);
     setResult(null);
     setError('');
     onOpenChange(next);
@@ -63,7 +63,10 @@ export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
       const response = await interpretFoodServing(food, text, await workerAccessToken());
       if (current === request.current) setResult(response);
     } catch (cause) {
-      if (current === request.current) setError(cause instanceof Error ? cause.message : 'Could not interpret this amount. Try again or enter it manually.');
+      if (current === request.current) {
+        haptics.error();
+        setError(cause instanceof Error ? cause.message : 'Could not interpret this amount. Try again or enter it manually.');
+      }
     } finally {
       if (current === request.current) setBusy(false);
     }
@@ -108,6 +111,10 @@ export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
                 placeholder="e.g. I ate 6 pieces"
                 placeholderTextColor={c.upcoming}
                 accessibilityLabel="How much did you eat?"
+                returnKeyType="go"
+                onSubmitEditing={() => {
+                  if (!disabled && !busy && text.trim()) void interpret();
+                }}
                 style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 44 }]}
               />
               <Capsule title={busy ? 'Interpreting…' : 'Interpret amount'} variant="quiet" busy={busy} disabled={disabled || !text.trim()} onPress={() => void interpret()} />
@@ -149,7 +156,7 @@ export function ServingHelper({ food, disabled, onApply, onOpenChange }: {
           </View>
         ) : null}
       </Label>
-      {error ? <FormNote alert>{error}</FormNote> : null}
+      {open && error ? <FormNote alert>{error}</FormNote> : null}
     </View>
   );
 }

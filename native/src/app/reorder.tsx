@@ -63,7 +63,8 @@ export default function ReorderSheet() {
   return (
     <View style={{ flex: 1, backgroundColor: c.ground }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
-        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
+        {/* iOS sheets confirm on the trailing side. */}
+        <View style={{ width: 44 }} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <BlancText variant="headline" accessibilityRole="header">
             Reorder
@@ -72,7 +73,7 @@ export default function ReorderSheet() {
             This workout only
           </BlancText>
         </View>
-        <View style={{ width: 44 }} />
+        <GlassButton symbol="checkmark" accessibilityLabel="Done" onPress={() => router.back()} />
       </View>
 
       {error ? (

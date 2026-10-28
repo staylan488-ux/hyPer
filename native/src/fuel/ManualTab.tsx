@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { describeTargetUnchanged, type ManualFoodFields } from '@/components/nutrition/foodLoggerUtils';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
@@ -17,7 +17,7 @@ import { getSessionUserId } from '@/lib/sessionUser';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, ToggleRow } from '~/components/Form';
+import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -57,6 +57,28 @@ export function manualFromFood(food: Pick<Food, 'name' | 'calories' | 'protein' 
 
 const DESCRIBE_LIMIT = 1500;
 
+const valuesOf = (fields: ManualFoodFields) => ({
+  name: fields.name.trim(),
+  calories: parseFloat(fields.calories) || 0,
+  protein: parseFloat(fields.protein) || 0,
+  carbs: parseFloat(fields.carbs) || 0,
+  fat: parseFloat(fields.fat) || 0,
+});
+
+const MACRO_FIELDS = ['calories', 'protein', 'carbs', 'fat'] as const;
+
+/**
+ * True when the Manual tab holds typed work that closing the sheet would
+ * lose: its fields or servings differ from what the sheet put there, unless
+ * they are a saved meal's own values (picked, or just updated).
+ */
+export function manualHasChanges(draft: ManualDraft, base: ManualDraft, savedMeals: Food[] | null): boolean {
+  const sameServings = draft.servings === base.servings;
+  if (sameServings && (['name', ...MACRO_FIELDS] as const).every((key) => draft.fields[key] === base.fields[key])) return false;
+  const saved = draft.selectedSavedMealId ? savedMeals?.find((meal) => meal.id === draft.selectedSavedMealId) : null;
+  return !(saved && sameServings && foodValuesMatch(saved, valuesOf(draft.fields)));
+}
+
 /** Manual entry: describe it to the AI, or type the name and macros per serving. */
 export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   draft: ManualDraft;
@@ -93,13 +115,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
 
   const savedMeals = logger.savedMeals ?? [];
   const selectedSavedMeal = draft.selectedSavedMealId ? savedMeals.find((meal) => meal.id === draft.selectedSavedMealId) ?? null : null;
-  const values = {
-    name: draft.fields.name.trim(),
-    calories: parseFloat(draft.fields.calories) || 0,
-    protein: parseFloat(draft.fields.protein) || 0,
-    carbs: parseFloat(draft.fields.carbs) || 0,
-    fat: parseFloat(draft.fields.fat) || 0,
-  };
+  const values = valuesOf(draft.fields);
+  // Next on the keyboard walks Name and the macros in order.
+  const macroFields = useRef<(TextField | null)[]>([]);
   const usingSavedValues = Boolean(selectedSavedMeal && foodValuesMatch(selectedSavedMeal, values));
   const suggestions = nameFocused ? savedMealSuggestions(savedMeals, draft.fields.name) : [];
   const servings = parseFloat(draft.servings);
@@ -146,6 +164,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   };
 
   const pickSuggestion = (meal: Food) => {
+    Keyboard.dismiss();
     describeGate.invalidate();
     setDraft((current) => ({ ...current, fields: manualFromFood(meal), selectedSavedMealId: meal.id, saveAsReusable: false }));
     setNameFocused(false);
@@ -155,6 +174,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   const updateSavedMeal = async () => {
     if (!draft.selectedSavedMealId || updatingMeal) return;
     if (!values.name) {
+      haptics.error();
       setMealMessage({ text: 'Meal name is required to update.', alert: true });
       return;
     }
@@ -163,14 +183,18 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     try {
       const userId = await getSessionUserId();
       if (!userId) {
+        haptics.error();
         setMealMessage({ text: 'Please sign in again to update saved meals.', alert: true });
         return;
       }
       const { id, retireFailed } = await replaceSavedMeal(userId, draft.selectedSavedMealId, values);
       if (!id) {
+        haptics.error();
         setMealMessage({ text: 'Could not update saved meal. Please try again.', alert: true });
         return;
       }
+      if (retireFailed) haptics.error();
+      else haptics.success();
       setDraft((current) => ({ ...current, selectedSavedMealId: id, saveAsReusable: false }));
       setMealMessage(
         retireFailed
@@ -178,6 +202,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
           : { text: 'Saved meal updated for future logs.' },
       );
       await logger.reloadSavedMeals();
+    } catch {
+      haptics.error();
+      setMealMessage({ text: 'Could not update saved meal. Please try again.', alert: true });
     } finally {
       setUpdatingMeal(false);
     }
@@ -194,6 +221,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
           ),
         ]);
       } catch (cause) {
+        haptics.error();
         setError(cause instanceof Error ? cause.message : 'Could not add ingredient.');
       }
       return;
@@ -276,6 +304,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 placeholderTextColor={c.upcoming}
                 multiline
                 autoFocus
+                // Return closes the keyboard; the button below sends it.
+                returnKeyType="done"
+                submitBehavior="blurAndSubmit"
                 accessibilityLabel="Describe the food"
                 style={[typeScale.body, { color: c.ink, minHeight: 66, padding: 0 }]}
               />
@@ -332,6 +363,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
             onBlur={() => setTimeout(() => setNameFocused(false), 150)}
             placeholder="e.g. Chicken breast"
             autoCapitalize="sentences"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => macroFields.current[0]?.focus()}
           />
           {suggestions.map((meal) => (
             <View key={meal.id}>
@@ -351,14 +385,28 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               </Pressable>
             </View>
           ))}
-          <Hairline />
-          <FieldRow label="Calories" unit="kcal" value={draft.fields.calories} onChangeText={(text) => setField('calories', text)} keyboardType="decimal-pad" placeholder="0" />
-          <Hairline />
-          <FieldRow label="Protein" unit="g" value={draft.fields.protein} onChangeText={(text) => setField('protein', text)} keyboardType="decimal-pad" placeholder="0" />
-          <Hairline />
-          <FieldRow label="Carbs" unit="g" value={draft.fields.carbs} onChangeText={(text) => setField('carbs', text)} keyboardType="decimal-pad" placeholder="0" />
-          <Hairline />
-          <FieldRow label="Fat" unit="g" value={draft.fields.fat} onChangeText={(text) => setField('fat', text)} keyboardType="decimal-pad" placeholder="0" />
+          {MACRO_FIELDS.map((key, index) => {
+            const last = index === MACRO_FIELDS.length - 1;
+            return (
+              <View key={key}>
+                <Hairline />
+                <FieldRow
+                  ref={(input) => {
+                    macroFields.current[index] = input;
+                  }}
+                  label={key[0].toUpperCase() + key.slice(1)}
+                  unit={key === 'calories' ? 'kcal' : 'g'}
+                  value={draft.fields[key]}
+                  onChangeText={(text) => setField(key, text)}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  returnKeyType={last ? 'done' : 'next'}
+                  submitBehavior={last ? 'blurAndSubmit' : 'submit'}
+                  onSubmitEditing={last ? undefined : () => macroFields.current[index + 1]?.focus()}
+                />
+              </View>
+            );
+          })}
           <Hairline />
           <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 10, gap: 6 }}>
             <BlancText variant="body" style={{ flex: 1 }}>
@@ -369,6 +417,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               value={draft.servings}
               onChangeText={(text) => setDraft((current) => ({ ...current, servings: text }))}
               keyboardType="decimal-pad"
+              returnKeyType="done"
               accessibilityLabel="Servings"
               selectTextOnFocus
               style={[typeScale.body, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
