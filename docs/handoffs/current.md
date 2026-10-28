@@ -611,6 +611,56 @@ A real-account Release build of 3e809d1 is installed on the owner's iPhone
 (iOS did not open it, likely a locked phone); the build folder, simulator
 and DerivedData were deleted.
 
+Milestone 8, Run tracker and widgets, followed (2026-10-27, the owner asked
+to keep going while away from home), in this session's own worktree
+(`.claude/worktrees/elegant-joliot-6c1457`, pushed to `feat/native-blanc`):
+- Shared rules first: the run page's words and choices moved into
+  `src/lib/runDisplay.ts` (mode names, auto-split choices and checks, pace
+  and distance wording, the live status, the finished run's splits, the
+  diagnostics export, the save error); the web page uses it unchanged in
+  behaviour. `useRunTracker` asks the bridge's new `hasNativeRun()` instead
+  of the Capacitor test and hears the app return through `appVisibility`
+  instead of `document`. Covered by `tests/runDisplay.test.ts`.
+- `native/modules/hyper-run`: the Capacitor recorder ported call for call
+  (permission with temporary full accuracy, then Motion; the JSONL trace and
+  UserDefaults controls under the same keys; background location; never
+  restarting on its own; the run Live Activity at most every 3 s; the
+  diagnostics share sheet from the topmost screen) plus native lap and
+  sprint tones (`RunCuePlayer`) that mix over music with the screen locked.
+  New app settings: location and motion usage text, background modes
+  `location` and `audio`, App Group `group.app.hyper`.
+- Run (`native/src/app/run.tsx`; Train ⋯ menu, You's Start a run, or the
+  run card): set up, live, finished, save to History, discard (asks first),
+  export diagnostics. A refused location shows Open Settings on the set-up
+  screen. The screen draws its own top bar: toggling a modal's iOS header
+  rebuilds the screen and would drop the run.
+- The run card (`targets/widgets/RunLiveActivity.swift`): distance, pace
+  line and clock, Split / Rest or Resume / Finish (a second tap within 8 s
+  finishes), opening the run on tap; a card the app stopped updating says
+  so. `RunControlIntent` is compiled into the app as well, since iOS runs a
+  Live Activity button in the app's process.
+- Widgets (`targets/widgets/HomeWidgets.swift`): Fuel (small, medium, and
+  the lock screen's circular, rectangular and inline) and Training (small,
+  medium with the next three days, lock-screen rectangular and inline). The
+  app writes a snapshot to the App Group (`native/src/lib/widgets.ts`,
+  rules in `widgetPlan.ts` with `tests/nativeWidgetPlan.test.ts`); signing
+  out clears it; at midnight the widgets move to the next day on their own.
+Checked in a temporary iPhone 17 Pro simulator (sample data) with scripted UI
+tests: a simulated long run (rest, resume, hold to finish, save into
+History), a simulated 8 × 400 splits run (auto and manual splits, the splits
+table, the share sheet), and the real recorder on a `simctl location` route:
+recording on with the screen locked (distance kept growing), the Dynamic
+Island and lock-screen card, Rest from the lock screen reaching the app, Finish
+twice from the lock screen ending the run, and a killed app resuming the run.
+Fuel and Training widgets added through the home screen's widget gallery,
+showing the app's numbers and the saved schedule's days, light and dark;
+tapping Fuel opened Fuel. Checks: 2,000 tests, lint with instruction checks
+and test type-check, web build, native type-check.
+Not verified: anything on a phone (GPS accuracy, the cues' sound, haptics,
+the card on a real lock screen), the lock-screen widget sizes (built, not
+placed), saving a run against a real database, and the web run page in a
+browser.
+
 # Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable

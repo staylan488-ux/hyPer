@@ -95,6 +95,16 @@ export function DevLaunchRunner() {
       );
     }
 
+    if (action === 'noWorkout') {
+      // The sample account starts mid-workout; finish it quietly, so a run's
+      // Live Activity can be checked on its own.
+      timers.push(
+        setTimeout(() => {
+          if (useAppStore.getState().currentWorkout) void useAppStore.getState().completeWorkout();
+        }, 1200),
+      );
+    }
+
     return () => timers.forEach(clearTimeout);
   }, []);
 

@@ -21,10 +21,12 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
   flag, haptics, keep-awake, rest notifications, the workout Live Activity,
-  focused-field commit, app visibility, plus Capacitor shims. The bridge's
-  `NativeHealth` is `native/modules/hyper-health` (HealthKit body weight, a
-  port of the Capacitor plugin), so `hasNativeHealth()` is true here while
-  `isNativeIOS()` (the Capacitor shell) stays false. Add a swap rather than importing React Native
+  focused-field commit, app visibility, run cues, plus Capacitor shims. The
+  bridge's `NativeHealth` is `native/modules/hyper-health` (HealthKit body
+  weight) and `NativeRun` is `native/modules/hyper-run` (the GPS recorder),
+  both ports of the Capacitor plugins, so `hasNativeHealth()` and
+  `hasNativeRun()` are true here while `isNativeIOS()` (the Capacitor shell)
+  stays false. Add a swap rather than importing React Native
   into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
@@ -151,9 +153,10 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   `WorkoutActivityAttributes`, has one definition in
   `native/modules/hyper-activity/ios`, compiled into the app's module and copied
   into the extension; ActivityKit matches the two by name and fields. The card
-  uses Blanc's tokens and the P's font (bundled into the extension). Prebuild
-  with `--clean` after adding or removing extension files. Milestone 8's run
-  card and home-screen widgets join the same extension.
+  uses Blanc's tokens (`targets/widgets/Blanc.swift`) and the P's font
+  (bundled into the extension). Prebuild with `--clean` after adding or
+  removing extension files. The run card and the home-screen widgets live in
+  the same extension (below).
 - Program lives in Train's stack (`train/program`, `train/program-view`)
   and holds the training mode. Editing goes through the shared
   `splitEditStore` in the `program-edit` page sheet (its own stack: the
@@ -183,6 +186,34 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   whoop-oauth function accepts; the sheet catches it, so it never reaches the
   other app). The tab layout runs the shared WHOOP foreground sync and Apple
   Health weight sync, as the web shell does.
+- Run (`native/src/app/run.tsx`, a full-screen modal from Train's ⋯ menu,
+  You's Start a run, or the run card): set up (Long run or Splits, auto-split,
+  a simulated route in sample mode), live (the current split's pace, time,
+  distance, average; Split, Rest or Resume, and Hold to finish), then the
+  finished run to save (to History), discard (asks first) or export its
+  private GPS diagnostics. The engine and recovery are the web's
+  (`useRunTracker`, `src/lib/runTracker.ts`, `nativeRunSource`), the words and
+  choices `src/lib/runDisplay.ts`. Location (and Motion) are asked on Start,
+  with a way to Settings if refused. The screen draws its own top bar: a
+  modal that shows and hides iOS's header is rebuilt, which drops the run.
+- `native/modules/hyper-run` is the Capacitor recorder ported call for call:
+  every GPS sample appended to `HyperRunRecorder/<runId>.jsonl`, lock-screen
+  controls in UserDefaults (the same keys, so cutover keeps a run),
+  background location, never restarting on its own. JavaScript keeps running
+  while locked, so laps and sprint tones play then too (`RunCuePlayer`, mixed
+  over music; the app has the `audio` background mode for this).
+  `RunActivityAttributes.swift` is compiled into the module, the app and the
+  extension; `shared/RunControlIntent.swift` into the app and the extension,
+  because iOS runs a Live Activity button's intent in the app's process
+  (`withHyperWidgets.js` adds both).
+- Widgets (`targets/widgets/HomeWidgets.swift`): Fuel (calories and protein
+  left; small, medium and the three lock-screen sizes) and Training (today's
+  session; the medium adds the next three days). They read a snapshot the app
+  writes to the App Group `group.app.hyper` through
+  `native/modules/hyper-widget-data`: `native/src/lib/widgets.ts` builds it
+  from Today's rules (`widgetPlan.ts`, two weeks of plan ahead) and clears it
+  on sign-out. At midnight they turn to the next day on their own. Tapping
+  one opens Fuel or Train (`hyper-native://fuel`, `://train`).
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
   closing asks first, and after Discard it steps aside before closing. Never
   re-dispatch the held action straight from `usePreventRemove`'s callback;
@@ -240,6 +271,17 @@ inventory before rebuilding a flow.
   the card's first lock-screen showing asks "Allow Live Activities?". iOS can
   take a while to redraw a card after its stale date, so a rest that ran out
   with the app away may read 0:00 until the app returns.
+- Runs: start a route with `xcrun simctl location <udid> start --speed=3.4
+  --interval=1 <lat,lon> <lat,lon> …` and pick Real GPS on the run screen
+  (sample mode defaults to a simulated route); `simctl location <udid> clear`
+  afterwards. `-hyperAction noWorkout` finishes the sample account's live
+  workout, so the run card shows alone on the lock screen. The card's
+  buttons are SpringBoard elements in a UI test (labels Split, Rest, Finish,
+  Tap again).
+- Widgets: in a UI test, long-press an empty spot on the home screen, then
+  Edit, Add Widget, search "hyPer" and tap the result by coordinate (a label
+  match hits the app icon); a swipe on the size carousel can pick the
+  preview up and drop it on the home screen, so add one size at a time.
 - Request deadlines: start Metro with `EXPO_PUBLIC_HYPER_PREVIEW=0` and
   `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server that accepts connections
   and never answers, then launch with `-hyperAction probeTimeout`. Metro should log

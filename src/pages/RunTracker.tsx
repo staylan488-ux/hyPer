@@ -13,22 +13,34 @@ import { useAppStore } from '@/stores/appStore';
 import { useRunTracker, createSimulatedSource, type PositionSource } from '@/hooks/useRunTracker';
 import {
   averagePaceSecPerMile,
-  currentLapAveragePaceSecPerMile,
   currentLapDistanceM,
   currentLapSeconds,
   elapsedSeconds,
   isGpsWeak,
   isWarmingUp,
-  lapActiveSeconds,
   type RunMode,
 } from '@/lib/runTracker';
+import { formatClockDuration } from '@/lib/activityMetrics';
 import {
-  MILE_M,
-  formatClockDuration,
-  formatDistanceMi,
-  formatPace,
-  paceSecondsPerMile,
-} from '@/lib/activityMetrics';
+  AUTO_LAP_OPTIONS,
+  DEFAULT_AUTO_LAP,
+  DEFAULT_CUSTOM_AUTO_LAP_M,
+  RUN_MODE_LABELS,
+  RUN_MODE_OPTIONS,
+  autoLapDistanceM,
+  autoLapPhrase,
+  finishedRunPace,
+  finishedRunSplits,
+  formatRunDistance as formatMeters,
+  formatRunPace,
+  gpsDiagnosticsExport,
+  isAutoLapValid,
+  livePaceSecPerMile,
+  runSaveErrorMessage,
+  splitFigure as figure,
+  splitPaceSecPerMile,
+  type AutoLapChoice,
+} from '@/lib/runDisplay';
 import { gpsScenarios } from '@/lib/gpsScenarios';
 import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
 import { springs } from '@/lib/animations';
@@ -36,52 +48,9 @@ import { tapHaptic } from '@/lib/haptics';
 import { isNativeIOS, NativeRun } from '@/lib/nativeBridge';
 import './RunTracker.css';
 
-const RUN_MODE_LABELS: Record<RunMode, string> = {
-  free: 'Long run',
-  intervals: 'Splits',
-  sprints: 'Sprint session',
-};
-
-const MODE_OPTIONS: { value: RunMode; label: string }[] = [
-  { value: 'free', label: RUN_MODE_LABELS.free },
-  { value: 'intervals', label: RUN_MODE_LABELS.intervals },
-];
-
-type AutoLapChoice = '100' | '200' | '400' | '1600' | 'off' | 'custom';
-
-const AUTO_LAP_OPTIONS: { value: AutoLapChoice; label: string }[] = [
-  { value: '100', label: 'Every 100 m' },
-  { value: '200', label: 'Every 200 m' },
-  { value: '400', label: 'Every 400 m' },
-  { value: '1600', label: 'Every 1600 m' },
-  { value: 'off', label: 'Manual only' },
-  { value: 'custom', label: 'Custom distance' },
-];
-
 type SourceChoice = 'gps' | 'steady5k' | 'intervals8x400' | 'stationary';
 
 const SIMULATOR_TIME_SCALE = 10;
-
-function formatRunPace(secondsPerMile: number | null): string | null {
-  if (secondsPerMile == null || !Number.isFinite(secondsPerMile) || secondsPerMile <= 0) return null;
-  // The shared formatter rejects over 60:00 as likely bad imported data. A
-  // short live walk can legitimately start slower, so keep feedback visible
-  // without presenting an unstable three-digit estimate as precise.
-  if (secondsPerMile > 3600) return '60:00+ /mi';
-  return formatPace(secondsPerMile);
-}
-
-// meters for sub-mile stretches (track vocabulary: "400 m"), miles beyond
-function formatMeters(distanceM: number): string {
-  if (distanceM < MILE_M) return `${Math.round(distanceM)} m`;
-  return formatDistanceMi(distanceM) ?? '0.00 mi';
-}
-
-/** "195 m" → ["195", "m"]; "7:59 /mi" → ["7:59", "/mi"]; "0:58" → ["0:58", ""]. */
-function figure(label: string): [string, string] {
-  const space = label.lastIndexOf(' ');
-  return space > 0 ? [label.slice(0, space), label.slice(space + 1)] : [label, ''];
-}
 
 /** A labelled Fraunces figure with its unit in Geist. */
 function Stat({ label, value }: { label: string; value: string }) {
@@ -97,15 +66,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 async function exportGpsDiagnostics(
   run: NonNullable<ReturnType<typeof useRunTracker>['finishedRun']>,
 ): Promise<void> {
-  const { trace = [], ...summary } = run;
-  const payload = {
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    summary,
-    trace,
-  };
-  const content = JSON.stringify(payload, null, 2);
-  const filename = `hyper-gps-${new Date(run.startedAtMs).toISOString().replace(/[:.]/g, '-')}.json`;
+  const { filename, content } = gpsDiagnosticsExport(run, new Date());
   if (isNativeIOS()) {
     await NativeRun.shareDiagnostics({ filename, content });
     return;
@@ -181,8 +142,8 @@ export function RunTracker() {
   const appSandbox = isAppSandboxActive();
 
   const [mode, setMode] = useState<RunMode>('free');
-  const [autoLap, setAutoLap] = useState<AutoLapChoice>('400');
-  const [customAutoLapM, setCustomAutoLapM] = useState('300');
+  const [autoLap, setAutoLap] = useState<AutoLapChoice>(DEFAULT_AUTO_LAP);
+  const [customAutoLapM, setCustomAutoLapM] = useState(DEFAULT_CUSTOM_AUTO_LAP_M);
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>(preview && !appSandbox ? 'steady5k' : 'gps');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -208,12 +169,7 @@ export function RunTracker() {
   const handleStart = () => {
     if (tracker.resumable) return;
     setSaveError(null);
-    const splitDistanceM = autoLap === 'off'
-      ? null
-      : autoLap === 'custom'
-        ? Number(customAutoLapM)
-        : Number(autoLap);
-    tracker.start(mode, splitDistanceM, buildSource());
+    tracker.start(mode, autoLapDistanceM(autoLap, customAutoLapM), buildSource());
   };
 
   const handleFinish = useCallback(() => {
@@ -236,10 +192,7 @@ export function RunTracker() {
       // Surface WHY. A bare "could not save" on a phone leaves the run stuck
       // with nothing to act on and no console to read.
       console.error('Error saving tracked run:', error);
-      const reason = error instanceof Error && error.message ? error.message : null;
-      setSaveError(reason
-        ? `${reason} The run stays here until you discard it.`
-        : 'Could not save the run. It stays here until you discard it.');
+      setSaveError(runSaveErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -256,15 +209,9 @@ export function RunTracker() {
   /* ── live derived values ── */
   const effectivelyPaused = tracker.resting;
   const averagePace = running ? averagePaceSecPerMile(state, tracker.nowMs) : null;
-  const lapAveragePace = running && !effectivelyPaused
-    ? currentLapAveragePaceSecPerMile(state, tracker.nowMs)
-    : null;
-  // Both modes show the average pace for the CURRENT SPLIT. Instantaneous pace
-  // jitters by a minute per mile between samples, which is unreadable at a
-  // glance and, per the track calibration, is the reading most distorted by the
-  // speed-dependent GPS bias. Until the first split has enough distance to mean
-  // anything, fall back to the whole-run average rather than showing nothing.
-  const pace = lapAveragePace ?? averagePace;
+  // Both modes show the average pace for the CURRENT SPLIT, else the whole
+  // run's average (lib/runDisplay).
+  const pace = running ? livePaceSecPerMile(state, tracker.nowMs) : null;
   const paceLabel = effectivelyPaused ? '—' : formatRunPace(pace) ?? '—';
   const elapsedLabel = running ? formatClockDuration(elapsedSeconds(state, tracker.nowMs)) : '0:00';
   const distanceLabel = running ? formatMeters(state.totalDistanceM) : '0 m';
@@ -275,8 +222,7 @@ export function RunTracker() {
   const lastRep = running && state.reps.length > 0 ? state.reps[state.reps.length - 1] : null;
 
   // paused: freeze the pace readout, and don't let a screen tap split
-  const customAutoLapValid = autoLap !== 'custom'
-    || (Number.isFinite(Number(customAutoLapM)) && Number(customAutoLapM) >= 10 && Number(customAutoLapM) <= 100_000);
+  const customAutoLapValid = isAutoLapValid(autoLap, customAutoLapM);
 
   useEffect(() => {
     if (!state || state.status !== 'running' || !isNativeIOS()) return;
@@ -301,11 +247,7 @@ export function RunTracker() {
   /* ── the one primary action ── */
   // Start (or resume an interrupted run) before; Save after. The live run
   // keeps its own large controls, so it registers nothing.
-  const autoLapLabel = autoLap === 'off'
-    ? 'manual splits'
-    : autoLap === 'custom'
-      ? `every ${Number(customAutoLapM).toLocaleString('en-US')} m`
-      : `every ${Number(autoLap).toLocaleString('en-US')} m`;
+  const autoLapLabel = autoLapPhrase(autoLap, customAutoLapM);
   const capsule: CommandCapsuleSpec | null = tracker.finishedRun
     ? {
         key: 'run-save',
@@ -349,18 +291,7 @@ export function RunTracker() {
   /* ── finished summary ── */
   if (tracker.finishedRun) {
     const finishedRun = tracker.finishedRun;
-    const splits = finishedRun.mode === 'sprints'
-      ? finishedRun.reps.map((rep) => ({
-          key: rep.index,
-          durationS: (rep.endedAtMs - rep.startedAtMs) / 1000,
-          distanceM: rep.distanceM,
-        }))
-      : finishedRun.laps.map((lap) => ({
-          key: lap.index,
-          durationS: lapActiveSeconds(lap),
-          distanceM: lap.distanceM,
-          isRest: lap.kind === 'rest',
-        }));
+    const splits = finishedRunSplits(finishedRun);
     const [distanceValue, distanceUnit] = figure(formatMeters(finishedRun.totalDistanceM));
 
     return (
@@ -375,13 +306,13 @@ export function RunTracker() {
           <Stat label="Time" value={formatClockDuration(finishedRun.elapsedS) ?? '—'} />
           <Stat
             label="Avg pace"
-            value={formatRunPace(paceSecondsPerMile(finishedRun.totalDistanceM, finishedRun.elapsedS)) ?? '—'}
+            value={finishedRunPace(finishedRun) ?? '—'}
           />
         </div>
         <p className="sr-only">Distance {formatMeters(finishedRun.totalDistanceM)}</p>
 
         {splits.length > 1 && (
-          <MetalSection label="Splits" right={<b>{splits.filter((split) => !('isRest' in split && split.isRest)).length}</b>}>
+          <MetalSection label="Splits" right={<b>{splits.filter((split) => !split.isRest).length}</b>}>
             <LapPaceChart
               className="mt-3 mb-6"
               laps={splits}
@@ -396,7 +327,7 @@ export function RunTracker() {
               <span>Pace</span>
             </div>
             {splits.map((split) => {
-              const rest = 'isRest' in split && split.isRest;
+              const rest = split.isRest;
               return (
                 <div key={split.key} className={`run-ledger-row${rest ? ' is-rest' : ''}`}>
                   <span className="text-[var(--metal-ink-3)]">{rest ? '·' : split.key}</span>
@@ -405,7 +336,7 @@ export function RunTracker() {
                   <span>
                     {rest
                       ? '—'
-                      : formatRunPace(paceSecondsPerMile(split.distanceM, split.durationS)) ?? '—'}
+                      : formatRunPace(splitPaceSecPerMile(split)) ?? '—'}
                   </span>
                 </div>
               );
@@ -586,7 +517,7 @@ export function RunTracker() {
       )}
 
       <MetalSection label="Mode">
-        <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} distribution="equal" className="mt-2" />
+        <SegmentedControl options={RUN_MODE_OPTIONS} value={mode} onChange={setMode} distribution="equal" className="mt-2" />
       </MetalSection>
 
       {mode === 'intervals' && (

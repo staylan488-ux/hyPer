@@ -131,6 +131,10 @@ interface NativeBarcodePlugin {
 export const NativeAuth = registerPlugin<NativeAuthPlugin>('HyperAuth');
 export const NativeRun = registerPlugin<NativeRunPlugin>('HyperRun');
 export const NativeHealth = registerPlugin<NativeHealthPlugin>('HyperHealth');
+/** Whether runs record through the native GPS recorder (NativeRun) instead of the browser's geolocation. */
+export function hasNativeRun(): boolean {
+  return isNativeIOS();
+}
 /** Whether Apple Health can be read here: the iPhone app only, never the browser. */
 export function hasNativeHealth(): boolean {
   return isNativeIOS();

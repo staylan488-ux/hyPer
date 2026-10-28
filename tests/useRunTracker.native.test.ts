@@ -82,7 +82,7 @@ const native = vi.hoisted(() => {
 vi.mock('react', () => ({
   useRef: hooks.useRef, useState: hooks.useState, useCallback: hooks.useCallback, useEffect: hooks.useEffect,
 }));
-vi.mock('@/lib/nativeBridge', () => ({ isNativeIOS: native.isNativeIOS, NativeRun: native.NativeRun }));
+vi.mock('@/lib/nativeBridge', () => ({ isNativeIOS: native.isNativeIOS, hasNativeRun: native.isNativeIOS, NativeRun: native.NativeRun }));
 vi.mock('@/lib/nativeRunSource', () => ({ createNativeRunSource: native.createNativeRunSource }));
 vi.mock('@/lib/keepAwake', () => ({ useKeepAwakeWhile: () => undefined }));
 vi.mock('@/lib/runTrackerCues', () => ({

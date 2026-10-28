@@ -34,9 +34,10 @@ import {
 } from '@/lib/runTracker';
 import { playLapCue, playSprintEndCue, playSprintStartCue } from '@/lib/runTrackerCues';
 import { createDeviceMotionDetector } from '@/lib/deviceMotion';
-import { isNativeIOS, NativeRun, type NativeRunControl } from '@/lib/nativeBridge';
+import { hasNativeRun, NativeRun, type NativeRunControl } from '@/lib/nativeBridge';
 import { createNativeRunSource, type NativeRunCursors } from '@/lib/nativeRunSource';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
+import { onAppVisible } from '@/lib/appVisibility';
 
 export interface PositionSource {
   // simulated sources compress delivery but report a consistent clock
@@ -142,7 +143,7 @@ function createDefaultPositionSource(
   onNativeReset?: (cursors: NativeRunCursors) => void,
   recoverLegacyControls?: (controls: NativeRunControl[]) => number,
 ): PositionSource {
-  return isNativeIOS()
+  return hasNativeRun()
     ? createNativeRunSource(runId, resume, cursors, onNativeReset, recoverLegacyControls)
     : createGeolocationSource();
 }
@@ -383,7 +384,7 @@ export function useRunTracker(): UseRunTracker {
       // saved pause state so a lock-screen Resume does not become another
       // Pause, and background GPS recorded during rest remains excluded.
       const restored = restoreTracker(localStorage.getItem(RUN_TRACKER_STORAGE_KEY), Date.now(), {
-        preservePause: !source && isNativeIOS(),
+        preservePause: !source && hasNativeRun(),
       });
       if (!restored) {
         setResumable(false);
@@ -397,7 +398,7 @@ export function useRunTracker(): UseRunTracker {
       setState(restored);
       setResumable(false);
       const resumePoint = nativeResumePoint(restored);
-      replayCutoffMsRef.current = source || !isNativeIOS() ? null : resumePoint.replayCutoffMs;
+      replayCutoffMsRef.current = source || !hasNativeRun() ? null : resumePoint.replayCutoffMs;
       const onNativeReset = (cursors: NativeRunCursors) => {
         // The recorder's sequence is behind the saved cursors (a fresh file,
         // or a sequence that fell back after a failed write), so its numbers
@@ -458,7 +459,7 @@ export function useRunTracker(): UseRunTracker {
   const discard = useCallback(() => {
     const hadSource = sourceRef.current != null;
     stopSource(true);
-    if (!hadSource && isNativeIOS()) {
+    if (!hadSource && hasNativeRun()) {
       void NativeRun.stopRecording({ discard: true }).catch(() => undefined);
     }
     stateRef.current = null;
@@ -494,7 +495,7 @@ export function useRunTracker(): UseRunTracker {
   // keep the screen awake while tracking (RestTimerPill pattern: re-acquire on
   // visibility return; fails quietly under Low Power Mode)
   useEffect(() => {
-    if (!isRunning || !('wakeLock' in navigator)) return;
+    if (!isRunning || typeof document === 'undefined' || !('wakeLock' in navigator)) return;
 
     let sentinel: WakeLockSentinel | null = null;
     let cancelled = false;
@@ -522,15 +523,11 @@ export function useRunTracker(): UseRunTracker {
     };
   }, [isRunning]);
 
-  // Native: re-drain samples the recorder persisted while the WebView was
+  // Native: re-drain samples the recorder persisted while the app was
   // suspended (locked screen mid-run), which live listeners never received.
   useEffect(() => {
     if (!isRunning) return;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') sourceRef.current?.resync?.();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    return onAppVisible(() => sourceRef.current?.resync?.());
   }, [isRunning]);
 
   // On unmount: if a run is still active (e.g. navigating to another tab), keep

@@ -3,36 +3,9 @@ import SwiftUI
 import WidgetKit
 
 // The workout card on the lock screen and in the Dynamic Island, in Blanc
-// (native/src/theme/blanc.ts): chalk and black ink, following the system
-// appearance, with the red italic P. iOS ticks the countdown, the bar and the
-// session clock itself from the dates the app sends (WorkoutActivityAttributes).
-
-private struct Blanc {
-  let ground: Color
-  let ink: Color
-  let graphite: Color
-  let brand: Color
-
-  static let light = Blanc(ground: Color(hex: 0xF2F1ED), ink: Color(hex: 0x0B0B0B), graphite: Color(hex: 0x66665F), brand: Color(hex: 0xA8352A))
-  static let dark = Blanc(ground: .black, ink: Color(hex: 0xF4F4F2), graphite: Color(hex: 0xA3A39C), brand: Color(hex: 0xE58477))
-
-  static func of(_ scheme: ColorScheme) -> Blanc { scheme == .dark ? dark : light }
-}
-
-private extension Color {
-  init(hex: UInt32) {
-    self.init(
-      red: Double((hex >> 16) & 0xFF) / 255,
-      green: Double((hex >> 8) & 0xFF) / 255,
-      blue: Double(hex & 0xFF) / 255
-    )
-  }
-}
-
-/// The P, in the app's own face (bundled into this extension).
-private func brandMark(size: CGFloat) -> Font {
-  .custom("FrauncesMark-MediumItalic", size: size)
-}
+// (Blanc.swift): chalk and black ink, following the system appearance, with
+// the red italic P. iOS ticks the countdown, the bar and the session clock
+// itself from the dates the app sends (WorkoutActivityAttributes).
 
 private enum RestPhase {
   case running(ClosedRange<Date>)

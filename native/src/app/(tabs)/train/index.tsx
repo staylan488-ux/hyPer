@@ -645,6 +645,15 @@ function useStartHeader(title: string) {
                     router.push('/train/program');
                   },
                 },
+                {
+                  type: 'action',
+                  label: 'Run',
+                  icon: { type: 'sfSymbol', name: 'figure.run' },
+                  onPress: () => {
+                    haptics.tap();
+                    router.push('/run');
+                  },
+                },
               ],
             },
           },

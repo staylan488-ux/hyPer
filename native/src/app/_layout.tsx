@@ -60,6 +60,11 @@ export default function RootLayout() {
               name="session-done"
               options={{ presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: p.ground } }}
             />
+            {/* A GPS run: set up, then live with no way out but finishing, then save. */}
+            <Stack.Screen
+              name="run"
+              options={{ presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: p.ground } }}
+            />
             <Stack.Screen
               name="log-food"
               options={{

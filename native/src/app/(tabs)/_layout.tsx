@@ -12,6 +12,7 @@ import { resetHistory } from '~/lib/history';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
 import { useFocusStore, usePreviousNotesStore, useSessionModel } from '~/lib/session';
+import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { resetYou } from '~/lib/you';
 import { dynamicInk } from '~/theme/blanc';
@@ -23,6 +24,8 @@ export default function TabsLayout() {
   useRestPreferences();
   useWorkoutActivity(session);
   useAccountData();
+  // The home-screen widgets' Fuel and Training figures.
+  useWidgetSnapshot();
   // As in the web app's shell: WHOOP catches up when the app comes back, and
   // Apple Health weights flow in once turned on in You.
   const userId = useAuthStore((state) => state.user?.id);

@@ -95,6 +95,7 @@ export function useTodayPlan() {
     hero,
     next,
     schedule,
+    scheduleWorkouts,
     adaptiveSchedulingEnabled,
     weekDone: week.dates?.length ?? null,
     weekTarget: weekSessionTarget(workoutMode, schedule, activeSplit),

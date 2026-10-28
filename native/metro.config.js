@@ -26,6 +26,7 @@ const replacements = {
   'lib/restNotifications': 'restNotifications.ts',
   'lib/liveActivity': 'liveActivity.ts',
   'lib/commitFocusedField': 'commitFocusedField.ts',
+  'lib/runTrackerCues': 'runTrackerCues.ts',
 };
 const replacementByFile = new Map();
 for (const [shared, native] of Object.entries(replacements)) {

@@ -17,11 +17,24 @@
         "tinted": "./assets/images/icon-tinted.png"
       },
       "infoPlist": {
-        "NSHealthShareUsageDescription": "hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife."
+        "NSHealthShareUsageDescription": "hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife.",
+        "NSLocationWhenInUseUsageDescription": "hyPer uses your location during a run to measure route, distance, pace, and splits.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "hyPer uses your location during an active run, including when the screen is locked, to measure route, distance, pace, and splits.",
+        "NSLocationTemporaryUsageDescriptionDictionary": {
+          "RunTracking": "Precise location is needed during an active run to measure distance, pace, route, and split boundaries accurately."
+        },
+        "NSMotionUsageDescription": "hyPer uses motion data during an active run to improve movement and pause detection.",
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ]
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.background-delivery": true
+        "com.apple.developer.healthkit.background-delivery": true,
+        "com.apple.security.application-groups": [
+          "group.app.hyper"
+        ]
       }
     },
     "plugins": [

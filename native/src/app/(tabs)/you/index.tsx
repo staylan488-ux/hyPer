@@ -115,6 +115,8 @@ export default function YouScreen() {
         <SchedulingSetting />
 
         <Label style={{ marginTop: space.section }}>
+          <Row title="Start a run" chevron onPress={() => router.push('/run')} />
+          <Hairline />
           <Row title="About" chevron onPress={() => router.push('/you/about')} />
         </Label>
       </TabScroll>

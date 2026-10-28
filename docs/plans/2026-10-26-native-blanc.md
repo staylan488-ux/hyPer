@@ -173,10 +173,22 @@ have repeated that pattern.
    `hyper-health` module, HealthKit entitlement), account and sign-out. The
    web page's rules moved to `settingsUx`, `bodyWeightSummary`,
    `nutritionWizard`, `whoopStatus`, `healthWeights` and `foodTrialUsage`.
-   Left out on purpose: You's search (a short list needs none) and Start a
-   run (milestone 8).
+   Left out on purpose: You's search (a short list needs none). Start a run
+   arrived with milestone 8.
 8. **Run tracker and widgets.** Port the Swift run, Live Activity and widget targets
    as Expo modules and config plugins.
+   Built 2026-10-27: the Capacitor recorder is `native/modules/hyper-run` (same
+   calls, events, storage keys and trace folder, so the shared
+   `nativeRunSource` and `useRunTracker` run unchanged and a run carries over
+   at cutover), plus native lap and sprint tones that mix over music with the
+   screen locked. The run screen (`native/src/app/run.tsx`, from Train's ⋯
+   menu and You) sets up, runs and saves a run with the web's rules, which
+   moved into `src/lib/runDisplay.ts`. The run's Live Activity (Split, Rest
+   and Finish on the lock screen, Finish asking twice) and two home-screen
+   widgets, Fuel (calories and protein left, also on the lock screen) and
+   Training (today's session and the days ahead), joined the widget
+   extension. Widgets read a snapshot the app writes to the App Group
+   `group.app.hyper` (`native/modules/hyper-widget-data`); signing out clears it.
 9. **Parity check and cutover.** Walk the parity inventory, switch the bundle ID,
    TestFlight, then retire the Capacitor app. Each release and production step needs
    the owner's explicit approval.

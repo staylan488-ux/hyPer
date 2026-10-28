@@ -7,6 +7,7 @@
 
 import { HyperBarcode } from '../../modules/hyper-barcode';
 import { HyperHealth } from '../../modules/hyper-health';
+import { HyperRun } from '../../modules/hyper-run';
 
 // This app's own URL scheme (app.json "scheme") while it installs beside the
 // Capacitor app; at cutover it takes over app.hyper.mobile. The shared OAuth
@@ -20,6 +21,11 @@ export function isNativeIOS(): boolean {
 
 /** Apple Health is read through native/modules/hyper-health. */
 export function hasNativeHealth(): boolean {
+  return true;
+}
+
+/** Runs record through native/modules/hyper-run (background GPS with crash recovery). */
+export function hasNativeRun(): boolean {
   return true;
 }
 
@@ -123,7 +129,8 @@ function unavailable<T extends object>(name: string): T {
 }
 
 export const NativeAuth = unavailable<NativeAuthPlugin>('HyperAuth');
-export const NativeRun = unavailable<NativeRunPlugin>('HyperRun');
+// The run recorder through native/modules/hyper-run.
+export const NativeRun: NativeRunPlugin = HyperRun;
 // HealthKit body weight through native/modules/hyper-health.
 export const NativeHealth: NativeHealthPlugin = HyperHealth;
 // VisionKit's data scanner through native/modules/hyper-barcode.

@@ -1,28 +1,41 @@
-// Adds hyPer's widget extension to the iOS project on prebuild: the workout Live
-// Activity now, the run card and home-screen widgets later (milestone 8).
+// Adds hyPer's widget extension to the iOS project on prebuild: the workout and
+// run Live Activities and the Fuel and Training widgets.
 //
-// - Copies native/targets/widgets, the card's shared definition and the P's
+// - Copies native/targets/widgets, the shared definitions (the cards' data, the
+//   run card's lock-screen intent, the widgets' snapshot store) and the P's
 //   font into ios/HyperWidgets.
 // - Registers the HyperWidgets target (Xcode's app-extension layout: sources,
 //   frameworks and resources phases, Debug and Release settings), embeds it in
-//   the app and makes the app depend on it.
+//   the app and makes the app depend on it. It shares the app's App Group, so
+//   the widgets can read what the app writes.
+// - Compiles the run card's data and intent into the app too: iOS runs a Live
+//   Activity's button intent in the app's process.
 // - Marks the app as supporting Live Activities.
 //
 // The extension is plain SwiftUI with no pods. Prebuild with --clean after
 // adding or removing files under targets/widgets: an existing target is kept.
 const fs = require('fs');
 const path = require('path');
-const { withDangerousMod, withInfoPlist, withXcodeProject } = require('expo/config-plugins');
+const { IOSConfig, withDangerousMod, withInfoPlist, withXcodeProject } = require('expo/config-plugins');
 
 const TARGET = 'HyperWidgets';
 /** The extension's own files, relative to native/. */
 const SOURCE_DIR = 'targets/widgets';
 const SHARED_FILES = [
-  // One definition of the card's data for the app and the extension.
+  // One definition of each card's data for the app and the extension.
   'modules/hyper-activity/ios/WorkoutActivityAttributes.swift',
-  // The P's face, for the brand mark on the card.
+  'modules/hyper-run/ios/RunActivityAttributes.swift',
+  // The run card's Split, Rest and Finish buttons.
+  'modules/hyper-run/shared/RunControlIntent.swift',
+  // Where the app leaves the widgets' data.
+  'modules/hyper-widget-data/ios/WidgetSnapshotStore.swift',
+  // The P's face, for the brand mark on the cards and widgets.
   'assets/fonts/FrauncesMark-MediumItalic.ttf',
 ];
+/** Compiled into the app as well: iOS performs a Live Activity intent in the app. */
+const APP_FILES = ['modules/hyper-run/ios/RunActivityAttributes.swift', 'modules/hyper-run/shared/RunControlIntent.swift'];
+const APP_GROUPS_KEY = 'com.apple.security.application-groups';
+const ENTITLEMENTS = `${TARGET}.entitlements`;
 const EMBED_PHASE = 'Embed Foundation Extensions';
 const FILE_TYPES = { '.swift': 'sourcecode.swift', '.plist': 'text.plist.xml', '.ttf': 'file' };
 
@@ -44,6 +57,24 @@ const withLiveActivities = (config) =>
     return config;
   });
 
+/** The App Groups the app is entitled to (app.json); the extension gets the same. */
+const appGroups = (config) => config.ios?.entitlements?.[APP_GROUPS_KEY] ?? [];
+
+function entitlementsPlist(groups) {
+  const items = groups.map((group) => `\t\t<string>${group}</string>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>${APP_GROUPS_KEY}</key>
+\t<array>
+${items}
+\t</array>
+</dict>
+</plist>
+`;
+}
+
 const withWidgetFiles = (config) =>
   withDangerousMod(config, [
     'ios',
@@ -55,9 +86,28 @@ const withWidgetFiles = (config) =>
       for (const file of sourceFiles(projectRoot)) {
         fs.copyFileSync(file, path.join(targetDir, path.basename(file)));
       }
+      fs.writeFileSync(path.join(targetDir, ENTITLEMENTS), entitlementsPlist(appGroups(config)));
+
+      const appDir = path.join(platformProjectRoot, IOSConfig.XcodeUtils.getProjectName(projectRoot));
+      for (const file of APP_FILES) {
+        fs.copyFileSync(path.join(projectRoot, file), path.join(appDir, path.basename(file)));
+      }
       return config;
     },
   ]);
+
+const withAppFiles = (config) =>
+  withXcodeProject(config, (config) => {
+    const project = config.modResults;
+    const projectName = IOSConfig.XcodeUtils.getProjectName(config.modRequest.projectRoot);
+    for (const file of APP_FILES) {
+      const filepath = `${projectName}/${path.basename(file)}`;
+      if (!project.hasFile(filepath)) {
+        IOSConfig.XcodeUtils.addBuildSourceFileToGroup({ filepath, groupName: projectName, project });
+      }
+    }
+    return config;
+  });
 
 /** A build setting of the app target, else the project's. */
 function appSetting(project, key) {
@@ -147,6 +197,7 @@ const withWidgetTarget = (config) =>
       CODE_SIGN_STYLE: 'Automatic',
       CURRENT_PROJECT_VERSION: quote(config.ios?.buildNumber ?? '1'),
       ...(team ? { DEVELOPMENT_TEAM: team } : {}),
+      ...(appGroups(config).length > 0 ? { CODE_SIGN_ENTITLEMENTS: `${TARGET}/${ENTITLEMENTS}` } : {}),
       GENERATE_INFOPLIST_FILE: 'YES',
       INFOPLIST_FILE: `${TARGET}/Info.plist`,
       INFOPLIST_KEY_CFBundleDisplayName: quote(config.name ?? 'hyPer'),
@@ -221,4 +272,4 @@ const withWidgetTarget = (config) =>
     return config;
   });
 
-module.exports = (config) => withWidgetTarget(withWidgetFiles(withLiveActivities(config)));
+module.exports = (config) => withAppFiles(withWidgetTarget(withWidgetFiles(withLiveActivities(config))));

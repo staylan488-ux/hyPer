@@ -15,6 +15,7 @@
       "@/lib/restNotifications": ["./src/platform/restNotifications.ts"],
       "@/lib/liveActivity": ["./src/platform/liveActivity.ts"],
       "@/lib/commitFocusedField": ["./src/platform/commitFocusedField.ts"],
+      "@/lib/runTrackerCues": ["./src/platform/runTrackerCues.ts"],
       "@/*": ["../src/*"],
       "~/*": ["./src/*"],
       "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"],
