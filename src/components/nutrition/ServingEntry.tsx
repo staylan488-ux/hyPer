@@ -87,6 +87,7 @@ export function ServingEntry({ food, disabled, onApply, onReviewChange }: {
           {result?.status === 'clarification' && <p className="fuel-note is-ink">{result.message} Update your description, or close the helper to enter servings manually.</p>}
           {result?.status === 'resolved' && <>
             <p className="fuel-note is-ink">{display(result.quantity)} {result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ {display(result.basisQuantity)} per serving = <strong className="font-medium">{display(result.servings)} servings</strong></p>
+            {result.assumption && <p className="fuel-note">{result.assumption}</p>}
             {Math.abs(logServings - result.servings) > 1e-9 && <p className="fuel-note">{logServings > 0 ? `Will log ${display(logServings)} servings, rounded to two decimals.` : 'This amount is too small to log. Enter at least 0.01 servings.'}</p>}
             <p className="fuel-note tabular-nums">{display(food.calories * logServings)} kcal · {display(food.protein * logServings)}g protein · {display(food.carbs * logServings)}g carbs · {display(food.fat * logServings)}g fat</p>
             <Button type="button" className="self-start" disabled={disabled || logServings <= 0} onClick={() => {

@@ -5,7 +5,7 @@ import { FOOD_TRIAL_MODEL, trialFoodTotals as itemTotals, validateTrialItems, ty
 export { trialFoodTotals } from '../../supabase/functions/analyze-food-trial/model';
 export type { FoodTrialResult, TrialFoodItem, TrialUsage } from '../../supabase/functions/analyze-food-trial/model';
 
-import { getServingOptions, normalizeServingInput, resolveServingInterpretation, type ServingFood, type ServingInterpretation } from '../../supabase/functions/analyze-food-trial/serving';
+import { getServingOptions, normalizeServingInput, resolveServingInterpretation, resolveServingLocally, type ServingFood, type ServingInterpretation } from '../../supabase/functions/analyze-food-trial/serving';
 
 const MODE_KEY = 'hyper.food-analysis.mode';
 export function getFoodAnalysisMode(): 'worker' | 'gemini' {
@@ -97,6 +97,9 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
 /** Interpret only the amount. Nutrition and division stay in application code. */
 export async function interpretFoodServing(food: ServingFood, text: string, accessToken: string): Promise<ServingInterpretation> {
   const input = normalizeServingInput({ action: 'interpret-serving', food, text });
+  // "272 ml", "1.5 cups", "8 oz": plain conversions need no Gemini call.
+  const local = resolveServingLocally(input.food, input.text);
+  if (local) return local;
   if (isPreviewActive() && !isAppSandboxActive()) {
     // Deliberately narrow offline fixture; never make a live provider call in preview.
     const match = input.text.match(/^(?:I ate )?(\d+(?:\.\d+)?)\s+([a-z]+)\.?$/i);
