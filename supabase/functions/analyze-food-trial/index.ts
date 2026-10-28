@@ -3,6 +3,7 @@ import { createTrialHandler } from './gateway.ts';
 import { createStorageLedger } from './storageLedger.ts';
 import { analyzeMeal } from './model.ts';
 import { interpretServing } from './serving.ts';
+import { suggestTargets } from './coach.ts';
 
 // No client-provided API key, provider, model, URL or user ID is trusted.
 // The operator provisions a private bucket and these secrets before deployment.
@@ -33,6 +34,7 @@ Deno.serve(async (request: Request) => {
       },
       analyze: input => analyzeMeal(input, apiKey, tavilyKey),
       interpretServing: input => interpretServing(input, apiKey),
+      suggestTargets: input => suggestTargets(input, apiKey),
     });
     return handler(request);
   } catch {

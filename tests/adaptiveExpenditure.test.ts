@@ -77,9 +77,10 @@ describe('energy balance', () => {
     expect(result.expenditureKcal).toBeCloseTo(trueTdee, -2);
   });
 
-  it('uses the lower energy density when gaining', () => {
-    // Gained tissue is not pure fat, so a surplus of the same size produces
-    // more weight than an equal deficit removes.
+  it('counts gains and losses at the same energy per kg', () => {
+    // Gained tissue stores less energy than fat, but building it costs the
+    // difference back (about 8,000 kcal per kg in overfeeding studies), so a
+    // kilo gained takes about as much surplus as a kilo lost takes deficit.
     const gaining = estimateExpenditure(
       inputWith({ weightSamples: weighIns(80, 0.02, 21), dailyIntake: intake(2700, 21) })
     );
@@ -87,7 +88,7 @@ describe('energy balance', () => {
       inputWith({ weightSamples: weighIns(80, -0.02, 21), dailyIntake: intake(2700, 21) })
     );
 
-    expect(2700 - (gaining.measuredKcal as number)).toBeCloseTo(0.02 * 6000, 4);
+    expect(2700 - (gaining.measuredKcal as number)).toBeCloseTo(0.02 * 7700, 4);
     expect((losing.measuredKcal as number) - 2700).toBeCloseTo(0.02 * 7700, 4);
   });
 });

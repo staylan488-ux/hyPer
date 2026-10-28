@@ -1,0 +1,8 @@
+{
+  "name": "hyper-run",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The run recorder: background GPS, crash recovery, lock-screen controls and the run's Live Activity.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

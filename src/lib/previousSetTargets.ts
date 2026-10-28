@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { toFiniteNumber, type PreviousSetSummary, type PreviousWorkoutSummary } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
 
@@ -118,4 +119,51 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, exercis
   }
 
   return buildPreviousSetTargets(workoutIds, (previousSets || []) as PreviousSetSummary[]);
+}
+
+export type PreviousMovementNotes = Record<string, { note: string; date: string }>;
+
+/**
+ * For each exercise, the note from the most recent earlier workout that has
+ * one (`workouts` ordered newest first). Notes live in each workout's notes
+ * JSON, keyed by exercise.
+ */
+export function buildPreviousMovementNotes(
+  workouts: ReadonlyArray<{ id: string; date: string; notes: string | null }>,
+  exerciseIds: ReadonlyArray<string>,
+): PreviousMovementNotes {
+  const wanted = new Set(exerciseIds);
+  const found: PreviousMovementNotes = {};
+  for (const workout of workouts) {
+    const { movementNotes } = parseWorkoutNotes(workout.notes);
+    for (const [exerciseId, note] of Object.entries(movementNotes)) {
+      if (wanted.has(exerciseId) && !found[exerciseId]) found[exerciseId] = { note, date: workout.date };
+    }
+    if (Object.keys(found).length === wanted.size) break;
+  }
+  return found;
+}
+
+/**
+ * Last time's note for each movement: from the last 30 workouts on or before
+ * `date`, excluding the current one. Null on a query error.
+ */
+export async function fetchPreviousMovementNotes({ userId, workoutId, date, exerciseIds }: {
+  userId: string;
+  workoutId: string;
+  date: string;
+  exerciseIds: string[];
+}): Promise<PreviousMovementNotes | null> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('id, date, notes, created_at')
+    .eq('user_id', userId)
+    .lte('date', date)
+    .neq('id', workoutId)
+    .not('notes', 'is', null)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) return null;
+  return buildPreviousMovementNotes((data ?? []) as { id: string; date: string; notes: string | null }[], exerciseIds);
 }

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, startOfWeek, subWeeks } from 'date-fns';
+import { format, startOfWeek } from 'date-fns';
 import { VolumeRail } from '@/components/shared';
 import {
   Chevron,
@@ -15,42 +15,14 @@ import { BackLink } from '@/components/progress/BackLink';
 import { useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
-import { buildWeeklyTrainingHours, TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
+import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
+import { fetchTrainingHours } from '@/lib/trainingHours';
+import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
 import { TrainingHoursHistogram } from '@/components/dashboard/TrainingHoursHistogram';
 import { WeeklyNutrition } from '@/components/dashboard/WeeklyNutrition';
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
-import { supabase } from '@/lib/supabase';
-import { getSessionUserId } from '@/lib/sessionUser';
 import { springs } from '@/lib/animations';
-
-type CoachingTone = 'amber' | 'sage' | 'berry' | 'stone';
-
-interface CoachingCall {
-  chip: string;
-  tone: CoachingTone;
-  headline: string;
-  priority: number;
-}
-
-function buildCoachingCall(mv: MuscleVolume): CoachingCall {
-  const mev = mv.landmark?.mev ?? 0;
-  switch (mv.status) {
-    case 'below_mev': {
-      const gap = Math.max(1, Math.ceil(mev - mv.weekly_sets));
-      return { chip: 'Under-stimulated', tone: 'amber', headline: `Add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`, priority: 0 };
-    }
-    case 'above_mrv':
-      return { chip: 'Over ceiling', tone: 'berry', headline: 'Pull back — beyond recoverable volume', priority: 1 };
-    case 'approaching_mrv':
-      return { chip: 'Near ceiling', tone: 'berry', headline: 'Hold here — fatigue is compounding', priority: 2 };
-    case 'mav':
-      return { chip: 'Adaptive zone', tone: 'sage', headline: 'Hold volume — growth is compounding', priority: 3 };
-    case 'mev_mav':
-    default:
-      return { chip: 'Effective', tone: 'sage', headline: 'Building — room to add when ready', priority: 4 };
-  }
-}
 
 const LANDMARK_NOTES = [
   { label: 'MV — Maintenance', desc: 'Minimum weekly sets to keep the muscle you have.' },
@@ -70,60 +42,20 @@ export function Analysis() {
   // empty list means "nothing logged" rather than "not loaded yet".
   const [volumeRead, setVolumeRead] = useState(false);
 
-  const fetchTrainingHours = useCallback(async () => {
-    try {
-      const userId = await getSessionUserId();
-      if (!userId) {
-        setTrainingHours(buildWeeklyTrainingHours([]));
-        return;
-      }
-
-      const from = startOfWeek(subWeeks(new Date(), 7), TRAINING_WEEK).toISOString();
-
-      const { data: workouts, error } = await supabase
-        .from('workouts')
-        .select('date, completed, completed_at, created_at')
-        .eq('user_id', userId)
-        .eq('completed', true)
-        .gte('created_at', from)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching training hours:', error);
-        setTrainingHours(buildWeeklyTrainingHours([]));
-        return;
-      }
-
-      setTrainingHours(buildWeeklyTrainingHours((workouts || []) as Array<{
-        date: string;
-        completed: boolean;
-        completed_at: string | null;
-        created_at: string;
-      }>));
-    } catch (error) {
-      console.error('Error fetching training hours:', error);
-      setTrainingHours(buildWeeklyTrainingHours([]));
-    } finally {
-      setHoursLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     let active = true;
     void Promise.resolve(calculateWeeklyVolume())
       .catch(() => {})
       .finally(() => { if (active) setVolumeRead(true); });
-    void fetchTrainingHours();
+    void fetchTrainingHours().then((points) => {
+      if (!active) return;
+      setTrainingHours(points);
+      setHoursLoading(false);
+    });
     return () => { active = false; };
-  }, [calculateWeeklyVolume, fetchTrainingHours]);
+  }, [calculateWeeklyVolume]);
 
-  const coached = useMemo(
-    () =>
-      weeklyVolume
-        .map((mv) => ({ mv, call: buildCoachingCall(mv) }))
-        .sort((a, b) => a.call.priority - b.call.priority || b.mv.weekly_sets - a.mv.weekly_sets),
-    [weeklyVolume]
-  );
+  const coached = useMemo(() => coachMuscles(weeklyVolume), [weeklyVolume]);
   // The same week summary and flag Today shows, so the two screens agree.
   const week = useMemo(() => summarizeWeekVolume(weeklyVolume), [weeklyVolume]);
   const insight = useMemo(() => pickInsight(weeklyVolume), [weeklyVolume]);

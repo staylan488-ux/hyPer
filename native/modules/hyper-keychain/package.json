@@ -1,0 +1,8 @@
+{
+  "name": "hyper-keychain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Keychain storage for the hyPer auth session, matching the Capacitor app's items.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

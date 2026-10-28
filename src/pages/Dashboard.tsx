@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandWordmark } from '@/components/intro/BrandWordmark';
-import { addDays, differenceInCalendarWeeks, format, parseISO } from 'date-fns';
+import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
 import { VolumeRail, SealMark, BankedStamp } from '@/components/shared';
 import {
   BigFigure,
@@ -19,8 +19,7 @@ import {
 import { useTargetSeal } from '@/hooks/useTargetSeal';
 import { VolumeMaquette } from '@/components/coaching/VolumeMaquette';
 import type { SealMacro } from '@/lib/targetSeal';
-import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
-import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
+import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { getWorkoutWriteSeq, useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -28,15 +27,17 @@ import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useTodayRefresh } from '@/hooks/useTodayRefresh';
 import { useWeekSessions } from '@/hooks/useWeekSessions';
-import { plannedDayForDate } from '@/lib/planSchedule';
 import { EMPTY_TOTALS, readTodayDay, recallTodayDay, rememberTodayDay, type TodayDaySnapshot } from '@/lib/todayDay';
 import { DEFAULT_MACRO_TARGET } from '@/types';
 import {
+  nextPlannedSession,
   pickInsight,
   plannedSetCount,
   summarizeWeekVolume,
   todayCapsule,
+  todayHero,
   TODAY_ACTION_PATHS,
+  weekSessionTarget,
   type HeroState,
 } from '@/components/dashboard/todayModel';
 
@@ -105,59 +106,23 @@ export function Dashboard() {
   const todayDone = today && today.todayDone !== undefined ? today.todayDone : loading ? undefined : null;
   const heroLoading = loading && !storeReady;
 
-  const hero = useMemo<HeroState>(() => {
-    if (heroLoading) return { kind: 'loading' };
-
-    if (currentWorkout && !currentWorkout.completed) {
-      const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
-      const upcomingSet = getWorkoutResumeSet(currentWorkout, workoutDay, currentWorkoutDayPlan);
-      const upcomingName = upcomingSet ? upcomingSet.exercise?.name
-        ?? workoutDay?.exercises.find((exercise) => exercise.exercise_id === upcomingSet.exercise_id)?.exercise?.name
-        ?? (currentWorkoutDayPlan?.workout_id === currentWorkout.id ? currentWorkoutDayPlan.items.find((item) => item.exercise_id === upcomingSet.exercise_id)?.exercise_name : null)
-        ?? 'Next exercise' : null;
-      const total = currentWorkout.sets.length;
-      const done = currentWorkout.sets.filter((s) => s.completed).length;
-      const dayName =
-        currentWorkout.split_day_id === null
-          ? 'Flexible'
-          : activeSplit?.days.find((d) => d.id === currentWorkout.split_day_id)?.day_name ?? 'Session';
-      return {
-        kind: 'resume',
-        completedSets: done,
-        totalSets: total,
-        title: 'Session in progress',
-        nextExercise: upcomingName,
-        nextSet: upcomingSet?.set_number ?? null,
-        nextWeight: upcomingSet?.weight ?? null,
-        nextReps: upcomingSet?.reps ?? null,
-        dayName,
-        exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
-        elapsed: currentWorkout.created_at
-          ? formatWorkoutDuration(Math.max(0, refreshedAt - new Date(currentWorkout.created_at).getTime()))
-          : '—',
-      };
-    }
-
-    if (todayDone === undefined) return { kind: 'loading' };
-    if (todayDone) return { kind: 'done', title: todayDone.title };
-
-    if (workoutMode === 'flexible') return { kind: 'flexible' };
-
-    if (!activeSplit) return { kind: 'first-run' };
-    if (scheduleLoading || scheduleWorkoutsLoading) return { kind: 'loading' };
-    if (scheduleError) return { kind: 'schedule-error', retry: retrySchedule };
-    if (!schedule) return { kind: 'no-schedule' };
-
-    const planned = plannedDayForDate(
-      parseISO(dayKey),
-      activeSplit.days,
-      schedule,
-      0,
-      scheduleWorkouts,
-      adaptiveSchedulingEnabled
-    );
-    return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
-  }, [heroLoading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
+  const hero = useMemo<HeroState>(() => todayHero({
+    heroLoading,
+    currentWorkout,
+    currentWorkoutDayPlan,
+    todayDone,
+    workoutMode,
+    activeSplit,
+    schedule,
+    scheduleLoading,
+    scheduleWorkoutsLoading,
+    scheduleWorkouts,
+    scheduleError,
+    retrySchedule,
+    refreshedAt,
+    dayKey,
+    adaptiveSchedulingEnabled,
+  }), [heroLoading, currentWorkout, currentWorkoutDayPlan, todayDone, workoutMode, activeSplit, schedule, scheduleLoading, scheduleWorkoutsLoading, scheduleWorkouts, scheduleError, retrySchedule, refreshedAt, dayKey, adaptiveSchedulingEnabled]);
 
   const remainingKcal = Math.max(0, Math.round((macroTarget?.calories || DEFAULT_MACRO_TARGET.calories) - nutritionTotals.calories));
   const hasAnyNutrition = nutritionTotals.calories > 0 || Boolean(macroTarget);
@@ -169,9 +134,7 @@ export function Dashboard() {
   const weekSessions = useWeekSessions(userId, dayKey, `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`);
   const weekDone = weekSessions.dates?.length ?? null;
   // Flexible mode has no weekly plan to count against.
-  const weekTarget = workoutMode === 'flexible' ? null
-    : schedule?.mode === 'fixed' && schedule.weekdays.length > 0 ? schedule.weekdays.length
-      : activeSplit?.days_per_week ?? null;
+  const weekTarget = weekSessionTarget(workoutMode, schedule, activeSplit);
 
   const programWeek = useMemo(() => {
     if (!schedule) return null;
@@ -180,16 +143,11 @@ export function Dashboard() {
   }, [schedule, dayKey]);
 
   // On a rest day, the next planned session by the same schedule rules.
-  const nextSession = useMemo(() => {
-    if (hero.kind !== 'rest' || !activeSplit || !schedule) return null;
-    const base = parseISO(dayKey);
-    for (let offset = 1; offset <= 14; offset += 1) {
-      const date = addDays(base, offset);
-      const day = plannedDayForDate(date, activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
-      if (day) return `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}`;
-    }
-    return null;
-  }, [hero.kind, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey]);
+  const nextSession = useMemo(() => (
+    hero.kind === 'rest'
+      ? nextPlannedSession({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
+      : null
+  ), [hero.kind, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey]);
 
   // Today's one primary action rides the command capsule, with main's
   // destinations: Start/Resume → Train, Log food → Fuel, Review → History.

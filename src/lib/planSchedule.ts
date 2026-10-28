@@ -37,6 +37,33 @@ export function defaultWeekdays(daysPerWeek: number): number[] {
   return [1, 2, 3, 4, 5, 6];
 }
 
+/** The schedule editor's choices, before they become a saved schedule. */
+export interface PlanScheduleChoices {
+  startDate: string;
+  mode: PlanMode;
+  /** Fixed: the weekday of the first training day (0 = Sunday). */
+  anchorDay: number;
+  /** Flexible: the split day that is up next. */
+  flexDayIndex: number;
+}
+
+/** Turns the editor's choices into the schedule to save, for the web and native editors alike. */
+export function buildPlanSchedule(
+  split: { id: string; days_per_week: number; days: readonly unknown[] },
+  choices: PlanScheduleChoices,
+): PlanSchedule {
+  const dayCount = split.days.length;
+  const flexIndex = dayCount > 0 ? normalizeBySize(choices.flexDayIndex, dayCount) : undefined;
+  return {
+    splitId: split.id,
+    startDate: choices.startDate,
+    mode: choices.mode,
+    weekdays: choices.mode === 'fixed' ? buildFixedWeekdays(choices.anchorDay, split.days_per_week) : [],
+    anchorDay: choices.mode === 'fixed' ? choices.anchorDay : 0,
+    flexAnchorIndex: choices.mode === 'flex' ? flexIndex : undefined,
+  };
+}
+
 export function buildFixedWeekdays(anchorDay: number, daysPerWeek: number): number[] {
   const offsetsByFrequency: Record<number, number[]> = {
     2: [0, 3],
@@ -461,5 +488,33 @@ export async function loadScheduleWorkouts(userId: string, splitDays: SplitDay[]
     if (error) throw error;
     workouts.push(...(data || []) as ScheduleWorkout[]);
     if (!data || data.length < pageSize) return workouts;
+  }
+}
+
+// ── Plan-start prompt ──────────────────────────────────────────────
+// After a program is created or set active, Program offers to set Day 1 and
+// the rhythm, unless the program already has a schedule (here or in the
+// cloud) or the person chose Later for it on this device.
+
+function planStartPromptKey(userId: string, splitId: string): string {
+  return `plan-start-prompt:dismissed:${userId}:${splitId}`;
+}
+
+export function dismissPlanStartPrompt(userId: string, splitId: string): void {
+  try {
+    globalThis.localStorage?.setItem(planStartPromptKey(userId, splitId), '1');
+  } catch {
+    // Storage unavailable: the prompt may show again next time.
+  }
+}
+
+/** True when the program has no schedule and Later was not chosen for it. A failed cloud read counts as no schedule. */
+export async function shouldPromptPlanStart(userId: string, splitId: string): Promise<boolean> {
+  const schedule = await loadPlanScheduleAsync(userId, splitId).catch(() => null);
+  if (schedule) return false;
+  try {
+    return globalThis.localStorage?.getItem(planStartPromptKey(userId, splitId)) !== '1';
+  } catch {
+    return true;
   }
 }

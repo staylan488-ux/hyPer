@@ -1,0 +1,8 @@
+{
+  "name": "hyper-barcode",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scans a food barcode with Apple's VisionKit data scanner.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

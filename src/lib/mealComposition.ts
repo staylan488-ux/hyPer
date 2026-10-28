@@ -148,6 +148,16 @@ function draftKey(userId: string, draftId: string): string {
   return DRAFT_PREFIX + encodeURIComponent(userId) + ':' + encodeURIComponent(draftId);
 }
 
+/** Ingredients to add to a meal: a composed meal expands into its own parts, each with a new id. */
+export function expandMealIngredients(ingredients: MealIngredient[], newId: () => string = () => crypto.randomUUID()): MealIngredient[] {
+  return ingredients.flatMap((item) => {
+    const composition = decodeMealComposition(item.food.description);
+    return composition
+      ? scaleMealIngredients(composition.ingredients, item.servings).map((part) => ({ ...part, id: newId() }))
+      : [item];
+  });
+}
+
 export function parseMealDraft(value: unknown): MealDraft | null {
   if (!record(value) || !boundedString(value.name) || !['saved', 'search', 'barcode', 'manual', 'photo'].includes(value.method as string)
     || !boundedString(value.date, 10) || !/^\d{4}-\d{2}-\d{2}$/.test(value.date) || !Number.isFinite(Date.parse(value.date)) || new Date(value.date).toISOString().slice(0, 10) !== value.date

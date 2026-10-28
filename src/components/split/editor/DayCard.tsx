@@ -3,22 +3,12 @@ import { AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { LineButton } from '@/components/metal';
 import { useSplitEditStore, type DraftDay } from '@/stores/splitEditStore';
-import { exerciseBlocks } from '@/lib/splitDraft';
+import { blockStartIndexes, dayLabel as labelForDay, daySummary, exerciseBlocks } from '@/lib/splitDraft';
 import { CommitInput } from './CommitInput';
 import { DragHandle, SortableItem, SortableList } from './SortableList';
 import { ExerciseBlock } from './ExerciseBlock';
 import { RowMenu } from './RowMenu';
 import type { PickExercise } from './types';
-
-function blockStartIndexes(blocks: ReadonlyArray<readonly unknown[]>): number[] {
-  const starts: number[] = [];
-  let start = 0;
-  for (const block of blocks) {
-    starts.push(start);
-    start += block.length;
-  }
-  return starts;
-}
 
 /**
  * A training day: a one-line overview until opened, then its name and
@@ -46,8 +36,8 @@ export const DayCard = memo(function DayCard({
   const moveExerciseTo = useSplitEditStore((s) => s.moveExerciseTo);
 
   const fallbackName = `Day ${index + 1}`;
-  const dayLabel = day.day_name.trim() || fallbackName;
-  const exerciseSummary = day.exercises.map((exercise) => exercise.exercise.name).join(' · ');
+  const dayLabel = labelForDay(day, index);
+  const exerciseSummary = daySummary(day);
   const blocks = useMemo(() => exerciseBlocks(day.exercises), [day.exercises]);
   const blockIds = useMemo(() => blocks.map((block) => block[0].id), [blocks]);
   // Where each block's first exercise sits in the day, for its number.
@@ -91,7 +81,7 @@ export const DayCard = memo(function DayCard({
               aria-label={`Edit ${dayLabel}, ${day.exercises.length} exercises`}
             >
               <span className="split-day-name">{dayLabel}</span>
-              <span className="split-day-summary">{exerciseSummary || 'No exercises yet'}</span>
+              <span className="split-day-summary">{exerciseSummary}</span>
             </button>
           )}
 

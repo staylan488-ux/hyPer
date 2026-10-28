@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clearRestTimerSession,
   createRestTimerSession,
+  extendRestTimerSession,
   getRestTimerRemainingSeconds,
   parseRestInput,
   pauseRestTimerSession,
@@ -115,6 +116,40 @@ describe('restTimer helpers', () => {
     expect(shouldKeepRestAlertsOnUnmount(pauseRestTimerSession(running, now), 'workout-1', 'workout-1')).toBe(false);
     expect(shouldKeepRestAlertsOnUnmount(syncRestTimerSession(running, new Date('2026-03-10T12:02:00.000Z')), 'workout-1', 'workout-1')).toBe(false);
     expect(shouldKeepRestAlertsOnUnmount(createRestTimerSession('workout-2', 90, now), 'workout-1', 'workout-1')).toBe(false);
+  });
+});
+
+describe('extendRestTimerSession', () => {
+  const start = new Date('2026-10-27T10:00:00.000Z');
+
+  it('moves a running rest’s end and grows its full length', () => {
+    const session = createRestTimerSession('workout-1', 90, start);
+    const extended = extendRestTimerSession(session, 30, new Date(start.getTime() + 60_000));
+
+    expect(extended.status).toBe('running');
+    expect(extended.endsAt).toBe('2026-10-27T10:02:00.000Z');
+    expect(extended.durationSeconds).toBe(120);
+    expect(extended.remainingSeconds).toBe(60);
+    expect(extended.startedAt).toBe(session.startedAt);
+  });
+
+  it('adds to a paused rest’s time left and keeps it paused', () => {
+    const paused = pauseRestTimerSession(createRestTimerSession('workout-1', 90, start), new Date(start.getTime() + 50_000));
+    const extended = extendRestTimerSession(paused, 30);
+
+    expect(extended.status).toBe('paused');
+    expect(extended.remainingSeconds).toBe(70);
+    expect(extended.durationSeconds).toBe(120);
+    expect(getRestTimerRemainingSeconds(extended)).toBe(70);
+  });
+
+  it('leaves a finished rest, and a zero or negative change, alone', () => {
+    const session = createRestTimerSession('workout-1', 90, start);
+    const finished = syncRestTimerSession(session, new Date(start.getTime() + 91_000));
+
+    expect(extendRestTimerSession(finished, 30)).toBe(finished);
+    expect(extendRestTimerSession(session, 0)).toBe(session);
+    expect(extendRestTimerSession(session, -30)).toBe(session);
   });
 });
 

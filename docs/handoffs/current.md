@@ -1,4 +1,808 @@
-# Current work snapshot — a single set stuck on every retry
+# Current work snapshot — native rebuild in Blanc (React Native + Expo)
+
+Recorded 2026-10-26 (Pacific). The owner said the UI never felt right after many
+redesigns, chose the Blanc direction from the
+[Native Reset board](https://claude.ai/artifact/BpCMr6sj8G1i18zFP1atkk), and set
+the goal as a full native app. They also ruled out copying existing designs:
+the first draft's Margiela stitches and circled numbered label were replaced by
+hyPer's own set tally (also the test app's icon). Plan:
+[native rebuild](../plans/2026-10-26-native-blanc.md); guide:
+[blanc-native skill](../../.agents/skills/blanc-native/SKILL.md).
+
+Work is on `feat/native-blanc` (from origin/main af16add) in
+`.claude/worktrees/native-blanc`. With the owner's approval, milestone 1 is
+committed (37637a1), pushed, and open as draft PR #152
+(https://github.com/staylan488-ux/hyPer/pull/152). No merge, release or
+production step was requested.
+
+## Milestone 9: parity check and cutover prep (2026-10-28)
+
+Worked in `.claude/worktrees/gifted-dijkstra-fbf451` (fast-forwarded to
+`origin/feat/native-blanc` 254a0d6, pushed back to `feat/native-blanc`).
+
+Parity walk: five read-only passes against the web app (Today and Train, Fuel,
+History/Progress/Program, You/sign-in/WHOOP/Health/Run, and every database
+write the native app can make). Nothing put saved data at risk. Zero-weight and
+zero-rep sets (Alex) are accepted, saved and shown everywhere. Every food AI
+path defaults to Gemini and needs no Mac worker; a fresh install (and the
+cutover, which cannot read the web view's storage) lands on Gemini.
+
+Real-database checks: a throwaway local Supabase (OrbStack, `supabase start`
+from a scratch workdir with `schema.sql` plus the additive migrations, grants
+for `authenticated` and `service_role`) and a vitest harness that signs in and
+calls the shared stores (kept out of the repo, in the worktree's ignored
+`.tmp/`). Passed: a program saved through the shared editor with a superset,
+start a day, log 0 lb × 10, 40 lb × 0 and 0 × 0 (RPE 8), correct a set,
+add/remove sets, swap and switch back, a note, finish; rest length saved to
+`exercise_rest_preferences` and read back on a fresh device; a long run and an
+8-lap splits run saved (retry idempotent) and their laps loaded; food saved
+through the native `saveFoodEntry`, including a meal deleted on another
+device; a flexible session's set count kept in its quick start. Production was
+read only: zero-row `select … limit=0` reads with the anon key confirmed every
+column the native app writes exists (macro_targets.source/updated_at,
+nutrition_profiles, foods.description, workouts' WHOOP columns,
+exercises.category and the rest). No production data was read or written.
+
+Fixed:
+- Fuel: one-tap + now refreshes Fuel, Today and the widgets, cannot log the
+  same row twice, and on Search logs exactly the basis it shows ("165 kcal
+  per 100 g"); before, it logged a household portion it never showed.
+- Gemini review: decimals can be typed (Amount eaten, Nutrition per,
+  macros; also the worker Photo tab's grams) through `useDecimalText`.
+- The AI tab stays mounted while hidden, so an analysis in flight and each
+  food's retry-safe ids survive a tab switch; a Manual hand-off waits for a
+  running analysis.
+- A new entry on a past day starts Unassigned (no meal guessed from the clock);
+  an edit without a saved time reads its day at noon, as on the web; the
+  sheet picks up the day's meals when they land late; a meal deleted on
+  another device saves the entry Unassigned instead of failing every retry.
+- Fuel shows a dash, not 0, before the day loads; AI entries say "Estimate"
+  or "From label"; the analysis usage line says when the UTC-day count starts
+  over locally.
+- Train: the screen stays awake during a live workout (Train and its sheets);
+  the next workout no longer opens on the last movement chosen; Finish cannot
+  be tapped twice; ± keys round to two decimals; a failed "Last time" lookup
+  retries on the next set; resuming through Start reloads the day plan; a
+  flexible session's set changes go into its plan (so a quick start keeps
+  them), and finishing says when it replaces a quick start of the same name.
+- Finish summary: no "Volume 0 lb" for a bodyweight session; the best set
+  ranks load, then weight, then reps ("12 reps" when bodyweight).
+- Number fields show "–" when empty: a "0" placeholder looked like a value
+  but saved nothing (the past-set sheet left the set unlogged).
+- History: an activity opens `train/activity-view` (type, start, duration,
+  distance, pace, strain, heart rate, energy, source, notes and a run's
+  splits); rows show strain; deleting an activity asks first.
+- Sign-up's email link (`<scheme>://auth/callback`) now signs in through
+  `native/src/app/+native-intent.tsx` instead of an unmatched route.
+- Sign-out clears Fuel's day, the finish summary and the account-day state.
+- Health sync carries over: the released app turns it on once for an account
+  that has Apple Health weights (`native/src/lib/healthCarryOver.ts`).
+- Shared: `formatSegmentDistance` moved into `src/lib/activityMetrics.ts`
+  (web History uses it); `foodTrialUsageLine` takes a clock.
+
+Cutover prepared (not done; needs the owner's approval):
+- `native/app.config.js`: `HYPER_APP=release` builds the released app
+  (`app.hyper.mobile`, scheme `app.hyper.mobile`, extension
+  `app.hyper.mobile.HyperWidgets`, "hyPer", version 2.0.0) and
+  `HYPER_BUILD_NUMBER` the build number; without it, the test app as before.
+  `ITSAppUsesNonExemptEncryption` is now false in both.
+- The scheme follows the bundle ID iOS reports (JavaScript through
+  `modules/hyper-keychain/bundle.ts`, widgets through
+  `WidgetSnapshotStore.appScheme`), so the sign-in return becomes
+  `app.hyper.mobile://auth/callback` (the Capacitor app's, already allowed in
+  Supabase) and WHOOP's `app.hyper.mobile://settings` reaches the app.
+- Release builds default to the real account (sample data only with
+  `EXPO_PUBLIC_HYPER_PREVIEW=1`).
+- `scripts/ship.sh` (the ship bot's script, run from main) now ships the
+  native app through `native/fastlane/Fastfile` and
+  `native/scripts/check-release.sh`; the Capacitor `ios/` app is no longer
+  shipped once this is on main. `build-phone.sh` builds either variant.
+- Carry-over at cutover: the Keychain session (service `<bundle ID>.auth`),
+  HealthKit, location, notification and Live Activity permissions, the run
+  recorder's files and controls. Lost (web view storage): theme (back to
+  Automatic), weight unit (back to lb), a live rest, drafts, a run in
+  progress at update time, and the food analysis choice (back to Gemini).
+- Apple account: automatic signing must add the App Group `group.app.hyper`
+  to the `app.hyper.mobile` and `app.hyper.mobile.HyperWidgets` App IDs (the
+  Capacitor app had none); no new App ID is needed.
+
+Checked in a temporary iPhone 17 Pro simulator (sample data, scripted UI
+tests): an activity opens its view (summary, notes, eight splits), a full
+swipe on an activity asks before deleting, a Search row reads "165 kcal /
+100 g" and turns to "Added · 165 kcal" with its tick inert, and "1.5" types
+into a Gemini item's Amount eaten. The released variant (prebuilt with
+`HYPER_APP=release`) built for the simulator, ran as `app.hyper.mobile`
+("hyPer", 2.0.0, extension `app.hyper.mobile.HyperWidgets`, encryption flag
+off), opened Fuel from `app.hyper.mobile://fuel`, and an
+`app.hyper.mobile://auth/callback` link landed on Today instead of an
+unmatched route. Not exercised: an App Store archive and upload (needs the
+owner's approval and the Apple account change above), anything on the phone
+under the released bundle ID, a real sign-up email, and WHOOP consent under
+the new identity.
+
+With the owner's standing approval for test installs, a real-account Release
+build of 4db78d9 (the test app, `app.hyper.native`) is installed on the
+owner's iPhone (iOS did not open it; the phone was locked). The temporary
+simulator, the local Supabase, the build folders and the test harness were
+removed afterwards; the iOS project is prebuilt for the test app with Release
+frameworks in place (run `use-rn-core.sh Debug` before a simulator build).
+The cutover steps were put to the owner for one approval in the thread on
+2026-10-28; none has been taken.
+
+Not changed on purpose (minor, recorded for later): merge of 3+ activities in
+one step, the Target sets field in History, RPE below 6, Train's week strip,
+"beat last time" marks, Progress's training-time detail, You's About build
+number, and an account deletion row (an App Store review need, with backend
+work).
+
+Built (milestone 1, preview data only): Expo SDK 58 app in `native/` reusing
+`src` through a Metro alias, with native swaps in `native/src/platform`; Blanc
+theme and components; Today, live workout (log set, RPE action sheet, rest
+after a successful save, Retry on failure, change movement, finish with a
+full-screen tally summary), Fuel day, Log food sheet (saved foods and USDA
+search) and a basic You. Native tab bar with the live-workout accessory, large
+titles, form sheet, SF Symbols, haptics. The USDA food-row rule was ported from
+FoodLogger with a TODO to move it into `src/lib`.
+
+Checks: `native` type-check (including the shared code it imports); 1,847 web
+tests including `tests/nativeSessionModel.test.ts`; eslint (now ignoring
+`native/`); test type-check; web build. Simulator runs (iPhone 17 Pro Max, light
+and dark) covered Today, Train, logging two sets, finish, Fuel, the food sheet,
+adding a food and You, driven by Debug launch arguments. A signed Release build
+(`app.hyper.native`, "hyPer Native", preview mode) was installed on the owner's
+iPhone over Wi-Fi and launched. Touch interaction, haptics and the keyboard bar
+were not exercised on a device.
+
+Owner feedback on the phone build (same day) and fixes:
+- Tab switches had no haptic (iOS's tab bar is silent). Tabs, header items, the
+  live-workout bar, the RPE chip and the keyboard Done key now tap, matching the
+  web app's haptic rule.
+- Choosing another movement made the screen twitch: the code scrolled a
+  large-title page to y = 0, which short pages cannot hold, so it snapped back.
+  A scroll trace showed the old path jumping from −166 toward 0 and back to
+  −116; the screen now scrolls only when the card is hidden, and the trace shows
+  no movement.
+- The iOS 26 tab bar stuck on Train (it stayed small on the way up, then opened
+  on the way down) and never shrank on Today. UI tests with real swipes on
+  iPhone 17 Pro and 17 Pro Max simulators showed a plain SwiftUI tab app does
+  the same at the same page lengths: iOS needs roughly 170 points of scroll
+  travel, and the workout accessory moving inline cuts travel by 57 points.
+  Tab root pages now use `native/src/components/TabScroll.tsx`, which tops up
+  any page that scrolls to 200 points of travel and leaves pages that fit alone.
+  Repeated drags at the very bottom still open and close the bar, as in Apple's
+  control. Shrinking stays on for every tab (the owner wants it there).
+- From the parity inventory: food saves now use the day's meal groups ("Adds to"
+  defaults to the meal that fits the time, or Unassigned), retry-safe entry ids,
+  and the session user id; `crypto.randomUUID` is provided via expo-crypto.
+
+The owner confirmed the tab bar on the phone ("Looks great now!") and approved
+saving the work and starting milestone 2 with its safety work. That work is done
+and, with the owner's approval, committed to the same branch and draft PR #152;
+the plan's milestone 2 entry lists it:
+- The native Supabase client uses the web client's `timedFetch` deadlines and
+  refresh diagnostics, and runs the shared `authResume` steps on iOS app state
+  (active resumes; inactive or background pauses, as the Capacitor shell did).
+  Simulator check: with `EXPO_PUBLIC_SUPABASE_URL` pointing at a local server
+  that never answers, `-hyperAction probeTimeout` logged status 0 with an
+  AbortError after 30,041 ms; the server saw the app close the connection at
+  29,971 ms.
+- New native swaps in `native/src/platform`: haptics (iOS haptic engine),
+  keep-awake (`expo-keep-awake`, now a direct dependency, already linked),
+  rest notifications (no-op until milestone 3), `commitFocusedField` (no
+  react-dom) and app visibility; `@capacitor/status-bar` is shimmed.
+- `src/lib/appVisibility.ts` is new shared code: Today refresh, WHOOP foreground
+  sync and the program draft autosave use it instead of `document`. Web
+  behaviour is unchanged (their existing tests pass; new tests cover the
+  helper).
+- The native bridge now uses the app's own scheme, so the shared OAuth callback
+  parser accepts `hyper-native://auth/callback` and rejects the Capacitor app's
+  callback (tested).
+- Sample-data mode still logs sets and starts rest in the simulator.
+
+The owner then asked to build sign-in. Built and, with the owner's approval,
+committed (7052cf6) to draft PR #152 (details in the plan's milestone 2 entry): sign-in and offline screens behind Expo
+Router guards, Keychain session storage (`native/modules/hyper-keychain`, same
+items as the Capacitor app), Google and Apple through iOS's sign-in sheet,
+account loading after sign-in, sign-out in You, and the missing Web Crypto parts
+from expo-crypto. Shared changes: `createSecureAuthStorage` (the Keychain is a
+parameter; web behaviour and tests unchanged) and a Row fix so a Start button
+inside a row is reachable by VoiceOver.
+
+Verified in the simulator against a throwaway local Supabase backend (the
+reference schema plus local-only table grants, which newer local stacks no
+longer add): sign in, relaunch still signed in, start a session and log a set
+(the set is in the database), sign out, relaunch still signed out. The Google
+sheet opens and closing it shows nothing. Sample-data mode still works.
+Production was not touched; the owner's phone still has the sample-data build.
+
+Build note: Debug and Release share prebuilt React Native, Hermes and Expo
+frameworks that are swapped per configuration, and `pod install` drops the
+markers. Run `native/scripts/use-rn-core.sh Debug|Release` before a build whose
+configuration changed (a mismatch failed to link, then crashed at launch).
+
+After signing in on the phone, the owner found Today too empty: with no live
+session it showed only Fuel. Today now has the web's training card by the same
+rule, moved into shared code (`todayHero`, `nextPlannedSession`,
+`weekSessionTarget` in `src/components/dashboard/todayModel.ts`, tested in
+`tests/todayHero.test.ts`; the web Dashboard calls them unchanged). One card: the
+planned day with Start (starts it and opens Train), a rest day or "Trained
+today" with the next session, or a short prompt. "This week" always shows
+sessions done of planned, plus a muscles row once something is trained. The
+owner asked to avoid the web's bloat, so the blanc-native skill now has a
+restraint rule. Checked in the simulator against the local backend (planned,
+live, finished, rest day) and in sample mode. Committed to draft PR #152 with
+the owner's approval, and a new real-account Release build with it is installed
+on the owner's phone (launched and running; the owner's own schedule not yet
+seen).
+
+The owner approved setting up sign-in on the phone with the real account: add
+`hyper-native://auth/callback` to the production project's (Hypertrophy-App,
+`nnwfaaxmyvqsdnfcdxom`) Auth redirect allow-list, and install a Release build
+that uses production. The phone build reads the web app's `.env` only inside
+the build command (`EXPO_PUBLIC_HYPER_PREVIEW=0` plus URL and anon key); nothing
+is written to the repo. That build (production host present in the bundle, no
+local test hosts) is installed on the owner's iPhone and launched without
+crashing; signing in there is the owner's step. The allow-list change was made in the Supabase dashboard
+after the owner signed in to Supabase in the app's browser (`supabase config
+push` would overwrite the whole production auth config, providers included, and
+reading the CLI's saved token was refused by the session's safety check). After
+a reload the list shows `hyper-native://auth/callback`: 32 URLs, previously 31,
+the others and the Site URL unchanged. CocoaPods was installed via Homebrew for native builds.
+
+The owner then asked for the startup animation and the old hyPer logo back:
+the red P as the app's symbol and home-screen icon, upgraded rather than copied.
+From the [mark board](https://claude.ai/artifact/P393qgKxM7heBwoRKZRhf1) they
+chose direction C (P monogram) with a longer hold on the spelled-out word. With
+the owner's approval it is committed (45636a4) to draft PR #152, and a
+real-account Release build with it is installed on the owner's phone, where the
+owner confirmed it works:
+- The red italic P (Fraunces Mark Medium Italic, subset to five glyphs, OFL in
+  `native/assets/fonts`) is the app icon (light, dark, tinted), sits in Today's
+  top-left header slot, and replaces the tally on sign-in and offline. Red now
+  also marks the brand P; Fraunces appears nowhere else; the tally stays for
+  set progress. The launch screen is plain chalk (black in dark mode).
+- Cold-launch intro (`native/src/components/BrandIntro.tsx`): once the first
+  screen has mounted and frames run smoothly, the P blooms, "hyPer" unfolds out
+  of it and holds about 0.9 s, the letters fold back, and the P flies to its
+  resting mark as the screen rises in under a lifting veil, with a soft haptic.
+  A tap skips ahead; Reduce Motion and scripted dev launches leave it out.
+  Geometry comes from the font metrics (`native/src/lib/brandGeometry.ts`,
+  tested in `tests/nativeBrandMark.test.ts`); the landing spot is read from
+  UIKit by a new local module, `native/modules/hyper-view`.
+- React Native's new renderer drops the italic when a font is named by its face
+  name and picks the family's upright face; the mark names family, weight and
+  style instead.
+
+Verified in the iPhone 17 Pro simulator (Debug, sample data and a signed-out
+run) from screen recordings checked frame by frame: light and dark, Today and
+sign-in landings, the hand-over to the resting P within half a point (softened
+by a 180 ms fade), tap-to-skip, Reduce Motion, the new home-screen icon. Checks:
+1,873 tests, lint with instruction checks, test type-check, web build, native
+type-check. Not verified: the offline screen (needs a saved session without a
+network), and the dark and tinted icons on a home screen (the simulator shows
+light icons).
+
+Milestone 3 started with the owner's pick, the in-workout essentials. A
+movement sheet (⋯ on the current card, a finished
+movement's row, or a long press on any row) corrects a logged set, adds or
+removes sets within the program's range, keeps a movement note (saved after a
+pause, on close and in the background) and swaps a movement for this workout or
+switches it back. Session order, swaps and set ranges come from the new shared
+`src/lib/sessionPlan.ts`, which the web Train page now also uses (same
+behaviour); later sets start from the set just logged, as on the web. Checked
+with UI-test taps in sample mode and against a throwaway local Supabase
+backend, where the database held each change in the web's format (corrected
+set, set count, `workouts.notes` JSON, the swap in `workout_day_plans` with
+`substitutes_for`) and a relaunch restored the note and the swap before
+switching back. Dark mode checked.
+
+The owner then asked for three changes:
+- Sets can be added or removed whatever the program says (1 to 12; only
+  unfinished sets are removed). The web still keeps to the program's range.
+- Rest length editing is back: a rest sheet with 1, 2, 3 and 5 minutes or a
+  custom time, kept per movement through the shared `restPreferences` (synced
+  to `exercise_rest_preferences`, as on the web); a logged set now rests at its
+  movement's length instead of a fixed 2 minutes.
+- A timer button in Train's header (beside Finish) opens that sheet to start a
+  rest without logging a set, add 30 seconds or end it.
+UI-test taps in sample mode covered these (a chosen 3:00 survived a relaunch);
+the rest-length sync was not checked against a database.
+
+With the owner's approval, the Train work is committed (3c952f7) to draft PR
+#152, and a real-account Release build with it is installed on the owner's
+phone (production host in the bundle, no local test hosts or test-account
+values; launched and still running after the intro). Not yet tried there.
+Still to build for milestone 3: start or schedule a session, flexible mode,
+supersets, reorder, and add or remove movements.
+
+The owner then asked for rest on a locked phone: the "Rest over" alert, pause,
+and the lock-screen countdown. With the owner's approval it is committed
+(2735031) to draft PR #152, and a real-account Release build with it is
+installed on the owner's phone (production host in the bundle, no local test
+hosts or test-account values; the widget signs as `app.hyper.native.widgets`
+under the team's wildcard profile, and the app has no push entitlement). The
+launch after install was refused because the phone was locked, so the build
+has not been opened yet. What it does:
+- The rest is now the web's stored rest session (`src/lib/restTimer.ts`, plus
+  a new `extendRestTimerSession` for +30 s): it runs, pauses and resumes, and
+  survives leaving Train and a force quit. The rest sheet has +30 s, Pause or
+  Resume, and End rest; the workout bar shows a paused rest.
+- "Rest over" uses expo-notifications through the native swap of
+  `src/lib/restNotifications.ts`, with the web's words and single slot. It is
+  local only (`enableRemoteNotifications: false`, so no push entitlement) and
+  asks for permission on the first rest. In the app it plays the sound with no
+  banner, alongside the haptic.
+- The workout Live Activity is a SwiftUI widget extension (HyperWidgets,
+  `app.hyper.native.widgets`) added on prebuild by
+  `native/plugins/withHyperWidgets.js` from `native/targets/widgets`, driven by
+  a local ActivityKit module, `native/modules/hyper-activity`. As on the web,
+  the card shows the movement that's up, the shared detail line, the session
+  clock and a rest countdown with a draining bar; a paused rest shows its time
+  left still. It uses Blanc's tokens and the red P (font bundled in the
+  extension). The ordering rules moved from `src/lib/liveActivity.ts` into
+  `src/lib/workoutActivitySync.ts`, which the web file now wraps (same
+  behaviour, its tests pass); `restTimerWorkoutGuard` gained an optional
+  callback so native drops its copy of a cleared rest.
+Checked with UI tests in the iPhone 17 Pro simulator (sample data, light and
+dark): the notification prompt, pause and resume, the Dynamic Island (P and
+countdown, paused), the lock-screen card (running and paused), "Rest over"
+delivered while locked, the card counting down on its own while locked, a
+rest surviving a force quit, and finishing the workout removing the card. The
+earlier rest and set-count test still passes. Checks: 1,894 tests, lint with
+instruction checks, web build, native type-check. Not verified: anything on a
+phone (sound, haptic, the card's look on a real lock screen), and the card's
+"rest over" state after a rest ends with the app away (iOS redraws a stale
+card on its own schedule; the simulator's always-on display draws lock-screen
+frames ahead of time, so its captures run ahead of the real clock). iOS asks
+"Allow Live Activities?" the first time the card reaches the lock screen.
+Building this needs a regenerated iOS project (`expo prebuild --clean`); a
+phone build also registers the extension's App ID through automatic signing.
+
+The owner confirmed the locked-phone rest build works on the phone. The rest
+of milestone 3 followed (2026-10-27), matching the web's Train rules:
+- Before a session, Train shows today's card from the schedule (the same
+  `PlanCard` as Today: planned day with Start, rest day or trained today with
+  the next session, or "Set your schedule"), the program's week, and every
+  other day with Start plus the web's note on how that shifts the plan.
+- A header menu (⋯) holds Schedule and "Train by": program days or flexible
+  sessions (`setWorkoutMode`; the web keeps this on Program, which native
+  builds in milestone 6). The schedule sheet has the web editor's choices
+  (Day 1 today, tomorrow or a picked date; set weekdays from a first day, or
+  in order from a chosen day) and saves through the new shared
+  `buildPlanSchedule`, which the web Train page now also uses. The shared
+  `usePlanSchedule` takes an optional revision so native screens re-read a
+  schedule saved on the device (web unchanged).
+- Flexible mode: name the session or pick one of up to six quick starts, then
+  Add movement (the exercise picker now serves swap, add and superset), pair
+  a superset or remove a movement from its movement sheet, rename from the
+  header pencil, and on Finish choose "Finish and save as quick start".
+  Adding and removing movements stays flexible-only, as on the web.
+- Supersets (program or flexible) alternate A1, B1, A2 and rest only after B,
+  with the reason shown when a set is out of turn. The rules moved out of
+  the web page into `supersetFlows` and `supersetLogBlock` in
+  `src/lib/sessionPlan.ts`; both apps use them.
+- Reorder: a sheet from "Reorder" on the Movements section, built on SwiftUI's
+  List in edit mode (Expo UI), so the handles and drag are Apple's. Pairs move
+  as one row; each drop saves the session order at once
+  (`reorderWorkoutExercises`, program untouched) and a failed save puts the
+  previous order back with a note.
+Work moved to this session's own worktree
+(`.claude/worktrees/pensive-gagarin-e7e1ec`, branch
+`claude/pensive-gagarin-e7e1ec` tracking `origin/feat/native-blanc`) because
+the session may not write into `.claude/worktrees/native-blanc`; it was pushed
+to `feat/native-blanc`, so that worktree's local branch is now behind origin.
+Checked with UI-test taps in the iPhone 17 Pro simulator (sample data): the
+start screen, the menu, the schedule sheet (both rhythms, a picked date,
+saved and re-read); a flexible session from empty through Add movement (two),
+a superset (A1 logged moved to B1 with no rest, B1 started rest), reorder by
+dragging a handle (the curl moved to the top and stayed), remove with its
+confirm, rename, and "Finish and save as quick start" with the quick start
+offered afterwards. Dark mode checked for the live workout, reorder, start
+screen and schedule. Fixed during the check: typing the session name quickly
+could put the cursor back mid-word (the field now keeps its own text), and
+the workout bar says "No movements yet" for an empty session. Checks: 1,904
+tests (new ones for superset rounds, the flexible model and the schedule
+builder), lint with instruction checks, web build, native type-check. Not
+verified: a reorder save that fails (the sample backend never fails; the
+sheet clears its pending order on failure, so the saved order shows again),
+anything on a phone, and against a real database (flexible writes, quick
+starts, schedule sync). Metro once served stale copies of two edited files;
+`npx expo start --clear` fixed it.
+With the owner's approval, a real-account Release build of this commit is
+installed on the owner's iPhone (production host in the bundle, no local test
+backend). iOS refused to open it after install, most likely because the phone
+was locked, so it has not been opened yet.
+The owner then saw the flexible name field's hint ("Upper, push, arms…")
+drawn with its letters squeezed together on the phone (dark mode). The
+simulator showed the same; iOS's own placeholder in that field misdrew, and
+a version without a line height drew nothing at all, while the picker's
+search placeholder is fine. The hint is now plain text behind the empty
+field (also a VoiceOver hint), checked in light and dark. This Mac has no
+watchman, so Metro can miss edits made by scripts: restart it with
+`npx expo start --clear` before trusting a simulator check.
+A real-account Release build with this fix is installed on the owner's phone
+and opened there.
+
+Milestone 4, Fuel, followed with the owner's go-ahead (2026-10-27). Built on
+`feat/native-blanc` in this session's own worktree (another session's hook
+blocks editing `.claude/worktrees/native-blanc` from here):
+- Shared rules first. The web logger's food-row choice moved out of
+  components into `src/lib`: `ensureFoodRow` (foodPersistence, the USDA
+  basis rule that native/src/lib/fuel.ts had copied; that TODO is closed),
+  `buildEntryPayload` and `chosenFoodLogSource` (saveNutritionEntry),
+  `lookupBarcode` (new barcodeLookup), `resolveManualFood` (new manualFood),
+  `loadSavedMeals`, `replaceSavedMeal`, suggestions and matching (savedMeals),
+  photo grounding, totals and the combined or per-item save (new photoReview),
+  day changes for groups and entries (new nutritionDay), the calendar, ledger
+  labels, day summary and units (new nutritionCalendar, nutritionLedger,
+  fuelSummary, foodUnits). FoodLogger, MealLogger, BarcodeScanner,
+  NutritionGroupLedger and the Fuel page call them, with the same behaviour;
+  `tests/fuelShared.test.ts` covers them.
+- Fuel tab: Sunday-first week strip (swipe for another week; future days off),
+  eaten kcal of target with the web's left/over line on today, macros, meal
+  sections (Unassigned first; empty Breakfast/Lunch/Dinner hidden, a hand-made
+  meal or snack stays), a calendar sheet with dots (`fuel-month`), Add meal or
+  snack. Entries: tap to edit; swipe for More and Delete (no confirm, as on the
+  web); hold for Edit, Move to…, Move to yesterday (before 05:00 only) and
+  Delete. A meal's ⋯ logs food into it, moves it up or down, or deletes a
+  hand-made one. The Fuel store now loads a month (`useFuelStore.select`), and
+  Today reads `todayTotals`.
+- Log food sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`):
+  Saved (filter, review, one-tap +, Edit to change or delete, New), Search
+  (USDA as you type, Retry), Scan (VisionKit through the new local module
+  `native/modules/hyper-barcode`, a port of the Capacitor plugin; digits too;
+  a miss creates a saved product bound to the code), Manual (Describe with AI
+  through the photo worker, saved-meal suggestions, servings stepper, Save as
+  reusable or Update saved meal), Photo (top and 45° photos from camera or
+  library, re-encoded to the worker's JPEG budget, item review with USDA
+  sources, Log as one meal). A chosen food gets the review (amount and unit,
+  When, "This entry"). When = iOS date and time pickers plus Add to; another
+  day logs Unassigned. Build a meal keeps the web draft key and rules
+  (resume, destination check, retry save, discard). Closing mid-analysis or
+  with an unseen estimate asks first.
+- Camera permission (`expo-image-picker` config, the Capacitor app's wording);
+  `build-phone.sh` now also passes the web `.env` photo worker URL.
+Not ported: drag to move entries or groups (menus instead) and the "Entry
+saved" toast (a success haptic instead).
+The owner then said they log food only with Gemini, never the private photo
+worker (Alex's). The native app now defaults to Gemini (`VITE_FOOD_ANALYSIS_MODE`
+falls back to `gemini` in `native/babel/vite-env.js`; a stored device choice
+still wins): the AI tab (`native/src/fuel/AiTab.tsx`, the web FoodTrialLogger:
+text and up to two photos, one follow-up question, item review, sources,
+Save as reusable), Manual's "Review with Gemini" hand-off, and "Describe
+amount" on the food review. The item-to-food rules moved to `src/lib/foodTrial`
+(`trialItemFood`, `trialLogSource`, `trialIngredientFood`). Metro watches
+`supabase/functions/analyze-food-trial`; native setup adds
+`AbortSignal.timeout` and `structuredClone` when Hermes lacks them.
+The owner also set the interaction standard ("This should work, and it does"):
+saved meals now swipe for Edit and Delete (a full swipe deletes, no confirm;
+the row folds away and returns if it fails) and hold for a menu; entries,
+meal ingredients and AI items use the same `SwipeRow`. An app-wide
+interaction audit is deferred until parity.
+A real-account Release build of 434ccca is installed on the owner's phone
+(the first install attempt failed with an iOS install error and a retry
+worked); iOS refused to open it, most likely because the phone was locked.
+Checked in a new "hyPer Fuel" simulator (iPhone 17 Pro, sample data, light and
+dark) with a scripted UI test: swipe actions, More and Move to, delete,
+saved review and log, one-tap add, Scan by digits (VisionKit is unavailable in
+the simulator), photo analyze and Log 1 meal, Describe with AI then log,
+build a meal and log it, editing an entry, month sheet, adding a snack, USDA
+search. Checks: 1,929 tests, lint with instruction checks and test
+type-check, web build, native type-check. Not verified: the camera scanner
+and photo capture on a phone, and writes against a real database (only the
+sample backend ran). The iOS project needs `expo prebuild --clean` for the
+new module and permission; pod install needs `LANG=en_US.UTF-8`.
+With the owner's approval, a real-account Release build of this commit is
+installed on the owner's iPhone and opened there. The Mac's disk filled during
+that build (1.9 GB free); with the owner's go-ahead only rebuildable output
+was deleted (Xcode DerivedData for hyPerNative, an old session's scratch
+builds, the test simulator), leaving about 18 GB. Builds and simulators from
+the native work had used roughly 55 GB; keep one simulator and delete scratch
+build folders when a session ends.
+
+Milestone 5, History and Progress, followed with the owner's go-ahead
+(2026-10-27), in this session's own worktree
+(`.claude/worktrees/objective-banach-56ee89`, pushed to `feat/native-blanc`):
+- Shared rules first: `src/lib/historyMonth.ts` (month load with day names,
+  Sunday-first grid, movement order with superset partners and plan notes,
+  neighbour moves, the past-set update rule, day summary),
+  `buildActivityInput` and `guardActivityEdit` in `activitySessions`,
+  `src/lib/volumeCoaching.ts` (coaching call and order),
+  `src/lib/trainingHours.ts` and `averageLoggedDays`. The web History,
+  Coaching and WeeklyNutrition use them unchanged in behaviour; covered by
+  `tests/historyMonth.test.ts` and `tests/progressShared.test.ts`.
+- History (Train header, clock button, before a session): a month calendar
+  in a native paging scroll view (swipe or arrows; a turned page selects its
+  first day or today), Today and WHOOP Sync header buttons, and the day's
+  workouts and activities. Workouts: tap to open, swipe to delete (asks
+  first), hold for Open/Delete. Activities: tap to edit, swipe for Merge and
+  Delete, hold for Edit, Merge with… and Delete; WHOOP-known activities are
+  hidden rather than deleted, as on the web. Add activity sheet
+  (`native/src/app/activity.tsx`).
+- A past workout (`native/src/app/(tabs)/train/past.tsx`): every movement's
+  sets (tap to correct in `past-set`, swipe to delete, hold for a menu), Add
+  set, a ⋯ menu per movement (Add set, note via iOS's text prompt, Move up or
+  down, Superset with… or Unlink, Remove movement), Add movement (the shared
+  picker now also serves past workouts), WHOOP stats attach and remove, and
+  Delete workout (header menu or the red row; asks first, then returns).
+  Every edit runs the web's protocol (`runWorkoutEdit`: edit, reload,
+  completion only after a clean save), one at a time per workout
+  (`native/src/lib/history.ts`). Deliberate difference from the web: after a
+  past-workout edit or delete, this week's volume is recalculated.
+- Progress (Today's "This week" → Progress): the flat front and back muscle
+  figure from the web's maquette shapes (react-native-svg, new native
+  dependency), tap a muscle to open its row; muscles by coaching priority
+  with a landmark rail and, opened, the landmarks in plain words and the
+  recommendation; training time over eight weeks; calories and protein over
+  the last seven days against target.
+Checked in the iPhone 17 Pro simulator (sample data) with a scripted UI test
+using real touches: calendar paging both ways and the arrows, opening a
+workout, correcting a set (the figure selects on tap), swipe-delete with
+renumbering, Add set, Move down, Add movement from the picker, a note, Delete
+workout with its confirm, adding an activity, the long-press menus, the
+header menu, Progress, and dark mode for Progress and a past workout. Found
+and fixed: the set sheet's auto-focused weight appended typed digits instead
+of replacing them; a sideways swipe on the calendar triggered iOS 26's
+swipe-back (now a paging scroll view, which iOS lets win); the old day stayed
+selected after a month turn. Checks: 1,945 tests, lint with instruction
+checks and test type-check, web build, native type-check. Not verified:
+writes against a real database (only the sample backend ran), WHOOP sync and
+attach with a real connection, and anything on a phone until the build
+below. Building needs `expo prebuild --clean` for react-native-svg.
+
+The owner confirmed milestone 5 on the phone and asked to keep going.
+Milestone 6, Program, followed (2026-10-27), in this session's own worktree
+(`.claude/worktrees/great-varahamihira-1cfca3`, pushed to `feat/native-blanc`;
+a hook blocks writing into other worktrees, and its native folders were
+cloned copy-on-write from objective-banach):
+- Shared rules first: `src/lib/programSummary.ts` (counts, which program
+  shows as active, set and rep labels, quick-start labels, rename with the
+  overwrite question), `src/lib/programQuestions.ts` (the five guided
+  questions, blank day choices, the guided draft with its "left out"
+  notice), `shouldPromptPlanStart` and `dismissPlanStartPrompt` in
+  `planSchedule`, and `dayLabel`, `daySummary`, `blockStartIndexes`,
+  `pickerTargetFor` in `splitDraft` (`exerciseBlocks` is now generic).
+  `discardSplitEdit` takes the confirm to use (the web sheet by default).
+  The web Program page, chooser, editor sheet and day card use them,
+  unchanged in behaviour; `tests/programShared.test.ts` covers them.
+- Program (`train/program`, from Train's ⋯ menu, which now holds Schedule
+  and Program; "Train by" moved here as a segmented control, locked during
+  a workout). Programs: tap to view (`train/program-view`: days and
+  exercises, Edit, Set active or Make active, Delete), swipe for Edit and
+  Delete, hold for Set active, Edit, Delete. Delete asks first, as on the
+  web, and refuses the program of a workout in progress (deliberate change:
+  the web allows it and the workout then drops off Train). Quick starts in
+  flexible mode: Start, tap or hold for the list and Start, Rename (iOS text
+  prompt; a clashing name asks to replace) and Delete; swipe for Rename and
+  Delete (a full swipe deletes with no question; the row folds away and
+  returns if it fails). Today's and Train's "No program yet" card now
+  offers Create.
+- The editor (`native/src/app/program-edit`, a page sheet with its own
+  stack) runs the shared `splitEditStore`, device draft autosave and save
+  protocol: the chooser (resume an unsaved program, five questions with a
+  live plan name, or blank days), name and description, days (tap to open,
+  swipe to remove with Undo, hold for rename, move or remove, Reorder with
+  iOS's list handles), a day's exercises (tap for the sets and reps sheet
+  with steppers and a set range, swipe to swap or remove with Undo, hold for
+  everything incl. superset and move), the restore offer for unsaved edits,
+  and Cancel or swipe-down asking before unsaved edits go. The picker
+  (`swap.tsx`, now built on `native/src/components/ExercisePicker.tsx`)
+  adds several exercises at once and creates a custom exercise from the
+  search text (it joins the library on save). After create or Set active,
+  the web's plan-start question offers the schedule.
+- Fixed for every swipe list: a full swipe never ran its destructive action
+  (the row sprang back past the threshold and disarmed itself before
+  settling); `SwipeRow` now decides at release.
+Checked in the iPhone 17 Pro simulator (sample data) with scripted UI tests
+using real taps, drags and swipes: list, view, swipe and full swipe, delete
+with its question and the in-progress guard, edit (sets stepper, range,
+swap, multi-add, remove and Undo, day drag), save through the snapshot
+(view shows the change), guided and blank create with the plan-start
+question and Set now, the unsaved-program offer after a relaunch, Cancel
+and swipe-down discard questions, Make active, flexible mode with a saved,
+renamed quick start; dark mode for list, editor, picker and sets sheet.
+Found and fixed on the way: the picker sheet drew blank (its root was not
+a scroll view; Add moved to the header), long names were clipped, and Sets
++ made a range when there was none. Checks: 1,959 tests, lint with
+instruction checks and test type-check, web build, native type-check, and
+the web Program page in the browser (sandbox). Not verified: saves against
+a real database (only the sample backend), custom exercise insert on save,
+and the first-run card (sample data always has a program).
+With the owner's approval, a real-account Release build of 721b963 is
+installed on the owner's iPhone over Wi-Fi (production host in the bundle,
+no local test backend); iOS refused to open it because the phone was
+locked. Build output was deleted afterwards (simulator DerivedData, the
+phone build folder); the Release React Native frameworks are in place, so
+run `use-rn-core.sh Debug` before the next simulator build.
+
+The owner confirmed milestone 6 on the phone. Milestone 7, You, followed
+(2026-10-27), in this session's own worktree
+(`.claude/worktrees/trusting-euler-be9eef`, pushed to `feat/native-blanc`):
+- Shared rules first, used by the web You page too: target defaults, hand
+  edits, drift, daily-burn wording, resume and sign-out wording in
+  `settingsUx`; weigh-in wording, parsing and unit switch in the new
+  `bodyWeightSummary`; the calculator's draft rules in the new
+  `nutritionWizard` (the web wizard now runs on them); WHOOP wording and the
+  consent return in the new `whoopStatus`; `connectOrSyncHealthWeights`,
+  `healthSyncMessage` and `deleteManualBodyWeight` in `healthWeights`;
+  `foodTrialUsageLine` in `foodTrialUsage`. `useNativeHealthSync` uses
+  `appVisibility`, and Health checks `hasNativeHealth()` instead of the
+  Capacitor test. Covered by `tests/youShared.test.ts`.
+- Deliberate changes: the calculator prefills weight to one decimal (it used
+  to round to whole numbers, so saving it recorded a made-up weigh-in, on the
+  web too); typed weigh-ins can be deleted (swipe), Health ones cannot (a
+  later sync would bring them back); Suggest targets shows only when
+  Food analysis is Your Mac and a worker is set (the coach has no Gemini
+  path yet; the owner asked on 2026-10-27 why it ignores Gemini, and a
+  hosted coach needs a production function deploy); You has no search; Appearance reads Automatic, Light, Dark.
+- You (see the blanc-native skill for the routes): name and account, body
+  weight with Log, targets, saved meals (a built meal opens the meal builder
+  through `log-food?savedMeal=`), food analysis and the Mac worker,
+  connections, appearance menu, adaptive scheduling switch, about. The tab
+  layout now runs WHOOP foreground sync and Apple Health weight sync, as the
+  web shell does.
+- Apple Health: `native/modules/hyper-health` (HealthKit read of body mass,
+  observer, background delivery), entitlements and the usage text in
+  `app.json`. Needs `expo prebuild --clean`; the phone build registers
+  HealthKit for `app.hyper.native` through automatic signing.
+- Fuel's Scan tab no longer opens the camera on arrival (the owner's
+  request); Scan barcode does.
+Checked in a temporary iPhone 17 Pro simulator (sample data) with scripted
+UI tests: You, Body weight (chart tap readout, full-swipe and button delete
+of weigh-ins, Log weight with the unit switch), targets edit with the drift
+note and the discard question, the calculator through to saved targets, the
+coach's sample suggestion into the edit sheet, saved meals (edit numbers,
+full-swipe delete, a built meal edited and saved from You), food analysis,
+Mac worker, WHOOP connect (sample), Apple Health permission sheet and sync,
+appearance Dark persisting across a relaunch and back to Automatic, account
+name, about; dark mode for the new screens. Checks: 1,977 tests, lint with
+instruction checks and test type-check, web build, native type-check. Not
+verified: anything against a real database, WHOOP's real consent screen and
+return, Apple Health with real samples (the simulator had none), the Scan
+button on a phone, and the web You page in a browser.
+With the owner's approval, a real-account Release build of d0a233b is
+installed on the owner's iPhone over Wi-Fi (production host in the bundle,
+no local test backend; HealthKit entitlements signed for `app.hyper.native`);
+iOS refused to open it because the phone was locked. The phone build folder,
+this session's simulator DerivedData and the temporary simulator were
+deleted afterwards; the Release React Native frameworks are in place, so run
+`use-rn-core.sh Debug` before the next simulator build.
+
+After trying it on the phone (2026-10-27), the owner asked for three fixes,
+all on `feat/native-blanc`:
+- Suggest targets follows the Food analysis choice. With the owner's
+  approval, `analyze-food-trial` gained a `suggest-targets` action (Gemini,
+  the Mac worker coach's reasoning rules, the same daily limit and replay)
+  and was deployed to Hypertrophy-App. The deploy used the live copy of
+  `model.ts`, which is older than main's (main's parallel Tavily searches
+  are still undeployed); a later full deploy of the function ships them.
+  Checked live only to the sign-in gate (401 without a session).
+- Calculate targets: gain rates raised at the owner's request (lean bulk
+  0.15–0.35% a week, starting 0.25; bulk 0.35–0.75%, starting 0.5), rates
+  shown per week with lb a month, and a choice between the learned burn and
+  the formula when a learned one exists. Formula targets are saved as set by
+  hand, or the weekly adaptive update would pull them back to the learned
+  burn. The owner's case (130 lb, 5'9", 12% body fat, bulk) gave 2,160 kcal
+  from a learned burn near 2,060 and a +100 kcal bulk. A saved rate outside
+  the new ranges is moved to the nearest edge the next time targets adapt.
+- "Discard these changes?" asked again after Discard and never closed: the
+  guard stopped its own re-sent close. Every You sheet now uses
+  `useLeaveGuard` in `native/src/lib/leaveGuard.ts`, which steps aside
+  before closing.
+Checked in a temporary simulator (sample data with adaptive on): the bulk
+rate and its weekly and monthly wording, the burn choice, and Discard closing
+both the calculator and the edit sheet. A real-account Release build of
+ff86dc6 is installed and opened on the owner's iPhone; the build folder, the
+simulator and its DerivedData were deleted afterwards.
+
+The owner then found the targets still low (about 2,300 kcal for a 0.5%
+bulk) and asked to redo the calculation from the evidence. Rebuilt in
+`src/lib/nutritionCalculator.ts` (shared with the web app):
+- Resting rate: Cunningham (500 + 22 x fat-free mass) when body fat is
+  known, which tracks lean, trained people best against calorimetry
+  (Tinsley et al. 2019; Katch-McArdle read about 150 kcal low); Mifflin-St
+  Jeor otherwise.
+- Activity levels inside the doubly-labelled-water ranges (FAO/WHO/UNU
+  2004): 1.4, 1.55, 1.7, 1.85, 2.0, up from 1.25 to 1.8.
+- About 7,700 kcal per kg for gains as well as losses (overfeeding studies
+  measure about 8,000 kcal per kg gained, Forbes et al. 1986); it was 6,000.
+  The adaptive estimator uses the same figure.
+- Unchanged: the 10–20% surplus ceiling (Iraki et al. 2019), protein 2.0 g
+  per kg of lean mass (2.4 when cutting), fat about 25%.
+- The calculator shows the target as burn plus change ("2,791 burn + 334 to
+  gain") and says when the learned burn sits more than 15% under the
+  formula (usually unlogged food).
+For the owner (130 lb, 5'9", 12% body fat, 0.5% a week): 3,125 kcal
+moderately active, 2,860 lightly active, 2,385 on their learned burn of
+about 2,060. Golden tests in `tests/nutritionCalculator.test.ts` were
+recomputed by hand. Raising activity levels also raises cut and maintenance
+targets for everyone on the next calculation, and the adaptive estimator's
+"predicted" burn rises with them.
+- Train: tapping the workout bar during a rest now opens the rest panel
+  (the owner's request); otherwise it still returns to the workout.
+- Train: each movement shows last time's note (the newest earlier workout
+  with one, from the shared `fetchPreviousMovementNotes`) under the set
+  card's "Last time" line and in the movement sheet's Note section. The web
+  app has no such view; the sample data now carries two movement notes.
+Checked in a temporary simulator: the calculator with the owner's numbers
+(3,125 kcal, "2,791 burn + 334 to gain"), the rest bar opening the rest
+panel, and last time's note on the card and in the sheet.
+A real-account Release build of 3e809d1 is installed on the owner's iPhone
+(iOS did not open it, likely a locked phone); the build folder, simulator
+and DerivedData were deleted.
+
+2026-10-28: saving targets from Suggest targets always failed ("Could not
+save daily targets"). The coach sheet staged the whole suggestion, so its
+rationale, cautions and confidence went into the `macro_targets` upsert, and
+PostgREST refused the unknown columns (PGRST204). Fixed twice over: the sheet
+stages only the four numbers, and `updateMacroTarget` in the shared store
+sends only the table's columns (`macroTargetColumns` in `settingsUx`). The
+sample backend accepts any field, so the simulator check had missed it.
+Reproduced and confirmed against a throwaway local Supabase with
+`supabase/schema.sql`: the old payload failed with PGRST204 and the new one
+saved; production was not written to.
+A real-account Release build of 5d75e87 (with milestone 8's Run and widgets)
+is installed and opened on the owner's iPhone; the build folder was deleted.
+A save from the phone is the owner's to try.
+
+Milestone 8, Run tracker and widgets, followed (2026-10-27, the owner asked
+to keep going while away from home), in this session's own worktree
+(`.claude/worktrees/elegant-joliot-6c1457`, pushed to `feat/native-blanc`):
+- Shared rules first: the run page's words and choices moved into
+  `src/lib/runDisplay.ts` (mode names, auto-split choices and checks, pace
+  and distance wording, the live status, the finished run's splits, the
+  diagnostics export, the save error); the web page uses it unchanged in
+  behaviour. `useRunTracker` asks the bridge's new `hasNativeRun()` instead
+  of the Capacitor test and hears the app return through `appVisibility`
+  instead of `document`. Covered by `tests/runDisplay.test.ts`.
+- `native/modules/hyper-run`: the Capacitor recorder ported call for call
+  (permission with temporary full accuracy, then Motion; the JSONL trace and
+  UserDefaults controls under the same keys; background location; never
+  restarting on its own; the run Live Activity at most every 3 s; the
+  diagnostics share sheet from the topmost screen) plus native lap and
+  sprint tones (`RunCuePlayer`) that mix over music with the screen locked.
+  New app settings: location and motion usage text, background modes
+  `location` and `audio`, App Group `group.app.hyper`.
+- Run (`native/src/app/run.tsx`; Train ⋯ menu, You's Start a run, or the
+  run card): set up, live, finished, save to History, discard (asks first),
+  export diagnostics. A refused location shows Open Settings on the set-up
+  screen. The screen draws its own top bar: toggling a modal's iOS header
+  rebuilds the screen and would drop the run.
+- The run card (`targets/widgets/RunLiveActivity.swift`): distance, pace
+  line and clock, Split / Rest or Resume / Finish (a second tap within 8 s
+  finishes), opening the run on tap; a card the app stopped updating says
+  so. `RunControlIntent` is compiled into the app as well, since iOS runs a
+  Live Activity button in the app's process.
+- Widgets (`targets/widgets/HomeWidgets.swift`): Fuel (small, medium, and
+  the lock screen's circular, rectangular and inline) and Training (small,
+  medium with the next three days, lock-screen rectangular and inline). The
+  app writes a snapshot to the App Group (`native/src/lib/widgets.ts`,
+  rules in `widgetPlan.ts` with `tests/nativeWidgetPlan.test.ts`); signing
+  out clears it; at midnight the widgets move to the next day on their own.
+Checked in a temporary iPhone 17 Pro simulator (sample data) with scripted UI
+tests: a simulated long run (rest, resume, hold to finish, save into
+History), a simulated 8 × 400 splits run (auto and manual splits, the splits
+table, the share sheet), and the real recorder on a `simctl location` route:
+recording on with the screen locked (distance kept growing), the Dynamic
+Island and lock-screen card, Rest from the lock screen reaching the app, Finish
+twice from the lock screen ending the run, and a killed app resuming the run.
+Fuel and Training widgets added through the home screen's widget gallery,
+showing the app's numbers and the saved schedule's days, light and dark;
+tapping Fuel opened Fuel. Checks: 2,000 tests, lint with instruction checks
+and test type-check, web build, native type-check.
+Not verified: anything on a phone (GPS accuracy, the cues' sound, haptics,
+the card on a real lock screen), the lock-screen widget sizes (built, not
+placed), saving a run against a real database, and the web run page in a
+browser.
+With the owner's standing approval for installs, a real-account Release build
+of 0e35d2a is installed and opened on the owner's iPhone (production host in
+the bundle; the App Group signed for the app and the widget extension through
+automatic signing). iOS asks for location, Motion and Live Activities the
+first time they are used. The temporary simulator, its build folder and the
+phone build folder were deleted; the Release React Native frameworks are in
+place, so run `use-rn-core.sh Debug` before the next simulator build.
+
+# Previous work snapshot — a single set stuck on every retry
 
 Recorded 2026-10-25 (Pacific). The owner supplied screenshots of an unsaveable
 Lat Pulldown set and reported that deleting/re-adding it worked. They requested

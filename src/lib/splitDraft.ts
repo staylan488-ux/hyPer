@@ -1,3 +1,4 @@
+import { pendingExercises } from '@/lib/customExercises';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { Exercise, Split } from '@/types';
 
@@ -110,8 +111,8 @@ export function fixDayOrders(days: DraftDay[]): DraftDay[] {
  * block, every other exercise its own. Only neighbours share a block, the same
  * rule the up/down moves have always used.
  */
-export function exerciseBlocks(exercises: DraftExercise[]): DraftExercise[][] {
-  const blocks: DraftExercise[][] = [];
+export function exerciseBlocks<T extends { superset_group_id?: string | null }>(exercises: readonly T[]): T[][] {
+  const blocks: T[][] = [];
   for (const exercise of exercises) {
     const last = blocks.at(-1);
     if (last && exercise.superset_group_id && last[0].superset_group_id === exercise.superset_group_id) {
@@ -192,4 +193,63 @@ export function newDraftExercise(exercise: Exercise, order: number, overrides: P
 
 export function newDraftDay(dayName: string, order: number, exercises: DraftExercise[] = []): DraftDay {
   return { id: createTempId(), day_name: dayName, day_order: order, exercises, _isNew: true };
+}
+
+// ═══════════════════════════════════
+// LABELS AND PICKER
+// ═══════════════════════════════════
+
+/** A day's name, or "Day N" when it has none. */
+export function dayLabel(day: Pick<DraftDay, 'day_name'>, index: number): string {
+  return day.day_name.trim() || `Day ${index + 1}`;
+}
+
+/** A day's exercises in one line, or "No exercises yet". */
+export function daySummary(day: Pick<DraftDay, 'exercises'>): string {
+  return day.exercises.map((exercise) => exercise.exercise.name).join(' · ') || 'No exercises yet';
+}
+
+/** Where each block's first exercise sits in the day, for its number. */
+export function blockStartIndexes(blocks: ReadonlyArray<readonly unknown[]>): number[] {
+  const starts: number[] = [];
+  let start = 0;
+  for (const block of blocks) {
+    starts.push(start);
+    start += block.length;
+  }
+  return starts;
+}
+
+export type ProgramPickMode = 'add' | 'swap' | 'superset';
+
+export interface ProgramPickerTarget {
+  dayId: string;
+  mode: ProgramPickMode;
+  exerciseId?: string;
+  /** Swap and superset open on the source's muscle; add opens on all. */
+  initialMuscleGroup?: Exercise['muscle_group'];
+  /** The day's exercises, never offered again. */
+  excludeExerciseIds: string[];
+  /** Custom exercises typed in this edit, not in the library until save. */
+  extraExercises: Exercise[];
+}
+
+export const PROGRAM_PICKER_TITLES: Record<ProgramPickMode, string> = {
+  add: 'Add exercises',
+  swap: 'Swap exercise',
+  superset: 'Add superset exercise',
+};
+
+/** What the exercise picker offers for a day of the draft. */
+export function pickerTargetFor(draft: DraftSplit, dayId: string, mode: ProgramPickMode, exerciseId?: string): ProgramPickerTarget {
+  const day = draft.days.find((entry) => entry.id === dayId);
+  const source = exerciseId ? day?.exercises.find((entry) => entry.id === exerciseId) : undefined;
+  return {
+    dayId,
+    mode,
+    exerciseId,
+    initialMuscleGroup: mode === 'add' ? undefined : source?.exercise.muscle_group,
+    excludeExerciseIds: day?.exercises.map((entry) => entry.exercise_id) ?? [],
+    extraExercises: pendingExercises(draft),
+  };
 }

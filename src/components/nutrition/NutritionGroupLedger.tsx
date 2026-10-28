@@ -3,7 +3,8 @@ import { format } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoveLeft, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/shared';
-import { getLogDate, getLogTimestamp, sumNutritionLogCalories } from './nutritionLogUtils';
+import { getLogDate, sumNutritionLogCalories } from './nutritionLogUtils';
+import { servingLabel, sortLedgerEntries, sourceLabel } from '@/lib/nutritionLedger';
 import { moveNutritionGroup, nutritionGroupLabel, sortNutritionGroups } from '@/lib/nutritionGroups';
 import { springs } from '@/lib/animations';
 import { decodeMealComposition } from '@/lib/mealComposition';
@@ -42,31 +43,6 @@ interface NutritionGroupLedgerProps {
   onDeleteGroup: (group: NutritionGroup) => void;
 }
 
-function sourceLabel(source?: string): string {
-  if (source === 'meal_builder') return 'Meal';
-  if (!source || source === 'manual') return 'Manual';
-  if (source === 'usda') return 'USDA';
-  if (source === 'cronometer_csv') return 'Cronometer';
-  if (source === 'photo_openai') return 'OpenAI photo';
-  if (source === 'photo_anthropic') return 'Claude photo';
-  if (source === 'gemini_label') return 'Gemini · label reviewed';
-  if (source === 'gemini_estimate' || source === 'gemini_trial') return 'Gemini estimate';
-  if (source === 'barcode_fatsecret') return 'FatSecret';
-  if (source === 'barcode_open_food_facts') return 'Open Food Facts';
-  if (source === 'barcode') return 'Barcode';
-  return 'Manual';
-}
-
-function servingLabel(log: Pick<NutritionLedgerEntry, 'food' | 'servings'>): string {
-  const unit = log.food?.serving_unit?.trim();
-  const servingSize = Number(log.food?.serving_size) || 1;
-  if (unit && unit.toLowerCase() !== 'serving') {
-    const amount = Math.round(servingSize * log.servings * 100) / 100;
-    return `${amount} ${unit}`;
-  }
-  return `${log.servings} serving${log.servings !== 1 ? 's' : ''}`;
-}
-
 export function NutritionGroupLedger({
   logs,
   groups,
@@ -83,9 +59,7 @@ export function NutritionGroupLedger({
   const [activeDropId, setActiveDropId] = useState<string | null>(null);
   const orderedGroups = useMemo(() => sortNutritionGroups(groups), [groups]);
 
-  const sortedLogs = (entries: NutritionLedgerEntry[]) => [...entries].sort((a, b) => (
-    (a.sort_order || 0) - (b.sort_order || 0) || getLogTimestamp(a) - getLogTimestamp(b)
-  ));
+  const sortedLogs = (entries: NutritionLedgerEntry[]) => sortLedgerEntries(entries);
 
   const dropInto = (groupId: string | null) => {
     if (draggedId) onMove(draggedId, groupId);

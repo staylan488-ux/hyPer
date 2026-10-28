@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
-import { normalizeFoodName } from '@/components/nutrition/foodLoggerUtils';
+import { normalizeFoodName, numbersNearlyEqual } from '@/components/nutrition/foodLoggerUtils';
 import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersistence';
+import type { Food } from '@/types';
 
 // Saved meals are foods rows with one of these sources. Deleting or replacing
 // one moves it to manual_entry, so past logs that point at it keep their food.
@@ -59,4 +60,76 @@ export async function retireSavedMeal(userId: string, mealId: string): Promise<{
     .eq('user_id', userId)
     .in('source', [...SAVED_MEAL_SOURCES]);
   return { error };
+}
+
+type SavedMealRow = Pick<Food, 'id' | 'user_id' | 'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'fdc_id' | 'description'> & {
+  serving_size: number | null;
+  serving_unit: string | null;
+};
+
+const SAVED_MEAL_COLUMNS = 'id, user_id, name, calories, protein, carbs, fat, serving_size, serving_unit, source, fdc_id, description';
+
+/** The user's saved meals as foods, one per name, newest first. */
+export async function loadSavedMeals(userId: string): Promise<{ meals: Food[]; error: unknown }> {
+  const { data, error } = await listSavedMealRows<SavedMealRow>(userId, SAVED_MEAL_COLUMNS);
+  if (error) return { meals: [], error };
+  const meals = dedupeSavedMealsByName(data, (meal): Food => ({
+    id: meal.id,
+    user_id: meal.user_id,
+    name: meal.name,
+    calories: Number(meal.calories) || 0,
+    protein: Number(meal.protein) || 0,
+    carbs: Number(meal.carbs) || 0,
+    fat: Number(meal.fat) || 0,
+    serving_size: Number(meal.serving_size) || 1,
+    serving_unit: meal.serving_unit || 'serving',
+    source: 'custom',
+    fdc_id: meal.fdc_id,
+    description: meal.description,
+  }));
+  return { meals, error: null };
+}
+
+/** Same name (case and spacing ignored) and the same macros within 0.05. */
+export function foodValuesMatch(a: OneServingFoodValues, b: OneServingFoodValues): boolean {
+  return normalizeFoodName(a.name) === normalizeFoodName(b.name)
+    && numbersNearlyEqual(a.calories, b.calories)
+    && numbersNearlyEqual(a.protein, b.protein)
+    && numbersNearlyEqual(a.carbs, b.carbs)
+    && numbersNearlyEqual(a.fat, b.fat);
+}
+
+/** Saved meals for a typed name: starts-with matches first, then contains, at most six. */
+export function savedMealSuggestions<T extends { name: string }>(meals: readonly T[], typed: string): T[] {
+  const query = normalizeFoodName(typed);
+  if (query.length < 2) return [];
+  const startsWith = meals.filter((meal) => normalizeFoodName(meal.name).startsWith(query));
+  const contains = meals.filter((meal) => {
+    const name = normalizeFoodName(meal.name);
+    return !name.startsWith(query) && name.includes(query);
+  });
+  return [...startsWith, ...contains].slice(0, 6);
+}
+
+/** Saved meals whose name contains the filter text. */
+export function filterSavedMeals<T extends { name: string }>(meals: readonly T[], filter: string): T[] {
+  const query = normalizeFoodName(filter);
+  if (!query) return [...meals];
+  return meals.filter((meal) => normalizeFoodName(meal.name).includes(query));
+}
+
+/**
+ * Replaces a saved meal with new values for future logs: inserts the new meal,
+ * then retires the old one (past logs keep pointing at it). When retiring
+ * fails the new meal still exists, so the caller warns that both are listed.
+ */
+export async function replaceSavedMeal(
+  userId: string,
+  oldMealId: string,
+  values: OneServingFoodValues,
+): Promise<{ id: string | null; retireFailed: boolean }> {
+  const { id } = await insertSavedMeal(userId, values);
+  if (!id) return { id: null, retireFailed: false };
+  const { error } = await retireSavedMeal(userId, oldMealId);
+  return { id, retireFailed: Boolean(error) };
 }

@@ -71,39 +71,41 @@ const ALL_FIXTURES: Array<[string, MacroTargetInput]> = [
 
 describe('golden values', () => {
   it('lean male cutting, no body fat supplied — Mifflin path', () => {
-    // BMR  = 10(82) + 6.25(180) - 5(30) + 5 = 1800
-    // TDEE = 1800 x 1.50 = 2700
-    // -0.7 %/wk of 82 kg = -0.574 kg/wk -> -631 kcal/day, inside the 675 cap
-    // Protein 2.2 x 82 = 180.4 -> 180 g; fat 22% of 2069 = 50.6 -> 50 g
+    // RMR  = 10(82) + 6.25(180) - 5(30) + 5 = 1800
+    // TDEE = 1800 x 1.70 = 3060
+    // -0.7 %/wk of 82 kg = -0.574 kg/wk x 7700 / 7 = -631 kcal/day, inside the 765 cap
+    // Protein 2.2 x 82 = 180.4 -> 180 g; fat 22% of 2428.6 = 59.4 -> 60 g
+    // Carbs (2428.6 - 720 - 540) / 4 = 292.1 -> 290 g
     const r = calculateMacroTargets(LEAN_MALE_CUT);
 
     expect(r.bmr).toBe(1800);
-    expect(r.tdee).toBe(2700);
+    expect(r.tdee).toBe(3060);
     expect(r.bmrMethod).toBe('mifflin_st_jeor');
     expect(r.tdeeIsMeasured).toBe(false);
     expect(r.protein).toBe(180);
-    expect(r.carbs).toBe(225);
-    expect(r.fat).toBe(50);
-    expect(r.calories).toBe(2070);
+    expect(r.carbs).toBe(290);
+    expect(r.fat).toBe(60);
+    expect(r.calories).toBe(2420);
     expect(r.notes).toEqual([]);
-    expect(r.projectedKgPerWeek).toBeCloseTo(-0.573, 3);
-    expect(r.effectiveRatePctPerWeek).toBeCloseTo(-0.7, 2);
+    expect(r.projectedKgPerWeek).toBeCloseTo(-0.582, 3);
+    expect(r.effectiveRatePctPerWeek).toBeCloseTo(-0.71, 2);
   });
 
-  it('the same lifter at 22% body fat — Katch-McArdle path, fat-mass cap binds', () => {
+  it('the same lifter at 22% body fat — Cunningham path, fat-mass cap binds', () => {
     // FFM  = 82 x 0.78 = 63.96, fat mass = 18.04
-    // BMR  = 370 + 21.6(63.96) = 1751.5; TDEE = 2627.3
+    // RMR  = 500 + 22(63.96) = 1907.1; TDEE = 1907.1 x 1.70 = 3242.1
     // Requested 631 kcal deficit exceeds 31 x 18.04 = 559.2, so it is eased
-    // Protein 2.4 x 63.96 = 153.5 -> 155 g
+    // Protein 2.4 x 63.96 = 153.5 -> 155 g; fat 22% of 2682.9 = 65.6 -> 65 g
+    // Carbs (2682.9 - 620 - 585) / 4 = 369.5 -> 370 g
     const r = calculateMacroTargets(LEAN_MALE_CUT_WITH_BODY_FAT);
 
-    expect(r.bmr).toBe(1752);
-    expect(r.tdee).toBe(2627);
-    expect(r.bmrMethod).toBe('katch_mcardle');
+    expect(r.bmr).toBe(1907);
+    expect(r.tdee).toBe(3242);
+    expect(r.bmrMethod).toBe('cunningham');
     expect(r.protein).toBe(155);
-    expect(r.carbs).toBe(250);
-    expect(r.fat).toBe(50);
-    expect(r.calories).toBe(2070);
+    expect(r.carbs).toBe(370);
+    expect(r.fat).toBe(65);
+    expect(r.calories).toBe(2685);
     expect(r.notes.map((n) => n.code)).toEqual(['deficit_capped_fat_mass']);
     expect(r.requestedRatePctPerWeek).toBe(-0.7);
     // The guard slowed the cut relative to what was asked for.
@@ -111,52 +113,85 @@ describe('golden values', () => {
   });
 
   it('female maintaining', () => {
-    // BMR  = 10(62) + 6.25(165) - 5(35) - 161 = 1315.25
-    // TDEE = 1315.25 x 1.375 = 1808.5, no delta
-    // Protein 1.8 x 62 = 111.6 -> 110 g; fat 25% of 1808.5 = 50.2 -> 50 g
+    // RMR  = 10(62) + 6.25(165) - 5(35) - 161 = 1315.25
+    // TDEE = 1315.25 x 1.55 = 2038.6, no delta
+    // Protein 1.8 x 62 = 111.6 -> 110 g; fat 25% of 2038.6 = 56.6 -> 55 g
+    // Carbs (2038.6 - 440 - 495) / 4 = 275.9 -> 275 g
     const r = calculateMacroTargets(FEMALE_MAINTAIN);
 
     expect(r.bmr).toBe(1315);
-    expect(r.tdee).toBe(1808);
+    expect(r.tdee).toBe(2039);
     expect(r.protein).toBe(110);
-    expect(r.carbs).toBe(230);
-    expect(r.fat).toBe(50);
-    expect(r.calories).toBe(1810);
+    expect(r.carbs).toBe(275);
+    expect(r.fat).toBe(55);
+    expect(r.calories).toBe(2035);
     expect(r.notes).toEqual([]);
     expect(r.projectedKgPerWeek).toBeCloseTo(0, 2);
   });
 
   it('lean bulk with body fat supplied', () => {
-    // FFM  = 75 x 0.86 = 64.5; BMR = 370 + 21.6(64.5) = 1763.2
-    // TDEE = 1763.2 x 1.65 = 2909.3
-    // +0.10 %/wk of 75 kg = 0.075 kg/wk -> +64 kcal/day, well inside the cap
-    // Protein 2.0 x 64.5 = 129 -> 130 g; fat 25% of 2973.6 = 82.6 -> 85 g
+    // FFM  = 75 x 0.86 = 64.5; RMR = 500 + 22(64.5) = 1919
+    // TDEE = 1919 x 1.85 = 3550.2
+    // +0.25 %/wk of 75 kg = 0.1875 kg/wk x 7700 / 7 = +206 kcal/day, inside the cap
+    // Protein 2.0 x 64.5 = 129 -> 130 g; fat 25% of 3756.4 = 104.3 -> 105 g
+    // Carbs (3756.4 - 520 - 945) / 4 = 572.9 -> 575 g
     const r = calculateMacroTargets(LEAN_BULK_WITH_BODY_FAT);
 
-    expect(r.bmr).toBe(1763);
-    expect(r.tdee).toBe(2909);
+    expect(r.bmr).toBe(1919);
+    expect(r.tdee).toBe(3550);
     expect(r.protein).toBe(130);
-    expect(r.carbs).toBe(420);
-    expect(r.fat).toBe(85);
-    expect(r.calories).toBe(2965);
+    expect(r.carbs).toBe(575);
+    expect(r.fat).toBe(105);
+    expect(r.calories).toBe(3765);
     expect(r.notes).toEqual([]);
     expect(r.projectedKgPerWeek).toBeGreaterThan(0);
   });
 
-  it('heavy sedentary male cutting — both the deficit cap and the RMR floor bind', () => {
-    // BMR  = 10(120) + 6.25(175) - 5(40) + 5 = 2098.75; TDEE = 2623.4
-    // The requested -924 kcal/day exceeds the 25% cap of 655.9, so it is
-    // eased, and the resulting 1967.6 then falls under the 2098.75 RMR floor.
+  it('a light, lean lifter bulking — the owner, 130 lb, 5 ft 9, 12% body fat', () => {
+    // FFM  = 58.97 x 0.88 = 51.89; RMR = 500 + 22(51.89) = 1641.6
+    // TDEE = 1641.6 x 1.70 = 2790.7 (moderately active)
+    // +0.5 %/wk of 58.97 kg = 0.295 kg/wk x 7700 / 7 = +324 kcal/day (11.6%,
+    // inside the 10-20% surplus bodybuilding reviews recommend)
+    // Protein 2.0 x 51.89 = 103.8 -> 105 g; fat 25% of 3115 = 86.5 -> 85 g
+    // Carbs (3115 - 420 - 765) / 4 = 482.5 -> 485 g
+    const owner: MacroTargetInput = {
+      sex: 'male',
+      age: 25,
+      heightCm: feetInchesToCm(5, 9),
+      weightKg: lbsToKg(130),
+      bodyFatPct: 12,
+      activity: 'moderately_active',
+      goal: 'bulk',
+    };
+    const r = calculateMacroTargets(owner);
+
+    expect(r.bmr).toBe(1642);
+    expect(r.tdee).toBe(2791);
+    expect(r.protein).toBe(105);
+    expect(r.carbs).toBe(485);
+    expect(r.fat).toBe(85);
+    expect(r.calories).toBe(3125);
+    expect(r.notes).toEqual([]);
+    // Lightly active still lands well above maintenance on the old model.
+    expect(calculateMacroTargets({ ...owner, activity: 'lightly_active' }).calories).toBe(2860);
+    // On a learned burn of 2,060 the same bulk adds the same ~325 kcal.
+    expect(calculateMacroTargets({ ...owner, expenditureKcal: 2060 }).calories).toBe(2385);
+  });
+
+  it('heavy sedentary male cutting — the deficit cap binds', () => {
+    // RMR  = 10(120) + 6.25(175) - 5(40) + 5 = 2098.75; TDEE = x 1.40 = 2938.3
+    // The requested -924 kcal/day exceeds the 25% cap of 734.6, so it is
+    // eased to 2203.7, still above the 2098.75 resting-rate floor.
     // Protein basis is capped at the BMI-27.5 weight of 84.2 kg, not 120 kg.
     const r = calculateMacroTargets(HEAVY_MALE_CUT);
 
     expect(r.bmr).toBe(2099);
-    expect(r.tdee).toBe(2623);
-    expect(r.notes.map((n) => n.code)).toEqual(['deficit_capped_percent', 'calorie_floor']);
+    expect(r.tdee).toBe(2938);
+    expect(r.notes.map((n) => n.code)).toEqual(['deficit_capped_percent']);
     expect(r.protein).toBe(185); // 2.2 x 84.2 = 185.3, NOT 2.2 x 120 = 264
-    expect(r.carbs).toBe(225);
-    expect(r.fat).toBe(50);
-    expect(r.calories).toBe(2090);
+    expect(r.carbs).toBe(240);
+    expect(r.fat).toBe(55);
+    expect(r.calories).toBe(2195);
   });
 });
 
@@ -219,12 +254,14 @@ describe('safety guards', () => {
     expect(r.tdee - r.calories).toBeLessThanOrEqual(70 * 0.08 * 31 + 15);
   });
 
-  it('never prescribes below resting metabolic rate', () => {
+  it('never prescribes below the calorie floor', () => {
+    // A small older woman: RMR 926.5, TDEE 1297; the capped cut (973) would
+    // fall under the 1,200 kcal floor, so it is raised to it.
     const r = calculateMacroTargets({
       sex: 'female',
-      age: 45,
-      heightCm: 155,
-      weightKg: 95,
+      age: 60,
+      heightCm: 150,
+      weightKg: 45,
       activity: 'sedentary',
       goal: 'cut',
       ratePctPerWeek: -1,
@@ -380,10 +417,13 @@ describe('directional sanity', () => {
     expect(calculateMacroTargets({ ...LEAN_MALE_CUT, heightCm: 190 }).bmr).toBeGreaterThan(base);
   });
 
-  it('Katch-McArdle and Mifflin agree closely at an average composition', () => {
+  it('Cunningham reads somewhat higher than Mifflin for a lean lifter', () => {
+    // Lean, trained people burn more at rest than weight-based equations
+    // predict; the gap stays moderate.
     const mifflin = calculateMacroTargets(LEAN_MALE_CUT);
-    const katch = calculateMacroTargets({ ...LEAN_MALE_CUT, bodyFatPct: 18 });
-    expect(Math.abs(katch.bmr - mifflin.bmr)).toBeLessThan(150);
+    const cunningham = calculateMacroTargets({ ...LEAN_MALE_CUT, bodyFatPct: 18 });
+    expect(cunningham.bmr).toBeGreaterThan(mifflin.bmr);
+    expect(cunningham.bmr - mifflin.bmr).toBeLessThan(250);
   });
 });
 

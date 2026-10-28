@@ -1,12 +1,22 @@
 /**
- * Evidence-based nutrition target calculator.
+ * Evidence-based nutrition target calculator (rebuilt 2026-10-27 after the
+ * owner, a lean 130 lb lifter, found bulk targets below his maintenance).
  *
  * Energy:
- *   BMR    — Katch-McArdle when body fat is known, else Mifflin-St Jeor.
- *   TDEE   — the adaptive layer's learned expenditure when available, else
- *            BMR x a physical-activity multiplier.
- *   Target — TDEE plus a delta derived from a desired rate of bodyweight
- *            change, bounded by explicit safety guards.
+ *   RMR    — Cunningham (500 + 22 x fat-free mass) when body fat is known: in
+ *            lean, trained people the fat-free-mass equations that do best
+ *            against calorimetry are Cunningham's, while Katch-McArdle reads
+ *            about 150 kcal low (Tinsley et al. 2019; ten Haaf & Weijs 2014).
+ *            Mifflin-St Jeor otherwise, the best-validated equation for the
+ *            general population.
+ *   TDEE   — the adaptive layer's learned expenditure when the person picks
+ *            it, else RMR x a physical activity level (PAL) inside the
+ *            doubly-labelled-water ranges of FAO/WHO/UNU 2004.
+ *   Target — TDEE plus the energy for the chosen rate of change, using about
+ *            7,700 kcal per kg either way: overfeeding studies measure about
+ *            8,000 kcal per kg gained once the cost of building tissue is
+ *            counted (Forbes et al. 1986). Bulk surpluses stay within 20% of
+ *            maintenance (Iraki et al. 2019: 10–20%).
  *
  * Macros:
  *   Protein — g/kg of fat-free mass when body fat is known, else g/kg of a
@@ -33,7 +43,7 @@ export type NutritionGoal = 'cut' | 'maintain' | 'lean_bulk' | 'bulk';
 
 export type UnitSystem = 'metric' | 'imperial';
 
-export type BmrMethod = 'mifflin_st_jeor' | 'katch_mcardle';
+export type BmrMethod = 'mifflin_st_jeor' | 'cunningham';
 
 export type TargetNoteCode =
   | 'deficit_capped_percent'
@@ -56,7 +66,7 @@ export interface MacroTargetInput {
   weightKg: number;
   activity: ActivityLevel;
   goal: NutritionGoal;
-  /** Optional. Enables Katch-McArdle BMR and fat-free-mass protein scaling. */
+  /** Optional. Enables the Cunningham resting rate and fat-free-mass protein scaling. */
   bodyFatPct?: number | null;
   /** Signed % of bodyweight per week. Defaults to the preset for `goal`. */
   ratePctPerWeek?: number | null;
@@ -85,38 +95,50 @@ export interface MacroTargetResult {
 // ── Constants ──
 
 /**
- * Physical activity multipliers, trimmed at the top end relative to the
- * textbook 1.2–1.9 range. Self-reported activity is systematically
- * over-selected, and the classic ceiling was derived for heavy occupational
- * labour rather than for someone who trains hard and sits the rest of the day.
+ * Physical activity levels (total burn / resting rate). Doubly-labelled-water
+ * studies put sedentary and lightly active adults at 1.40–1.69, active at
+ * 1.70–1.99 and vigorous at 2.00–2.40 (FAO/WHO/UNU 2004); the old textbook
+ * 1.2–1.5 for desk workers who train undercounted real burn by several
+ * hundred kcal. Each level sits at or below the middle of its range, since
+ * people tend to pick a level above their own.
  */
 export const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
-  sedentary: 1.25,
-  lightly_active: 1.375,
-  moderately_active: 1.5,
-  very_active: 1.65,
-  extra_active: 1.8,
+  sedentary: 1.4,
+  lightly_active: 1.55,
+  moderately_active: 1.7,
+  very_active: 1.85,
+  extra_active: 2,
 };
 
-/** Signed % of bodyweight per week. Negative loses, positive gains. */
+/**
+ * Signed % of bodyweight per week. Negative loses, positive gains. Gains were
+ * raised on 2026-10-27 at the owner's request: a light lifter bulking needs
+ * about 0.5% a week (2–3 lb a month at 130 lb), and the old ceiling of 0.3%
+ * left no way to ask for that without typing targets by hand.
+ */
 export const GOAL_RATE_PRESETS: Record<NutritionGoal, number> = {
   cut: -0.7,
   maintain: 0,
-  lean_bulk: 0.1,
-  bulk: 0.2,
+  lean_bulk: 0.25,
+  bulk: 0.5,
 };
 
 /** Inclusive [min, max] on `ratePctPerWeek`, per goal. */
 export const GOAL_RATE_RANGES: Record<NutritionGoal, [number, number]> = {
   cut: [-1, -0.25],
   maintain: [0, 0],
-  lean_bulk: [0.05, 0.15],
-  bulk: [0.15, 0.3],
+  lean_bulk: [0.15, 0.35],
+  bulk: [0.35, 0.75],
 };
 
-/** Energy density of tissue change. Asymmetric — gained and lost tissue differ. */
-export const KCAL_PER_KG_LOST = 7700; // fat-dominant loss
-export const KCAL_PER_KG_GAINED = 6000; // mixed fat + lean + associated water
+/**
+ * Energy per kg of bodyweight change. Loss is fat-dominant (~7,700 kcal/kg).
+ * Gain stores less energy per kg (lean tissue is mostly water) but building
+ * it costs energy too: overfeeding studies measure about 8,000 kcal per kg
+ * gained (Forbes et al. 1986), so 6,000 understated what a bulk needs.
+ */
+export const KCAL_PER_KG_LOST = 7700;
+export const KCAL_PER_KG_GAINED = 7700;
 
 const MAX_DEFICIT_FRACTION = 0.25;
 const MAX_SURPLUS_FRACTION = 0.2;
@@ -158,9 +180,9 @@ function mifflinStJeor(sex: BiologicalSex, weightKg: number, heightCm: number, a
   return sex === 'male' ? base + 5 : base - 161;
 }
 
-/** Katch-McArdle BMR (kcal/day): 370 + 21.6 x fat-free mass (kg). */
-function katchMcArdle(fatFreeMassKg: number): number {
-  return 370 + 21.6 * fatFreeMassKg;
+/** Cunningham RMR (kcal/day): 500 + 22 x fat-free mass (kg). */
+function cunningham(fatFreeMassKg: number): number {
+  return 500 + 22 * fatFreeMassKg;
 }
 
 /** Body fat is only usable as a basis when it is physiologically plausible. */
@@ -201,9 +223,9 @@ export function calculateMacroTargets(input: MacroTargetInput): MacroTargetResul
   const fatFreeMassKg = bodyFatPct != null ? weightKg * (1 - bodyFatPct / 100) : null;
   const fatMassKg = fatFreeMassKg != null ? weightKg - fatFreeMassKg : null;
   const bmr = fatFreeMassKg != null
-    ? katchMcArdle(fatFreeMassKg)
+    ? cunningham(fatFreeMassKg)
     : mifflinStJeor(sex, weightKg, heightCm, age);
-  const bmrMethod: BmrMethod = fatFreeMassKg != null ? 'katch_mcardle' : 'mifflin_st_jeor';
+  const bmrMethod: BmrMethod = fatFreeMassKg != null ? 'cunningham' : 'mifflin_st_jeor';
 
   // 2. Expenditure. A learned value from the adaptive layer beats a multiplier.
   const measured = input.expenditureKcal;

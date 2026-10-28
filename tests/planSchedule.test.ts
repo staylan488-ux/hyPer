@@ -26,6 +26,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import {
   buildFixedWeekdays,
+  buildPlanSchedule,
   loadPlanSchedule,
   loadWithBackgroundSync,
   plannedDayForDate,
@@ -792,6 +793,32 @@ describe('planSchedule', () => {
 
       await expect(done).resolves.toBeUndefined();
       expect(onRemoteUpdate).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('buildPlanSchedule', () => {
+  const split = { id: 'split-1', days_per_week: 3, days: [{}, {}, {}] };
+
+  it('turns a fixed weekly choice into its weekdays', () => {
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'fixed', anchorDay: 2, flexDayIndex: 1 })).toEqual({
+      splitId: 'split-1',
+      startDate: '2026-10-27',
+      mode: 'fixed',
+      weekdays: [2, 4, 6],
+      anchorDay: 2,
+      flexAnchorIndex: undefined,
+    });
+  });
+
+  it('keeps the next split day for a flexible order, wrapped into range', () => {
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'flex', anchorDay: 2, flexDayIndex: 4 })).toEqual({
+      splitId: 'split-1',
+      startDate: '2026-10-27',
+      mode: 'flex',
+      weekdays: [],
+      anchorDay: 0,
+      flexAnchorIndex: 1,
     });
   });
 });

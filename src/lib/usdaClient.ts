@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import type { Food } from '@/types';
 import {
+  applyPortion,
   fetchUsdaFoodDetail,
+  selectPortionFromDetail,
   searchUsdaFoodByBarcode,
   searchUsdaFoods,
   type UsdaFoodDetail,
@@ -49,4 +51,11 @@ export async function searchFatSecretByBarcodeSecure(barcode: string): Promise<F
     (FatSecretBarcodeResponse & { configured?: boolean }) | null;
   if (!payload || payload.configured === false || !payload.food) return null;
   return mapFatSecretBarcodeFood(payload);
+}
+
+/** A USDA search result with its household portion, when the result has no serving label yet. */
+export async function withUsdaPortion(food: Food): Promise<Food> {
+  if (food.source !== 'usda' || !food.fdc_id || food.serving_label) return food;
+  const portion = selectPortionFromDetail(await fetchUsdaFoodDetailSecure(food.fdc_id));
+  return portion ? applyPortion(food, portion) : food;
 }

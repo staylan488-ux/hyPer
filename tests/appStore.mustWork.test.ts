@@ -1958,6 +1958,8 @@ describe('must-work store contracts', () => {
       protein: 180,
       carbs: 240,
       fat: 70,
+      // A coach suggestion's words must never reach the table (no such columns).
+      ...({ rationale: 'Why these numbers', confidence: 0.7 } as object),
     });
 
     expect(macroTargetsChain.upsert).toHaveBeenCalledWith(

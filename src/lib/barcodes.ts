@@ -89,3 +89,18 @@ export function barcodesAreEquivalent(first: string, second: string): boolean {
   const secondCandidates = new Set(barcodeLookupCandidates(second));
   return firstCandidates.some((candidate) => secondCandidates.has(candidate));
 }
+
+// Hard ceilings so no await can strand the UI in a busy state: the catalog
+// lookup has no per-leg client timeouts, and a native scanner call whose
+// callback is lost would otherwise never settle.
+export const BARCODE_LOOKUP_TIMEOUT_MS = 45_000;
+export const BARCODE_AVAILABILITY_TIMEOUT_MS = 10_000;
+export const BARCODE_SCAN_TIMEOUT_MS = 300_000;
+
+export const BARCODE_MESSAGES = {
+  invalid: 'That barcode is incomplete or failed its checksum. Try again or enter the digits below.',
+  found: 'Product found — review the details below.',
+  miss: 'Barcode read, but USDA and Open Food Facts had no product record. Use Describe with AI or add it manually.',
+  timeout: 'The lookup took too long. Check your connection and scan again.',
+  failed: 'Food lookup failed. Try again.',
+} as const;

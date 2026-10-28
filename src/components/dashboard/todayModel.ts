@@ -1,5 +1,17 @@
+import { addDays, format, parseISO } from 'date-fns';
+import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
 import type { CapsuleGlyph } from '@/lib/commandCapsule';
-import { MUSCLE_GROUP_LABELS, type MuscleVolume, type SplitDay } from '@/types';
+import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';
+import { formatWorkoutDuration } from '@/lib/workoutSessions';
+import {
+  MUSCLE_GROUP_LABELS,
+  type MuscleVolume,
+  type Split,
+  type SplitDay,
+  type Workout,
+  type WorkoutDayPlan,
+  type WorkoutMode,
+} from '@/types';
 
 /** What Today's hero describes. Built by Dashboard from the stores and the day read. */
 export type HeroState =
@@ -201,4 +213,129 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
   }
 
   return null;
+}
+
+/** Everything Today's hero depends on, from the stores, the day read and the schedule. */
+export interface TodayHeroInput {
+  /** The stores are not loaded for this account yet. */
+  heroLoading: boolean;
+  currentWorkout: Workout | null;
+  currentWorkoutDayPlan: WorkoutDayPlan | null;
+  /** undefined: not known yet; null: no session completed today. */
+  todayDone: { title: string } | null | undefined;
+  workoutMode: WorkoutMode;
+  activeSplit: Split | null;
+  schedule: PlanSchedule | null;
+  scheduleLoading: boolean;
+  scheduleWorkoutsLoading: boolean;
+  scheduleWorkouts: ScheduleWorkout[];
+  scheduleError: boolean;
+  retrySchedule: () => void;
+  /** When the day was read; times the live session. */
+  refreshedAt: number;
+  /** Local day (yyyy-MM-dd). */
+  dayKey: string;
+  adaptiveSchedulingEnabled: boolean;
+}
+
+/** What Today's hero shows. Shared by the web and native Today screens. */
+export function todayHero(input: TodayHeroInput): HeroState {
+  const {
+    heroLoading,
+    currentWorkout,
+    currentWorkoutDayPlan,
+    todayDone,
+    workoutMode,
+    activeSplit,
+    schedule,
+    scheduleLoading,
+    scheduleWorkoutsLoading,
+    scheduleWorkouts,
+    scheduleError,
+    retrySchedule,
+    refreshedAt,
+    dayKey,
+    adaptiveSchedulingEnabled,
+  } = input;
+  if (heroLoading) return { kind: 'loading' };
+
+  if (currentWorkout && !currentWorkout.completed) {
+    const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
+    const upcomingSet = getWorkoutResumeSet(currentWorkout, workoutDay, currentWorkoutDayPlan);
+    const upcomingName = upcomingSet ? upcomingSet.exercise?.name
+      ?? workoutDay?.exercises.find((exercise) => exercise.exercise_id === upcomingSet.exercise_id)?.exercise?.name
+      ?? (currentWorkoutDayPlan?.workout_id === currentWorkout.id ? currentWorkoutDayPlan.items.find((item) => item.exercise_id === upcomingSet.exercise_id)?.exercise_name : null)
+      ?? 'Next exercise' : null;
+    const total = currentWorkout.sets.length;
+    const done = currentWorkout.sets.filter((s) => s.completed).length;
+    const dayName =
+      currentWorkout.split_day_id === null
+        ? 'Flexible'
+        : activeSplit?.days.find((d) => d.id === currentWorkout.split_day_id)?.day_name ?? 'Session';
+    return {
+      kind: 'resume',
+      completedSets: done,
+      totalSets: total,
+      title: 'Session in progress',
+      nextExercise: upcomingName,
+      nextSet: upcomingSet?.set_number ?? null,
+      nextWeight: upcomingSet?.weight ?? null,
+      nextReps: upcomingSet?.reps ?? null,
+      dayName,
+      exerciseCount: new Set(currentWorkout.sets.map((s) => s.exercise_id)).size,
+      elapsed: currentWorkout.created_at
+        ? formatWorkoutDuration(Math.max(0, refreshedAt - new Date(currentWorkout.created_at).getTime()))
+        : '—',
+    };
+  }
+
+  if (todayDone === undefined) return { kind: 'loading' };
+  if (todayDone) return { kind: 'done', title: todayDone.title };
+
+  if (workoutMode === 'flexible') return { kind: 'flexible' };
+
+  if (!activeSplit) return { kind: 'first-run' };
+  if (scheduleLoading || scheduleWorkoutsLoading) return { kind: 'loading' };
+  if (scheduleError) return { kind: 'schedule-error', retry: retrySchedule };
+  if (!schedule) return { kind: 'no-schedule' };
+
+  const planned = plannedDayForDate(
+    parseISO(dayKey),
+    activeSplit.days,
+    schedule,
+    0,
+    scheduleWorkouts,
+    adaptiveSchedulingEnabled
+  );
+  return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
+}
+
+/** On a rest day, the next planned session by the same schedule rules, as "Tomorrow · Lower". */
+export function nextPlannedSession(input: {
+  activeSplit: Split | null;
+  schedule: PlanSchedule | null;
+  scheduleWorkouts: ScheduleWorkout[];
+  adaptiveSchedulingEnabled: boolean;
+  dayKey: string;
+}): string | null {
+  const { activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey } = input;
+  if (!activeSplit || !schedule) return null;
+  const base = parseISO(dayKey);
+  for (let offset = 1; offset <= 14; offset += 1) {
+    const date = addDays(base, offset);
+    const day = plannedDayForDate(date, activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
+    if (day) return `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}`;
+  }
+  return null;
+}
+
+/** Sessions planned this training week; flexible mode has no weekly plan to count against. */
+export function weekSessionTarget(
+  workoutMode: WorkoutMode,
+  schedule: PlanSchedule | null,
+  activeSplit: Split | null,
+): number | null {
+  return workoutMode === 'flexible' ? null
+    : schedule?.mode === 'fixed' && schedule.weekdays.length > 0 ? schedule.weekdays.length
+      : activeSplit?.days_per_week ?? null;
 }

@@ -6,27 +6,14 @@ import { SplitEditor } from '@/components/split/SplitEditor';
 import { cancelSplitEdit } from '@/components/split/editor/editorActions';
 import { useSplitDraftAutosave } from '@/components/split/editor/useSplitDraftAutosave';
 import type { PickMode } from '@/components/split/editor/types';
-import { pendingExercises } from '@/lib/customExercises';
-import type { DraftSplit } from '@/lib/splitDraft';
+import { PROGRAM_PICKER_TITLES, pickerTargetFor, type DraftSplit, type ProgramPickerTarget } from '@/lib/splitDraft';
 import type { StoredSplitDraft } from '@/lib/splitDraftStorage';
 import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
-import type { Exercise, MuscleGroup } from '@/types';
+import type { Exercise } from '@/types';
 
-type PickerTarget = {
-  dayId: string;
-  mode: PickMode;
-  exerciseId?: string;
-  initialMuscleGroup?: MuscleGroup;
-  excludeExerciseIds: string[];
-  extraExercises: Exercise[];
-};
-
-const PICKER_TITLES: Record<PickMode, string> = {
-  add: 'Add exercises',
-  swap: 'Swap exercise',
-  superset: 'Add superset exercise',
-};
+type PickerTarget = ProgramPickerTarget;
+const PICKER_TITLES = PROGRAM_PICKER_TITLES;
 
 /**
  * The program sheet for creating and editing. A new program starts at the
@@ -77,16 +64,7 @@ export function SplitEditorSheet({
   const handlePickExercise = useCallback((dayId: string, pickMode: PickMode, exerciseId?: string) => {
     const { draft } = useSplitEditStore.getState();
     if (!draft) return;
-    const day = draft.days.find((entry) => entry.id === dayId);
-    const source = exerciseId ? day?.exercises.find((entry) => entry.id === exerciseId) : undefined;
-    setPicker({
-      dayId,
-      mode: pickMode,
-      exerciseId,
-      initialMuscleGroup: pickMode === 'add' ? undefined : source?.exercise.muscle_group,
-      excludeExerciseIds: day?.exercises.map((entry) => entry.exercise_id) ?? [],
-      extraExercises: pendingExercises(draft),
-    });
+    setPicker(pickerTargetFor(draft, dayId, pickMode, exerciseId));
     setPickerOpen(true);
   }, []);
 

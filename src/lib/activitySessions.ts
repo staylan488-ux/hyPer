@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 
-import { type ActivitySession } from '@/types';
+import { type ActivitySession, type ActivitySessionInput, type ActivityType } from '@/types';
 import { activityTypeLabel } from '@/lib/activityMetrics';
 
 function parseDate(value?: string | null): Date | null {
@@ -48,4 +48,70 @@ export function sortActivitySessionsByStart<T extends Pick<ActivitySession, 'sta
     const right = parseDate(b.started_at) || parseDate(b.created_at) || parseDate(`${b.date}T00:00:00`);
     return (left?.getTime() || 0) - (right?.getTime() || 0);
   });
+}
+
+/** "HH:mm" in local time for a timestamp, or '' without one. */
+export function activityTimeValue(value?: string | null): string {
+  const parsed = parseDate(value);
+  return parsed ? format(parsed, 'HH:mm') : '';
+}
+
+/** A local day plus "HH:mm" as an ISO timestamp, or null for a missing or bad time. */
+export function localDateTimeToIso(date: Date, timeValue: string): string | null {
+  if (!timeValue) return null;
+  const [hour, minute] = timeValue.split(':').map((value) => Number.parseInt(value, 10));
+  if (![hour, minute].every(Number.isFinite)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const local = new Date(date);
+  local.setHours(hour, minute, 0, 0);
+  return local.toISOString();
+}
+
+/** Typed minutes as seconds, capped at a day; null when empty or not positive. */
+export function parseDurationSeconds(durationMinutes: string): number | null {
+  if (!durationMinutes.trim()) return null;
+  const parsed = Number.parseInt(durationMinutes, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(parsed, 24 * 60) * 60;
+}
+
+export interface ActivityForm {
+  activityType: ActivityType;
+  customType: string;
+  title: string;
+  date: Date;
+  /** "HH:mm", or '' for no start time. */
+  startTime: string;
+  /** Whole minutes as typed. */
+  durationMinutes: string;
+  notes: string;
+}
+
+/**
+ * The activity editor's fields as a save: a custom name only for "other"
+ * (40 characters), the end from start plus duration, and the existing source
+ * kept (else manual).
+ */
+export function buildActivityInput(form: ActivityForm, existing: Pick<ActivitySession, 'source'> | null): ActivitySessionInput {
+  const durationSeconds = parseDurationSeconds(form.durationMinutes);
+  const startedAt = localDateTimeToIso(form.date, form.startTime);
+  const endedAt = startedAt && durationSeconds
+    ? new Date(new Date(startedAt).getTime() + durationSeconds * 1000).toISOString()
+    : null;
+  return {
+    activity_type: form.activityType,
+    custom_type: form.activityType === 'other' ? form.customType.trim().slice(0, 40) || null : null,
+    title: form.title.trim() || null,
+    date: format(form.date, 'yyyy-MM-dd'),
+    started_at: startedAt,
+    ended_at: endedAt,
+    duration_seconds: durationSeconds,
+    source: existing?.source || 'manual',
+    notes: form.notes.trim() || null,
+  };
+}
+
+/** Manual edits to an auto-grouped WHOOP import are marked so later syncs keep them. */
+export function guardActivityEdit(input: ActivitySessionInput, editing: Pick<ActivitySession, 'source' | 'auto_grouped'> | null): ActivitySessionInput {
+  return editing && editing.source === 'whoop' && editing.auto_grouped ? { ...input, user_edited: true } : input;
 }

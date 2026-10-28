@@ -66,7 +66,7 @@ async function readNutritionTotals(userId: string, day: string): Promise<Nutriti
   return sumMacros(logs);
 }
 
-async function readTodayDone(userId: string, day: string): Promise<TodayDay['todayDone']> {
+export async function readTodayDone(userId: string, day: string): Promise<TodayDay['todayDone']> {
   const { data, error } = await supabase
     .from('workouts')
     .select('id, split_day_id')

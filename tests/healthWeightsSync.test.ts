@@ -13,6 +13,7 @@ const supabaseMock = vi.hoisted(() => ({
 
 vi.mock('@/lib/nativeBridge', () => ({
   isNativeIOS: nativeMock.isNativeIOS,
+  hasNativeHealth: nativeMock.isNativeIOS,
   NativeHealth: { readWeightSamples: nativeMock.readWeightSamples },
 }));
 

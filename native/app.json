@@ -1,0 +1,89 @@
+{
+  "expo": {
+    "name": "hyPer Native",
+    "slug": "hyper-native",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "hyper-native",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "app.hyper.native",
+      "appleTeamId": "R5L37449L3",
+      "supportsTablet": false,
+      "icon": {
+        "light": "./assets/images/icon.png",
+        "dark": "./assets/images/icon-dark.png",
+        "tinted": "./assets/images/icon-tinted.png"
+      },
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "hyPer reads weight measurements you choose to share through Apple Health, including measurements written by EufyLife.",
+        "NSLocationWhenInUseUsageDescription": "hyPer uses your location during a run to measure route, distance, pace, and splits.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "hyPer uses your location during an active run, including when the screen is locked, to measure route, distance, pace, and splits.",
+        "NSLocationTemporaryUsageDescriptionDictionary": {
+          "RunTracking": "Precise location is needed during an active run to measure distance, pace, route, and split boundaries accurately."
+        },
+        "NSMotionUsageDescription": "hyPer uses motion data during an active run to improve movement and pause detection.",
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ]
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.background-delivery": true,
+        "com.apple.security.application-groups": [
+          "group.app.hyper"
+        ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F2F1ED",
+          "image": "./assets/images/splash-blank.png",
+          "imageWidth": 1,
+          "dark": {
+            "backgroundColor": "#000000",
+            "image": "./assets/images/splash-blank.png"
+          }
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/FrauncesMark-Light.ttf",
+            "./assets/fonts/FrauncesMark-MediumItalic.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "hyPer uses the camera to scan food barcodes and analyze food photos you choose to log.",
+          "photosPermission": "hyPer lets you select food photos for nutrition analysis.",
+          "microphonePermission": false
+        }
+      ],
+      "./plugins/withHyperWidgets"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true,
+      "tsconfigPaths": false
+    }
+  }
+}

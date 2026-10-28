@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isAppVisible, onAppVisible } from '@/lib/appVisibility';
 import { msUntilNextLocalDay, shouldRefreshToday, todayKey, type TodayLoad } from '@/lib/todayRefresh';
 
 export interface TodayRefreshState<T> {
@@ -74,7 +75,7 @@ export function useTodayRefresh<T>(
       // Run a request that arrived during the load, or catch a midnight the
       // load straddled. Never loops: a failure only reruns for a new request.
       const straddled = loaded && todayKey(new Date()) !== dayKey;
-      if ((queued || straddled) && document.visibilityState === 'visible') void run(false);
+      if ((queued || straddled) && isAppVisible()) void run(false);
     };
 
     // Background timers can be suspended, so re-aim at the real midnight on
@@ -82,25 +83,22 @@ export function useTodayRefresh<T>(
     const armMidnight = () => {
       clearTimeout(midnightTimer);
       midnightTimer = setTimeout(() => {
-        if (document.visibilityState === 'visible') void run(false);
+        if (isAppVisible()) void run(false);
         armMidnight();
       }, msUntilNextLocalDay(new Date()));
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
-      void run(false);
-      armMidnight();
-    };
-
     const initialTimer = setTimeout(() => { void run(true); }, 0);
     armMidnight();
-    document.addEventListener('visibilitychange', handleVisibility);
+    const stopWatching = onAppVisible(() => {
+      void run(false);
+      armMidnight();
+    });
     return () => {
       cancelled = true;
       clearTimeout(initialTimer);
       clearTimeout(midnightTimer);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      stopWatching();
     };
   }, [load, onNewDay]);
 

@@ -4,7 +4,8 @@ import { Button } from '@/components/shared/Button';
 import { supabase } from '@/lib/supabase';
 import {
   buildCoachContext,
-  requestCoachRecommendation,
+  coachSource,
+  requestTargetSuggestion,
   type CoachRecommendation,
 } from '@/lib/nutritionCoach';
 import { COACH_GOALS_KEY, getPhotoWorkerSettings } from '@/lib/photoAnalysis';
@@ -44,7 +45,9 @@ export function GoalsCoach({
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fixturePreview = isPreviewActive() && !isAppSandboxActive();
-  const hasWorker = fixturePreview || (workerConfigured ?? Boolean(getPhotoWorkerSettings().url));
+  // Gemini (hosted) needs nothing set up; the Mac worker needs its address.
+  const hosted = coachSource() === 'gemini';
+  const hasWorker = fixturePreview || hosted || (workerConfigured ?? Boolean(getPhotoWorkerSettings().url));
 
   const askCoach = async () => {
     if (!profile || !hasWorker || asking) return;
@@ -81,7 +84,7 @@ export function GoalsCoach({
             // Weight-history failure does not prevent a recommendation from basic stats.
           }
         }
-        result = await requestCoachRecommendation({
+        result = await requestTargetSuggestion({
           goals,
           context: buildCoachContext(profile, weightKg, currentTargets, { trendKgPerWeek, shareMeasured }),
           accessToken,
@@ -151,10 +154,12 @@ export function GoalsCoach({
         <p className="text-sm leading-relaxed text-[var(--color-text-dim)]">
           {fixturePreview
             ? 'This preview uses sample suggestions and sends no coach request.'
-            : 'The coach uses your configured Mac worker. Changing the meal-analysis method or photo-analysis provider does not change the coach model.'}
+            : hosted
+              ? 'Suggestions come from Gemini, your meal-analysis method, and count toward its daily request limit.'
+              : 'The coach uses your configured Mac worker, your meal-analysis method.'}
         </p>
         {!hasWorker && <p className="mt-2 text-sm font-medium">Set up your Mac worker to request suggestions.</p>}
-        {onSetupWorker && (
+        {onSetupWorker && !hosted && (
           <button type="button" onClick={onSetupWorker} className="min-h-11 text-sm underline underline-offset-4">
             {hasWorker ? 'Mac worker settings' : 'Set up Mac worker'}
           </button>

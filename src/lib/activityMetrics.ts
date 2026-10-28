@@ -99,6 +99,13 @@ export function formatDistanceMi(distanceM?: number | null): string | null {
   return `${miles.toFixed(1)} mi`;
 }
 
+// a split's distance: metres under a kilometre, else miles
+export function formatSegmentDistance(distanceM: number | null): string | null {
+  if (distanceM == null || distanceM <= 0) return null;
+  if (distanceM < 1000) return `${Math.round(distanceM)} m`;
+  return formatDistanceMi(distanceM);
+}
+
 // seconds-per-mile -> "7:32 /mi"; guards absurd paces from GPS noise
 export function formatPace(secondsPerMile?: number | null): string | null {
   if (secondsPerMile == null || !Number.isFinite(secondsPerMile) || secondsPerMile <= 0) return null;

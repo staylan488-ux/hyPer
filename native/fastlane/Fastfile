@@ -1,0 +1,63 @@
+default_platform(:ios)
+
+# The native (React Native) hyPer app as the released app.hyper.mobile.
+# Run by scripts/ship.sh from an isolated clone of main, with the production
+# EXPO_PUBLIC_* values and HYPER_APP=release in the environment. Secrets
+# (ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH) come from ~/.hyper-ship/config.env,
+# never from this public repo.
+platform :ios do
+  desc "Build the native hyPer app and upload it to TestFlight"
+  lane :beta do
+    UI.user_error!("HYPER_APP=release is required") unless ENV["HYPER_APP"] == "release"
+    UI.user_error!("EXPO_PUBLIC_HYPER_PREVIEW=0 is required") unless ENV["EXPO_PUBLIC_HYPER_PREVIEW"] == "0"
+    native = File.expand_path("..", __dir__)
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: File.expand_path(ENV["ASC_KEY_PATH"]),
+    )
+
+    # The next build number after the highest on TestFlight, whoever shipped it
+    # (the Capacitor app's builds included). app.config.js gives it to the app
+    # and the widget extension alike.
+    next_build = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "app.hyper.mobile",
+    ).to_i + 1
+    UI.important("Shipping native hyPer build #{next_build}")
+
+    signing = "-allowProvisioningUpdates " \
+              "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
+              "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']} " \
+              "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}"
+
+    # A fresh native project for the released identity and this build number.
+    sh({ "HYPER_BUILD_NUMBER" => next_build.to_s, "LANG" => "en_US.UTF-8" },
+       "cd '#{native}' && npx expo prebuild --platform ios --clean")
+    sh("'#{native}/scripts/use-rn-core.sh' Release")
+
+    build_app(
+      workspace: "#{native}/ios/hyPerNative.xcworkspace",
+      scheme: "hyPerNative",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "#{native}/build",
+      output_name: "hyPer.ipa",
+      clean: true,
+      xcargs: signing,
+      # The export signs for the App Store too, and may need a new profile
+      # (the App Group): the same automatic-signing access as the archive.
+      export_xcargs: signing,
+    )
+
+    # The archive must be the real app: the production host, no local test
+    # backend, the released bundle ID and the build number just chosen.
+    sh("'#{native}/scripts/check-release.sh' '#{native}/build/hyPer.ipa' '#{next_build}'")
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end

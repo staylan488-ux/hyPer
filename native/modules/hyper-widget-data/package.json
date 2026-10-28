@@ -1,0 +1,8 @@
+{
+  "name": "hyper-widget-data",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hands today's Fuel and Training figures to the home-screen widgets.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

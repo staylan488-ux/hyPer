@@ -39,6 +39,7 @@ import { completionHaptic, tapHaptic } from '@/lib/haptics';
 import { emitBurstFrom } from '@/lib/fx';
 import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { endWorkoutActivity, syncWorkoutActivity } from '@/lib/liveActivity';
+import { workoutActivityDetailLine } from '@/lib/workoutActivitySync';
 import { parseWorkoutNotes, serializeWorkoutNotes, type WorkoutNotesPayload } from '@/lib/workoutNotes';
 import { createNoteAutosaver, flexiblePlanNoteToWrite, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
 import { captureAccountScope } from '@/lib/accountScope';
@@ -46,8 +47,8 @@ import { clearRestTimerSession, isRestTimerForWorkout, readRestTimerSession, sav
 import { loadRestPreferences, loadRestPreferencesAsync, resolveRestSeconds, saveRestPreference } from '@/lib/restPreferences';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { supabase } from '@/lib/supabase';
-import { buildFixedWeekdays, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
-import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import { buildFixedWeekdays, buildPlanSchedule, defaultStartDate, defaultWeekdays, loadPlanSchedule, loadWithBackgroundSync, plannedDayForDate, savePlanSchedule, type PlanMode, type PlanSchedule } from '@/lib/planSchedule';
+import { orderSessionSets, sessionExercises as sessionExercisesFor, sessionOrder, sessionPlanItems, sessionSetRanges, sessionSubstitutions, setCountChanges, supersetFlows, supersetLogBlock } from '@/lib/sessionPlan';
 import { formatWorkoutDuration, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { exerciseIdsFromKey, fetchPreviousSetTargets, previousTargetExerciseKey, previousTargetRetrySignal } from '@/lib/previousSetTargets';
 import { collectSessionGains, formatSetPerformanceTarget, sessionTonnage } from '@/lib/workoutProgress';
@@ -65,14 +66,6 @@ function normalizeFlexibleTargetSets(value: number | null | undefined): number {
 
 /** The rest bar's "Next ·" label is the movement name, this, and the set number. */
 const REST_NEXT_UP_SET = ' · set ';
-
-type SupersetRole = 'A' | 'B';
-
-type SupersetFlow = {
-  groupId: string;
-  role: SupersetRole;
-  partnerExerciseId: string;
-};
 
 type CompletionSummary = {
   title: string;
@@ -190,20 +183,6 @@ function SessionPin({ title, createdAt, finishing, onBack, onFinish }: {
       </button>
     </div>
   );
-}
-
-function buildSupersetFlowMap(orderedExerciseIdsByGroup: Array<{ groupId: string; exerciseIds: string[] }>): Map<string, SupersetFlow> {
-  const map = new Map<string, SupersetFlow>();
-
-  for (const group of orderedExerciseIdsByGroup) {
-    if (group.exerciseIds.length !== 2) continue;
-
-    const [exerciseA, exerciseB] = group.exerciseIds;
-    map.set(exerciseA, { groupId: group.groupId, role: 'A', partnerExerciseId: exerciseB });
-    map.set(exerciseB, { groupId: group.groupId, role: 'B', partnerExerciseId: exerciseA });
-  }
-
-  return map;
 }
 
 export function Workout() {
@@ -737,28 +716,12 @@ export function Workout() {
     setSavingPlanSchedule(true);
 
     try {
-      const splitDayCount = activeSplit.days.length;
-      const computedWeekdays =
-        setupMode === 'fixed'
-          ? buildFixedWeekdays(setupAnchorDay, activeSplit.days_per_week)
-          : [];
-
-      let computedAnchorDay: number | undefined;
-
-      if (setupMode === 'fixed') {
-        computedAnchorDay = setupAnchorDay;
-      } else if (splitDayCount > 0) {
-        computedAnchorDay = normalizeIndex(setupFlexDayIndex, splitDayCount);
-      }
-
-      const schedule: PlanSchedule = {
-        splitId: activeSplit.id,
+      const schedule = buildPlanSchedule(activeSplit, {
         startDate: setupStartDate,
         mode: setupMode,
-        weekdays: computedWeekdays,
-        anchorDay: setupMode === 'fixed' ? computedAnchorDay : 0,
-        flexAnchorIndex: setupMode === 'flex' ? computedAnchorDay : undefined,
-      };
+        anchorDay: setupAnchorDay,
+        flexDayIndex: setupFlexDayIndex,
+      });
 
       setPlanSchedule(savePlanSchedule(userId, schedule));
       setShowScheduleEditor(false);
@@ -789,39 +752,15 @@ export function Workout() {
 
   // ── Exercise ordering (must be before early returns for hook rules) ──
   const splitDay = activeSplit?.days.find((day) => day.id === currentWorkout?.split_day_id) ?? null;
-  const sessionPlanItems = currentWorkoutDayPlan?.workout_id === currentWorkout?.id ? currentWorkoutDayPlan?.items : undefined;
-  const sessionExercises = useMemo(() => sessionPlanItems?.map((item) => ({
-    ...item, exercise_order: item.order, target_sets: item.target_sets ?? 3,
-    notes: item.notes ?? null,
-  })) ?? splitDay?.exercises ?? [], [sessionPlanItems, splitDay?.exercises]);
-  const substitutionByExerciseId = useMemo(() => new Map(
-    (sessionPlanItems ?? []).flatMap((item) => (
-      item.substitutes_for && !item.hidden ? [[item.exercise_id, item.substitutes_for] as const] : []
-    ))
-  ), [sessionPlanItems]);
-  const exerciseOrderById = useMemo(() => new Map(
-    sessionExercises.map((exercise, index) => [
-      exercise.exercise_id,
-      exercise.exercise_order ?? index,
-    ])
-  ), [sessionExercises]);
+  const sessionPlan = sessionPlanItems(currentWorkoutDayPlan, currentWorkout?.id);
+  const sessionExercises = useMemo(() => sessionExercisesFor(sessionPlan, splitDay?.exercises), [sessionPlan, splitDay?.exercises]);
+  const substitutionByExerciseId = useMemo(() => sessionSubstitutions(sessionPlan), [sessionPlan]);
+  const exerciseOrderById = useMemo(() => sessionOrder(sessionExercises), [sessionExercises]);
+  const exerciseSetRanges = useMemo(() => sessionSetRanges(sessionExercises), [sessionExercises]);
 
-  const exerciseSetRanges = useMemo(() => new Map(
-    sessionExercises.map((exercise) => {
-      const parsedRange = parseSetRangeNotes(exercise.notes, exercise.target_sets);
-      return [exercise.exercise_id, parsedRange] as const;
-    })
-  ), [sessionExercises]);
-
-  const orderedSets = useMemo(() => {
-    if (!currentWorkout) return [];
-    return [...currentWorkout.sets].sort((a, b) => {
-      const orderA = exerciseOrderById.get(a.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-      const orderB = exerciseOrderById.get(b.exercise_id) ?? Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.set_number - b.set_number;
-    });
-  }, [currentWorkout, exerciseOrderById]);
+  const orderedSets = useMemo(() => (
+    currentWorkout ? orderSessionSets(currentWorkout.sets, exerciseOrderById) : []
+  ), [currentWorkout, exerciseOrderById]);
 
   const exerciseGroups = useMemo(() => orderedSets.reduce<Record<string, WorkoutSet[]>>((acc, set) => {
     if (!acc[set.exercise_id]) {
@@ -905,25 +844,12 @@ export function Workout() {
     ? flexibleSupersetByExerciseId
     : splitSupersetByExerciseId;
 
-  const orderedSupersetGroups = useMemo(() => {
-    const orderedExerciseIds = workoutMode === 'flexible' && currentWorkout?.split_day_id === null
+  const supersetFlowMap = useMemo(() => supersetFlows(
+    workoutMode === 'flexible' && currentWorkout?.split_day_id === null
       ? activeFlexibleItems.map((item) => item.exercise_id)
-      : orderedExerciseEntries.map(([exerciseId]) => exerciseId);
-
-    const grouped = new Map<string, string[]>();
-    for (const exerciseId of orderedExerciseIds) {
-      const groupId = supersetByExerciseId.get(exerciseId);
-      if (!groupId) continue;
-
-      const current = grouped.get(groupId) || [];
-      current.push(exerciseId);
-      grouped.set(groupId, current);
-    }
-
-    return Array.from(grouped.entries()).map(([groupId, exerciseIds]) => ({ groupId, exerciseIds }));
-  }, [activeFlexibleItems, currentWorkout?.split_day_id, orderedExerciseEntries, supersetByExerciseId, workoutMode]);
-
-  const supersetFlowMap = useMemo(() => buildSupersetFlowMap(orderedSupersetGroups), [orderedSupersetGroups]);
+      : orderedExerciseEntries.map(([exerciseId]) => exerciseId),
+    supersetByExerciseId,
+  ), [activeFlexibleItems, currentWorkout?.split_day_id, orderedExerciseEntries, supersetByExerciseId, workoutMode]);
 
   const workoutExerciseMap = useMemo(() => {
     const map = new Map<string, Exercise>();
@@ -1066,31 +992,9 @@ export function Workout() {
     return partnerMap;
   }, [sessionExercises]);
 
-  const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => {
-    if (candidateSet.completed) return true;
-
-    const supersetFlow = supersetFlowMap.get(candidateSet.exercise_id);
-    if (!supersetFlow || !currentWorkout) return true;
-
-    const candidateNumber = candidateSet.set_number;
-    const partnerSets = currentWorkout.sets
-      .filter((set) => set.exercise_id === supersetFlow.partnerExerciseId);
-
-    if (supersetFlow.role === 'A') {
-      const partnerPrevRound = partnerSets.find((set) => set.set_number === candidateNumber - 1);
-      if (candidateNumber > 1 && !partnerPrevRound?.completed) {
-        return `Complete B${candidateNumber - 1} before starting A${candidateNumber}.`;
-      }
-      return true;
-    }
-
-    const matchingA = partnerSets.find((set) => set.set_number === candidateNumber);
-    if (!matchingA?.completed) {
-      return `Complete A${candidateNumber} before logging B${candidateNumber}.`;
-    }
-
-    return true;
-  };
+  const validateSupersetOrderBeforeLog = (candidateSet: WorkoutSet): true | string => (
+    (currentWorkout && supersetLogBlock(candidateSet, supersetFlowMap.get(candidateSet.exercise_id), currentWorkout.sets)) || true
+  );
 
   const completedSets = currentWorkout?.sets.filter(s => s.completed).length ?? 0;
   const totalSets = currentWorkout?.sets.length ?? 0;
@@ -1112,11 +1016,12 @@ export function Workout() {
     // Same rule as the completion sheet's tonnage.
     const tonnage = sessionTonnage(currentWorkout.sets);
 
-    const detailLine = [
-      activeName && nextSetNumber ? `set ${nextSetNumber}` : null,
-      `${completedSets} of ${totalSets} sets`,
-      tonnage > 0 ? `${Math.round(tonnage).toLocaleString('en-US')} lb` : null,
-    ].filter(Boolean).join(' · ');
+    const detailLine = workoutActivityDetailLine({
+      nextSetNumber: activeName ? nextSetNumber : null,
+      completedSets,
+      totalSets,
+      tonnage,
+    });
 
     syncWorkoutActivity({
       exerciseName: activeName ?? currentSessionTitle,
@@ -1951,9 +1856,8 @@ export function Workout() {
               : null;
             const supersetRole = supersetFlowMap.get(exerciseId)?.role;
             const setRange = exerciseSetRanges.get(exerciseId) ?? { minSets: 1, targetSets: sets.length, maxSets: 12 };
-            const canAddSet = sets.length < setRange.maxSets;
+            const { canAdd: canAddSet, canRemove: canRemoveSet } = setCountChanges(setRange, sets);
             const hasRemovableUncompletedSet = sets.some((set) => !set.completed);
-            const canRemoveSet = sets.length > setRange.minSets && hasRemovableUncompletedSet;
             const firstUncompletedSetId = sets.find((set) => !set.completed)?.id ?? null;
             const prescription = sessionExercises.find((entry) => entry.exercise_id === exerciseId);
             const repTarget = formatRepTarget(prescription?.target_reps_min, prescription?.target_reps_max);

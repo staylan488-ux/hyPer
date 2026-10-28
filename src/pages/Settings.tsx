@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { LogOut, Pencil, Search, Trash2 } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation, useBlocker } from 'react-router-dom';
-import { format, formatDistanceToNowStrict, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { Button, Input, Modal, SelectSheet } from '@/components/shared';
 import {
   BigFigure,
@@ -23,12 +23,25 @@ import {
 } from '@/components/nutrition/NutritionWizard';
 import { GoalsCoach } from '@/components/nutrition/GoalsCoach';
 import type { CoachRecommendation } from '@/lib/nutritionCoach';
-import { DEFAULT_MACRO_TARGET, type Food, type MacroTargetSource } from '@/types';
+import type { Food } from '@/types';
 import { SettingsSearch } from '@/components/settings/SettingsSearch';
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow';
 import { AdaptiveSplitSchedulingSetting } from '@/components/settings/AdaptiveSplitSchedulingSetting';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
-import { shouldBlockSettingsExit, targetModeLabel, targetSummaryLabel } from '@/lib/settingsUx';
+import {
+  TARGET_DRIFT_WARNING_PCT,
+  baseTargets,
+  editTargetField,
+  expenditureSummary,
+  resumeAdaptiveMessage,
+  shouldBlockSettingsExit,
+  signOutQuestion,
+  targetDrift,
+  targetModeLabel,
+  targetSummaryLabel,
+  targetsChanged,
+  type TargetDraft,
+} from '@/lib/settingsUx';
 import { getNutritionProfile } from '@/lib/nutritionProfile';
 import { isPreviewActive, isAppSandboxActive } from '@/preview/flag';
 import '@/components/settings/settings.css';
@@ -42,14 +55,25 @@ import {
   type PhotoWorkerSettings,
 } from '@/lib/photoAnalysis';
 import {
-  enableNativeBodyWeightSync,
+  HEALTH_SYNC_STOPPED_MESSAGE,
+  connectOrSyncHealthWeights,
   getBodyWeightHistorySince,
+  healthSyncMessage,
   isHealthWeightSyncEnabled,
   recordManualBodyWeight,
   setHealthWeightSyncEnabled,
-  syncNativeBodyWeights,
   type BodyWeightMeasurement,
 } from '@/lib/healthWeights';
+import {
+  WEIGHT_TREND_WINDOW_DAYS,
+  bodyWeightTrends,
+  convertWeighInDraft,
+  lastWeighInLabel,
+  parseWeighIn,
+  weeklyRateLabel,
+} from '@/lib/bodyWeightSummary';
+import { wizardWeightChanged } from '@/lib/nutritionWizard';
+import { whoopCallbackStatus, whoopSyncedLabel } from '@/lib/whoopStatus';
 import {
   formatWeight,
   getPreferredWeightUnit,
@@ -57,14 +81,8 @@ import {
   setPreferredWeightUnit,
   type WeightUnit,
 } from '@/lib/weightDisplayCore';
-import { buildWeightTrend } from '@/lib/weightTrend';
-import { WINDOW_DAYS as ADAPTIVE_WINDOW_DAYS } from '@/lib/adaptiveExpenditure';
 import { WeightTrendChart } from '@/components/shared/charts';
-import { lbsToKg } from '@/lib/nutritionCalculator';
 import { NATIVE_AUTH_CALLBACK_SCHEME, NativeAuth, isNativeIOS } from '@/lib/nativeBridge';
-
-/** Enough history for a stable trend without pulling a year of rows. */
-const WEIGHT_TREND_WINDOW_DAYS = 60;
 
 interface SavedMeal {
   id: string;
@@ -176,13 +194,7 @@ export function Settings() {
   const [searchParams] = useSearchParams();
 
   const [displayNameDraft, setDisplayNameDraft] = useState<string | null>(null);
-  const [macroDraft, setMacroDraft] = useState<{
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    source: MacroTargetSource;
-  } | null>(null);
+  const [macroDraft, setMacroDraft] = useState<TargetDraft | null>(null);
   const [savingName, setSavingName] = useState(false);
   const [savingMacros, setSavingMacros] = useState(false);
   const [nameMessage, setNameMessage] = useState<string | null>(null);
@@ -227,27 +239,18 @@ export function Settings() {
   const [weighInBusy, setWeighInBusy] = useState(false);
   const [resumingAdaptive, setResumingAdaptive] = useState(false);
 
-  // The full series drives the charts, the smoothed caption and their gates.
-  const weightTrend = useMemo(() => buildWeightTrend(bodyWeightHistory), [bodyWeightHistory]);
-  // The weekly rate is fitted over the same 3-week window the coach and the
-  // adaptive targets use. With fewer than 2 weigh-ins in it, no rate shows.
-  const weightRate = useMemo(
-    () => buildWeightTrend(bodyWeightHistory, { windowDays: ADAPTIVE_WINDOW_DAYS }),
-    [bodyWeightHistory]
+  // The full series drives the charts, the smoothed caption and their gates;
+  // the weekly rate is fitted over the adaptive targets' 3-week window.
+  const { trend: weightTrend, rate: weightRate } = useMemo(
+    () => bodyWeightTrends(bodyWeightHistory),
+    [bodyWeightHistory],
   );
   const weightToUnit = useCallback((kilograms: number) => kgToUnit(kilograms, weightUnit), [weightUnit]);
-  const weeklyWeightChange =
-    weightRate.kgPerWeek !== null
-      ? `${weightRate.kgPerWeek > 0 ? '+' : '−'}${Math.abs(kgToUnit(weightRate.kgPerWeek, weightUnit)).toFixed(2)} ${weightUnit}/wk`
-      : null;
+  const weeklyWeightChange = weeklyRateLabel(weightRate.kgPerWeek, weightUnit);
 
   const handleToggleWeightUnit = () => {
     const next: WeightUnit = weightUnit === 'lb' ? 'kg' : 'lb';
-    const entered = Number(weighInDraft);
-    if (weighInDraft.trim() && Number.isFinite(entered)) {
-      const kilograms = weightUnit === 'lb' ? lbsToKg(entered) : entered;
-      setWeighInDraft(String(Math.round(kgToUnit(kilograms, next) * 10) / 10));
-    }
+    setWeighInDraft(convertWeighInDraft(weighInDraft, weightUnit, next));
     setWeightUnit(next);
     setPreferredWeightUnit(next);
   };
@@ -269,16 +272,16 @@ export function Settings() {
   const handleRecordWeighIn = async () => {
     if (!user?.id || weighInBusy) return;
 
-    const entered = parseFloat(weighInDraft);
-    if (!Number.isFinite(entered) || entered <= 0) {
-      setHealthWeightMessage('Enter a weight first.');
+    const parsed = parseWeighIn(weighInDraft, weightUnit);
+    if ('error' in parsed) {
+      setHealthWeightMessage(parsed.error);
       return;
     }
 
     setWeighInBusy(true);
     setHealthWeightMessage(null);
     try {
-      await recordManualBodyWeight(user.id, weightUnit === 'lb' ? lbsToKg(entered) : entered);
+      await recordManualBodyWeight(user.id, parsed.kilograms);
       await refreshBodyWeightHistory(user.id);
       setWeighInDraft('');
       setHealthWeightMessage('Weigh-in recorded.');
@@ -325,17 +328,11 @@ export function Settings() {
     setHealthWeightBusy(true);
     setHealthWeightMessage(null);
     try {
-      const result = healthWeightEnabled
-        ? await syncNativeBodyWeights(user.id)
-        : await enableNativeBodyWeightSync(user.id);
+      const result = await connectOrSyncHealthWeights(user.id, healthWeightEnabled);
       setHealthWeightEnabled(true);
       setLatestBodyWeight(result.latest);
       await refreshBodyWeightHistory(user.id);
-      setHealthWeightMessage(
-        result.imported > 0
-          ? `Imported ${result.imported} Apple Health weight entr${result.imported === 1 ? 'y' : 'ies'}.`
-          : 'Apple Health weight is up to date.',
-      );
+      setHealthWeightMessage(healthSyncMessage(result));
     } catch (error) {
       setHealthWeightMessage(error instanceof Error ? error.message : 'Apple Health sync failed.');
     } finally {
@@ -346,7 +343,7 @@ export function Settings() {
   const handleDisableHealthWeightSync = () => {
     setHealthWeightSyncEnabled(false);
     setHealthWeightEnabled(false);
-    setHealthWeightMessage('Automatic weight sync stopped. Existing measurements were kept.');
+    setHealthWeightMessage(HEALTH_SYNC_STOPPED_MESSAGE);
   };
 
   const handleFoodTrialStatus = async () => {
@@ -432,8 +429,7 @@ export function Settings() {
             callbackHost: 'settings',
             callbackPath: '',
           });
-          const status = new URL(callbackUrl).searchParams.get('whoop');
-          if (status !== 'connected') throw new Error('WHOOP connection failed.');
+          if (whoopCallbackStatus(callbackUrl) !== 'connected') throw new Error('WHOOP connection failed.');
           await fetchWhoopConnection();
           setWhoopMessage('WHOOP connected.');
           return;
@@ -496,7 +492,7 @@ export function Settings() {
         : whoopAction === 'disconnect'
           ? 'Disconnecting WHOOP…'
           : whoopConnection
-            ? `Connected${whoopConnection.last_synced_at ? ` • synced ${formatDistanceToNowStrict(new Date(whoopConnection.last_synced_at), { addSuffix: true })}` : ' • never synced'}`
+            ? `Connected • ${whoopSyncedLabel(whoopConnection)}`
             : 'Not connected';
 
   const clearMealManagerFeedback = () => {
@@ -662,13 +658,7 @@ export function Settings() {
     await fetchSavedMeals();
   };
 
-  const baseMacros = {
-    calories: macroTarget?.calories ?? DEFAULT_MACRO_TARGET.calories,
-    protein: macroTarget?.protein ?? DEFAULT_MACRO_TARGET.protein,
-    carbs: macroTarget?.carbs ?? DEFAULT_MACRO_TARGET.carbs,
-    fat: macroTarget?.fat ?? DEFAULT_MACRO_TARGET.fat,
-    source: macroTarget?.source ?? ('manual' as MacroTargetSource),
-  };
+  const baseMacros = baseTargets(macroTarget);
 
   const displayName = displayNameDraft ?? (profile?.display_name || '');
   const macros = macroDraft ?? baseMacros;
@@ -678,33 +668,13 @@ export function Settings() {
   const displayNameChanged = normalizedDisplayName !== currentDisplayName;
 
   // Plain English for what the app currently believes about the user's burn.
-  const expenditureDisplay = (() => {
-    const learned = nutritionProfile?.expenditure_kcal ?? null;
-    const confidence = nutritionProfile?.expenditure_confidence ?? 'predicted';
+  const expenditure = expenditureSummary(nutritionProfile);
+  const expenditureDisplay = {
+    value: expenditure.kcal === null ? '—' : expenditure.kcal.toLocaleString(),
+    explanation: expenditure.explanation,
+  };
 
-    if (learned == null || confidence === 'predicted') {
-      return {
-        value: '—',
-        explanation:
-          'Estimated from your profile. Food logs and regular weigh-ins help refine this estimate, often over about three weeks.',
-      };
-    }
-
-    return {
-      value: Math.round(learned).toLocaleString(),
-      explanation:
-        confidence === 'measured'
-          ? 'Inferred from your food logs and weight trend. Updates weekly when enough data is available.'
-          : 'Being learned from your logs and weight trend — it will keep sharpening as more days come in.',
-    };
-  })();
-
-  const macrosChanged =
-    macros.calories !== baseMacros.calories ||
-    macros.protein !== baseMacros.protein ||
-    macros.carbs !== baseMacros.carbs ||
-    macros.fat !== baseMacros.fat ||
-    macros.source !== baseMacros.source;
+  const macrosChanged = targetsChanged(macros, baseMacros);
 
   const clearNameFeedback = () => {
     setNameMessage(null);
@@ -743,7 +713,7 @@ export function Settings() {
   // A hand edit makes the target manual, which keeps the adaptive loop off it.
   const editMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat', raw: string) => {
     clearMacroFeedback();
-    setMacroDraft({ ...macros, [field]: parseInt(raw, 10) || 0, source: 'manual' });
+    setMacroDraft(editTargetField(macros, field, raw));
   };
 
   const handleResumeAdaptiveTargets = async () => {
@@ -758,13 +728,7 @@ export function Settings() {
       const refresh = await refreshAdaptiveTargets({ force: true });
       // The source is already handed back, so a failed recalculation is not a
       // failed resume; it retries on the next Today visit.
-      setMacroMessage(
-        !nutritionProfile?.adaptive_enabled
-          ? 'Target source saved. Complete nutrition setup to enable automatic updates.'
-          : refresh === 'failed'
-            ? 'Automatic target management resumed, but recalculation could not run right now. It will retry automatically.'
-            : 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.',
-      );
+      setMacroMessage(resumeAdaptiveMessage(nutritionProfile?.adaptive_enabled, refresh));
     } catch {
       setMacroError('Could not resume adaptive targets. Please try again.');
     } finally {
@@ -802,7 +766,7 @@ export function Settings() {
       setCalculatorSavedProfile(true);
       setCalculatorDirty(false);
       const latestKg = latestBodyWeight ? Number(latestBodyWeight.kilograms) : null;
-      if (user?.id && (latestKg == null || Math.abs(latestKg - outcome.weightKg) > 0.05)) {
+      if (user?.id && wizardWeightChanged(latestKg, outcome.weightKg)) {
         try {
           await recordManualBodyWeight(user.id, outcome.weightKg);
           await refreshBodyWeightHistory(user.id);
@@ -813,7 +777,7 @@ export function Settings() {
         }
       }
       setMacroMessage('Profile saved. Review and save the suggested targets.');
-      stageTargets({ ...outcome.targets, source: 'calculated' });
+      stageTargets({ ...outcome.targets, source: outcome.source });
     } catch {
       setMacroError('Could not save your profile. Your entries are kept; try again.');
     } finally {
@@ -839,13 +803,7 @@ export function Settings() {
   };
 
   const handleSignOut = async () => {
-    if (
-      confirm(
-        Object.values(dirty).some(Boolean)
-          ? `Sign out and discard unsaved edits?${calculatorSavedProfile ? ' Already saved profile details and weight will be kept.' : ''}`
-          : 'Sign out?',
-      )
-    ) {
+    if (confirm(signOutQuestion(Object.values(dirty).some(Boolean), calculatorSavedProfile))) {
       await signOut();
     }
   };
@@ -977,11 +935,7 @@ export function Settings() {
       ? {
           key: 'log-weight',
           label: 'Log weight',
-          sublabel: latestBodyWeight && latestWeightDate
-            ? `Last ${formatWeight(latestBodyWeight.kilograms, weightUnit)} ${weightUnit} · ${isToday(latestWeightDate) ? 'today' : format(latestWeightDate, 'MMM d')}`
-            : bodyWeightError
-              ? 'History unavailable'
-              : 'First weigh-in',
+          sublabel: lastWeighInLabel(latestBodyWeight, weightUnit, Boolean(bodyWeightError)),
           glyph: 'plus',
           dock: 'tabbar',
           disabled: !user?.id,
@@ -1008,11 +962,7 @@ export function Settings() {
     </button>
   );
   const weeklyRateFigure = weeklyWeightChange ? weeklyWeightChange.slice(0, weeklyWeightChange.indexOf(' ')) : null;
-  const kcalFromMacros = Math.round(macros.protein * 4 + macros.carbs * 4 + macros.fat * 9);
-  const macroDriftPct =
-    macros.calories > 0
-      ? Math.round((Math.abs(macros.calories - kcalFromMacros) / macros.calories) * 100)
-      : 0;
+  const { kcalFromMacros, driftPct: macroDriftPct } = targetDrift(macros);
 
   return (
     <div className="metal-page pb-nav you-page you-settings">
@@ -1454,7 +1404,7 @@ export function Settings() {
             />
           </div>
 
-          {macroDriftPct > 5 && (
+          {macroDriftPct > TARGET_DRIFT_WARNING_PCT && (
             <p className="metal-flag mt-4">
               <span>
                 These macros total <b>{kcalFromMacros.toLocaleString()} kcal</b>; your calorie target is{' '}

@@ -55,8 +55,8 @@ export function summarizeFoodTrialStatus(value: unknown): string {
         estimatedTavilyKnown = true;
       }
       if (research.complete !== true || reported === null || creditEstimate === null || usdEstimate === null) incompleteTavily += 1;
-    } else if (attempt.analysisVersion === 'gemini-serving-v1') {
-      // Serving interpretation has no web research step. Token usage is counted above.
+    } else if (attempt.analysisVersion === 'gemini-serving-v1' || attempt.analysisVersion === 'gemini-coach-v1') {
+      // Serving interpretation and target suggestions have no web research step. Token usage is counted above.
     } else if (attempt.analysisVersion === 'legacy-google' || 'searchUsdIfAllowanceExhausted' in usage && !String(attempt.analysisVersion).startsWith('gemini-tavily')) {
       legacyAttempts += 1;
       const searchCost = amount(usage.searchUsdIfAllowanceExhausted);
@@ -80,4 +80,33 @@ export function summarizeFoodTrialStatus(value: unknown): string {
   if (unclassified) lines.push(`${unclassified} ${unclassified === 1 ? 'outcome has' : 'outcomes have'} unreported research usage.`);
   lines.push('Unknown usage is not zero. Estimates are not a billing statement; Tavily pricing depends on your plan.');
   return lines.join(' ');
+}
+
+/** When the server's daily count starts over (midnight UTC), in local time: "5 PM". */
+function usageResetLabel(now: Date): string {
+  const reset = new Date(now.getTime());
+  reset.setUTCHours(24, 0, 0, 0);
+  const hours = reset.getHours();
+  const minutes = reset.getMinutes();
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * One line for a phone: how many hosted analyses the daily limit has left.
+ * The limit counts by UTC day, so the line says when it starts over locally.
+ */
+export function foodTrialUsageLine(value: unknown, now: Date = new Date()): string {
+  if (!value || typeof value !== 'object') throw new Error('The analysis usage response was incomplete.');
+  if ('preview' in value && value.preview === true) return 'Sample data: no analyses counted.';
+  const status = record(value);
+  const used = status.attemptsUsed;
+  const max = status.maxAttempts;
+  if (!Number.isInteger(used) || !Number.isInteger(max) || (max as number) < 1 || (used as number) < 0) {
+    throw new Error('The analysis usage response was incomplete.');
+  }
+  const reset = usageResetLabel(now);
+  return (used as number) >= (max as number)
+    ? `Daily limit reached: ${used} of ${max} used. It starts over at ${reset}.`
+    : `${used} of ${max} analyses used. The count starts over at ${reset}.`;
 }

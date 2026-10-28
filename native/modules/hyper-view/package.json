@@ -1,0 +1,8 @@
+{
+  "name": "hyper-view",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Where a view really sits on screen, as iOS laid it out.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

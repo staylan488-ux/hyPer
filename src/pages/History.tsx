@@ -7,7 +7,6 @@ import { LapPaceChart } from '@/components/shared/charts';
 import '@/components/history/history.css';
 import { ExercisePicker } from '@/components/split/ExercisePicker';
 import { useAppStore } from '@/stores/appStore';
-import { supabase } from '@/lib/supabase';
 import { isPreviewActive } from '@/preview/flag';
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { createNoteAutosaver, mergeMovementNoteDrafts, mergeQueuedMovementNotePayload, remainingMovementNoteDrafts, type NoteAutosaver } from '@/lib/noteAutosave';
@@ -18,11 +17,22 @@ import { useAuthStore } from '@/stores/authStore';
 import {
   formatWorkoutDuration,
   getWorkoutDurationMs,
-  getWorkoutStartDateKey,
-  resolveEditedSetCompletedAt,
   resolveWorkoutTitle,
 } from '@/lib/workoutSessions';
 import {
+  buildCalendarDays,
+  buildPastSetUpdate,
+  fetchHistoryMonth,
+  groupSetsByExercise,
+  historyDayKey,
+  progressFromSets,
+  summarizeHistoryDay,
+  type HistoryWorkout,
+} from '@/lib/historyMonth';
+import {
+  activityTimeValue,
+  buildActivityInput,
+  guardActivityEdit,
   formatActivityDuration,
   formatActivityStartTime,
   getActivitySessionDateKey,
@@ -33,6 +43,7 @@ import {
   activityTypeLabel,
   customActivityTypeSuggestions,
   formatClockDuration,
+  formatSegmentDistance,
   formatDistanceMi,
   formatPace,
   paceSecondsPerMile,
@@ -52,27 +63,18 @@ import {
   type WorkoutSet,
 } from '@/types';
 import {
-  addDays,
   addMonths,
-  endOfMonth,
-  endOfWeek,
   format,
   isSameDay,
   isSameMonth,
   isToday,
   parseISO,
   startOfMonth,
-  startOfWeek,
   subMonths,
 } from 'date-fns';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
 
-interface WorkoutWithSplit extends Workout {
-  split_day?: {
-    day_name: string;
-  } | null;
-  day_label?: string | null;
-}
+type WorkoutWithSplit = HistoryWorkout;
 
 interface SetEditorProps {
   workoutSet: WorkoutSet;
@@ -165,12 +167,6 @@ interface ActivityLedgerRowProps {
   onToggleSelected?: () => void;
 }
 
-function formatSegmentDistance(distanceM: number | null): string | null {
-  if (distanceM == null || distanceM <= 0) return null;
-  if (distanceM < 1000) return `${Math.round(distanceM)} m`;
-  return formatDistanceMi(distanceM);
-}
-
 const ACTIVITY_OPTIONS = ACTIVITY_TYPES.map((type) => ({
   value: type,
   label: ACTIVITY_TYPE_LABELS[type],
@@ -179,36 +175,6 @@ const ACTIVITY_OPTIONS = ACTIVITY_TYPES.map((type) => ({
 function parseDateKey(dateKey: string): Date {
   const parsed = parseISO(dateKey);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function getTimeInputValue(value?: string | null): string {
-  if (!value) return '';
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-
-  return format(parsed, 'HH:mm');
-}
-
-function localDateTimeToIso(date: Date, timeValue: string): string | null {
-  if (!timeValue) return null;
-
-  const [hourRaw, minuteRaw] = timeValue.split(':').map((value) => Number.parseInt(value, 10));
-  if (![hourRaw, minuteRaw].every(Number.isFinite)) return null;
-  if (hourRaw < 0 || hourRaw > 23 || minuteRaw < 0 || minuteRaw > 59) return null;
-
-  const localDate = new Date(date);
-  localDate.setHours(hourRaw, minuteRaw, 0, 0);
-  return localDate.toISOString();
-}
-
-function parseDurationSeconds(durationMinutes: string): number | null {
-  if (!durationMinutes.trim()) return null;
-
-  const parsed = Number.parseInt(durationMinutes, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-
-  return Math.min(parsed, 24 * 60) * 60;
 }
 
 function isDateKeyInMonth(dateKey: string, month: Date): boolean {
@@ -221,31 +187,14 @@ function ActivityEditor({ activity, defaultDate, customTypeSuggestions, saving, 
   const [customType, setCustomType] = useState(activity?.custom_type || '');
   const [title, setTitle] = useState(activity?.title || '');
   const [date, setDate] = useState(activity?.date ? parseDateKey(activity.date) : defaultDate);
-  const [startTime, setStartTime] = useState(getTimeInputValue(activity?.started_at));
+  const [startTime, setStartTime] = useState(activityTimeValue(activity?.started_at));
   const [durationMinutes, setDurationMinutes] = useState(
     activity?.duration_seconds ? String(Math.round(activity.duration_seconds / 60)) : ''
   );
   const [notes, setNotes] = useState(activity?.notes || '');
 
   const handleSubmit = () => {
-    const dateKey = format(date, 'yyyy-MM-dd');
-    const durationSeconds = parseDurationSeconds(durationMinutes);
-    const startedAt = localDateTimeToIso(date, startTime);
-    const endedAt = startedAt && durationSeconds
-      ? new Date(new Date(startedAt).getTime() + durationSeconds * 1000).toISOString()
-      : null;
-
-    onSave({
-      activity_type: activityType,
-      custom_type: activityType === 'other' ? customType.trim().slice(0, 40) || null : null,
-      title: title.trim() || null,
-      date: dateKey,
-      started_at: startedAt,
-      ended_at: endedAt,
-      duration_seconds: durationSeconds,
-      source: activity?.source || 'manual',
-      notes: notes.trim() || null,
-    });
+    onSave(buildActivityInput({ activityType, customType, title, date, startTime, durationMinutes, notes }, activity));
   };
 
   return (
@@ -606,49 +555,9 @@ function getDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
-function buildCalendarDays(baseDate: Date): Date[] {
-  const monthStart = startOfMonth(baseDate);
-  const monthEnd = endOfMonth(baseDate);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
-
-  const days: Date[] = [];
-  let day = startDate;
-  while (day <= endDate) {
-    days.push(day);
-    day = addDays(day, 1);
-  }
-  return days;
-}
-
-function groupSetsByExercise(sets: WorkoutSet[]) {
-  const grouped = sets.reduce<Record<string, WorkoutSet[]>>((acc, set) => {
-    if (!acc[set.exercise_id]) {
-      acc[set.exercise_id] = [];
-    }
-    acc[set.exercise_id].push(set);
-    return acc;
-  }, {});
-
-  Object.keys(grouped).forEach((exerciseId) => {
-    grouped[exerciseId] = grouped[exerciseId].slice().sort((a, b) => a.set_number - b.set_number);
-  });
-
-  return grouped;
-}
-
-function progressFromSets(sets: WorkoutSet[]) {
-  const totalSets = sets.length;
-  const completedSets = sets.filter((set) => set.completed).length;
-  const percent = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
-  const completed = totalSets > 0 && completedSets === totalSets;
-  return { totalSets, completedSets, percent, completed };
-}
-
 export function History() {
   const userId = useAuthStore((state) => state.user?.id);
   const {
-    fetchWorkoutsByMonth,
     fetchWorkoutById,
     deleteWorkout,
     updateSet,
@@ -663,7 +572,6 @@ export function History() {
     clearWorkoutSuperset,
     updateWorkoutExerciseTargetSets,
     reorderWorkoutExercises,
-    fetchActivitySessionsByMonth,
     createActivitySession,
     updateActivitySession,
     deleteActivitySession,
@@ -802,40 +710,8 @@ export function History() {
     const isStale = () => requestId !== monthRequestRef.current;
     setLoading(true);
     try {
-      // The store fetchers already return [] when nobody is signed in.
-      const [workouts, activities] = await Promise.all([
-        fetchWorkoutsByMonth(month),
-        fetchActivitySessionsByMonth(month),
-      ]);
+      const { workouts: workoutsWithSplit, activities } = await fetchHistoryMonth(month);
       if (isStale()) return;
-      const splitDayIds = workouts.filter((workout) => workout.split_day_id).map((workout) => workout.split_day_id as string);
-      const uniqueSplitDayIds = [...new Set(splitDayIds)];
-      const flexibleWorkoutIds = workouts
-        .filter((workout) => workout.split_day_id === null)
-        .map((workout) => workout.id);
-
-      // The two label lookups are independent, so they run together; an empty
-      // id list makes no request.
-      const [splitDayResult, planResult] = await Promise.all([
-        uniqueSplitDayIds.length > 0
-          ? supabase.from('split_days').select('id, day_name').in('id', uniqueSplitDayIds)
-          : Promise.resolve({ data: null }),
-        flexibleWorkoutIds.length > 0
-          ? supabase.from('workout_day_plans').select('workout_id, day_label').in('workout_id', flexibleWorkoutIds)
-          : Promise.resolve({ data: null }),
-      ]);
-      if (isStale()) return;
-
-      const splitDays: { id: string; day_name: string }[] = splitDayResult.data || [];
-      const splitDayMap = new Map(splitDays.map((splitDay) => [splitDay.id, splitDay.day_name]));
-      const planRows: { workout_id: string; day_label: string }[] = planResult.data || [];
-      const workoutPlanLabels = new Map(planRows.map((plan) => [plan.workout_id, plan.day_label]));
-
-      const workoutsWithSplit: WorkoutWithSplit[] = workouts.map((workout) => ({
-        ...workout,
-        split_day: workout.split_day_id ? { day_name: splitDayMap.get(workout.split_day_id) || 'Unknown' } : null,
-        day_label: workoutPlanLabels.get(workout.id) || null,
-      }));
 
       setMonthWorkouts(workoutsWithSplit);
       setMonthActivities(activities);
@@ -858,7 +734,7 @@ export function History() {
 
     if (isStale()) return;
     setLoading(false);
-  }, [fetchActivitySessionsByMonth, fetchWorkoutsByMonth]);
+  }, []);
 
   useEffect(() => {
     void fetchWhoopConnection();
@@ -871,7 +747,7 @@ export function History() {
 
   const selectedDayWorkouts = useMemo(() => {
     return monthWorkouts
-      .filter((workout) => (getWorkoutStartDateKey(workout) || workout.date) === selectedDateKey)
+      .filter((workout) => historyDayKey(workout) === selectedDateKey)
       .sort((a, b) => new Date(a.created_at || `${a.date}T00:00:00`).getTime() - new Date(b.created_at || `${b.date}T00:00:00`).getTime());
   }, [monthWorkouts, selectedDateKey]);
 
@@ -989,7 +865,7 @@ export function History() {
 
   const workoutsByDay = useMemo(() => {
     return monthWorkouts.reduce<Record<string, WorkoutWithSplit[]>>((acc, workout) => {
-      const dateKey = getWorkoutStartDateKey(workout) || workout.date;
+      const dateKey = historyDayKey(workout);
       if (!acc[dateKey]) acc[dateKey] = [];
       acc[dateKey].push(workout);
       return acc;
@@ -1007,14 +883,7 @@ export function History() {
   }, [monthActivities]);
 
   const selectedDaySummary = useMemo(() => {
-    const parts: string[] = [];
-    if (selectedDayWorkouts.length > 0) {
-      parts.push(`${selectedDayWorkouts.length} lift${selectedDayWorkouts.length !== 1 ? 's' : ''}`);
-    }
-    if (selectedDayActivities.length > 0) {
-      parts.push(`${selectedDayActivities.length} activit${selectedDayActivities.length !== 1 ? 'ies' : 'y'}`);
-    }
-    return parts.length > 0 ? parts.join(' · ') : '0 sessions';
+    return summarizeHistoryDay(selectedDayWorkouts.length, selectedDayActivities.length);
   }, [selectedDayActivities.length, selectedDayWorkouts.length]);
 
   const refreshWorkout = useCallback(async (workoutId: string, syncCompletion = true) => {
@@ -1169,10 +1038,7 @@ export function History() {
 
     const editing = activityEditor.activity;
     // manual edits to an auto-grouped import must survive future re-syncs
-    const guardedInput: ActivitySessionInput =
-      editing && editing.source === 'whoop' && editing.auto_grouped
-        ? { ...input, user_edited: true }
-        : input;
+    const guardedInput = guardActivityEdit(input, editing);
 
     setSavingActivity(true);
     try {
@@ -1229,21 +1095,10 @@ export function History() {
   }, [deleteActivitySession, hasLinkedWhoopSegments, showSavedToast, updateActivitySession]);
 
   const handleUpdateSet = async (workoutSet: WorkoutSet, updates: { weight: number | null; reps: number | null; rpe: number | null }) => {
-    const completed = updates.weight !== null && updates.reps !== null;
     const workout = monthWorkouts.find((entry) => entry.id === workoutSet.workout_id);
 
     const saved = await runMutation(workoutSet.workout_id, async () => {
-      await updateSet(workoutSet.id, {
-        weight: updates.weight,
-        reps: updates.reps,
-        rpe: updates.rpe,
-        completed,
-        completed_at: resolveEditedSetCompletedAt({
-          completed,
-          existingSetCompletedAt: workoutSet.completed_at,
-          workoutCompletedAt: workout?.completed_at,
-        }),
-      });
+      await updateSet(workoutSet.id, buildPastSetUpdate(workoutSet, updates, workout?.completed_at));
     });
 
     // keep the typed values in the open editor so a failed save can be retried

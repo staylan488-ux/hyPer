@@ -17,14 +17,19 @@ import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
 import { SplitEditorSheet } from '@/components/split/SplitEditorSheet';
 import { springs } from '@/lib/animations';
 import { tapHaptic } from '@/lib/haptics';
-import { loadPlanScheduleAsync } from '@/lib/planSchedule';
-import { parseSetRangeNotes } from '@/lib/setRangeNotes';
+import { dismissPlanStartPrompt, shouldPromptPlanStart } from '@/lib/planSchedule';
+import {
+  exerciseTotal,
+  plural,
+  renameTemplateWithConfirm,
+  setRepLabel,
+  shownActiveProgram,
+  templateItemLabel,
+  visibleTemplateItems,
+} from '@/lib/programSummary';
 import { requestConfirm } from '@/lib/confirmDialog';
 import type { FlexDayTemplate, Split } from '@/types';
 import '@/components/split/program.css';
-
-const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
-const exerciseTotal = (split: Split) => split.days.reduce((sum, d) => sum + (d.exercises?.length || 0), 0);
 
 export function Splits() {
   const {
@@ -169,29 +174,28 @@ export function Splits() {
   const handleConfirmRenameTemplate = async () => {
     if (!templateToRename) return;
 
-    const trimmed = renameValue.trim();
-    if (!trimmed) {
+    if (!renameValue.trim()) {
       window.alert('Template label is required.');
       return;
     }
 
     try {
       setRenamingTemplate(true);
-      const result = await renameFlexTemplate(templateToRename.id, trimmed, false);
-
-      if (!result.ok && result.conflictLabel) {
-        const confirmed = window.confirm(`A template named "${result.conflictLabel}" already exists. Overwrite it?`);
-        if (!confirmed) return;
-
-        const overwriteResult = await renameFlexTemplate(templateToRename.id, trimmed, true);
-        if (!overwriteResult.ok && overwriteResult.reason) {
-          window.alert(overwriteResult.reason);
-          return;
-        }
-      } else if (!result.ok && result.reason) {
-        window.alert(result.reason);
+      let declined = false;
+      const failure = await renameTemplateWithConfirm({
+        rename: renameFlexTemplate,
+        confirmOverwrite: (conflict) => {
+          declined = !window.confirm(`A template named "${conflict}" already exists. Overwrite it?`);
+          return !declined;
+        },
+        templateId: templateToRename.id,
+        label: renameValue,
+      });
+      if (failure) {
+        window.alert(failure);
         return;
       }
+      if (declined) return;
 
       setTemplateToRename(null);
       setRenameValue('');
@@ -216,12 +220,10 @@ export function Splits() {
     promptRequestRef.current = splitId;
 
     // Checks the cloud copy when this device has none (e.g. a fresh install).
-    const hasSchedule = Boolean(await loadPlanScheduleAsync(user.id, splitId));
+    const prompt = await shouldPromptPlanStart(user.id, splitId);
     if (!mountedRef.current || promptRequestRef.current !== splitId) return;
-    const dismissedKey = `plan-start-prompt:dismissed:${user.id}:${splitId}`;
-    const dismissed = globalThis.localStorage?.getItem(dismissedKey) === '1';
 
-    if (!hasSchedule && !dismissed) {
+    if (prompt) {
       setPromptSplit({ id: splitId, name: splitName });
       setShowPlanStartPrompt(true);
     }
@@ -244,7 +246,7 @@ export function Splits() {
   };
 
   const flexible = workoutMode === 'flexible';
-  const activeProgram = flexible ? null : splits.find((split) => split.is_active) ?? null;
+  const activeProgram = shownActiveProgram(splits, workoutMode);
 
   // The page's one primary action: a new program, or a flexible session.
   const capsule: CommandCapsuleSpec = flexible
@@ -334,7 +336,7 @@ export function Splits() {
               <ul>
                 {flexTemplates.map((template, index) => {
                   const isExpanded = expandedTemplateId === template.id;
-                  const visibleItems = template.items.filter((item) => !item.hidden);
+                  const visibleItems = visibleTemplateItems(template);
 
                   return (
                     <motion.li
@@ -403,16 +405,11 @@ export function Splits() {
                             {visibleItems.length > 0 ? (
                               <ul className="program-exercises">
                                 {visibleItems.map((item, itemIndex) => {
-                                  const repsLabel = typeof item.target_reps_min === 'number' && typeof item.target_reps_max === 'number'
-                                    ? `${item.target_reps_min}–${item.target_reps_max}`
-                                    : '—';
-                                  const setsLabel = typeof item.target_sets === 'number' ? `${item.target_sets}` : '—';
-
                                   return (
                                     <li key={`${template.id}-${item.exercise_id}-${itemIndex}`} className="program-exercise">
                                       <span className="program-exercise-index">{itemIndex + 1}</span>
                                       <p className="flex-1 min-w-0 break-words">{item.exercise_name || 'Exercise'}</p>
-                                      <span className="program-exercise-value">{setsLabel}×{repsLabel}</span>
+                                      <span className="program-exercise-value">{templateItemLabel(item)}</span>
                                     </li>
                                   );
                                 })}
@@ -590,16 +587,7 @@ export function Splits() {
                                               <p className="flex-1 min-w-0 break-words">
                                                 {ex.exercise?.name || 'Unknown Exercise'}
                                               </p>
-                                              <span className="program-exercise-value">
-                                                {(() => {
-                                                  const setRange = parseSetRangeNotes(ex.notes, ex.target_sets);
-                                                  const setLabel = setRange.minSets === setRange.maxSets
-                                                    ? `${setRange.targetSets}`
-                                                    : `${setRange.minSets}–${setRange.maxSets}`;
-
-                                                  return `${setLabel}×${ex.target_reps_min}–${ex.target_reps_max}`;
-                                                })()}
-                                              </span>
+                                              <span className="program-exercise-value">{setRepLabel(ex)}</span>
                                             </motion.li>
                                           ))}
                                         </ul>
@@ -701,10 +689,7 @@ export function Splits() {
               variant="secondary"
               className="flex-1"
               onClick={() => {
-                if (user && promptSplit) {
-                  const dismissedKey = `plan-start-prompt:dismissed:${user.id}:${promptSplit.id}`;
-                  globalThis.localStorage?.setItem(dismissedKey, '1');
-                }
+                if (user && promptSplit) dismissPlanStartPrompt(user.id, promptSplit.id);
                 setShowPlanStartPrompt(false);
               }}
             >
