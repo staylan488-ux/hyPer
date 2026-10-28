@@ -621,6 +621,9 @@ sample backend accepts any field, so the simulator check had missed it.
 Reproduced and confirmed against a throwaway local Supabase with
 `supabase/schema.sql`: the old payload failed with PGRST204 and the new one
 saved; production was not written to.
+A real-account Release build of 5d75e87 (with milestone 8's Run and widgets)
+is installed and opened on the owner's iPhone; the build folder was deleted.
+A save from the phone is the owner's to try.
 
 Milestone 8, Run tracker and widgets, followed (2026-10-27, the owner asked
 to keep going while away from home), in this session's own worktree
