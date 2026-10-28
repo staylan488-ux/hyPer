@@ -120,6 +120,15 @@ owner's approval and the Apple account change above), anything on the phone
 under the released bundle ID, a real sign-up email, and WHOOP consent under
 the new identity.
 
+With the owner's standing approval for test installs, a real-account Release
+build of 4db78d9 (the test app, `app.hyper.native`) is installed on the
+owner's iPhone (iOS did not open it; the phone was locked). The temporary
+simulator, the local Supabase, the build folders and the test harness were
+removed afterwards; the iOS project is prebuilt for the test app with Release
+frameworks in place (run `use-rn-core.sh Debug` before a simulator build).
+The cutover steps were put to the owner for one approval in the thread on
+2026-10-28; none has been taken.
+
 Not changed on purpose (minor, recorded for later): merge of 3+ activities in
 one step, the Target sets field in History, RPE below 6, Train's week strip,
 "beat last time" marks, Progress's training-time detail, You's About build
