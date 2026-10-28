@@ -77,6 +77,16 @@ opening the editor on the tapped macro. Not exercised: anything on a phone
 (haptics, real finger swipes), VoiceOver, the lock-screen card and widget
 taps, and real-database writes (sample backend only).
 
+With the owner's approval the work is open as PR #155
+(https://github.com/staylan488-ux/hyPer/pull/155, checks passing; the owner
+merges), and the released app (`app.hyper.mobile` 2.0.0, real account) built
+from it with `HYPER_APP=release native/scripts/build-phone.sh` is installed
+over hyPer on the owner's iPhone over Wi-Fi; iOS refused to open it after
+install (most likely locked), so it has not been opened yet. The simulator
+DerivedData, the phone build folder and the probe output were deleted
+afterwards; this worktree keeps `native/ios` prebuilt for the released variant
+with Debug frameworks in place.
+
 ## Describe amount converts units (2026-10-28)
 
 The owner typed "272 ML" for orange juice whose serving is "1 cup" and Gemini
