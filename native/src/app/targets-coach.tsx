@@ -50,7 +50,9 @@ export default function TargetsCoachSheet() {
 
   useEffect(() => {
     if (!result) return;
-    stageTargets({ ...result, source: 'manual' }, { coach: result });
+    // Only the four numbers become the draft; the words travel beside it.
+    const { calories, protein, carbs, fat } = result;
+    stageTargets({ calories, protein, carbs, fat, source: 'manual' }, { coach: result });
     router.replace('/targets-edit');
   }, [result]);
 

@@ -142,3 +142,20 @@ export function signOutQuestion(hasUnsavedEdits: boolean, profileAlreadySaved = 
   if (!hasUnsavedEdits) return 'Sign out?';
   return `Sign out and discard unsaved edits?${profileAlreadySaved ? ' Already saved profile details and weight will be kept.' : ''}`;
 }
+
+/**
+ * The fields of a target that the macro_targets table stores. A draft can
+ * carry more (a coach suggestion's rationale and confidence); sending those
+ * made every save of a suggestion fail (the owner hit it on 2026-10-28).
+ */
+export function macroTargetColumns(target: object): Partial<TargetDraft> {
+  const values = target as Record<string, unknown>;
+  const columns: Partial<TargetDraft> = {};
+  for (const key of ['calories', 'protein', 'carbs', 'fat'] as const) {
+    const value = values[key];
+    if (typeof value === 'number' && Number.isFinite(value)) columns[key] = value;
+  }
+  const source = values.source;
+  if (source === 'manual' || source === 'calculated' || source === 'adaptive') columns.source = source;
+  return columns;
+}

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { captureAccountScope, getAccountScopeGeneration, invalidateAccountScope } from '@/lib/accountScope';
 import { isPreviewActive } from '@/preview/flag';
+import { macroTargetColumns } from '@/lib/settingsUx';
 import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, whoopFetchStart, type WhoopSyncResult } from '@/lib/whoopSync';
 import { beginWhoopReconciliation, completeWhoopReconciliation, readWhoopReconciliation } from '@/lib/whoopReconciliation';
@@ -3268,7 +3269,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       .from('macro_targets')
       .upsert({
         user_id: userId,
-        ...target,
+        // Only the table's own columns: anything else (a coach suggestion's
+        // rationale, say) makes the database refuse the whole save.
+        ...macroTargetColumns(target),
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id',

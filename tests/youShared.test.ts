@@ -32,6 +32,7 @@ import {
   baseTargets,
   editTargetField,
   expenditureSummary,
+  macroTargetColumns,
   resumeAdaptiveMessage,
   signOutQuestion,
   targetDrift,
@@ -69,6 +70,14 @@ describe('target rules shared by the web and native You', () => {
     expect(targetsChanged(edited, base)).toBe(true);
     expect(targetsChanged(base, base)).toBe(false);
     expect(editTargetField(base, 'fat', '').fat).toBe(0);
+  });
+
+  it('saves only the targets table’s columns, never a suggestion’s words', () => {
+    // A coach suggestion staged whole made every save fail: the database has
+    // no rationale or cautions columns (2026-10-28).
+    const suggestion = { calories: 2450, protein: 150, carbs: 310, fat: 70, rationale: 'Why', cautions: '', confidence: 0.7, provider: 'gemini', reconciled: false, source: 'manual' };
+    expect(macroTargetColumns(suggestion)).toEqual({ calories: 2450, protein: 150, carbs: 310, fat: 70, source: 'manual' });
+    expect(macroTargetColumns({ calories: Number.NaN, source: 'other' })).toEqual({});
   });
 
   it('measures how far the calories are from what the macros add up to', () => {

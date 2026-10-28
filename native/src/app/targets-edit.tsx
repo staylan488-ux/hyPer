@@ -6,6 +6,7 @@ import {
   TARGET_DRIFT_WARNING_PCT,
   baseTargets,
   editTargetField,
+  macroTargetColumns,
   targetDrift,
   targetsChanged,
   type TargetDraft,
@@ -75,7 +76,7 @@ export default function TargetsEditSheet() {
     setSaving(true);
     setError(null);
     try {
-      await useAppStore.getState().updateMacroTarget(draft);
+      await useAppStore.getState().updateMacroTarget(macroTargetColumns(draft));
       haptics.success();
       useTargetsStore.setState({ message: { text: 'Daily targets saved.' } });
       void loadTargets();

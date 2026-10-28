@@ -611,6 +611,17 @@ A real-account Release build of 3e809d1 is installed on the owner's iPhone
 (iOS did not open it, likely a locked phone); the build folder, simulator
 and DerivedData were deleted.
 
+2026-10-28: saving targets from Suggest targets always failed ("Could not
+save daily targets"). The coach sheet staged the whole suggestion, so its
+rationale, cautions and confidence went into the `macro_targets` upsert, and
+PostgREST refused the unknown columns (PGRST204). Fixed twice over: the sheet
+stages only the four numbers, and `updateMacroTarget` in the shared store
+sends only the table's columns (`macroTargetColumns` in `settingsUx`). The
+sample backend accepts any field, so the simulator check had missed it.
+Reproduced and confirmed against a throwaway local Supabase with
+`supabase/schema.sql`: the old payload failed with PGRST204 and the new one
+saved; production was not written to.
+
 Milestone 8, Run tracker and widgets, followed (2026-10-27, the owner asked
 to keep going while away from home), in this session's own worktree
 (`.claude/worktrees/elegant-joliot-6c1457`, pushed to `feat/native-blanc`):
