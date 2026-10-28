@@ -44,6 +44,8 @@ platform :ios do
       export_method: "app-store",
       output_directory: "#{native}/build",
       output_name: "hyPer.ipa",
+      # Inside build/ so ship.sh removes it afterwards (about 2 GB a ship).
+      derived_data_path: "#{native}/build/DerivedData",
       clean: true,
       # gym passes these to the App Store export as well; giving them again
       # (export_xcargs) makes xcodebuild refuse the duplicate options.

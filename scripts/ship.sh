@@ -16,15 +16,30 @@ REPO_URL="https://github.com/staylan488-ux/hyPer.git"
 BUILD_REPO="${BUILD_REPO:-$HOME/.hyper-ship/build}"
 ENV_SEED="$HOME/.hyper-ship/.env"
 
-if [ ! -d "$BUILD_REPO/.git" ]; then
-  echo "==> First run: cloning isolated build checkout at $BUILD_REPO"
-  git clone "$REPO_URL" "$BUILD_REPO"
+if [ "${HYPER_SHIP_FROM_MAIN:-}" != 1 ]; then
+  if [ ! -d "$BUILD_REPO/.git" ]; then
+    echo "==> First run: cloning isolated build checkout at $BUILD_REPO"
+    git clone "$REPO_URL" "$BUILD_REPO"
+  fi
+
+  cd "$BUILD_REPO"
+  echo "==> Fetching latest main"
+  git fetch origin --quiet
+  git reset --hard origin/main
+
+  # Carry on with main's own copy of this script, not the one that was called:
+  # the bot calls a copy in a checkout that can be days behind main, and on
+  # 2026-10-28 such a copy shipped the retired Capacitor app as build 59.
+  HYPER_SHIP_FROM_MAIN=1 exec bash "$BUILD_REPO/scripts/ship.sh" "$@"
 fi
 
 cd "$BUILD_REPO"
-echo "==> Fetching latest main"
-git fetch origin --quiet
-git reset --hard origin/main
+echo "==> Building main at $(git rev-parse --short HEAD)"
+
+# Leave the clone small whether the ship works or not: the generated iOS
+# project, the IPA and the Xcode build folder are made again on every ship.
+# The archive stays in Xcode's Archives folder for crash symbols.
+trap 'rm -rf "$BUILD_REPO/native/build" "$BUILD_REPO/native/ios"' EXIT
 
 # The build clone needs the prod .env (Supabase keys + photo worker URL). It is
 # gitignored so it survives reset --hard, but seed/refresh it from the stash.
@@ -58,7 +73,4 @@ export EXPO_PUBLIC_HYPER_PREVIEW=0 HYPER_APP=release LANG=en_US.UTF-8 LC_ALL=en_
 echo "==> Archiving, checking + uploading the native app to TestFlight"
 cd native
 fastlane beta
-
-# Leave the clone small: the archive and the generated iOS project are rebuilt each ship.
-rm -rf build ios
 echo "==> Shipped."
