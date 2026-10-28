@@ -600,6 +600,13 @@ targets for everyone on the next calculation, and the adaptive estimator's
 "predicted" burn rises with them.
 - Train: tapping the workout bar during a rest now opens the rest panel
   (the owner's request); otherwise it still returns to the workout.
+- Train: each movement shows last time's note (the newest earlier workout
+  with one, from the shared `fetchPreviousMovementNotes`) under the set
+  card's "Last time" line and in the movement sheet's Note section. The web
+  app has no such view; the sample data now carries two movement notes.
+Checked in a temporary simulator: the calculator with the owner's numbers
+(3,125 kcal, "2,791 burn + 334 to gain"), the rest bar opening the rest
+panel, and last time's note on the card and in the sheet.
 
 # Previous work snapshot — a single set stuck on every retry
 

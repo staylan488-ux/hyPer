@@ -175,10 +175,11 @@ export const previewNutritionLogs = logSeeds.map(([foodId, servings, meal, h, m]
 }));
 
 /* ── History: completed workouts + their sets over the last fortnight ── */
-const historyPlan: { offset: number; dayId: string; ex: Exercise[] }[] = [
+const historyPlan: { offset: number; dayId: string; ex: Exercise[]; notes?: Record<string, string> }[] = [
   { offset: 2, dayId: 'd2', ex: [exSquat, exRdl, exLegext, exCalf] },
   { offset: 4, dayId: 'd3', ex: [exOhp, exPulldown, exIncline, exCurl] },
-  { offset: 6, dayId: 'd1', ex: [exBench, exRow, exIncline, exLateral] },
+  // Movement notes, so "last time's note" has something to show.
+  { offset: 6, dayId: 'd1', ex: [exBench, exRow, exIncline, exLateral], notes: { [exBench.id]: 'Bench at notch 4, feet planted', [exRow.id]: 'Straps on the last set' } },
   { offset: 9, dayId: 'd4', ex: [exRdl, exSquat, exLegcurl, exCalf] },
   { offset: 11, dayId: 'd2', ex: [exSquat, exRdl, exLegext, exCalf] },
   { offset: 13, dayId: 'd1', ex: [exBench, exRow, exPulldown, exLateral] },
@@ -204,8 +205,9 @@ export const previewHistoryWorkouts: Workout[] = historyPlan.map((p, wi) => {
     }
   });
   const completedAt = at(d, 19, 5);
-  histWorkoutRows.push({ id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start) });
-  return { id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes: null, completed: true, completed_at: iso(completedAt), created_at: iso(start), sets };
+  const notes = p.notes ? JSON.stringify({ movementNotes: p.notes }) : null;
+  histWorkoutRows.push({ id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes, completed: true, completed_at: iso(completedAt), created_at: iso(start) });
+  return { id, user_id: PREVIEW_USER_ID, split_day_id: p.dayId, date: ymd(d), notes, completed: true, completed_at: iso(completedAt), created_at: iso(start), sets };
 });
 
 // blank metric/bookkeeping fields for plain manual entries

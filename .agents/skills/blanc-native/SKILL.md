@@ -107,7 +107,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   the program's range; only unfinished sets are removed), the note, and swap
   for this workout or switch back. In a flexible session the same sheet pairs
   a superset, unlinks it, or removes the movement (logged sets stay in the
-  workout). Tapping an unfinished row still makes it the next movement.
+  workout). Last time's note for the movement shows under the
+  set card's "Last time" line and in the sheet's Note section. Tapping an unfinished row still makes it the next movement.
 - Before a session, Train shows today's [PlanCard](../../../native/src/components/PlanCard.tsx)
   (shared with Today), then every other day to start. Its header menu holds the
   schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm

@@ -237,3 +237,20 @@ describe('short status lines', () => {
     expect(healthSyncMessage({ imported: 0, latest: null })).toBe('Apple Health weight is up to date.');
   });
 });
+
+describe('last time’s movement notes', () => {
+  it('takes each movement’s note from the newest earlier workout that has one', async () => {
+    const { buildPreviousMovementNotes } = await import('@/lib/previousSetTargets');
+    const workouts = [
+      { id: 'w3', date: '2026-10-25', notes: JSON.stringify({ movementNotes: { row: 'Straps on the last set' } }) },
+      { id: 'w2', date: '2026-10-21', notes: JSON.stringify({ movementNotes: { bench: 'Notch 4', row: 'Older row note' } }) },
+      { id: 'w1', date: '2026-10-18', notes: 'a plain legacy note' },
+      { id: 'w0', date: '2026-10-14', notes: null },
+    ];
+    expect(buildPreviousMovementNotes(workouts, ['bench', 'row', 'squat'])).toEqual({
+      row: { note: 'Straps on the last set', date: '2026-10-25' },
+      bench: { note: 'Notch 4', date: '2026-10-21' },
+    });
+    expect(buildPreviousMovementNotes([], ['bench'])).toEqual({});
+  });
+});

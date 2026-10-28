@@ -5,7 +5,7 @@ import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
-import { fetchPreviousSetTargets } from '@/lib/previousSetTargets';
+import { fetchPreviousMovementNotes, fetchPreviousSetTargets, type PreviousMovementNotes } from '@/lib/previousSetTargets';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -48,6 +48,36 @@ export function usePreviousTargets(session: SessionModel | null): PreviousWorkou
   }, [userId, workoutId, date, exerciseKey]);
 
   return targets;
+}
+
+/**
+ * Last time's note per movement, for the live workout. Kept in a store so the
+ * movement sheet (its own screen) reads the same lookup Train made.
+ */
+export const usePreviousNotesStore = create<{ workoutId: string | null; notes: PreviousMovementNotes }>(() => ({
+  workoutId: null,
+  notes: {},
+}));
+
+export function usePreviousNotes(session: SessionModel | null): PreviousMovementNotes {
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const exerciseKey = session ? session.movements.map((movement) => movement.exerciseId).sort().join(',') : '';
+  const workoutId = session?.workoutId ?? null;
+  const date = session?.date ?? null;
+  const notes = usePreviousNotesStore((state) => (state.workoutId === workoutId ? state.notes : null));
+
+  useEffect(() => {
+    if (!userId || !workoutId || !date || !exerciseKey) return;
+    let cancelled = false;
+    void fetchPreviousMovementNotes({ userId, workoutId, date, exerciseIds: exerciseKey.split(',') }).then((result) => {
+      if (!cancelled && result) usePreviousNotesStore.setState({ workoutId, notes: result });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, workoutId, date, exerciseKey]);
+
+  return notes ?? {};
 }
 
 /** Re-renders every `intervalMs` while mounted. */

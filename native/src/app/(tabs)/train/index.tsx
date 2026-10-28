@@ -1,6 +1,6 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { differenceInCalendarWeeks, parseISO } from 'date-fns';
+import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
 import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -27,7 +27,7 @@ import { haptics } from '~/lib/haptics';
 import { errorMessage, renameSession } from '~/lib/movement';
 import { flushNotes } from '~/lib/notes';
 import { startRest, stopRest } from '~/lib/rest';
-import { useFocusStore, useNow, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { useTodayPlan } from '~/lib/today';
@@ -69,6 +69,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const c = useBlanc();
   const now = useNow(1000);
   const previous = usePreviousTargets(session);
+  const previousNotes = usePreviousNotes(session);
   const logSet = useAppStore((state) => state.logSet);
   const completeWorkout = useAppStore((state) => state.completeWorkout);
   const saveTemplateFromWorkout = useAppStore((state) => state.saveFlexibleTemplateFromCurrentWorkout);
@@ -134,6 +135,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
+  const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
 
   const blocked = current?.blocked ?? null;
 
@@ -389,6 +391,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 </BlancText>
               ) : null}
             </View>
+            {lastNote ? (
+              <BlancText variant="footnote" tone="graphite" numberOfLines={2} style={{ marginTop: 10 }}>
+                Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
+              </BlancText>
+            ) : null}
 
             {failed ? (
               <BlancText variant="footnote" tone="live" style={{ marginTop: 14 }}>

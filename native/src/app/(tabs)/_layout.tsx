@@ -11,7 +11,7 @@ import { haptics } from '~/lib/haptics';
 import { resetHistory } from '~/lib/history';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
-import { useFocusStore, useSessionModel } from '~/lib/session';
+import { useFocusStore, usePreviousNotesStore, useSessionModel } from '~/lib/session';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { resetYou } from '~/lib/you';
 import { dynamicInk } from '~/theme/blanc';
@@ -37,6 +37,7 @@ export default function TabsLayout() {
       useNotesStore.setState({ workoutId: null, drafts: {}, base: null, status: {} });
       resetHistory();
       resetYou();
+      usePreviousNotesStore.setState({ workoutId: null, notes: {} });
     },
     [],
   );

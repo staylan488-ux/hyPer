@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
+import { format, parseISO } from 'date-fns';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -17,7 +18,7 @@ import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { changeSetCount, errorMessage, removeMovement, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
-import { useSessionModel, type Movement } from '~/lib/session';
+import { usePreviousNotesStore, useSessionModel, type Movement } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -116,6 +117,8 @@ function MovementDetail({
   const [switching, setSwitching] = useState(false);
   const [editingPlan, setEditingPlan] = useState<'unlink' | 'remove' | null>(null);
   const note = useMovementNote(workoutId, movement.exerciseId, movement.note);
+  // Last time's note for this movement, from the lookup Train made.
+  const lastNote = usePreviousNotesStore((state) => (state.workoutId === workoutId ? state.notes[movement.exerciseId] : undefined));
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
 
   // Closing the sheet saves the note at once rather than after the pause.
@@ -244,6 +247,11 @@ function MovementDetail({
           />
         </Label>
         <NoteFooter status={note.status} length={note.text.length} />
+        {lastNote ? (
+          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+            Last time, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
+          </BlancText>
+        ) : null}
       </Section>
 
       {hasUnfinished ? (
