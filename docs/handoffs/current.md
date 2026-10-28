@@ -660,6 +660,13 @@ Not verified: anything on a phone (GPS accuracy, the cues' sound, haptics,
 the card on a real lock screen), the lock-screen widget sizes (built, not
 placed), saving a run against a real database, and the web run page in a
 browser.
+With the owner's standing approval for installs, a real-account Release build
+of 0e35d2a is installed and opened on the owner's iPhone (production host in
+the bundle; the App Group signed for the app and the widget extension through
+automatic signing). iOS asks for location, Motion and Live Activities the
+first time they are used. The temporary simulator, its build folder and the
+phone build folder were deleted; the Release React Native frameworks are in
+place, so run `use-rn-core.sh Debug` before the next simulator build.
 
 # Previous work snapshot — a single set stuck on every retry
 
