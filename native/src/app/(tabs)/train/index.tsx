@@ -7,13 +7,14 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { movementBlocks } from '@/components/workout/movementOrder';
+import { moveMovementBlock, movementBlocks } from '@/components/workout/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
+import { DragList } from '~/components/DragList';
 import { FigureInput } from '~/components/FigureInput';
 import type { TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
@@ -27,8 +28,8 @@ import { useAccountRefresh } from '~/lib/accountData';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
-import { confirmRemoveMovement, errorMessage, renameSession } from '~/lib/movement';
+import { rowLayout } from '~/lib/motion';
+import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
@@ -270,9 +271,93 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     [session.dayName, closing, c.ink, flexible, finish],
   );
 
-  const blockCount = movementBlocks(
+  // Blocks: a superset pair moves as one.
+  const blocks = movementBlocks(
     session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
-  ).length;
+  );
+  const byId = new Map(session.movements.map((movement) => [movement.exerciseId, movement]));
+  // A drop saves this session's order at once (never the program); while it
+  // saves rows stay put, and a failed save puts the old order back.
+  const [reordering, setReordering] = useState(false);
+  const [orderRevision, setOrderRevision] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const moveBlock = async (key: string, index: number) => {
+    if (reordering) return;
+    const ids = moveMovementBlock(blocks, key, index);
+    setReordering(true);
+    try {
+      await reorderMovements(session.workoutId, ids);
+    } catch (failure) {
+      haptics.error();
+      setOrderRevision((value) => value + 1);
+      Alert.alert('Order not saved', errorMessage(failure, 'Check your connection and try again.'));
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  const movementRow = (movement: SessionModel['movements'][number], blockIndex: number) => {
+    const isCurrent = movement.exerciseId === current?.movement.exerciseId;
+    const complete = movement.done === movement.sets.length;
+    const plan = movement.plan;
+    const lastSet = previous[movement.exerciseId]?.[1];
+    // Swipe to swap a movement with sets to go and, in a flexible session, to
+    // take it out (asks first).
+    const swipe: SwipeAction[] = [
+      ...(movement.sets.some((set) => !set.completed)
+        ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
+        : []),
+      ...(session.flexible
+        ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
+        : []),
+    ];
+    // What a hold and a drag do, for VoiceOver.
+    const actions = [
+      { label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) },
+      ...(blockIndex > 0 ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1) }] : []),
+      ...(blockIndex < blocks.length - 1 ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1) }] : []),
+    ];
+    const row = complete ? (
+      // Finished movements open their sets, to correct one.
+      <Row
+        quiet
+        title={movement.name}
+        value={`Done · ${movement.done} of ${movement.sets.length}`}
+        leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
+        accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
+        onPress={() => openMovement(movement.exerciseId)}
+        actions={actions}
+      />
+    ) : (
+      // Tap to work on a movement next.
+      <Row
+        title={movement.name}
+        detail={[
+          isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
+          movement.superset
+            ? `superset ${movement.superset.role}`
+            : movement.substitutesFor
+            ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+            : plan && plan.target_reps_min && plan.target_reps_max
+              ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
+              : null,
+          lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+        chevron={!isCurrent}
+        onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
+        actions={actions}
+      />
+    );
+    return swipe.length > 0 ? (
+      <SwipeRow name={movement.name} actions={swipe}>
+        <View style={{ backgroundColor: c.label }}>{row}</View>
+      </SwipeRow>
+    ) : (
+      row
+    );
+  };
   const addMovement = () => router.push({ pathname: '/swap', params: { mode: 'add' } });
 
   return (
@@ -280,6 +365,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Stack.Screen options={headerOptions} />
       <TabScroll
         ref={scroll}
+        // A lifted movement holds the page still while it is dragged.
+        scrollEnabled={!dragging}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
@@ -442,71 +529,30 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         )}
 
         {session.movements.length > 0 ? (
-        <Section
-          title="Movements"
-          action={blockCount > 1 ? { title: 'Reorder', onPress: () => router.push('/reorder') } : undefined}>
-          <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
-            {session.movements.map((movement, index) => {
-              const isCurrent = movement.exerciseId === current?.movement.exerciseId;
-              const complete = movement.done === movement.sets.length;
-              const plan = movement.plan;
-              const lastSet = previous[movement.exerciseId]?.[1];
-              // Swipe to swap a movement with sets to go and, in a flexible
-              // session, to take it out (asks first).
-              const swipe: SwipeAction[] = [
-                ...(movement.sets.some((set) => !set.completed)
-                  ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
-                  : []),
-                ...(session.flexible
-                  ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
-                  : []),
-              ];
-              const row = complete ? (
-                // Finished movements open their sets, to correct one.
-                <Row
-                  quiet
-                  title={movement.name}
-                  value={`Done · ${movement.done} of ${movement.sets.length}`}
-                  leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
-                  accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
-                  onPress={() => openMovement(movement.exerciseId)}
-                  onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
-                />
-              ) : (
-                // Tap to work on a movement next; hold for its sets, note and swap.
-                <Row
-                  title={movement.name}
-                  detail={[
-                    isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-                    movement.superset
-                      ? `superset ${movement.superset.role}`
-                      : movement.substitutesFor
-                      ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-                      : plan && plan.target_reps_min && plan.target_reps_max
-                        ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
-                        : null,
-                    lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  chevron={!isCurrent}
-                  onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
-                  onLongPress={{ label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) }}
-                />
-              );
-              return (
-                <Animated.View key={movement.exerciseId} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 ? <Hairline /> : null}
-                  {swipe.length > 0 ? (
-                    <SwipeRow name={movement.name} actions={swipe}>
-                      <View style={{ backgroundColor: c.label }}>{row}</View>
-                    </SwipeRow>
-                  ) : (
-                    row
-                  )}
-                </Animated.View>
-              );
-            })}
+        <Section title="Movements">
+          {/* Hold a movement to lift it and drag it into place; hold and let
+              go for its sets, note and swap. The card's corners are the rows'. */}
+          <Label>
+            <DragList
+              items={blocks.map((block) => ({
+                key: block[0],
+                node: block.map((id, index) => {
+                  const movement = byId.get(id);
+                  return movement ? (
+                    <View key={id}>
+                      {index > 0 ? <Hairline /> : null}
+                      {movementRow(movement, blocks.findIndex((entry) => entry === block))}
+                    </View>
+                  ) : null;
+                }),
+              }))}
+              enabled={!reordering}
+              revision={orderRevision}
+              roundBottom={!session.flexible}
+              onMove={(key, index) => void moveBlock(key, index)}
+              onHold={(key) => openMovement(key)}
+              onDragging={setDragging}
+            />
             {session.flexible ? (
               <Animated.View layout={rowLayout}>
                 <Hairline />

@@ -27,6 +27,30 @@ the build clone's own copy right after resetting it, cleans up on any exit
 native build number and keeps a log per ship. The running bot keeps its old
 code until it is restarted after merge (`install-launchd.sh`, not during a ship).
 
+## Hold and drag to reorder movements (2026-10-28)
+
+After the audit (PR #155, merged), the owner asked to reorder the live
+workout's movements by holding one and sliding it into place instead of the
+Reorder button. Built on `claude/project-thread-yy0lu9` (restarted from main
+c49bbae): `native/src/components/DragList.tsx` lifts a row after a 0.32 s
+hold (firm tick, slight scale and shadow), the others slide aside with a light
+tick per place, the page stops scrolling while a row is lifted, and a drop
+glides into place and saves this session's order at once through
+`reorderMovements` (a failed save plays the error haptic, says so and puts the
+old order back). Held and let go without moving, a row opens the movement
+sheet (what the old long press did). A superset pair moves as one; VoiceOver
+gets Move up and Move down. The Reorder button and its sheet
+(`native/src/app/reorder.tsx`) are gone. Quick swipes still open Swap/Remove,
+and a tap after a drag does nothing extra (`holdRowPresses`).
+
+Checked in the iPhone 17 Pro simulator (sample data, real touches, a screen
+recording read frame by frame): drag up and down saved the new order, hold and
+release opened the sheet, a quick swipe still opened Swap, a tap only closed
+an open row, a tap on a row still made it next. Not exercised: haptics on a
+phone, a superset pair (none in the sample workout; the block rule is the
+shared `moveMovementBlock` the sheet used), auto-scroll (there is none: lists
+fit the screen once scrolled to), VoiceOver.
+
 ## Interaction audit (2026-10-28)
 
 The owner asked for an app-wide interaction audit of the native app against

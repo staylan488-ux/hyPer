@@ -10,6 +10,8 @@ export const haptics = {
   success: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
   /** A save that failed. */
   error: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
-  /** The launch intro's P settling into its corner. */
+  /** A row lifted to be dragged into place. */
+  lift: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
+  /** The launch intro's P settling into its corner; a dragged row set down. */
   land: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {}),
 };
