@@ -51,13 +51,10 @@ phone, a superset pair (none in the sample workout; the block rule is the
 shared `moveMovementBlock` the sheet used), auto-scroll (there is none: lists
 fit the screen once scrolled to), VoiceOver.
 
-Open as PR #157 (https://github.com/staylan488-ux/hyPer/pull/157, checks
-passing) with the owner's approval, which also covers installing it over hyPer
-on the owner's iPhone. The Release build is done (in
-`$TMPDIR/hyper-native-phone`), but the phone was away from the Mac's Wi-Fi, so
-it is not installed yet: run `HYPER_APP=release native/scripts/build-phone.sh
-25A0A94E-CBE7-54FB-A33A-BB010E532F72` from this worktree once the owner says
-the phone is back.
+With the owner's approval it went in as PR #157 (merged by the owner,
+1257744), and the released app built from main with it (`app.hyper.mobile`,
+real account) was installed over hyPer on the owner's iPhone over Wi-Fi on
+2026-10-29 and opened there. The phone build folder was deleted afterwards.
 
 ## Interaction audit (2026-10-28)
 
