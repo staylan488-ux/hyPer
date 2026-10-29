@@ -111,15 +111,6 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="reorder"
-              options={{
-                presentation: 'formSheet',
-                sheetAllowedDetents: [0.72, 1],
-                sheetGrabberVisible: true,
-                contentStyle: { backgroundColor: p.ground },
-              }}
-            />
-            <Stack.Screen
               name="past-set"
               options={{
                 presentation: 'formSheet',

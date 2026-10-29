@@ -40,6 +40,18 @@ function markSwipeEnd() {
   swipeEndedAt = Date.now();
 }
 
+// A row lifted to be dragged into place takes its touch the same way.
+let rowHeld = false;
+/** A row gesture (a drag to reorder) has the touch: rows ignore presses until released. */
+export function holdRowPresses() {
+  rowHeld = true;
+}
+/** The row gesture let go; the press that ends it is still ignored. */
+export function releaseRowPresses() {
+  rowHeld = false;
+  markSwipeEnd();
+}
+
 /**
  * For a row's tap or long press: true when the touch is not the row's own, so
  * the row does nothing. That is a touch that swiped (now or a moment ago), or
@@ -48,7 +60,7 @@ function markSwipeEnd() {
 export function closeOpenSwipeRow(): boolean {
   const now = Date.now();
   const swiping = swipeStartedAt > swipeEndedAt && now - swipeStartedAt < SWIPE_LONGEST;
-  if (swiping || now - swipeEndedAt < SWIPE_PRESS_GRACE) return true;
+  if (rowHeld || swiping || now - swipeEndedAt < SWIPE_PRESS_GRACE) return true;
   return dismissOpenSwipeRow();
 }
 

@@ -130,7 +130,7 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   native app defaults to it (AI tab, Manual's hand-off, Describe amount); a
   device set to the worker gets the Photo tab instead.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
-  from ⋯ on the current card, a finished movement's row, or a long press on any
+  from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12
   whatever the program says (the owner's call on 2026-10-26; the web keeps to
   the program's range; only unfinished sets are removed), the note, and swap
@@ -152,9 +152,15 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   out of turn shows why instead of logging. The one exercise picker
   (`native/src/app/swap.tsx`) serves swap, add and superset through its
   `mode` parameter.
-- Reorder (`native/src/app/reorder.tsx`) uses SwiftUI's List in edit mode
-  through Expo UI, so the drag handles and lift are Apple's; a pair moves as
-  one row, each drop saves at once, and a failed save puts the order back.
+- Reorder in the live workout is in place (the owner's call on 2026-10-28,
+  replacing the Reorder sheet): hold a movement to lift it (a firm tick) and
+  drag it; the others slide aside with a light tick per place, and a drop
+  saves at once (a failed save puts the order back). Held and let go without
+  moving, it opens the movement sheet. A pair moves as one; VoiceOver gets
+  Move up and Move down. [DragList](../../../native/src/components/DragList.tsx)
+  places rows by position (no jump while a drop saves), rounds the card's
+  first and last rows itself, holds row presses through `holdRowPresses`,
+  and the page stops scrolling while a row is lifted.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the

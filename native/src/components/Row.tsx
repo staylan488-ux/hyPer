@@ -24,11 +24,13 @@ type RowProps = {
   onLongPress?: { label: string; run: () => void };
   /** Shown but not usable for now (a save is running): dimmed and inert. */
   disabled?: boolean;
+  /** More VoiceOver actions (Move up, Move down) for what a gesture does by sight. */
+  actions?: { label: string; run: () => void }[];
   accessibilityLabel?: string;
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, disabled, accessibilityLabel }: RowProps) {
+export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
   // Spoken as its words only: icons such as the chevron add nothing.
   const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
@@ -37,9 +39,11 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
   const actions = [
     ...(onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : []),
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
+    ...extra.map((action) => ({ name: `extra:${action.label}`, label: action.label })),
   ];
   const onAction = (name: string) => {
     if (name === 'longpress') onLongPress?.run();
+    else if (name.startsWith('extra:')) extra.find((action) => `extra:${action.label}` === name)?.run();
     else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
   };
   const content = (
