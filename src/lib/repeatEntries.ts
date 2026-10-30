@@ -52,7 +52,18 @@ export function buildRepeatedEntries(entries: readonly RepeatableEntry[], target
   }));
 }
 
-/** True when the day already has every food being copied, so a second copy asks before doubling the meal. */
+/** A day's entries in one meal; null is Unassigned, which also holds entries whose meal is gone. */
+export function entriesInMeal<T extends { group_id?: string | null }>(dayLogs: readonly T[], dayGroups: readonly NutritionGroup[], meal: NutritionGroup | null): T[] {
+  if (meal) return dayLogs.filter((log) => log.group_id === meal.id);
+  const ids = new Set(dayGroups.map((group) => group.id));
+  return dayLogs.filter((log) => !log.group_id || !ids.has(log.group_id));
+}
+
+/**
+ * True when the meal a copy goes into already has every food being copied,
+ * so a second copy asks before doubling it. Pass that meal's entries only: a
+ * staple eaten at another meal today is no reason to ask.
+ */
 export function alreadyOnDay(entries: readonly { food_id: string }[], dayLogs: readonly { food_id: string }[]): boolean {
   if (entries.length === 0) return false;
   const foods = new Set(dayLogs.map((log) => log.food_id));

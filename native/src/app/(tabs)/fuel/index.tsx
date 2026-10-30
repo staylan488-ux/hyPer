@@ -27,7 +27,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
-import { dayKey, logsForDay, today, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
+import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, useBlanc } from '~/theme/blanc';
@@ -56,13 +56,13 @@ function report(write: Promise<boolean>, failure: string) {
 /**
  * A past day's meal (or one entry) logged again today: the same foods and
  * amounts at the same times, in today's matching meal; Fuel then shows today.
- * When today already has all of them, it asks before doubling the meal.
+ * When today's meal already has all of them, it asks before doubling it.
  */
 function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
   const copy = () => report(useFuelStore.getState().copyToToday(logs, group), 'Not copied');
-  const todayLogs = logsForDay(today());
-  if (todayLogs && alreadyOnDay(logs, todayLogs)) {
-    Alert.alert('Copy again?', logs.length === 1 ? 'Today already has this food.' : 'Today already has these foods.', [
+  const inMeal = todayLogsInMatchingMeal(group);
+  if (inMeal && alreadyOnDay(logs, inMeal)) {
+    Alert.alert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Copy', onPress: copy },
     ]);

@@ -5,7 +5,7 @@ import type { NutritionGroup } from '@/types';
 const mocks = vi.hoisted(() => ({ from: vi.fn(), upsert: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { from: mocks.from } }));
 
-import { alreadyOnDay, buildRepeatedEntries, matchingGroup, repeatLogSource, saveRepeatedEntries } from '@/lib/repeatEntries';
+import { alreadyOnDay, buildRepeatedEntries, entriesInMeal, matchingGroup, repeatLogSource, saveRepeatedEntries } from '@/lib/repeatEntries';
 
 const group = (id: string, date: string, label: NutritionGroup['label'], kind: NutritionGroup['kind'] = 'meal', sort_order = 0): NutritionGroup =>
   ({ id, user_id: 'u1', date, kind, label, sort_order }) as NutritionGroup;
@@ -66,6 +66,22 @@ describe('copy a meal to another day', () => {
     expect(alreadyOnDay(meal, [{ food_id: 'coffee' }])).toBe(false);
     expect(alreadyOnDay(meal, [{ food_id: 'coffee' }, { food_id: 'oats' }, { food_id: 'eggs' }])).toBe(true);
     expect(alreadyOnDay([], [{ food_id: 'oats' }])).toBe(false);
+  });
+
+  it("compares with the target meal only, so staples eaten at other meals don't ask", () => {
+    const todayLogs = [
+      { food_id: 'oats', group_id: 't-breakfast' },
+      { food_id: 'rice', group_id: 't-lunch' },
+      { food_id: 'banana', group_id: 't-snack1' },
+      { food_id: 'shake', group_id: null },
+      { food_id: 'bar', group_id: 'gone-meal' },
+    ];
+    const meal = [{ food_id: 'oats' }, { food_id: 'rice' }, { food_id: 'banana' }];
+    expect(alreadyOnDay(meal, todayLogs)).toBe(true);
+    expect(alreadyOnDay(meal, entriesInMeal(todayLogs, today, today[0]))).toBe(false);
+    expect(entriesInMeal(todayLogs, today, today[0]).map((log) => log.food_id)).toEqual(['oats']);
+    // Unassigned also holds entries whose meal is gone
+    expect(entriesInMeal(todayLogs, today, null).map((log) => log.food_id)).toEqual(['shake', 'bar']);
   });
 });
 

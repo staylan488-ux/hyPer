@@ -20,7 +20,7 @@ import {
 } from '@/lib/nutritionDay';
 import { sortNutritionGroups } from '@/lib/nutritionGroups';
 import { sumMacros, type MacroTotals } from '@/lib/nutritionMacros';
-import { buildRepeatedEntries, matchingGroup, saveRepeatedEntries } from '@/lib/repeatEntries';
+import { buildRepeatedEntries, entriesInMeal, matchingGroup, saveRepeatedEntries } from '@/lib/repeatEntries';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { supabase } from '@/lib/supabase';
 import type { Food, NutritionGroup, NutritionLog } from '@/types';
@@ -293,10 +293,17 @@ export function useFuelDay() {
   };
 }
 
-/** A day's entries when its month is loaded, else null (not known here). */
-export function logsForDay(key: string): FoodLog[] | null {
+/**
+ * The entries already in the meal today that a copy of `group` would go into,
+ * or null when today's month is not loaded (not known here).
+ */
+export function todayLogsInMatchingMeal(group: NutritionGroup | null): FoodLog[] | null {
   const { loadedMonth, logs } = useFuelStore.getState();
-  return loadedMonth === monthOf(key) ? logs.filter((log) => log.date === key) : null;
+  const key = today();
+  if (loadedMonth !== monthOf(key)) return null;
+  const todayGroups = groupsForDay(key);
+  const target = matchingGroup(group, group ? groupsForDay(group.date) : [], todayGroups);
+  return entriesInMeal(logs.filter((log) => log.date === key), todayGroups, target);
 }
 
 /** Groups of any day in the loaded month (the logger's "Add to" for an entry's own day). */
