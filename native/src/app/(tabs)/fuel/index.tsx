@@ -6,7 +6,7 @@ import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-na
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
-import { getLogDate } from '@/components/nutrition/nutritionLogUtils';
+import { getLogDate } from '@/lib/nutritionLogUtils';
 import { fuelDaySummary, fuelDayTitle, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { decodeMealComposition } from '@/lib/mealComposition';

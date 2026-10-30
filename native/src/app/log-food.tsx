@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
-import { toLocalTimeInput } from '@/components/nutrition/foodLoggerUtils';
+import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
 import {
   clearMealDraft,
   decodeMealComposition,

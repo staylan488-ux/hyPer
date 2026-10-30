@@ -3,7 +3,7 @@
 // schedule, and Fuel against target. Pure, so tests can check it.
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
 
-import type { HeroState } from '@/components/dashboard/todayModel';
+import type { HeroState } from '@/lib/todayModel';
 import { isGainingGoal } from '@/lib/fuelSummary';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';

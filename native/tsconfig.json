@@ -25,7 +25,6 @@
       "zustand/*": ["./node_modules/zustand/*"],
       "@capacitor/core": ["./src/types/capacitor-stub.d.ts"],
       "@capacitor/app": ["./src/types/capacitor-stub.d.ts"],
-      "@capacitor/status-bar": ["./src/types/capacitor-stub.d.ts"],
       "@capacitor/haptics": ["./src/types/capacitor-stub.d.ts"],
       "@capacitor/local-notifications": ["./src/types/capacitor-stub.d.ts"],
       "@capacitor-community/keep-awake": ["./src/types/capacitor-stub.d.ts"]

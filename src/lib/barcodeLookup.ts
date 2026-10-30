@@ -1,6 +1,6 @@
 // What a scanned or typed food barcode resolves to, shared by the web food
 // logger and the native app.
-import { applyPortion, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
+import { applyPortion, selectPortionFromDetail } from '@/lib/usdaSearch';
 import { resolveBarcodeByPriority } from '@/lib/barcodePriority';
 import { findSavedFoodByBarcode } from '@/lib/savedBarcodeFoods';
 import type { BarcodeProvider } from '@/lib/saveNutritionEntry';

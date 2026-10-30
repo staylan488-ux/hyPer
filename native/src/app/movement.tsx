@@ -14,12 +14,13 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { gainOnLastTime } from '~/lib/beatLastTime';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { changeSetCount, confirmRemoveMovement, errorMessage, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
-import { usePreviousNotesStore, useSessionModel, type Movement } from '~/lib/session';
+import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -121,6 +122,8 @@ function MovementDetail({
   const note = useMovementNote(workoutId, movement.exerciseId, movement.note);
   // Last time's note for this movement, from the lookup Train made.
   const lastNote = usePreviousNotesStore((state) => (state.workoutId === workoutId ? state.notes[movement.exerciseId] : undefined));
+  // Logged sets that beat the same set last time carry an up mark.
+  const previous = usePreviousTargets(workoutId);
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
 
   // Closing the sheet saves the note at once rather than after the pause.
@@ -185,7 +188,12 @@ function MovementDetail({
                 {editing === set.id ? (
                   <SetEditor set={set} number={index + 1} onClose={() => setEditing(null)} />
                 ) : (
-                  <SetRow set={set} number={index + 1} onEdit={editing ? undefined : () => setEditing(set.id)} />
+                  <SetRow
+                    set={set}
+                    number={index + 1}
+                    gain={gainOnLastTime(set, previous)}
+                    onEdit={editing ? undefined : () => setEditing(set.id)}
+                  />
                 )}
                 <Hairline />
               </View>
@@ -294,14 +302,14 @@ function MovementDetail({
   );
 }
 
-/** A logged set; tap to correct it. */
-function SetRow({ set, number, onEdit }: { set: WorkoutSet; number: number; onEdit?: () => void }) {
+/** A logged set; tap to correct it. One that beat the same set last time is marked ↑. */
+function SetRow({ set, number, gain, onEdit }: { set: WorkoutSet; number: number; gain: string | null; onEdit?: () => void }) {
   const c = useBlanc();
   const numbers = `${formatLoad(set.weight)} lb × ${set.reps ?? '–'}`;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}. Edit`}
+      accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`}
       disabled={!onEdit}
       onPress={() => {
         haptics.tap();
@@ -311,9 +319,12 @@ function SetRow({ set, number, onEdit }: { set: WorkoutSet; number: number; onEd
       <BlancText variant="bodyStrong" style={{ flex: 1 }}>
         Set {number}
       </BlancText>
-      <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
-        {numbers}
-      </BlancText>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        {gain ? <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} /> : null}
+        <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+          {numbers}
+        </BlancText>
+      </View>
       {set.rpe ? (
         <BlancText variant="secondary" tone="graphite">
           RPE {set.rpe}
