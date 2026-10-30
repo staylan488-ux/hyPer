@@ -9,7 +9,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   `app.hyper.mobile`. The owner approved the cutover and it was done on
   2026-10-28 (PR #152). The Capacitor shell (`ios/`) and the retired web UI
   were removed from the repository on 2026-10-30; `src/` now holds only the
-  shared code the app imports.
+  shared code the app imports. The Vercel project `hy-per` that hosted the web
+  app no longer builds (`vercel.json` turns its Git deployments off); its last
+  web build stays online until the project is deleted in Vercel.
 - TestFlight: build 60, built from main at c175fdc on 2026-10-28, is in
   internal testing for the Team group. PR #157 (hold and drag to reorder
   movements) and PR #158 (over-target colours follow the nutrition goal) merged
