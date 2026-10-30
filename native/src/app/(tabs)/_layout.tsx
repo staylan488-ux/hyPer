@@ -16,7 +16,7 @@ import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
-import { useFocusStore, usePreviousNotesStore, useSessionModel, useWorkoutDayPlan } from '~/lib/session';
+import { useFocusStore, usePreviousNotesStore, usePreviousTargetsLookup, usePreviousTargetsStore, useSessionModel, useWorkoutDayPlan } from '~/lib/session';
 import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { resetYou } from '~/lib/you';
@@ -35,6 +35,8 @@ export default function TabsLayout() {
   useRestFinish();
   useRestPreferences();
   useWorkoutDayPlan();
+  // Last time's numbers, for Train, the movement sheet and Finish wherever it is tapped.
+  usePreviousTargetsLookup(session);
   useWorkoutActivity(session);
   useAccountData();
   // The home-screen widgets' Fuel and Training figures.
@@ -59,6 +61,7 @@ export default function TabsLayout() {
       useFinishedStore.setState({ summary: null });
       useAccountDay.setState({ loading: true });
       usePreviousNotesStore.setState({ workoutId: null, notes: {} });
+      usePreviousTargetsStore.setState({ workoutId: null, targets: {} });
     },
     [],
   );

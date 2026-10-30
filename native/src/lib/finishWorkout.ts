@@ -9,6 +9,7 @@ import { summarize, useFinishedStore } from './finished';
 import { haptics } from './haptics';
 import { flushNotes } from './notes';
 import { stopRest } from './rest';
+import { previousTargetsFor } from './session';
 import type { SessionModel } from './sessionModel';
 
 // One finish at a time across every Finish button (Today and Train are both
@@ -38,7 +39,7 @@ export function useFinishWorkout(session: SessionModel | null) {
         Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
         return;
       }
-      const summary = summarize(current);
+      const summary = summarize(current, previousTargetsFor(current.workoutId));
       const store = useAppStore.getState();
       try {
         // A flexible session can be kept as a quick start, notes included.
