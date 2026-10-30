@@ -65,10 +65,14 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
   );
 }
 
-/** One food: tap to review it; the round button logs one serving at once. */
-function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis }: {
+/** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
+export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis, detail, servings = 1 }: {
   food: Food;
   state?: AddState;
+  /** The quiet line in place of the food's macros. */
+  detail?: string;
+  /** What + logs, in servings of the food, for the line once it is added. */
+  servings?: number;
   /** Tapped and loading its review: the round button spins meanwhile. */
   opening?: boolean;
   /** Search results: say what one serving is, since + logs exactly that. */
@@ -91,10 +95,12 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
   const line = state === 'error'
     ? 'Not saved. Tap + to try again.'
     : state === 'done'
-      ? `Added · ${Math.round(food.calories)} kcal`
-      : showBasis
-        ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
-        : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
+      ? `Added · ${Math.round(food.calories * servings)} kcal`
+      : detail
+        ? detail
+        : showBasis
+          ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
+          : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
@@ -194,32 +200,34 @@ function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
 }
 
 /**
- * One-tap logging from a list: one serving now, into the sheet's meal. Each
- * food keeps its retry-safe id until its save is confirmed.
+ * One-tap logging from a list: one serving now (or the amount given), into the
+ * sheet's meal. Each food keeps its retry-safe id until its save is confirmed.
  */
-function useQuickAdd() {
+export function useQuickAdd() {
   const logger = useLogger();
   const [added, setAdded] = useState<Record<string, AddState>>({});
   const pendingIds = useRef(new Map<string, PendingEntryId>());
 
-  const add = async (key: string, food: Food) => {
+  const add = async (key: string, food: Food, options: { servings?: number; source?: string } = {}) => {
     const current = added[key];
     if (current === 'saving' || current === 'done') return;
+    const servings = options.servings ?? 1;
     if (logger.purpose === 'ingredients') {
-      logger.addIngredients([createMealIngredient(food, 1)]);
+      logger.addIngredients([createMealIngredient(food, servings)]);
       return;
     }
     const pending = pendingIds.current.get(key) ?? createPendingEntryId();
     pendingIds.current.set(key, pending);
     setAdded((state) => ({ ...state, [key]: 'saving' }));
     try {
-      // One serving of exactly what the row shows (its basis), never a portion it did not show.
+      // Exactly what the row shows (one serving of its basis, or the amount it
+      // names), never a portion it did not show.
       const foodId = await ensureFoodRow(food);
       if (!foodId) throw new Error('not saved');
       await saveFoodEntry({
         foodId,
-        servings: 1,
-        source: chosenFoodLogSource(food),
+        servings,
+        source: options.source ?? chosenFoodLogSource(food),
         when: logger.when,
         groups: logger.groups,
         pending,

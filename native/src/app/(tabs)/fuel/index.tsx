@@ -15,6 +15,7 @@ import { canReorderNutritionGroup, offersMoveToPreviousDay } from '@/lib/nutriti
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
+import { alreadyOnDay } from '@/lib/repeatEntries';
 import { useAppStore } from '@/stores/appStore';
 import type { NutritionGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -26,7 +27,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
-import { dayKey, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
+import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, useBlanc } from '~/theme/blanc';
@@ -50,6 +51,24 @@ function report(write: Promise<boolean>, failure: string) {
       haptics.error();
       Alert.alert(failure, CHECK_CONNECTION);
     });
+}
+
+/**
+ * A past day's meal (or one entry) logged again today: the same foods and
+ * amounts at the same times, in today's matching meal; Fuel then shows today.
+ * When today's meal already has all of them, it asks before doubling it.
+ */
+function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
+  const copy = () => report(useFuelStore.getState().copyToToday(logs, group), 'Not copied');
+  const inMeal = todayLogsInMatchingMeal(group);
+  if (inMeal && alreadyOnDay(logs, inMeal)) {
+    Alert.alert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Copy', onPress: copy },
+    ]);
+    return;
+  }
+  copy();
 }
 
 /** Opens the targets with that number's field ready to type, as You's Targets does. */
@@ -292,11 +311,23 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
 }) {
   const c = useBlanc();
   const kcal = logs.reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0);
+  // A past day's meal can be logged again today (Unassigned too).
+  const copyable = day !== today() && logs.some((log) => log.food);
 
   const groupMenu = () => {
-    if (!group) return;
+    const copy = { label: 'Copy to today', run: () => copyToToday(logs, group ?? null) };
+    if (!group) {
+      if (!copyable) return;
+      ActionSheetIOS.showActionSheetWithOptions({ title, options: [copy.label, 'Cancel'], cancelButtonIndex: 1 }, (index) => {
+        if (index === 0) copy.run();
+      });
+      return;
+    }
     const store = useFuelStore.getState();
-    const actions: { label: string; run: () => void; destructive?: boolean }[] = [{ label: 'Log food here', run: () => logFood(day, group.id) }];
+    const actions: { label: string; run: () => void; destructive?: boolean }[] = [
+      ...(copyable ? [copy] : []),
+      { label: 'Log food here', run: () => logFood(day, group.id) },
+    ];
     if (canReorderNutritionGroup(groups, group.id, -1)) actions.push({ label: 'Move up', run: () => report(store.reorderGroup(group.id, -1), 'Not moved') });
     if (canReorderNutritionGroup(groups, group.id, 1)) actions.push({ label: 'Move down', run: () => report(store.reorderGroup(group.id, 1), 'Not moved') });
     if (!group.label) {
@@ -327,7 +358,7 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
       title={title}
       note={logs.length > 0 ? `${formatWhole(kcal)} kcal` : undefined}
       accessory={
-        group ? (
+        group || copyable ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${title} options`}
@@ -393,6 +424,7 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
     const store = useFuelStore.getState();
     const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }, { label: 'Move to…', run: moveMenu }];
     if (lateNight) actions.push({ label: 'Move to yesterday', run: () => report(store.moveEntryToYesterday(log.id), 'Not moved') });
+    if (log.date !== today() && log.food) actions.push({ label: 'Copy to today', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) });
     actions.push({ label: 'Delete', run: remove });
     const options = [...actions.map((action) => action.label), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: name, options, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 }, (index) => {

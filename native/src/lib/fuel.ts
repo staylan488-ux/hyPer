@@ -20,6 +20,7 @@ import {
 } from '@/lib/nutritionDay';
 import { sortNutritionGroups } from '@/lib/nutritionGroups';
 import { sumMacros, type MacroTotals } from '@/lib/nutritionMacros';
+import { buildRepeatedEntries, entriesInMeal, matchingGroup, saveRepeatedEntries } from '@/lib/repeatEntries';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { supabase } from '@/lib/supabase';
 import type { Food, NutritionGroup, NutritionLog } from '@/types';
@@ -59,6 +60,8 @@ type FuelState = {
   deleteEntry: (id: string) => Promise<boolean>;
   moveEntry: (id: string, groupId: string | null) => Promise<boolean>;
   moveEntryToYesterday: (id: string) => Promise<boolean>;
+  /** Logs a past day's entries again today, in the matching meal, then shows today. */
+  copyToToday: (entries: FoodLog[], group: NutritionGroup | null) => Promise<boolean>;
   addGroup: (kind: 'meal' | 'snack') => Promise<boolean>;
   reorderGroup: (groupId: string, direction: -1 | 1) => Promise<boolean>;
   deleteGroup: (group: NutritionGroup) => Promise<boolean>;
@@ -69,6 +72,8 @@ let monthRequest = 0;
 const defaultsFailed = new Set<string>();
 // A second caller waits for the same creation instead of reading before it lands.
 const defaultsInFlight = new Map<string, Promise<void>>();
+// A copy's row ids until it is confirmed, so a retry after a lost answer rewrites the same rows.
+const copyIds = new Map<string, string[]>();
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
@@ -208,6 +213,35 @@ export const useFuelStore = create<FuelState>((set, get) => {
       return true;
     },
 
+    copyToToday: async (entries, group) => {
+      const copied = entries.filter((log) => log.food);
+      const userId = await getSessionUserId();
+      if (!userId || copied.length === 0) return false;
+      const key = today();
+      // Today's meals, with Breakfast, Lunch and Dinner made if missing (also
+      // when Fuel shows another month, so a copy never falls to Unassigned for that).
+      let targetGroups = await loadDayGroups(key);
+      if (get().loadedMonth !== monthOf(key)) {
+        const made = await ensureDefaultGroups(userId, key, targetGroups).catch(() => null);
+        if (made?.ok) targetGroups = sortNutritionGroups(made.groups);
+      }
+      const sourceGroups = group ? sortNutritionGroups(get().groups.filter((candidate) => candidate.date === group.date)) : [];
+      const target = matchingGroup(group, sourceGroups, targetGroups);
+      const retryKey = `${key}:${target?.id ?? ''}:${copied.map((log) => log.id).join(',')}`;
+      const ids = copyIds.get(retryKey) ?? copied.map(() => crypto.randomUUID());
+      copyIds.set(retryKey, ids);
+      let saved = await saveRepeatedEntries(userId, buildRepeatedEntries(copied, key, target), ids).catch(() => ({ ok: false as const, code: null }));
+      // Today's meal was deleted on another device: log the copy Unassigned, as a single entry does.
+      if (!saved.ok && saved.code === '23503' && target) {
+        saved = await saveRepeatedEntries(userId, buildRepeatedEntries(copied, key, null), ids).catch(() => ({ ok: false as const, code: null }));
+      }
+      if (!saved.ok) return false;
+      copyIds.delete(retryKey);
+      get().select(key);
+      await get().refresh();
+      return true;
+    },
+
     addGroup: async (kind) => {
       const userId = await getSessionUserId();
       if (!userId) return false;
@@ -259,6 +293,19 @@ export function useFuelDay() {
   };
 }
 
+/**
+ * The entries already in the meal today that a copy of `group` would go into,
+ * or null when today's month is not loaded (not known here).
+ */
+export function todayLogsInMatchingMeal(group: NutritionGroup | null): FoodLog[] | null {
+  const { loadedMonth, logs } = useFuelStore.getState();
+  const key = today();
+  if (loadedMonth !== monthOf(key)) return null;
+  const todayGroups = groupsForDay(key);
+  const target = matchingGroup(group, group ? groupsForDay(group.date) : [], todayGroups);
+  return entriesInMeal(logs.filter((log) => log.date === key), todayGroups, target);
+}
+
 /** Groups of any day in the loaded month (the logger's "Add to" for an entry's own day). */
 export function groupsForDay(key: string): NutritionGroup[] {
   return sortNutritionGroups(useFuelStore.getState().groups.filter((group) => group.date === key));
@@ -291,6 +338,7 @@ export function resetFuel() {
   monthRequest += 1;
   defaultsFailed.clear();
   defaultsInFlight.clear();
+  copyIds.clear();
   const key = today();
   useFuelStore.setState({ selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key, todayTotals: emptyTotals });
 }

@@ -105,12 +105,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   another; add a row only when it changes what the person does next.
 - Fuel follows the web logger through shared `src/lib` rules (foodPersistence
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
-  nutritionDay, savedMeals); never copy them into `native/`. Log food is one
-  sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`) with
-  Saved, Search, Scan, Manual and Photo, a review for a chosen food, and the
-  meal builder (Scan opens the camera only when Scan barcode is tapped, the
-  owner's call on 2026-10-27); a day's entries swipe for More and Delete and hold for the same
-  menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
+  nutritionDay, savedMeals, recentFoods, repeatEntries); never copy them into
+  `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
+  `native/src/fuel`) with Recent, Saved, Search, Scan, Manual and Photo, a
+  review for a chosen food, and the meal builder (Scan opens the camera only
+  when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
+  first: four weeks of the log, most often eaten lately first, + logs the
+  usual amount and a tap reviews at it; a swipe hides a food on this device
+  until it is logged again. A day's entries swipe for More and Delete and hold
+  for the same menu; on a past day a meal's ⋯ and an entry's menu offer Copy
+  to today (same foods, amounts and times into today's matching meal). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit
