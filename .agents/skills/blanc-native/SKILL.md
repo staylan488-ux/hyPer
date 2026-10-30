@@ -182,7 +182,13 @@ came from; the web app itself is no longer released.
   and the workout's Live Activity counts it down on the lock screen and in the
   Dynamic Island. Pause cancels the notification and shows the time left still;
   End rest and a finished workout clear both; a rest that runs out leaves the
-  notification to fire. In the app, rest ends with a haptic and the sound, no
+  notification to fire. While a rest runs or is paused, the card has +30 s and
+  End rest, which work without unlocking: `RestControlIntent` (in
+  `modules/hyper-activity/shared`, run in the app's process) moves the card and
+  the notification itself, so both follow while the app sleeps, and logs the
+  tap; the app applies logged taps to its stored rest, each at its own time
+  (`native/src/lib/restControls.ts`), on launch, on the module's `restControl`
+  event, on return to the front and before a rest reads as over. In the app, rest ends with a haptic and the sound, no
   banner. The shared `restTimerWorkoutGuard` clears a rest whose workout ends
   elsewhere and on sign-out. Card updates go through the shared ordering rules
   in `src/lib/workoutActivitySync.ts` (also behind the web shell's card).
@@ -191,7 +197,8 @@ came from; the web app itself is no longer released.
   from [targets/widgets](../../../native/targets/widgets/). The card's data,
   `WorkoutActivityAttributes`, has one definition in
   `native/modules/hyper-activity/ios`, compiled into the app's module and copied
-  into the extension; ActivityKit matches the two by name and fields. The card
+  into the app (for the rest buttons' intent) and the extension; ActivityKit
+  matches the copies by name and fields. The card
   uses Blanc's tokens (`targets/widgets/Blanc.swift`) and the P's font
   (bundled into the extension). Prebuild with `--clean` after adding or
   removing extension files. The run card and the home-screen widgets live in
@@ -318,7 +325,7 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   afterwards. `-hyperAction noWorkout` finishes the sample account's live
   workout, so the run card shows alone on the lock screen. The card's
   buttons are SpringBoard elements in a UI test (labels Split, Rest, Finish,
-  Tap again).
+  Tap again; the workout card's are Add 30 seconds and End rest).
 - Widgets: in a UI test, long-press an empty spot on the home screen, then
   Edit, Add Widget, search "hyPer" and tap the result by coordinate (a label
   match hits the app icon); a swipe on the size carousel can pick the

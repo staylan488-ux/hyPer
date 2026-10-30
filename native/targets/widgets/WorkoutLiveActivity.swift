@@ -1,11 +1,13 @@
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
 // The workout card on the lock screen and in the Dynamic Island, in Blanc
 // (Blanc.swift): chalk and black ink, following the system appearance, with
 // the red italic P. iOS ticks the countdown, the bar and the session clock
-// itself from the dates the app sends (WorkoutActivityAttributes).
+// itself from the dates the app sends (WorkoutActivityAttributes). During a
+// rest, +30 s and End rest work without unlocking (RestControlIntent).
 
 private enum RestPhase {
   case running(ClosedRange<Date>)
@@ -32,12 +34,44 @@ private func clock(_ seconds: Int) -> String {
   String(format: "%d:%02d", seconds / 60, seconds % 60)
 }
 
+private extension RestPhase {
+  /// +30 s and End rest show while a rest runs or is paused.
+  var hasControls: Bool {
+    switch self {
+    case .running, .paused: return true
+    case .over, .none: return false
+    }
+  }
+}
+
 private func caption(_ phase: RestPhase) -> String {
   switch phase {
   case .running: return "rest"
   case .paused: return "paused"
   case .over: return "rest over"
   case .none: return "in session"
+  }
+}
+
+/// The rest's +30 s and End rest. Each runs RestControlIntent in the app's
+/// process, which moves the countdown and the "Rest over" notification.
+@available(iOS 17.0, *)
+private struct RestControls: View {
+  let tint: Color
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Button(intent: RestControlIntent(.extend)) {
+        Text("+30 s").frame(maxWidth: .infinity, minHeight: 22)
+      }
+      .accessibilityLabel("Add 30 seconds")
+      Button(intent: RestControlIntent(.end)) {
+        Text("End rest").frame(maxWidth: .infinity, minHeight: 22)
+      }
+    }
+    .buttonStyle(.bordered)
+    .tint(tint)
+    .font(.system(size: 13, weight: .semibold))
   }
 }
 
@@ -54,7 +88,10 @@ struct WorkoutLockScreenView: View {
     let state = context.state
     let phase = state.restPhase(isStale: context.isStale)
 
-    VStack(alignment: .leading, spacing: 12) {
+    // The lock screen gives a card at most 160 points; the buttons take the
+    // room the padding and spacing give up.
+    let controls = phase.hasControls
+    VStack(alignment: .leading, spacing: controls ? 10 : 12) {
       HStack(alignment: .center, spacing: 14) {
         Text("P")
           .font(brandMark(size: 30))
@@ -91,9 +128,13 @@ struct WorkoutLockScreenView: View {
         .progressViewStyle(.linear)
         .tint(blanc.ink)
       }
+
+      if #available(iOS 17.0, *), controls {
+        RestControls(tint: blanc.ink)
+      }
     }
     .padding(.horizontal, 18)
-    .padding(.vertical, 16)
+    .padding(.vertical, controls ? 14 : 16)
     .activityBackgroundTint(blanc.ground)
     .activitySystemActionForegroundColor(blanc.ink)
     .widgetURL(appURL("train"))
@@ -216,6 +257,10 @@ struct WorkoutLiveActivity: Widget {
               }
               .progressViewStyle(.linear)
               .tint(.white)
+            }
+            if #available(iOS 17.0, *), phase.hasControls {
+              RestControls(tint: .white)
+                .padding(.top, 2)
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)

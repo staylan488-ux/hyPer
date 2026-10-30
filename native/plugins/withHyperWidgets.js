@@ -2,14 +2,14 @@
 // run Live Activities and the Fuel and Training widgets.
 //
 // - Copies native/targets/widgets, the shared definitions (the cards' data, the
-//   run card's lock-screen intent, the widgets' snapshot store) and the P's
-//   font into ios/HyperWidgets.
+//   cards' lock-screen intents, the widgets' snapshot store) and the P's font
+//   into ios/HyperWidgets.
 // - Registers the HyperWidgets target (Xcode's app-extension layout: sources,
 //   frameworks and resources phases, Debug and Release settings), embeds it in
 //   the app and makes the app depend on it. It shares the app's App Group, so
 //   the widgets can read what the app writes.
-// - Compiles the run card's data and intent into the app too: iOS runs a Live
-//   Activity's button intent in the app's process.
+// - Compiles both cards' data and button intents into the app too: iOS runs a
+//   Live Activity's button intent in the app's process.
 // - Marks the app as supporting Live Activities.
 //
 // The extension is plain SwiftUI with no pods. Prebuild with --clean after
@@ -27,13 +27,20 @@ const SHARED_FILES = [
   'modules/hyper-run/ios/RunActivityAttributes.swift',
   // The run card's Split, Rest and Finish buttons.
   'modules/hyper-run/shared/RunControlIntent.swift',
+  // The workout card's +30 s and End rest.
+  'modules/hyper-activity/shared/RestControlIntent.swift',
   // Where the app leaves the widgets' data.
   'modules/hyper-widget-data/ios/WidgetSnapshotStore.swift',
   // The P's face, for the brand mark on the cards and widgets.
   'assets/fonts/FrauncesMark-MediumItalic.ttf',
 ];
 /** Compiled into the app as well: iOS performs a Live Activity intent in the app. */
-const APP_FILES = ['modules/hyper-run/ios/RunActivityAttributes.swift', 'modules/hyper-run/shared/RunControlIntent.swift'];
+const APP_FILES = [
+  'modules/hyper-run/ios/RunActivityAttributes.swift',
+  'modules/hyper-run/shared/RunControlIntent.swift',
+  'modules/hyper-activity/ios/WorkoutActivityAttributes.swift',
+  'modules/hyper-activity/shared/RestControlIntent.swift',
+];
 const APP_GROUPS_KEY = 'com.apple.security.application-groups';
 const ENTITLEMENTS = `${TARGET}.entitlements`;
 const EMBED_PHASE = 'Embed Foundation Extensions';
