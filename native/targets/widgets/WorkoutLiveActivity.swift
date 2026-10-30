@@ -58,15 +58,17 @@ private func caption(_ phase: RestPhase) -> String {
 @available(iOS 17.0, *)
 private struct RestControls: View {
   let tint: Color
+  /// The label's height inside the bordered button; the island passes less.
+  var labelHeight: CGFloat = 22
 
   var body: some View {
     HStack(spacing: 8) {
       Button(intent: RestControlIntent(.extend)) {
-        Text("+30 s").frame(maxWidth: .infinity, minHeight: 22)
+        Text("+30 s").frame(maxWidth: .infinity, minHeight: labelHeight)
       }
       .accessibilityLabel("Add 30 seconds")
       Button(intent: RestControlIntent(.end)) {
-        Text("End rest").frame(maxWidth: .infinity, minHeight: 22)
+        Text("End rest").frame(maxWidth: .infinity, minHeight: labelHeight)
       }
     }
     .buttonStyle(.bordered)
@@ -238,7 +240,9 @@ struct WorkoutLiveActivity: Widget {
             .padding(.trailing, 6)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          VStack(alignment: .leading, spacing: 8) {
+          // The expanded island stops at 160 points and cuts off what is
+          // below; with the buttons, tighter spacing keeps them whole.
+          VStack(alignment: .leading, spacing: phase.hasControls ? 6 : 8) {
             VStack(alignment: .leading, spacing: 1) {
               Text(state.exerciseName)
                 .font(.system(size: 15, weight: .semibold))
@@ -259,8 +263,7 @@ struct WorkoutLiveActivity: Widget {
               .tint(.white)
             }
             if #available(iOS 17.0, *), phase.hasControls {
-              RestControls(tint: .white)
-                .padding(.top, 2)
+              RestControls(tint: .white, labelHeight: 20)
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
