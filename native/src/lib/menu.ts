@@ -14,6 +14,12 @@ export type MenuAction = {
   symbol?: string;
   destructive?: boolean;
   disabled?: boolean;
+  /**
+   * The choice takes the row out of its list at once (a delete that does not
+   * ask, a move to another meal): it runs as the menu closes and the lifted
+   * row fades where it is. Any other choice runs once the menu is off screen.
+   */
+  removes?: boolean;
   inline?: boolean;
   children?: MenuAction[];
 };

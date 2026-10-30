@@ -1,4 +1,6 @@
-import { FadeIn, FadeOut, LinearTransition, withTiming, type ExitAnimationsValues } from 'react-native-reanimated';
+import { Easing, FadeIn, FadeOut, LinearTransition, withTiming, type ExitAnimationsValues } from 'react-native-reanimated';
+
+import { ROLL_SECONDS } from './rollingFigure';
 
 // The one motion for list rows, so every list adds and removes alike.
 /** A row that appears fades in. */
@@ -22,3 +24,8 @@ export const rowExit = (values: ExitAnimationsValues) => {
 export const blockExit = FadeOut.duration(180);
 /** Rows, cards and sections below a change slide into place. */
 export const rowLayout = LinearTransition.duration(220);
+/**
+ * Text beside a rolling figure (RollingText) moves with it when the figure
+ * gains or loses a digit, over the roll's own time, instead of jumping.
+ */
+export const figureLayout = LinearTransition.duration(ROLL_SECONDS * 1000).easing(Easing.out(Easing.cubic));

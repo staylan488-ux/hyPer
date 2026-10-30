@@ -11,6 +11,8 @@ export type NativeMenuItem = {
   symbol?: string;
   destructive?: boolean;
   disabled?: boolean;
+  /** Runs as the menu closes, the lifted row fading in place (it leaves its list). */
+  removes?: boolean;
   /** A submenu shown in place, between separators, rather than behind a row. */
   inline?: boolean;
   children?: NativeMenuItem[];

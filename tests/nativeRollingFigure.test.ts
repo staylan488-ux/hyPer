@@ -19,13 +19,12 @@ describe('native rolling figures', () => {
     expect(rollsDown('1,240', '–')).toBe(false);
   });
 
-  it('sits a big figure on the bottom of its short line, and centres ordinary text', () => {
-    // Fuel's figure: 88 pt on a 95 pt line, shorter than SF's own 105.
-    expect(figureAlignment(88, Math.round(88 * 1.08), undefined)).toBe('bottomLeading');
-    // The program stepper's centred count.
-    expect(figureAlignment(24, Math.round(24 * 1.08), 'center')).toBe('bottom');
-    // Body text on a 22 pt line, taller than SF's 20.3.
-    expect(figureAlignment(17, 22, undefined)).toBe('leading');
-    expect(figureAlignment(15, undefined, 'right')).toBe('trailing');
+  it('centres the copy in its line and keeps the side the text aligns to', () => {
+    // Measured in the simulator: React Native centres a big figure's glyphs
+    // in its short line too, so a bottom-pinned copy sat 4 to 5 points low.
+    expect(figureAlignment(undefined)).toBe('leading');
+    expect(figureAlignment('center')).toBe('center');
+    // A value before "/ 180 g" keeps its right edge as it gains or loses a digit.
+    expect(figureAlignment('right')).toBe('trailing');
   });
 });

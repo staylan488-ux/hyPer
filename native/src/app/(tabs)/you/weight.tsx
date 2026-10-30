@@ -197,7 +197,7 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
               <Row
                 title={title}
                 detail={measuredLabel(entry)}
-                menu={entry.source === 'manual' ? [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, run: () => remove(entry) }] : undefined}
+                menu={entry.source === 'manual' ? [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }] : undefined}
                 onPress={entry.source === 'manual' ? () => menu(entry) : undefined}
               />
             </View>

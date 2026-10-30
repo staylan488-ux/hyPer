@@ -15,7 +15,7 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { figureAlignment, rollsDown } from '~/lib/rollingFigure';
+import { figureAlignment, ROLL_SECONDS, rollsDown } from '~/lib/rollingFigure';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText, blancTextStyle, type BlancTextProps } from './BlancText';
@@ -52,7 +52,9 @@ const PLACEMENT = new Set([
  * BlancText's. Reduce Motion swaps the roll for a plain change.
  *
  * One line only. `countsDown` fixes the direction (a countdown); otherwise
- * it follows the number.
+ * it follows the number. The hidden copy takes its new width at once, so
+ * text beside a figure that can gain or lose a digit moves with the roll
+ * (`figureLayout`), and a figure whose right edge is fixed aligns right.
  */
 export function RollingText({ children, countsDown, style, variant = 'body', tone = 'ink', size, weight, ...rest }: Omit<BlancTextProps, 'children'> & {
   children: string;
@@ -76,8 +78,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
   const textStyle = drawing as TextStyle;
 
   const fontSize = (textStyle.fontSize ?? 17) * fontScale;
-  const lineHeight = textStyle.lineHeight !== undefined ? textStyle.lineHeight * fontScale : undefined;
-  const alignment = figureAlignment(fontSize, lineHeight, textStyle.textAlign);
+  const alignment = figureAlignment(textStyle.textAlign);
   const tabular = Array.isArray(textStyle.fontVariant) && textStyle.fontVariant.includes('tabular-nums');
   const color = typeof textStyle.color === 'string' ? textStyle.color : c[tone];
 
@@ -95,7 +96,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
     accessibilityHidden(true),
     ...(reducedMotion
       ? []
-      : [contentTransition('numericText', { countsDown: countsDown ?? step.down }), animation(Animation.smooth({ duration: 0.42 }), step.count)]),
+      : [contentTransition('numericText', { countsDown: countsDown ?? step.down }), animation(Animation.smooth({ duration: ROLL_SECONDS }), step.count)]),
   ];
 
   return (

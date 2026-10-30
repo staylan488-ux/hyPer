@@ -92,7 +92,7 @@ export default function SavedMealsScreen() {
                       onPress={() => editSavedMeal(meal)}
                       menu={[
                         { title: 'Edit', symbol: 'pencil', run: () => editSavedMeal(meal) },
-                        { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, run: () => void remove(meal) },
+                        { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, removes: true, run: () => void remove(meal) },
                       ]}
                     />
                   </View>

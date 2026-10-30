@@ -14,20 +14,19 @@ export function rollsDown(before: string, after: string): boolean {
   return Number.isFinite(from) && Number.isFinite(to) && to < from;
 }
 
-// SF Pro's line height (ascender plus descender, no leading) for one point of size.
-export const SF_LINE = 1.194;
-
-export type FigureAlignment = 'leading' | 'center' | 'trailing' | 'bottomLeading' | 'bottom' | 'bottomTrailing';
+export type FigureAlignment = 'leading' | 'center' | 'trailing';
 
 /**
  * Where the SwiftUI copy sits in the React Native text's box. React Native
- * centres a line in a taller line height, but a shorter one (the big
- * figures) keeps the line's descent at the bottom, so the copy sits on the
- * bottom there.
+ * centres a line in its line height, taller or shorter than the font's own
+ * (measured in the simulator: the big figures sat 4 to 5 points low when
+ * pinned to the bottom), so the copy is centred too. Sideways it keeps the
+ * text's own alignment; a figure whose right edge is fixed (a value before
+ * "/ 180 g") aligns right, so a digit it gains or loses changes its left.
  */
-export function figureAlignment(fontSize: number, lineHeight: number | undefined, textAlign: string | undefined): FigureAlignment {
-  const sitsLow = lineHeight !== undefined && lineHeight < fontSize * SF_LINE;
-  const horizontal = textAlign === 'center' ? 'center' : textAlign === 'right' ? 'trailing' : 'leading';
-  if (!sitsLow) return horizontal;
-  return horizontal === 'center' ? 'bottom' : horizontal === 'trailing' ? 'bottomTrailing' : 'bottomLeading';
+export function figureAlignment(textAlign: string | undefined): FigureAlignment {
+  return textAlign === 'center' ? 'center' : textAlign === 'right' ? 'trailing' : 'leading';
 }
+
+/** How long a figure's roll takes, in seconds; a neighbour that moves with it (`figureLayout`) matches. */
+export const ROLL_SECONDS = 0.42;

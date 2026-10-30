@@ -11,7 +11,7 @@ public class HyperMenuModule: Module {
     View(HyperMenuView.self) {
       Events("onAction", "onOpen")
 
-      // [{ id, title, subtitle?, symbol?, destructive?, disabled?, inline?, children? }]
+      // [{ id, title, subtitle?, symbol?, destructive?, disabled?, removes?, inline?, children? }]
       Prop("actions") { (view: HyperMenuView, actions: [[String: Any]]?) in
         view.items = actions ?? []
       }
@@ -40,11 +40,16 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
   var menuEnabled = true
 
   private var interaction: UIContextMenuInteraction?
-  // The choice waits until the menu has gone and the row is back in place,
-  // so a sheet it opens never meets the menu still closing, and a row it
-  // removes leaves from where it sits.
-  private var showing = false
-  private var chosen: String?
+  // The choice made in the open menu. Items keep the menu up when tapped, so
+  // the choice is known before the menu starts to close: one that removes
+  // the row runs at once and the lifted row fades where it is, as a delete
+  // does in Notes; any other runs as soon as the menu is off screen.
+  private var chosen: (id: String, removes: Bool)?
+  private var pending: String?
+
+  // UIKit's own close takes about 0.35 s; its completion comes only once the
+  // returning row's spring settles, about 0.8 s later, which reads as lag.
+  private static let closeTime: TimeInterval = 0.35
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -62,6 +67,7 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
     guard menuEnabled, !items.isEmpty, !isTextInput(at: location) else { return nil }
     cancelReactNativeTouches()
     chosen = nil
+    pending = nil
     return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
       self?.menu()
     }
@@ -80,7 +86,8 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
     configuration: UIContextMenuConfiguration,
     dismissalPreviewForItemWithIdentifier identifier: any NSCopying
   ) -> UITargetedPreview? {
-    preview()
+    // A row on its way out has no place to return to: no preview fades it.
+    chosen?.removes == true ? nil : preview()
   }
 
   func contextMenuInteraction(
@@ -88,7 +95,6 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
     willDisplayMenuFor configuration: UIContextMenuConfiguration,
     animator: UIContextMenuInteractionAnimating?
   ) {
-    showing = true
     onOpen()
   }
 
@@ -97,29 +103,32 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
     willEndFor configuration: UIContextMenuConfiguration,
     animator: UIContextMenuInteractionAnimating?
   ) {
-    let ended: () -> Void = { [weak self] in
-      guard let self else { return }
-      self.showing = false
-      if let id = self.chosen {
-        self.chosen = nil
-        self.onAction(["id": id])
-      }
-    }
-    if let animator {
-      animator.addCompletion(ended)
-    } else {
-      ended()
-    }
+    // A choice that opens something (a sheet, an alert, another screen)
+    // waits for the menu to be off screen, whichever comes first of UIKit's
+    // completion and its visible close.
+    guard pending != nil else { return }
+    animator?.addCompletion { [weak self] in self?.sendPending() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.closeTime) { [weak self] in self?.sendPending() }
+    if animator == nil { sendPending() }
   }
 
   // MARK: - Menu
 
-  private func choose(_ id: String) {
-    if showing {
-      chosen = id
-    } else {
+  private func choose(_ id: String, removes: Bool) {
+    guard chosen == nil else { return }
+    chosen = (id, removes)
+    if removes {
       onAction(["id": id])
+    } else {
+      pending = id
     }
+    interaction?.dismissMenu()
+  }
+
+  private func sendPending() {
+    guard let id = pending else { return }
+    pending = nil
+    onAction(["id": id])
   }
 
   private func menu() -> UIMenu {
@@ -136,11 +145,14 @@ final class HyperMenuView: ExpoView, UIContextMenuInteractionDelegate {
       return submenu
     }
     guard let id = item["id"] as? String else { return nil }
-    var attributes: UIMenuElement.Attributes = []
+    // The menu stays up when an item is tapped, so the view closes it
+    // itself, knowing what was chosen (see `choose`).
+    var attributes: UIMenuElement.Attributes = [.keepsMenuPresented]
     if item["destructive"] as? Bool == true { attributes.insert(.destructive) }
     if item["disabled"] as? Bool == true { attributes.insert(.disabled) }
+    let removes = item["removes"] as? Bool == true
     let action = UIAction(title: title, image: image, attributes: attributes) { [weak self] _ in
-      self?.choose(id)
+      self?.choose(id, removes: removes)
     }
     if let subtitle = item["subtitle"] as? String { action.subtitle = subtitle }
     return action

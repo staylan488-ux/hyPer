@@ -165,7 +165,7 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
           },
         ]
       : []),
-    { title: 'Remove', symbol: 'trash', destructive: true, run: remove },
+    { title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
   const detail = [
     targetsLine(exercise),

@@ -177,7 +177,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     const expanded = open === item.key;
     return [
       { title: expanded ? 'Close' : 'Adjust', symbol: expanded ? 'chevron.up' : 'slider.horizontal.3', run: () => setOpen(expanded ? null : item.key) },
-      { title: 'Remove', symbol: 'trash', destructive: true, run: () => removeItem(item.key) },
+      { title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: () => removeItem(item.key) },
     ];
   };
 
@@ -250,7 +250,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           <HoldMenu
             key={photo.uri + index}
             enabled={busy === null}
-            actions={[{ title: 'Remove photo', symbol: 'trash', destructive: true, run: () => removePhoto(photo) }]}>
+            actions={[{ title: 'Remove photo', symbol: 'trash', destructive: true, removes: true, run: () => removePhoto(photo) }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Photo ${index + 1}`}
@@ -475,7 +475,9 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                     face
                   ) : (
                     <SwipeRow name={item.name} actions={[{ label: 'Remove', destructive: true, onPress: () => removeItem(item.key) }]}>
-                      <HoldMenu actions={itemMenu(item)}>{face}</HoldMenu>
+                      <HoldMenu actions={itemMenu(item)} backdrop={c.label}>
+                        {face}
+                      </HoldMenu>
                     </SwipeRow>
                   )}
                   {expanded ? (

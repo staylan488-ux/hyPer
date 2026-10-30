@@ -128,9 +128,12 @@ came from; the web app itself is no longer released.
   Anything with more to do offers it on a long press: iOS's own context menu
   ([HoldMenu](../../../native/src/components/HoldMenu.tsx), `menu` on a Row,
   through `native/modules/hyper-menu`), which lifts the row on its label's
-  white with an SF Symbol beside each item, submenus for choices such as
-  Move to, and runs the choice once the menu has closed (a hold on a text
-  field stays the field's). A swipe's More shows the same actions as a sheet
+  white with an SF Symbol beside each item and submenus for choices such as
+  Move to. A choice marked `removes` (a delete that does not ask, a move)
+  runs as the menu closes while the lifted row fades in place; any other
+  runs once the menu is off screen. Where a swipe row's buttons sit behind
+  the row, give `backdrop` the row's colour. A hold on a text field stays
+  the field's. A swipe's More shows the same actions as a sheet
   (`showActionSheet`), and a Row gives VoiceOver each item and its swipe
   actions. A value that looks editable
   opens its editor when tapped, a card that leads somewhere is tappable as a
@@ -274,7 +277,8 @@ came from; the web app itself is no longer released.
   timer, set counts) roll their digits with SwiftUI's numeric text transition
   through [RollingText](../../../native/src/components/RollingText.tsx), drawn
   over a hidden copy of the same text so layout, baselines and VoiceOver do
-  not change. Never scroll a large-title screen programmatically to "the top":
+  not change. Text beside a figure that can gain or lose a digit moves with
+  it (`figureLayout`), and a figure whose right edge is fixed aligns right. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
   hidden.
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):

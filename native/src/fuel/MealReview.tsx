@@ -196,7 +196,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
-  const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, run: onRemove }];
+  const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
     <Pressable
@@ -263,7 +263,9 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   // swipe to remove, like any list on iOS
   return disabled ? content : (
     <SwipeRow name={item.food.name} actions={[{ label: 'Remove', destructive: true, onPress: onRemove }]}>
-      <HoldMenu actions={menu}>{content}</HoldMenu>
+      <HoldMenu actions={menu} backdrop={c.label}>
+        {content}
+      </HoldMenu>
     </SwipeRow>
   );
 }

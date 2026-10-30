@@ -159,7 +159,13 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
       ) : null}
     </View>
   );
-  return held && hasHoldMenu ? <HoldMenu actions={menu ?? []}>{row}</HoldMenu> : row;
+  return held && hasHoldMenu ? (
+    <HoldMenu actions={menu ?? []} backdrop={c.ground}>
+      {row}
+    </HoldMenu>
+  ) : (
+    row
+  );
 }
 
 function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
@@ -302,7 +308,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     ...(logger.purpose === 'log'
       ? [
           { title: 'Edit saved meal', symbol: 'pencil', run: () => onEditSavedMeal(meal) },
-          { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, run: () => void retire(meal) },
+          { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, removes: true, run: () => void retire(meal) },
         ]
       : []),
   ];

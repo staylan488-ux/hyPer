@@ -41,6 +41,17 @@ describe('native hold menu items', () => {
     expect(sheetChoices(actions).map((action) => action.title)).toEqual(['Rename', 'Move earlier', 'Move later', 'Remove day']);
   });
 
+  it('tells the native menu which choices take the row away at once', () => {
+    const { items } = menuItems([
+      { title: 'Edit', run: vi.fn() },
+      { title: 'Move to', children: [{ title: 'Lunch', removes: true, run: vi.fn() }] },
+      { title: 'Delete', destructive: true, removes: true, run: vi.fn() },
+    ]);
+    expect(items[0].removes).toBeUndefined();
+    expect(items[1].children?.[0]).toEqual({ id: '1.0', title: 'Lunch', removes: true });
+    expect(items[2]).toEqual({ id: '2', title: 'Delete', destructive: true, removes: true });
+  });
+
   it('keeps a submenu as one choice that asks again', () => {
     const move: MenuAction = { title: 'Move to', children: [{ title: 'Unassigned', run: vi.fn() }] };
     expect(sheetChoices([move])).toEqual([move]);

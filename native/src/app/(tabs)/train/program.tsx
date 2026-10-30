@@ -214,7 +214,7 @@ function QuickStarts() {
   const menu = (template: FlexDayTemplate): MenuAction[] => [
     { title: 'Start', symbol: 'play', run: () => void start(template) },
     { title: 'Rename', symbol: 'pencil', run: () => renameQuickStart(template) },
-    { title: 'Delete', symbol: 'trash', destructive: true, run: () => remove(template) },
+    { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: () => remove(template) },
   ];
   // A tap shows what the quick start holds, with the same choices.
   const details = (template: FlexDayTemplate) =>

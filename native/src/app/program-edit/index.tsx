@@ -470,7 +470,7 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
           },
         ]
       : []),
-    { title: 'Remove day', symbol: 'trash', destructive: true, run: remove },
+    { title: 'Remove day', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
   return (

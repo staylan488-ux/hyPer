@@ -30,7 +30,7 @@ import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
 import { dayKey, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
@@ -138,9 +138,11 @@ export default function FuelScreen() {
             <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
-            <BlancText variant="secondary" tone="graphite">
-              of {formatWhole(summary.targets.calories)} kcal
-            </BlancText>
+            <Animated.View layout={figureLayout}>
+              <BlancText variant="secondary" tone="graphite">
+                of {formatWhole(summary.targets.calories)} kcal
+              </BlancText>
+            </Animated.View>
           </View>
           <View style={{ marginTop: 10 }}>
             <Track progress={totals.calories / summary.targets.calories} warnOver={warnsOverTarget('calories', goal)} />
@@ -392,13 +394,14 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
       symbol: 'arrow.right.square',
       children: targets.map((targetGroup) => ({
         title: targetGroup.label,
+        removes: true,
         run: () => report(useFuelStore.getState().moveEntry(log.id, targetGroup.id), 'Not moved'),
       })),
     },
     ...(lateNight
-      ? [{ title: 'Move to yesterday', symbol: 'arrow.uturn.backward', run: () => report(useFuelStore.getState().moveEntryToYesterday(log.id), 'Not moved') }]
+      ? [{ title: 'Move to yesterday', symbol: 'arrow.uturn.backward', removes: true, run: () => report(useFuelStore.getState().moveEntryToYesterday(log.id), 'Not moved') }]
       : []),
-    { title: 'Delete', symbol: 'trash', destructive: true, run: remove },
+    { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
   const detail = entryDetail(log);
@@ -444,7 +447,7 @@ function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'c
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <BlancText variant="body">{name}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
             {formatWhole(value)}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>

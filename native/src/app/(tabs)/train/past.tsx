@@ -351,7 +351,7 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
     });
   const menu: MenuAction[] = [
     { title: 'Edit', symbol: 'pencil', run: edit },
-    { title: 'Delete set', symbol: 'trash', destructive: true, run: remove },
+    { title: 'Delete set', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
   return (

@@ -23,6 +23,7 @@ import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, useFuelStore } from '~/lib/fuel';
+import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
@@ -94,9 +95,11 @@ export default function TodayScreen() {
                   <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
                   </RollingText>
-                  <BlancText variant="secondary" tone="graphite">
-                    {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
-                  </BlancText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
+                    </BlancText>
+                  </Animated.View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
                   <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
@@ -220,7 +223,7 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
           {label}
         </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
             {value}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
