@@ -9,14 +9,15 @@ description: Build or change hyPer's React Native app in native/ with the approv
 rebuild approved on 2026-10-26, released as hyPer 2.0 on 2026-10-28 in place of
 the retired Capacitor web app. Blanc is approved: do not explore new directions
 for native work. Where these notes say "the web", they name where a shared rule
-came from; the web app itself is no longer released.
+came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 
 ## Architecture
 
 - Reuse, don't copy. Stores, data access, nutrition and training rules come from
   `../src` through `@/…` ([Metro config](../../../native/metro.config.js)); native
-  code imports its own files as `~/…`. Logic that lives inside a web component
-  moves to `src/lib` first, then both apps import it.
+  code imports its own files as `~/…`. `src` holds no UI: screens and
+  components live in `native/`, and only logic worth sharing or testing goes in
+  `src/lib`, `src/stores` or `src/hooks`.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
   flag, haptics, keep-awake, rest notifications, the workout Live Activity,

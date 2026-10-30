@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { searchUsdaFoods } from '@/components/nutrition/usdaSearch';
+import { searchUsdaFoods } from '@/lib/usdaSearch';
 
 describe('USDA search resilience', () => {
   it('maps USDA API foods into app foods', async () => {

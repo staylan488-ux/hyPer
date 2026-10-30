@@ -2,7 +2,7 @@
 // the web test suite can cover it (tests/nativeSessionModel.test.ts). Order,
 // targets, swaps and superset rounds follow the shared session plan rules
 // (src/lib/sessionPlan), the same ones the web Train page uses.
-import { nextWorkoutSet } from '@/components/workout/workoutFocus';
+import { nextWorkoutSet } from '@/lib/workoutFocus';
 import {
   orderSessionSets,
   sessionExercises,
