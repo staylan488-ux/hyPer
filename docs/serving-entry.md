@@ -32,5 +32,8 @@ development builds), open Fuel → Log food, and choose “Samosas (serving demo
 The fixture accepts a number plus a known unit and explicitly identifies itself
 as offline; it does not call Gemini.
 
-The serving rules live in `analyze-food-trial` (`serving.ts`); a change to them
-reaches people only when that function is deployed.
+The serving rules live in `analyze-food-trial` (`serving.ts`). The app runs
+them too: `interpretFoodServing` in `src/lib/foodTrial.ts` answers a plain
+amount such as "272 ml" on the phone and recomputes every answer the function
+returns. A change to them reaches people only when the function is deployed and
+a new app build is released.

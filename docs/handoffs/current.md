@@ -35,7 +35,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.
 - For the owner to confirm on the phone: sign-in carried over from the
-  Capacitor app, and WHOOP connect under the new identity.
+  Capacitor app.
+- For Alex, whose features these are, on a phone: WHOOP connect under the new
+  identity, and saving a real GPS run (runs were saved only against a local
+  test database). Also never seen on a phone: the run's sound cues and its
+  lock-screen card, and the lock-screen widget sizes (built, not placed).
 - Recorded for later (minor): merging 3+ activities in one step, the Target
   sets field in History, RPE below 6, Train's week strip, "beat last time"
   marks, Progress's training-time detail, You's About build number, and an
