@@ -14,6 +14,7 @@ import {
 } from '@/lib/foodUnits';
 import { createMealIngredient } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
+import { usualAmountInput } from '@/lib/recentFoods';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -30,11 +31,17 @@ import { useLogger, type ChosenMeta } from './context';
 import { ServingHelper } from './ServingHelper';
 import { WhenBlock } from './WhenBlock';
 
-/** The chosen food: how much, when, then log it (or add it to the meal). */
-export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMeta; onBack: () => void }) {
+/**
+ * The chosen food: how much, when, then log it (or add it to the meal). A food
+ * from Recent opens at its usual amount, in its own unit when it is weighed or
+ * measured (150 g rather than 1.5 servings).
+ */
+export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food; meta: ChosenMeta; servings?: number; onBack: () => void }) {
   const logger = useLogger();
-  const [amount, setAmount] = useState('1');
-  const [unit, setUnit] = useState<MeasurementUnit>('serving');
+  const units = getCompatibleMeasurementUnits(food.serving_unit);
+  const [initial] = useState(() => (usual ? usualAmountInput(food, usual) : { amount: '1', unit: 'serving' as MeasurementUnit }));
+  const [amount, setAmount] = useState(initial.amount);
+  const [unit, setUnit] = useState<MeasurementUnit>(initial.unit);
   const [saving, setSaving] = useState(false);
   // the amount helper's answer must be applied or closed before logging
   const [helperOpen, setHelperOpen] = useState(false);
@@ -44,7 +51,6 @@ export function FoodReview({ food, meta, onBack }: { food: Food; meta: ChosenMet
 
   const servings = servingsForAmount(food, amount, unit);
   const invalid = amountError(food, amount, unit);
-  const units = getCompatibleMeasurementUnits(food.serving_unit);
   const kcal = servings === null ? 0 : Math.round(food.calories * servings);
   const protein = servings === null ? 0 : Math.round(food.protein * servings);
 

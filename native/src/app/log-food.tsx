@@ -45,13 +45,14 @@ import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDr
 import { MealReview } from '~/fuel/MealReview';
 import { aiHasDraft, AiTab, emptyAi, type AiDraft } from '~/fuel/AiTab';
 import { emptyPhoto, PhotoTab, type PhotoDraft } from '~/fuel/PhotoTab';
+import { RecentTab } from '~/fuel/RecentTab';
 import { ScanTab } from '~/fuel/ScanTab';
 import { useBlanc } from '~/theme/blanc';
 
-type Tab = 'saved' | 'search' | 'scan' | 'manual' | 'photo';
+type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
 
 /**
- * Log food, or edit an entry: Saved, Search (USDA), Scan, Manual and Photo,
+ * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
  * a review for a chosen food, and the meal builder, by the web logger's rules.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to).
@@ -126,8 +127,8 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeGroups, selectedKey]);
 
-  const [tab, setTab] = useState<Tab>(editing ? 'manual' : 'saved');
-  const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta } | null>(null);
+  const [tab, setTab] = useState<Tab>(editing ? 'manual' : 'recent');
+  const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(null);
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
@@ -282,7 +283,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
       setWhen,
       savedMeals,
       reloadSavedMeals,
-      chooseFood: (food, meta = null) => setChosen({ food, meta }),
+      chooseFood: (food, meta = null, servings) => setChosen({ food, meta, servings }),
       addIngredients,
       composeMeal: (food, editSaved) => startMeal(food, editSaved),
       complete,
@@ -410,6 +411,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
           {!chosen && !(meal && mealReview && !paused) ? (
             <Host matchContents={{ vertical: true }} style={{ marginHorizontal: 16, marginTop: 14 }}>
               <Picker selection={tab} onSelectionChange={(value: Tab) => openTab(value)} modifiers={[pickerStyle('segmented')]}>
+                <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
                 <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
                 <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
                 <SwiftText modifiers={[tag('scan')]}>Scan</SwiftText>
@@ -454,7 +456,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
             }}
           />
         ) : chosen ? (
-          <FoodReview food={chosen.food} meta={chosen.meta} onBack={() => setChosen(null)} />
+          <FoodReview food={chosen.food} meta={chosen.meta} servings={chosen.servings} onBack={() => setChosen(null)} />
         ) : (
           <View key={captureKey}>
             {!editing && (!meal || paused) ? (
@@ -470,6 +472,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
                 </Label>
               </View>
             ) : null}
+            {tab === 'recent' ? <RecentTab userId={userId} /> : null}
             {tab === 'saved' ? (
               <SavedTab
                 onNewSavedMeal={() => {
