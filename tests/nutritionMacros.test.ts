@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
-import { sumNutritionLogCalories } from '@/components/nutrition/nutritionLogUtils';
+import { sumNutritionLogCalories } from '@/lib/nutritionLogUtils';
 
 interface Food { calories: number; protein: number; carbs: number; fat: number }
 

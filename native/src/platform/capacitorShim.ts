@@ -1,4 +1,4 @@
-// Stands in for @capacitor/core, @capacitor/app and @capacitor/status-bar
+// Stands in for @capacitor/core and @capacitor/app
 // (see metro.config.js).
 //
 // Shared helpers such as ../src/lib/authResume.ts import Capacitor only to ask
@@ -16,14 +16,6 @@ export const Capacitor = {
 
 export const App = {
   addListener: async (): Promise<PluginListenerHandle> => noListener,
-};
-
-// themeStore styles the status bar only when isNativePlatform() is true, so
-// these are never called here; iOS styles it from the app's appearance.
-export const Style = { Dark: 'DARK', Light: 'LIGHT', Default: 'DEFAULT' } as const;
-
-export const StatusBar = {
-  setStyle: async (_options: { style: string }): Promise<void> => {},
 };
 
 export function registerPlugin<T extends object>(name: string): T {

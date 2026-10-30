@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
-import { nextPlannedSession, todayHero, weekSessionTarget } from '@/components/dashboard/todayModel';
+import { nextPlannedSession, todayHero, weekSessionTarget } from '@/lib/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';

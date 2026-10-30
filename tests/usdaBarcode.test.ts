@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { searchUsdaFoodByBarcode } from '@/components/nutrition/usdaSearch';
+import { searchUsdaFoodByBarcode } from '@/lib/usdaSearch';
 
 describe('USDA barcode lookup', () => {
   it('uses kcal energy when a kJ energy row appears first', async () => {

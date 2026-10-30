@@ -6,9 +6,9 @@ exactly. The app is React Native + Expo in native/, released as hyPer 2.0
 training and nutrition rules in src; Supabase is the backend. See package.json
 and native/package.json for current dependency versions and commands.
 
-The React web app and its Capacitor iOS shell are retired. The web UI still in
-src (pages, most components, Vite and PWA setup) is due for removal: do not
-build on it, and change it only to keep shared code and tests building.
+The React web app and its Capacitor iOS shell are retired and removed. src
+holds only code the app shares (lib, stores, hooks, types and preview sample
+data); screens and other UI belong in native/.
 
 ## Working rules
 

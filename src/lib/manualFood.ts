@@ -1,6 +1,6 @@
 // Which foods row a manual entry logs against, shared by the web food logger
 // and the native app.
-import { normalizeFoodName } from '@/components/nutrition/foodLoggerUtils';
+import { normalizeFoodName } from '@/lib/foodLoggerUtils';
 import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersistence';
 import { foodValuesMatch } from '@/lib/savedMeals';
 import type { Food } from '@/types';

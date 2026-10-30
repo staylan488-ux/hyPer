@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from '@/components/nutrition/usdaSearch';
+import { applyPortion, fetchUsdaFoodDetail, searchUsdaFoods, selectPortionFromDetail } from '@/lib/usdaSearch';
 import type { Food } from '@/types';
 
 const baseFood: Food = {

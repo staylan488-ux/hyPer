@@ -1,7 +1,7 @@
 import { Stack, useNavigation, usePreventRemove } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { useSplitDraftAutosave } from '@/components/split/editor/useSplitDraftAutosave';
+import { useSplitDraftAutosave } from '@/hooks/useSplitDraftAutosave';
 import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { confirmAlert } from '~/lib/program';

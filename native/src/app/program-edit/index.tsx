@@ -7,7 +7,7 @@ import { useMemo, useState, type ComponentProps } from 'react';
 import { ActionSheetIOS, Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { saveSplitEdit } from '@/components/split/editor/editorActions';
+import { saveSplitEdit } from '@/lib/splitEditActions';
 import type { ProgramDesignAnswers } from '@/lib/programDesigner';
 import {
   BLANK_DAY_OPTIONS,
