@@ -43,7 +43,7 @@ beforeEach(() => {
 
   write('AGENTS.md', '# Project guidance\n[Workflows](docs/agent-workflows.md)\n');
   write('CLAUDE.md', 'Shared project instructions: @AGENTS.md\n');
-  write('TOOL_SWITCHING_CHECKLIST.md', '[Policy][policy]\n\n[policy]: AGENTS.md\n');
+  write('docs/handoffs/README.md', '[Policy][policy]\n\n[policy]: ../../AGENTS.md\n');
   write('docs/agent-workflows.md', '[Policy](../AGENTS.md)\n');
   write('.agents/skills/sample-task/SKILL.md', [
     '---',

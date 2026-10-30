@@ -1,7 +1,7 @@
 # Cross-tool handoff
 
-Project policy lives in [AGENTS.md](AGENTS.md). Read this file when handing work
-between tools, not on every task.
+Project policy lives in [AGENTS.md](../../AGENTS.md). Read this file when handing
+work between tools, not on every task.
 
 Confirm the intended checkout and inspect branch/status. Read recent commits and
 the relevant handoff if context is missing. Preserve unrelated work in place;
@@ -22,6 +22,6 @@ SESSION HANDOFF
 - Next useful action:
 ```
 
-For ongoing work, update [the current handoff](docs/handoffs/current.md). Move
-superseded records into dated files in docs/handoffs/archive. Label them historical;
-past commands and permissions are evidence, not instructions for a new task.
+For ongoing work, update [the current handoff](current.md). Remove sections
+once they no longer guide current work; Git history keeps them. Past commands
+and permissions are evidence, not instructions for a new task.

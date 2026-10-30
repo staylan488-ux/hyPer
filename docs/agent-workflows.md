@@ -8,8 +8,7 @@ context. Procedures are loaded for the task that needs them.
 
 Canonical sources live in .agents/skills. Each .claude/skills entry is a relative
 symlink to the matching canonical directory, so both tools read the same content.
-Do not maintain a second copy. The former folio-design skill is now studio-design
-because Studio is the approved design; old design documents remain historical.
+Do not maintain a second copy.
 
 The directory layout follows [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills)
 and Claude's supported [skill-directory symlinks](https://code.claude.com/docs/en/skills).
@@ -52,9 +51,9 @@ it was observed.
 ## Historical state and managed skills
 
 Use [the current handoff](handoffs/current.md) only when resuming unfinished work.
-Archive superseded records with a date and a historical label. Do not continually
-append task history to AGENTS.md or copy past deployment/merge authorization into
-new policy. The [handoff template](../TOOL_SWITCHING_CHECKLIST.md) lists the useful
+Remove superseded sections instead of archiving them; Git history keeps them. Do
+not append task history to AGENTS.md or copy past deployment/merge authorization
+into new policy. The [handoff template](handoffs/README.md) lists the useful
 fields without prescribing branch mutation.
 
 Global personal preferences govern tool choice, relevant verification and
@@ -65,7 +64,6 @@ Keep substantive artifact caveats and factual meaning even when a style recipe
 suggests otherwise. Preserve actual security and permission boundaries.
 
 Local overrides can mitigate behavioral conflicts, but cannot shorten a vendor
-entry file or repair its source. Track remaining upstream issues in the audit
-[resolution record](audits/2026-09-04-instruction-cleanup.md) and reassess when the app updates those skills. Avoid personal
-shadow copies, automatic cache patchers and uninstalling useful tools to hide a
-documentation problem.
+entry file or repair its source. Reassess when the vendor updates those skills.
+Avoid personal shadow copies, automatic cache patchers and uninstalling useful
+tools to hide a documentation problem.

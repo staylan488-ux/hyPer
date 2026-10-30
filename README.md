@@ -1,110 +1,97 @@
 # hyPer
 
-hyPer is an **open-source, mobile-first web app** that combines **nutrition tracking** and **hypertrophy training logging** in one place.
+hyPer is an iPhone app for training and eating to build muscle. It keeps
+workout logging, nutrition tracking and training volume in one place, with
+recommendations built on peer-reviewed research.
 
-Instead of juggling multiple apps, you can log meals, run workout sessions, track progression, and monitor volume/recovery signals from a single dashboard.
+## What it does
 
-## What the app does
+- **Train:** run a program day or a flexible session set by set, with rest
+  timing, supersets, swaps and drag-to-reorder. The live workout (with its
+  rest timer) and runs show as Live Activities on the lock screen.
+- **Fuel:** log food by search, barcode, saved foods and meals, manual entry,
+  or an AI estimate from a description or photo. Targets come from a
+  calculator and can adapt to your weight trend.
+- **Progress:** workout history with past-session edits, weekly volume per
+  muscle, body weight (with Apple Health sync) and WHOOP activities.
+- **Runs:** GPS long runs and split sessions.
+- **Widgets:** Fuel and Training on the home screen and lock screen.
 
-- Log food and macros throughout the day
-- Start, track, and complete workout sessions
-- Record sets/reps/loads and review workout history
-- Track training volume and progress trends
-- Build/manage hypertrophy split templates
-- Use evidence-backed recommendations (peer-reviewed research references)
+## How it's built
 
-## Why hyPer
+| Part | Where | Tech |
+|---|---|---|
+| iPhone app | `native/` | React Native, Expo, Expo Router, TypeScript |
+| Shared logic | `src/` | TypeScript and Zustand: stores, Supabase data access, nutrition and training rules |
+| Widgets and Live Activities | `native/targets/widgets`, `native/modules` | SwiftUI, ActivityKit, Expo native modules |
+| Backend | `supabase/` | Supabase Postgres with row-level security, Auth, Edge Functions |
+| Food AI | `supabase/functions/analyze-food-trial` | Gemini, with Tavily for product research |
+| Tests | `tests/` | Vitest |
 
-Most fitness tools are either:
-- good at lifting logs but weak on nutrition, or
-- good at nutrition but weak on serious training progression.
+The app imports the shared logic as `@/…`. The few shared modules that need a
+different implementation on React Native are swapped in `native/src/platform`.
 
-hyPer is built to unify both for people training for muscle growth.
+`src/` also still holds the retired React web app (pages, most components, and
+the Vite and PWA setup). It is no longer released and is due to be removed, so
+don't build on it.
 
-## Tech stack
-
-- **Frontend:** React 19 + TypeScript
-- **iOS shell:** Capacitor 8, with native Swift plugins added where web APIs are insufficient
-- **State:** Zustand
-- **Styling/UI:** TailwindCSS 4 + Motion
-- **Backend/Auth/DB:** Supabase
-- **Charts:** Recharts
-- **Build tool:** Vite
-- **Testing:** Vitest + ESLint
+```text
+native/          the iPhone app: screens (src/app), platform swaps, native modules,
+                 widget and Live Activity targets, fastlane and build scripts
+src/             shared logic (lib, stores, types, preview sample data) and the retired web UI
+tests/           Vitest tests
+supabase/        schema, migrations and Edge Functions
+scripts/         ship pipeline and bot, private photo worker, evidence import, instruction checks
+deploy/          systemd units for the private photo worker
+docs/            current handoff and feature notes
+.agents/skills/  guides for coding agents (start with AGENTS.md)
+```
 
 ## Getting started
 
-### 1) Install dependencies
+You need Node, Xcode with an iOS simulator, and CocoaPods.
 
-```bash
-npm install
+```sh
+npm install                # shared logic, tests and tooling
+cd native && npm install   # the iPhone app
+npm run ios                # in native/: build and open the app in the simulator
 ```
 
-### 2) Configure environment variables
+If CocoaPods fails on text encoding, run it with `LANG=en_US.UTF-8`.
 
-Create a `.env` file in the project root:
+Development builds start in preview mode: the app runs on sample data in
+memory, so no account or backend is needed. To use a real Supabase project,
+start Metro with `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and
+`EXPO_PUBLIC_SUPABASE_ANON_KEY`.
 
-```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_USDA_API_KEY=your_usda_api_key
+Release builds read the Supabase URL and public anon key from a `.env` in the
+repository root (see [.env.example](.env.example)). Never commit `.env` or put
+a service-role key in the app.
+
+## Checks
+
+Run these before opening a pull request:
+
+```sh
+npm run test                    # Vitest suite
+npm run lint                    # instruction checks, ESLint, test type-check
+npm run build                   # type-checks src (and still builds the retired web bundle)
+cd native && npx tsc --noEmit   # the app plus the shared code it imports
 ```
 
-Native iOS builds are intentionally locked to the isolated Hyper-Dev Supabase project. Put its URL and public client key in an ignored `.env.local`; never use a service-role key in the app.
+Gestures, haptics, widgets and Live Activities still need a simulator or
+device run.
 
-### 3) Run the app
+## Releasing
 
-```bash
-npm run dev
-```
+TestFlight uploads go through `scripts/ship.sh`, which the ship bot runs: it
+builds main in a clean clone, runs the checks, then archives `native/` with
+fastlane as `app.hyper.mobile` and uploads it. `native/scripts/build-phone.sh`
+builds a Release for a connected iPhone. Details are in
+[the iOS workflow](.agents/skills/ship-ios/SKILL.md).
 
-App runs on Vite's local dev server (typically `http://localhost:5173`).
+## Contributing
 
-## Available scripts
-
-```bash
-npm run dev            # Start development server
-npm run build          # Typecheck + production build
-npm run build:ios      # Verify Hyper-Dev, then build bundled iOS web assets
-npm run ios:sync       # Build and sync assets/plugins into the Xcode project
-npm run ios:open       # Open the generated iOS project in Xcode
-npm run ios:run        # Sync, select a target, and run through Capacitor
-npm run preview        # Preview production build locally
-npm run lint           # Lint codebase
-npm run test           # Run test suite once
-npm run test:watch     # Run tests in watch mode
-npm run evidence:import # Import/update evidence dataset
-```
-
-## Quality checklist (before shipping changes)
-
-```bash
-npm run test
-npm run lint
-npm run build
-```
-
-## Project structure (high level)
-
-```text
-src/
-  components/   # UI components (auth, dashboard, workout, shared)
-  pages/        # Main app screens
-  stores/       # Zustand state stores
-  lib/          # Supabase client, animation presets, utilities
-  data/         # Evidence + split templates
-scripts/        # Tooling scripts (evidence import)
-```
-
-## Open source
-
-hyPer is open source and intended to keep improving with real training + nutrition workflows.
-
-If you want to contribute, start by opening an issue describing:
-- the problem,
-- expected behavior,
-- and any relevant screenshots/log context.
-
----
-
-Built for lifters who care about both **performance** and **consistency**.
+Open an issue that describes the problem, what you expected, and any
+screenshots or logs. Agents and contributors working in the repository should
+start with [AGENTS.md](AGENTS.md).

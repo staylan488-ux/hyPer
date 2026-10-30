@@ -1,9 +1,14 @@
 # hyPer
 
-Mobile-first workout and nutrition tracking with React, TypeScript, Zustand,
-Supabase and Capacitor for iOS. See package.json for current dependency versions
-and commands. A full native rebuild (React Native + Expo, in native/) is replacing
-the Capacitor app screen by screen and reuses the logic in src.
+hyPer is an iPhone app for workout and nutrition tracking, written hyPer
+exactly. The app is React Native + Expo in native/, released as hyPer 2.0
+(bundle ID app.hyper.mobile). It reuses the stores, Supabase data access and
+training and nutrition rules in src; Supabase is the backend. See package.json
+and native/package.json for current dependency versions and commands.
+
+The React web app and its Capacitor iOS shell are retired. The web UI still in
+src (pages, most components, Vite and PWA setup) is due for removal: do not
+build on it, and change it only to keep shared code and tests building.
 
 ## Working rules
 
@@ -28,19 +33,20 @@ Read only the guide relevant to the task. Shared skill sources live in
 
 | Task | Guide |
 |---|---|
-| Web app UI changes | [Approved Studio design](.agents/skills/studio-design/SKILL.md) |
-| Native app (native/) screens, design or checks | [Blanc native app](.agents/skills/blanc-native/SKILL.md) |
-| Native verification, requested iOS release, app icon | [iOS workflow](.agents/skills/ship-ios/SKILL.md) |
+| App screens, design or checks (native/) | [Blanc native app](.agents/skills/blanc-native/SKILL.md) |
+| Device builds, native modules, requested release, app icon | [iOS workflow](.agents/skills/ship-ios/SKILL.md) |
 | Requested Supabase deployment or migration | [Backend workflow](.agents/skills/supabase-deploy/SKILL.md) |
 | Resuming unfinished work | [Current handoff](docs/handoffs/current.md) |
 | Maintaining instructions or cross-tool setup | [Instruction maintenance](docs/agent-workflows.md) |
 
 ## Verification
 
-- Application code or dependency changes: run npm run test, npm run lint and
-  npm run build. Add focused behavioral coverage when the change warrants it.
-- Native changes: also use the relevant native build/device checks in ship-ios.
-  A web build alone does not validate native behavior.
+- Application code (src or native/) or dependency changes: run npm run test,
+  npm run lint and npm run build. Add focused behavioral coverage when the
+  change warrants it.
+- Changes to native/, or to shared code the app imports: also run
+  `cd native && npx tsc --noEmit` and the relevant simulator or device checks in
+  blanc-native and ship-ios. A type-check alone does not validate native behavior.
 - Instruction/skill changes: run npm run check:instructions and validate the
   affected workflows. Other docs/artifacts need relevant content, link or render
   checks; read-only work does not need application tests.
