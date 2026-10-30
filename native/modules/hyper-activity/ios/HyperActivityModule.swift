@@ -1,5 +1,6 @@
 import ActivityKit
 import ExpoModulesCore
+import Foundation
 
 /// What JavaScript sends (WorkoutActivityPayload in src/lib/workoutActivitySync.ts).
 struct WorkoutActivityPayload: Record {
@@ -35,9 +36,33 @@ struct WorkoutActivityPayload: Record {
 /// One Live Activity per live workout. `sync` shows or updates it with the
 /// current state (movement, set line, any rest); `end` takes it down.
 /// Ordering and collapsing of calls happen in JavaScript.
+///
+/// The card's +30 s and End rest buttons run RestControlIntent, which logs each
+/// tap (RestControlLog); `restControl` tells JavaScript to read them with
+/// `pendingRestControls` and confirm them with `markRestControlsApplied`.
 public final class HyperActivityModule: Module {
+  private var restControlObserver: NSObjectProtocol?
+
   public func definition() -> ModuleDefinition {
     Name("HyperActivity")
+
+    Events("restControl")
+
+    OnCreate { [weak self] in
+      self?.restControlObserver = NotificationCenter.default.addObserver(
+        forName: .hyperRestControl,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.sendEvent("restControl", [:])
+      }
+    }
+
+    OnDestroy { [weak self] in
+      if let observer = self?.restControlObserver {
+        NotificationCenter.default.removeObserver(observer)
+      }
+    }
 
     AsyncFunction("sync") { (payload: WorkoutActivityPayload) async in
       await WorkoutActivityController.sync(payload.contentState)
@@ -46,16 +71,23 @@ public final class HyperActivityModule: Module {
     AsyncFunction("end") { () async in
       await WorkoutActivityController.end()
     }
+
+    // Synchronous, so the app can apply taps before it restores a stored rest.
+    Function("pendingRestControls") { () -> [[String: Any]] in
+      RestControlLog.pending.map { entry -> [String: Any] in
+        ["sequence": entry.sequence, "action": entry.action, "timestampMs": entry.timestampMs]
+      }
+    }
+
+    Function("markRestControlsApplied") { (sequence: Int) in
+      RestControlLog.markApplied(through: sequence)
+    }
   }
 }
 
 enum WorkoutActivityController {
   static func sync(_ state: WorkoutActivityAttributes.ContentState) async {
-    // A running rest goes stale when it ends, so the card turns to "Rest over"
-    // even if the app never comes back. A working card outlives any realistic
-    // session before staling.
-    let staleDate = state.restEndsAt ?? Date().addingTimeInterval(8 * 3600)
-    let content = ActivityContent(state: state, staleDate: staleDate)
+    let content = ActivityContent(state: state, staleDate: state.staleDate)
     let activities = Activity<WorkoutActivityAttributes>.activities
 
     if let current = activities.first {
