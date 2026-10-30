@@ -51,15 +51,29 @@ export function useWorkoutDayPlan() {
   }, [workoutId, planWorkoutId]);
 }
 
-/** Last time's weight, reps and RPE per exercise and set number, from the shared lookup. */
-export function usePreviousTargets(session: SessionModel | null): PreviousWorkoutSetMap {
+/**
+ * Last time's weight, reps and RPE per exercise and set number for the live
+ * workout. Kept in a store so Train, the movement sheet and Finish (on Today
+ * too) read the same lookup.
+ */
+export const usePreviousTargetsStore = create<{ workoutId: string | null; targets: PreviousWorkoutSetMap }>(() => ({
+  workoutId: null,
+  targets: {},
+}));
+
+const NO_TARGETS: PreviousWorkoutSetMap = {};
+
+/**
+ * Mounted once (tab layout): looks up last time's numbers while a workout is
+ * live, from the shared lookup. As on the web: a failed lookup tries again on
+ * the next logged set.
+ */
+export function usePreviousTargetsLookup(session: SessionModel | null) {
   const userId = useAuthStore((state) => state.user?.id ?? null);
-  const [targets, setTargets] = useState<PreviousWorkoutSetMap>({});
   const [failed, setFailed] = useState(false);
   const exerciseKey = session ? session.movements.map((movement) => movement.exerciseId).sort().join(',') : '';
   const workoutId = session?.workoutId ?? null;
   const date = session?.date ?? null;
-  // As on the web: a failed lookup tries again on the next logged set.
   const retry = failed ? (session?.doneCount ?? 0) : -1;
 
   useEffect(() => {
@@ -67,15 +81,24 @@ export function usePreviousTargets(session: SessionModel | null): PreviousWorkou
     let cancelled = false;
     void fetchPreviousSetTargets({ userId, workoutId, date, exerciseIds: exerciseKey.split(',') }).then((result) => {
       if (cancelled) return;
-      if (result) setTargets(result);
+      if (result) usePreviousTargetsStore.setState({ workoutId, targets: result });
       setFailed(!result);
     });
     return () => {
       cancelled = true;
     };
   }, [userId, workoutId, date, exerciseKey, retry]);
+}
 
-  return targets;
+/** Last time's numbers for this workout ({} until the lookup lands). */
+export function usePreviousTargets(workoutId: string | null): PreviousWorkoutSetMap {
+  return usePreviousTargetsStore((state) => (workoutId && state.workoutId === workoutId ? state.targets : NO_TARGETS));
+}
+
+/** The same, outside a component (Finish). */
+export function previousTargetsFor(workoutId: string): PreviousWorkoutSetMap {
+  const state = usePreviousTargetsStore.getState();
+  return state.workoutId === workoutId ? state.targets : NO_TARGETS;
 }
 
 /**

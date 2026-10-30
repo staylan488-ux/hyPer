@@ -1,8 +1,8 @@
 // Metro setup for the native app.
 //
-// The app reuses the web app's tested logic in ../src (stores, data access,
+// The app imports the shared, tested logic in ../src (stores, data access,
 // nutrition and training rules) without copying it:
-// - `@/…` resolves to ../src, exactly as in the web app; `~/…` is this app's src.
+// - `@/…` resolves to ../src; `~/…` is this app's src.
 // - Packages imported from ../src resolve from this app's node_modules, so there
 //   is one React, one Zustand and one Supabase client.
 // - A few browser- or Capacitor-only modules are swapped for native versions
@@ -39,13 +39,11 @@ for (const [shared, native] of Object.entries(replacements)) {
 const packageReplacements = {
   '@capacitor/core': path.join(platformDir, 'capacitorShim.ts'),
   '@capacitor/app': path.join(platformDir, 'capacitorShim.ts'),
-  // themeStore sets the status bar style only inside the Capacitor shell.
-  '@capacitor/status-bar': path.join(platformDir, 'capacitorShim.ts'),
 };
 
 const config = getDefaultConfig(projectRoot);
 // The Gemini food analyzer's shapes and serving rules live with its edge
-// function and are shared by the web app (src/lib/foodTrial) and this one.
+// function and are shared with this app through src/lib/foodTrial.
 const foodTrialShared = path.resolve(projectRoot, '..', 'supabase', 'functions', 'analyze-food-trial');
 config.watchFolders = [...(config.watchFolders ?? []), sharedSrc, foodTrialShared];
 

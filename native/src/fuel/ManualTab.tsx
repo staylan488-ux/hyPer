@@ -2,7 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
-import { describeTargetUnchanged, type ManualFoodFields } from '@/components/nutrition/foodLoggerUtils';
+import { describeTargetUnchanged, type ManualFoodFields } from '@/lib/foodLoggerUtils';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { formatMacroInput } from '@/lib/foodUnits';
 import { resolveManualFood, type OneOffFood } from '@/lib/manualFood';

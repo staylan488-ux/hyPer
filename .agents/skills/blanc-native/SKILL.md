@@ -9,14 +9,15 @@ description: Build or change hyPer's React Native app in native/ with the approv
 rebuild approved on 2026-10-26, released as hyPer 2.0 on 2026-10-28 in place of
 the retired Capacitor web app. Blanc is approved: do not explore new directions
 for native work. Where these notes say "the web", they name where a shared rule
-came from; the web app itself is no longer released.
+came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 
 ## Architecture
 
 - Reuse, don't copy. Stores, data access, nutrition and training rules come from
   `../src` through `@/…` ([Metro config](../../../native/metro.config.js)); native
-  code imports its own files as `~/…`. Logic that lives inside a web component
-  moves to `src/lib` first, then both apps import it.
+  code imports its own files as `~/…`. `src` holds no UI: screens and
+  components live in `native/`, and only logic worth sharing or testing goes in
+  `src/lib`, `src/stores` or `src/hooks`.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
   flag, haptics, keep-awake, rest notifications, the workout Live Activity,
@@ -167,6 +168,15 @@ came from; the web app itself is no longer released.
   places rows by position (no jump while a drop saves), rounds the card's
   first and last rows itself, holds row presses through `holdRowPresses`,
   and the page stops scrolling while a row is lifted.
+- Beat last time (the owner's pick, 2026-10-30): a set logged in Train that
+  beats the same set last time, by the shared `describeSetGain` rule
+  ([beatLastTime](../../../native/src/lib/beatLastTime.ts)), gets
+  `haptics.beat` (success, then one firm tick) and, for four seconds, "↑ Beat
+  last time · +5 lb" in ink where the card's "Last time" line sits (it stays on
+  "All sets logged"). The movement sheet marks those sets with ↑, and the
+  finish label adds a "Beat last time" row when any did. The tab layout runs
+  the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
+  Today counts too. Corrections never celebrate.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the

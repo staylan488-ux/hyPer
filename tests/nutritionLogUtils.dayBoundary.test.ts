@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getLogDate, getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { getLogDate, getLogTimestamp } from '@/lib/nutritionLogUtils';
 
 describe('nutrition log day-boundary behavior', () => {
   it('prefers logged_at timestamp when present', () => {
