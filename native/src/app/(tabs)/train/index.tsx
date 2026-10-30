@@ -2,9 +2,9 @@ import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
-import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { moveMovementBlock, movementBlocks } from '@/components/workout/movementOrder';
@@ -25,6 +25,7 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { useAccountRefresh } from '~/lib/accountData';
+import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
@@ -41,6 +42,9 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 type Current = NonNullable<SessionModel['current']>;
 /** The numbers for the set about to be logged. `touched` once the person edits them. */
 type Draft = { setId: string; weight: string; reps: string; rpe: number | null; touched: boolean };
+
+/** How long "Beat last time" holds in the card after the set saves. */
+const BEAT_MOMENT_MS = 4000;
 
 /**
  * The web's autofill rule: set 1 starts from last workout's set 1, later sets
@@ -85,7 +89,7 @@ function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; to
 
 function LiveWorkout({ session }: { session: SessionModel }) {
   const c = useBlanc();
-  const previous = usePreviousTargets(session);
+  const previous = usePreviousTargets(session.workoutId);
   const previousNotes = usePreviousNotes(session);
   const logSet = useAppStore((state) => state.logSet);
   const focus = useFocusStore((state) => state.focus);
@@ -121,6 +125,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<'weight' | 'reps' | null>(null);
+  // The last saved set, when it beat last time. Its gain shows in place of
+  // "Last time" for a moment (`fresh`), and stays on "All sets logged".
+  const [beat, setBeat] = useState<{ key: number; gain: string; fresh: boolean } | null>(null);
+  useEffect(() => {
+    if (!beat?.fresh) return;
+    const timer = setTimeout(() => setBeat((latest) => (latest?.key === beat.key ? { ...latest, fresh: false } : latest)), BEAT_MOMENT_MS);
+    return () => clearTimeout(timer);
+  }, [beat]);
   const weightField = useRef<TextField>(null);
   const repsField = useRef<TextField>(null);
 
@@ -158,10 +170,20 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     Keyboard.dismiss();
     setSaving(true);
     setFailed(false);
+    setBeat(null);
     const logged = current.set;
+    const loggedReps = Math.round(reps);
     try {
-      await logSet(logged.id, weight, Math.round(reps), draft.rpe ?? undefined);
-      haptics.success();
+      await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
+      // Beating the same set last time gets a firmer haptic and a quiet line.
+      const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous);
+      if (gain) {
+        haptics.beat();
+        setBeat({ key: Date.now(), gain, fresh: true });
+        AccessibilityInfo.announceForAccessibility(`Beat last time, ${gain}`);
+      } else {
+        haptics.success();
+      }
       // The web's order: a superset's partner for the same round, else more of
       // this movement, else the next in turn. A superset rests after B only.
       const after = afterLoggedSet(session, logged, useAppStore.getState().currentWorkout?.sets ?? []);
@@ -481,10 +503,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   {draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
                 </BlancText>
               </Pressable>
-              {last && last.weight !== null && last.reps !== null ? (
-                <BlancText variant="meta" tone="graphite">
-                  Last time {formatLoad(last.weight)} × {last.reps}
-                </BlancText>
+              {beat?.fresh ? (
+                <BeatLine key={beat.key} gain={beat.gain} style={{ marginLeft: 12 }} />
+              ) : last && last.weight !== null && last.reps !== null ? (
+                <Animated.View key="last" entering={FadeIn.duration(220)}>
+                  <BlancText variant="meta" tone="graphite">
+                    Last time {formatLoad(last.weight)} × {last.reps}
+                  </BlancText>
+                </Animated.View>
               ) : null}
             </View>
             {lastNote ? (
@@ -523,7 +549,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           </Label>
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <BlancText variant="headline">All sets logged</BlancText>
+            <View style={{ gap: 4 }}>
+              <BlancText variant="headline">All sets logged</BlancText>
+              {beat ? <BeatLine key={beat.key} gain={beat.gain} /> : null}
+            </View>
             <Capsule title="Finish workout" size="large" fill busy={closing} onPress={finish} />
           </Label>
         )}
@@ -579,6 +608,22 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         </KeyboardStickyView>
       ) : null}
     </>
+  );
+}
+
+/** A saved set beat last time: an up mark and the gain, in ink, for a moment. */
+function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
+  const c = useBlanc();
+  return (
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(220)}
+      style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
+      <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} />
+      <BlancText variant="meta" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flexShrink: 1 }}>
+        Beat last time · {gain}
+      </BlancText>
+    </Animated.View>
   );
 }
 

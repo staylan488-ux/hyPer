@@ -2,7 +2,10 @@
 // the workout is completed (completing clears the live workout).
 import { create } from 'zustand';
 
-import type { SessionModel } from './session';
+import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+
+import { countBeats } from './beatLastTime';
+import type { SessionModel } from './sessionModel';
 
 export type FinishedSummary = {
   dayName: string;
@@ -10,6 +13,8 @@ export type FinishedSummary = {
   /** Logged or not, per set in session order: the tally on the summary label. */
   marks: boolean[];
   sets: number;
+  /** Logged sets that beat the same set last time. */
+  beat: number;
   volume: number;
   minutes: number;
   best: { name: string; weight: number; reps: number } | null;
@@ -21,7 +26,8 @@ function beats(a: { weight: number; reps: number }, b: { weight: number; reps: n
   return a.reps > b.reps;
 }
 
-export function summarize(session: SessionModel, finishedAt = new Date()): FinishedSummary {
+/** `previous` is last time's numbers for the session (see usePreviousTargetsStore). */
+export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap = {}, finishedAt = new Date()): FinishedSummary {
   const done = session.sets.filter((set) => set.completed);
   let best: FinishedSummary['best'] = null;
   let volume = 0;
@@ -40,6 +46,7 @@ export function summarize(session: SessionModel, finishedAt = new Date()): Finis
     finishedAt,
     marks: session.sets.map((set) => set.completed),
     sets: done.length,
+    beat: countBeats(session.sets, previous),
     volume,
     minutes: Math.max(1, Math.round((finishedAt.getTime() - session.startedAt.getTime()) / 60_000)),
     best,

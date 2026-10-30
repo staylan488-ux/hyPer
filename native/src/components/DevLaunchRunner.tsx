@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
 import { startRest } from '~/lib/rest';
-import { useFocusStore } from '~/lib/session';
+import { previousTargetsFor, useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
 import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
 
@@ -86,7 +86,7 @@ export function DevLaunchRunner() {
           const app = useAppStore.getState();
           const session = buildSessionModel(app.currentWorkout, { split: app.activeSplit, plan: app.currentWorkoutDayPlan }, null);
           if (!session) return;
-          const summary = summarize(session);
+          const summary = summarize(session, previousTargetsFor(session.workoutId));
           void app.completeWorkout().then(() => {
             useFinishedStore.getState().set(summary);
             router.push('/session-done');

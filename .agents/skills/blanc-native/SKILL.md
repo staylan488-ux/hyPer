@@ -167,6 +167,15 @@ came from; the web app itself is no longer released.
   places rows by position (no jump while a drop saves), rounds the card's
   first and last rows itself, holds row presses through `holdRowPresses`,
   and the page stops scrolling while a row is lifted.
+- Beat last time (the owner's pick, 2026-10-30): a set logged in Train that
+  beats the same set last time, by the shared `describeSetGain` rule
+  ([beatLastTime](../../../native/src/lib/beatLastTime.ts)), gets
+  `haptics.beat` (success, then one firm tick) and, for four seconds, "↑ Beat
+  last time · +5 lb" in ink where the card's "Last time" line sits (it stays on
+  "All sets logged"). The movement sheet marks those sets with ↑, and the
+  finish label adds a "Beat last time" row when any did. The tab layout runs
+  the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
+  Today counts too. Corrections never celebrate.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the

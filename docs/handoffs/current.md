@@ -41,9 +41,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   test database). Also never seen on a phone: the run's sound cues and its
   lock-screen card, and the lock-screen widget sizes (built, not placed).
 - Recorded for later (minor): merging 3+ activities in one step, the Target
-  sets field in History, RPE below 6, Train's week strip, "beat last time"
-  marks, Progress's training-time detail, You's About build number, and an
-  account deletion row (an App Store review need, with backend work).
+  sets field in History, RPE below 6, Train's week strip, Progress's
+  training-time detail, You's About build number, and an account deletion
+  row (an App Store review need, with backend work).
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal
