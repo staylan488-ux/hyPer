@@ -22,6 +22,7 @@ import {
 import { getFoodAnalysisMode } from '@/lib/foodTrial';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { mealFromLoggedFoods } from '@/lib/savedMealFromLog';
 import { loadSavedMeals } from '@/lib/savedMeals';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { useAuthStore } from '@/stores/authStore';
@@ -55,10 +56,11 @@ type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
  * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
  * a review for a chosen food, and the meal builder, by the web logger's rules.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
- * `group` (the meal to add to).
+ * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
+ * `saveEntries` (comma-separated logged entries to keep as a new saved meal).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
@@ -66,24 +68,35 @@ export default function LogFoodSheet() {
   const [savedMeal] = useState<Food | null>(() =>
     params.savedMeal ? useYouMealsStore.getState().meals?.find((meal) => meal.id === params.savedMeal) ?? null : null,
   );
-  const selectedKey = editing?.date ?? params.day ?? today();
+  // Fuel's "Save as meal": logged entries, in the day's order, to keep as a new saved meal.
+  const [saveFrom] = useState<FoodLog[] | null>(() => {
+    if (!params.saveEntries) return null;
+    const logs = useFuelStore.getState().logs;
+    const found = params.saveEntries.split(',').flatMap((id) => logs.filter((log) => log.id === id));
+    return found.length > 0 ? found : null;
+  });
+  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? params.day ?? today();
   if (!userId) return <Empty text="Sign in to log food." />;
+  if (params.saveEntries && !saveFrom) return <Empty text="Those foods are no longer in your log." />;
   return (
     <LoggerSession
-      key={`${userId}:${editing?.id ?? savedMeal?.id ?? 'new'}`}
+      key={`${userId}:${editing?.id ?? savedMeal?.id ?? (saveFrom ? `save:${params.saveEntries}` : 'new')}`}
       userId={userId}
       editing={editing}
       savedMeal={savedMeal}
+      saveFrom={saveFrom}
       selectedKey={selectedKey}
       groupParam={params.group ?? null}
     />
   );
 }
 
-function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: {
+function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam }: {
   userId: string;
   editing: FoodLog | null;
   savedMeal: Food | null;
+  /** Logged entries the meal builder opens with, to save as a meal without logging it. */
+  saveFrom: FoodLog[] | null;
   selectedKey: string;
   groupParam: string | null;
 }) {
@@ -169,7 +182,9 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
 
   // ── Meal builder (web MealLogger) ──
   const [savedTarget, setSavedTarget] = useState<Food | undefined>();
-  const draftKey = editing ? `edit:${editing.id}` : savedTarget ? `saved:${savedTarget.id}` : 'new';
+  // Saving logged entries keeps its draft under those entries, so other foods give a fresh one.
+  const saveKey = saveFrom ? `save:${saveFrom.map((log) => log.id).join(',')}` : null;
+  const draftKey = editing ? `edit:${editing.id}` : savedTarget ? `saved:${savedTarget.id}` : saveKey ?? 'new';
   const makeDraft = useCallback(
     (food?: { name: string; description?: string | null }, servings = 1): MealDraft => {
       const day = editing?.date ?? selectedKey;
@@ -188,10 +203,13 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     },
     [editing, selectedKey, when.groupId],
   );
-  const [meal, setMeal] = useState<MealDraft | null>(() =>
-    loadMealDraft(userId, editing ? `edit:${editing.id}` : 'new') ??
-    (editing?.food && decodeMealComposition(editing.food.description) ? makeDraft(editing.food, editing.servings) : null),
-  );
+  const [meal, setMeal] = useState<MealDraft | null>(() => {
+    const kept = loadMealDraft(userId, editing ? `edit:${editing.id}` : saveKey ?? 'new');
+    if (kept) return kept;
+    if (editing?.food && decodeMealComposition(editing.food.description)) return makeDraft(editing.food, editing.servings);
+    if (saveFrom) return { ...makeDraft(), ...mealFromLoggedFoods(saveFrom), saveAsReusableMeal: true };
+    return null;
+  });
   const [mealReview, setMealReview] = useState(Boolean(meal));
   const [paused, setPaused] = useState(false);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -239,7 +257,7 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
     setSavedTarget(undefined);
     setMealReview(false);
     setMealError('');
-    if (editing || savedMeal) setClosing(true);
+    if (editing || savedMeal || saveFrom) setClosing(true);
   };
 
   const capturing = Boolean(meal) && !mealReview && !paused;
@@ -330,11 +348,23 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
   };
 
   const inMeal = Boolean(meal) && !paused;
-  const title = inMeal ? (savedTarget ? 'Edit saved meal' : editing ? 'Edit meal' : 'Build a meal') : editing ? 'Edit entry' : 'Log food';
+  const title = inMeal
+    ? savedTarget
+      ? 'Edit saved meal'
+      : saveFrom
+        ? 'Save as meal'
+        : editing
+          ? 'Edit meal'
+          : 'Build a meal'
+    : editing
+      ? 'Edit entry'
+      : 'Log food';
   const subtitle = inMeal
     ? capturing
       ? 'Add ingredients'
-      : null
+      : saveFrom && !savedTarget
+        ? `From ${saveFrom[0].date === today() ? 'today' : format(new Date(`${saveFrom[0].date}T12:00:00`), 'EEE, MMM d')}`
+        : null
     : !sameDay
       ? `Unassigned on ${format(when.date, 'MMM d')}`
       : `Adds to ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
@@ -442,17 +472,20 @@ function LoggerSession({ userId, editing, savedMeal, selectedKey, groupParam }: 
             update={updateMeal}
             userId={userId}
             savedTarget={savedTarget}
+            saveOnly={Boolean(saveFrom) && !savedTarget}
             editingEntryId={editing?.id}
             storageFailed={storageFailed}
             onAddIngredients={() => setMealReview(false)}
             onPause={() => setPaused(true)}
             onSaved={() => {
               clearMealDraft(userId, draftKey);
-              if (savedTarget) {
+              if (savedTarget || saveFrom) {
                 void reloadSavedMeals();
                 void loadYouMeals();
               }
-              complete();
+              // a meal saved for later leaves the day's log as it was
+              if (saveFrom && !savedTarget) setClosing(true);
+              else complete();
             }}
           />
         ) : chosen ? (

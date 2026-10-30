@@ -16,6 +16,7 @@ import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
+import { canSaveAsMeal } from '@/lib/savedMealFromLog';
 import { useAppStore } from '@/stores/appStore';
 import type { NutritionGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -71,6 +72,12 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
     return;
   }
   copy();
+}
+
+/** Opens the meal builder with these foods at the amounts eaten, to keep as a saved meal; nothing is logged. */
+function saveAsMeal(logs: FoodLog[]) {
+  const ids = logs.filter((log) => log.food).map((log) => log.id);
+  if (ids.length > 0) router.push({ pathname: '/log-food', params: { saveEntries: ids.join(',') } });
 }
 
 /** Opens the targets with that number's field ready to type, as You's Targets does. */
@@ -315,21 +322,26 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
 }) {
   const c = useBlanc();
   const kcal = logs.reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0);
-  // A past day's meal can be logged again today (Unassigned too).
+  // A past day's meal can be logged again today, and any day's kept as a
+  // saved meal (Unassigned too).
   const copyable = day !== today() && logs.some((log) => log.food);
+  const savable = canSaveAsMeal(logs);
 
   const groupMenu = () => {
-    const copy = { label: 'Copy to today', run: () => copyToToday(logs, group ?? null) };
+    const reuse = [
+      ...(copyable ? [{ label: 'Copy to today', run: () => copyToToday(logs, group ?? null) }] : []),
+      ...(savable ? [{ label: 'Save as meal', run: () => saveAsMeal(logs) }] : []),
+    ];
     if (!group) {
-      if (!copyable) return;
-      ActionSheetIOS.showActionSheetWithOptions({ title, options: [copy.label, 'Cancel'], cancelButtonIndex: 1 }, (index) => {
-        if (index === 0) copy.run();
+      if (reuse.length === 0) return;
+      ActionSheetIOS.showActionSheetWithOptions({ title, options: [...reuse.map((action) => action.label), 'Cancel'], cancelButtonIndex: reuse.length }, (index) => {
+        if (index < reuse.length) reuse[index].run();
       });
       return;
     }
     const store = useFuelStore.getState();
     const actions: { label: string; run: () => void; destructive?: boolean }[] = [
-      ...(copyable ? [copy] : []),
+      ...reuse,
       { label: 'Log food here', run: () => logFood(day, group.id) },
     ];
     if (canReorderNutritionGroup(groups, group.id, -1)) actions.push({ label: 'Move up', run: () => report(store.reorderGroup(group.id, -1), 'Not moved') });
@@ -362,7 +374,7 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
       title={title}
       note={logs.length > 0 ? `${formatWhole(kcal)} kcal` : undefined}
       accessory={
-        group || copyable ? (
+        group || copyable || savable ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${title} options`}
@@ -436,6 +448,8 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
     ...(log.date !== today() && log.food
       ? [{ title: 'Copy to today', symbol: 'doc.on.doc', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) }]
       : []),
+    // Any entry can be kept as a saved meal, unless it is one already.
+    ...(canSaveAsMeal([log]) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
     { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 

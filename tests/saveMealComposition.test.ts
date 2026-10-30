@@ -78,6 +78,21 @@ describe('composed meal persistence', () => {
     expect(mocks.persistNutritionEntry).not.toHaveBeenCalled();
   });
 
+  it('saves a meal for later without logging it', async () => {
+    await saveComposedMeal(draft, 'user-a', { saveOnly: true });
+    expect(mocks.upsert.mock.calls[0][0]).toMatchObject({ id: draft.entryId, name: 'Protein shake', source: 'saved_meal', serving_unit: 'meal' });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.persistNutritionEntry).not.toHaveBeenCalled();
+  });
+
+  it('saves a meal for later in the place of a saved meal with its name', async () => {
+    await saveComposedMeal(draft, 'user-a', { saveOnly: true, editSavedMealId: 'same-name' });
+    expect(mocks.upsert.mock.calls[0][0]).toMatchObject({ id: draft.entryId, source: 'saved_meal' });
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({ source: 'manual_entry' });
+    expect(mocks.eq.mock.calls).toEqual([['id', 'same-name'], ['user_id', 'user-a']]);
+    expect(mocks.persistNutritionEntry).not.toHaveBeenCalled();
+  });
+
   it('fails a template demotion and lets a retry reuse the new template identity', async () => {
     const error = { message: 'Unable to demote template' };
     mocks.eq.mockImplementation((column: string) => column === 'user_id' ? Promise.resolve({ error }) : mocks);
@@ -116,6 +131,7 @@ describe('composed meal persistence', () => {
     await expect(saveComposedMeal({ ...draft, ingredients: [] }, 'user-a')).rejects.toThrow();
     await expect(saveComposedMeal({ ...draft, date: '2026-02-30' }, 'user-a')).rejects.toThrow();
     await expect(saveComposedMeal(draft, 'user-a', { editEntryId: 'log', editSavedMealId: 'food' })).rejects.toThrow();
+    await expect(saveComposedMeal(draft, 'user-a', { editEntryId: 'log', saveOnly: true })).rejects.toThrow();
     await expect(saveComposedMeal(draft, 'user-a', { editSavedMealId: draft.entryId })).rejects.toThrow();
     expect(mocks.from).not.toHaveBeenCalled();
   });

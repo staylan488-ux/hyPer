@@ -7,6 +7,7 @@ import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealCo
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { saveComposedMeal } from '@/lib/saveMealComposition';
+import { savedMealNamed } from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -23,14 +24,20 @@ import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
+import { useLogger } from './context';
+
 const amount = (value: number) => Number(value.toFixed(3));
 
-/** The meal being built: name, ingredients and amounts, when, then log it. */
-export function MealReview({ draft, update, userId, savedTarget, editingEntryId, onAddIngredients, onPause, onSaved, storageFailed }: {
+/**
+ * The meal being built: name, ingredients and amounts, when, then log it. With
+ * `saveOnly` (logged food saved as a meal) it is kept in Saved, not logged.
+ */
+export function MealReview({ draft, update, userId, savedTarget, saveOnly = false, editingEntryId, onAddIngredients, onPause, onSaved, storageFailed }: {
   draft: MealDraft;
   update: (patch: Partial<MealDraft>) => void;
   userId: string;
   savedTarget?: Food;
+  saveOnly?: boolean;
   editingEntryId?: string;
   onAddIngredients: () => void;
   /** After a failed save of a new meal: back to logging, with the meal kept to resume. */
@@ -46,6 +53,9 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
   const group = groups.find((candidate) => candidate.id === draft.groupId) ?? null;
   const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0;
   const frozen = busy || draft.locked;
+  // Saved meals are one per name: a taken name puts this meal in that one's place.
+  const { savedMeals } = useLogger();
+  const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
 
   const save = async () => {
     if (!valid || busy) return;
@@ -55,7 +65,7 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
       // A draft can outlive its meal group, or be restored on another day:
       // check the group still exists before writing.
       let mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null = null;
-      if (!savedTarget && draft.groupId) {
+      if (!savedTarget && !saveOnly && draft.groupId) {
         const destination = await resolveMealDestination(draft.groupId, userId, draft.date);
         if (!destination.groupId) {
           update({ groupId: null });
@@ -67,7 +77,13 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
       }
       const locked = { ...draft, name: draft.name.trim(), locked: true };
       update(locked);
-      await saveComposedMeal(locked, userId, { editEntryId: editingEntryId, editSavedMealId: savedTarget?.id, mealType });
+      await saveComposedMeal(
+        locked,
+        userId,
+        saveOnly
+          ? { saveOnly, editSavedMealId: replaces?.id }
+          : { editEntryId: editingEntryId, editSavedMealId: savedTarget?.id, mealType },
+      );
       haptics.success();
       onSaved();
     } catch (failure) {
@@ -141,7 +157,14 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
 
       {/* Closes up under the ingredients as one is removed. */}
       <Animated.View layout={rowLayout}>
-        {!savedTarget ? (
+        {saveOnly ? (
+          <FormNote>
+            {replaces
+              ? `Replaces your saved meal “${replaces.name.trim()}”. Past entries stay as they were.`
+              : 'Nothing is logged now. Log it any time from Saved.'}
+          </FormNote>
+        ) : null}
+        {!savedTarget && !saveOnly ? (
           <Section title="When">
             <Label>
               <PickerRow
@@ -171,14 +194,14 @@ export function MealReview({ draft, update, userId, savedTarget, editingEntryId,
         {error ? <FormNote alert>{error}</FormNote> : null}
         <View style={{ paddingHorizontal: space.gutter, marginTop: 20, gap: 12 }}>
           <Capsule
-            title={draft.locked ? 'Retry save' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
+            title={draft.locked ? 'Retry save' : saveOnly ? 'Save meal' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
             size="large"
             fill
             busy={busy}
             disabled={!valid}
             onPress={() => void save()}
           />
-          {draft.locked && !busy && !editingEntryId && !savedTarget ? <Capsule title="Back to food logging" variant="quiet" fill onPress={onPause} /> : null}
+          {draft.locked && !busy && !editingEntryId && !savedTarget && !saveOnly ? <Capsule title="Back to food logging" variant="quiet" fill onPress={onPause} /> : null}
         </View>
       </Animated.View>
     </View>

@@ -7,6 +7,8 @@ interface SaveComposedMealOptions {
   editEntryId?: string;
   editSavedMealId?: string;
   mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+  /** Keeps the meal as a saved meal without logging it (with editSavedMealId, in that meal's place). */
+  saveOnly?: boolean;
 }
 
 /** Creates a fresh recipe snapshot so edits never rewrite previously logged meals. */
@@ -19,7 +21,7 @@ export async function saveComposedMeal(
   if (!valid || !valid.name.trim() || !valid.ingredients.length) {
     throw new Error('Add a meal name and valid ingredients before saving.');
   }
-  if (options.editEntryId && options.editSavedMealId) {
+  if (options.editEntryId && (options.editSavedMealId || options.saveOnly)) {
     throw new Error('Choose either a logged meal or a saved meal to edit.');
   }
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -39,7 +41,7 @@ export async function saveComposedMeal(
     ...getMealTotals(valid.ingredients),
     serving_size: 1,
     serving_unit: 'meal',
-    source: valid.saveAsReusableMeal || options.editSavedMealId ? 'saved_meal' : 'manual_entry',
+    source: valid.saveAsReusableMeal || options.editSavedMealId || options.saveOnly ? 'saved_meal' : 'manual_entry',
     description: encodeMealComposition(valid.ingredients),
   }, { onConflict: 'id' });
   if (foodError) throw foodError;
@@ -53,6 +55,7 @@ export async function saveComposedMeal(
     if (error) throw error;
     return;
   }
+  if (options.saveOnly) return;
 
   const [year, month, day] = valid.date.split('-').map(Number);
   await persistNutritionEntry({
