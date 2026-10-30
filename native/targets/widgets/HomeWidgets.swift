@@ -17,6 +17,9 @@ struct WidgetSnapshot: Decodable {
     let protein: Double
     let calorieTarget: Double
     let proteinTarget: Double
+    /// Bulking: calories past target read as extra and never turn red. Absent
+    /// in snapshots from before it was written, which keeps the warning.
+    let gaining: Bool?
   }
 
   struct PlanDay: Decodable {
@@ -44,7 +47,7 @@ struct WidgetSnapshot: Decodable {
   static let sample = WidgetSnapshot(
     version: 1,
     day: dayKey(Date()),
-    fuel: Fuel(calories: 1_885, protein: 96, calorieTarget: 3_125, proteinTarget: 150),
+    fuel: Fuel(calories: 1_885, protein: 96, calorieTarget: 3_125, proteinTarget: 150, gaining: nil),
     plan: (0..<4).map { offset in
       let date = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
       let titles = ["Upper A", "Lower A", "Rest day", "Upper B"]
@@ -90,12 +93,12 @@ struct DayEntry: TimelineEntry {
   let snapshot: WidgetSnapshot?
 
   /// Today's Fuel: the snapshot's figures on its own day, nothing eaten on a later one.
-  var fuel: (left: Double, eaten: Double, target: Double, proteinLeft: Double, protein: Double, proteinTarget: Double)? {
+  var fuel: (left: Double, eaten: Double, target: Double, proteinLeft: Double, protein: Double, proteinTarget: Double, gaining: Bool)? {
     guard let fuel = snapshot?.fuel, fuel.calorieTarget > 0 else { return nil }
     let sameDay = snapshot?.day == dayKey(date)
     let eaten = sameDay ? fuel.calories : 0
     let protein = sameDay ? fuel.protein : 0
-    return (fuel.calorieTarget - eaten, eaten, fuel.calorieTarget, fuel.proteinTarget - protein, protein, fuel.proteinTarget)
+    return (fuel.calorieTarget - eaten, eaten, fuel.calorieTarget, fuel.proteinTarget - protein, protein, fuel.proteinTarget, fuel.gaining == true)
   }
 
   /// Today and the days after it, from the plan the app wrote ahead.
@@ -205,7 +208,7 @@ private struct FuelView: View {
           .gaugeStyle(.accessoryCircular)
         case .accessoryRectangular:
           VStack(alignment: .leading, spacing: 1) {
-            Text("\(whole(abs(fuel.left))) kcal \(fuel.left >= 0 ? "left" : "over")")
+            Text("\(whole(abs(fuel.left))) kcal \(leftWord(fuel.left, gaining: fuel.gaining))")
               .font(.headline)
               .widgetAccentable()
             Text(proteinLine(fuel.proteinLeft))
@@ -214,16 +217,16 @@ private struct FuelView: View {
               .gaugeStyle(.accessoryLinearCapacity)
           }
         case .accessoryInline:
-          Text("\(whole(abs(fuel.left))) kcal \(fuel.left >= 0 ? "left" : "over")")
+          Text("\(whole(abs(fuel.left))) kcal \(leftWord(fuel.left, gaining: fuel.gaining))")
         case .systemMedium:
           HStack(alignment: .bottom, spacing: 18) {
             VStack(alignment: .leading, spacing: 0) {
               Mark(blanc: blanc)
               Spacer(minLength: 0)
-              figure(fuel.left, blanc: blanc, size: 46)
+              figure(fuel.left, gaining: fuel.gaining, blanc: blanc, size: 46)
             }
             VStack(alignment: .leading, spacing: 14) {
-              meterRow("Eaten", value: whole(fuel.eaten), of: whole(fuel.target), progress: fuel.eaten / fuel.target, over: fuel.left < 0, blanc: blanc)
+              meterRow("Eaten", value: whole(fuel.eaten), of: whole(fuel.target), progress: fuel.eaten / fuel.target, over: fuel.left < 0 && !fuel.gaining, blanc: blanc)
               meterRow("Protein", value: whole(fuel.protein), of: "\(whole(fuel.proteinTarget)) g", progress: fuel.proteinTarget > 0 ? fuel.protein / fuel.proteinTarget : 0, over: false, blanc: blanc)
             }
             .frame(maxWidth: .infinity)
@@ -232,8 +235,8 @@ private struct FuelView: View {
           VStack(alignment: .leading, spacing: 0) {
             Mark(blanc: blanc)
             Spacer(minLength: 0)
-            figure(fuel.left, blanc: blanc, size: 40)
-            Meter(progress: fuel.eaten / fuel.target, blanc: blanc, over: fuel.left < 0)
+            figure(fuel.left, gaining: fuel.gaining, blanc: blanc, size: 40)
+            Meter(progress: fuel.eaten / fuel.target, blanc: blanc, over: fuel.left < 0 && !fuel.gaining)
               .padding(.top, 8)
             Text(proteinLine(fuel.proteinLeft))
               .font(.caption)
@@ -254,7 +257,7 @@ private struct FuelView: View {
     .widgetURL(appURL(entry.snapshot != nil && entry.fuel == nil ? "you/targets" : "fuel"))
   }
 
-  private func figure(_ left: Double, blanc: Blanc, size: CGFloat) -> some View {
+  private func figure(_ left: Double, gaining: Bool, blanc: Blanc, size: CGFloat) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       Text(whole(abs(left)))
         .font(.system(size: size, weight: .thin))
@@ -263,9 +266,9 @@ private struct FuelView: View {
         .lineLimit(1)
         .foregroundStyle(blanc.ink)
         .widgetAccentable()
-      Text(left >= 0 ? "kcal left" : "kcal over")
+      Text("kcal \(leftWord(left, gaining: gaining))")
         .font(.footnote)
-        .foregroundStyle(left >= 0 ? blanc.graphite : blanc.live)
+        .foregroundStyle(left >= 0 || gaining ? blanc.graphite : blanc.live)
     }
     .accessibilityElement(children: .combine)
   }
@@ -283,6 +286,11 @@ private struct FuelView: View {
       .font(.footnote)
       Meter(progress: progress, blanc: blanc, over: over)
     }
+  }
+
+  /// "left", or past target "over", or "extra" while gaining (the app's shared overTargetWord).
+  private func leftWord(_ left: Double, gaining: Bool) -> String {
+    left >= 0 ? "left" : gaining ? "extra" : "over"
   }
 
   private func proteinLine(_ left: Double) -> String {

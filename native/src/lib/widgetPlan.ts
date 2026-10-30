@@ -4,6 +4,8 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
 
 import type { HeroState } from '@/components/dashboard/todayModel';
+import { isGainingGoal } from '@/lib/fuelSummary';
+import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';
 import type { Split, SplitDay, WorkoutMode } from '@/types';
 
@@ -15,7 +17,14 @@ export type WidgetSnapshot = {
   version: 1;
   /** The local day the Fuel figures belong to (yyyy-MM-dd). */
   day: string;
-  fuel: { calories: number; protein: number; calorieTarget: number; proteinTarget: number } | null;
+  fuel: {
+    calories: number;
+    protein: number;
+    calorieTarget: number;
+    proteinTarget: number;
+    /** Bulking: calories past target read as extra, never red, as in the app. */
+    gaining: boolean;
+  } | null;
   /** Today, then the days after it. */
   plan: WidgetPlanDay[];
 };
@@ -100,9 +109,10 @@ export function buildWidgetSnapshot(input: {
   fuelDay: string;
   target: { calories: number; protein: number } | null;
   totals: { calories: number; protein: number };
+  goal?: NutritionGoal | null;
   plan: WidgetPlanDay[];
 }): WidgetSnapshot {
-  const { fuelDay, target, totals, plan } = input;
+  const { fuelDay, target, totals, goal, plan } = input;
   return {
     version: 1,
     day: fuelDay,
@@ -113,6 +123,7 @@ export function buildWidgetSnapshot(input: {
             protein: Math.round(totals.protein),
             calorieTarget: Math.round(target.calories),
             proteinTarget: Math.round(target.protein),
+            gaining: isGainingGoal(goal),
           }
         : null,
     plan,

@@ -78,7 +78,10 @@ describe('widget plan', () => {
       protein: 96,
       calorieTarget: 3125,
       proteinTarget: 150,
+      gaining: false,
     });
+    // Bulking, the widget shows calories past target as extra, not red.
+    expect(buildWidgetSnapshot({ fuelDay: '2026-10-27', target: { calories: 2800, protein: 160 }, totals: { calories: 3000, protein: 170 }, goal: 'bulk', plan }).fuel?.gaining).toBe(true);
     expect(buildWidgetSnapshot({ fuelDay: '2026-10-27', target: null, totals: { calories: 0, protein: 0 }, plan }).fuel).toBeNull();
   });
 });

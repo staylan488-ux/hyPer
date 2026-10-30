@@ -75,6 +75,12 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
   colour; red only for live state, errors, over-limit and the brand P.
+  Over-limit follows the saved nutrition goal through the shared
+  `warnsOverTarget` (`src/lib/fuelSummary.ts`): protein past target is never
+  red, and while bulking or lean bulking nothing past target is (calories read
+  "extra", the line stays full in ink); cutting, maintaining or with no goal
+  saved, calories, carbs and fat past target turn red (the owner's call on
+  2026-10-30).
 - The white [Label](../../../native/src/components/Label.tsx) is the one container
   (10 pt continuous corners). Sections are separated by space, rows by hairlines
   with an iOS press highlight. Ink capsules are primary actions; quiet fill

@@ -7,7 +7,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/components/nutrition/nutritionLogUtils';
-import { fuelDaySummary, fuelDayTitle } from '@/lib/fuelSummary';
+import { fuelDaySummary, fuelDayTitle, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
+import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { decodeMealComposition } from '@/lib/mealComposition';
 import { weekDays } from '@/lib/nutritionCalendar';
 import { canReorderNutritionGroup, offersMoveToPreviousDay } from '@/lib/nutritionDay';
@@ -59,12 +60,14 @@ const editTarget = (focus: 'calories' | 'protein' | 'carbs' | 'fat') => {
 
 export default function FuelScreen() {
   const target = useAppStore((state) => state.macroTarget);
+  // Bulking, going past a target is a good day, not a red one.
+  const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const { selected, logs, groups, loaded, status } = useFuelDay();
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
   const live = selected === dayKey(new Date());
   const totals = sumMacros(logs);
-  const summary = fuelDaySummary({ totals, target, live, selectedDate });
+  const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
   const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
   const lateNight = live && offersMoveToPreviousDay(logs);
 
@@ -138,10 +141,10 @@ export default function FuelScreen() {
             </BlancText>
           </View>
           <View style={{ marginTop: 10 }}>
-            <Track progress={totals.calories / summary.targets.calories} />
+            <Track progress={totals.calories / summary.targets.calories} warnOver={warnsOverTarget('calories', goal)} />
           </View>
           {live && loaded ? (
-            <BlancText variant="secondary" tone={summary.kcalOver > 0 ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
+            <BlancText variant="secondary" tone={summary.kcalOverWarns ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
               {summary.logLine}
             </BlancText>
           ) : null}
@@ -149,11 +152,11 @@ export default function FuelScreen() {
 
         <Section title="Macros">
           <Label style={{ overflow: 'hidden' }}>
-            <MacroRow name="Protein" value={totals.protein} goal={summary.targets.protein} onPress={() => editTarget('protein')} />
+            <MacroRow macro="protein" value={totals.protein} target={summary.targets.protein} goal={goal} />
             <Hairline />
-            <MacroRow name="Carbs" value={totals.carbs} goal={summary.targets.carbs} onPress={() => editTarget('carbs')} />
+            <MacroRow macro="carbs" value={totals.carbs} target={summary.targets.carbs} goal={goal} />
             <Hairline />
-            <MacroRow name="Fat" value={totals.fat} goal={summary.targets.fat} onPress={() => editTarget('fat')} />
+            <MacroRow macro="fat" value={totals.fat} target={summary.targets.fat} goal={goal} />
           </Label>
         </Section>
 
@@ -420,15 +423,22 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
   );
 }
 
-/** One macro against its target; a tap opens that target to change. */
-function MacroRow({ name, value, goal, onPress }: { name: string; value: number; goal: number; onPress: () => void }) {
+const MACRO_NAMES: Record<Exclude<FuelMacro, 'calories'>, string> = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+
+/**
+ * One macro against its target; a tap opens that target to change. Its line
+ * turns red past target only where that is a warning for the goal: never for
+ * protein, never while gaining.
+ */
+function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'calories'>; value: number; target: number; goal: NutritionGoal | undefined }) {
   const c = useBlanc();
+  const name = MACRO_NAMES[macro];
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(goal)} g`}
+      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(target)} g`}
       accessibilityHint={`Edits your ${name.toLowerCase()} target`}
-      onPress={onPress}
+      onPress={() => editTarget(macro)}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <BlancText variant="body">{name}</BlancText>
@@ -436,10 +446,10 @@ function MacroRow({ name, value, goal, onPress }: { name: string; value: number;
           <BlancText variant="secondary" weight="500">
             {formatWhole(value)}
           </BlancText>{' '}
-          / {formatWhole(goal)} g
+          / {formatWhole(target)} g
         </BlancText>
       </View>
-      <Track progress={goal > 0 ? value / goal : 0} />
+      <Track progress={target > 0 ? value / target : 0} warnOver={warnsOverTarget(macro, goal)} />
     </Pressable>
   );
 }

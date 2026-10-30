@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
+import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
@@ -35,6 +36,9 @@ export default function TodayScreen() {
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
+  // Bulking, calories past target read as extra, never red.
+  const goal = useAppStore((state) => state.nutritionProfile?.goal);
+  const over = overTargetWord(goal);
   const rise = useIntroRise();
   const { refreshing, refresh } = useAccountRefresh();
 
@@ -78,7 +82,7 @@ export default function TodayScreen() {
               // The day's figures open Fuel, where they come from.
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : 'over'}. Eaten ${formatWhole(totals.calories)} of ${formatWhole(target.calories)}, protein ${formatWhole(totals.protein)} of ${formatWhole(target.protein)} grams`}
+                accessibilityLabel={`${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} of ${formatWhole(target.calories)}, protein ${formatWhole(totals.protein)} of ${formatWhole(target.protein)} grams`}
                 accessibilityHint="Opens Fuel"
                 onPress={() => {
                   haptics.tap();
@@ -90,12 +94,12 @@ export default function TodayScreen() {
                     {formatWhole(Math.abs(kcalLeft))}
                   </BlancText>
                   <BlancText variant="secondary" tone="graphite">
-                    {kcalLeft >= 0 ? 'kcal left' : 'kcal over'}
+                    {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
                   </BlancText>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                  <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} />
-                  <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} />
+                  <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
+                  <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
             ) : (
@@ -207,7 +211,7 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   );
 }
 
-function Meter({ label, value, of, progress }: { label: string; value: string; of: string; progress: number }) {
+function Meter({ label, value, of, progress, warnOver }: { label: string; value: string; of: string; progress: number; warnOver: boolean }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -222,7 +226,7 @@ function Meter({ label, value, of, progress }: { label: string; value: string; o
         </BlancText>
       </View>
       <View style={{ marginTop: 8 }}>
-        <Track progress={progress} />
+        <Track progress={progress} warnOver={warnOver} />
       </View>
     </View>
   );

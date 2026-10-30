@@ -25,6 +25,7 @@ export function useWidgetSnapshot() {
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
   const target = useAppStore((state) => state.macroTarget);
+  const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const totals = useFuelStore((state) => state.todayTotals);
   const fuelDay = useFuelStore((state) => state.todayKey);
 
@@ -44,8 +45,8 @@ export function useWidgetSnapshot() {
 
   const json = useMemo(() => {
     if (loading || !days) return null;
-    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, plan: days }));
-  }, [loading, days, fuelDay, target, totals]);
+    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan: days }));
+  }, [loading, days, fuelDay, target, totals, goal]);
 
   useEffect(() => {
     if (!json || json === written) return;
