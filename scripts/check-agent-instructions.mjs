@@ -187,7 +187,7 @@ function checkLinks(file, source) {
   }
 }
 
-for (const relative of ['AGENTS.md', 'CLAUDE.md', 'TOOL_SWITCHING_CHECKLIST.md', 'docs/agent-workflows.md']) {
+for (const relative of ['AGENTS.md', 'CLAUDE.md', 'docs/handoffs/README.md', 'docs/agent-workflows.md']) {
   readDocument(path.join(root, relative));
 }
 const skills = [];

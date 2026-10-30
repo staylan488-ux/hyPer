@@ -27,10 +27,10 @@ with only a metric basis cannot infer a piece count unless that equivalence is
 available in its current record. Open Food Facts household labels are used only
 when the selected nutrition basis is per serving, never a per-100 g fallback.
 
-For offline UI verification, visit `/preview`, open Fuel → Log food, and choose
-“Samosas (serving demo).” The fixture accepts a number plus a known unit and
-explicitly identifies itself as offline; it does not call Gemini.
+To check it offline, run the app in preview mode (sample data, the default in
+development builds), open Fuel → Log food, and choose “Samosas (serving demo).”
+The fixture accepts a number plus a known unit and explicitly identifies itself
+as offline; it does not call Gemini.
 
-Live use requires the updated `analyze-food-trial` function and web/native app
-bundle to be released together through a separately authorized release. This
-implementation does not change database schema or native code.
+The serving rules live in `analyze-food-trial` (`serving.ts`); a change to them
+reaches people only when that function is deployed.

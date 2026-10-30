@@ -5,12 +5,11 @@ description: Build or change hyPer's React Native app in native/ with the approv
 
 # Blanc native app
 
-`native/` (Expo SDK 58, Expo Router) is the full native rebuild approved on
-2026-10-26. It replaces the Capacitor web app screen by screen; see
-[the rebuild plan](../../../docs/plans/2026-10-26-native-blanc.md) for
-milestones and [the parity inventory](../../../docs/plans/2026-10-26-native-parity-inventory.md)
-for what each screen must keep. Blanc is approved: do not explore new directions
-for native work, and do not apply the web app's Studio/Metal rules here.
+`native/` (Expo SDK 58, Expo Router) is hyPer's iPhone app: the full native
+rebuild approved on 2026-10-26, released as hyPer 2.0 on 2026-10-28 in place of
+the retired Capacitor web app. Blanc is approved: do not explore new directions
+for native work. Where these notes say "the web", they name where a shared rule
+came from; the web app itself is no longer released.
 
 ## Architecture
 
@@ -32,8 +31,9 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
 - The native Supabase client keeps the web client's safety: `timedFetch`
   deadlines, refresh diagnostics and the shared `authResume` steps. Its session
-  lives in the Keychain through `native/modules/hyper-keychain`, which writes the
-  Capacitor app's items so cutover keeps people signed in.
+  lives in the Keychain through `native/modules/hyper-keychain`, which uses the
+  Capacitor app's items (service `<bundle ID>.auth`), so the 2.0 update kept
+  people signed in.
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
   the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
@@ -53,10 +53,10 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   archive cannot ship the sample data.
 - Two builds of one app ([app.config.js](../../../native/app.config.js) over
   app.json): the test app by default ("hyPer Native", `app.hyper.native`,
-  scheme `hyper-native`, beside the Capacitor app) and, with
-  `HYPER_APP=release`, the released app that takes over the Capacitor app's
-  identity (`app.hyper.mobile`, scheme `app.hyper.mobile`, widget extension
-  `app.hyper.mobile.HyperWidgets`, shown as "hyPer"). `HYPER_BUILD_NUMBER` sets
+  scheme `hyper-native`, installed beside the released app) and, with
+  `HYPER_APP=release`, the released app (`app.hyper.mobile`, scheme
+  `app.hyper.mobile`, widget extension `app.hyper.mobile.HyperWidgets`, shown
+  as "hyPer"). `HYPER_BUILD_NUMBER` sets
   the build number. Prebuild with `--clean` when switching variant. The URL
   scheme in JavaScript and Swift follows the bundle ID iOS reports
   (`modules/hyper-keychain/bundle.ts`, `WidgetSnapshotStore.appScheme`), never
@@ -239,7 +239,7 @@ for native work, and do not apply the web app's Studio/Metal rules here.
   modal that shows and hides iOS's header is rebuilt, which drops the run.
 - `native/modules/hyper-run` is the Capacitor recorder ported call for call:
   every GPS sample appended to `HyperRunRecorder/<runId>.jsonl`, lock-screen
-  controls in UserDefaults (the same keys, so cutover keeps a run),
+  controls in UserDefaults (the Capacitor app's keys, so the update kept a run),
   background location, never restarting on its own. JavaScript keeps running
   while locked, so laps and sprint tones play then too (`RunCuePlayer`, mixed
   over music; the app has the `audio` background mode for this).
@@ -287,8 +287,8 @@ for native work, and do not apply the web app's Studio/Metal rules here.
 ## Behaviour to keep
 
 Rest starts only after a set saves; a failed save keeps the numbers and the
-button becomes Retry. Food saves use the shared helpers. Check the parity
-inventory before rebuilding a flow.
+button becomes Retry. Food saves use the shared helpers. Before rebuilding a
+flow, read the shared rule in `src/lib` it uses and the tests that cover it.
 
 ## Checks
 
@@ -344,12 +344,13 @@ inventory before rebuilding a flow.
   extension IDs, build numbers, production host, no local backend), upload.
   Every upload needs the owner's approval.
 - Real-account phone builds: `native/scripts/build-phone.sh [device-id]` builds
-  Release against production (the Supabase URL and anon key come from the web
-  app's `.env`, only inside the build), checks that the bundle has the
+  Release against production (the Supabase URL and anon key come from the main
+  checkout's `.env`, only inside the build), checks that the bundle has the
   production host and no local test backend, and with a device id
   (`xcrun devicectl list devices`) installs and opens it. Ask the owner before
   installing. A locked phone refuses the launch, but the install lands. Run
   `use-rn-core.sh Debug` before the next simulator build.
-- Phone installs use bundle ID `app.hyper.native` until cutover; signing follows
+- `HYPER_APP=release` builds the released app, which installs over hyPer on
+  the phone; without it, the test app installs beside it. Signing follows
   [the iOS workflow](../ship-ios/SKILL.md). A simulator run does not prove device
   behaviour, haptics or performance.

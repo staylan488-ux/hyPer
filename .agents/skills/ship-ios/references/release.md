@@ -6,8 +6,7 @@ clone's copy of the script, so a stale copy elsewhere cannot ship an old
 pipeline. It runs the tests, lint and the native type-check, then runs
 [native/fastlane](../../../../native/fastlane/Fastfile)
 to prebuild, archive, check and upload the React Native app in `native/` as
-`app.hyper.mobile` (the Capacitor shell in `ios/` is no longer shipped once this
-script is on main). Calling it performs the upload. It does not ship
+`app.hyper.mobile`. Calling it performs the upload. It does not ship
 uncommitted work or the current feature branch.
 
 For an authorized release, compare remote main's tip with the authorized release

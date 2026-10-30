@@ -6,10 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:ios": "npm run build",
-    "ios:sync": "npm run build:ios && cap sync ios",
-    "ios:open": "cap open ios",
-    "ios:run": "npm run ios:sync && cap run ios",
     "check:instructions": "node scripts/check-agent-instructions.mjs",
     "lint": "npm run check:instructions && eslint . && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
@@ -23,10 +19,8 @@
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/app": "^8.1.1",
-    "@capacitor/cli": "^8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/haptics": "^8.0.2",
-    "@capacitor/ios": "^8.4.2",
     "@capacitor/local-notifications": "^8.2.1",
     "@capacitor/status-bar": "^8.0.3",
     "@dnd-kit/core": "^6.3.1",
@@ -46,7 +40,6 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.13",
     "@types/react": "^19.2.7",

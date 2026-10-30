@@ -35,7 +35,6 @@ CLAUDE.md
 !/CLAUDE.md
 !/.claude/skills/
 /.claude/skills/*
-!/.claude/skills/studio-design
 !/.claude/skills/ship-ios
 !/.claude/skills/supabase-deploy
 !/.claude/skills/blanc-native
@@ -52,7 +51,5 @@ CLAUDE.local.md
 *.sln
 *.sw?
 
-# fastlane build artifacts
-ios/App/build/
-ios/App/fastlane/report.xml
-ios/App/fastlane/README.md
+# Supabase CLI state (linked project, versions)
+supabase/.temp/
