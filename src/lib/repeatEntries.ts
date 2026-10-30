@@ -2,7 +2,7 @@
 // amounts at the same clock times into the matching meal of another day.
 import { format } from 'date-fns';
 
-import { getLogDate } from '@/components/nutrition/nutritionLogUtils';
+import { getLogDate } from '@/lib/nutritionLogUtils';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { buildEntryPayload, type NutritionEntryPayload } from '@/lib/saveNutritionEntry';
 import { supabase } from '@/lib/supabase';

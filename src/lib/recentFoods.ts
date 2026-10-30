@@ -3,8 +3,8 @@
 // food log itself, so nothing has to be saved on purpose first.
 import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns';
 
-import { normalizeFoodName } from '@/components/nutrition/foodLoggerUtils';
-import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { normalizeFoodName } from '@/lib/foodLoggerUtils';
+import { getLogTimestamp } from '@/lib/nutritionLogUtils';
 import {
   amountForUnit,
   formatMeasurementAmount,
