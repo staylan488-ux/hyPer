@@ -30,7 +30,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import { lookupBarcode } from '@/lib/barcodeLookup';
 import { amountError, amountForUnit, formatMacroInput, servingsForAmount } from '@/lib/foodUnits';
-import { fuelDaySummary, fuelDayTitle, fuelTargets } from '@/lib/fuelSummary';
+import { fuelDaySummary, fuelDayTitle, fuelTargets, overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { resolveManualFood } from '@/lib/manualFood';
 import { buildCalendarDays, weekDays } from '@/lib/nutritionCalendar';
 import { offersMoveToPreviousDay } from '@/lib/nutritionDay';
@@ -77,6 +77,39 @@ describe('Fuel summary', () => {
       fuelDaySummary({ totals: { ...totals, calories: 2100, protein: 160 }, target: { calories: 2000, protein: 150 }, live: true, selectedDate: day }).logLine,
     ).toBe('100 kcal over target');
     expect(fuelDaySummary({ totals, target: null, live: false, selectedDate: day }).logLine).toBe('Adds to Tuesday, Oct 27');
+  });
+
+  it('treats calories past target as good news while gaining and as a warning otherwise', () => {
+    const day = new Date(2026, 9, 30, 12);
+    const over = { totals: { calories: 3000, protein: 190, carbs: 0, fat: 0 }, target: { calories: 2800, protein: 160 }, live: true, selectedDate: day };
+    for (const goal of ['bulk', 'lean_bulk'] as const) {
+      const summary = fuelDaySummary({ ...over, goal });
+      expect(summary.logLine).toBe('Target reached · 200 kcal extra');
+      expect(summary.kcalOverWarns).toBe(false);
+    }
+    for (const goal of ['cut', 'maintain', null, undefined] as const) {
+      const summary = fuelDaySummary({ ...over, goal });
+      expect(summary.logLine).toBe('200 kcal over target');
+      expect(summary.kcalOverWarns).toBe(true);
+    }
+    // Under target nothing warns, whatever the goal.
+    expect(fuelDaySummary({ ...over, totals: { ...over.totals, calories: 2500 }, goal: 'cut' }).kcalOverWarns).toBe(false);
+  });
+
+  it('never warns for protein past target, and for the rest only when not gaining', () => {
+    for (const goal of ['cut', 'maintain', 'lean_bulk', 'bulk', null] as const) {
+      expect(warnsOverTarget('protein', goal)).toBe(false);
+    }
+    for (const macro of ['calories', 'carbs', 'fat'] as const) {
+      expect(warnsOverTarget(macro, 'bulk')).toBe(false);
+      expect(warnsOverTarget(macro, 'lean_bulk')).toBe(false);
+      expect(warnsOverTarget(macro, 'cut')).toBe(true);
+      expect(warnsOverTarget(macro, 'maintain')).toBe(true);
+      expect(warnsOverTarget(macro, null)).toBe(true);
+    }
+    expect(overTargetWord('bulk')).toBe('extra');
+    expect(overTargetWord('cut')).toBe('over');
+    expect(overTargetWord(undefined)).toBe('over');
   });
 
   it('titles today, another day, and a day in another year', () => {

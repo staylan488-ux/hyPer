@@ -6,6 +6,7 @@ import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
 import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
+import { warnsOverTarget } from '@/lib/fuelSummary';
 import { fetchTrainingHours } from '@/lib/trainingHours';
 import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
@@ -265,6 +266,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
 function NutritionSection() {
   const { weeklyNutrition, loading, error } = useWeeklyNutrition();
   const target = useAppStore((state) => state.macroTarget);
+  const goal = useAppStore((state) => state.nutritionProfile?.goal);
   return (
     <Section title="Nutrition" note="Last 7 days">
       <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
@@ -280,8 +282,8 @@ function NutritionSection() {
           </BlancText>
         ) : (
           <View style={{ gap: 22 }}>
-            <MacroBars days={weeklyNutrition} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} />
-            <MacroBars days={weeklyNutrition} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} />
+            <MacroBars days={weeklyNutrition} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
+            <MacroBars days={weeklyNutrition} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
           </View>
         )}
       </Label>
@@ -289,8 +291,25 @@ function NutritionSection() {
   );
 }
 
-/** One macro across the last seven days, against its daily target (dashed). */
-function MacroBars({ days, macro, label, unit, target }: { days: DailyNutrition[]; macro: 'calories' | 'protein'; label: string; unit: string; target: number }) {
+/**
+ * One macro across the last seven days, against its daily target (dashed). A
+ * day well past target is red only where that is a warning for the goal.
+ */
+function MacroBars({
+  days,
+  macro,
+  label,
+  unit,
+  target,
+  warnOver,
+}: {
+  days: DailyNutrition[];
+  macro: 'calories' | 'protein';
+  label: string;
+  unit: string;
+  target: number;
+  warnOver: boolean;
+}) {
   const c = useBlanc();
   const average = averageLoggedDays(days, macro);
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
@@ -326,7 +345,7 @@ function MacroBars({ days, macro, label, unit, target }: { days: DailyNutrition[
           />
         ) : null}
         {days.map((day) => {
-          const over = macro === 'calories' && target > 0 && day.calories > target * 1.05;
+          const over = warnOver && target > 0 && day[macro] > target * 1.05;
           return (
             <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
               <View

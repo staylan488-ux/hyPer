@@ -27,6 +27,20 @@ the build clone's own copy right after resetting it, cleans up on any exit
 native build number and keeps a log per ship. The running bot keeps its old
 code until it is restarted after merge (`install-launchd.sh`, not during a ship).
 
+## Over-target colours follow the goal (2026-10-30)
+
+The owner is bulking (2,800 kcal) and found Fuel's red over-target lines
+demotivating. On `claude/project-thread-dfomae` (from main 1257744), the shared
+`warnsOverTarget` in `src/lib/fuelSummary.ts` reads the goal saved by Calculate
+targets (`nutritionProfile.goal`): protein past target is never red; while
+bulking or lean bulking nothing past target is red and calories read "extra"
+("Target reached · 200 kcal extra" on Fuel); cutting, maintaining or with no
+profile, calories, carbs and fat keep the red. It covers Fuel's calorie line
+and macro rows, Today's meters and figure, Progress's week bars and the Fuel
+widget (the snapshot gains `gaining`; older snapshots decode without it and
+keep the warning). Checked with the web suite, lint, build and native `tsc`;
+the widget's Swift and the screens were not built or run in a simulator.
+
 ## Hold and drag to reorder movements (2026-10-28)
 
 After the audit (PR #155, merged), the owner asked to reorder the live
