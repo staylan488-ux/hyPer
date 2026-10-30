@@ -8,6 +8,7 @@ import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { haptics } from '~/lib/haptics';
@@ -168,9 +169,9 @@ function StepperRow({ label, value, min, max, onChange }: {
       <BlancText variant="body" style={{ flex: 1 }}>
         {label}
       </BlancText>
-      <BlancText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'center' }}>
-        {value}
-      </BlancText>
+      <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'center' }}>
+        {String(value)}
+      </RollingText>
       {button('minus', -1, value <= min, 'Fewer')}
       {button('plus', 1, value >= max, 'More')}
     </View>

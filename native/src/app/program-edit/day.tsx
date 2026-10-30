@@ -1,7 +1,7 @@
 import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, type ComponentProps } from 'react';
-import { ActionSheetIOS, Alert, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { isPendingExerciseId } from '@/lib/customExercises';
@@ -9,6 +9,7 @@ import { dayLabel, exerciseBlocks, type DraftExercise } from '@/lib/splitDraft';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
+import type { MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -138,35 +139,34 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
     haptics.select();
     store().reorderExercise(dayId, exercise.id, direction);
   };
-  const menu = () => {
-    const actions: { label: string; run: () => void }[] = [
-      { label: 'Sets and reps', run: open },
-      { label: 'Swap exercise', run: swap },
-      partner
-        ? {
-            label: 'Unlink superset',
-            run: () => {
-              haptics.select();
-              store().clearExerciseSuperset(dayId, exercise.id);
-            },
-          }
-        : { label: 'Add superset', run: () => router.push({ pathname: '/swap', params: { program: 'superset', day: dayId, id: exercise.id } }) },
-      ...(canMoveUp ? [{ label: partner ? 'Move superset earlier' : 'Move earlier', run: () => move(-1) }] : []),
-      ...(canMoveDown ? [{ label: partner ? 'Move superset later' : 'Move later', run: () => move(1) }] : []),
-      { label: 'Remove', run: remove },
-    ];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: name,
-        options: [...actions.map((action) => action.label), 'Cancel'],
-        cancelButtonIndex: actions.length,
-        destructiveButtonIndex: actions.length - 1,
-      },
-      (choice) => {
-        if (choice < actions.length) actions[choice].run();
-      },
-    );
-  };
+  // Grouped as iOS menus are: what to change, where it sits, then remove.
+  const menu: MenuAction[] = [
+    { title: 'Sets and reps', symbol: 'slider.horizontal.3', run: open },
+    { title: 'Swap exercise', symbol: 'arrow.left.arrow.right', run: swap },
+    partner
+      ? {
+          title: 'Unlink superset',
+          symbol: 'link.badge.minus',
+          run: () => {
+            haptics.select();
+            store().clearExerciseSuperset(dayId, exercise.id);
+          },
+        }
+      : { title: 'Add superset', symbol: 'link', run: () => router.push({ pathname: '/swap', params: { program: 'superset', day: dayId, id: exercise.id } }) },
+    ...(canMoveUp || canMoveDown
+      ? [
+          {
+            title: '',
+            inline: true,
+            children: [
+              ...(canMoveUp ? [{ title: partner ? 'Move superset earlier' : 'Move earlier', symbol: 'arrow.up', run: () => move(-1) }] : []),
+              ...(canMoveDown ? [{ title: partner ? 'Move superset later' : 'Move later', symbol: 'arrow.down', run: () => move(1) }] : []),
+            ],
+          },
+        ]
+      : []),
+    { title: 'Remove', symbol: 'trash', destructive: true, run: remove },
+  ];
   const detail = [
     targetsLine(exercise),
     partner ? `superset with ${partner.exercise.name}` : null,
@@ -183,7 +183,7 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
         { label: 'Remove', destructive: true, onPress: remove },
       ]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={name} detail={detail} chevron onPress={open} onLongPress={{ label: 'More actions', run: menu }} />
+        <Row title={name} detail={detail} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>
   );

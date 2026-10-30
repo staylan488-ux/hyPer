@@ -22,6 +22,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
@@ -172,24 +173,23 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     setDraft((current) => ({ ...current, items: current.items.filter((item) => item.key !== key) }));
   };
 
-  const itemMenu = (item: AiItem) => {
+  const itemMenu = (item: AiItem): MenuAction[] => {
     const expanded = open === item.key;
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: item.name, options: [expanded ? 'Close' : 'Adjust', 'Remove', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
-      (index) => {
-        if (index === 0) setOpen(expanded ? null : item.key);
-        else if (index === 1) removeItem(item.key);
-      },
-    );
+    return [
+      { title: expanded ? 'Close' : 'Adjust', symbol: expanded ? 'chevron.up' : 'slider.horizontal.3', run: () => setOpen(expanded ? null : item.key) },
+      { title: 'Remove', symbol: 'trash', destructive: true, run: () => removeItem(item.key) },
+    ];
   };
 
+  const removePhoto = (photo: PickedPhoto) => {
+    haptics.success();
+    setDraft((current) => ({ ...current, photos: current.photos.filter((candidate) => candidate !== photo) }));
+  };
   const photoMenu = (photo: PickedPhoto, index: number) =>
     ActionSheetIOS.showActionSheetWithOptions(
       { title: `Photo ${index + 1}`, options: ['Remove photo', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 },
       (choice) => {
-        if (choice !== 0) return;
-        haptics.success();
-        setDraft((current) => ({ ...current, photos: current.photos.filter((candidate) => candidate !== photo) }));
+        if (choice === 0) removePhoto(photo);
       },
     );
 
@@ -246,8 +246,12 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     <Section title="Photos" note={`${draft.photos.length} of ${MAX_PHOTOS}`}>
       <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: space.inset }}>
         {draft.photos.map((photo, index) => (
-          <Pressable
+          // A hold lifts the photo with Remove beside it, as in Photos.
+          <HoldMenu
             key={photo.uri + index}
+            enabled={busy === null}
+            actions={[{ title: 'Remove photo', symbol: 'trash', destructive: true, run: () => removePhoto(photo) }]}>
+          <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Photo ${index + 1}`}
             accessibilityHint="Offers to remove it"
@@ -271,6 +275,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               <SymbolView name="xmark" size={10} weight="bold" tintColor="#FFFFFF" />
             </View>
           </Pressable>
+          </HoldMenu>
         ))}
         {draft.photos.length < MAX_PHOTOS ? (
           <Pressable
@@ -440,12 +445,12 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                     setOpen(expanded ? null : item.key);
                   }}
                   onLongPress={
-                    frozen
+                    frozen || hasHoldMenu
                       ? undefined
                       : () => {
                           if (closeOpenSwipeRow()) return;
                           haptics.select();
-                          itemMenu(item);
+                          showActionSheet(item.name, itemMenu(item));
                         }
                   }
                   style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label })}>
@@ -470,7 +475,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                     face
                   ) : (
                     <SwipeRow name={item.name} actions={[{ label: 'Remove', destructive: true, onPress: () => removeItem(item.key) }]}>
-                      {face}
+                      <HoldMenu actions={itemMenu(item)}>{face}</HoldMenu>
                     </SwipeRow>
                   )}
                   {expanded ? (

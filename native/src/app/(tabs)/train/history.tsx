@@ -2,7 +2,7 @@ import { addMonths, format, isSameMonth, isToday, parseISO, startOfMonth } from 
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { formatDistanceMi } from '@/lib/activityMetrics';
@@ -13,6 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
+import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -346,19 +347,15 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
   const detail = [duration === '—' ? null : duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id);
-  const menu = () =>
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title, options: ['Open', 'Delete workout', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
-      (index) => {
-        if (index === 0) open();
-        if (index === 1) remove();
-      },
-    );
+  const menu: MenuAction[] = [
+    { title: 'Open', symbol: 'arrow.up.right.square', run: open },
+    { title: 'Delete workout', symbol: 'trash', destructive: true, run: remove },
+  ];
 
   return (
     <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail} chevron onPress={open} onLongPress={{ label: 'More actions', run: menu }} />
+        <Row title={title} detail={detail} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>
   );
@@ -384,33 +381,31 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
   const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
   const remove = () => void confirmDeleteActivity(activity);
-  const merge = () => {
-    const options = [...others.map((entry) => `${resolveActivityTitle(entry)}${entry.started_at ? ` · ${formatActivityStartTime(entry.started_at)}` : ''}`), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: `Merge ${title} with`, message: 'For one session WHOOP recorded as several.', options, cancelButtonIndex: others.length },
-      (index) => {
-        if (index >= others.length) return;
-        void mergeActivities([activity, others[index]]).then((ok) => {
-          if (ok) haptics.success();
-          else {
-            haptics.error();
-            Alert.alert('Not merged', 'Check your connection and try again.');
-          }
-        });
-      },
+  // The day's other activities, to merge one WHOOP split into several.
+  const mergeChoices: MenuAction[] = others.map((entry) => ({
+    title: resolveActivityTitle(entry),
+    subtitle: (entry.started_at && formatActivityStartTime(entry.started_at)) || undefined,
+    run: () =>
+      void mergeActivities([activity, entry]).then((ok) => {
+        if (ok) haptics.success();
+        else {
+          haptics.error();
+          Alert.alert('Not merged', 'Check your connection and try again.');
+        }
+      }),
+  }));
+  const merge = () =>
+    showActionSheet(
+      `Merge ${title} with`,
+      mergeChoices.map((choice) => ({ ...choice, title: choice.subtitle ? `${choice.title} · ${choice.subtitle}` : choice.title })),
+      'For one session WHOOP recorded as several.',
     );
-  };
-  const menu = () => {
-    const actions: { label: string; run: () => void }[] = [{ label: 'Open', run: open }, { label: 'Edit', run: edit }];
-    if (others.length > 0) actions.push({ label: 'Merge with…', run: merge });
-    actions.push({ label: 'Delete', run: remove });
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title, options: [...actions.map((action) => action.label), 'Cancel'], cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 },
-      (index) => {
-        if (index < actions.length) actions[index].run();
-      },
-    );
-  };
+  const menu: MenuAction[] = [
+    { title: 'Open', symbol: 'arrow.up.right.square', run: open },
+    { title: 'Edit', symbol: 'pencil', run: edit },
+    ...(others.length > 0 ? [{ title: 'Merge with', symbol: 'arrow.triangle.merge', children: mergeChoices }] : []),
+    { title: 'Delete', symbol: 'trash', destructive: true, run: remove },
+  ];
 
   const detail = activityDetail(activity);
   return (
@@ -418,7 +413,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
       name={title}
       actions={[...(others.length > 0 ? [{ label: 'Merge', onPress: merge }] : []), { label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail || undefined} chevron onPress={open} onLongPress={{ label: 'More actions', run: menu }} />
+        <Row title={title} detail={detail || undefined} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>
   );

@@ -20,6 +20,8 @@ import type { NutritionGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -132,10 +134,10 @@ export default function FuelScreen() {
           onPress={() => editTarget('calories')}
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-            <BlancText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
-              {/* never a 0 that only means "not loaded yet" */}
+            {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
+            <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
               {loaded ? formatWhole(totals.calories) : '–'}
-            </BlancText>
+            </RollingText>
             <BlancText variant="secondary" tone="graphite">
               of {formatWhole(summary.targets.calories)} kcal
             </BlancText>
@@ -377,28 +379,27 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
   // The row slides away at once; it comes back if the delete fails.
   const remove = () => report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
 
-  const moveMenu = () => {
-    const targets: { id: string | null; label: string }[] = [
-      { id: null, label: 'Unassigned' },
-      ...groups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, groups) })),
-    ].filter((targetGroup) => targetGroup.id !== (log.group_id ?? null));
-    const options = [...targets.map((targetGroup) => targetGroup.label), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions({ title: `Move ${name}`, options, cancelButtonIndex: targets.length }, (index) => {
-      if (index >= targets.length) return;
-      report(useFuelStore.getState().moveEntry(log.id, targets[index].id), 'Not moved');
-    });
-  };
-
-  const menu = () => {
-    const store = useFuelStore.getState();
-    const actions: { label: string; run: () => void }[] = [{ label: 'Edit', run: edit }, { label: 'Move to…', run: moveMenu }];
-    if (lateNight) actions.push({ label: 'Move to yesterday', run: () => report(store.moveEntryToYesterday(log.id), 'Not moved') });
-    actions.push({ label: 'Delete', run: remove });
-    const options = [...actions.map((action) => action.label), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions({ title: name, options, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 }, (index) => {
-      if (index < actions.length) actions[index].run();
-    });
-  };
+  // Move to opens the day's other meals; the hold menu, the swipe's More
+  // and VoiceOver all offer the same list.
+  const targets: { id: string | null; label: string }[] = [
+    { id: null, label: 'Unassigned' },
+    ...groups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, groups) })),
+  ].filter((targetGroup) => targetGroup.id !== (log.group_id ?? null));
+  const menu: MenuAction[] = [
+    { title: 'Edit', symbol: 'pencil', run: edit },
+    {
+      title: 'Move to',
+      symbol: 'arrow.right.square',
+      children: targets.map((targetGroup) => ({
+        title: targetGroup.label,
+        run: () => report(useFuelStore.getState().moveEntry(log.id, targetGroup.id), 'Not moved'),
+      })),
+    },
+    ...(lateNight
+      ? [{ title: 'Move to yesterday', symbol: 'arrow.uturn.backward', run: () => report(useFuelStore.getState().moveEntryToYesterday(log.id), 'Not moved') }]
+      : []),
+    { title: 'Delete', symbol: 'trash', destructive: true, run: remove },
+  ];
 
   const detail = entryDetail(log);
   const kcal = formatWhole(logMacro(log, 'calories') ?? 0);
@@ -406,7 +407,7 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
     <SwipeRow
       name={name}
       actions={[
-        { label: 'More', onPress: menu },
+        { label: 'More', onPress: () => showActionSheet(name, menu) },
         { label: 'Delete', destructive: true, onPress: remove },
       ]}>
       <View style={{ backgroundColor: c.label }}>
@@ -415,7 +416,7 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
           detail={detail}
           value={kcal}
           onPress={edit}
-          onLongPress={{ label: 'More actions', run: menu }}
+          menu={menu}
           accessibilityLabel={`${name}, ${detail}, ${kcal} kcal`}
         />
       </View>
@@ -442,12 +443,14 @@ function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'c
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <BlancText variant="body">{name}</BlancText>
-        <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-          <BlancText variant="secondary" weight="500">
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
             {formatWhole(value)}
-          </BlancText>{' '}
-          / {formatWhole(target)} g
-        </BlancText>
+          </RollingText>
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {` / ${formatWhole(target)} g`}
+          </BlancText>
+        </View>
       </View>
       <Track progress={target > 0 ? value / target : 0} warnOver={warnsOverTarget(macro, goal)} />
     </Pressable>

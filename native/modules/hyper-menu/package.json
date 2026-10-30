@@ -1,0 +1,8 @@
+{
+  "name": "hyper-menu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iOS's own context menu, lifting the row it was held on.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

@@ -4,7 +4,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState, type ComponentProps } from 'react';
-import { ActionSheetIOS, Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { saveSplitEdit } from '@/components/split/editor/editorActions';
@@ -36,6 +36,7 @@ import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
+import type { MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -455,30 +456,27 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
     haptics.select();
     store().reorderDays(day.id, direction);
   };
-  const menu = () => {
-    const actions: { label: string; run: () => void }[] = [
-      { label: 'Rename', run: rename },
-      ...(index > 0 ? [{ label: 'Move earlier', run: () => move(-1) }] : []),
-      ...(index < total - 1 ? [{ label: 'Move later', run: () => move(1) }] : []),
-      { label: 'Remove day', run: remove },
-    ];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: label,
-        options: [...actions.map((action) => action.label), 'Cancel'],
-        cancelButtonIndex: actions.length,
-        destructiveButtonIndex: actions.length - 1,
-      },
-      (choice) => {
-        if (choice < actions.length) actions[choice].run();
-      },
-    );
-  };
+  const menu: MenuAction[] = [
+    { title: 'Rename', symbol: 'pencil', run: rename },
+    ...(total > 1
+      ? [
+          {
+            title: '',
+            inline: true,
+            children: [
+              ...(index > 0 ? [{ title: 'Move earlier', symbol: 'arrow.up', run: () => move(-1) }] : []),
+              ...(index < total - 1 ? [{ title: 'Move later', symbol: 'arrow.down', run: () => move(1) }] : []),
+            ],
+          },
+        ]
+      : []),
+    { title: 'Remove day', symbol: 'trash', destructive: true, run: remove },
+  ];
 
   return (
     <SwipeRow name={label} actions={[{ label: 'Remove', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={label} detail={daySummary(day)} chevron onPress={open} onLongPress={{ label: 'More actions', run: menu }} />
+        <Row title={label} detail={daySummary(day)} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>
   );

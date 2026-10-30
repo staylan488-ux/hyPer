@@ -12,6 +12,7 @@ import { Capsule } from '~/components/Capsule';
 import { FigureInput } from '~/components/FigureInput';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { formatLoad, formatRepRange } from '~/lib/format';
@@ -193,9 +194,7 @@ function MovementDetail({
           )}
           <View style={styles.row}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <BlancText variant="bodyStrong">
-                {movement.sets.length} {movement.sets.length === 1 ? 'set' : 'sets'}
-              </BlancText>
+              <RollingText variant="bodyStrong">{`${movement.sets.length} ${movement.sets.length === 1 ? 'set' : 'sets'}`}</RollingText>
               {movement.done || movement.range ? (
                 <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
                   {[movement.done ? `${movement.done} logged` : null, rangeLine(movement)].filter(Boolean).join(' · ')}

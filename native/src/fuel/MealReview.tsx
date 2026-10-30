@@ -12,6 +12,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, PickerRow, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
@@ -195,10 +196,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
   const valid = Number.isFinite(Number(value)) && Number(value) > 0;
-  const menu = () =>
-    ActionSheetIOS.showActionSheetWithOptions({ title: item.food.name, options: ['Remove', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 }, (index) => {
-      if (index === 0) onRemove();
-    });
+  const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, run: onRemove }];
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
     <Pressable
@@ -208,11 +206,15 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
         // a tap while another row stands open only closes that row
         if (!closeOpenSwipeRow()) field.current?.focus();
       }}
-      onLongPress={() => {
-        if (closeOpenSwipeRow()) return;
-        haptics.select();
-        menu();
-      }}
+      onLongPress={
+        hasHoldMenu
+          ? undefined
+          : () => {
+              if (closeOpenSwipeRow()) return;
+              haptics.select();
+              showActionSheet(item.food.name, menu);
+            }
+      }
       style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -261,7 +263,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   // swipe to remove, like any list on iOS
   return disabled ? content : (
     <SwipeRow name={item.food.name} actions={[{ label: 'Remove', destructive: true, onPress: onRemove }]}>
-      {content}
+      <HoldMenu actions={menu}>{content}</HoldMenu>
     </SwipeRow>
   );
 }

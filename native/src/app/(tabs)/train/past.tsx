@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/appStore';
 import type { WorkoutSet } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
+import type { MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -348,14 +349,10 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
         Alert.alert('Set not deleted', 'Check your connection and try again.');
       }
     });
-  const menu = () =>
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: `Set ${number}`, options: ['Edit', 'Delete set', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 },
-      (index) => {
-        if (index === 0) edit();
-        if (index === 1) remove();
-      },
-    );
+  const menu: MenuAction[] = [
+    { title: 'Edit', symbol: 'pencil', run: edit },
+    { title: 'Delete set', symbol: 'trash', destructive: true, run: remove },
+  ];
 
   return (
     <SwipeRow name={name} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
@@ -365,7 +362,7 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
           quiet={!set.completed}
           value={set.rpe ? `${numbers}   RPE ${set.rpe}` : numbers}
           onPress={edit}
-          onLongPress={{ label: 'More actions', run: menu }}
+          menu={menu}
           accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}`}
         />
       </View>
@@ -412,7 +409,7 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
                 title={workout.strain != null ? `Strain ${workout.strain.toFixed(1)}` : 'WHOOP stats'}
                 detail={detail || undefined}
                 onPress={menu}
-                onLongPress={{ label: 'Remove stats', run: menu }}
+                menu={[{ title: 'Remove stats', subtitle: 'The activity returns to its day', symbol: 'minus.circle', destructive: true, run: removeStats }]}
               />
             </View>
           </SwipeRow>

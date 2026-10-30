@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -14,6 +14,7 @@ import { searchUsdaFoodsSecureStrict, withUsdaPortion } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline } from '~/components/Row';
 import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
 import { saveFoodEntry } from '~/lib/foodLogger';
@@ -66,7 +67,7 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
 }
 
 /** One food: tap to review it; the round button logs one serving at once. */
-function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, onLongPress, showBasis }: {
+function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis }: {
   food: Food;
   state?: AddState;
   /** Tapped and loading its review: the round button spins meanwhile. */
@@ -78,15 +79,21 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
   editing?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  /** What a hold offers, as iOS's context menu (not while editing). */
+  menu?: MenuAction[];
   onLongPress?: () => void;
 }) {
   const c = useBlanc();
-  // VoiceOver offers the hold menu and the swipe actions as the row's own.
-  const swipe = useSwipeActions() ?? [];
+  // VoiceOver offers the hold menu's items (or the long-press action) and
+  // the swipe actions the menu does not cover as the row's own.
+  const held = menu && menu.length > 0 && !editing ? menuAccessibility(menu) : null;
+  const heldLabels = new Set(held ? ['More', ...held.actions.map((action) => action.label)] : []);
+  const swipe = (useSwipeActions() ?? []).filter((action) => !heldLabels.has(action.label));
   const actions = [
-    ...(onLongPress && !editing ? [{ name: 'longpress', label: 'More actions' }] : []),
+    ...(held ? held.actions : onLongPress && !editing ? [{ name: 'longpress', label: 'More actions' }] : []),
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
   ];
+  const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : editing ? undefined : onLongPress;
   const composed = Boolean(decodeMealComposition(food.description));
   const line = state === 'error'
     ? 'Not saved. Tap + to try again.'
@@ -95,7 +102,7 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
       : showBasis
         ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
         : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
-  return (
+  const row = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
         accessibilityRole="button"
@@ -103,6 +110,7 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
         accessibilityActions={actions.length > 0 ? actions : undefined}
         onAccessibilityAction={(event) => {
           const name = event.nativeEvent.actionName;
+          if (held?.run(name)) return;
           if (name === 'longpress') onLongPress?.();
           else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
         }}
@@ -113,11 +121,11 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
           (editing ? onEdit : onOpen)?.();
         }}
         onLongPress={
-          onLongPress && !editing
+          longPress
             ? () => {
                 if (closeOpenSwipeRow()) return;
                 haptics.select();
-                onLongPress();
+                longPress();
               }
             : undefined
         }
@@ -151,6 +159,7 @@ function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelet
       ) : null}
     </View>
   );
+  return held && hasHoldMenu ? <HoldMenu actions={menu ?? []}>{row}</HoldMenu> : row;
 }
 
 function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
@@ -285,28 +294,18 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   };
 
   const canQuickAdd = (meal: Food) => quick.enabled && !decodeMealComposition(meal.description);
-  const menu = (meal: Food) => {
-    const actions: { label: string; run: () => void }[] = [];
-    if (canQuickAdd(meal)) actions.push({ label: logger.purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', run: () => void quick.add(meal.id, meal) });
-    actions.push({ label: 'Review and log', run: () => open(meal) });
-    if (logger.purpose === 'log') {
-      actions.push({ label: 'Edit saved meal', run: () => onEditSavedMeal(meal) });
-      actions.push({ label: 'Delete', run: () => void retire(meal) });
-    }
-    const options = [...actions.map((action) => action.label), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: meal.name,
-        message: logger.purpose === 'log' ? 'Deleting it keeps past logged entries.' : undefined,
-        options,
-        cancelButtonIndex: actions.length,
-        destructiveButtonIndex: logger.purpose === 'log' ? actions.length - 1 : undefined,
-      },
-      (index) => {
-        if (index < actions.length) actions[index].run();
-      },
-    );
-  };
+  const menu = (meal: Food): MenuAction[] => [
+    ...(canQuickAdd(meal)
+      ? [{ title: logger.purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', symbol: 'plus.circle', run: () => void quick.add(meal.id, meal) }]
+      : []),
+    { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => open(meal) },
+    ...(logger.purpose === 'log'
+      ? [
+          { title: 'Edit saved meal', symbol: 'pencil', run: () => onEditSavedMeal(meal) },
+          { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, run: () => void retire(meal) },
+        ]
+      : []),
+  ];
   const visible = list.filter((meal) => !hidden.has(meal.id));
   const savedCount = (meals ?? []).filter((meal) => !hidden.has(meal.id)).length;
 
@@ -339,7 +338,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
                   editing={managing}
                   onEdit={() => onEditSavedMeal(meal)}
                   onDelete={() => confirmRetire(meal)}
-                  onLongPress={() => menu(meal)}
+                  menu={menu(meal)}
                 />
               );
               return (
