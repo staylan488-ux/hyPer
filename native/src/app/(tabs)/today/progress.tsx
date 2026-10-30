@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
+import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import { warnsOverTarget } from '@/lib/fuelSummary';
 import { fetchTrainingHours } from '@/lib/trainingHours';

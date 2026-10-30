@@ -1,7 +1,7 @@
 // Type-only stand-in for the Capacitor packages shared code imports (see
 // tsconfig paths).
 //
-// A few shared web files that this app never bundles (Metro swaps them for
+// A few shared files that this app never bundles (Metro swaps them for
 // src/platform versions) still import Capacitor, and TypeScript follows their
 // relative imports. This lets them type-check without installing Capacitor.
 export type PluginListenerHandle = { remove: () => Promise<void> };
@@ -19,10 +19,6 @@ export declare const App: {
 };
 
 export declare function registerPlugin<T>(name: string, implementations?: unknown): T;
-
-// @capacitor/status-bar
-export declare const Style: { readonly Dark: 'DARK'; readonly Light: 'LIGHT'; readonly Default: 'DEFAULT' };
-export declare const StatusBar: { setStyle(options: { style: string }): Promise<void> };
 
 // @capacitor/haptics
 export declare const ImpactStyle: { readonly Heavy: 'HEAVY'; readonly Medium: 'MEDIUM'; readonly Light: 'LIGHT' };

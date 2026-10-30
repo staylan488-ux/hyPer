@@ -7,9 +7,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 
 - The released app is the React Native app in `native/`: hyPer 2.0,
   `app.hyper.mobile`. The owner approved the cutover and it was done on
-  2026-10-28 (PR #152). The Capacitor shell (`ios/`) was removed from the
-  repository on 2026-10-30; the web UI still in `src/` is retired and due to be
-  removed in its own PR.
+  2026-10-28 (PR #152). The Capacitor shell (`ios/`) and the retired web UI
+  were removed from the repository on 2026-10-30; `src/` now holds only the
+  shared code the app imports.
 - TestFlight: build 60, built from main at c175fdc on 2026-10-28, is in
   internal testing for the Team group. PR #157 (hold and drag to reorder
   movements) and PR #158 (over-target colours follow the nutrition goal) merged

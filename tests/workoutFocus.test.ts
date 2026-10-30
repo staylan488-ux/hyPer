@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/components/workout/workoutFocus';
+import { expandedWorkoutSet, getWorkoutResumeSet, initialWorkoutExpansion, nextWorkoutSet, workoutExpansionReducer } from '@/lib/workoutFocus';
 import type { WorkoutSet } from '@/types';
 
 const row = (exercise: string, number: number, completed = false): WorkoutSet => ({

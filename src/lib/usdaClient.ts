@@ -7,7 +7,7 @@ import {
   searchUsdaFoodByBarcode,
   searchUsdaFoods,
   type UsdaFoodDetail,
-} from '@/components/nutrition/usdaSearch';
+} from '@/lib/usdaSearch';
 import { mapOpenFoodFactsProduct } from '@/lib/openFoodFacts';
 import { mapFatSecretBarcodeFood, type FatSecretBarcodeResponse } from '@/lib/fatSecret';
 

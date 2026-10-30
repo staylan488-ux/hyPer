@@ -31,14 +31,10 @@ recommendations built on peer-reviewed research.
 The app imports the shared logic as `@/…`. The few shared modules that need a
 different implementation on React Native are swapped in `native/src/platform`.
 
-`src/` also still holds the retired React web app (pages, most components, and
-the Vite and PWA setup). It is no longer released and is due to be removed, so
-don't build on it.
-
 ```text
 native/          the iPhone app: screens (src/app), platform swaps, native modules,
                  widget and Live Activity targets, fastlane and build scripts
-src/             shared logic (lib, stores, types, preview sample data) and the retired web UI
+src/             shared logic: lib, stores, hooks, types and preview sample data
 tests/           Vitest tests
 supabase/        schema, migrations and Edge Functions
 scripts/         ship pipeline and bot, private photo worker, evidence import, instruction checks
@@ -75,7 +71,7 @@ Run these before opening a pull request:
 ```sh
 npm run test                    # Vitest suite
 npm run lint                    # instruction checks, ESLint, test type-check
-npm run build                   # type-checks src (and still builds the retired web bundle)
+npm run build                   # type-checks the shared code in src
 cd native && npx tsc --noEmit   # the app plus the shared code it imports
 ```
 

@@ -7,7 +7,7 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { moveMovementBlock, movementBlocks } from '@/components/workout/movementOrder';
+import { moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';

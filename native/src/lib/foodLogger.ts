@@ -3,7 +3,7 @@
 // photoReview, saveMealComposition).
 import { format, isToday, startOfDay } from 'date-fns';
 
-import { toLocalTimeInput } from '@/components/nutrition/foodLoggerUtils';
+import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
 import { entryWriteId, type PendingEntryId } from '@/lib/pendingEntryId';
 import { buildEntryPayload, persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { supabase } from '@/lib/supabase';

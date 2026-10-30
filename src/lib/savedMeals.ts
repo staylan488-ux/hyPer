@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { normalizeFoodName, numbersNearlyEqual } from '@/components/nutrition/foodLoggerUtils';
+import { normalizeFoodName, numbersNearlyEqual } from '@/lib/foodLoggerUtils';
 import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersistence';
 import type { Food } from '@/types';
 

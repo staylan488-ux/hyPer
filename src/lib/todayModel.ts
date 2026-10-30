@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns';
-import { getWorkoutResumeSet } from '@/components/workout/workoutFocus';
+import { getWorkoutResumeSet } from '@/lib/workoutFocus';
 import type { CapsuleGlyph } from '@/lib/commandCapsule';
 import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';

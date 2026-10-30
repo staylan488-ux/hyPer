@@ -11,7 +11,7 @@ import {
   numbersNearlyEqual,
   shouldDropColumn,
   toLocalTimeInput,
-} from '@/components/nutrition/foodLoggerUtils';
+} from '@/lib/foodLoggerUtils';
 
 describe('foodLoggerUtils', () => {
   it('builds logged_at string from selected day and time', () => {
