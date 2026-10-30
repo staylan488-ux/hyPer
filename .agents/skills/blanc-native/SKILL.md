@@ -66,7 +66,8 @@ came from; the web app itself is no longer released.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
   the live workout, header items with SF Symbols, Expo UI SwiftUI controls,
-  `expo-glass-effect`, `expo-haptics`, `ActionSheetIOS`, `Alert`.
+  `expo-glass-effect`, `expo-haptics`, context menus, `ActionSheetIOS`,
+  `Alert`.
 
 ## Design
 
@@ -124,8 +125,14 @@ came from; the web app itself is no longer released.
   on failure. Rows move with the shared motion in `native/src/lib/motion.ts`
   (`rowEnter`, `rowExit` slides off left, `blockExit`, `rowLayout`), and the
   Label around them (an Animated.View) takes `layout` with `overflow: hidden`.
-  Anything with more to do offers it on a long press (an action sheet); a Row
-  gives VoiceOver its swipe and hold actions. A value that looks editable
+  Anything with more to do offers it on a long press: iOS's own context menu
+  ([HoldMenu](../../../native/src/components/HoldMenu.tsx), `menu` on a Row,
+  through `native/modules/hyper-menu`), which lifts the row on its label's
+  white with an SF Symbol beside each item, submenus for choices such as
+  Move to, and runs the choice once the menu has closed (a hold on a text
+  field stays the field's). A swipe's More shows the same actions as a sheet
+  (`showActionSheet`), and a Row gives VoiceOver each item and its swipe
+  actions. A value that looks editable
   opens its editor when tapped, a card that leads somewhere is tappable as a
   whole, a FieldRow focuses on a tap anywhere on the row, number pads get
   iOS's Done (or Next) bar through `returnKeyType` (`numberPadReturnKey`),
@@ -263,7 +270,11 @@ came from; the web app itself is no longer released.
   paging there (History's calendar) uses a paging ScrollView, which iOS lets
   win, never a gesture-handler fling.
 - Motion is native transitions plus Reanimated springs for press feedback and
-  the tally. Never scroll a large-title screen programmatically to "the top":
+  the tally. Figures that change in place (calories and macros, the rest
+  timer, set counts) roll their digits with SwiftUI's numeric text transition
+  through [RollingText](../../../native/src/components/RollingText.tsx), drawn
+  over a hidden copy of the same text so layout, baselines and VoiceOver do
+  not change. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
   hidden.
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):

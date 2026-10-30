@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { figureAlignment, rollsDown } from '~/lib/rollingFigure';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText, blancTextStyle, type BlancTextProps } from './BlancText';
@@ -34,9 +35,6 @@ const WEIGHTS: Record<string, SwiftWeight> = {
   '900': 'black',
 };
 
-// SF Pro's line height (ascender plus descender, no leading) for one point of size.
-const SF_LINE = 1.194;
-
 // Styles that place the figure among its neighbours belong to the wrapper;
 // the rest draw the text.
 const PLACEMENT = new Set([
@@ -44,12 +42,6 @@ const PLACEMENT = new Set([
   'marginStart', 'marginEnd', 'alignSelf', 'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'position',
   'top', 'bottom', 'left', 'right', 'zIndex',
 ]);
-
-/** The digits in a figure as one number ("1,240" → 1240, "1:05" → 105), to tell up from down. */
-export function figureValue(text: string): number {
-  const digits = text.replace(/[^0-9]/g, '');
-  return digits ? Number(digits) : NaN;
-}
 
 /**
  * Text whose digits roll when it changes, the way iOS's own figures do (the
@@ -74,9 +66,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
   // Each change is one step of the animation, with its own direction.
   const [step, setStep] = useState({ text, count: 0, down: false });
   if (step.text !== text) {
-    const before = figureValue(step.text);
-    const after = figureValue(text);
-    setStep({ text, count: step.count + 1, down: Number.isFinite(before) && Number.isFinite(after) && after < before });
+    setStep({ text, count: step.count + 1, down: rollsDown(step.text, text) });
   }
 
   const flat = StyleSheet.flatten([blancTextStyle(c, variant, tone, size, weight), style]) as TextStyle;
@@ -87,11 +77,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
 
   const fontSize = (textStyle.fontSize ?? 17) * fontScale;
   const lineHeight = textStyle.lineHeight !== undefined ? textStyle.lineHeight * fontScale : undefined;
-  // React Native centres a line in a taller line height, and sits it on the
-  // bottom of a shorter one (big figures), so the SwiftUI copy does the same.
-  const sitsLow = lineHeight !== undefined && lineHeight < fontSize * SF_LINE;
-  const horizontal = textStyle.textAlign === 'center' ? 'center' : textStyle.textAlign === 'right' ? 'trailing' : 'leading';
-  const alignment = sitsLow ? (horizontal === 'center' ? 'bottom' : horizontal === 'trailing' ? 'bottomTrailing' : 'bottomLeading') : horizontal;
+  const alignment = figureAlignment(fontSize, lineHeight, textStyle.textAlign);
   const tabular = Array.isArray(textStyle.fontVariant) && textStyle.fontVariant.includes('tabular-nums');
   const color = typeof textStyle.color === 'string' ? textStyle.color : c[tone];
 
@@ -118,7 +104,8 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
         {text}
       </BlancText>
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
-        <Host style={StyleSheet.absoluteFill} alignment={alignment}>
+        {/* Safe areas ignored: a figure scrolled under the bars must not shift inside its box. */}
+        <Host style={StyleSheet.absoluteFill} alignment={alignment} ignoreSafeArea="all" pointerEvents="none">
           <SwiftText modifiers={modifiers}>{text}</SwiftText>
         </Host>
       </View>
