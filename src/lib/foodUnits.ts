@@ -4,7 +4,7 @@ import {
   computeServingsFromAmount,
   getCompatibleMeasurementUnits,
   type MeasurementUnit,
-} from '@/components/nutrition/foodLoggerUtils';
+} from '@/lib/foodLoggerUtils';
 import type { Food } from '@/types';
 
 export type { MeasurementUnit };

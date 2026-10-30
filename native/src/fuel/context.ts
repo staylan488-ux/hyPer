@@ -20,8 +20,8 @@ export type LoggerContextValue = {
   setWhen: (when: When) => void;
   savedMeals: Food[] | null;
   reloadSavedMeals: () => Promise<void>;
-  /** Opens the review for a food from a list, a search or a scan. */
-  chooseFood: (food: Food, meta?: ChosenMeta) => void;
+  /** Opens the review for a food from a list, a search or a scan (at `servings`, else one serving). */
+  chooseFood: (food: Food, meta?: ChosenMeta, servings?: number) => void;
   /** Adds ingredients to the meal being built (ingredients purpose only). */
   addIngredients: (ingredients: MealIngredient[]) => void;
   /** A saved composed meal: opens it in the meal builder (log purpose). */

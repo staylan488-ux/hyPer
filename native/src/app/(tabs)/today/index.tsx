@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume } from '@/components/dashboard/todayModel';
+import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';

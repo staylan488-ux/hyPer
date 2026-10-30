@@ -63,6 +63,8 @@ export default function SessionDone() {
   const slots = Math.max(planned ?? 0, weekCount ?? 0);
   const rows: [string, string][] = [
     ['Sets', String(summary.sets)],
+    // Only when some set beat the same set last time: no zero.
+    ...(summary.beat > 0 ? [['Beat last time', `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'}`] as [string, string]] : []),
     // A bodyweight session moves no load: leave the zero out.
     ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
     ['Time', `${summary.minutes} min`],

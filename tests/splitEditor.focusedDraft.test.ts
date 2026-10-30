@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactElement, ReactNode } from 'react';
-import { cancelSplitEdit, saveSplitEdit } from '@/components/split/editor/editorActions';
-import { SetRangeFields, type SetRangeFieldValues } from '@/components/split/SetRangeFields';
+import { cancelSplitEdit, saveSplitEdit } from '@/lib/splitEditActions';
 import { discardSplitEdit } from '@/lib/discardSplitEdit';
 
 const editor = vi.hoisted(() => ({
@@ -13,17 +11,6 @@ const editor = vi.hoisted(() => ({
   },
   confirm: vi.fn(async () => false),
   commit: vi.fn(),
-  cellDraft: undefined as unknown,
-}));
-vi.mock('react', async (original) => ({
-  ...(await original<typeof import('react')>()),
-  // Only SetRangeFields owns state in this callback harness. The save and
-  // cancel actions read the same live store before and after the input's real
-  // blur handler runs.
-  useState: (initial: unknown) => {
-    if (editor.cellDraft === undefined) editor.cellDraft = initial;
-    return [editor.cellDraft, (value: unknown) => { editor.cellDraft = value; }];
-  },
 }));
 vi.mock('@/stores/splitEditStore', () => ({ useSplitEditStore: Object.assign(
   (selector: (state: typeof editor.state) => unknown) => selector(editor.state),
@@ -32,36 +19,19 @@ vi.mock('@/stores/splitEditStore', () => ({ useSplitEditStore: Object.assign(
 vi.mock('@/lib/commitFocusedField', () => ({ commitFocusedField: editor.commit }));
 vi.mock('@/lib/confirmDialog', () => ({ requestConfirm: editor.confirm }));
 
-type Element = ReactElement<{ children?: ReactNode }>;
-function nodes(node: ReactNode): Element[] {
-  if (Array.isArray(node)) return node.flatMap(nodes);
-  if (!node || typeof node !== 'object' || !('props' in node)) return [];
-  const element = node as Element;
-  return [element, ...nodes(element.props.children)];
-}
 const createSplit = vi.fn();
 
-/** Type the first edit without blurring; WebKit can leave this input focused. */
+/**
+ * Type the first edit without leaving the field; the iOS keypad has no Enter,
+ * so the field can still be focused. Its value reaches the program only when
+ * the focused field is committed.
+ */
 function typeMaxSets() {
-  const values: SetRangeFieldValues = {
-    target_sets_min: 2, target_sets: 3, target_sets_max: 4, target_reps_min: 8, target_reps_max: 12,
-  };
-  const props = {
-    values,
-    onCommitSets: (range: Pick<SetRangeFieldValues, 'target_sets_min' | 'target_sets' | 'target_sets_max'>) => {
-      Object.assign(values, range);
-      editor.state.isDirty = true;
-    },
-    onCommitReps: vi.fn(),
-  };
-  type Cell = ReactElement<{
-    onChange: (event: { target: { value: string } }) => void;
-    onBlur: () => void;
-  }>;
-  const maxCell = () => nodes(SetRangeFields(props)).filter((node) => node.type === 'input')[2] as Cell;
-  maxCell().props.onChange({ target: { value: '5' } });
-  const focused = maxCell();
-  editor.commit.mockImplementation(() => focused.props.onBlur());
+  const values = { target_sets_max: 4 };
+  editor.commit.mockImplementation(() => {
+    values.target_sets_max = 5;
+    editor.state.isDirty = true;
+  });
   return values;
 }
 
@@ -69,7 +39,6 @@ beforeEach(() => {
   editor.state.isDirty = false;
   editor.state.saving = false;
   editor.state.draft._isNew = undefined;
-  editor.cellDraft = undefined;
   editor.commit.mockReset();
   editor.state.saveEdit.mockReset().mockResolvedValue(true);
   editor.state.cancelEdit.mockReset();

@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { buildLoggedAt } from '@/components/nutrition/foodLoggerUtils';
+import { buildLoggedAt } from '@/lib/foodLoggerUtils';
 import { legacyMealTypeForGroup } from '@/lib/nutritionGroups';
 import { supabase } from '@/lib/supabase';
 import type { Food, NutritionGroup } from '@/types';

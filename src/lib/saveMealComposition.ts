@@ -1,4 +1,4 @@
-import { buildLoggedAt } from '@/components/nutrition/foodLoggerUtils';
+import { buildLoggedAt } from '@/lib/foodLoggerUtils';
 import { encodeMealComposition, getMealTotals, parseMealDraft, type MealDraft } from '@/lib/mealComposition';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { supabase } from '@/lib/supabase';

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Linking, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
-import { buildClarifiedMealHint, isValidTrialReview } from '@/components/nutrition/foodTrialReview';
+import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import {
   analyzeFoodTrial,

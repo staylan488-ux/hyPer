@@ -4,8 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -p tsconfig.json",
     "check:instructions": "node scripts/check-agent-instructions.mjs",
     "lint": "npm run check:instructions && eslint . && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
@@ -13,8 +12,7 @@
     "test:watch": "vitest",
     "evidence:import": "node scripts/import-evidence.mjs",
     "photo-worker": "node scripts/photo-food-worker.mjs",
-    "photo-worker:sandbox": "PHOTO_WORKER_ALLOW_PREVIEW=1 node scripts/photo-food-worker.mjs",
-    "preview": "vite preview"
+    "photo-worker:sandbox": "PHOTO_WORKER_ALLOW_PREVIEW=1 node scripts/photo-food-worker.mjs"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",
@@ -22,21 +20,10 @@
     "@capacitor/core": "^8.4.2",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.2.1",
-    "@capacitor/status-bar": "^8.0.3",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.115.0",
-    "@tailwindcss/vite": "^4.1.18",
-    "barcode-detector": "3.2.1",
     "date-fns": "^4.1.0",
-    "lucide-react": "^0.563.0",
-    "motion": "^12.34.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.0",
-    "tailwindcss": "^4.1.18",
-    "three": "^0.186.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -44,17 +31,13 @@
     "@types/node": "^24.10.13",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.186.0",
-    "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "happy-dom": "^20.14.5",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1",
-    "vite-plugin-pwa": "^1.2.0",
     "vitest": "^3.2.4"
   }
 }

@@ -7,7 +7,7 @@ import {
   todayCapsule,
   TODAY_ACTION_PATHS,
   type HeroState,
-} from '@/components/dashboard/todayModel';
+} from '@/lib/todayModel';
 import type { MuscleVolume, SplitDay, SplitExercise } from '@/types';
 
 const exercise = (name: string, order: number, sets: number): SplitExercise => ({

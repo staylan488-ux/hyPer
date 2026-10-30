@@ -7,9 +7,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 
 - The released app is the React Native app in `native/`: hyPer 2.0,
   `app.hyper.mobile`. The owner approved the cutover and it was done on
-  2026-10-28 (PR #152). The Capacitor shell (`ios/`) was removed from the
-  repository on 2026-10-30; the web UI still in `src/` is retired and due to be
-  removed in its own PR.
+  2026-10-28 (PR #152). The Capacitor shell (`ios/`) and the retired web UI
+  were removed from the repository on 2026-10-30; `src/` now holds only the
+  shared code the app imports. The Vercel project `hy-per` that hosted the web
+  app no longer builds (`vercel.json` turns its Git deployments off); its last
+  web build stays online until the project is deleted in Vercel.
 - TestFlight: build 60, built from main at c175fdc on 2026-10-28, is in
   internal testing for the Team group. PR #157 (hold and drag to reorder
   movements) and PR #158 (over-target colours follow the nutrition goal) merged
@@ -41,9 +43,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   test database). Also never seen on a phone: the run's sound cues and its
   lock-screen card, and the lock-screen widget sizes (built, not placed).
 - Recorded for later (minor): merging 3+ activities in one step, the Target
-  sets field in History, RPE below 6, Train's week strip, "beat last time"
-  marks, Progress's training-time detail, You's About build number, and an
-  account deletion row (an App Store review need, with backend work).
+  sets field in History, RPE below 6, Train's week strip, Progress's
+  training-time detail, You's About build number, and an account deletion
+  row (an App Store review need, with backend work).
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal

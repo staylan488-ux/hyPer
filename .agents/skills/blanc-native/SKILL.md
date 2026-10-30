@@ -9,14 +9,15 @@ description: Build or change hyPer's React Native app in native/ with the approv
 rebuild approved on 2026-10-26, released as hyPer 2.0 on 2026-10-28 in place of
 the retired Capacitor web app. Blanc is approved: do not explore new directions
 for native work. Where these notes say "the web", they name where a shared rule
-came from; the web app itself is no longer released.
+came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 
 ## Architecture
 
 - Reuse, don't copy. Stores, data access, nutrition and training rules come from
   `../src` through `@/…` ([Metro config](../../../native/metro.config.js)); native
-  code imports its own files as `~/…`. Logic that lives inside a web component
-  moves to `src/lib` first, then both apps import it.
+  code imports its own files as `~/…`. `src` holds no UI: screens and
+  components live in `native/`, and only logic worth sharing or testing goes in
+  `src/lib`, `src/stores` or `src/hooks`.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
   cannot run in React Native: the Supabase client, native bridge, OAuth, preview
   flag, haptics, keep-awake, rest notifications, the workout Live Activity,
@@ -105,12 +106,16 @@ came from; the web app itself is no longer released.
   another; add a row only when it changes what the person does next.
 - Fuel follows the web logger through shared `src/lib` rules (foodPersistence
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
-  nutritionDay, savedMeals); never copy them into `native/`. Log food is one
-  sheet (`native/src/app/log-food.tsx`, parts in `native/src/fuel`) with
-  Saved, Search, Scan, Manual and Photo, a review for a chosen food, and the
-  meal builder (Scan opens the camera only when Scan barcode is tapped, the
-  owner's call on 2026-10-27); a day's entries swipe for More and Delete and hold for the same
-  menu. Barcode scanning is VisionKit through `native/modules/hyper-barcode`
+  nutritionDay, savedMeals, recentFoods, repeatEntries); never copy them into
+  `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
+  `native/src/fuel`) with Recent, Saved, Search, Scan, Manual and Photo, a
+  review for a chosen food, and the meal builder (Scan opens the camera only
+  when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
+  first: four weeks of the log, most often eaten lately first, + logs the
+  usual amount and a tap reviews at it; a swipe hides a food on this device
+  until it is logged again. A day's entries swipe for More and Delete and hold
+  for the same menu; on a past day a meal's ⋯ and an entry's menu offer Copy
+  to today (same foods, amounts and times into today's matching meal). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit
@@ -177,6 +182,15 @@ came from; the web app itself is no longer released.
   places rows by position (no jump while a drop saves), rounds the card's
   first and last rows itself, holds row presses through `holdRowPresses`,
   and the page stops scrolling while a row is lifted.
+- Beat last time (the owner's pick, 2026-10-30): a set logged in Train that
+  beats the same set last time, by the shared `describeSetGain` rule
+  ([beatLastTime](../../../native/src/lib/beatLastTime.ts)), gets
+  `haptics.beat` (success, then one firm tick) and, for four seconds, "↑ Beat
+  last time · +5 lb" in ink where the card's "Last time" line sits (it stays on
+  "All sets logged"). The movement sheet marks those sets with ↑, and the
+  finish label adds a "Beat last time" row when any did. The tab layout runs
+  the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
+  Today counts too. Corrections never celebrate.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
@@ -192,7 +206,13 @@ came from; the web app itself is no longer released.
   and the workout's Live Activity counts it down on the lock screen and in the
   Dynamic Island. Pause cancels the notification and shows the time left still;
   End rest and a finished workout clear both; a rest that runs out leaves the
-  notification to fire. In the app, rest ends with a haptic and the sound, no
+  notification to fire. While a rest runs or is paused, the card has +30 s and
+  End rest, which work without unlocking: `RestControlIntent` (in
+  `modules/hyper-activity/shared`, run in the app's process) moves the card and
+  the notification itself, so both follow while the app sleeps, and logs the
+  tap; the app applies logged taps to its stored rest, each at its own time
+  (`native/src/lib/restControls.ts`), on launch, on the module's `restControl`
+  event, on return to the front and before a rest reads as over. In the app, rest ends with a haptic and the sound, no
   banner. The shared `restTimerWorkoutGuard` clears a rest whose workout ends
   elsewhere and on sign-out. Card updates go through the shared ordering rules
   in `src/lib/workoutActivitySync.ts` (also behind the web shell's card).
@@ -201,7 +221,8 @@ came from; the web app itself is no longer released.
   from [targets/widgets](../../../native/targets/widgets/). The card's data,
   `WorkoutActivityAttributes`, has one definition in
   `native/modules/hyper-activity/ios`, compiled into the app's module and copied
-  into the extension; ActivityKit matches the two by name and fields. The card
+  into the app (for the rest buttons' intent) and the extension; ActivityKit
+  matches the copies by name and fields. The card
   uses Blanc's tokens (`targets/widgets/Blanc.swift`) and the P's font
   (bundled into the extension). Prebuild with `--clean` after adding or
   removing extension files. The run card and the home-screen widgets live in
@@ -333,7 +354,7 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   afterwards. `-hyperAction noWorkout` finishes the sample account's live
   workout, so the run card shows alone on the lock screen. The card's
   buttons are SpringBoard elements in a UI test (labels Split, Rest, Finish,
-  Tap again).
+  Tap again; the workout card's are Add 30 seconds and End rest).
 - Widgets: in a UI test, long-press an empty spot on the home screen, then
   Edit, Add Widget, search "hyPer" and tap the result by coordinate (a label
   match hits the app icon); a swipe on the size carousel can pick the

@@ -1,5 +1,5 @@
 // How the day's food entries read, shared by the web ledger and the native app.
-import { getLogTimestamp } from '@/components/nutrition/nutritionLogUtils';
+import { getLogTimestamp } from '@/lib/nutritionLogUtils';
 
 export function sourceLabel(source?: string): string {
   if (source === 'meal_builder') return 'Meal';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { movementBlocks, movementScrollSpeed, moveMovementBlock, type ReorderMovement } from '@/components/workout/movementOrder';
+import { movementBlocks, movementScrollSpeed, moveMovementBlock, type ReorderMovement } from '@/lib/movementOrder';
 
 const movement = (id: string, supersetGroupId?: string): ReorderMovement => ({ id, name: id, supersetGroupId });
 

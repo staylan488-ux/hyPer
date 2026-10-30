@@ -6,7 +6,9 @@
 //
 // While a rest runs, a "Rest over" notification is scheduled for its end and
 // the workout's Live Activity counts it down on the lock screen. Both follow
-// every pause, change and end (syncRestAlerts below).
+// every pause, change and end (syncRestAlerts below). The card's +30 s and End
+// rest change both without the app; the app applies those taps to its rest
+// as soon as it runs (catchUpRestTaps below).
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { create } from 'zustand';
@@ -43,7 +45,10 @@ import {
   scheduleRestEndNotification,
 } from '~/platform/restNotifications';
 
+import { addRestControlListener, markRestControlsApplied, pendingRestControls } from '../../modules/hyper-activity';
+
 import { haptics } from './haptics';
+import { applyRestControls } from './restControls';
 import { useFocusStore } from './session';
 import { buildSessionModel } from './sessionModel';
 
@@ -142,6 +147,28 @@ export function setRestLength(exerciseId: string | null, seconds: number) {
   }
 }
 
+/** Taps on the card's +30 s and End rest not yet applied, and a way to confirm them once they are. */
+function pendingRestTaps() {
+  const controls = pendingRestControls();
+  const last = controls.reduce((latest, control) => Math.max(latest, control.sequence), 0);
+  return {
+    controls,
+    applied: () => {
+      if (last > 0) markRestControlsApplied(last);
+    },
+  };
+}
+
+/** Applies taps on the card's rest buttons made since the app last looked. */
+function catchUpRestTaps() {
+  const taps = pendingRestTaps();
+  if (taps.controls.length === 0) return;
+  const { session } = useRestStore.getState();
+  const next = applyRestControls(session, taps.controls);
+  if (next !== session) commit(next);
+  taps.applied();
+}
+
 /** Whole seconds left on a running or paused rest; null when there is none. */
 export function restLeft(session: RestTimerSession | null, now: number): number | null {
   if (!session || session.status === 'completed') return null;
@@ -187,10 +214,14 @@ function syncRestAlerts(session: RestTimerSession | null) {
  */
 export function useRestLifecycle() {
   useEffect(() => {
-    const stored = readRestTimerSession();
+    // Taps on the card while the app was closed come first: +30 s may have
+    // moved the end of a rest that would otherwise read as over.
+    const taps = pendingRestTaps();
+    const stored = applyRestControls(readRestTimerSession(), taps.controls);
     const synced = stored ? syncRestTimerSession(stored) : null;
     // A rest that ran out while the app was closed already alerted.
     commit(synced && synced.status !== 'completed' ? synced : null);
+    taps.applied();
 
     let lastKey = '';
     const sync = (session: RestTimerSession | null) => {
@@ -206,15 +237,20 @@ export function useRestLifecycle() {
     const stopWorkoutWatch = watchRestTimerWorkoutEnd(useAppStore, dropRest);
     const stopSignOutWatch = watchRestTimerSignOut(useAuthStore, dropRest);
 
+    const restTaps = addRestControlListener(catchUpRestTaps);
+
     void dismissDeliveredRestNotification();
     const appState = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void dismissDeliveredRestNotification();
+      if (state !== 'active') return;
+      catchUpRestTaps();
+      void dismissDeliveredRestNotification();
     });
 
     return () => {
       unsubscribe();
       stopWorkoutWatch();
       stopSignOutWatch();
+      restTaps.remove();
       appState.remove();
     };
   }, []);
@@ -228,6 +264,8 @@ export function useRestFinish() {
     const end = Date.parse(endsAt);
     // A little after the end, so the rest reads as finished when it fires.
     const timer = setTimeout(() => {
+      // A +30 s on the card that the app has not applied yet keeps the rest going.
+      catchUpRestTaps();
       const { session } = useRestStore.getState();
       if (session?.status !== 'running' || session.endsAt !== endsAt) return;
       // Late means the app was away, and the notification already said so.

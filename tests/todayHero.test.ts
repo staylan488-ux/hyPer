@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { nextPlannedSession, todayHero, weekSessionTarget, type TodayHeroInput } from '@/components/dashboard/todayModel';
+import { nextPlannedSession, todayHero, weekSessionTarget, type TodayHeroInput } from '@/lib/todayModel';
 import type { PlanSchedule } from '@/lib/planSchedule';
 import type { Split, Workout } from '@/types';
 

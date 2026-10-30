@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildClarifiedMealHint, isValidTrialReview } from '@/components/nutrition/foodTrialReview';
+import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
 import type { TrialFoodItem } from '@/lib/foodTrial';
 
 const label: TrialFoodItem = { name: 'Samosas', quantity: 6, unit: 'piece', basisQuantity: 3, calories: 200, protein: 8, carbs: 20, fat: 10, evidence: 'label', notes: 'Label per three pieces', sourceIndexes: [], amountConfirmed: false };

@@ -14,4 +14,9 @@ export const haptics = {
   lift: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
   /** The launch intro's P settling into its corner; a dragged row set down. */
   land: () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {}),
+  /** A saved set that beat last time: the success pattern, then one firm beat after it. */
+  beat: () => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {}), 170);
+  },
 };

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { getSessionUserId } from '@/lib/sessionUser';
-import { shouldDropColumn } from '@/components/nutrition/foodLoggerUtils';
+import { shouldDropColumn } from '@/lib/foodLoggerUtils';
 import type { Food } from '@/types';
 
 export type OneServingFoodValues = { name: string; calories: number; protein: number; carbs: number; fat: number };

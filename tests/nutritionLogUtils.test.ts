@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sumNutritionLogCalories } from '@/components/nutrition/nutritionLogUtils';
+import { sumNutritionLogCalories } from '@/lib/nutritionLogUtils';
 
 describe('nutrition log calorie totals', () => {
   it('sums calories after applying each entry serving count', () => {
