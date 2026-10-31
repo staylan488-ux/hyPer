@@ -14,19 +14,42 @@ export function rollsDown(before: string, after: string): boolean {
   return Number.isFinite(from) && Number.isFinite(to) && to < from;
 }
 
-export type FigureAlignment = 'leading' | 'center' | 'trailing';
+export type FigureFrameAlignment = 'leading' | 'center' | 'trailing' | 'bottomLeading' | 'bottom' | 'bottomTrailing';
 
 /**
- * Where the SwiftUI copy sits in the React Native text's box. React Native
- * centres a line in its line height, taller or shorter than the font's own
- * (measured in the simulator: the big figures sat 4 to 5 points low when
- * pinned to the bottom), so the copy is centred too. Sideways it keeps the
- * text's own alignment; a figure whose right edge is fixed (a value before
- * "/ 180 g") aligns right, so a digit it gains or loses changes its left.
+ * The system font's own line height, in ems (SF Pro's ascender plus
+ * descender, 1.193): a line height below it is short.
  */
-export function figureAlignment(textAlign: string | undefined): FigureAlignment {
-  return textAlign === 'center' ? 'center' : textAlign === 'right' ? 'trailing' : 'leading';
+const SYSTEM_LINE = 1.19;
+
+/**
+ * Where the SwiftUI copy sits in the React Native text's box, so its glyphs
+ * land on React Native's own. In a line at least the font's own height React
+ * Native centres the glyphs, so the copy is centred too. In a short line (the
+ * big figures, 88 points in a 95-point line) React Native keeps the glyphs'
+ * bottom on the line's bottom and lets the tops overflow, so the copy is
+ * pinned to the bottom; centred, it sat 4 to 5 points low in the simulator.
+ * Sideways it keeps the text's own alignment: a figure whose right edge is
+ * fixed (a value before "/ 180 g") aligns right, so the digits it gains or
+ * loses come and go on its left.
+ */
+export function figureFrame(textAlign: string | undefined, fontSize: number, lineHeight: number | undefined): FigureFrameAlignment {
+  const short = lineHeight !== undefined && lineHeight < fontSize * SYSTEM_LINE;
+  if (textAlign === 'center') return short ? 'bottom' : 'center';
+  if (textAlign === 'right') return short ? 'bottomTrailing' : 'trailing';
+  return short ? 'bottomLeading' : 'leading';
 }
 
-/** How long a figure's roll takes, in seconds; a neighbour that moves with it (`figureLayout`) matches. */
+/** How long a figure's roll takes, in seconds. */
 export const ROLL_SECONDS = 0.42;
+
+/**
+ * SwiftUI's smooth spring over `seconds` (no bounce) as a mass-1 spring:
+ * stiffness (2π/t)² and damping 4π/t. The figure's own frame grows or
+ * shrinks on this spring, so text beside it (`figureLayout`) follows the
+ * same curve and keeps to the figure's edge.
+ */
+export function rollSpring(seconds = ROLL_SECONDS) {
+  const omega = (2 * Math.PI) / seconds;
+  return { mass: 1, stiffness: omega * omega, damping: 2 * omega };
+}

@@ -115,7 +115,7 @@ export default function RestSheet() {
         }
         accessibilityLiveRegion="polite">
         {/* Counts down like the Clock app's timer: each second rolls. */}
-        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2 }}>
+        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
           {formatClock(figure)}
         </RollingText>
         <BlancText variant="secondary" tone="graphite">

@@ -1,6 +1,6 @@
-import { Easing, FadeIn, FadeOut, LinearTransition, withTiming, type ExitAnimationsValues } from 'react-native-reanimated';
+import { FadeIn, FadeOut, LinearTransition, withTiming, type ExitAnimationsValues } from 'react-native-reanimated';
 
-import { ROLL_SECONDS } from './rollingFigure';
+import { rollSpring } from './rollingFigure';
 
 // The one motion for list rows, so every list adds and removes alike.
 /** A row that appears fades in. */
@@ -26,6 +26,9 @@ export const blockExit = FadeOut.duration(180);
 export const rowLayout = LinearTransition.duration(220);
 /**
  * Text beside a rolling figure (RollingText) moves with it when the figure
- * gains or loses a digit, over the roll's own time, instead of jumping.
+ * gains or loses a digit: the figure's frame grows or shrinks on SwiftUI's
+ * smooth spring, and this follows the same spring, so the text stays at the
+ * figure's edge instead of jumping or crossing digits on their way out.
  */
-export const figureLayout = LinearTransition.duration(ROLL_SECONDS * 1000).easing(Easing.out(Easing.cubic));
+const roll = rollSpring();
+export const figureLayout = LinearTransition.springify().mass(roll.mass).stiffness(roll.stiffness).damping(roll.damping);

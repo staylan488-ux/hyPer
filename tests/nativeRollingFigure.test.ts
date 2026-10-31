@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { figureAlignment, figureValue, rollsDown } from '../native/src/lib/rollingFigure';
+import { figureFrame, figureValue, rollSpring, rollsDown } from '../native/src/lib/rollingFigure';
 
 describe('native rolling figures', () => {
   it('reads the number in calories, clocks and set counts', () => {
@@ -19,12 +19,29 @@ describe('native rolling figures', () => {
     expect(rollsDown('1,240', '–')).toBe(false);
   });
 
-  it('centres the copy in its line and keeps the side the text aligns to', () => {
-    // Measured in the simulator: React Native centres a big figure's glyphs
-    // in its short line too, so a bottom-pinned copy sat 4 to 5 points low.
-    expect(figureAlignment(undefined)).toBe('leading');
-    expect(figureAlignment('center')).toBe('center');
+  it('pins a big figure in its short line to the bottom, as React Native draws it', () => {
+    // Fuel's 88 pt figure in a 95 pt line, Today's 68 in 73, the rest time's 84 in 91.
+    expect(figureFrame(undefined, 88, 95)).toBe('bottomLeading');
+    expect(figureFrame(undefined, 68, 73)).toBe('bottomLeading');
+    expect(figureFrame('center', 84, 91)).toBe('bottom');
+    // The program stepper's 24 pt in 26.
+    expect(figureFrame('center', 24, 26)).toBe('bottom');
+  });
+
+  it('centres text in a line at least the font tall, and keeps the side it aligns to', () => {
+    expect(figureFrame(undefined, 17, 22)).toBe('leading');
+    expect(figureFrame('center', 17, 22)).toBe('center');
     // A value before "/ 180 g" keeps its right edge as it gains or loses a digit.
-    expect(figureAlignment('right')).toBe('trailing');
+    expect(figureFrame('right', 15, 20)).toBe('trailing');
+    // No line height set: the font's own, centred like React Native's.
+    expect(figureFrame(undefined, 40, undefined)).toBe('leading');
+  });
+
+  it("matches SwiftUI's smooth spring, with no bounce", () => {
+    const spring = rollSpring(0.42);
+    expect(spring.stiffness).toBeCloseTo(223.8, 1);
+    expect(spring.damping).toBeCloseTo(29.92, 2);
+    // Critically damped: damping² = 4 × stiffness × mass.
+    expect(spring.damping ** 2).toBeCloseTo(4 * spring.stiffness * spring.mass, 6);
   });
 });

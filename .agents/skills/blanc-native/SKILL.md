@@ -298,8 +298,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   timer, set counts) roll their digits with SwiftUI's numeric text transition
   through [RollingText](../../../native/src/components/RollingText.tsx), drawn
   over a hidden copy of the same text so layout, baselines and VoiceOver do
-  not change. Text beside a figure that can gain or lose a digit moves with
-  it (`figureLayout`), and a figure whose right edge is fixed aligns right. Never scroll a large-title screen programmatically to "the top":
+  not change. The copy's frame grows or shrinks on SwiftUI's smooth spring
+  when the figure gains or loses a digit; text beside it moves on the same
+  spring (`figureLayout`), a figure whose right edge is fixed aligns right,
+  and a centred one (the rest time) sets `textAlign: 'center'`. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
   hidden.
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):

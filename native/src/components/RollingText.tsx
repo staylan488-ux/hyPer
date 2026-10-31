@@ -7,6 +7,7 @@ import {
   fixedSize,
   font,
   foregroundStyle,
+  frame,
   kerning,
   lineLimit,
   monospacedDigit,
@@ -15,7 +16,7 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { figureAlignment, ROLL_SECONDS, rollsDown } from '~/lib/rollingFigure';
+import { figureFrame, ROLL_SECONDS, rollsDown } from '~/lib/rollingFigure';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText, blancTextStyle, type BlancTextProps } from './BlancText';
@@ -43,6 +44,13 @@ const PLACEMENT = new Set([
   'top', 'bottom', 'left', 'right', 'zIndex',
 ]);
 
+/** Where the screen-wide Host sits on the figure's box: from the edge the text aligns to. */
+function hostSide(textAlign: TextStyle['textAlign'], room: number): ViewStyle {
+  if (textAlign === 'right') return { right: 0 };
+  if (textAlign === 'center') return { left: '50%', marginLeft: -room / 2 };
+  return { left: 0 };
+}
+
 /**
  * Text whose digits roll when it changes, the way iOS's own figures do (the
  * Clock timer, Health's totals): each changed digit slides out and the new
@@ -52,8 +60,9 @@ const PLACEMENT = new Set([
  * BlancText's. Reduce Motion swaps the roll for a plain change.
  *
  * One line only. `countsDown` fixes the direction (a countdown); otherwise
- * it follows the number. The hidden copy takes its new width at once, so
- * text beside a figure that can gain or lose a digit moves with the roll
+ * it follows the number. When the figure gains or loses a digit, its
+ * drawn frame grows or shrinks over the roll while the hidden copy takes
+ * the new width at once: text beside it moves on the same spring
  * (`figureLayout`), and a figure whose right edge is fixed aligns right.
  */
 export function RollingText({ children, countsDown, style, variant = 'body', tone = 'ink', size, weight, ...rest }: Omit<BlancTextProps, 'children'> & {
@@ -61,7 +70,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
   countsDown?: boolean;
 }) {
   const c = useBlanc();
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width: room } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const text = children;
 
@@ -78,7 +87,7 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
   const textStyle = drawing as TextStyle;
 
   const fontSize = (textStyle.fontSize ?? 17) * fontScale;
-  const alignment = figureAlignment(textStyle.textAlign);
+  const placed = figureFrame(textStyle.textAlign, textStyle.fontSize ?? 17, textStyle.lineHeight);
   const tabular = Array.isArray(textStyle.fontVariant) && textStyle.fontVariant.includes('tabular-nums');
   const color = typeof textStyle.color === 'string' ? textStyle.color : c[tone];
 
@@ -94,9 +103,13 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
     lineLimit(1),
     fixedSize(),
     accessibilityHidden(true),
-    ...(reducedMotion
-      ? []
-      : [contentTransition('numericText', { countsDown: countsDown ?? step.down }), animation(Animation.smooth({ duration: ROLL_SECONDS }), step.count)]),
+    ...(reducedMotion ? [] : [contentTransition('numericText', { countsDown: countsDown ?? step.down })]),
+    // The copy keeps its place in the Host's box however tall or wide it is
+    // (the Host would centre an overflow)...
+    frame({ minWidth: 0, maxWidth: Infinity, minHeight: 0, maxHeight: Infinity, alignment: placed }),
+    // ...and the animation takes its frame from the old width to the new one
+    // along with the digits, as a SwiftUI figure in a row does.
+    ...(reducedMotion ? [] : [animation(Animation.smooth({ duration: ROLL_SECONDS }), step.count)]),
   ];
 
   return (
@@ -105,8 +118,13 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
         {text}
       </BlancText>
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
-        {/* Safe areas ignored: a figure scrolled under the bars must not shift inside its box. */}
-        <Host style={StyleSheet.absoluteFill} alignment={alignment} ignoreSafeArea="all" pointerEvents="none">
+        {/*
+          The Host is a screen wide, from the edge the figure keeps (its
+          start, end or middle), so its box never changes with the text and the
+          figure's frame can grow or shrink inside it. Safe areas ignored: a
+          figure scrolled under the bars must not shift.
+        */}
+        <Host style={[{ position: 'absolute', top: 0, bottom: 0, width: room }, hostSide(textStyle.textAlign, room)]} ignoreSafeArea="all" pointerEvents="none">
           <SwiftText modifiers={modifiers}>{text}</SwiftText>
         </Host>
       </View>
