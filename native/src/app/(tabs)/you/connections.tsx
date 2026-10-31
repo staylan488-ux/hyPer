@@ -126,7 +126,14 @@ function Whoop() {
                 title="Connected"
                 detail={status}
                 onPress={action ? undefined : menu}
-                onLongPress={action ? undefined : { label: 'More actions', run: menu }}
+                menu={
+                  action
+                    ? undefined
+                    : [
+                        { title: 'Sync now', symbol: 'arrow.triangle.2.circlepath', run: () => void sync() },
+                        { title: 'Disconnect', symbol: 'xmark.circle', destructive: true, run: () => void disconnect() },
+                      ]
+                }
               />
             </View>
           </SwipeRow>

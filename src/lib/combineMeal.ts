@@ -45,7 +45,7 @@ function round1(value: number): number {
  * "Chicken breast, white rice and olive oil", or "... and 4 more" past three.
  * Long enough to recognise the meal in a list, short enough to fit on one line.
  */
-export function combinedMealName(items: CombinableItem[]): string {
+export function combinedMealName(items: readonly { name: string }[]): string {
   const names = items.map((item) => item.name.trim()).filter(Boolean);
   if (names.length === 0) return 'Meal';
   if (names.length === 1) return names[0];

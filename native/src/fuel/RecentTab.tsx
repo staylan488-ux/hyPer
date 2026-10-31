@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ActionSheetIOS, ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { decodeMealComposition } from '@/lib/mealComposition';
@@ -7,6 +7,7 @@ import { servingLabel } from '@/lib/nutritionLedger';
 import { rankRecentFoods, type RecentFood } from '@/lib/recentFoods';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import type { MenuAction } from '~/components/HoldMenu';
 import { Hairline } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
@@ -60,28 +61,18 @@ export function RecentTab({ userId }: { userId: string }) {
     hide(recent.key);
   };
 
-  const menu = (recent: RecentFood) => {
-    const actions: { label: string; run: () => void }[] = [];
-    if (canQuickAdd(recent)) {
-      const amount = servingLabel({ servings: recent.servings, food: recent.food });
-      actions.push({ label: logger.purpose === 'ingredients' ? 'Add as ingredient' : `Log ${amount} now`, run: () => add(recent) });
-    }
-    actions.push({ label: 'Review and log', run: () => open(recent) });
-    const hides = logger.purpose === 'log';
-    if (hides) actions.push({ label: 'Hide from Recent', run: () => hideFood(recent) });
-    const options = [...actions.map((action) => action.label), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: recent.food.name,
-        message: hides ? 'A hidden food comes back when you log it again.' : undefined,
-        options,
-        cancelButtonIndex: actions.length,
-        destructiveButtonIndex: hides ? actions.length - 1 : undefined,
-      },
-      (index) => {
-        if (index < actions.length) actions[index].run();
-      },
-    );
+  // A hold offers the usual amount at once, the review, and hiding the food.
+  const menu = (recent: RecentFood): MenuAction[] => {
+    const amount = servingLabel({ servings: recent.servings, food: recent.food });
+    return [
+      ...(canQuickAdd(recent)
+        ? [{ title: logger.purpose === 'ingredients' ? 'Add as ingredient' : `Log ${amount} now`, symbol: 'plus.circle', run: () => add(recent) }]
+        : []),
+      { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => open(recent) },
+      ...(logger.purpose === 'log'
+        ? [{ title: 'Hide from Recent', subtitle: 'It comes back when you log it again', symbol: 'eye.slash', destructive: true, removes: true, run: () => hideFood(recent) }]
+        : []),
+    ];
   };
 
   if (!foods) {
@@ -110,7 +101,7 @@ export function RecentTab({ userId }: { userId: string }) {
               servings={recent.servings}
               onOpen={() => open(recent)}
               onAdd={canQuickAdd(recent) ? () => add(recent) : undefined}
-              onLongPress={() => menu(recent)}
+              menu={menu(recent)}
             />
           );
           return (

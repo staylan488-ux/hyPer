@@ -97,7 +97,7 @@ function parseIngredients(value: unknown, allowEmpty = false): MealIngredient[] 
   return Number.isFinite(totals) ? result : null;
 }
 
-export function createMealIngredient(food: Food, servings: number, id = crypto.randomUUID()): MealIngredient {
+export function createMealIngredient(food: Food, servings: number, id: string = crypto.randomUUID()): MealIngredient {
   const ingredients = parseIngredients([{ id, food, servings }]);
   if (!ingredients) throw new Error('Choose a valid food and a quantity greater than zero.');
   return ingredients[0];

@@ -6,6 +6,7 @@ import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
+import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from './HoldMenu';
 import { closeOpenSwipeRow, useSwipeActions } from './SwipeRow';
 
 type RowProps = {
@@ -20,7 +21,12 @@ type RowProps = {
   /** A row that removes something (Sign out, Disconnect) reads in red. */
   destructive?: boolean;
   onPress?: () => void;
-  /** A second action under a long press, offered to VoiceOver as a custom action. */
+  /**
+   * What a hold offers: iOS's context menu, lifting the row. Each item is
+   * also a VoiceOver action on the row.
+   */
+  menu?: MenuAction[];
+  /** A single action under a long press (no menu), offered to VoiceOver as a custom action. */
   onLongPress?: { label: string; run: () => void };
   /** Shown but not usable for now (a save is running): dimmed and inert. */
   disabled?: boolean;
@@ -30,22 +36,34 @@ type RowProps = {
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
+export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
   // Spoken as its words only: icons such as the chevron add nothing.
   const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
-  // VoiceOver offers the long-press action and any swipe actions around the row.
-  const swipe = useSwipeActions() ?? [];
+  // VoiceOver offers the menu's items (or the long-press action) and any
+  // swipe actions around the row. A swipe action the menu covers (Delete in
+  // both, or More, which opens the same items) is left out.
+  const held = menu && menu.length > 0 ? menuAccessibility(menu) : null;
+  const heldLabels = new Set(held ? ['More', ...held.actions.map((action) => action.label)] : []);
+  const swipe = (useSwipeActions() ?? []).filter((action) => !heldLabels.has(action.label));
   const actions = [
-    ...(onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : []),
+    ...(held ? held.actions : onLongPress ? [{ name: 'longpress', label: onLongPress.label }] : []),
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
     ...extra.map((action) => ({ name: `extra:${action.label}`, label: action.label })),
   ];
   const onAction = (name: string) => {
+    if (held?.run(name)) return;
     if (name === 'longpress') onLongPress?.run();
     else if (name.startsWith('extra:')) extra.find((action) => `extra:${action.label}` === name)?.run();
     else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
   };
+  // With iOS's context menu the hold is the menu's own; an older build
+  // shows the same actions as a sheet.
+  const longPress = held
+    ? hasHoldMenu
+      ? undefined
+      : () => showActionSheet(title, menu ?? [])
+    : onLongPress?.run;
   const content = (
     <>
       {leading}
@@ -81,7 +99,7 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     paddingRight: 16,
   };
 
-  if (!onPress && !onLongPress) {
+  if (!onPress && !longPress && !held) {
     // Read as one element, unless it holds a control (a Start button, say)
     // that VoiceOver must still reach on its own.
     return (
@@ -96,7 +114,7 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     );
   }
 
-  return (
+  const row = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -112,17 +130,24 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
         onPress();
       }}
       onLongPress={
-        onLongPress
+        longPress
           ? () => {
               if (closeOpenSwipeRow()) return;
               haptics.select();
-              onLongPress.run();
+              longPress();
             }
           : undefined
       }
       style={({ pressed }) => [rowStyle, { backgroundColor: pressed ? c.pressed : 'transparent', opacity: disabled ? 0.4 : 1 }]}>
       {content}
     </Pressable>
+  );
+  return held && hasHoldMenu ? (
+    <HoldMenu actions={menu ?? []} enabled={!disabled}>
+      {row}
+    </HoldMenu>
+  ) : (
+    row
   );
 }
 

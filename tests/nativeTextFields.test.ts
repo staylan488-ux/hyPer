@@ -39,11 +39,15 @@ describe('native one-line text fields', () => {
   // iOS drew a one-line field's placeholder with its letters squeezed
   // together (nearly overlapping) when the field's style had a line height.
   it('keeps line heights off every one-line field and gives it tail truncation', () => {
+    // The JSX prop only: FieldRow turns multiline on for its wrapping rows alone.
+    const multiline = /\smultiline(?=[\s=/>])/;
+    const tail = /lineBreakModeIOS=("tail"|\{[^}]*'tail'[^}]*\})/;
     const wrong = textInputs()
-      .filter(({ file, element }) => !ALLOWED.has(file) && !/\bmultiline\b/.test(element))
+      .filter(({ file, element }) => !ALLOWED.has(file) && !multiline.test(element))
       .filter(({ element }) =>
-        !element.includes('lineBreakModeIOS="tail"') ||
-        /lineHeight|typeScale\.(?!field\b)\w+/.test(element),
+        !tail.test(element) ||
+        element.includes('lineHeight') ||
+        (/typeScale\.(?!field\b)\w+/.test(element) && !element.includes('typeScale.field')),
       )
       .map(({ file, line }) => `${file}:${line}`);
     expect(wrong).toEqual([]);
