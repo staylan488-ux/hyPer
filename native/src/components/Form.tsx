@@ -80,7 +80,7 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
         onChangeText={wraps && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
         style={[
           // Wrapped lines keep body's line height; one line takes none (see type.field).
-          wraps ? typeScale.body : typeScale.field,
+          wraps ? typeScale.fieldLines : typeScale.field,
           { color: locked ? c.graphite : c.ink, padding: 0, minHeight: wraps ? 22 : 44, textAlign: wide ? 'left' : 'right' },
           wraps ? { paddingTop: 0 } : null,
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },

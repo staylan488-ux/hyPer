@@ -418,7 +418,7 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
         returnKeyType="done"
         selectionColor={c.ink}
         accessibilityLabel={label}
-        style={[typeScale.body, { flex: 1, color: c.ink, padding: 0, paddingTop: 0 }]}
+        style={[typeScale.fieldLines, { flex: 1, color: c.ink, padding: 0, paddingTop: 0 }]}
       />
     </View>
   );

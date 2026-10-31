@@ -308,7 +308,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 returnKeyType="done"
                 submitBehavior="blurAndSubmit"
                 accessibilityLabel="Describe the food"
-                style={[typeScale.body, { color: c.ink, minHeight: 66, padding: 0 }]}
+                style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <BlancText variant="footnote" tone="graphite">

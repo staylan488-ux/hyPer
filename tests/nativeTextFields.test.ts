@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const SOURCE = path.resolve(__dirname, '../native/src');
 
-// A big figure's only placeholder is "–", a single glyph, and its digits need
-// their own line height to sit right.
+// The big figure input sets its own tight letter spacing and line height on
+// purpose; its only placeholder is "–".
 const ALLOWED = new Set(['components/FigureInput.tsx']);
 
 function sourceFiles(dir: string): string[] {
@@ -31,34 +31,51 @@ function textInputs() {
   });
 }
 
-describe('native one-line text fields', () => {
+// The JSX prop only: FieldRow turns multiline on for its wrapping rows alone.
+const multiline = /\smultiline(?=[\s=/>])/;
+const tail = /lineBreakModeIOS=("tail"|\{[^}]*'tail'[^}]*\})/;
+const where = ({ file, line }: { file: string; line: number }) => `${file}:${line}`;
+
+describe('native text fields', () => {
+  const fields = textInputs().filter(({ file }) => !ALLOWED.has(file));
+
   it('finds the app’s text fields', () => {
-    expect(textInputs().length).toBeGreaterThan(10);
+    expect(fields.length).toBeGreaterThan(15);
   });
 
-  // iOS drew a one-line field's placeholder with its letters squeezed
-  // together (nearly overlapping) when the field's style had a line height.
-  it('keeps line heights off every one-line field and gives it tail truncation', () => {
-    // The JSX prop only: FieldRow turns multiline on for its wrapping rows alone.
-    const multiline = /\smultiline(?=[\s=/>])/;
-    const tail = /lineBreakModeIOS=("tail"|\{[^}]*'tail'[^}]*\})/;
-    const wrong = textInputs()
-      .filter(({ file, element }) => !ALLOWED.has(file) && !multiline.test(element))
-      .filter(({ element }) =>
-        !tail.test(element) ||
-        element.includes('lineHeight') ||
-        (/typeScale\.(?!field\b)\w+/.test(element) && !element.includes('typeScale.field')),
-      )
-      .map(({ file, line }) => `${file}:${line}`);
+  // React Native reuses a field's native view, and iOS drew the new
+  // placeholder with the old one's letter spacing (a big figure's, squeezing
+  // the letters together) unless the field's text style names its own.
+  it('gives every field a field text style and no spacing or line height of its own', () => {
+    const wrong = fields
+      .filter(({ element }) => !/typeScale\.field(Lines)?\b/.test(element) || /lineHeight|letterSpacing/.test(element))
+      .map(where);
     expect(wrong).toEqual([]);
   });
 
-  it('gives the field type the body size and no line height', () => {
+  it('keeps line heights off one-line fields and gives them tail truncation', () => {
+    const wrong = fields
+      .filter(({ element }) => !multiline.test(element))
+      .filter(({ element }) => !/typeScale\.field\b/.test(element) || !tail.test(element))
+      .map(where);
+    expect(wrong).toEqual([]);
+  });
+
+  it('gives fields that wrap the line height of body text', () => {
+    const wrong = fields
+      .filter(({ element }) => multiline.test(element) && !element.includes('typeScale.fieldLines'))
+      .map(where);
+    expect(wrong).toEqual([]);
+  });
+
+  it('defines the field types with their own non-zero letter spacing', () => {
     // The theme imports React Native, so it is read as text here.
     const theme = readFileSync(path.join(SOURCE, 'theme/blanc.ts'), 'utf8');
-    const body = theme.match(/^ {2}body: (\{.*\}),$/m)?.[1];
-    const field = theme.match(/^ {2}field: (\{.*\}),$/m)?.[1];
-    expect(body).toMatch(/fontSize: 17\b/);
-    expect(field).toBe('{ fontSize: 17 }');
+    const spacing = Number(theme.match(/^const FIELD_SPACING = ([\d.]+);$/m)?.[1]);
+    expect(spacing).toBeGreaterThan(0);
+    expect(spacing).toBeLessThan(0.05);
+    expect(theme).toMatch(/^ {2}body: \{ fontSize: 17, lineHeight: 22 \},$/m);
+    expect(theme).toMatch(/^ {2}field: \{ fontSize: 17, letterSpacing: FIELD_SPACING \},$/m);
+    expect(theme).toMatch(/^ {2}fieldLines: \{ fontSize: 17, lineHeight: 22, letterSpacing: FIELD_SPACING \},$/m);
   });
 });

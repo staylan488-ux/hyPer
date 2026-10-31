@@ -54,17 +54,28 @@ export function useBlanc(): Palette {
 export const dynamicInk =
   Platform.OS === 'ios' ? DynamicColorIOS({ light: palettes.light.ink, dark: palettes.dark.ink }) : palettes.light.ink;
 
+/**
+ * Every text field names its own letter spacing. React Native reuses a text
+ * field's native view, and iOS draws the new placeholder with the spacing of
+ * the view's last one unless the new one names a spacing itself: a big
+ * figure's tight spacing (FigureInput) squeezed the letters of a search
+ * field's placeholder together. Apple documents a spacing of 0 as turning
+ * the font's kerning off, so this is a tiny one that draws like plain text.
+ */
+const FIELD_SPACING = 0.01;
+
 export const type = {
   section: { fontSize: 20, lineHeight: 25, fontWeight: '600' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   body: { fontSize: 17, lineHeight: 22 },
   /**
-   * One-line text fields: body without a line height, used with
-   * lineBreakModeIOS="tail" on the field. A line height made iOS draw a
-   * one-line field's placeholder with its letters squeezed together; without
-   * one, the placeholder is drawn as a plain iOS text field draws it.
+   * One-line text fields: body with no line height (it drew their text low)
+   * and its own letter spacing (FIELD_SPACING). Use lineBreakModeIOS="tail"
+   * with it, so the placeholder names its own paragraph style too.
    */
-  field: { fontSize: 17 },
+  field: { fontSize: 17, letterSpacing: FIELD_SPACING },
+  /** Text fields that wrap onto more lines: body with its own letter spacing (FIELD_SPACING). */
+  fieldLines: { fontSize: 17, lineHeight: 22, letterSpacing: FIELD_SPACING },
   bodyStrong: { fontSize: 17, lineHeight: 22, fontWeight: '500' },
   headline: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
   secondary: { fontSize: 15, lineHeight: 20 },
