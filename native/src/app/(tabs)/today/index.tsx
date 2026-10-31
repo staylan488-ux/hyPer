@@ -11,6 +11,7 @@ import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandM
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { PlanCard } from '~/components/PlanCard';
+import { RollingText } from '~/components/RollingText';
 import { Tally } from '~/components/Tally';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -22,6 +23,7 @@ import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, useFuelStore } from '~/lib/fuel';
+import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { space, useBlanc } from '~/theme/blanc';
@@ -90,12 +92,14 @@ export default function TodayScreen() {
                 }}
                 style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                  <BlancText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
+                  <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
-                  </BlancText>
-                  <BlancText variant="secondary" tone="graphite">
-                    {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
-                  </BlancText>
+                  </RollingText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
+                    </BlancText>
+                  </Animated.View>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
                   <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
@@ -218,12 +222,14 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-          <BlancText variant="secondary" weight="500">
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
             {value}
-          </BlancText>{' '}
-          / {of}
-        </BlancText>
+          </RollingText>
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {` / ${of}`}
+          </BlancText>
+        </View>
       </View>
       <View style={{ marginTop: 8 }}>
         <Track progress={progress} warnOver={warnOver} />

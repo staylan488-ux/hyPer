@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { retireSavedMeal } from '@/lib/savedMeals';
@@ -55,22 +55,6 @@ export default function SavedMealsScreen() {
     });
   };
 
-  const menu = (meal: Food) => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: meal.name,
-        message: 'Deleting it keeps past logged entries.',
-        options: ['Edit', 'Delete', 'Cancel'],
-        destructiveButtonIndex: 1,
-        cancelButtonIndex: 2,
-      },
-      (index) => {
-        if (index === 0) editSavedMeal(meal);
-        if (index === 1) void remove(meal);
-      },
-    );
-  };
-
   const shown = (meals ?? []).filter((meal) => !leaving.has(meal.id));
 
   return (
@@ -106,7 +90,10 @@ export default function SavedMealsScreen() {
                       title={meal.name}
                       value={`${formatWhole(Number(meal.calories) || 0)} kcal`}
                       onPress={() => editSavedMeal(meal)}
-                      onLongPress={{ label: 'More actions', run: () => menu(meal) }}
+                      menu={[
+                        { title: 'Edit', symbol: 'pencil', run: () => editSavedMeal(meal) },
+                        { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, removes: true, run: () => void remove(meal) },
+                      ]}
                     />
                   </View>
                 </SwipeRow>

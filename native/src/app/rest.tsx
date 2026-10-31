@@ -5,6 +5,7 @@ import { parseRestInput } from '@/lib/restTimer';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { GlassButton } from '~/components/GlassButton';
+import { RollingText } from '~/components/RollingText';
 import { formatClock } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -113,13 +114,10 @@ export default function RestSheet() {
               : `Rest length ${formatClock(figure)}`
         }
         accessibilityLiveRegion="polite">
-        <BlancText
-          variant="figure"
-          size={84}
-          tone={paused ? 'graphite' : 'ink'}
-          style={{ letterSpacing: -2 }}>
+        {/* Counts down like the Clock app's timer: each second rolls. */}
+        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
           {formatClock(figure)}
-        </BlancText>
+        </RollingText>
         <BlancText variant="secondary" tone="graphite">
           {caption}
         </BlancText>

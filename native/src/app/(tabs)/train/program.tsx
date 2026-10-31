@@ -2,7 +2,7 @@ import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
-import { ActionSheetIOS, Alert, RefreshControl, View } from 'react-native';
+import { Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { exerciseTotal, plural, shownActiveProgram, templateItemLabel, visibleTemplateItems } from '@/lib/programSummary';
@@ -11,6 +11,7 @@ import type { FlexDayTemplate, Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -127,24 +128,11 @@ function Programs({ splits }: { splits: Split[] }) {
 
   const remove = (split: Split) => void deleteProgram(split);
 
-  const menu = (split: Split) => {
-    const actions: { label: string; run: () => void }[] = [
-      ...(split.is_active ? [] : [{ label: 'Set active', run: () => void setActiveProgram(split) }]),
-      { label: 'Edit', run: () => editProgram(split) },
-      { label: 'Delete', run: () => remove(split) },
-    ];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: split.name,
-        options: [...actions.map((action) => action.label), 'Cancel'],
-        cancelButtonIndex: actions.length,
-        destructiveButtonIndex: actions.length - 1,
-      },
-      (index) => {
-        if (index < actions.length) actions[index].run();
-      },
-    );
-  };
+  const menu = (split: Split): MenuAction[] => [
+    ...(split.is_active ? [] : [{ title: 'Set active', symbol: 'checkmark.circle', run: () => void setActiveProgram(split) }]),
+    { title: 'Edit', symbol: 'pencil', run: () => editProgram(split) },
+    { title: 'Delete', symbol: 'trash', destructive: true, run: () => remove(split) },
+  ];
 
   return (
     <Section title="Programs">
@@ -166,7 +154,7 @@ function Programs({ splits }: { splits: Split[] }) {
                     .join(' · ')}
                   chevron
                   onPress={() => router.push({ pathname: '/train/program-view', params: { id: split.id } })}
-                  onLongPress={{ label: 'More actions', run: () => menu(split) }}
+                  menu={menu(split)}
                 />
               </View>
             </SwipeRow>
@@ -223,23 +211,20 @@ function QuickStarts() {
       });
   };
 
-  const menu = (template: FlexDayTemplate) => {
-    const items = visibleTemplateItems(template);
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: template.label,
-        message: items.map((item) => `${item.exercise_name || 'Exercise'}  ${templateItemLabel(item)}`).join('\n') || undefined,
-        options: ['Start', 'Rename', 'Delete', 'Cancel'],
-        cancelButtonIndex: 3,
-        destructiveButtonIndex: 2,
-      },
-      (index) => {
-        if (index === 0) void start(template);
-        if (index === 1) renameQuickStart(template);
-        if (index === 2) remove(template);
-      },
+  const menu = (template: FlexDayTemplate): MenuAction[] => [
+    { title: 'Start', symbol: 'play', run: () => void start(template) },
+    { title: 'Rename', symbol: 'pencil', run: () => renameQuickStart(template) },
+    { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: () => remove(template) },
+  ];
+  // A tap shows what the quick start holds, with the same choices.
+  const details = (template: FlexDayTemplate) =>
+    showActionSheet(
+      template.label,
+      menu(template),
+      visibleTemplateItems(template)
+        .map((item) => `${item.exercise_name || 'Exercise'}  ${templateItemLabel(item)}`)
+        .join('\n') || undefined,
     );
-  };
 
   return (
     <Section title="Quick starts">
@@ -269,8 +254,8 @@ function QuickStarts() {
                         onPress={() => void start(template)}
                       />
                     }
-                    onPress={() => menu(template)}
-                    onLongPress={{ label: 'More actions', run: () => menu(template) }}
+                    onPress={() => details(template)}
+                    menu={menu(template)}
                   />
                 </View>
               </SwipeRow>
