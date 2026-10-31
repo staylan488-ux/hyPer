@@ -313,6 +313,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   and a centred one (the rest time) sets `textAlign: 'center'`. Never scroll a large-title screen programmatically to "the top":
   it fights the title and short pages snap back. Reveal content only when it is
   hidden.
+- An animated style that Reanimated parses from a string (a shadow, a colour)
+  writes its numbers with fixed decimals, as
+  [liftShadow](../../../native/src/lib/liftShadow.ts) does. Near 0 JavaScript
+  writes "1.6e-7", Reanimated's parser throws on it, and a release build
+  closes (the reorder crash of 2026-10-31); a debug build shows a red screen
+  only on the rare frame that hits it.
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):
   the P blooms, "hyPer" unfolds from it and holds (longer while the account
   loads), folds back, and the P flies to the first screen's anchored BrandMark as

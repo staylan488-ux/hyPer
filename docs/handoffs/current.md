@@ -33,6 +33,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   widget's Swift and the changed screens were not built or run in a simulator.
 - PR #157 was checked in the simulator. Not exercised: haptics on a phone, a
   superset pair (none in the sample workout) and VoiceOver.
+- 2026-10-31: holding a movement in a live workout could close the app (the
+  owner hit it on his phone): the lifted row's shadow reached Reanimated as
+  "1.6e-7" on rare frames. The fix (`native/src/lib/liftShadow.ts`) was
+  checked against Reanimated's own parser and in the iOS bundle, not on a
+  phone or simulator, and no crash report was read from the phone.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

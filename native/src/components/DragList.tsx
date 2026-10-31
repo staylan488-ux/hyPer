@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { haptics } from '~/lib/haptics';
+import { liftShadow } from '~/lib/liftShadow';
 import { blockExit, rowEnter } from '~/lib/motion';
 import { radius, useBlanc } from '~/theme/blanc';
 
@@ -238,7 +239,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
       borderTopRightRadius: Math.max(first, lifted),
       borderBottomLeftRadius: Math.max(last, lifted),
       borderBottomRightRadius: Math.max(last, lifted),
-      boxShadow: raised > 0 ? `0 ${8 * raised}px ${24 * raised}px rgba(0, 0, 0, ${0.16 * raised})` : undefined,
+      boxShadow: liftShadow(raised),
     };
   });
   // The rule above a row shows only where a row sits above it, and never on a lifted one.
