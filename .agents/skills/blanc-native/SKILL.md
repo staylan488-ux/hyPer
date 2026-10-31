@@ -74,6 +74,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - [Tokens and type roles](../../../native/src/theme/blanc.ts): the system font only.
   Section 20/600, title 24/600, body 17, secondary 15, footnote 13, Menlo 12 for
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
+  One-line text fields use `field` (body with no line height) and
+  `lineBreakModeIOS="tail"`: with a line height, iOS drew their placeholders
+  with the letters squeezed together (`tests/nativeTextFields.test.ts` checks).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
   colour; red only for live state, errors, over-limit and the brand P.
   Over-limit follows the saved nutrition goal through the shared

@@ -58,6 +58,13 @@ export const type = {
   section: { fontSize: 20, lineHeight: 25, fontWeight: '600' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   body: { fontSize: 17, lineHeight: 22 },
+  /**
+   * One-line text fields: body without a line height, used with
+   * lineBreakModeIOS="tail" on the field. A line height made iOS draw a
+   * one-line field's placeholder with its letters squeezed together; without
+   * one, the placeholder is drawn as a plain iOS text field draws it.
+   */
+  field: { fontSize: 17 },
   bodyStrong: { fontSize: 17, lineHeight: 22, fontWeight: '500' },
   headline: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
   secondary: { fontSize: 15, lineHeight: 20 },

@@ -233,7 +233,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               clearButtonMode="while-editing"
               autoCorrect={false}
               accessibilityLabel="Search exercises"
-              style={[typeScale.body, { flex: 1, color: c.ink, padding: 0 }]}
+              lineBreakModeIOS="tail"
+              style={[typeScale.field, { flex: 1, color: c.ink, padding: 0 }]}
             />
           </Pressable>
 

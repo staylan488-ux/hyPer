@@ -61,9 +61,10 @@ export function FieldRow({ ref, label, unit, wide, invalid, keyboardType, return
         accessibilityLabel={label}
         keyboardType={keyboardType}
         returnKeyType={numberPadReturnKey(keyboardType, returnKeyType)}
+        lineBreakModeIOS="tail"
         {...input}
         style={[
-          typeScale.body,
+          typeScale.field,
           { color: locked ? c.graphite : c.ink, padding: 0, minHeight: 44, textAlign: wide ? 'left' : 'right' },
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },
         ]}

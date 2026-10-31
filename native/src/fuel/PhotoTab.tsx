@@ -391,7 +391,8 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                       value={item.name}
                       onChangeText={(name) => updateItem(item.id, { name, groundedFood: null, persistedFoodId: undefined })}
                       accessibilityLabel="Food"
-                      style={[typeScale.bodyStrong, { flex: 1, color: c.ink, padding: 0, minHeight: 44 }]}
+                      lineBreakModeIOS="tail"
+                      style={[typeScale.field, { flex: 1, color: c.ink, fontWeight: '500', padding: 0, minHeight: 44 }]}
                     />
                     <GramsInput
                       grams={item.amountGrams}
@@ -528,7 +529,8 @@ function GramsInput({ grams, label, onChange }: { grams: number; label: string; 
       returnKeyType="done"
       accessibilityLabel={label}
       selectTextOnFocus
-      style={[typeScale.body, { color: c.ink, padding: 0, minWidth: 52, minHeight: 44, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
+      lineBreakModeIOS="tail"
+      style={[typeScale.field, { color: c.ink, padding: 0, minWidth: 52, minHeight: 44, textAlign: 'right', fontVariant: ['tabular-nums'] }]}
     />
   );
 }

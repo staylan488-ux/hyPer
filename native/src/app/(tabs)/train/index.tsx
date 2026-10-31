@@ -921,20 +921,6 @@ function StartFlexible() {
         <Section title="What are you training?" style={{ marginTop: 18 }}>
           {/* The field fills the card's height, so a tap anywhere on it types. */}
           <Label style={{ paddingHorizontal: 18, paddingVertical: 3 }}>
-            {/* Drawn as plain text: iOS squeezed this field's own placeholder
-                together (letters nearly overlapping) on the new renderer. */}
-            {name ? null : (
-              <BlancText
-                variant="body"
-                tone="graphite"
-                numberOfLines={1}
-                importantForAccessibility="no"
-                accessibilityElementsHidden
-                pointerEvents="none"
-                style={{ position: 'absolute', left: 18, right: 18, top: 14 }}>
-                Upper, push, arms…
-              </BlancText>
-            )}
             <TextInput
               key={field.key}
               defaultValue={field.text}
@@ -943,14 +929,16 @@ function StartFlexible() {
                 // Typing a different name leaves the quick start, as on the web.
                 if (template && text !== template) setTemplate(null);
               }}
+              placeholder="Upper, push, arms…"
+              placeholderTextColor={c.graphite}
               maxLength={FLEX_NAME_LIMIT}
               autoCorrect={false}
               returnKeyType="go"
               onSubmitEditing={() => void start()}
               selectionColor={c.ink}
               accessibilityLabel="What are you training?"
-              accessibilityHint="For example upper, push or arms"
-              style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 44 }]}
+              lineBreakModeIOS="tail"
+              style={[typeScale.field, { color: c.ink, padding: 0, minHeight: 44 }]}
             />
           </Label>
         </Section>

@@ -322,7 +322,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
   const c = useBlanc();
   const feetField = useRef<TextField>(null);
   const inchesField = useRef<TextField>(null);
-  const input = [typeScale.body, { color: c.ink, padding: 0, minHeight: 44, minWidth: 44, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] }];
+  const input = [typeScale.field, { color: c.ink, padding: 0, minHeight: 44, minWidth: 44, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] }];
   return (
     <Pressable
       accessible={false}
@@ -342,6 +342,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         submitBehavior="submit"
         onSubmitEditing={() => inchesField.current?.focus()}
         accessibilityLabel="Height, feet"
+        lineBreakModeIOS="tail"
         style={input}
       />
       <BlancText variant="body" tone="graphite">
@@ -356,6 +357,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         selectTextOnFocus
         returnKeyType="done"
         accessibilityLabel="Height, inches"
+        lineBreakModeIOS="tail"
         style={input}
       />
       <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }}>

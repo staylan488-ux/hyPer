@@ -420,7 +420,8 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               returnKeyType="done"
               accessibilityLabel="Servings"
               selectTextOnFocus
-              style={[typeScale.body, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
+              lineBreakModeIOS="tail"
+              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
             />
             <StepButton symbol="plus" label="More servings" onPress={() => stepServings(0.25)} />
           </View>
