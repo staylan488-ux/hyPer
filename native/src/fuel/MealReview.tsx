@@ -270,7 +270,8 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
             onInvalid(invalid);
             if (!invalid) onChange(servings);
           }}
-          style={[typeScale.body, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
+          lineBreakModeIOS="tail"
+          style={[typeScale.field, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
         />
         <BlancText variant="body" tone="graphite" numberOfLines={1} style={{ maxWidth: 64 }}>
           {item.food.serving_unit}

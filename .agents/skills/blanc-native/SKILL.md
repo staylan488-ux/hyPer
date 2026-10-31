@@ -75,6 +75,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - [Tokens and type roles](../../../native/src/theme/blanc.ts): the system font only.
   Section 20/600, title 24/600, body 17, secondary 15, footnote 13, Menlo 12 for
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
+  Text fields take `field` (one line, with `lineBreakModeIOS="tail"`) or
+  `fieldLines` (wrapping), never body: React Native reuses a field's native
+  view, and iOS drew the new placeholder with the last one's letter spacing (a
+  big figure's, squeezing the letters together) unless the field names its own
+  (`tests/nativeTextFields.test.ts` checks).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
   colour; red only for live state, errors, over-limit and the brand P.
   Over-limit follows the saved nutrition goal through the shared

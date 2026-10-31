@@ -15,7 +15,7 @@ import { Hairline } from '~/components/Row';
 import { useIntroRise } from '~/lib/brand';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
-import { space, useBlanc } from '~/theme/blanc';
+import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 // Same rules and words as the web sign-in form (src/components/auth/AuthForm.tsx).
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
@@ -317,7 +317,8 @@ function Field({ ref, style, ...props }: TextInputProps & { ref?: Ref<InputRef> 
       ref={ref}
       placeholderTextColor={c.graphite}
       selectionColor={c.ink}
-      style={[{ minHeight: 50, paddingHorizontal: 18, fontSize: 17, color: c.ink }, style]}
+      lineBreakModeIOS="tail"
+      style={[typeScale.field, { minHeight: 50, paddingHorizontal: 18, color: c.ink }, style]}
       {...props}
     />
   );

@@ -60,7 +60,8 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
         clearButtonMode="while-editing"
         autoCorrect={false}
         accessibilityLabel={placeholder}
-        style={[typeScale.body, { flex: 1, color: c.ink, padding: 0 }]}
+        lineBreakModeIOS="tail"
+        style={[typeScale.field, { flex: 1, color: c.ink, padding: 0 }]}
       />
     </View>
   );

@@ -322,7 +322,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               placeholder="e.g. Six Trader Joe’s chicken tikka samosas"
               placeholderTextColor={c.upcoming}
               accessibilityLabel="Your meal"
-              style={[typeScale.body, { color: c.ink, minHeight: 88, padding: 16, paddingTop: 14 }]}
+              style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, padding: 16, paddingTop: 14 }]}
             />
           </Label>
           <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>

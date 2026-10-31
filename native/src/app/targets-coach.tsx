@@ -139,7 +139,7 @@ export default function TargetsCoachSheet() {
           placeholder="For example: keep my weight while getting stronger. I lift four times a week."
           placeholderTextColor={c.upcoming}
           accessibilityLabel="Your goal"
-          style={[typeScale.body, { color: c.ink, minHeight: 120, textAlignVertical: 'top', padding: 4, opacity: asking ? 0.5 : 1 }]}
+          style={[typeScale.fieldLines, { color: c.ink, minHeight: 120, textAlignVertical: 'top', padding: 4, opacity: asking ? 0.5 : 1 }]}
         />
       </Label>
 

@@ -115,7 +115,8 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
                 onSubmitEditing={() => {
                   if (!disabled && !busy && text.trim()) void interpret();
                 }}
-                style={[typeScale.body, { color: c.ink, padding: 0, minHeight: 44 }]}
+                lineBreakModeIOS="tail"
+                style={[typeScale.field, { color: c.ink, padding: 0, minHeight: 44 }]}
               />
               <Capsule title={busy ? 'Interpreting…' : 'Interpret amount'} variant="quiet" busy={busy} disabled={disabled || !text.trim()} onPress={() => void interpret()} />
               {result?.status === 'clarification' ? (

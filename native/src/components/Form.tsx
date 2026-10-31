@@ -74,10 +74,13 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
         keyboardType={keyboardType}
         returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
         {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
+        // Tail truncation is for one line only: in a wrapping field it would cut each paragraph short.
+        lineBreakModeIOS={wraps ? undefined : 'tail'}
         {...input}
         onChangeText={wraps && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
         style={[
-          typeScale.body,
+          // Wrapped lines keep body's line height; one line takes none (see type.field).
+          wraps ? typeScale.fieldLines : typeScale.field,
           { color: locked ? c.graphite : c.ink, padding: 0, minHeight: wraps ? 22 : 44, textAlign: wide ? 'left' : 'right' },
           wraps ? { paddingTop: 0 } : null,
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },

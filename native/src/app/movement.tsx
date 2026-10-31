@@ -233,7 +233,7 @@ function MovementDetail({
             scrollEnabled={false}
             selectionColor={c.ink}
             accessibilityLabel={`Note for ${movement.name}`}
-            style={[typeScale.body, { color: c.ink, minHeight: 66, padding: 0 }]}
+            style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
           />
         </Label>
         <NoteFooter status={note.status} length={note.text.length} />

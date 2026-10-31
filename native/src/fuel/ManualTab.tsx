@@ -308,7 +308,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 returnKeyType="done"
                 submitBehavior="blurAndSubmit"
                 accessibilityLabel="Describe the food"
-                style={[typeScale.body, { color: c.ink, minHeight: 66, padding: 0 }]}
+                style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <BlancText variant="footnote" tone="graphite">
@@ -420,7 +420,8 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               returnKeyType="done"
               accessibilityLabel="Servings"
               selectTextOnFocus
-              style={[typeScale.body, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
+              lineBreakModeIOS="tail"
+              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
             />
             <StepButton symbol="plus" label="More servings" onPress={() => stepServings(0.25)} />
           </View>
