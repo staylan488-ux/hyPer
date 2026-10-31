@@ -109,7 +109,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
 
       <View style={{ marginTop: 14 }}>
         <Label>
-          <FieldRow label="Name" wide value={draft.name} maxLength={500} editable={!frozen} placeholder="e.g. Protein shake" onChangeText={(name) => update({ name })} />
+          <FieldRow label="Name" wide grows value={draft.name} maxLength={500} editable={!frozen} placeholder="e.g. Protein shake" onChangeText={(name) => update({ name })} />
         </Label>
       </View>
 

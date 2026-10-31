@@ -52,6 +52,9 @@ import { useBlanc } from '~/theme/blanc';
 
 type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
 
+/** A meal's ingredients and amounts, to tell whether it changed. */
+const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${part.id}:${part.servings}`).join('|');
+
 /**
  * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
  * a review for a chosen food, and the meal builder, by the web logger's rules.
@@ -182,9 +185,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   // ── Meal builder (web MealLogger) ──
   const [savedTarget, setSavedTarget] = useState<Food | undefined>();
-  // Saving logged entries keeps its draft under those entries, so other foods give a fresh one.
+  // Saving logged entries as a meal starts from those entries every time:
+  // closing it is cancelling, so nothing is kept for next time.
   const saveKey = saveFrom ? `save:${saveFrom.map((log) => log.id).join(',')}` : null;
   const draftKey = editing ? `edit:${editing.id}` : savedTarget ? `saved:${savedTarget.id}` : saveKey ?? 'new';
+  const keepsDraft = draftKey !== saveKey;
   const makeDraft = useCallback(
     (food?: { name: string; description?: string | null }, servings = 1): MealDraft => {
       const day = editing?.date ?? selectedKey;
@@ -204,12 +209,14 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     [editing, selectedKey, when.groupId],
   );
   const [meal, setMeal] = useState<MealDraft | null>(() => {
-    const kept = loadMealDraft(userId, editing ? `edit:${editing.id}` : saveKey ?? 'new');
+    if (saveFrom) return { ...makeDraft(), ...mealFromLoggedFoods(saveFrom), saveAsReusableMeal: true };
+    const kept = loadMealDraft(userId, editing ? `edit:${editing.id}` : 'new');
     if (kept) return kept;
     if (editing?.food && decodeMealComposition(editing.food.description)) return makeDraft(editing.food, editing.servings);
-    if (saveFrom) return { ...makeDraft(), ...mealFromLoggedFoods(saveFrom), saveAsReusableMeal: true };
     return null;
   });
+  // what Save as meal opened with, so closing asks only once it was changed
+  const savingFrom = useRef(saveFrom ? meal : null);
   const [mealReview, setMealReview] = useState(Boolean(meal));
   const [paused, setPaused] = useState(false);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -221,11 +228,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       setMeal((current) => {
         if (!current) return current;
         const next = { ...current, ...patch };
-        setStorageFailed(!saveMealDraft(userId, next, draftKey));
+        if (keepsDraft) setStorageFailed(!saveMealDraft(userId, next, draftKey));
         return next;
       });
     },
-    [userId, draftKey],
+    [userId, draftKey, keepsDraft],
   );
 
   const startMeal = useCallback(
@@ -311,10 +318,15 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
-  // analysis running, an estimate, typed or changed Manual fields, or a meal
-  // this device could not keep. A built meal is kept for next time anyway.
+  // analysis running, an estimate, typed or changed Manual fields, a meal
+  // this device could not keep, or a changed Save as meal. A built meal is
+  // kept for next time anyway.
   const estimate = ai.items.length > 0 || photo.items.length > 0;
+  const start = savingFrom.current;
+  const savingChanged =
+    !keepsDraft && meal !== null && start !== null && (meal.name.trim() !== start.name.trim() || mealPartsKey(meal) !== mealPartsKey(start));
   const unsaved =
+    savingChanged ||
     busy ||
     aiHasDraft(ai) ||
     (!gemini && (photo.items.length > 0 || Boolean(photo.photos.top || photo.photos.side))) ||
@@ -326,9 +338,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
       : estimate
         ? { title: 'Discard this estimate?', message: 'You have not logged it yet.' }
-        : editing
-          ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
-          : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
+        : savingChanged
+          ? { title: 'Discard this meal?', message: 'It has not been saved.' }
+          : editing
+            ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
+            : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
   );
   // Closes once the guard has seen `closing`, as the other sheets do.
   useEffect(() => {
@@ -417,7 +431,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 </Pressable>
               ) : null}
             </View>
-            {inMeal && !meal?.locked ? (
+            {/* Save as meal has one way out: closing it cancels. */}
+            {inMeal && !meal?.locked && keepsDraft ? (
               <Pressable
                 accessibilityRole="button"
                 hitSlop={8}

@@ -118,7 +118,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   to today (same foods, amounts and times into today's matching meal), and on
   any day Save as meal (the meal builder opens with those foods at the amounts
   eaten, to rename, trim or add to; it saves to Saved without logging, in the
-  place of a saved meal with the same name). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
+  place of a saved meal with the same name; closing it cancels, asking first
+  once it was changed; not offered for one saved meal as saved). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit

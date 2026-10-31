@@ -79,14 +79,36 @@ export function isSavedMealFood(food: Pick<Food, 'source'> | null | undefined): 
   return Boolean(food && SAVED_SOURCES.includes(food.source));
 }
 
+type SavedMealValues = Pick<Food, 'name' | 'calories' | 'protein' | 'carbs' | 'fat'>;
+
+/**
+ * A logged entry that is one of these saved meals as it is saved: the same
+ * name and, for the amount eaten, the same calories and macros. A built meal
+ * logged from Saved is logged as a fresh copy of its recipe, so its source
+ * alone does not say it is saved.
+ */
+export function matchesSavedMeal(entry: LoggedFood, meals: readonly SavedMealValues[] | null | undefined): boolean {
+  const food = entry.food;
+  const servings = amountOf(entry);
+  if (!food || !(servings > 0) || !meals?.length) return false;
+  const name = normalizeFoodName(String(food.name ?? ''));
+  const keys = ['calories', 'protein', 'carbs', 'fat'] as const;
+  return meals.some(
+    (meal) =>
+      normalizeFoodName(meal.name) === name &&
+      keys.every((key) => Math.abs((Number(meal[key]) || 0) - (Number(food[key]) || 0) * servings) < 0.5),
+  );
+}
+
 /**
  * Whether "Save as meal" has something to offer: some food to save, other
- * than a single saved meal that is already on the list.
+ * than a single saved meal that is already on the list (pass the saved meals
+ * when they are known, to tell a built one logged from Saved).
  */
-export function canSaveAsMeal(entries: readonly LoggedFood[]): boolean {
+export function canSaveAsMeal(entries: readonly LoggedFood[], savedMeals?: readonly SavedMealValues[] | null): boolean {
   const foods = entries.filter((entry) => entry.food && amountOf(entry) > 0);
   if (foods.length === 0) return false;
-  return !(foods.length === 1 && isSavedMealFood(foods[0].food));
+  return !(foods.length === 1 && (isSavedMealFood(foods[0].food) || matchesSavedMeal(foods[0], savedMeals)));
 }
 
 /**

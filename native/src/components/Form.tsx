@@ -37,6 +37,11 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
   unit?: string;
   /** Full-width text (a name) instead of a right-aligned number. */
   wide?: boolean;
+  /**
+   * With `wide`: a long value wraps onto more lines and the row grows with
+   * it, as the program editor's names do; Return finishes instead of adding a line.
+   */
+  grows?: boolean;
   invalid?: boolean;
 };
 
@@ -45,13 +50,20 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
  * anywhere on the row puts the cursor in its field. A field that cannot be
  * edited reads in graphite.
  */
-export function FieldRow({ ref, label, unit, wide, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
+export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
   const c = useBlanc();
   const field = useRef<TextField>(null);
   useImperativeHandle(ref, () => field.current as TextField);
   const locked = input.editable === false;
+  const wraps = Boolean(wide && grows);
+  const { onChangeText } = input;
   return (
-    <Pressable accessible={false} onPress={() => field.current?.focus()} disabled={locked} style={rowStyle}>
+    <Pressable
+      accessible={false}
+      onPress={() => field.current?.focus()}
+      disabled={locked}
+      // a wrapped value starts on the label's line
+      style={wraps ? [rowStyle, { alignItems: 'flex-start', paddingVertical: 15 }] : rowStyle}>
       <BlancText variant="body" tone={invalid ? 'live' : 'ink'} style={wide ? undefined : { flex: 1 }}>
         {label}
       </BlancText>
@@ -60,11 +72,14 @@ export function FieldRow({ ref, label, unit, wide, invalid, keyboardType, return
         placeholderTextColor={c.upcoming}
         accessibilityLabel={label}
         keyboardType={keyboardType}
-        returnKeyType={numberPadReturnKey(keyboardType, returnKeyType)}
+        returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
+        {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
         {...input}
+        onChangeText={wraps && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
         style={[
           typeScale.body,
-          { color: locked ? c.graphite : c.ink, padding: 0, minHeight: 44, textAlign: wide ? 'left' : 'right' },
+          { color: locked ? c.graphite : c.ink, padding: 0, minHeight: wraps ? 22 : 44, textAlign: wide ? 'left' : 'right' },
+          wraps ? { paddingTop: 0 } : null,
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },
         ]}
       />

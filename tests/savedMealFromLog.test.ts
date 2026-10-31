@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createMealIngredient, encodeMealComposition } from '@/lib/mealComposition';
-import { canSaveAsMeal, isSavedMealFood, mealFromLoggedFoods, savedMealNamed } from '@/lib/savedMealFromLog';
+import { canSaveAsMeal, isSavedMealFood, matchesSavedMeal, mealFromLoggedFoods, savedMealNamed } from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 
 const food = (id: string, name: string, extra: Partial<Food> = {}): Food => ({
@@ -96,6 +96,22 @@ describe('save logged food as a meal', () => {
     expect(canSaveAsMeal([])).toBe(false);
     expect(isSavedMealFood({ source: 'custom' })).toBe(true);
     expect(isSavedMealFood({ source: 'manual_entry' })).toBe(false);
+  });
+
+  it('does not offer saving a built saved meal logged from Saved as it is saved', () => {
+    // logged from Saved, a built meal is a fresh manual copy of the recipe
+    const logged = food('copy', 'Test lunch', { calories: 473, protein: 55, carbs: 41, fat: 10, serving_size: 1, serving_unit: 'meal', source: 'manual_entry' });
+    const saved = [{ name: 'test  LUNCH', calories: 473, protein: 55, carbs: 41, fat: 10.2 }];
+    expect(matchesSavedMeal({ food: logged, servings: 1 }, saved)).toBe(true);
+    expect(canSaveAsMeal([{ food: logged, servings: 1 }], saved)).toBe(false);
+    // a different amount, a changed recipe or another name is a new meal to save
+    expect(canSaveAsMeal([{ food: logged, servings: 2 }], saved)).toBe(true);
+    expect(canSaveAsMeal([{ food: { ...logged, calories: 500 }, servings: 1 }], saved)).toBe(true);
+    expect(canSaveAsMeal([{ food: { ...logged, name: 'Dinner bowl' }, servings: 1 }], saved)).toBe(true);
+    // unknown saved meals: offered, and the sheet says what it replaces
+    expect(canSaveAsMeal([{ food: logged, servings: 1 }], null)).toBe(true);
+    // part of a bigger meal, it can be saved with the rest
+    expect(canSaveAsMeal([{ food: logged, servings: 1 }, { food: food('b', 'Banana'), servings: 1 }], saved)).toBe(true);
   });
 
   it('finds the saved meal a name would replace, ignoring case and spacing', () => {

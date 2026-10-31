@@ -16,8 +16,10 @@ import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
+import { readSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { canSaveAsMeal } from '@/lib/savedMealFromLog';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { NutritionGroup } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -33,6 +35,7 @@ import { formatWhole } from '~/lib/format';
 import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { useYouMealsStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
@@ -73,6 +76,12 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
   }
   copy();
 }
+
+/**
+ * The saved meals this session last read (Log food's Saved list, else You's),
+ * so a built saved meal logged from Saved does not offer Save as meal again.
+ */
+const knownSavedMeals = () => readSavedFoodsCache(useAuthStore.getState().user?.id) ?? useYouMealsStore.getState().meals;
 
 /** Opens the meal builder with these foods at the amounts eaten, to keep as a saved meal; nothing is logged. */
 function saveAsMeal(logs: FoodLog[]) {
@@ -325,7 +334,7 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
   // A past day's meal can be logged again today, and any day's kept as a
   // saved meal (Unassigned too).
   const copyable = day !== today() && logs.some((log) => log.food);
-  const savable = canSaveAsMeal(logs);
+  const savable = canSaveAsMeal(logs, knownSavedMeals());
 
   const groupMenu = () => {
     const reuse = [
@@ -449,7 +458,7 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
       ? [{ title: 'Copy to today', symbol: 'doc.on.doc', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) }]
       : []),
     // Any entry can be kept as a saved meal, unless it is one already.
-    ...(canSaveAsMeal([log]) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
+    ...(canSaveAsMeal([log], knownSavedMeals()) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
     { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
