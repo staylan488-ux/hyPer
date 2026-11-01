@@ -16,7 +16,15 @@ import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
-import { useFocusStore, usePreviousNotesStore, usePreviousTargetsLookup, usePreviousTargetsStore, useSessionModel, useWorkoutDayPlan } from '~/lib/session';
+import {
+  useFocusStore,
+  usePendingSkips,
+  usePreviousNotesStore,
+  usePreviousTargetsLookup,
+  usePreviousTargetsStore,
+  useSessionModel,
+  useWorkoutDayPlan,
+} from '~/lib/session';
 import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { resetYou } from '~/lib/you';
@@ -54,6 +62,7 @@ export default function TabsLayout() {
   useEffect(
     () => () => {
       useFocusStore.getState().focus(null);
+      usePendingSkips.setState({ workoutId: null, skips: {} });
       useNotesStore.setState({ workoutId: null, drafts: {}, base: null, status: {} });
       resetHistory();
       resetYou();

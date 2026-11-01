@@ -38,6 +38,10 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   "1.6e-7" on rare frames. The fix (`native/src/lib/liftShadow.ts`) was
   checked against Reanimated's own parser and in the iOS bundle, not on a
   phone or simulator, and no crash report was read from the phone.
+- 2026-11-01: Skip a movement in a live workout (the owner's ask). Checked
+  with the web suite, lint, build, native `tsc` and an iOS bundle export; not
+  yet run in a simulator or on a phone (the Undo bar's place above the workout
+  bar, haptics, VoiceOver, a superset pair).
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

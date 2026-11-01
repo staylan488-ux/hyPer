@@ -36,7 +36,7 @@ import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeig
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
 import { localIsoDate } from '@/lib/weightTrend';
 import { planSetCountChange } from '@/lib/workoutPlanOps';
-import { parseExerciseSubstitution, planExerciseSubstitution, withoutSubstitution } from '@/lib/exerciseSubstitution';
+import { parseExerciseSubstitution, planExerciseSubstitution, withoutSessionMarks } from '@/lib/exerciseSubstitution';
 import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 
 /**
@@ -191,6 +191,7 @@ function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
         hidden: Boolean(value.hidden),
         superset_group_id: typeof value.superset_group_id === 'string' ? value.superset_group_id : null,
         ...(substitution ? { substitutes_for: substitution } : {}),
+        ...(value.skipped === true ? { skipped: true } : {}),
       } as FlexiblePlanItem;
     })
     .filter((item): item is FlexiblePlanItem => Boolean(item))
@@ -354,6 +355,10 @@ interface AppState {
   clearWorkoutSuperset: (workoutId: string, exerciseId: string) => Promise<void>;
   updateWorkoutExerciseTargetSets: (workoutId: string, exerciseId: string, targetSets: number) => Promise<void>;
   reorderWorkoutExercises: (workoutId: string, exerciseIds: string[]) => Promise<void>;
+  /** Skips a movement for this session only, or brings it back; the program is untouched. */
+  skipWorkoutExercise: (workoutId: string, exerciseId: string, skipped: boolean) => Promise<void>;
+  /** Deletes the unlogged sets of these movements (skipped ones, once the workout is finished). */
+  removeUnloggedSets: (workoutId: string, exerciseIds: string[]) => Promise<void>;
 
   // Activity actions
   fetchActivitySessionsByMonth: (month: Date) => Promise<ActivitySession[]>;
@@ -1362,7 +1367,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? currentWorkoutDayPlan.items.map((item) => (
           // Adding a removed movement again is a choice, not a swap.
           item.exercise_id === exercise.id
-            ? { ...withoutSubstitution(item), hidden: false, exercise_name: exercise.name }
+            ? { ...withoutSessionMarks(item), hidden: false, exercise_name: exercise.name }
             : item
         ))
       : [
@@ -1702,7 +1707,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { ...item, notes: movementNotesOverride[item.exercise_id].trim() || null };
       }
       return { ...item, notes: movementNotes[item.exercise_id] ?? item.notes ?? null };
-    }).map(withoutSubstitution);
+    }).map(withoutSessionMarks);
 
     const { error } = await supabase
       .from('flex_day_templates')
@@ -2683,7 +2688,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? plan.items.map((item) => (
           item.exercise_id === exercise.id
             ? {
-                ...withoutSubstitution(item),
+                ...withoutSessionMarks(item),
                 hidden: false,
                 exercise_name: exercise.name,
                 target_sets: item.target_sets ?? 1,
@@ -3237,6 +3242,75 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(updatedPlan.items),
       } });
     }
+  }),
+
+  skipWorkoutExercise: writesWorkout(async (workoutId, exerciseId, skipped) => {
+    const isAccountCurrent = captureAccountScope();
+    // A program session gets its own plan the first time, as a reorder does.
+    const currentPlan = get().currentWorkoutDayPlan;
+    const plan = currentPlan?.workout_id === workoutId
+      ? currentPlan
+      : await get().ensureWorkoutDayPlan(workoutId);
+    if (!plan || !isAccountCurrent()) throw new Error('Could not load the workout plan. Try again.');
+    if (!plan.items.some((item) => item.exercise_id === exerciseId && !item.hidden)) {
+      throw new Error('This movement is no longer in the workout.');
+    }
+
+    // Only the mark changes: never the sets, the order or the program.
+    const planAtSave = get().currentWorkoutDayPlan;
+    const nextItems = plan.items.map((item) => {
+      if (item.exercise_id !== exerciseId) return item;
+      const { skipped: wasSkipped, ...rest } = item;
+      void wasSkipped;
+      return skipped ? { ...rest, skipped: true } : rest;
+    });
+    const { data: updatedPlan, error } = await supabase
+      .from('workout_day_plans')
+      .update({ items: nextItems })
+      .eq('id', plan.id)
+      .select('id, workout_id, day_label, items')
+      .single();
+    if (error || !updatedPlan) {
+      if (error) console.error('Error saving a skipped movement:', error);
+      throw new Error(skipped ? 'Could not skip the movement. Try again.' : 'Could not bring the movement back. Try again.');
+    }
+
+    // Do not replace a different session (or newer plan edit) after a slow save.
+    const latest = get();
+    if (
+      isAccountCurrent()
+      && latest.currentWorkout?.id === workoutId
+      && latest.currentWorkoutDayPlan === planAtSave
+      && (!planAtSave || planAtSave.workout_id !== workoutId || planAtSave.id === plan.id)
+    ) {
+      set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
+    }
+  }),
+
+  removeUnloggedSets: writesWorkout(async (workoutId, exerciseIds) => {
+    if (exerciseIds.length === 0) return;
+    const isAccountCurrent = captureAccountScope();
+    // Logged sets are never touched.
+    const { error } = await supabase
+      .from('sets')
+      .delete()
+      .eq('workout_id', workoutId)
+      .in('exercise_id', exerciseIds)
+      .eq('completed', false);
+    if (error) {
+      console.error('Error removing unlogged sets:', error);
+      throw new Error('Could not save that change.');
+    }
+
+    const { currentWorkout } = get();
+    if (!isAccountCurrent() || currentWorkout?.id !== workoutId) return;
+    const removing = new Set(exerciseIds);
+    set({
+      currentWorkout: {
+        ...currentWorkout,
+        sets: currentWorkout.sets.filter((set) => set.completed || !removing.has(set.exercise_id)),
+      },
+    });
   }),
 
   fetchMacroTarget: async () => {

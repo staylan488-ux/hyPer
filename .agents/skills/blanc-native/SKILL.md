@@ -164,10 +164,23 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   row: logged sets to correct (never starts rest), the set count from 1 to 12
   whatever the program says (the owner's call on 2026-10-26; the web keeps to
   the program's range; only unfinished sets are removed), the note, and swap
-  for this workout or switch back. In a flexible session the same sheet pairs
+  or skip for this workout, switch back or bring back. In a flexible session the same sheet pairs
   a superset, unlinks it, or removes the movement (logged sets stay in the
   workout). Last time's note for the movement shows under the
   set card's "Last time" line and in the sheet's Note section. Tapping an unfinished row still makes it the next movement.
+- Skip (the owner's call, 2026-11-01): Skip beside Add RPE on the set card, a
+  row's swipe, or the movement sheet skips a movement for this workout only.
+  It is a `skipped` mark on the session plan item (`skipWorkoutExercise`; sets
+  and the program are untouched), shown at once through `usePendingSkips`
+  while it saves; a failed save puts it back with an alert. The movement
+  stays in the list as Skipped (a tap brings it back as the one up now; Undo
+  at the foot does the same for 5 s), its unlogged sets leave the counts and
+  never come up next, and a superset partner carries on alone. Finish names
+  what was skipped and, once the workout is saved, deletes those unlogged
+  sets (`removeUnloggedSets`) so History shows what was done. Logged sets
+  stay, so beat last time and next time's "Last time" read only logged sets.
+  Quick starts and a movement chosen again never keep a skip
+  (`withoutSessionMarks`).
 - Before a session, Train shows today's [PlanCard](../../../native/src/components/PlanCard.tsx)
   (shared with Today), then every other day to start. Its header menu holds the
   schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm

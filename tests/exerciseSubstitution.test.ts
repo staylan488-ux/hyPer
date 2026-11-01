@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseExerciseSubstitution, planExerciseSubstitution, withoutSubstitution } from '@/lib/exerciseSubstitution';
+import { parseExerciseSubstitution, planExerciseSubstitution, withoutSessionMarks } from '@/lib/exerciseSubstitution';
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { FlexiblePlanItem } from '@/types';
 
@@ -28,6 +28,14 @@ describe('planExerciseSubstitution', () => {
     expect(plan.items[1].substitutes_for).toEqual({ exercise_id: 'pulldown', exercise_name: 'Lat Pulldown', notes: pulldown.notes });
     expect(plan.setNumbers).toEqual([1, 2, 3]);
     expect(plan.switchingBack).toBe(false);
+  });
+
+  it('brings a skipped movement back as its replacement', () => {
+    const skipped = items.map((item) => (item.exercise_id === 'pulldown' ? { ...item, skipped: true } : item));
+    const plan = planExerciseSubstitution({ items: skipped, sets: pulldownSets, sourceId: 'pulldown', replacement: pullUp, splitSession: true });
+
+    expect(plan.items[1].exercise_id).toBe('pullup');
+    expect(plan.items[1].skipped).toBeUndefined();
   });
 
   it('drops the program cue but keeps the set count adjustable in a split session', () => {
@@ -130,6 +138,12 @@ describe('swap markers', () => {
   });
 
   it('strips the marker without touching the rest of the item', () => {
-    expect(withoutSubstitution({ ...pulldown, substitutes_for: { exercise_id: 'x', exercise_name: null } })).toEqual(pulldown);
+    expect(withoutSessionMarks({ ...pulldown, substitutes_for: { exercise_id: 'x', exercise_name: null } })).toEqual(pulldown);
+  });
+
+  it('drops a skip too, so a template or a movement chosen again starts unskipped', () => {
+    const marked = withoutSessionMarks({ ...pulldown, skipped: true, substitutes_for: { exercise_id: 'x', exercise_name: null } });
+    expect(marked).toEqual(pulldown);
+    expect('skipped' in marked).toBe(false);
   });
 });

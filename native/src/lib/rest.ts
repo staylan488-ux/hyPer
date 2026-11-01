@@ -49,8 +49,7 @@ import { addRestControlListener, markRestControlsApplied, pendingRestControls } 
 
 import { haptics } from './haptics';
 import { applyRestControls } from './restControls';
-import { useFocusStore } from './session';
-import { buildSessionModel } from './sessionModel';
+import { liveSessionModel } from './session';
 
 type RestState = {
   /** The rest in progress, as the web app stores it. A finished one reads as no rest. */
@@ -85,13 +84,7 @@ export function restLabel(movementName: string, setNumber: number): string {
 }
 
 function nextUpLabel(): string | null {
-  const { currentWorkout, activeSplit, currentWorkoutDayPlan } = useAppStore.getState();
-  const model = buildSessionModel(
-    currentWorkout,
-    { split: activeSplit, plan: currentWorkoutDayPlan },
-    useFocusStore.getState().exerciseId,
-  );
-  const next = model?.current;
+  const next = liveSessionModel()?.current;
   return next ? restLabel(next.movement.name, next.setNumber) : null;
 }
 

@@ -1,5 +1,5 @@
 // Changes to the live workout's movements: set counts, a swap for this workout
-// only and switching it back, the order, and in a flexible session adding,
+// only and switching it back, a skip, the order, and in a flexible session adding,
 // removing and pairing movements and naming the session. Writes go through the
 // shared store actions, the same ones the web Train page uses, after any notes
 // typed before them have saved.
@@ -10,7 +10,7 @@ import type { Exercise } from '@/types';
 
 import { haptics } from './haptics';
 import { afterNotes } from './notes';
-import { useFocusStore } from './session';
+import { useFocusStore, usePendingSkips } from './session';
 
 const setCount = (exerciseId: string) =>
   useAppStore.getState().currentWorkout?.sets.filter((set) => set.exercise_id === exerciseId).length ?? 0;
@@ -65,6 +65,59 @@ export async function swapMovement(workoutId: string, exerciseId: string, replac
 export async function switchBack(workoutId: string, exerciseId: string, plannedId: string, wasCurrent: boolean) {
   await changeWorkout(workoutId, () => useAppStore.getState().switchBackWorkoutExercise(exerciseId));
   handOverFocus(exerciseId, plannedId, wasCurrent);
+}
+
+// Skips save one after another, so a quick skip and undo land in the order tapped.
+let skipWrites: Promise<unknown> = Promise.resolve();
+let skipCount = 0;
+const latestSkip = new Map<string, number>();
+
+function showPendingSkip(workoutId: string, exerciseId: string, skipped: boolean | null) {
+  usePendingSkips.setState((state) => {
+    const skips = { ...(state.workoutId === workoutId ? state.skips : {}) };
+    if (skipped === null) delete skips[exerciseId];
+    else skips[exerciseId] = skipped;
+    return { workoutId, skips };
+  });
+}
+
+/**
+ * Skips a movement for this workout only, or brings it back; the program is
+ * untouched. The screen follows at once and the save comes after; a failed
+ * save puts the movement back as it was and says so. Resolves to whether it
+ * saved.
+ */
+export async function setSkipped(workoutId: string, movement: { exerciseId: string; name: string }, skipped: boolean): Promise<boolean> {
+  const { exerciseId } = movement;
+  const turn = ++skipCount;
+  latestSkip.set(exerciseId, turn);
+  showPendingSkip(workoutId, exerciseId, skipped);
+  // A skipped movement is no longer the one chosen to do next.
+  const focus = useFocusStore.getState();
+  if (skipped && focus.exerciseId === exerciseId) focus.focus(null);
+  const write = skipWrites
+    .catch(() => undefined)
+    .then(() => changeWorkout(workoutId, () => useAppStore.getState().skipWorkoutExercise(workoutId, exerciseId, skipped)));
+  skipWrites = write;
+  try {
+    await write;
+    return true;
+  } catch (error) {
+    // Quiet when a newer tap changed it again, or the workout has closed.
+    if (latestSkip.get(exerciseId) === turn && useAppStore.getState().currentWorkout?.id === workoutId) {
+      haptics.error();
+      Alert.alert(
+        skipped ? `${movement.name} not skipped` : `${movement.name} not brought back`,
+        errorMessage(error, 'Check your connection and try again.'),
+      );
+    }
+    return false;
+  } finally {
+    if (latestSkip.get(exerciseId) === turn) {
+      latestSkip.delete(exerciseId);
+      showPendingSkip(workoutId, exerciseId, null);
+    }
+  }
 }
 
 /**

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 import { mealForTime } from '../native/src/lib/meals';
-import { afterLoggedSet, buildSessionModel } from '../native/src/lib/sessionModel';
+import { afterLoggedSet, buildSessionModel, skippedLine } from '../native/src/lib/sessionModel';
 
 // The native app's live-workout model decides which set "Log set" saves to.
 
@@ -280,6 +280,102 @@ describe('buildSessionModel with supersets and flexible sessions', () => {
     const model = buildSessionModel(flexWorkout([]), { split, plan: flexPlan([]) }, null);
     expect(model?.movements).toEqual([]);
     expect(model?.current).toBeNull();
+  });
+});
+
+describe('buildSessionModel with skipped movements', () => {
+  const curl = exercise('curl', 'Dumbbell Curl');
+  const item = (exerciseRow: Exercise, order: number, extra: Partial<FlexiblePlanItem> = {}): FlexiblePlanItem => ({
+    exercise_id: exerciseRow.id,
+    exercise_name: exerciseRow.name,
+    order,
+    target_sets: 3,
+    target_reps_min: 8,
+    target_reps_max: 10,
+    notes: null,
+    hidden: false,
+    ...extra,
+  });
+  const dayPlan = (items: FlexiblePlanItem[]): WorkoutDayPlan => ({ id: 'plan-1', workout_id: 'workout-1', day_label: 'Upper A', items });
+  // Bench done, row and incline to go; row skipped.
+  const rowSkipped = dayPlan([item(bench, 0), item(row, 1, { skipped: true }), item(incline, 2)]);
+
+  it('keeps a skipped movement in the list, moves on, and leaves its unlogged sets out of the count', () => {
+    const model = buildSessionModel(midSession(), { split, plan: rowSkipped }, null);
+    expect(model?.movements.map((movement) => [movement.exerciseId, movement.skipped])).toEqual([
+      ['bench', false],
+      ['row', true],
+      ['incline', false],
+    ]);
+    expect(model?.current?.set.id).toBe('incline-1');
+    // 3 bench (logged) and 3 incline; row's 3 are out.
+    expect(model?.sets.map((set) => set.id)).toEqual(['bench-1', 'bench-2', 'bench-3', 'incline-1', 'incline-2', 'incline-3']);
+    expect(model?.doneCount).toBe(3);
+    expect(model?.current?.index).toBe(3);
+  });
+
+  it('keeps the logged sets of a movement skipped part way through', () => {
+    const partly = workout([set(bench, 1, true), set(bench, 2, false), set(row, 1, false)]);
+    const model = buildSessionModel(partly, { split, plan: dayPlan([item(bench, 0, { skipped: true }), item(row, 1)]) }, null);
+    expect(model?.movements[0]).toMatchObject({ skipped: true, done: 1 });
+    expect(model?.sets.map((set) => set.id)).toEqual(['bench-1', 'row-1']);
+    expect(model?.current?.set.id).toBe('row-1');
+  });
+
+  it('treats a skipped movement with every set logged as done', () => {
+    const finished = workout([set(bench, 1, true), set(row, 1, false)]);
+    const model = buildSessionModel(finished, { split, plan: dayPlan([item(bench, 0, { skipped: true }), item(row, 1)]) }, null);
+    expect(model?.movements[0].skipped).toBe(false);
+    expect(model?.sets).toHaveLength(2);
+  });
+
+  it('shows a skip or a bring-back still saving over the saved plan', () => {
+    const skipping = buildSessionModel(midSession(), { split, skips: { row: true } }, null);
+    expect(skipping?.movements.find((movement) => movement.exerciseId === 'row')?.skipped).toBe(true);
+    expect(skipping?.current?.set.id).toBe('incline-1');
+
+    const bringing = buildSessionModel(midSession(), { split, plan: rowSkipped, skips: { row: false } }, null);
+    expect(bringing?.movements.find((movement) => movement.exerciseId === 'row')?.skipped).toBe(false);
+    expect(bringing?.current?.set.id).toBe('row-1');
+  });
+
+  it('never brings up a skipped movement, even one chosen before', () => {
+    const model = buildSessionModel(midSession(), { split, plan: rowSkipped }, 'row');
+    expect(model?.current?.movement.exerciseId).toBe('incline');
+    const logged = set(incline, 3, true);
+    const sets = midSession().sets.map((entry) => (entry.exercise_id === 'incline' ? { ...entry, completed: true } : entry));
+    expect(afterLoggedSet(model!, logged, sets).nextExerciseId).toBeNull();
+  });
+
+  it('has nothing up once the rest is skipped', () => {
+    const plan = dayPlan([item(bench, 0), item(row, 1, { skipped: true }), item(incline, 2, { skipped: true })]);
+    const model = buildSessionModel(midSession(), { split, plan }, null);
+    expect(model?.current).toBeNull();
+    expect(model?.sets).toHaveLength(3);
+    expect(model?.doneCount).toBe(3);
+  });
+
+  it('leaves a skipped superset partner\'s pair as a movement of its own', () => {
+    const paired = dayPlan([
+      item(bench, 0, { superset_group_id: 'g1', skipped: true }),
+      item(row, 1, { superset_group_id: 'g1' }),
+      item(curl, 2),
+    ]);
+    const sets = [set(bench, 1, false), set(row, 1, false), set(row, 2, false), set(curl, 1, false)];
+    const model = buildSessionModel(workout(sets, { split_day_id: null }), { split, plan: paired }, 'row');
+    expect(model?.movements.map((movement) => movement.superset)).toEqual([null, null, null]);
+    expect(model?.current?.set.id).toBe('row-1');
+    expect(model?.current?.blocked).toBeNull();
+    expect(afterLoggedSet(model!, set(row, 1, true), sets)).toEqual({ nextExerciseId: 'row', rest: true });
+  });
+
+  it('names the skipped movements for Finish', () => {
+    const named = (ids: string[]) =>
+      skippedLine({ movements: ids.map((id) => ({ name: id, skipped: true })) as never });
+    expect(skippedLine({ movements: [] })).toBeNull();
+    expect(named(['Row'])).toBe('Skipped Row.');
+    expect(named(['Row', 'Curl'])).toBe('Skipped Row and Curl.');
+    expect(named(['Row', 'Curl', 'Dip'])).toBe('Skipped 3 movements.');
   });
 });
 
