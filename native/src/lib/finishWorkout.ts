@@ -10,7 +10,7 @@ import { haptics } from './haptics';
 import { flushNotes } from './notes';
 import { stopRest } from './rest';
 import { previousTargetsFor } from './session';
-import type { SessionModel } from './sessionModel';
+import { skippedLine, type SessionModel } from './sessionModel';
 
 // One finish at a time across every Finish button (Today and Train are both
 // mounted): a second tap anywhere while it saves does nothing.
@@ -40,12 +40,16 @@ export function useFinishWorkout(session: SessionModel | null) {
         return;
       }
       const summary = summarize(current, previousTargetsFor(current.workoutId));
+      const skipped = current.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
       const store = useAppStore.getState();
       try {
         // A flexible session can be kept as a quick start, notes included.
         if (saveTemplate) await store.saveFlexibleTemplateFromCurrentWorkout();
         await store.completeWorkout();
         if (saveTemplate) void useAppStore.getState().fetchFlexTemplates({ force: true });
+        // Skipped movements leave the finished workout, so History counts what
+        // was done. Their logged sets stay; if this fails they show as unlogged.
+        if (skipped.length) void useAppStore.getState().removeUnloggedSets(current.workoutId, skipped).catch(() => {});
         useFinishedStore.getState().set(summary);
         stopRest();
         haptics.success();
@@ -71,7 +75,7 @@ export function useFinishWorkout(session: SessionModel | null) {
     const state = useAppStore.getState();
     const label = state.currentWorkoutDayPlan?.day_label.trim() ?? '';
     const replaces = current.flexible && label !== '' && state.flexTemplates.some((template) => template.label === label);
-    const counted = `${current.doneCount} of ${current.sets.length} sets logged.`;
+    const counted = [`${current.doneCount} of ${current.sets.length} sets logged.`, skippedLine(current)].filter(Boolean).join(' ');
     Alert.alert('Finish workout?', replaces ? `${counted} Saving as a quick start replaces your “${current.dayName}” quick start.` : counted, [
       ...(current.flexible && current.movements.length > 0
         ? [{ text: 'Finish and save as quick start', onPress: () => void close(true) }]

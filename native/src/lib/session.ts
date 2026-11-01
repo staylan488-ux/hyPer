@@ -30,12 +30,36 @@ useAppStore.subscribe((state) => {
   focusWorkoutId = id;
 });
 
+/**
+ * Skips and bring-backs still saving, by exercise id (true skipped, false
+ * brought back), so the card moves on at once. Each clears once its save
+ * lands, when the plan holds it, or fails.
+ */
+export const usePendingSkips = create<{ workoutId: string | null; skips: Record<string, boolean> }>(() => ({
+  workoutId: null,
+  skips: {},
+}));
+
+const NO_SKIPS: Record<string, boolean> = {};
+
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
   const plan = useAppStore((state) => state.currentWorkoutDayPlan);
   const focused = useFocusStore((state) => state.exerciseId);
-  return useMemo(() => buildSessionModel(workout, { split, plan }, focused), [workout, split, plan, focused]);
+  const skips = usePendingSkips((state) => (workout && state.workoutId === workout.id ? state.skips : NO_SKIPS));
+  return useMemo(() => buildSessionModel(workout, { split, plan, skips }, focused), [workout, split, plan, skips, focused]);
+}
+
+/** The same, outside a component. */
+export function liveSessionModel(): SessionModel | null {
+  const { currentWorkout, activeSplit, currentWorkoutDayPlan } = useAppStore.getState();
+  const pending = usePendingSkips.getState();
+  return buildSessionModel(
+    currentWorkout,
+    { split: activeSplit, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
+    useFocusStore.getState().exerciseId,
+  );
 }
 
 /**

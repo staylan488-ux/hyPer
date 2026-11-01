@@ -218,6 +218,62 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.split_exercises).toEqual(program);
   });
 
+  it('skips a movement for this workout only, brings it back, and keeps the program and sets', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+    const sets = structuredClone(previewTables.sets);
+    const program = structuredClone(previewTables.split_exercises);
+    const skippedId = workout.sets.find((set) => !set.completed)!.exercise_id;
+
+    // A program session gets its own plan the first time, in the store too.
+    await useAppStore.getState().skipWorkoutExercise(workout.id, skippedId, true);
+    const plan = useAppStore.getState().currentWorkoutDayPlan!;
+    expect(plan.workout_id).toBe(workout.id);
+    expect(plan.items.filter((item) => item.skipped).map((item) => item.exercise_id)).toEqual([skippedId]);
+    const stored = await useAppStore.getState().fetchWorkoutDayPlanByWorkoutId(workout.id);
+    expect(stored!.items.find((item) => item.exercise_id === skippedId)?.skipped).toBe(true);
+
+    await useAppStore.getState().skipWorkoutExercise(workout.id, skippedId, false);
+    const back = useAppStore.getState().currentWorkoutDayPlan!.items.find((item) => item.exercise_id === skippedId)!;
+    expect('skipped' in back).toBe(false);
+    expect(previewTables.sets).toEqual(sets);
+    expect(previewTables.split_exercises).toEqual(program);
+  });
+
+  it('drops only the unlogged sets of skipped movements once finished', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const ofWorkout = () => previewTables.sets.filter((set) => set.workout_id === workout.id);
+    const logged = workout.sets.find((set) => set.completed)!.exercise_id;
+    const open = workout.sets.find((set) => !set.completed && set.exercise_id !== logged)!.exercise_id;
+    const skipped = new Set([logged, open]);
+    const untouched = structuredClone(ofWorkout().filter((set) => !skipped.has(set.exercise_id as string)));
+    const loggedSets = structuredClone(ofWorkout().filter((set) => skipped.has(set.exercise_id as string) && set.completed));
+    expect(loggedSets.length).toBeGreaterThan(0);
+
+    await useAppStore.getState().completeWorkout();
+    await useAppStore.getState().removeUnloggedSets(workout.id, [...skipped]);
+    expect(ofWorkout().filter((set) => skipped.has(set.exercise_id as string))).toEqual(loggedSets);
+    expect(ofWorkout().filter((set) => !skipped.has(set.exercise_id as string))).toEqual(untouched);
+  });
+
+  it('saves a quick start with a skipped movement left in, unskipped', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    await useAppStore.getState().completeWorkout();
+    await useAppStore.getState().setWorkoutMode('flexible');
+    const started = await useAppStore.getState().startFlexibleWorkout('Pull');
+    const exercise = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
+    await useAppStore.getState().addFlexibleExercise(exercise);
+    await useAppStore.getState().skipWorkoutExercise(started!.id, 'ex_row', true);
+    expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].skipped).toBe(true);
+    await useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout();
+    await useAppStore.getState().fetchFlexTemplates({ force: true });
+    const template = useAppStore.getState().flexTemplates.find((entry) => entry.label === 'Pull');
+    expect(template?.items.map((item) => item.exercise_id)).toEqual(['ex_row']);
+    expect(template?.items[0].skipped).toBeUndefined();
+  });
+
   it('deleting a program cascades its days and preserves workouts with an unlinked day', async () => {
     await useAppStore.getState().deleteSplit('split1');
     expect(useAppStore.getState().splits).toHaveLength(0);

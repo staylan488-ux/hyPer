@@ -22,15 +22,16 @@ import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
-import { TabScroll } from '~/components/TabScroll';
+import { TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
+import { UndoBar } from '~/components/UndoBar';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
-import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements } from '~/lib/movement';
+import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
@@ -40,11 +41,14 @@ import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 type Current = NonNullable<SessionModel['current']>;
+type Movement = SessionModel['movements'][number];
 /** The numbers for the set about to be logged. `touched` once the person edits them. */
 type Draft = { setId: string; weight: string; reps: string; rpe: number | null; touched: boolean };
 
 /** How long "Beat last time" holds in the card after the set saves. */
 const BEAT_MOMENT_MS = 4000;
+/** How long Undo stays after a skip, as in the program editor. */
+const UNDO_MS = 5000;
 
 /**
  * The web's autofill rule: set 1 starts from last workout's set 1, later sets
@@ -133,6 +137,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const timer = setTimeout(() => setBeat((latest) => (latest?.key === beat.key ? { ...latest, fresh: false } : latest)), BEAT_MOMENT_MS);
     return () => clearTimeout(timer);
   }, [beat]);
+  // The latest skip, to take back from the bar at the foot for a few seconds.
+  const [undo, setUndo] = useState<{ key: number; exerciseId: string; name: string; wasCurrent: boolean } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo((latest) => (latest?.key === undo.key ? null : latest)), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
   const weightField = useRef<TextField>(null);
   const repsField = useRef<TextField>(null);
 
@@ -214,6 +225,28 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
   /** Sets, note and swap for one movement. */
   const openMovement = (exerciseId: string) => router.push({ pathname: '/movement', params: { id: exerciseId } });
+
+  // Skip a movement for this workout only: the next one in turn comes up at
+  // once, and Undo (or a tap on its row) brings it back. Callers give the tap.
+  const skip = (movement: Movement) => {
+    Keyboard.dismiss();
+    const wasCurrent = movement.exerciseId === current?.movement.exerciseId;
+    const key = Date.now();
+    setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent });
+    AccessibilityInfo.announceForAccessibility(`${movement.name} skipped`);
+    void setSkipped(session.workoutId, movement, true).then((saved) => {
+      if (saved) return;
+      setUndo((latest) => (latest?.key === key ? null : latest));
+      if (wasCurrent && useFocusStore.getState().exerciseId === null) focus(movement.exerciseId);
+    });
+  };
+
+  /** Brings a skipped movement back; `next` makes it the one up now. */
+  const bringBack = (movement: Pick<Movement, 'exerciseId' | 'name'>, next: boolean) => {
+    setUndo((latest) => (latest?.exerciseId === movement.exerciseId ? null : latest));
+    if (next) focus(movement.exerciseId);
+    void setSkipped(session.workoutId, movement, false);
+  };
 
   const { finish, closing } = useFinishWorkout(session);
 
@@ -318,28 +351,42 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     }
   };
 
-  const movementRow = (movement: SessionModel['movements'][number], blockIndex: number) => {
+  const movementRow = (movement: Movement, blockIndex: number) => {
     const isCurrent = movement.exerciseId === current?.movement.exerciseId;
     const complete = movement.done === movement.sets.length;
     const plan = movement.plan;
     const lastSet = previous[movement.exerciseId]?.[1];
-    // Swipe to swap a movement with sets to go and, in a flexible session, to
-    // take it out (asks first).
+    const hasSetsLeft = movement.sets.some((set) => !set.completed);
+    // Swipe to swap or skip a movement with sets to go and, in a flexible
+    // session, to take it out (asks first).
     const swipe: SwipeAction[] = [
-      ...(movement.sets.some((set) => !set.completed)
+      ...(hasSetsLeft
         ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
         : []),
+      ...(hasSetsLeft && !movement.skipped ? [{ label: 'Skip', onPress: () => skip(movement) }] : []),
       ...(session.flexible
         ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
         : []),
     ];
-    // What a hold and a drag do, for VoiceOver.
+    // What a hold, a swipe and a drag do, for VoiceOver.
     const actions = [
       { label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) },
+      ...(hasSetsLeft && !movement.skipped ? [{ label: 'Skip for this workout', run: () => skip(movement) }] : []),
       ...(blockIndex > 0 ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1) }] : []),
       ...(blockIndex < blocks.length - 1 ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1) }] : []),
     ];
-    const row = complete ? (
+    const row = movement.skipped ? (
+      // Skipped for this workout; a tap brings it back as the one up now.
+      <Row
+        quiet
+        title={movement.name}
+        value={movement.done ? `Skipped · ${movement.done} of ${movement.sets.length}` : 'Skipped'}
+        leading={<SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />}
+        accessibilityLabel={`${movement.name}, skipped${movement.done ? `, ${movement.done} sets logged` : ''}. Bring back`}
+        onPress={() => bringBack(movement, true)}
+        actions={actions}
+      />
+    ) : complete ? (
       // Finished movements open their sets, to correct one.
       <Row
         quiet
@@ -486,28 +533,28 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
-                onPress={pickRpe}
-                // 32 points drawn, 44 to touch.
-                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                style={({ pressed }) => ({
-                  height: 32,
-                  paddingHorizontal: 12,
-                  borderRadius: 16,
-                  justifyContent: 'center',
-                  backgroundColor: pressed ? c.pressed : c.fill,
-                })}>
-                <BlancText variant="footnote" weight="500">
-                  {draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
-                </BlancText>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pill
+                  label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
+                  accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
+                  onPress={pickRpe}
+                />
+                {/* For this workout only; the program keeps it. */}
+                <Pill
+                  label="Skip"
+                  accessibilityLabel={`Skip ${current.movement.name}`}
+                  accessibilityHint="For this workout only. Undo brings it back."
+                  onPress={() => {
+                    haptics.tap();
+                    skip(current.movement);
+                  }}
+                />
+              </View>
               {beat?.fresh ? (
                 <BeatLine key={beat.key} gain={beat.gain} style={{ marginLeft: 12 }} />
               ) : last && last.weight !== null && last.reps !== null ? (
-                <Animated.View key="last" entering={FadeIn.duration(220)}>
-                  <BlancText variant="meta" tone="graphite">
+                <Animated.View key="last" entering={FadeIn.duration(220)} style={{ flexShrink: 1, marginLeft: 12 }}>
+                  <BlancText variant="meta" tone="graphite" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                     Last time {formatLoad(last.weight)} × {last.reps}
                   </BlancText>
                 </Animated.View>
@@ -550,7 +597,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <View style={{ gap: 4 }}>
-              <BlancText variant="headline">All sets logged</BlancText>
+              {/* Everything left was skipped when nothing was logged. */}
+              <BlancText variant="headline">{session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}</BlancText>
               {beat ? <BeatLine key={beat.key} gain={beat.gain} /> : null}
             </View>
             <Capsule title="Finish workout" size="large" fill busy={closing} onPress={finish} />
@@ -597,6 +645,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ) : null}
       </TabScroll>
 
+      <UndoBar
+        label={undo ? `${undo.name} skipped` : null}
+        bottom={tabBarCover(true) + 8}
+        onUndo={() => {
+          if (undo) bringBack(undo, undo.wasCurrent);
+        }}
+      />
+
       {editing ? (
         <KeyboardStickyView style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
           <KeyBar
@@ -608,6 +664,40 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         </KeyboardStickyView>
       ) : null}
     </>
+  );
+}
+
+/** A quiet pill beside the figures (RPE, Skip): 32 points drawn, 44 to touch. */
+function Pill({
+  label,
+  accessibilityLabel,
+  accessibilityHint,
+  onPress,
+}: {
+  label: string;
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+  onPress: () => void;
+}) {
+  const c = useBlanc();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      onPress={onPress}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      style={({ pressed }) => ({
+        height: 32,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        justifyContent: 'center',
+        backgroundColor: pressed ? c.pressed : c.fill,
+      })}>
+      <BlancText variant="footnote" weight="500">
+        {label}
+      </BlancText>
+    </Pressable>
   );
 }
 

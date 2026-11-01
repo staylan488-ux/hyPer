@@ -28,10 +28,14 @@ export function parseExerciseSubstitution(raw: unknown): ExerciseSubstitution | 
   };
 }
 
-/** The item without its swap marker, e.g. for a template that outlives the session. */
-export function withoutSubstitution(item: FlexiblePlanItem): FlexiblePlanItem {
-  const { substitutes_for: substitution, ...rest } = item;
+/**
+ * The item without its marks for this session only (a swap, a skip), e.g. for
+ * a template that outlives the session or a movement chosen again.
+ */
+export function withoutSessionMarks(item: FlexiblePlanItem): FlexiblePlanItem {
+  const { substitutes_for: substitution, skipped, ...rest } = item;
   void substitution;
+  void skipped;
   return rest;
 }
 
@@ -88,7 +92,7 @@ export function planExerciseSubstitution({
     : Array.from({ length: pending }, (_, index) => firstNumber + index);
   const restoredRange = parseSetRangeNotes(origin.notes, pending);
 
-  const slotItem = withoutSubstitution({
+  const slotItem = withoutSessionMarks({
     ...sourceItem,
     order: sourceItem?.order ?? items.length,
     exercise_id: replacement.id,

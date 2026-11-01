@@ -7,8 +7,11 @@ import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
-/** A quiet bar at the foot of the screen that takes back the latest removal. */
-export function UndoBar({ label, onUndo }: { label: string | null; onUndo: () => void }) {
+/**
+ * A quiet bar at the foot of the screen that takes back the latest removal.
+ * `bottom` lifts it over bars the screen sits under (a tab page's tab bar).
+ */
+export function UndoBar({ label, onUndo, bottom }: { label: string | null; onUndo: () => void; bottom?: number }) {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
   if (!label) return null;
@@ -18,7 +21,7 @@ export function UndoBar({ label, onUndo }: { label: string | null; onUndo: () =>
       entering={FadeInDown.duration(200)}
       exiting={FadeOutDown.duration(160)}
       pointerEvents="box-none"
-      style={{ position: 'absolute', left: 16, right: 16, bottom: Math.max(insets.bottom, 12) + 8 }}>
+      style={{ position: 'absolute', left: 16, right: 16, bottom: bottom ?? Math.max(insets.bottom, 12) + 8 }}>
       <View
         accessibilityLiveRegion="polite"
         style={{

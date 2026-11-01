@@ -37,6 +37,12 @@ export type Movement = {
   note: string;
   /** The superset this movement belongs to, with its partner, when it is one of a pair. */
   superset: { groupId: string; role: SupersetRole; partnerId: string; partnerName: string } | null;
+  /**
+   * Skipped for this workout only: it stays in the list, but its unlogged
+   * sets are out of the count and never come up next. Only a movement with
+   * sets left can be skipped.
+   */
+  skipped: boolean;
 };
 
 export type SessionModel = {
@@ -46,7 +52,10 @@ export type SessionModel = {
   /** A flexible session: built as it goes, so movements can be added, removed and paired. */
   flexible: boolean;
   startedAt: Date;
-  /** Every set in session order: movement by movement, set by set. */
+  /**
+   * Every set in session order: movement by movement, set by set. A skipped
+   * movement's unlogged sets are left out; its logged ones stay.
+   */
   sets: WorkoutSet[];
   doneCount: number;
   movements: Movement[];
@@ -74,8 +83,10 @@ export const MAX_SETS = 12;
 
 export type SessionSources = {
   split: Split | null;
-  /** The workout's own session plan, when it has one (swaps, reorders, flexible sessions). */
+  /** The workout's own session plan, when it has one (swaps, reorders, flexible sessions, skips). */
   plan?: WorkoutDayPlan | null;
+  /** Skips still saving, by exercise id (true skipped, false brought back); they win over the plan. */
+  skips?: Readonly<Record<string, boolean>>;
 };
 
 /**
@@ -86,7 +97,7 @@ export type SessionSources = {
  */
 export function buildSessionModel(
   workout: Workout | null,
-  { split, plan = null }: SessionSources,
+  { split, plan = null, skips = {} }: SessionSources,
   focusedExerciseId: string | null,
   now = Date.now(),
 ): SessionModel | null {
@@ -102,6 +113,8 @@ export function buildSessionModel(
   // A movement taken out of a flexible session keeps its logged sets in the
   // totals but leaves the list, as on the web.
   const removed = new Set(flexible ? planned.filter((exercise) => exercise.hidden).map((exercise) => exercise.exercise_id) : []);
+  // Skipped for this workout, as saved in the plan or still saving.
+  const markedSkipped = (exerciseId: string) => skips[exerciseId] ?? plans.get(exerciseId)?.skipped === true;
 
   // Grouped in session order; a Map keeps the order sets first appear in.
   const allSets = orderSessionSets(workout.sets, sessionOrder(planned));
@@ -113,11 +126,17 @@ export function buildSessionModel(
   }
   const order = [...byExercise.keys()].filter((exerciseId) => !removed.has(exerciseId));
   const names = new Map([...byExercise].map(([exerciseId, sets]) => [exerciseId, sets[0]?.exercise?.name ?? 'Exercise']));
+  // A movement with every set logged is done, whatever its mark says.
+  const skipped = new Set(
+    order.filter((exerciseId) => markedSkipped(exerciseId) && (byExercise.get(exerciseId) ?? []).some((set) => !set.completed)),
+  );
+  const active = order.filter((exerciseId) => !skipped.has(exerciseId));
 
+  // Skipping one of a superset leaves its partner as a movement of its own.
   const groups = new Map(
     planned.flatMap((exercise) => (exercise.superset_group_id && !exercise.hidden ? [[exercise.exercise_id, exercise.superset_group_id] as const] : [])),
   );
-  const pairings = supersetFlows(order, groups);
+  const pairings = supersetFlows(active, groups);
 
   const movements: Movement[] = order.map((exerciseId) => {
     const sets = byExercise.get(exerciseId) ?? [];
@@ -136,12 +155,15 @@ export function buildSessionModel(
       superset: flow
         ? { groupId: flow.groupId, role: flow.role, partnerId: flow.partnerExerciseId, partnerName: names.get(flow.partnerExerciseId) ?? 'Exercise' }
         : null,
+      skipped: skipped.has(exerciseId),
     };
   });
 
-  const sets = movements.flatMap((movement) => movement.sets);
-  const focused = movements.find((movement) => movement.exerciseId === focusedExerciseId);
-  const nextSet = focused?.sets.find((set) => !set.completed) ?? nextWorkoutSet(sets, order, undefined, undefined, pairings) ?? null;
+  // What is left to do: everything but the skipped movements.
+  const sets = movements.flatMap((movement) => (movement.skipped ? [] : movement.sets));
+  const counted = allSets.filter((set) => set.completed || !skipped.has(set.exercise_id));
+  const focused = movements.find((movement) => movement.exerciseId === focusedExerciseId && !movement.skipped);
+  const nextSet = focused?.sets.find((set) => !set.completed) ?? nextWorkoutSet(sets, active, undefined, undefined, pairings) ?? null;
   const chosen = nextSet ? movements.find((movement) => movement.exerciseId === nextSet.exercise_id) ?? null : null;
 
   return {
@@ -150,8 +172,8 @@ export function buildSessionModel(
     dayName: day?.day_name ?? (items && plan?.day_label ? plan.day_label : 'Workout'),
     flexible,
     startedAt: new Date(workout.created_at ?? now),
-    sets: allSets,
-    doneCount: allSets.filter((set) => set.completed).length,
+    sets: counted,
+    doneCount: counted.filter((set) => set.completed).length,
     movements,
     current:
       chosen && nextSet
@@ -159,7 +181,7 @@ export function buildSessionModel(
             movement: chosen,
             set: nextSet,
             setNumber: chosen.sets.indexOf(nextSet) + 1,
-            index: allSets.indexOf(nextSet),
+            index: counted.indexOf(nextSet),
             blocked: supersetLogBlock(nextSet, pairings.get(chosen.exerciseId), sets),
           }
         : null,
@@ -177,9 +199,18 @@ export function afterLoggedSet(
   logged: WorkoutSet,
   latestSets: readonly WorkoutSet[],
 ): { nextExerciseId: string | null; rest: boolean } {
-  const order = session.movements.map((movement) => movement.exerciseId);
+  const order = session.movements.filter((movement) => !movement.skipped).map((movement) => movement.exerciseId);
   const flow = session.pairings.get(logged.exercise_id);
   const listed = latestSets.filter((set) => order.includes(set.exercise_id));
   const next = nextWorkoutSet(listed, order, logged, flow, session.pairings);
   return { nextExerciseId: next?.exercise_id ?? null, rest: !flow || flow.role === 'B' };
+}
+
+/** What Finish says about skipped movements: their names, or how many. */
+export function skippedLine(session: Pick<SessionModel, 'movements'>): string | null {
+  const names = session.movements.filter((movement) => movement.skipped).map((movement) => movement.name);
+  if (names.length === 0) return null;
+  if (names.length === 1) return `Skipped ${names[0]}.`;
+  if (names.length === 2) return `Skipped ${names[0]} and ${names[1]}.`;
+  return `Skipped ${names.length} movements.`;
 }

@@ -16,6 +16,8 @@ export interface SessionExercise {
   /** Set when this movement replaced a planned one for this session only. */
   substitutes_for?: ExerciseSubstitution | null;
   hidden?: boolean;
+  /** Skipped for this session only (session plans only). */
+  skipped?: boolean;
 }
 
 /** The session plan's items, when the plan belongs to this workout. */

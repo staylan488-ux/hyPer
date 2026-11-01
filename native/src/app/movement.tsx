@@ -19,7 +19,7 @@ import { gainOnLastTime } from '~/lib/beatLastTime';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { changeSetCount, confirmRemoveMovement, errorMessage, switchBack, unlinkSuperset } from '~/lib/movement';
+import { changeSetCount, confirmRemoveMovement, errorMessage, setSkipped, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
 import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
@@ -27,8 +27,8 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
  * One movement of the live workout: correct a logged set, change how many
- * sets it has, keep a note, or swap it for this workout only. In a flexible
- * session it can also be paired as a superset or taken out.
+ * sets it has, keep a note, or swap or skip it for this workout only. In a
+ * flexible session it can also be paired as a superset or taken out.
  */
 export default function MovementSheet() {
   const c = useBlanc();
@@ -88,6 +88,7 @@ export default function MovementSheet() {
 
 /** "Instead of Bench Press" for a swap, the superset, else the rep target. */
 function movementLine(movement: Movement): string {
+  if (movement.skipped) return 'Skipped for this workout';
   if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
   if (movement.superset) return `Superset ${movement.superset.role} · with ${movement.superset.partnerName}`;
   return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${movement.sets.length} sets`;
@@ -245,7 +246,7 @@ function MovementDetail({
       </Section>
 
       {hasUnfinished ? (
-        <Section title="Swap">
+        <Section title="This workout">
           <Label>
             {movement.substitutesFor ? (
               <>
@@ -258,9 +259,16 @@ function MovementDetail({
               </>
             ) : null}
             <Row
-              title="Swap for this workout"
+              title="Swap"
               chevron
               onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId } })}
+            />
+            <Hairline />
+            {/* Shows the change at once; the save follows, and says so if it fails. */}
+            <Row
+              title={movement.skipped ? 'Bring back' : 'Skip'}
+              accessibilityLabel={movement.skipped ? `Bring back ${movement.name}` : `Skip ${movement.name} for this workout`}
+              onPress={() => void setSkipped(workoutId, movement, !movement.skipped)}
             />
           </Label>
           <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>

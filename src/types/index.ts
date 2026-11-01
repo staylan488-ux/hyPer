@@ -102,6 +102,8 @@ export interface FlexiblePlanItem {
   superset_group_id?: string | null;
   /** Set when this movement replaced a planned one for this session only. */
   substitutes_for?: ExerciseSubstitution | null;
+  /** Skipped for this session only: its unlogged sets wait out of the way. */
+  skipped?: boolean;
 }
 
 export interface WorkoutDayPlan {

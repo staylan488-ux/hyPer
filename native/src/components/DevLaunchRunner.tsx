@@ -4,8 +4,9 @@ import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
+import { setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
-import { previousTargetsFor, useFocusStore } from '~/lib/session';
+import { liveSessionModel, previousTargetsFor, useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
 import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
 
@@ -77,6 +78,16 @@ export function DevLaunchRunner() {
             console.log('[switch] trace end');
           }, 2500);
         }, 2500),
+      );
+    }
+
+    if (action === 'skipMovement') {
+      // The same path as Skip on the card, for the movement up now.
+      timers.push(
+        setTimeout(() => {
+          const session = liveSessionModel();
+          if (session?.current) void setSkipped(session.workoutId, session.current.movement, true);
+        }, 1500),
       );
     }
 

@@ -16,6 +16,11 @@ const TAB_BAR = 49;
 const WORKOUT_ACCESSORY = 56;
 const windowInsets = initialWindowMetrics?.insets ?? { top: 59, bottom: 34 };
 
+/** How much of a tab page the tab bar (and the workout bar above it) covers at the foot. */
+export function tabBarCover(accessory: boolean): number {
+  return windowInsets.bottom + TAB_BAR + (accessory ? WORKOUT_ACCESSORY : 0);
+}
+
 // Debug builds log the sizing with the launch argument `-hyperTrace 1`.
 const trace = __DEV__ && Settings.get('hyperTrace') === '1';
 
@@ -40,7 +45,7 @@ export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
           content,
           endSpace: END_SPACE,
           insetTop: windowInsets.top + NAV_BAR_WITH_LARGE_TITLE,
-          insetBottom: windowInsets.bottom + TAB_BAR + (accessory ? WORKOUT_ACCESSORY : 0),
+          insetBottom: tabBarCover(accessory),
         })
       : 0;
 
