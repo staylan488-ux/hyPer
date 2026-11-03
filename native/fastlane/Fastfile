@@ -32,10 +32,10 @@ platform :ios do
               "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']} " \
               "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}"
 
-    # A fresh native project for the released identity and this build number.
-    sh({ "HYPER_BUILD_NUMBER" => next_build.to_s, "LANG" => "en_US.UTF-8" },
-       "cd '#{native}' && npx expo prebuild --platform ios --clean")
-    sh("'#{native}/scripts/use-rn-core.sh' Release")
+    # Install pods explicitly: Expo prebuild can exit successfully after a pod
+    # failure. The helper also exports the build number to the whole prebuild,
+    # rather than attaching it only to a shell's `cd` command.
+    sh("'#{native}/scripts/prepare-release.sh' '#{next_build}'")
 
     build_app(
       workspace: "#{native}/ios/hyPerNative.xcworkspace",

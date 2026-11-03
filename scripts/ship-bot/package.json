@@ -6,7 +6,8 @@
   "description": "Discord /ship bot — triggers the hyPer TestFlight pipeline (scripts/ship.sh)",
   "main": "bot.mjs",
   "scripts": {
-    "start": "node bot.mjs"
+    "start": "node bot.mjs",
+    "test": "node --test error-tail.test.mjs"
   },
   "dependencies": {
     "discord.js": "^14.16.3"
