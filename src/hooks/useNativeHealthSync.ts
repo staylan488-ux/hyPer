@@ -15,15 +15,15 @@ import { NativeHealth, hasNativeHealth } from '@/lib/nativeBridge';
 export function useNativeHealthSync(userId: string | undefined): void {
   useEffect(() => {
     if (!userId || !hasNativeHealth() || !isHealthWeightSyncEnabled()) return;
-    let cancelled = false;
+    const controller = new AbortController();
     let listener: { remove: () => Promise<void> } | null = null;
     let syncing = false;
 
     const sync = async () => {
-      if (cancelled || syncing) return;
+      if (controller.signal.aborted || syncing) return;
       syncing = true;
       try {
-        await syncNativeBodyWeights(userId);
+        await syncNativeBodyWeights(userId, controller.signal);
       } catch {
         // Settings exposes a manual retry. Background reconciliation is best effort.
       } finally {
@@ -34,9 +34,10 @@ export function useNativeHealthSync(userId: string | undefined): void {
     void (async () => {
       try {
         await NativeHealth.enableWeightUpdates();
+        if (controller.signal.aborted) return;
         listener = await NativeHealth.addListener('weightSamplesChanged', () => void sync());
         // Unmounted while the listener was being added: drop it at once.
-        if (cancelled) void listener.remove();
+        if (controller.signal.aborted) void listener.remove();
       } catch {
         // Foreground reconciliation below still runs.
       }
@@ -45,7 +46,7 @@ export function useNativeHealthSync(userId: string | undefined): void {
     const stopWatching = onAppVisible(() => void sync());
 
     return () => {
-      cancelled = true;
+      controller.abort();
       stopWatching();
       void listener?.remove();
     };

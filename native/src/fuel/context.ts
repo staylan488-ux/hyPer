@@ -28,8 +28,8 @@ export type LoggerContextValue = {
   composeMeal: (food: Food, editSaved?: boolean) => void;
   /** Closes the sheet after a confirmed save. */
   complete: () => void;
-  /** A photo, describe or barcode lookup is running. */
-  setBusy: (busy: boolean) => void;
+  /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. */
+  beginBusy: () => () => void;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

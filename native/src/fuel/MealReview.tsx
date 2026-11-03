@@ -6,7 +6,7 @@ import Animated from 'react-native-reanimated';
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
-import { saveComposedMeal } from '@/lib/saveMealComposition';
+import { assertComposedMealOptions, saveComposedMeal } from '@/lib/saveMealComposition';
 import { savedMealNamed } from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -75,15 +75,15 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         }
         mealType = destination.mealType;
       }
+      const options = saveOnly
+        ? { saveOnly, editSavedMealId: replaces?.id }
+        : { editEntryId: editingEntryId, editSavedMealId: savedTarget?.id, mealType };
+      // A save that can never go through must not lock the meal: a locked
+      // meal can't be changed or discarded, only saved again.
+      assertComposedMealOptions(options);
       const locked = { ...draft, name: draft.name.trim(), locked: true };
       update(locked);
-      await saveComposedMeal(
-        locked,
-        userId,
-        saveOnly
-          ? { saveOnly, editSavedMealId: replaces?.id }
-          : { editEntryId: editingEntryId, editSavedMealId: savedTarget?.id, mealType },
-      );
+      await saveComposedMeal(locked, userId, options);
       haptics.success();
       onSaved();
     } catch (failure) {

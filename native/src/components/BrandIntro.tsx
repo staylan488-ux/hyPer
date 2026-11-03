@@ -193,7 +193,7 @@ export function BrandIntro({ ready, onDone }: BrandIntroProps) {
     frames.setActive(true);
     const fallback = setTimeout(() => setStarted(true), ms.startFallback);
     return () => clearTimeout(fallback);
-  }, [firstScreen]);
+  }, [firstScreen, frames]);
 
   // The P blooms, settles, and the word unfolds out of it.
   useEffect(() => {
@@ -217,7 +217,7 @@ export function BrandIntro({ ready, onDone }: BrandIntroProps) {
     void AccessibilityInfo.isScreenReaderEnabled()
       .then((on) => on && setSkipped(true))
       .catch(() => {});
-  }, [started]);
+  }, [started, frames, pOpacity, rise, bloom, y, e, h, r, gx]);
 
   const fadeOut = useEffectEvent(() => {
     fold.value = withTiming(1, { duration: 300, easing: easeIn });

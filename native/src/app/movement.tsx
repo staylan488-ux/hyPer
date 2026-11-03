@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { format, parseISO } from 'date-fns';
 import { useEffect, useState } from 'react';
@@ -127,6 +127,12 @@ function MovementDetail({
   // Logged sets that beat the same set last time carry an up mark.
   const previous = usePreviousTargets(workoutId);
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
+  // After a switch back or a removal saves, the sheet closes only if it is
+  // still on top: closed while it saved, the back would close the next screen.
+  const navigation = useNavigation();
+  const closeSheet = () => {
+    if (navigation.isFocused()) router.back();
+  };
 
   // Closing the sheet saves the note at once rather than after the pause.
   useEffect(() => () => saveNoteNow(workoutId, movement.exerciseId), [workoutId, movement.exerciseId]);
@@ -150,7 +156,7 @@ function MovementDetail({
     try {
       await switchBack(workoutId, movement.exerciseId, planned.exercise_id, isCurrent);
       haptics.success();
-      router.back();
+      closeSheet();
     } catch (error) {
       haptics.error();
       setSwitching(false);
@@ -175,7 +181,7 @@ function MovementDetail({
   const confirmRemove = () =>
     confirmRemoveMovement(workoutId, movement, {
       onStart: () => setEditingPlan('remove'),
-      onRemoved: () => router.back(),
+      onRemoved: closeSheet,
       onFailed: () => setEditingPlan(null),
     });
 

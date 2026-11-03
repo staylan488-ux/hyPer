@@ -439,12 +439,19 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     next.lastPoint = anchor;
     next.lastAcceptedMs = sample.t;
     if (!next.hasGpsLock && next.warmupCount >= config.warmupSamples) {
-      // Do not charge GPS acquisition time to the run or its first lap.
+      // Do not charge GPS acquisition time to the run or its first lap. A
+      // rest or split taken while acquiring came before the clock started:
+      // its pause would come off the run's time, its lap is an empty 0 m.
       next.hasGpsLock = true;
       next.startedAtMs = sample.t;
       next.lapStartMs = sample.t;
       next.lastManualSplitMs = null;
       next.window = [];
+      next.laps = [];
+      next.totalPausedMs = 0;
+      next.lapPausedMs = 0;
+      next.totalAutoPausedMs = 0;
+      next.lapAutoPausedMs = 0;
     }
     return trace(next, 'warming');
   }

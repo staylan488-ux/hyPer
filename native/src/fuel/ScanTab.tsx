@@ -38,8 +38,13 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
   const [missed, setMissed] = useState<string | null>(null);
   // a newer scan, or leaving Scan, drops a late result
   const [gate] = useState(createRequestGate);
-  const { setBusy, chooseFood } = logger;
+  const { beginBusy, chooseFood } = logger;
   useEffect(() => () => gate.invalidate(), [gate]);
+  // Leaving Scan discards its result, so it releases the sheet immediately.
+  useEffect(() => {
+    if (state !== 'looking-up') return;
+    return beginBusy();
+  }, [state, beginBusy]);
 
   const resolve = useCallback(
     async (rawValue: string, format?: string) => {
@@ -55,7 +60,6 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
       setState('looking-up');
       setMessage(`Looking up ${barcode}…`);
       const isCurrent = gate.begin();
-      setBusy(true);
       try {
         const result = await withTimeout(lookupBarcode(barcode, isCurrent), BARCODE_LOOKUP_TIMEOUT_MS, BARCODE_MESSAGES.timeout);
         if (!isCurrent() || result.status === 'stale') return;
@@ -74,11 +78,9 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         haptics.error();
         setState('error');
         setMessage(error instanceof Error ? error.message : BARCODE_MESSAGES.failed);
-      } finally {
-        setBusy(false);
       }
     },
-    [chooseFood, gate, setBusy],
+    [chooseFood, gate],
   );
 
   const scan = useCallback(async () => {

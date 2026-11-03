@@ -2611,6 +2611,22 @@ describe('session-only exercise substitution', () => {
     expect(saved[0]).not.toHaveProperty('substitutes_for');
   });
 
+  it('reports a quick start that did not save, so Finish keeps the workout open', async () => {
+    const chain = createChain();
+    Object.assign(chain, { error: { message: 'offline' } });
+    supabaseMock.from.mockReturnValue(chain);
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
+    const fetchFlexTemplates = vi.fn(async () => {});
+    useAppStore.setState({
+      fetchFlexTemplates,
+      currentWorkout: { ...makeWorkoutWithSet(original), split_day_id: null },
+      currentWorkoutDayPlan: { id: 'plan', workout_id: 'workout-1', day_label: 'Pull', items: [{ exercise_id: 'original', order: 0 }] },
+    });
+    await expect(useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout()).rejects.toThrow('Could not save the quick start');
+    expect(chain.upsert).toHaveBeenCalled();
+    expect(fetchFlexTemplates).not.toHaveBeenCalled();
+  });
+
   it('reads swap markers back from the saved session plan', async () => {
     const chain = createChain();
     chain.maybeSingle.mockResolvedValue({ data: { id: 'plan', workout_id: 'workout-1', day_label: 'Upper', items: [
@@ -3152,6 +3168,35 @@ describe('History plan edits read the plan once and write it once', () => {
 
     expect([plan.reads(), plan.writes()]).toEqual([1, 1]);
     expect(plan.row.items[0].target_sets).toBe(3);
+  });
+});
+
+describe('History month reads tell a failed read from an empty month', () => {
+  // Every builder step returns the query; awaiting it gives the result.
+  function query(result: { data: unknown; error: { message: string } | null }) {
+    const chain: Record<string, unknown> = {};
+    for (const method of ['select', 'eq', 'is', 'gte', 'lte', 'order']) chain[method] = vi.fn(() => chain);
+    chain.then = (resolve: (value: typeof result) => unknown) => resolve(result);
+    return chain;
+  }
+  const month = new Date(2026, 9, 15);
+
+  it('throws when a read fails, so History shows it could not load', async () => {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
+    supabaseMock.from.mockReturnValue(query({ data: null, error: { message: 'offline' } }));
+    await expect(useAppStore.getState().fetchWorkoutsByMonth(month)).rejects.toMatchObject({ message: 'offline' });
+    await expect(useAppStore.getState().fetchActivitySessionsByMonth(month)).rejects.toMatchObject({ message: 'offline' });
+  });
+
+  it('still returns an empty month when nothing was logged or nobody is signed in', async () => {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
+    supabaseMock.from.mockReturnValue(query({ data: [], error: null }));
+    await expect(useAppStore.getState().fetchWorkoutsByMonth(month)).resolves.toEqual([]);
+    await expect(useAppStore.getState().fetchActivitySessionsByMonth(month)).resolves.toEqual([]);
+
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+    await expect(useAppStore.getState().fetchWorkoutsByMonth(month)).resolves.toEqual([]);
+    await expect(useAppStore.getState().fetchActivitySessionsByMonth(month)).resolves.toEqual([]);
   });
 });
 

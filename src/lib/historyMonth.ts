@@ -169,7 +169,7 @@ export function buildPastSetUpdate(
 /**
  * Loads a History month: its workouts with their program-day or session
  * names, and its activities. The store fetchers return [] when nobody is
- * signed in.
+ * signed in, and throw when a read fails.
  */
 export async function fetchHistoryMonth(month: Date): Promise<{ workouts: HistoryWorkout[]; activities: ActivitySession[] }> {
   const store = useAppStore.getState();
@@ -184,11 +184,15 @@ export async function fetchHistoryMonth(month: Date): Promise<{ workouts: Histor
   const [splitDayResult, planResult] = await Promise.all([
     splitDayIds.length > 0
       ? supabase.from('split_days').select('id, day_name').in('id', splitDayIds)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     flexibleIds.length > 0
       ? supabase.from('workout_day_plans').select('workout_id, day_label').in('workout_id', flexibleIds)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  // A failed name read is not a missing program: let History keep the last
+  // complete month and offer Retry instead of replacing names with Unknown.
+  if (splitDayResult.error) throw splitDayResult.error;
+  if (planResult.error) throw planResult.error;
   const splitDays = new Map(((splitDayResult.data || []) as { id: string; day_name: string }[]).map((row) => [row.id, row.day_name]));
   const labels = new Map(((planResult.data || []) as { workout_id: string; day_label: string }[]).map((row) => [row.workout_id, row.day_label]));
 

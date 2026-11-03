@@ -27,7 +27,7 @@ import {
 } from '~/lib/session';
 import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
-import { resetYou } from '~/lib/you';
+import { resetYou, useHealthStore } from '~/lib/you';
 import { dynamicInk } from '~/theme/blanc';
 
 // Sheets that belong to the live workout; the screen stays awake under them too.
@@ -55,7 +55,10 @@ export default function TabsLayout() {
   useWhoopForegroundSync(userId);
   // The released app turns Health sync back on once if the Capacitor app had it on.
   const healthReady = useHealthCarryOver(userId);
-  useNativeHealthSync(healthReady ? userId : undefined);
+  // It follows the switch in You: Stop prevents further import pages (an
+  // upload already sent may finish); turning it on needs no relaunch.
+  const healthOn = useHealthStore((state) => state.enabled);
+  useNativeHealthSync(healthReady && healthOn ? userId : undefined);
   // The tabs unmount only on sign-out: leave nothing of this account behind.
   // (The rest, its notification and the lock-screen card are cleared by the
   // shared sign-out guard in useRestLifecycle.)

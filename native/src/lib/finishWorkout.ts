@@ -1,15 +1,17 @@
 import { router } from 'expo-router';
 import { useCallback, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
 import { create } from 'zustand';
 
+import { captureAccountScope } from '@/lib/accountScope';
 import { useAppStore } from '@/stores/appStore';
+import { prepareWorkoutFinish } from '@/lib/workoutFinish';
 
 import { summarize, useFinishedStore } from './finished';
 import { haptics } from './haptics';
 import { flushNotes } from './notes';
 import { stopRest } from './rest';
-import { previousTargetsFor } from './session';
+import { liveSessionModel, previousTargetsFor } from './session';
 import { skippedLine, type SessionModel } from './sessionModel';
 
 // One finish at a time across every Finish button (Today and Train are both
@@ -31,30 +33,52 @@ export function useFinishWorkout(session: SessionModel | null) {
   const finish = useCallback(() => {
     const current = latest.current;
     if (!current || finishing) return;
+    const isCurrentAccount = captureAccountScope();
+    const isCurrentWorkout = () => isCurrentAccount() && useAppStore.getState().currentWorkout?.id === current.workoutId;
+    const prepare = prepareWorkoutFinish(current.workoutId, liveSessionModel);
 
     const closeWorkout = async (saveTemplate: boolean) => {
+      if (!isCurrentWorkout()) return;
       // Notes typed during the workout land before it closes, as on the web.
-      if (!(await flushNotes())) {
+      const notesSaved = await flushNotes();
+      if (!isCurrentWorkout()) return;
+      if (!notesSaved) {
         haptics.error();
         Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
         return;
       }
-      const summary = summarize(current, previousTargetsFor(current.workoutId));
-      const skipped = current.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
+      // A set still saving lands first and counts in the summary. One that
+      // fails keeps the workout open, with Retry on its card.
+      const prepared = await prepare();
+      if (!isCurrentWorkout()) return;
+      if (prepared.kind === 'save-failed') {
+        haptics.error();
+        Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
+        return;
+      }
+      if (prepared.kind === 'changed') return;
+      const finished = prepared.session;
+      const summary = summarize(finished, previousTargetsFor(finished.workoutId));
+      const skipped = finished.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
       const store = useAppStore.getState();
       try {
         // A flexible session can be kept as a quick start, notes included.
         if (saveTemplate) await store.saveFlexibleTemplateFromCurrentWorkout();
+        // Saving the quick start can outlast an account or workout change.
+        // completeWorkout reads the current store, so never hand it a new one.
+        if (!isCurrentWorkout()) return;
         await store.completeWorkout();
+        if (!isCurrentAccount() || useAppStore.getState().currentWorkout) return;
         if (saveTemplate) void useAppStore.getState().fetchFlexTemplates({ force: true });
         // Skipped movements leave the finished workout, so History counts what
         // was done. Their logged sets stay; if this fails they show as unlogged.
-        if (skipped.length) void useAppStore.getState().removeUnloggedSets(current.workoutId, skipped).catch(() => {});
+        if (skipped.length) void useAppStore.getState().removeUnloggedSets(finished.workoutId, skipped).catch(() => {});
         useFinishedStore.getState().set(summary);
         stopRest();
         haptics.success();
         router.push('/session-done');
       } catch {
+        if (!isCurrentWorkout()) return;
         haptics.error();
         Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
       }
@@ -63,6 +87,7 @@ export function useFinishWorkout(session: SessionModel | null) {
       if (finishing) return;
       finishing = true;
       useClosing.setState({ closing: true });
+      Keyboard.dismiss();
       try {
         await closeWorkout(saveTemplate);
       } finally {

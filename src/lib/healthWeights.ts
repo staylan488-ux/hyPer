@@ -118,7 +118,13 @@ function advanceCursor(userId: string, candidate: string): void {
   localStorage.setItem(cursorKey(userId), candidate);
 }
 
-export async function syncNativeBodyWeights(userId: string): Promise<HealthWeightSyncResult> {
+/** Stop before the next native read or upload; an upload already sent may still finish. */
+function checkSyncCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('Apple Health sync stopped.', 'AbortError');
+}
+
+export async function syncNativeBodyWeights(userId: string, signal?: AbortSignal): Promise<HealthWeightSyncResult> {
+  checkSyncCancelled(signal);
   if (!hasNativeHealth()) return { imported: 0, latest: await getLatestBodyWeight(userId) };
 
   const previousCursor = localStorage.getItem(cursorKey(userId));
@@ -131,7 +137,9 @@ export async function syncNativeBodyWeights(userId: string): Promise<HealthWeigh
   // Samples come back oldest first, so a large backlog is read page by page.
   // Pages overlap at their boundary second; the upsert absorbs the repeat.
   for (let pass = 0; pass < HEALTH_WEIGHT_MAX_PASSES; pass++) {
+    checkSyncCancelled(signal);
     const { samples } = await NativeHealth.readWeightSamples({ since, limit: HEALTH_WEIGHT_PAGE_SIZE });
+    checkSyncCancelled(signal);
     const rows = samples
       .map((sample) => normalizeNativeWeightSample(userId, sample))
       .filter((sample): sample is NonNullable<typeof sample> => sample != null);
@@ -150,6 +158,10 @@ export async function syncNativeBodyWeights(userId: string): Promise<HealthWeigh
       advanceCursor(userId, latestTimestamp);
     }
 
+    // A successful upload owns its cursor even if Stop was tapped while it
+    // was in flight. A later sync can safely pick up the remaining pages.
+    checkSyncCancelled(signal);
+
     // A short raw page is the end of the backlog (normalization may drop rows
     // from a full page, so the raw count decides).
     if (samples.length < HEALTH_WEIGHT_PAGE_SIZE) break;
@@ -163,6 +175,7 @@ export async function syncNativeBodyWeights(userId: string): Promise<HealthWeigh
     since = new Date(newest).toISOString();
   }
 
+  checkSyncCancelled(signal);
   return { imported: importedIds.size, latest: await getLatestBodyWeight(userId) };
 }
 

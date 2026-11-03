@@ -15,6 +15,7 @@ import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout, isAbandonedSplitStart } from '@/lib/workoutSessions';
 import { runSaveWithRetry, saveWorkoutSet } from '@/lib/saveWorkoutSet';
+import { trackWorkoutSetSave } from '@/lib/workoutFinish';
 import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
@@ -317,6 +318,11 @@ interface AppState {
    * into this store at least once, so a screen can show them while it reads
    * again instead of a spinner. Null after a reset for another account. */
   hydratedForUserId: string | null;
+  /** Successful reads (including an empty result), independent of the other
+   * account data. Failed refreshes keep the last successful values. */
+  workoutLoadedForUserId: string | null;
+  macroTargetLoadedForUserId: string | null;
+  nutritionProfileLoadedForUserId: string | null;
 
   // Split actions
   /** force: read again even if a read is running; pass it after a write. */
@@ -500,6 +506,9 @@ const workoutDayPlanFlight = createKeyedSingleFlight<void>();
 // A double tap must join the pending add, before either caller can allocate
 // the same set number. Live workout and History additions share this guard.
 const workoutSetAddFlight = createKeyedSingleFlight<WorkoutSet | null>();
+// Every Start route shares one attempt for this account. A rejected attempt
+// releases the gate, so the next tap can retry normally.
+const workoutStartFlight = createKeyedSingleFlight<Workout | null>();
 
 function workoutSetAddKey(workoutId: string, exerciseId: string): string {
   return JSON.stringify([getAccountScopeGeneration(), workoutId, exerciseId]);
@@ -525,6 +534,26 @@ function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) =
   };
 }
 
+function startsWorkout<Args extends unknown[]>(action: (...args: Args) => Promise<Workout | null>, flexible = false) {
+  const write = writesWorkout(action);
+  return async (...args: Args): Promise<Workout | null> => {
+    const isCurrentAccount = captureAccountScope();
+    const workout = await workoutStartFlight.run(String(getAccountScopeGeneration()), () => write(...args));
+    if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
+    // Flexible Start has always asked the person to finish a program session
+    // first. Preserve that result when it joins a program Start in flight.
+    return flexible && workout?.split_day_id != null ? null : workout;
+  };
+}
+
+function tracksSetSave(action: AppState['logSet']): AppState['logSet'] {
+  return (...args) => {
+    const workoutId = useAppStore.getState().currentWorkout?.id;
+    const save = action(...args);
+    return workoutId ? trackWorkoutSetSave(workoutId, save) : save;
+  };
+}
+
 // per-account data, reset when a different account signs in. workoutMode is
 // a device preference that fetchWorkoutMode reloads, so it stays out.
 export const initialAppData = {
@@ -539,6 +568,9 @@ export const initialAppData = {
   weeklyVolume: [],
   whoopConnection: null,
   hydratedForUserId: null,
+  workoutLoadedForUserId: null,
+  macroTargetLoadedForUserId: null,
+  nutritionProfileLoadedForUserId: null,
 } satisfies Partial<AppState>;
 
 // Which of the reads behind hydratedForUserId have succeeded, and for whom.
@@ -548,6 +580,7 @@ let hydration: { userId: string; loaded: Set<HydrationPart> } | null = null;
 function markHydrated(userId: string, part: HydrationPart) {
   if (hydration?.userId !== userId) hydration = { userId, loaded: new Set() };
   hydration.loaded.add(part);
+  if (part === 'workout') useAppStore.setState({ workoutLoadedForUserId: userId });
   if (hydration.loaded.size === 3 && useAppStore.getState().hydratedForUserId !== userId) {
     useAppStore.setState({ hydratedForUserId: userId });
   }
@@ -916,7 +949,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  startWorkout: writesWorkout(async (splitDayId) => {
+  startWorkout: startsWorkout(async (splitDayId) => {
     const isCurrentAccount = captureAccountScope();
     const userId = await getSessionUserId();
     if (!userId || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
@@ -939,7 +972,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (existing && canResumeWorkout(existing as Workout)) {
       if (!isAbandonedSplitStart(existing as Workout)) {
-        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null });
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: null, workoutLoadedForUserId: userId });
         return existing as Workout;
       }
       // An earlier start saved the workout but never added its sets. Nothing
@@ -1000,7 +1033,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (completeWorkout) {
       if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
-      set({ currentWorkout: completeWorkout as Workout, currentWorkoutDayPlan: null });
+      set({ currentWorkout: completeWorkout as Workout, currentWorkoutDayPlan: null, workoutLoadedForUserId: userId });
       return completeWorkout as Workout;
     }
 
@@ -1008,7 +1041,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     throw new Error(START_WORKOUT_ERROR);
   }),
 
-  startFlexibleWorkout: writesWorkout(async (dayLabel, templateLabel) => {
+  startFlexibleWorkout: startsWorkout(async (dayLabel, templateLabel) => {
     const isCurrentAccount = captureAccountScope();
     const label = dayLabel.trim();
     if (!label) return null;
@@ -1039,7 +1072,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const plan = await get().fetchWorkoutDayPlanByWorkoutId(existing.id, { throwOnError: true });
       if (!isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
       if (plan) {
-        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: plan });
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: plan, workoutLoadedForUserId: userId });
         return existing as Workout;
       }
 
@@ -1048,7 +1081,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // saved sets instead of resuming a session that cannot add movements.
         const repaired = await get().ensureWorkoutDayPlan(existing.id, label);
         if (!repaired || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
-        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: repaired });
+        set({ currentWorkout: existing as Workout, currentWorkoutDayPlan: repaired, workoutLoadedForUserId: userId });
         return existing as Workout;
       }
 
@@ -1137,13 +1170,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         currentWorkout: completeWorkout as Workout,
         currentWorkoutDayPlan: createdPlan ? toDayPlan(createdPlan) : null,
+        workoutLoadedForUserId: userId,
       });
       return completeWorkout as Workout;
     }
 
     // The workout and its sets exist, so a retry resumes it.
     throw new Error(START_WORKOUT_ERROR);
-  }),
+  }, true),
 
   fetchCurrentWorkout: async () => {
     const readSeq = workoutMutationSeq;
@@ -1721,7 +1755,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error saving flexible template:', error);
-      return;
+      // Finish waits on this: a quick start that didn't save keeps the workout open to retry.
+      throw new Error('Could not save the quick start. Check your connection and try again.');
     }
 
     if (isAccountCurrent()) await get().fetchFlexTemplates({ force: true });
@@ -1759,7 +1794,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   }),
 
-  logSet: writesWorkout(async (setId, weight, reps, rpe) => {
+  logSet: tracksSetSave(writesWorkout(async (setId, weight, reps, rpe) => {
     const isAccountCurrent = captureAccountScope();
     const { currentWorkout } = get();
     if (!currentWorkout) throw new Error('No active workout to log this set.');
@@ -1785,7 +1820,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       : s);
 
     set({ currentWorkout: { ...latestWorkout, sets: updatedSets } });
-  }),
+  })),
 
   updateSet: writesWorkout(async (setId, updates) => {
     const isAccountCurrent = captureAccountScope();
@@ -1833,7 +1868,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (!isCurrentAccount() || get().currentWorkout?.id !== currentWorkout.id) return;
-    set({ currentWorkout: null, currentWorkoutDayPlan: null });
+    set({ currentWorkout: null, currentWorkoutDayPlan: null, workoutLoadedForUserId: currentWorkout.user_id });
     // Screens that show volume recompute it on mount; don't hold the finish on it.
     void get().calculateWeeklyVolume().catch(() => {});
   }),
@@ -1859,7 +1894,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching workouts by month:', error);
-      return [];
+      // History shows "Couldn't load" and keeps the month on screen, rather
+      // than an empty month that reads as nothing logged.
+      throw error;
     }
 
     return (workouts || []) as Workout[];
@@ -1931,7 +1968,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching activity sessions by month:', error);
-      return [];
+      // History shows "Couldn't load" and keeps the month on screen, rather
+      // than an empty month that reads as nothing logged.
+      throw error;
     }
 
     return (data || []) as ActivitySession[];
@@ -3330,7 +3369,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // account. A failed read keeps what is shown, so a flaky connection never
     // blanks the targets.
     if (!error && isAccountCurrent()) {
-      set({ macroTarget: data ?? null });
+      set({ macroTarget: data ?? null, macroTargetLoadedForUserId: userId });
     }
   },
 
@@ -3358,7 +3397,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (data && isAccountCurrent()) {
-      set({ macroTarget: data });
+      set({ macroTarget: data, macroTargetLoadedForUserId: userId });
     }
   },
 
@@ -3369,7 +3408,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const profile = await getNutritionProfile(userId);
-      if (isAccountCurrent()) set({ nutritionProfile: profile });
+      if (isAccountCurrent()) set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
     } catch {
       // A missing table on an un-migrated client should not break the app.
     }
@@ -3388,7 +3427,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       : input;
 
     const profile = await saveNutritionProfile(userId, payload);
-    if (isAccountCurrent()) set({ nutritionProfile: profile });
+    if (isAccountCurrent()) set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
   },
 
   refreshAdaptiveTargets: (options) => {

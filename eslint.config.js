@@ -5,8 +5,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // native/ is the Expo app; it has its own lint and TypeScript setup.
-  globalIgnores(['native']),
+  // Generated native projects and Babel helpers are not application source.
+  globalIgnores(['native/ios/**', 'native/android/**', 'native/.expo/**', 'native/babel/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +17,23 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+  {
+    files: ['native/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { __DEV__: 'readonly' },
+    },
+    rules: {
+      // Native uses Reanimated shared values, callback refs, and controlled
+      // input synchronization. Keep the Rules of Hooks and dependency checks
+      // without applying these React Compiler restrictions to those patterns.
+      'react-hooks/immutability': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      // Metro requires static asset imports; lazy Expo module loads also let
+      // shared tests import the module contracts without a native runtime.
+      '@typescript-eslint/no-require-imports': ['error', { allow: ['^expo$', '\\.(png|svg)$'] }],
     },
   },
 ])

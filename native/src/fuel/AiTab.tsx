@@ -85,11 +85,21 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   const entryIds = useRef(new Map<string, string>());
   const foodIds = useRef(new Map<string, string>());
   const pending = useRef(createPendingEntryId()).current;
-  const { setBusy } = logger;
+  const { beginBusy } = logger;
+  // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
-    setBusy(busy === 'analysis');
-    return () => setBusy(false);
-  }, [busy, setBusy]);
+    if (busy !== 'analysis') return;
+    return beginBusy();
+  }, [busy, beginBusy]);
+  // A capture that starts over (an ingredient added to a meal) remounts this
+  // tab with an empty draft: an analysis still running then lands nowhere.
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
 
   const { result, items } = draft;
   const editing = Boolean(logger.editing);
@@ -136,10 +146,12 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         accessToken: await workerAccessToken(),
         ...(clarify ? { clarificationUsed: true } : {}),
       });
+      if (!live.current) return;
       haptics.success();
       setOpen(null);
       setDraft((current) => ({ ...current, answer: '', result: response, items: response.items.map((item) => ({ ...item, key: crypto.randomUUID() })) }));
     } catch (cause) {
+      if (!live.current) return;
       haptics.error();
       setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
     } finally {

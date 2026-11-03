@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMealIngredient, decodeMealComposition, type MealDraft } from '@/lib/mealComposition';
-import { saveComposedMeal } from '@/lib/saveMealComposition';
+import { assertComposedMealOptions, saveComposedMeal } from '@/lib/saveMealComposition';
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(), from: vi.fn(), upsert: vi.fn(), update: vi.fn(), eq: vi.fn(),
@@ -134,5 +134,15 @@ describe('composed meal persistence', () => {
     await expect(saveComposedMeal(draft, 'user-a', { editEntryId: 'log', saveOnly: true })).rejects.toThrow();
     await expect(saveComposedMeal(draft, 'user-a', { editSavedMealId: draft.entryId })).rejects.toThrow();
     expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  // The meal builder checks this before it locks the meal for saving: a
+  // locked meal that can never save could not be changed or discarded.
+  it('names conflicting edit targets up front, before anything locks', () => {
+    expect(() => assertComposedMealOptions({ editEntryId: 'log', editSavedMealId: 'food' })).toThrow('Choose either');
+    expect(() => assertComposedMealOptions({ editEntryId: 'log', saveOnly: true })).toThrow('Choose either');
+    expect(() => assertComposedMealOptions({ editEntryId: 'log', mealType: 'lunch' })).not.toThrow();
+    expect(() => assertComposedMealOptions({ editSavedMealId: 'food' })).not.toThrow();
+    expect(() => assertComposedMealOptions({ saveOnly: true, editSavedMealId: 'food' })).not.toThrow();
   });
 });

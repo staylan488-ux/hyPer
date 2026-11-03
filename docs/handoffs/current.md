@@ -42,6 +42,45 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   with the web suite, lint, build, native `tsc` and an iOS bundle export; not
   yet run in a simulator or on a phone (the Undo bar's place above the workout
   bar, haptics, VoiceOver, a superset pair).
+- 2026-11-03: an audit of the app's hand-kept state (saving flags, the
+  workout's start and finish, rest, runs, sign-in, sync) fixed 15 bugs with no
+  change when things work: Finish waits for a set still saving, one Start at a
+  time, Retry only on the set that failed, the movement sheet closes only
+  itself, a quick start that fails to save keeps the workout open, one Fuel
+  lookup can't clear another's busy state, an edited entry's meal draft keeps
+  its own slot, a meal never locks on a save that can't work, a failed History
+  load says so, Discard waits for a run's save, rest or a split before GPS
+  lock leaves the run's time and splits alone, a failed first load keeps the
+  workout's lock-screen card, Health sync follows You's switch, and widgets
+  keep their last snapshot through a failed load. Checked with the web suite,
+  lint, build, native `tsc` and an iOS bundle export; not run in a simulator
+  or on a phone. Left for the owner (they change sign-in or need a phone):
+  sign-out offline can undo itself, a launch offline with an expired token
+  waits about 25 s, and a widget or lock-screen card tapped mid-run closes the
+  run screen. The unlikely ones are listed in the owner's doc "Hidden state
+  machines in hyPer".
+- 2026-11-03: PR #169 review follow-up, based on `b49cf40`, was prepared in
+  `codex/pr169-state-fixes`; no merge or release was performed.
+  Saved-recipe drafts and save targets are separate from logged entries;
+  explicit edits of simple saved foods use the existing saved-meal editor and
+  preserve the underlying entry draft. Abandoned scans release their busy claim
+  immediately, and Photo keeps results across tab changes but drops work from a
+  closed/reset capture. All Start paths share one attempt. Finish retains set
+  save outcomes while the question is open, reads the latest session, guards
+  account/workout changes and holds editing while completion saves. Lock-screen
+  cleanup uses workout-read readiness; widgets also require successful food,
+  target and profile reads. Health Stop prevents the next read/upload, although
+  an upload already sent may finish. History name-read failures preserve the
+  last complete month. Discard is visibly disabled while a run saves.
+  Native source is now included in lint; the RN framework setup script also
+  handles Bash 3.2's empty-array case on fresh builds. Verified: 1,937 tests,
+  lint (including test types and instruction checks), build, native `tsc`, and
+  a Debug simulator build. Simulator checks used sample data: set logging and
+  Finish summary, food logging with a chosen time and reopening it, recipe draft
+  isolation, saving a simple saved food and returning to the untouched entry,
+  light/dark appearance and recorded cold-launch intro. Hardware
+  camera/barcodes, HealthKit, device widget/Live Activity failure scenarios and
+  real-account behavior remain unverified. No auth flow or schema changes.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

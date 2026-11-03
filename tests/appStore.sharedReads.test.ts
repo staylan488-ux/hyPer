@@ -254,6 +254,7 @@ describe('hydratedForUserId', () => {
     const loading = loadAll();
     await flush();
     expect(useAppStore.getState().hydratedForUserId).toBeNull();
+    expect(useAppStore.getState().workoutLoadedForUserId).toBe('user-1');
 
     releaseMode({ data: { workout_mode: 'split' }, error: null });
     await loading;
@@ -293,8 +294,46 @@ describe('hydratedForUserId', () => {
 
     const state = useAppStore.getState();
     expect(state.hydratedForUserId).toBeNull();
+    expect(state.workoutLoadedForUserId).toBeNull();
     expect(state.splits).toEqual([]);
     expect(state.currentWorkout).toBeNull();
     expect(state.workoutMode).toBe('split');
+  });
+});
+
+describe('independent snapshot readiness', () => {
+  it.each([
+    ['workouts', 'fetchCurrentWorkout', 'workoutLoadedForUserId'],
+    ['macro_targets', 'fetchMacroTarget', 'macroTargetLoadedForUserId'],
+    ['nutrition_profiles', 'fetchNutritionProfile', 'nutritionProfileLoadedForUserId'],
+  ] as const)('%s distinguishes an unread value from a successful empty read', async (table, action, marker) => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    answer(table, { data: null, error: { message: 'offline' } });
+    await useAppStore.getState()[action]();
+    expect(useAppStore.getState()[marker]).toBeNull();
+
+    answer(table, { data: null, error: null });
+    await useAppStore.getState()[action]();
+    expect(useAppStore.getState()[marker]).toBe('user-1');
+
+    answer(table, { data: null, error: { message: 'offline' } });
+    await useAppStore.getState()[action]();
+    expect(useAppStore.getState()[marker]).toBe('user-1');
+    resetAppData();
+    expect(useAppStore.getState()[marker]).toBeNull();
+    quiet.mockRestore();
+  });
+
+  it('does not let old nutrition reads mark the next account ready', async () => {
+    const releaseTarget = hold('macro_targets');
+    const releaseProfile = hold('nutrition_profiles');
+    const reading = Promise.all([useAppStore.getState().fetchMacroTarget(), useAppStore.getState().fetchNutritionProfile()]);
+    await flush();
+    resetAppData();
+    releaseTarget({ data: null, error: null });
+    releaseProfile({ data: null, error: null });
+    await reading;
+    expect(useAppStore.getState().macroTargetLoadedForUserId).toBeNull();
+    expect(useAppStore.getState().nutritionProfileLoadedForUserId).toBeNull();
   });
 });

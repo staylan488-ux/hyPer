@@ -11,6 +11,7 @@ import { isHealthWeightSyncEnabled, setHealthWeightSyncEnabled } from '@/lib/hea
 import { supabase } from '@/lib/supabase';
 
 import { runningBundleIdentifier } from '../../modules/hyper-keychain/bundle';
+import { useHealthStore } from './you';
 
 const CHECKED_KEY = 'hyper:health-carry-over-checked';
 const RELEASED_APP = runningBundleIdentifier() === 'app.hyper.mobile';
@@ -31,7 +32,11 @@ export function useHealthCarryOver(userId: string | undefined): boolean {
             .eq('source', 'apple_health')
             .limit(1);
           if (error) return; // try again next launch
-          if ((data ?? []).length > 0) setHealthWeightSyncEnabled(true);
+          if ((data ?? []).length > 0) {
+            setHealthWeightSyncEnabled(true);
+            // You's switch, which the sync follows, shows it on too.
+            useHealthStore.setState({ enabled: true });
+          }
         }
         localStorage.setItem(CHECKED_KEY, '1');
       } catch {
