@@ -1721,7 +1721,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error saving flexible template:', error);
-      return;
+      // Finish waits on this: a quick start that didn't save keeps the workout open to retry.
+      throw new Error('Could not save the quick start. Check your connection and try again.');
     }
 
     if (isAccountCurrent()) await get().fetchFlexTemplates({ force: true });
@@ -1859,7 +1860,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching workouts by month:', error);
-      return [];
+      // History shows "Couldn't load" and keeps the month on screen, rather
+      // than an empty month that reads as nothing logged.
+      throw error;
     }
 
     return (workouts || []) as Workout[];
@@ -1931,7 +1934,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (error) {
       console.error('Error fetching activity sessions by month:', error);
-      return [];
+      // History shows "Couldn't load" and keeps the month on screen, rather
+      // than an empty month that reads as nothing logged.
+      throw error;
     }
 
     return (data || []) as ActivitySession[];

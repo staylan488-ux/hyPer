@@ -274,6 +274,22 @@ describe('pause / resume', () => {
     expect(state.totalDistanceM).toBe(distBefore);
   });
 
+  it('keeps a rest taken while GPS is acquiring out of the run time', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    // Rest at the start line for 2 minutes before the first fix arrives.
+    let state = pauseTracker(tracker, T0);
+    state = resumeTracker(state, T0 + 120_000);
+    const run = shift(buildScenarioSamples([{ speedMps: 3.5, durationS: 600 }]), T0 + 120_000);
+    state = drive(state, run).state;
+
+    const end = run[run.length - 1].t;
+    expect(state.hasGpsLock).toBe(true);
+    expect(state.totalPausedMs).toBe(0);
+    // The clock starts at lock, and nothing before it comes off.
+    expect(elapsedSeconds(state, end)).toBe(Math.round((end - state.startedAtMs) / 1000));
+    expect(elapsedSeconds(state, end)).toBeGreaterThan(580);
+  });
+
   it('ignores manual splits while paused', () => {
     const tracker = createTracker(defaultTrackerConfig('intervals', null), T0);
     let { state } = drive(tracker, shift(buildScenarioSamples([{ speedMps: 4, durationS: 60 }])));
@@ -403,6 +419,24 @@ describe('interval laps', () => {
 
     state = drive(state, samples.slice(61)).state;
     expect(rollingPaceSecPerMile(state, samples[samples.length - 1].t)).not.toBeNull();
+  });
+
+  it('drops a split taken before GPS lock instead of keeping an empty lap', () => {
+    const tracker = createTracker(defaultTrackerConfig('intervals', null), T0);
+    // Split tapped at the start line while still acquiring.
+    const early = manualSplit(tracker, T0 + 1_000);
+    expect(early.state.laps).toHaveLength(1);
+
+    const samples = shift(buildScenarioSamples([{ speedMps: 4, durationS: 120 }]), T0 + 5_000);
+    let { state } = drive(early.state, samples.slice(0, 61));
+    expect(state.hasGpsLock).toBe(true);
+    expect(state.laps).toHaveLength(0);
+
+    state = manualSplit(state, samples[60].t).state;
+    expect(state.laps).toHaveLength(1);
+    expect(state.laps[0].index).toBe(1);
+    expect(state.laps[0].startedAtMs).toBe(state.startedAtMs);
+    expect(state.laps[0].distanceM).toBeGreaterThan(150);
   });
 
   it('uses stable current-lap average pace and reacquires after a split', () => {

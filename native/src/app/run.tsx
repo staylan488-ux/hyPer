@@ -606,7 +606,9 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
     }
   };
 
-  const confirmDiscard = () =>
+  const confirmDiscard = () => {
+    // A save on its way would put the discarded run in History anyway.
+    if (saving) return;
     Alert.alert('Discard this run?', 'It is not saved anywhere.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -618,6 +620,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
         },
       },
     ]);
+  };
 
   const exportDiagnostics = () => {
     setExportError(false);

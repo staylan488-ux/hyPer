@@ -97,8 +97,10 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { setBusy } = logger;
+  // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
-    setBusy(analyzing);
+    if (!analyzing) return;
+    setBusy(true);
     return () => setBusy(false);
   }, [analyzing, setBusy]);
 

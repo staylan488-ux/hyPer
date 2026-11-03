@@ -9,13 +9,24 @@ import { summarize, useFinishedStore } from './finished';
 import { haptics } from './haptics';
 import { flushNotes } from './notes';
 import { stopRest } from './rest';
-import { previousTargetsFor } from './session';
+import { liveSessionModel, previousTargetsFor } from './session';
 import { skippedLine, type SessionModel } from './sessionModel';
 
 // One finish at a time across every Finish button (Today and Train are both
 // mounted): a second tap anywhere while it saves does nothing.
 let finishing = false;
 const useClosing = create<{ closing: boolean }>(() => ({ closing: false }));
+
+// Set saves still on their way (Log set tapped, then Finish before it landed).
+const setSaves = new Set<Promise<unknown>>();
+
+/** Marks a set save as running, so a Finish tapped meanwhile waits for it. */
+export function trackSetSave<T>(save: Promise<T>): Promise<T> {
+  setSaves.add(save);
+  const settle = () => setSaves.delete(save);
+  save.then(settle, settle);
+  return save;
+}
 
 /**
  * Finishing the live workout, wherever Finish is tapped (Train's header, its
@@ -39,8 +50,17 @@ export function useFinishWorkout(session: SessionModel | null) {
         Alert.alert('Note not saved', 'The workout is still open. Check your connection and try again.');
         return;
       }
-      const summary = summarize(current, previousTargetsFor(current.workoutId));
-      const skipped = current.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
+      // A set still saving lands first and counts in the summary. One that
+      // fails keeps the workout open, with Retry on its card.
+      const saves = await Promise.allSettled([...setSaves]);
+      if (saves.some((save) => save.status === 'rejected')) {
+        haptics.error();
+        Alert.alert('Not saved', 'The workout is still open. Check your connection and try again.');
+        return;
+      }
+      const finished = saves.length > 0 ? liveSessionModel() ?? current : current;
+      const summary = summarize(finished, previousTargetsFor(finished.workoutId));
+      const skipped = finished.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
       const store = useAppStore.getState();
       try {
         // A flexible session can be kept as a quick start, notes included.
@@ -49,7 +69,7 @@ export function useFinishWorkout(session: SessionModel | null) {
         if (saveTemplate) void useAppStore.getState().fetchFlexTemplates({ force: true });
         // Skipped movements leave the finished workout, so History counts what
         // was done. Their logged sets stay; if this fails they show as unlogged.
-        if (skipped.length) void useAppStore.getState().removeUnloggedSets(current.workoutId, skipped).catch(() => {});
+        if (skipped.length) void useAppStore.getState().removeUnloggedSets(finished.workoutId, skipped).catch(() => {});
         useFinishedStore.getState().set(summary);
         stopRest();
         haptics.success();

@@ -169,7 +169,7 @@ export function buildPastSetUpdate(
 /**
  * Loads a History month: its workouts with their program-day or session
  * names, and its activities. The store fetchers return [] when nobody is
- * signed in.
+ * signed in, and throw when a read fails.
  */
 export async function fetchHistoryMonth(month: Date): Promise<{ workouts: HistoryWorkout[]; activities: ActivitySession[] }> {
   const store = useAppStore.getState();

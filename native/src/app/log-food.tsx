@@ -159,7 +159,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [analysisMode] = useState(getFoodAnalysisMode);
   const gemini = analysisMode === 'gemini';
   const [ai, setAi] = useState<AiDraft>(() => emptyAi());
-  const [busy, setBusy] = useState(false);
+  // A photo, describe or barcode lookup running. Each tab claims the sheet
+  // while its own lookup runs and lets go when it ends, so a tab opening or
+  // finishing never clears another tab's lookup.
+  const [busyClaims, setBusyClaims] = useState(0);
+  const busy = busyClaims > 0;
+  const setBusy = useCallback((claim: boolean) => setBusyClaims((count) => Math.max(0, count + (claim ? 1 : -1))), []);
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
@@ -239,7 +244,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     (food?: Food, editSaved = false) => {
       const next = makeDraft(food);
       next.saveAsReusableMeal = editSaved;
-      const targetKey = editSaved && food ? `saved:${food.id}` : 'new';
+      // The key the draft is kept under from here on (draftKey once savedTarget
+      // is set): an entry being edited keeps its own, never the new-meal slot.
+      const targetKey = editing ? `edit:${editing.id}` : editSaved && food ? `saved:${food.id}` : 'new';
       setSavedTarget(editSaved ? food : undefined);
       const value = loadMealDraft(userId, targetKey) ?? next;
       setMeal(value);
@@ -247,7 +254,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       setMealReview(Boolean(food) || value !== next);
       setChosen(null);
     },
-    [makeDraft, userId],
+    [makeDraft, userId, editing],
   );
   // Opened from You to change a built meal: straight into its builder.
   const openedSaved = useRef(false);

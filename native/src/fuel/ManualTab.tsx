@@ -108,8 +108,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   target.current = { manualFood: draft.fields, selectedSavedMealId: draft.selectedSavedMealId };
   useEffect(() => () => describeGate.invalidate(), [describeGate]);
   const { setBusy } = logger;
+  // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
-    setBusy(describing);
+    if (!describing) return;
+    setBusy(true);
     return () => setBusy(false);
   }, [describing, setBusy]);
 

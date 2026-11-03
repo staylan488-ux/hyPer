@@ -3,12 +3,19 @@ import { encodeMealComposition, getMealTotals, parseMealDraft, type MealDraft } 
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { supabase } from '@/lib/supabase';
 
-interface SaveComposedMealOptions {
+export interface SaveComposedMealOptions {
   editEntryId?: string;
   editSavedMealId?: string;
   mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
   /** Keeps the meal as a saved meal without logging it (with editSavedMealId, in that meal's place). */
   saveOnly?: boolean;
+}
+
+/** Throws when the options ask for two edits at once, which no save can do. */
+export function assertComposedMealOptions(options: SaveComposedMealOptions): void {
+  if (options.editEntryId && (options.editSavedMealId || options.saveOnly)) {
+    throw new Error('Choose either a logged meal or a saved meal to edit.');
+  }
 }
 
 /** Creates a fresh recipe snapshot so edits never rewrite previously logged meals. */
@@ -21,9 +28,7 @@ export async function saveComposedMeal(
   if (!valid || !valid.name.trim() || !valid.ingredients.length) {
     throw new Error('Add a meal name and valid ingredients before saving.');
   }
-  if (options.editEntryId && (options.editSavedMealId || options.saveOnly)) {
-    throw new Error('Choose either a logged meal or a saved meal to edit.');
-  }
+  assertComposedMealOptions(options);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!userId || !user || user.id !== userId) {

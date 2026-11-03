@@ -2,10 +2,11 @@
 // Train page mirrors it: the movement that's up, the shared detail line and
 // the session clock. The rest timer layers its countdown onto the same card
 // (lib/rest.ts). The card comes down when the workout ends.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { sessionTonnage } from '@/lib/workoutProgress';
 import { workoutActivityDetailLine, type WorkoutActivityState } from '@/lib/workoutActivitySync';
+import { sessionTonnage } from '@/lib/workoutProgress';
+import { useAppStore } from '@/stores/appStore';
 
 import { endWorkoutActivity, syncWorkoutActivity } from '~/platform/liveActivity';
 
@@ -31,15 +32,24 @@ export function workoutCard(session: SessionModel): WorkoutActivityState {
 export function useWorkoutActivity(session: SessionModel | null) {
   // Before the account has loaded there is no workout yet, not a finished one.
   const loading = useAccountDay((state) => state.loading);
+  // A load that failed (no signal at launch) is no workout yet either: the card
+  // of a workout still live stays, with its rest, until a load succeeds. A
+  // workout seen and then gone has ended.
+  const loaded = useAppStore((state) => state.hydratedForUserId !== null);
+  const shown = useRef(false);
   const card = session ? workoutCard(session) : null;
   const key = card ? JSON.stringify(card) : null;
 
   useEffect(() => {
-    if (card) syncWorkoutActivity(card);
-    else if (!loading) endWorkoutActivity();
+    if (card) {
+      shown.current = true;
+      syncWorkoutActivity(card);
+    } else if (!loading && (loaded || shown.current)) {
+      endWorkoutActivity();
+    }
     // The key stands for the card's content.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, loading]);
+  }, [key, loading, loaded]);
 
   // A rest names the set that's up; if that changes mid-rest, the "Rest over"
   // notification follows.

@@ -42,6 +42,23 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   with the web suite, lint, build, native `tsc` and an iOS bundle export; not
   yet run in a simulator or on a phone (the Undo bar's place above the workout
   bar, haptics, VoiceOver, a superset pair).
+- 2026-11-03: an audit of the app's hand-kept state (saving flags, the
+  workout's start and finish, rest, runs, sign-in, sync) fixed 15 bugs with no
+  change when things work: Finish waits for a set still saving, one Start at a
+  time, Retry only on the set that failed, the movement sheet closes only
+  itself, a quick start that fails to save keeps the workout open, one Fuel
+  lookup can't clear another's busy state, an edited entry's meal draft keeps
+  its own slot, a meal never locks on a save that can't work, a failed History
+  load says so, Discard waits for a run's save, rest or a split before GPS
+  lock leaves the run's time and splits alone, a failed first load keeps the
+  workout's lock-screen card, Health sync follows You's switch, and widgets
+  keep their last snapshot through a failed load. Checked with the web suite,
+  lint, build, native `tsc` and an iOS bundle export; not run in a simulator
+  or on a phone. Left for the owner (they change sign-in or need a phone):
+  sign-out offline can undo itself, a launch offline with an expired token
+  waits about 25 s, and a widget or lock-screen card tapped mid-run closes the
+  run screen. The unlikely ones are listed in the owner's doc "Hidden state
+  machines in hyPer".
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

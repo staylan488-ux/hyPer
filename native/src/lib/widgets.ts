@@ -8,6 +8,7 @@
 import { useEffect, useMemo } from 'react';
 
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 
 import * as WidgetData from '../../modules/hyper-widget-data';
 import { useAccountDay } from './accountData';
@@ -21,6 +22,10 @@ let written: string | null = null;
 /** Mounted once with the tabs: keeps the widgets' snapshot current and clears it on sign-out. */
 export function useWidgetSnapshot() {
   const { dayKey, loading } = useAccountDay();
+  // An account load whose reads failed (no signal) has no program to show:
+  // the widgets keep their last good snapshot until a load succeeds.
+  const userId = useAuthStore((state) => state.user?.id);
+  const loaded = useAppStore((state) => Boolean(userId) && state.hydratedForUserId === userId);
   const plan = useTodayPlan();
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
@@ -44,9 +49,9 @@ export function useWidgetSnapshot() {
   );
 
   const json = useMemo(() => {
-    if (loading || !days) return null;
+    if (loading || !loaded || !days) return null;
     return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan: days }));
-  }, [loading, days, fuelDay, target, totals, goal]);
+  }, [loading, loaded, days, fuelDay, target, totals, goal]);
 
   useEffect(() => {
     if (!json || json === written) return;

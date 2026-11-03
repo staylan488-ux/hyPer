@@ -27,7 +27,7 @@ import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
-import { useFinishWorkout } from '~/lib/finishWorkout';
+import { trackSetSave, useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
@@ -127,7 +127,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const current = session.current;
   const [draft, setDraft] = useState<Draft | null>(() => (current ? suggestedDraft(current, previous) : null));
   const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // The set whose save failed: its card says so and offers Retry. Another
+  // movement's card never does, so Retry can't log numbers for the wrong set.
+  const [failedSetId, setFailedSetId] = useState<string | null>(null);
+  const failed = failedSetId !== null && failedSetId === current?.set.id;
   const [editing, setEditing] = useState<'weight' | 'reps' | null>(null);
   // The last saved set, when it beat last time. Its gain shows in place of
   // "Last time" for a moment (`fresh`), and stays on "All sets logged".
@@ -155,7 +158,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       if (!current) return null;
       return existing?.setId === current.set.id ? existing : suggestedDraft(current, previous);
     });
-    setFailed(false);
+    setFailedSetId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSetId]);
 
@@ -180,12 +183,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     if (!current || !draft || weight === null || reps === null || saving || blocked) return;
     Keyboard.dismiss();
     setSaving(true);
-    setFailed(false);
+    setFailedSetId(null);
     setBeat(null);
     const logged = current.set;
     const loggedReps = Math.round(reps);
     try {
-      await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
+      await trackSetSave(logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined));
       // Beating the same set last time gets a firmer haptic and a quiet line.
       const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous);
       if (gain) {
@@ -203,7 +206,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       if (after.rest) startRest(current.movement.exerciseId);
     } catch {
       haptics.error();
-      setFailed(true);
+      setFailedSetId(logged.id);
     } finally {
       setSaving(false);
     }
