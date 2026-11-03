@@ -85,13 +85,12 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   const entryIds = useRef(new Map<string, string>());
   const foodIds = useRef(new Map<string, string>());
   const pending = useRef(createPendingEntryId()).current;
-  const { setBusy } = logger;
+  const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
     if (busy !== 'analysis') return;
-    setBusy(true);
-    return () => setBusy(false);
-  }, [busy, setBusy]);
+    return beginBusy();
+  }, [busy, beginBusy]);
   // A capture that starts over (an ingredient added to a meal) remounts this
   // tab with an empty draft: an analysis still running then lands nowhere.
   const live = useRef(true);

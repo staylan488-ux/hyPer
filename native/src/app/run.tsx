@@ -716,7 +716,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                   <Hairline />
                 </>
               ) : null}
-              <Row title="Discard run" destructive onPress={confirmDiscard} />
+              <Row title="Discard run" destructive disabled={saving} onPress={confirmDiscard} />
             </Label>
             {exportError ? <FormNote alert>Could not open the share sheet. Try again.</FormNote> : null}
           </Section>

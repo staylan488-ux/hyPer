@@ -1,7 +1,7 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
@@ -164,7 +164,15 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // finishing never clears another tab's lookup.
   const [busyClaims, setBusyClaims] = useState(0);
   const busy = busyClaims > 0;
-  const setBusy = useCallback((claim: boolean) => setBusyClaims((count) => Math.max(0, count + (claim ? 1 : -1))), []);
+  const beginBusy = useCallback(() => {
+    setBusyClaims((count) => count + 1);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      setBusyClaims((count) => count - 1);
+    };
+  }, []);
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
@@ -173,10 +181,13 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   // Saved meals: the last list at once, refetched on open.
   const [savedMeals, setSavedMeals] = useState<Food[] | null>(() => readSavedFoodsCache(userId));
+  const savedMealsRead = useRef(0);
   const reloadSavedMeals = useCallback(async () => {
+    const request = ++savedMealsRead.current;
     const id = await getSessionUserId();
-    if (!id) return;
+    if (!id || request !== savedMealsRead.current) return;
     const { meals, error } = await loadSavedMeals(id);
+    if (request !== savedMealsRead.current) return;
     if (error) {
       setSavedMeals((current) => current ?? []);
       return;
@@ -184,16 +195,20 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     setSavedMeals(meals);
     writeSavedFoodsCache(id, meals);
   }, []);
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    // A separate saved-food editor returns here without remounting the logger.
     void reloadSavedMeals();
-  }, [reloadSavedMeals]);
+  }, [reloadSavedMeals]));
 
   // ── Meal builder (web MealLogger) ──
   const [savedTarget, setSavedTarget] = useState<Food | undefined>();
   // Saving logged entries as a meal starts from those entries every time:
   // closing it is cancelling, so nothing is kept for next time.
   const saveKey = saveFrom ? `save:${saveFrom.map((log) => log.id).join(',')}` : null;
-  const draftKey = editing ? `edit:${editing.id}` : savedTarget ? `saved:${savedTarget.id}` : saveKey ?? 'new';
+  // Opening Saved → Edit changes the meal's target, even when this sheet
+  // started from a logged entry. Its draft and save must use that same target.
+  const editingMealEntryId = savedTarget ? undefined : editing?.id;
+  const draftKey = savedTarget ? `saved:${savedTarget.id}` : editingMealEntryId ? `edit:${editingMealEntryId}` : saveKey ?? 'new';
   const keepsDraft = draftKey !== saveKey;
   const makeDraft = useCallback(
     (food?: { name: string; description?: string | null }, servings = 1): MealDraft => {
@@ -227,13 +242,16 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [storageFailed, setStorageFailed] = useState(false);
   const [captureKey, setCaptureKey] = useState(0);
   const [mealError, setMealError] = useState('');
+  const settledMealIds = useRef(new Set<string>());
 
   const updateMeal = useCallback(
     (patch: Partial<MealDraft>) => {
       setMeal((current) => {
         if (!current) return current;
         const next = { ...current, ...patch };
-        if (keepsDraft) setStorageFailed(!saveMealDraft(userId, next, draftKey));
+        // React may run this updater after an immediately successful save or
+        // discard cleared storage. Never recreate a draft that was settled.
+        if (keepsDraft && !settledMealIds.current.has(next.entryId)) setStorageFailed(!saveMealDraft(userId, next, draftKey));
         return next;
       });
     },
@@ -244,10 +262,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     (food?: Food, editSaved = false) => {
       const next = makeDraft(food);
       next.saveAsReusableMeal = editSaved;
-      // The key the draft is kept under from here on (draftKey once savedTarget
-      // is set): an entry being edited keeps its own, never the new-meal slot.
-      const targetKey = editing ? `edit:${editing.id}` : editSaved && food ? `saved:${food.id}` : 'new';
-      setSavedTarget(editSaved ? food : undefined);
+      const target = editSaved ? food : undefined;
+      const targetKey = target ? `saved:${target.id}` : editing ? `edit:${editing.id}` : 'new';
+      setSavedTarget(target);
       const value = loadMealDraft(userId, targetKey) ?? next;
       setMeal(value);
       setStorageFailed(!saveMealDraft(userId, value, targetKey));
@@ -266,6 +283,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   const discardMeal = () => {
     if (meal?.locked) return;
+    if (meal) settledMealIds.current.add(meal.entryId);
     clearMealDraft(userId, draftKey);
     setMeal(null);
     setSavedTarget(undefined);
@@ -308,7 +326,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const context = useMemo<LoggerContextValue>(
     () => ({
       purpose,
-      editing,
+      editing: savedTarget ? null : editing,
       selectedKey,
       groups,
       when,
@@ -319,9 +337,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       addIngredients,
       composeMeal: (food, editSaved) => startMeal(food, editSaved),
       complete,
-      setBusy,
+      beginBusy,
     }),
-    [purpose, editing, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
@@ -495,11 +513,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             userId={userId}
             savedTarget={savedTarget}
             saveOnly={Boolean(saveFrom) && !savedTarget}
-            editingEntryId={editing?.id}
+            editingEntryId={editingMealEntryId}
             storageFailed={storageFailed}
             onAddIngredients={() => setMealReview(false)}
             onPause={() => setPaused(true)}
             onSaved={() => {
+              settledMealIds.current.add(meal.entryId);
               clearMealDraft(userId, draftKey);
               if (savedTarget || saveFrom) {
                 void reloadSavedMeals();
@@ -539,8 +558,16 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                     startMeal(saved, true);
                     return;
                   }
-                  loadManual({ ...emptyManual, fields: manualFromFood(saved), selectedSavedMealId: saved.id });
-                  setTab('manual');
+                  // Editing saved macros has its own sheet, as in You. Loading
+                  // them into Manual would keep this sheet's logged-entry target.
+                  // Seed the selected row because You may not have loaded yet.
+                  useYouMealsStore.setState((state) => {
+                    const meals = state.meals ?? [];
+                    return { meals: meals.some((candidate) => candidate.id === saved.id)
+                      ? meals.map((candidate) => candidate.id === saved.id ? saved : candidate)
+                      : [...meals, saved] };
+                  });
+                  router.push({ pathname: '/saved-meal', params: { id: saved.id } });
                 }}
               />
             ) : null}
@@ -581,16 +608,20 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 }
               />
             ) : null}
-            {tab === 'photo' && !gemini ? <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} /> : null}
           </View>
         )}
-        {/* Stays mounted while hidden, as on the web: an analysis in flight and
-            each food's retry-safe ids survive a tab switch or a food review. */}
+        {/* Both analysis tabs stay mounted while hidden: work in flight and
+            retry-safe ids survive a tab switch or a food review. Only starting
+            the next ingredient capture drops the old analysis. */}
         {gemini ? (
           <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
             <AiTab draft={ai} setDraft={(update) => setAi(update)} />
           </View>
-        ) : null}
+        ) : (
+          <View key={`photo-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
+            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} />
+          </View>
+        )}
       </KeyboardAwareScrollView>
     </LoggerContext.Provider>
   );

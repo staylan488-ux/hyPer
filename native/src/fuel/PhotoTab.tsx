@@ -10,6 +10,7 @@ import { ensureFoodRow } from '@/lib/foodPersistence';
 import { formatMeasurementAmount } from '@/lib/foodUnits';
 import { createMealIngredient } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
+import { createRequestGate } from '@/lib/requestGate';
 import { analyzeFoodPhoto, getPhotoWorkerSettings, type PhotoAnalysisAngle, type PhotoAnalysisProvider } from '@/lib/photoAnalysis';
 import {
   buildPhotoHint,
@@ -96,13 +97,14 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
   const logger = useLogger();
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setBusy } = logger;
+  const [analysisGate] = useState(createRequestGate);
+  useEffect(() => () => analysisGate.invalidate(), [analysisGate]);
+  const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
     if (!analyzing) return;
-    setBusy(true);
-    return () => setBusy(false);
-  }, [analyzing, setBusy]);
+    return beginBusy();
+  }, [analyzing, beginBusy]);
 
   const pick = (angle: PhotoAnalysisAngle) => {
     const options = ['Take photo', 'Choose from library', ...(draft.photos[angle] ? ['Remove photo'] : []), 'Cancel'];
@@ -152,6 +154,7 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
 
   const analyze = async () => {
     if ((!draft.photos.top && !draft.photos.side) || analyzing) return;
+    const isCurrent = analysisGate.begin();
     setAnalyzing(true);
     setError(null);
     try {
@@ -160,14 +163,19 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
       const images = isPreviewActive()
         ? entries.map(({ angle }) => ({ angle, imageBase64: '', mimeType: 'image/jpeg' }))
         : await Promise.all(entries.map(async ({ angle, photo }) => ({ angle, ...(await prepareImage(photo)) })));
+      if (!isCurrent()) return;
       const settings = getPhotoWorkerSettings();
+      const accessToken = await workerAccessToken();
+      if (!isCurrent()) return;
       const result = await analyzeFoodPhoto({
         images,
         hint: buildPhotoHint({ plateDiameter: draft.plate, ingredients: draft.oils, details: draft.details }),
-        accessToken: await workerAccessToken(),
+        accessToken,
         settings,
       });
+      if (!isCurrent()) return;
       const items = await groundPhotoItems(result.items);
+      if (!isCurrent()) return;
       haptics.success();
       setDraft((current) => ({
         ...current,
@@ -177,10 +185,11 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
         summary: `${providerFallbackNote(settings.provider, result.provider, 'analyzed this photo')}${result.summary}`,
       }));
     } catch (cause) {
+      if (!isCurrent()) return;
       haptics.error();
       setError(cause instanceof Error ? cause.message : 'Could not analyze photo.');
     } finally {
-      setAnalyzing(false);
+      if (isCurrent()) setAnalyzing(false);
     }
   };
 

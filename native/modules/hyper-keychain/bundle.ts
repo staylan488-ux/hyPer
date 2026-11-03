@@ -5,7 +5,6 @@ export function runningBundleIdentifier(): string {
   try {
     // Typed by hand: importing expo's types here would pull React Native's
     // globals into the web app's type-check through the shared tests.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const expo = require('expo') as { requireOptionalNativeModule: (name: string) => { bundleIdentifier?: string } | null };
     return expo.requireOptionalNativeModule('HyperKeychain')?.bundleIdentifier ?? '';
   } catch {

@@ -82,6 +82,75 @@ function queuePages(...pages: Sample[][]) {
 }
 
 describe('Apple Health weight catch-up sync', () => {
+  it('does no work when the sync was already stopped', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(syncNativeBodyWeights(USER, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(nativeMock.readWeightSamples).not.toHaveBeenCalled();
+    expect(supabaseMock.from).not.toHaveBeenCalled();
+  });
+
+  it('does not upload a native page that arrives after Stop, and retries it next time', async () => {
+    const controller = new AbortController();
+    const samples = page(0, 3);
+    let deliver!: (value: { samples: Sample[] }) => void;
+    nativeMock.readWeightSamples.mockReturnValueOnce(new Promise((resolve) => { deliver = resolve; }));
+    const stopped = expect(syncNativeBodyWeights(USER, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+
+    controller.abort();
+    deliver({ samples });
+    await stopped;
+    expect(supabaseMock.upsert).not.toHaveBeenCalled();
+    expect(stored.has(CURSOR_KEY)).toBe(false);
+
+    queuePages(samples);
+    expect((await syncNativeBodyWeights(USER)).imported).toBe(3);
+    expect(nativeMock.readWeightSamples).toHaveBeenLastCalledWith({ since: undefined, limit: 500 });
+    expect(stored.get(CURSOR_KEY)).toBe(newestIso(samples));
+  });
+
+  it('finishes an upload already sent, keeps its cursor, and stops before another page', async () => {
+    const controller = new AbortController();
+    const first = page(0, 500);
+    queuePages(first);
+    let uploaded!: (value: { error: null }) => void;
+    supabaseMock.upsert.mockReturnValueOnce(new Promise((resolve) => { uploaded = resolve; }));
+    const stopped = expect(syncNativeBodyWeights(USER, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    await Promise.resolve();
+    expect(supabaseMock.upsert).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    uploaded({ error: null });
+    await stopped;
+    expect(stored.get(CURSOR_KEY)).toBe(newestIso(first));
+    expect(nativeMock.readWeightSamples).toHaveBeenCalledTimes(1);
+    // Only the upload was sent; no final latest-weight lookup after Stop.
+    expect(supabaseMock.from).toHaveBeenCalledTimes(1);
+
+    queuePages(page(500, 2));
+    await syncNativeBodyWeights(USER);
+    expect(nativeMock.readWeightSamples).toHaveBeenLastCalledWith({
+      since: new Date(Date.parse(newestIso(first)) - DAY_MS).toISOString(),
+      limit: 500,
+    });
+  });
+
+  it('does not advance the cursor if an upload already sent fails after Stop', async () => {
+    const controller = new AbortController();
+    queuePages(page(0, 500));
+    let uploaded!: (value: { error: { message: string } }) => void;
+    supabaseMock.upsert.mockReturnValueOnce(new Promise((resolve) => { uploaded = resolve; }));
+    const failed = expect(syncNativeBodyWeights(USER, controller.signal)).rejects.toThrow('offline');
+    await Promise.resolve();
+    controller.abort();
+    uploaded({ error: { message: 'offline' } });
+
+    await failed;
+    expect(stored.has(CURSOR_KEY)).toBe(false);
+    expect(nativeMock.readWeightSamples).toHaveBeenCalledTimes(1);
+  });
+
   it('reads a large backlog in one sync, continuing from each page\'s newest sample', async () => {
     const first = page(0, 500);
     // The second page repeats the boundary sample, as .strictStartDate does natively.

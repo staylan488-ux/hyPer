@@ -107,13 +107,12 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   const target = useRef({ manualFood: draft.fields, selectedSavedMealId: draft.selectedSavedMealId });
   target.current = { manualFood: draft.fields, selectedSavedMealId: draft.selectedSavedMealId };
   useEffect(() => () => describeGate.invalidate(), [describeGate]);
-  const { setBusy } = logger;
+  const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
     if (!describing) return;
-    setBusy(true);
-    return () => setBusy(false);
-  }, [describing, setBusy]);
+    return beginBusy();
+  }, [describing, beginBusy]);
 
   const savedMeals = logger.savedMeals ?? [];
   const selectedSavedMeal = draft.selectedSavedMealId ? savedMeals.find((meal) => meal.id === draft.selectedSavedMealId) ?? null : null;
@@ -489,4 +488,3 @@ function StepButton({ symbol, label, onPress, disabled }: { symbol: 'plus' | 'mi
     </Pressable>
   );
 }
-

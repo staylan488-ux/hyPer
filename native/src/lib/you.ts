@@ -180,7 +180,12 @@ export async function loadTargets(): Promise<void> {
     ]);
     if (target.error) throw target.error;
     if (!isCurrent()) return;
-    useAppStore.setState({ macroTarget: target.data ?? null, nutritionProfile: profile });
+    useAppStore.setState({
+      macroTarget: target.data ?? null,
+      nutritionProfile: profile,
+      macroTargetLoadedForUserId: userId,
+      nutritionProfileLoadedForUserId: userId,
+    });
     useTargetsStore.setState({ status: 'ready' });
   } catch {
     if (isCurrent()) useTargetsStore.setState({ status: 'error' });

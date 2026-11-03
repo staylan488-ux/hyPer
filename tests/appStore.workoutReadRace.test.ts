@@ -44,6 +44,7 @@ const backend = vi.hoisted(() => {
 vi.mock('@/lib/supabase', () => ({ supabase: backend.client }));
 
 import { recallTodayDay, rememberTodayDay } from '@/lib/todayDay';
+import { prepareWorkoutFinish } from '@/lib/workoutFinish';
 import { getWorkoutWriteSeq, resetAppData, useAppStore } from '@/stores/appStore';
 
 function hold(table: string) {
@@ -92,6 +93,28 @@ beforeEach(() => {
 });
 
 describe('fetchCurrentWorkout against overlapping workout writes', () => {
+  it('tracks a store set correction through a Finish confirmation', async () => {
+    useAppStore.setState({ currentWorkout: workoutWith(loggedSet) });
+    const releaseSave = hold('sets');
+    const save = useAppStore.getState().logSet('set-1', 110, 8, 8);
+    const confirm = prepareWorkoutFinish('workout-1', () => {
+      const workout = useAppStore.getState().currentWorkout;
+      return workout ? { workoutId: workout.id, weight: workout.sets[0].weight } : null;
+    });
+    releaseSave({ data: { ...loggedSet, weight: 110 }, error: null, status: 200 });
+    await save;
+    expect(await confirm()).toEqual({ kind: 'ready', session: { workoutId: 'workout-1', weight: 110 } });
+  });
+
+  it('retains a failed store save until its already-open Finish confirmation resolves', async () => {
+    const releaseSave = hold('sets');
+    const save = useAppStore.getState().logSet('set-1', 100, 8, 8).catch(() => undefined);
+    const confirm = prepareWorkoutFinish('workout-1', () => ({ workoutId: 'workout-1' }));
+    releaseSave({ data: null, error: new Error('offline'), status: 400 });
+    await save;
+    expect(await confirm()).toEqual({ kind: 'save-failed' });
+  });
+
   it('keeps a set logged while an older read was in flight', async () => {
     const releaseRead = hold('workouts');
     const read = useAppStore.getState().fetchCurrentWorkout();

@@ -59,6 +59,28 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   waits about 25 s, and a widget or lock-screen card tapped mid-run closes the
   run screen. The unlikely ones are listed in the owner's doc "Hidden state
   machines in hyPer".
+- 2026-11-03: PR #169 review follow-up, based on `b49cf40`, was prepared in
+  `codex/pr169-state-fixes`; no merge or release was performed.
+  Saved-recipe drafts and save targets are separate from logged entries;
+  explicit edits of simple saved foods use the existing saved-meal editor and
+  preserve the underlying entry draft. Abandoned scans release their busy claim
+  immediately, and Photo keeps results across tab changes but drops work from a
+  closed/reset capture. All Start paths share one attempt. Finish retains set
+  save outcomes while the question is open, reads the latest session, guards
+  account/workout changes and holds editing while completion saves. Lock-screen
+  cleanup uses workout-read readiness; widgets also require successful food,
+  target and profile reads. Health Stop prevents the next read/upload, although
+  an upload already sent may finish. History name-read failures preserve the
+  last complete month. Discard is visibly disabled while a run saves.
+  Native source is now included in lint; the RN framework setup script also
+  handles Bash 3.2's empty-array case on fresh builds. Verified: 1,937 tests,
+  lint (including test types and instruction checks), build, native `tsc`, and
+  a Debug simulator build. Simulator checks used sample data: set logging and
+  Finish summary, food logging with a chosen time and reopening it, recipe draft
+  isolation, saving a simple saved food and returning to the untouched entry,
+  light/dark appearance and recorded cold-launch intro. Hardware
+  camera/barcodes, HealthKit, device widget/Live Activity failure scenarios and
+  real-account behavior remain unverified. No auth flow or schema changes.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

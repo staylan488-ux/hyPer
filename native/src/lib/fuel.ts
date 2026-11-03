@@ -7,6 +7,7 @@
 import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 import { create } from 'zustand';
 
+import { captureAccountScope } from '@/lib/accountScope';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import {
   createNutritionGroup,
@@ -49,6 +50,9 @@ type FuelState = {
   status: 'idle' | 'loading' | 'ready' | 'error';
   todayKey: string;
   todayTotals: MacroTotals;
+  /** The account and day whose totals have actually loaded, including an empty day. */
+  todayLoadedForUserId: string | null;
+  todayLoadedKey: string | null;
   /** Shows a day, loading its month when needed. */
   select: (key: string) => void;
   /** Reloads the shown month (and today's totals when today is in another month). */
@@ -69,6 +73,7 @@ type FuelState = {
 
 // The latest month request wins; an older answer is dropped.
 let monthRequest = 0;
+let todayRequest = 0;
 const defaultsFailed = new Set<string>();
 // A second caller waits for the same creation instead of reading before it lands.
 const defaultsInFlight = new Map<string, Promise<void>>();
@@ -77,9 +82,10 @@ const copyIds = new Map<string, string[]>();
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
+    const isCurrent = captureAccountScope();
     const request = ++monthRequest;
     const userId = await getSessionUserId();
-    if (!userId || request !== monthRequest) return;
+    if (!userId || request !== monthRequest || !isCurrent()) return;
     if (get().loadedMonth !== month) set({ status: 'loading' });
     const start = parseISO(`${month}-01`);
     const from = dayKey(startOfMonth(start));
@@ -94,7 +100,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         .lte('date', to)
         .order('sort_order', { ascending: true }),
     ]);
-    if (request !== monthRequest) return;
+    if (request !== monthRequest || !isCurrent()) return;
     if (logsResult.error || !logsResult.data || groupsResult.error) {
       // a month already on screen keeps what it shows
       set({ status: get().loadedMonth === month ? 'ready' : 'error' });
@@ -107,7 +113,11 @@ export const useFuelStore = create<FuelState>((set, get) => {
       logs,
       groups: (groupsResult.data ?? []) as NutritionGroup[],
       status: 'ready',
-      ...(monthOf(todayKey) === month ? { todayTotals: sumMacros(logs.filter((log) => log.date === todayKey)) } : {}),
+      ...(monthOf(todayKey) === month ? {
+        todayTotals: sumMacros(logs.filter((log) => log.date === todayKey)),
+        todayLoadedForUserId: userId,
+        todayLoadedKey: todayKey,
+      } : {}),
     });
     void get().ensureDayGroups(get().selected);
   };
@@ -127,6 +137,8 @@ export const useFuelStore = create<FuelState>((set, get) => {
     status: 'idle',
     todayKey: today(),
     todayTotals: emptyTotals,
+    todayLoadedForUserId: null,
+    todayLoadedKey: null,
 
     select: (key) => {
       set({ selected: key });
@@ -143,6 +155,8 @@ export const useFuelStore = create<FuelState>((set, get) => {
     },
 
     loadToday: async (key = today()) => {
+      const isCurrent = captureAccountScope();
+      const request = ++todayRequest;
       const previous = get().todayKey;
       if (previous !== key && get().selected === previous) set({ selected: key });
       set({ todayKey: key });
@@ -151,14 +165,16 @@ export const useFuelStore = create<FuelState>((set, get) => {
         return;
       }
       const userId = await getSessionUserId();
-      if (!userId) return;
+      if (!userId || !isCurrent() || request !== todayRequest) return;
       const { data, error } = await fetchNutritionLogsWithFoods<NutritionLog, Food>(
         userId,
         { from: key, to: key },
         '*',
         FOOD_COLUMNS,
       );
-      if (!error && data && get().todayKey === key) set({ todayTotals: sumMacros(data) });
+      if (!error && data && get().todayKey === key && isCurrent() && request === todayRequest) {
+        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key });
+      }
     },
 
     ensureDayGroups: (key) => {
@@ -336,9 +352,13 @@ export function suggestedGroup(groups: NutritionGroup[], at = new Date()): Nutri
 /** Sign-out: nothing of this account's food stays on screen or reaches the next account's widget. */
 export function resetFuel() {
   monthRequest += 1;
+  todayRequest += 1;
   defaultsFailed.clear();
   defaultsInFlight.clear();
   copyIds.clear();
   const key = today();
-  useFuelStore.setState({ selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key, todayTotals: emptyTotals });
+  useFuelStore.setState({
+    selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key,
+    todayTotals: emptyTotals, todayLoadedForUserId: null, todayLoadedKey: null,
+  });
 }

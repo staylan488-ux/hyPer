@@ -27,7 +27,7 @@ import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
-import { trackSetSave, useFinishWorkout } from '~/lib/finishWorkout';
+import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
@@ -188,7 +188,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const logged = current.set;
     const loggedReps = Math.round(reps);
     try {
-      await trackSetSave(logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined));
+      await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
       // Beating the same set last time gets a firmer haptic and a quiet line.
       const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous);
       if (gain) {
@@ -305,6 +305,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             type: 'button',
             label: 'Rest timer',
             icon: { type: 'sfSymbol', name: 'timer' },
+            disabled: closing,
             onPress: () => {
               haptics.tap();
               router.push('/rest');
@@ -317,6 +318,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   type: 'button' as const,
                   label: 'Rename workout',
                   icon: { type: 'sfSymbol' as const, name: 'pencil' as const },
+                  disabled: closing,
                   onPress: () => {
                     haptics.tap();
                     renameRef.current();
@@ -437,6 +439,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Stack.Screen options={headerOptions} />
       <TabScroll
         ref={scroll}
+        // Once Finish is confirmed, its saved summary must not race new edits.
+        pointerEvents={closing ? 'none' : 'auto'}
+        accessibilityElementsHidden={closing}
         // A lifted movement holds the page still while it is dragged.
         scrollEnabled={!dragging}
         keyboardShouldPersistTaps="handled"
@@ -649,14 +654,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       </TabScroll>
 
       <UndoBar
-        label={undo ? `${undo.name} skipped` : null}
+        label={undo && !closing ? `${undo.name} skipped` : null}
         bottom={tabBarCover(true) + 8}
         onUndo={() => {
           if (undo) bringBack(undo, undo.wasCurrent);
         }}
       />
 
-      {editing ? (
+      {editing && !closing ? (
         <KeyboardStickyView style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
           <KeyBar
             step={editing === 'weight' ? '5 lb' : '1'}
@@ -890,7 +895,6 @@ function useStartHeader(title: string) {
           },
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [title, mode, hasSplit],
   );
   return <Stack.Screen options={options} />;

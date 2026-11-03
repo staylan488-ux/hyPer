@@ -165,17 +165,11 @@ export function useNow(intervalMs = 1000): number {
   return now;
 }
 
-// One start at a time across every Start button (today's card and the other
-// days on Train each have their own): a second one would start a second workout.
-let startInFlight = false;
-
 /** Starts a program day's session; the same feedback wherever it is started from. */
 export function useStartSession() {
   const startWorkout = useAppStore((state) => state.startWorkout);
   const [starting, setStarting] = useState<string | null>(null);
   const start = async (dayId: string): Promise<boolean> => {
-    if (startInFlight) return false;
-    startInFlight = true;
     setStarting(dayId);
     try {
       const workout = await startWorkout(dayId);
@@ -187,7 +181,6 @@ export function useStartSession() {
       Alert.alert('Could not start', 'Check your connection and try again.');
       return false;
     } finally {
-      startInFlight = false;
       setStarting(null);
     }
   };

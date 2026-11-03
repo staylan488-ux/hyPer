@@ -22,10 +22,13 @@ let written: string | null = null;
 /** Mounted once with the tabs: keeps the widgets' snapshot current and clears it on sign-out. */
 export function useWidgetSnapshot() {
   const { dayKey, loading } = useAccountDay();
-  // An account load whose reads failed (no signal) has no program to show:
-  // the widgets keep their last good snapshot until a load succeeds.
+  // Unknown nutrition or training data must not replace a good snapshot with
+  // empty defaults. Successful reads of empty data do allow it to be cleared.
   const userId = useAuthStore((state) => state.user?.id);
   const loaded = useAppStore((state) => Boolean(userId) && state.hydratedForUserId === userId);
+  const targetsLoaded = useAppStore((state) => Boolean(userId)
+    && state.macroTargetLoadedForUserId === userId
+    && state.nutritionProfileLoadedForUserId === userId);
   const plan = useTodayPlan();
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
@@ -33,25 +36,28 @@ export function useWidgetSnapshot() {
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const totals = useFuelStore((state) => state.todayTotals);
   const fuelDay = useFuelStore((state) => state.todayKey);
+  const fuelLoaded = useFuelStore((state) => Boolean(userId)
+    && state.todayLoadedForUserId === userId
+    && state.todayLoadedKey === fuelDay
+    && fuelDay === dayKey);
 
   const days = useMemo(
-    () =>
-      widgetPlan({
-        hero: plan.hero,
-        dayKey,
-        workoutMode,
-        activeSplit,
-        schedule: plan.schedule,
-        scheduleWorkouts: plan.scheduleWorkouts,
-        adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
-      }),
+    () => widgetPlan({
+      hero: plan.hero,
+      dayKey,
+      workoutMode,
+      activeSplit,
+      schedule: plan.schedule,
+      scheduleWorkouts: plan.scheduleWorkouts,
+      adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
+    }),
     [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled],
   );
 
   const json = useMemo(() => {
-    if (loading || !loaded || !days) return null;
+    if (loading || !loaded || !targetsLoaded || !fuelLoaded || !days) return null;
     return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan: days }));
-  }, [loading, loaded, days, fuelDay, target, totals, goal]);
+  }, [loading, loaded, targetsLoaded, fuelLoaded, days, fuelDay, target, totals, goal]);
 
   useEffect(() => {
     if (!json || json === written) return;

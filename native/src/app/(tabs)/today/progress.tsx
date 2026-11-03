@@ -17,7 +17,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { MuscleFigure } from '~/components/MuscleFigure';
-import { Hairline, Row } from '~/components/Row';
+import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';

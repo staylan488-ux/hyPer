@@ -55,8 +55,8 @@ export default function TabsLayout() {
   useWhoopForegroundSync(userId);
   // The released app turns Health sync back on once if the Capacitor app had it on.
   const healthReady = useHealthCarryOver(userId);
-  // It follows the switch in You: Stop ends the automatic imports at once, and
-  // turning sync on starts them without a relaunch.
+  // It follows the switch in You: Stop prevents further import pages (an
+  // upload already sent may finish); turning it on needs no relaunch.
   const healthOn = useHealthStore((state) => state.enabled);
   useNativeHealthSync(healthReady && healthOn ? userId : undefined);
   // The tabs unmount only on sign-out: leave nothing of this account behind.

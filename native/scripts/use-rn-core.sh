@@ -43,4 +43,9 @@ for tarball in */artifacts/*-"$lower".tar.gz; do
 done
 
 # The tarballs keep their original dates; new ones make Xcode copy them again.
-find React-Core-prebuilt/React.xcframework hermes-engine "${expo_modules[@]}" -exec touch {} +
+find React-Core-prebuilt/React.xcframework hermes-engine -exec touch {} +
+# macOS's Bash 3.2 treats an empty array as unset under nounset. Fresh builds
+# can compile every Expo module from source, leaving no precompiled modules.
+if [ "${#expo_modules[@]}" -gt 0 ]; then
+  find "${expo_modules[@]}" -exec touch {} +
+fi

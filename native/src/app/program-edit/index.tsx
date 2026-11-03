@@ -33,7 +33,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { Chip } from '~/components/Chip';
 import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import type { MenuAction } from '~/components/HoldMenu';
@@ -282,7 +281,6 @@ function Editor({ notice }: { notice: string | null }) {
           },
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isNew, saving, c.ink],
   );
 
