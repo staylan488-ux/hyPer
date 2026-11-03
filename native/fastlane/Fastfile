@@ -33,8 +33,8 @@ platform :ios do
               "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}"
 
     # Install pods explicitly: Expo prebuild can exit successfully after a pod
-    # failure. The helper also exports the build number to the whole prebuild,
-    # rather than attaching it only to a shell's `cd` command.
+    # failure. The helper preserves the selected build number and release
+    # identity while checking that the workspace is ready for archiving.
     sh("'#{native}/scripts/prepare-release.sh' '#{next_build}'")
 
     build_app(
