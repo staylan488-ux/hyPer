@@ -137,9 +137,9 @@ export interface WeekVolumeSummary {
   over: number;
 }
 
-/** Muscles trained this week and where they sit against their landmarks. */
+/** Muscles trained this week and where they sit against their landmarks; one with none to grade against is left out. */
 export function summarizeWeekVolume(weeklyVolume: MuscleVolume[]): WeekVolumeSummary {
-  const trained = (weeklyVolume ?? []).filter((volume) => volume.weekly_sets > 0);
+  const trained = (weeklyVolume ?? []).filter((volume) => volume.weekly_sets > 0 && volume.status !== null);
   return {
     trained: trained.length,
     under: trained.filter((volume) => volume.status === 'below_mev').length,

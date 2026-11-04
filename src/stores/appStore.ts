@@ -562,6 +562,24 @@ function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) =
   };
 }
 
+/**
+ * Only the latest call may write: `isLatest` tells a call whether a newer one
+ * has started since. A call that was overtaken then waits for the newer one,
+ * so whoever awaited it still sees fresh data.
+ */
+function latestWins(action: (isLatest: () => boolean) => Promise<void>): () => Promise<void> {
+  let request = 0;
+  let latest: Promise<void> = Promise.resolve();
+  return () => {
+    const mine = ++request;
+    const run = action(() => mine === request).then(async () => {
+      if (mine !== request) await latest.catch(() => {});
+    });
+    latest = run;
+    return run;
+  };
+}
+
 function startsWorkout<Args extends unknown[]>(action: (...args: Args) => Promise<Workout | null>, flexible = false) {
   const write = writesWorkout(action);
   return async (...args: Args): Promise<Workout | null> => {
@@ -3635,7 +3653,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  calculateWeeklyVolume: async () => {
+  // An earlier read (started before an edit) that answers late would show the
+  // volume from before it, so only the latest read sets it.
+  calculateWeeklyVolume: latestWins(async (isLatest) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
     if (!userId || !isAccountCurrent()) return;
@@ -3668,14 +3688,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       ).catch(() => ({ data: null })),
     ]);
 
-    if (!workouts || !isAccountCurrent()) return;
+    if (!workouts || !isAccountCurrent() || !isLatest()) return;
 
     // If the landmarks query failed, keep grading against the stored list.
     const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
     const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
 
     set({ volumeLandmarks, weeklyVolume });
-  },
+  }),
 }));
 
 // Clears the in-memory copy of the previous account's data; every set is

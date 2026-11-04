@@ -1,10 +1,10 @@
-import type { MuscleVolume, VolumeLandmark } from '@/types';
+import type { VolumeLandmark, VolumeStatus } from '@/types';
 
 export type VolumeThresholds = Pick<VolumeLandmark, 'mev' | 'mav_low' | 'mav_high' | 'mrv'>;
 
 // The single rule for grading weekly sets against a muscle's landmarks. Both
 // the status chip and the recommendation caption come from it.
-export function classifyVolume(weeklySets: number, landmark: VolumeThresholds): MuscleVolume['status'] {
+export function classifyVolume(weeklySets: number, landmark: VolumeThresholds): VolumeStatus {
   if (weeklySets < landmark.mev) return 'below_mev';
   if (weeklySets < landmark.mav_low) return 'mev_mav';
   if (weeklySets <= landmark.mav_high) return 'mav';
@@ -15,7 +15,7 @@ export function classifyVolume(weeklySets: number, landmark: VolumeThresholds): 
 export function getVolumeRecommendation(
   weeklySets: number,
   landmark: VolumeThresholds
-): { status: MuscleVolume['status']; message: string } {
+): { status: VolumeStatus; message: string } {
   const status = classifyVolume(weeklySets, landmark);
 
   switch (status) {

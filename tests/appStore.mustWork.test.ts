@@ -2166,7 +2166,8 @@ describe('must-work store contracts', () => {
       expect(state.volumeLandmarks).toEqual([chestLandmark]);
       expect(state.weeklyVolume).toEqual([
         { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
-        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: undefined, status: 'below_mev' },
+        // No stored row for triceps: graded against the schema seed's default.
+        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: expect.objectContaining({ muscle_group: 'triceps', mev: 6 }), status: 'below_mev' },
       ]);
     });
 
@@ -2194,6 +2195,45 @@ describe('must-work store contracts', () => {
       const state = useAppStore.getState();
       expect(state.weeklyVolume).toBe(previous);
       expect(state.volumeLandmarks).toEqual([chestLandmark]);
+    });
+
+    it('lets only the latest read set the volume, and an earlier caller waits for it', async () => {
+      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      // The first read started before an edit and answers last, with the old sets.
+      let answerOld!: (value: unknown) => void;
+      const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
+      workoutsChain.lte
+        .mockReturnValueOnce(new Promise((resolve) => { answerOld = resolve; }))
+        .mockResolvedValueOnce({ data: workouts, error: null });
+
+      let firstDone = false;
+      const first = useAppStore.getState().calculateWeeklyVolume().then(() => { firstDone = true; });
+      await useAppStore.getState().calculateWeeklyVolume();
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
+      expect(firstDone).toBe(false);
+
+      answerOld({ data: before, error: null });
+      await first;
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
+    });
+
+    it('has an earlier read that answers first wait for the latest one', async () => {
+      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      let answerLatest!: (value: unknown) => void;
+      const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
+      workoutsChain.lte
+        .mockResolvedValueOnce({ data: before, error: null })
+        .mockReturnValueOnce(new Promise((resolve) => { answerLatest = resolve; }));
+
+      let firstDone = false;
+      const first = useAppStore.getState().calculateWeeklyVolume().then(() => { firstDone = true; });
+      const latest = useAppStore.getState().calculateWeeklyVolume();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(firstDone).toBe(false);
+
+      answerLatest({ data: workouts, error: null });
+      await Promise.all([first, latest]);
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
     });
 
     describe('Monday-to-Sunday training week', () => {

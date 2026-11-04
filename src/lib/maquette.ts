@@ -1,4 +1,4 @@
-import type { MuscleGroup, MuscleVolume } from '@/types';
+import type { MuscleGroup, MuscleVolume, VolumeStatus } from '@/types';
 
 /**
  * The volume maquette: a sculptor's mannequin whose muscle regions are shaded
@@ -104,7 +104,7 @@ export const MUSCLE_PARTS: MusclePart[] = [
 // ═══════════════════════════════════
 
 /** Ink share per volume status — the same ramp as --color-volume-* tokens. */
-const STATUS_INK: Record<MuscleVolume['status'], number> = {
+const STATUS_INK: Record<VolumeStatus, number> = {
   below_mev: 0.2,
   mev_mav: 0.4,
   mav: 0.62,
@@ -138,7 +138,8 @@ export function shadeMuscles(volume: MuscleVolume[]): Map<MuscleGroup, MuscleSha
     const trained = entry && entry.weekly_sets > 0;
     shades.set(muscle, {
       muscle,
-      ink: trained ? STATUS_INK[entry.status] : 0,
+      // A muscle with no grade still shows as trained, at the lightest ink.
+      ink: trained ? STATUS_INK[entry.status ?? 'below_mev'] : 0,
       hot: Boolean(trained && entry.status === 'above_mrv'),
       sets: entry?.weekly_sets ?? 0,
       status: entry?.status ?? null,
