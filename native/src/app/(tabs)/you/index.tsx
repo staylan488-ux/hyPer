@@ -62,7 +62,9 @@ export default function YouScreen() {
     .join('')
     .slice(0, 2)
     .toUpperCase();
-  const connections = [whoop ? 'WHOOP' : null, health ? 'Health' : null].filter(Boolean).join(', ') || 'None';
+  // Two steps: the React Compiler can't yet compile a ternary inside `||`.
+  const connected = [whoop ? 'WHOOP' : null, health ? 'Health' : null].filter(Boolean).join(', ');
+  const connections = connected || 'None';
 
   return (
     <>
@@ -265,9 +267,10 @@ function SchedulingSetting() {
     } catch {
       haptics.error();
       setFailed(true);
-    } finally {
-      setSaving(false);
     }
+    // After the try, not in a finally, which the React Compiler can't
+    // compile; nothing in the catch throws.
+    setSaving(false);
   };
 
   return (

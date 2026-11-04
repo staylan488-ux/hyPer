@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
 import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
@@ -68,57 +68,55 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
   // Goes back as soon as Delete is chosen; the list brings it back if the delete fails.
   const remove = () => void deleteProgram(split, onLeave);
 
-  const options = useMemo(
-    () => ({
-        title: split.name,
-        unstable_headerRightItems: () => [
-          {
-            type: 'button',
-            label: 'Edit',
-            // iOS's header items are silent.
-            onPress: () => {
-              haptics.tap();
-              editProgram(split);
-            },
-          },
-          {
-            type: 'menu',
-            label: 'Program options',
-            icon: { type: 'sfSymbol', name: 'ellipsis' },
-            menu: {
-              items: [
-                ...(split.is_active
-                  ? []
-                  : [
-                      {
-                        type: 'action' as const,
-                        label: 'Set active',
-                        icon: { type: 'sfSymbol' as const, name: 'checkmark.circle' as const },
-                        disabled: activating,
-                        onPress: () => {
-                          haptics.tap();
-                          void activate();
-                        },
-                      },
-                    ]),
-                {
-                  type: 'action',
-                  label: 'Delete program',
-                  icon: { type: 'sfSymbol', name: 'trash' },
-                  destructive: true,
-                  onPress: () => {
-                    haptics.tap();
-                    remove();
+  // A plain object: the React Compiler keeps it until the program or the
+  // activating state changes, so iOS isn't sent new header items each render.
+  const options = {
+    title: split.name,
+    unstable_headerRightItems: () => [
+      {
+        type: 'button',
+        label: 'Edit',
+        // iOS's header items are silent.
+        onPress: () => {
+          haptics.tap();
+          editProgram(split);
+        },
+      },
+      {
+        type: 'menu',
+        label: 'Program options',
+        icon: { type: 'sfSymbol', name: 'ellipsis' },
+        menu: {
+          items: [
+            ...(split.is_active
+              ? []
+              : [
+                  {
+                    type: 'action' as const,
+                    label: 'Set active',
+                    icon: { type: 'sfSymbol' as const, name: 'checkmark.circle' as const },
+                    disabled: activating,
+                    onPress: () => {
+                      haptics.tap();
+                      void activate();
+                    },
                   },
-                },
-              ],
+                ]),
+            {
+              type: 'action',
+              label: 'Delete program',
+              icon: { type: 'sfSymbol', name: 'trash' },
+              destructive: true,
+              onPress: () => {
+                haptics.tap();
+                remove();
+              },
             },
-          },
-        ],
-      }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [split, activating],
-  );
+          ],
+        },
+      },
+    ],
+  } satisfies ComponentProps<typeof Stack.Screen>['options'];
 
   return (
     <>

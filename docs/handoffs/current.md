@@ -12,10 +12,8 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   shared code the app imports. The Vercel project `hy-per` that hosted the web
   app no longer builds (`vercel.json` turns its Git deployments off); its last
   web build stays online until the project is deleted in Vercel.
-- TestFlight: build 60, built from main at c175fdc on 2026-10-28, is in
-  internal testing for the Team group. PR #157 (hold and drag to reorder
-  movements) and PR #158 (over-target colours follow the nutrition goal) merged
-  after it and are in no TestFlight build yet.
+- TestFlight: 2.0.0 build 65, built from main at 5072efb (through PR #170)
+  on 2026-11-04 UTC, is the latest upload; the Team group gets every build.
 - Ship pipeline: since PR #156, `scripts/ship.sh` hands over to the build
   clone's own copy and cleans up after every run. The running bot keeps its old
   code until it is restarted with `scripts/ship-bot/install-launchd.sh` (not
@@ -36,12 +34,32 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 - 2026-10-31: holding a movement in a live workout could close the app (the
   owner hit it on his phone): the lifted row's shadow reached Reanimated as
   "1.6e-7" on rare frames. The fix (`native/src/lib/liftShadow.ts`) was
-  checked against Reanimated's own parser and in the iOS bundle, not on a
-  phone or simulator, and no crash report was read from the phone.
-- 2026-11-01: Skip a movement in a live workout (the owner's ask). Checked
-  with the web suite, lint, build, native `tsc` and an iOS bundle export; not
-  yet run in a simulator or on a phone (the Undo bar's place above the workout
-  bar, haptics, VoiceOver, a superset pair).
+  checked against Reanimated's own parser and in the iOS bundle; on
+  2026-11-04 about 90 hold-and-drags in the simulator showed no error. No
+  crash report was read from the phone.
+- 2026-11-04: a dropped movement often kept its lifted shadow (half of 20
+  drops on main, every one that ended at the foot of the list), because
+  `liftShadow` returned `undefined` at rest and Reanimated sends nothing for
+  that. It now writes an empty shadow; 0 of 20 drops kept one in the
+  simulator. Not seen on a phone.
+- 2026-11-04: a speed pass (branch `claude/project-thread-et0ddr`) with no
+  change in looks or behaviour. Most of it lets the React Compiler optimize
+  screens it was skipping (48 skipped functions on main, 29 after; the rest are
+  rarely used sheets), so a logged set, a keystroke or a swipe redraws only
+  what it touches: Train's live workout, swipe rows, drag-to-reorder, the Log
+  food sheet, Fuel, History's calendar, the exercise picker, You and Program.
+  Fewer round trips: food saves read the user id from the stored session,
+  Fuel's reload and starting a program day read in parallel, History names
+  program days from the loaded programs, and the store skips writes of
+  unchanged data. Checked with the web suite, lint, build, native `tsc`, an
+  iOS bundle export and eight review agents; not run in a simulator or on a
+  phone. Worth a hand check: swipe, the press spring, drag-to-reorder and
+  logging food.
+- 2026-11-01: Skip a movement in a live workout (the owner's ask). Run in the
+  simulator on 2026-11-04 (sample data, light and dark): Skip on the card, a
+  row's swipe and the movement sheet, Undo, bringing it back, the counts,
+  Finish naming the skipped movement and History without its sets. Not yet
+  exercised: haptics, VoiceOver and a superset pair.
 - 2026-11-03: an audit of the app's hand-kept state (saving flags, the
   workout's start and finish, rest, runs, sign-in, sync) fixed 15 bugs with no
   change when things work: Finish waits for a set still saving, one Start at a

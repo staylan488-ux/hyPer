@@ -3,6 +3,7 @@ import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
+  getSession: vi.fn(),
   from: vi.fn(),
   insert: vi.fn(),
   update: vi.fn(),
@@ -11,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { auth: { getUser: mocks.getUser }, from: mocks.from },
+  supabase: { auth: { getUser: mocks.getUser, getSession: mocks.getSession }, from: mocks.from },
 }));
 
 const payload = {
@@ -34,6 +35,7 @@ function mockWrite(error: unknown = null) {
 
 beforeEach(() => {
   mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+  mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
   mocks.from.mockReturnValue(mocks);
   mocks.update.mockReturnValue(mocks);
   mockWrite();
@@ -46,6 +48,21 @@ describe('nutrition entry persistence', () => {
     expect(mocks.from).toHaveBeenCalledExactlyOnceWith('nutrition_logs');
     expect(mocks.insert).toHaveBeenCalledExactlyOnceWith({ user_id: 'user-1', ...payload });
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('takes a plain save\'s owner from the stored session, without a request to Supabase Auth', async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-2' } } });
+    await persistNutritionEntry(payload);
+    await persistNutritionEntry(payload, 'entry-1');
+    await persistNutritionEntry(payload, undefined, 'retry-1');
+
+    expect(mocks.getSession).toHaveBeenCalledTimes(3);
+    expect(mocks.getUser).not.toHaveBeenCalled();
+    expect(mocks.insert).toHaveBeenCalledExactlyOnceWith({ user_id: 'user-1', ...payload });
+    expect(mocks.eq.mock.calls).toEqual([['id', 'entry-1'], ['user_id', 'user-1']]);
+    expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith(
+      { id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' },
+    );
   });
 
   it('updates the complete entry and allows clearing its group, scoped to its owner', async () => {
@@ -100,23 +117,28 @@ describe('nutrition entry persistence', () => {
   );
 
   it('rejects an account switch after a composed food was saved before writing its log', async () => {
+    // the stored session still names user-1; Supabase Auth's answer decides
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-2' } } });
     await expect(persistNutritionEntry(payload, undefined, 'retry-1', 'user-1')).rejects.toThrow('account changed');
     await expect(persistNutritionEntry(payload, 'entry-1', 'retry-1', 'user-1')).rejects.toThrow('account changed');
+    expect(mocks.getSession).not.toHaveBeenCalled();
     expect(mocks.from).not.toHaveBeenCalled();
   });
 
   it('permits a matching expected owner and preserves retry identity', async () => {
     await persistNutritionEntry(payload, undefined, 'retry-1', 'user-1');
+    expect(mocks.getUser).toHaveBeenCalledOnce();
     expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith(
       { id: 'retry-1', user_id: 'user-1', ...payload }, { onConflict: 'id' },
     );
   });
 
   it('does not write without a signed-in user', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
     mocks.getUser.mockResolvedValue({ data: { user: null } });
 
     await expect(persistNutritionEntry(payload)).rejects.toThrow('No user found');
+    await expect(persistNutritionEntry(payload, undefined, 'retry-1', 'user-1')).rejects.toThrow('No user found');
     expect(mocks.from).not.toHaveBeenCalled();
   });
 });

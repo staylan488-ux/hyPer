@@ -34,10 +34,20 @@ function chunk<T>(values: T[], size: number): T[][] {
   return result;
 }
 
+/** Food rows by id, in chunks so many distinct ids cannot overflow the URL. */
+function requestFoods(ids: string[], foodColumns: string) {
+  return chunk(ids, FOOD_ID_CHUNK_SIZE).map((part) => supabase.from('foods').select(foodColumns).in('id', part));
+}
+
 /**
  * A user's logs in a date range, each with its food (or `food: null` when the
  * food row is missing). `logColumns` must include food_id and `foodColumns`
  * must include id.
+ *
+ * `expectedFoodIds` (say, the foods of the answer being reloaded) are read
+ * alongside the logs instead of after them. Foods the logs do not use are
+ * ignored, and any food the logs use that the early read did not return is
+ * read once the logs arrive, so the result is the same as without the hint.
  */
 export async function fetchNutritionLogsWithFoods<
   Log extends { food_id: string },
@@ -47,6 +57,7 @@ export async function fetchNutritionLogsWithFoods<
   range: NutritionLogDateRange,
   logColumns: string,
   foodColumns: string,
+  expectedFoodIds?: Iterable<string>,
 ): Promise<NutritionLogsWithFoodsResult<Log, Food>> {
   let logsQuery = supabase
     .from('nutrition_logs')
@@ -55,23 +66,29 @@ export async function fetchNutritionLogsWithFoods<
     .gte('date', range.from);
   if (range.to !== undefined) logsQuery = logsQuery.lte('date', range.to);
 
+  // A failed early chunk only means its ids are read again below.
+  const expected = expectedFoodIds ? [...new Set(expectedFoodIds)].filter(Boolean) : [];
+  const early = Promise.all(
+    requestFoods(expected, foodColumns).map((request) => request.then((result) => result, () => null)),
+  );
+
   const { data: logs, error: logsError } = await logsQuery;
   if (logsError) return { data: null, error: logsError };
 
   const rows = (logs ?? []) as unknown as Log[];
   if (rows.length === 0) return { data: [], error: null };
 
-  const foodIds = [...new Set(rows.map((row) => row.food_id).filter(Boolean))];
-  const foodResults = await Promise.all(
-    chunk(foodIds, FOOD_ID_CHUNK_SIZE).map((ids) => supabase.from('foods').select(foodColumns).in('id', ids)),
-  );
+  const foods = new Map<string, Food>();
+  const keep = (data: unknown) => {
+    for (const food of (data ?? []) as Food[]) foods.set(food.id, food);
+  };
+  for (const result of await early) if (result && !result.error) keep(result.data);
+
+  const foodIds = [...new Set(rows.map((row) => row.food_id).filter(Boolean))].filter((id) => !foods.has(id));
+  const foodResults = await Promise.all(requestFoods(foodIds, foodColumns));
   const failed = foodResults.find((result) => result.error);
   if (failed?.error) return { data: null, error: failed.error };
-
-  const foods = new Map<string, Food>();
-  for (const result of foodResults) {
-    for (const food of (result.data ?? []) as unknown as Food[]) foods.set(food.id, food);
-  }
+  for (const result of foodResults) keep(result.data);
 
   return {
     data: rows.map((row) => ({ ...row, food: foods.get(row.food_id) ?? null })),

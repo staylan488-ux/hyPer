@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
@@ -106,12 +106,13 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   }, [muscle]);
 
   // "Create …" only when nothing in the library (or this edit) has that name.
+  // The names are worked out once per library, not on every keystroke.
+  const takenNames = useMemo(
+    () => (allowCustom && library !== null ? new Set([...extras, ...library].map((exercise) => normalizeExerciseName(exercise.name))) : null),
+    [allowCustom, extras, library],
+  );
   const typed = query.trim().replace(/\s+/g, ' ');
-  const canCreate =
-    allowCustom &&
-    typed.length > 0 &&
-    library !== null &&
-    ![...extras, ...library].some((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(typed));
+  const canCreate = allowCustom && typed.length > 0 && takenNames !== null && !takenNames.has(normalizeExerciseName(typed));
   const empty = library !== null && gym.length === 0 && skills.length === 0 && !canCreate;
   const emptyLine = searching ? 'Nothing matches.' : 'No other exercises for this muscle.';
   // Silent while a pick saves or the sheet closes: the picked exercise leaves
@@ -132,49 +133,22 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
     );
   };
 
-  const row = (exercise: Exercise, index: number) => {
-    const ticked = selected?.has(exercise.id) ?? false;
-    return (
-      <View key={exercise.id}>
-        {index > 0 ? <Hairline inset={20} /> : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ ...(selected ? { selected: ticked } : null), ...(busyId === exercise.id ? { busy: true } : null) }}
-          accessibilityLabel={searching || muscle === 'all' ? `${exercise.name}, ${MUSCLE_GROUP_LABELS[exercise.muscle_group]}` : exercise.name}
-          disabled={busyId !== null}
-          onPress={() => {
-            if (selected) haptics.select();
-            else haptics.tap();
-            onPick(exercise);
-          }}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-            minHeight: 56,
-            paddingVertical: 10,
-            paddingHorizontal: 20,
-            backgroundColor: pressed ? c.pressed : 'transparent',
-            opacity: busyId !== null && busyId !== exercise.id ? 0.4 : 1,
-          })}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <BlancText variant="body" numberOfLines={large ? undefined : 1}>
-              {exercise.name}
-            </BlancText>
-            {searching || muscle === 'all' ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
-                {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
-              </BlancText>
-            ) : null}
-          </View>
-          {busyId === exercise.id ? <ActivityIndicator /> : null}
-          {selected ? (
-            <SymbolView name={ticked ? 'checkmark.circle.fill' : 'circle'} size={22} weight="regular" tintColor={ticked ? c.ink : c.upcoming} />
-          ) : null}
-        </Pressable>
-      </View>
-    );
-  };
+  // Each row takes plain props, so a tick, a save or a new search redraws
+  // only the rows it changes.
+  const rows = (list: Exercise[]) =>
+    list.map((exercise, index) => (
+      <ExerciseRow
+        key={exercise.id}
+        exercise={exercise}
+        first={index === 0}
+        selectable={selected !== undefined}
+        ticked={selected?.has(exercise.id) ?? false}
+        locked={busyId !== null}
+        busy={busyId === exercise.id}
+        showMuscle={searching || muscle === 'all'}
+        onPick={onPick}
+      />
+    ));
 
   return (
       <ScrollView
@@ -315,7 +289,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
           </Pressable>
         ) : null}
 
-        {gym.map(row)}
+        {rows(gym)}
 
         {skills.length > 0 && !skillsOpen ? (
           <Pressable
@@ -335,7 +309,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 18, marginBottom: 4, marginHorizontal: 20 }}>
               Bodyweight skills
             </BlancText>
-            {skills.map(row)}
+            {rows(skills)}
           </>
         ) : null}
 
@@ -347,3 +321,63 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
       </ScrollView>
   );
 }
+
+type RowProps = {
+  exercise: Exercise;
+  /** The first row of its list, with no hairline above it. */
+  first: boolean;
+  /** A several-at-once picker: the row shows a tick circle. */
+  selectable: boolean;
+  ticked: boolean;
+  /** A pick is saving: every row is disabled and the others dim. */
+  locked: boolean;
+  /** This row's pick is the one saving. */
+  busy: boolean;
+  showMuscle: boolean;
+  onPick: (exercise: Exercise) => void;
+};
+
+const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, ticked, locked, busy, showMuscle, onPick }: RowProps) {
+  const c = useBlanc();
+  const large = useLargeText();
+  return (
+    <View>
+      {first ? null : <Hairline inset={20} />}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ ...(selectable ? { selected: ticked } : null), ...(busy ? { busy: true } : null) }}
+        accessibilityLabel={showMuscle ? `${exercise.name}, ${MUSCLE_GROUP_LABELS[exercise.muscle_group]}` : exercise.name}
+        disabled={locked}
+        onPress={() => {
+          if (selectable) haptics.select();
+          else haptics.tap();
+          onPick(exercise);
+        }}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          minHeight: 56,
+          paddingVertical: 10,
+          paddingHorizontal: 20,
+          backgroundColor: pressed ? c.pressed : 'transparent',
+          opacity: locked && !busy ? 0.4 : 1,
+        })}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <BlancText variant="body" numberOfLines={large ? undefined : 1}>
+            {exercise.name}
+          </BlancText>
+          {showMuscle ? (
+            <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
+              {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
+            </BlancText>
+          ) : null}
+        </View>
+        {busy ? <ActivityIndicator /> : null}
+        {selectable ? (
+          <SymbolView name={ticked ? 'checkmark.circle.fill' : 'circle'} size={22} weight="regular" tintColor={ticked ? c.ink : c.upcoming} />
+        ) : null}
+      </Pressable>
+    </View>
+  );
+});

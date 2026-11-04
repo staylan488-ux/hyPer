@@ -163,8 +163,14 @@ describe('must-work store contracts', () => {
       maybeSingle: vi.fn().mockResolvedValue({ data: existingWorkout, error: null }),
     });
 
+    // The day's exercises are read beside the resume check; a resume ignores them.
+    const splitExercisesChain = createChain({
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
+      if (table === 'split_exercises') return splitExercisesChain;
       throw new Error(`Unexpected table: ${table}`);
     });
 
@@ -176,7 +182,7 @@ describe('must-work store contracts', () => {
     expect(workoutsChain.eq).toHaveBeenCalledWith('completed', false);
     expect(workoutsChain.order).toHaveBeenCalledWith('created_at', { ascending: false });
     expect(workoutsChain.limit).toHaveBeenCalledWith(1);
-    expect(supabaseMock.from).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.from.mock.calls.map(([table]) => table)).toEqual(['workouts', 'split_exercises']);
     } finally {
       vi.useRealTimers();
     }

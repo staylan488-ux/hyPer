@@ -23,26 +23,37 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
  */
 const CELL_TEXT_MAX = 1.3;
 
+/** The loaded month's days with food, when `month` is the month Fuel has loaded. */
+function loadedMonthDays(month: Date): Set<string> | null {
+  const store = useFuelStore.getState();
+  return store.loadedMonth === format(month, 'yyyy-MM') ? new Set(store.logs.map((log) => log.date)) : null;
+}
+
+/** Keeps the dots already shown when they are the same days, so the sheet doesn't draw again for nothing. */
+const sameDays = (next: Set<string>) => (shown: Set<string>) =>
+  shown.size === next.size && [...next].every((key) => shown.has(key)) ? shown : next;
+
 /** Jump to a day: a Sunday-first month with a dot on days that have food. */
 export default function FuelMonthSheet() {
   const c = useBlanc();
   const large = useLargeText();
-  const selected = new Date(`${useFuelStore.getState().selected}T12:00:00`);
+  // Read once as the sheet opens: picking a day closes it.
+  const [selected] = useState(() => new Date(`${useFuelStore.getState().selected}T12:00:00`));
   const [month, setMonth] = useState(() => startOfMonth(selected));
-  const [logged, setLogged] = useState<Set<string>>(new Set());
+  // The loaded month's dots are there from the first frame.
+  const [logged, setLogged] = useState<Set<string>>(() => loadedMonthDays(month) ?? new Set());
   const today = startOfDay(new Date());
   const days = buildCalendarDays(month);
 
   // The dots: the loaded month's entries when it is this month, else a light read of dates.
   useEffect(() => {
     let current = true;
-    const store = useFuelStore.getState();
-    const key = format(month, 'yyyy-MM');
-    if (store.loadedMonth === key) {
-      setLogged(new Set(store.logs.map((log) => log.date)));
+    const loadedDays = loadedMonthDays(month);
+    if (loadedDays) {
+      setLogged(sameDays(loadedDays));
       return;
     }
-    setLogged(new Set());
+    setLogged(sameDays(new Set()));
     void (async () => {
       const userId = await getSessionUserId();
       if (!userId) return;

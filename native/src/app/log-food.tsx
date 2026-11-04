@@ -36,7 +36,7 @@ import { dismissOpenSwipeRow } from '~/components/SwipeRow';
 import { announce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
-import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
+import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
@@ -55,6 +55,23 @@ type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
 
 /** A meal's ingredients and amounts, to tell whether it changed. */
 const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${part.id}:${part.servings}`).join('|');
+
+/**
+ * A new entry today goes to the meal that fits the clock; on another day the
+ * clock says nothing about the meal, so it starts Unassigned, as on the web.
+ */
+const suggestFor = (selectedKey: string, list: NutritionGroup[]) => (selectedKey === today() ? suggestedGroup(list)?.id ?? null : null);
+
+/** The same groups as far as the sheet reads them (destination, labels, order). */
+const sameGroups = (a: NutritionGroup[], b: NutritionGroup[]) =>
+  a.length === b.length &&
+  a.every((group, index) => {
+    const other = b[index];
+    return group.id === other.id && group.date === other.date && group.kind === other.kind && group.label === other.label && group.sort_order === other.sort_order;
+  });
+
+/** The same saved foods, field for field, in the same order. */
+const sameFoods = (a: Food[], b: Food[]) => a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
@@ -106,12 +123,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  // Save as meal names the entries' day; read each render so it follows midnight.
+  const todayKey = useTodayKey();
   const [groups, setGroups] = useState<NutritionGroup[]>(() => useFuelStore.getState().groups.filter((group) => group.date === selectedKey));
-  // A new entry today goes to the meal that fits the clock; on another day the
-  // clock says nothing about the meal, so it starts Unassigned, as on the web.
-  const suggest = (list: NutritionGroup[]) => (selectedKey === today() ? suggestedGroup(list)?.id ?? null : null);
   const [when, setWhenState] = useState<When>(() =>
-    initialWhen(editing, selectedKey, groups, groupParam ?? suggest(groups)),
+    initialWhen(editing, selectedKey, groups, groupParam ?? suggestFor(selectedKey, groups)),
   );
   const groupTouched = useRef(Boolean(editing || groupParam));
   const setWhen = useCallback((next: When) => {
@@ -120,18 +136,20 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   }, []);
 
   // The day's groups (Breakfast, Lunch and Dinner are created if missing);
-  // a new entry then goes to the meal that fits the time.
+  // a new entry then goes to the meal that fits the time. Groups and a meal
+  // that did not change keep their values, so the lists don't redraw.
   useEffect(() => {
     let current = true;
     void loadDayGroups(selectedKey).then((loaded) => {
       if (!current) return;
-      setGroups(loaded);
-      if (!groupTouched.current) setWhenState((value) => ({ ...value, groupId: suggest(loaded) }));
+      setGroups((existing) => (sameGroups(existing, loaded) ? existing : loaded));
+      if (groupTouched.current) return;
+      const groupId = suggestFor(selectedKey, loaded);
+      setWhenState((value) => (value.groupId === groupId ? value : { ...value, groupId }));
     });
     return () => {
       current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
   // The day's groups can land after the sheet opened (the month was still
@@ -141,8 +159,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     const fromStore = groupsForDay(selectedKey);
     if (fromStore.length === 0) return;
     setGroups((current) => (current.map((group) => group.id).join() === fromStore.map((group) => group.id).join() ? current : fromStore));
-    if (!groupTouched.current) setWhenState((value) => (value.groupId ? value : { ...value, groupId: suggest(fromStore) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (groupTouched.current) return;
+    const groupId = suggestFor(selectedKey, fromStore);
+    setWhenState((value) => (value.groupId || value.groupId === groupId ? value : { ...value, groupId }));
   }, [storeGroups, selectedKey]);
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : 'recent');
@@ -179,7 +198,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
   const [closing, setClosing] = useState(false);
-  const photoWaiting = tab !== 'photo' && photo.items.length > 0 && getFoodAnalysisMode() !== 'gemini';
+  const photoWaiting = tab !== 'photo' && photo.items.length > 0 && !gemini;
 
   // Saved meals: the last list at once, refetched on open.
   const [savedMeals, setSavedMeals] = useState<Food[] | null>(() => readSavedFoodsCache(userId));
@@ -194,7 +213,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       setSavedMeals((current) => current ?? []);
       return;
     }
-    setSavedMeals(meals);
+    // An unchanged list keeps its array, so Saved doesn't redraw on every focus.
+    setSavedMeals((current) => (current && sameFoods(current, meals) ? current : meals));
     writeSavedFoodsCache(id, meals);
   }, []);
   useFocusEffect(useCallback(() => {
@@ -238,7 +258,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     return null;
   });
   // what Save as meal opened with, so closing asks only once it was changed
-  const savingFrom = useRef(saveFrom ? meal : null);
+  const [savingFrom] = useState(() => (saveFrom ? meal : null));
   const [mealReview, setMealReview] = useState(Boolean(meal));
   const [paused, setPaused] = useState(false);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -353,9 +373,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // this device could not keep, or a changed Save as meal. A built meal is
   // kept for next time anyway.
   const estimate = ai.items.length > 0 || photo.items.length > 0;
-  const start = savingFrom.current;
   const savingChanged =
-    !keepsDraft && meal !== null && start !== null && (meal.name.trim() !== start.name.trim() || mealPartsKey(meal) !== mealPartsKey(start));
+    !keepsDraft &&
+    meal !== null &&
+    savingFrom !== null &&
+    (meal.name.trim() !== savingFrom.name.trim() || mealPartsKey(meal) !== mealPartsKey(savingFrom));
   const unsaved =
     savingChanged ||
     busy ||
@@ -408,7 +430,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     ? capturing
       ? 'Add ingredients'
       : saveFrom && !savedTarget
-        ? `From ${saveFrom[0].date === today() ? 'today' : format(new Date(`${saveFrom[0].date}T12:00:00`), 'EEE, MMM d')}`
+        ? `From ${saveFrom[0].date === todayKey ? 'today' : format(new Date(`${saveFrom[0].date}T12:00:00`), 'EEE, MMM d')}`
         : null
     : !sameDay
       ? `Unassigned on ${format(when.date, 'MMM d')}`
@@ -423,6 +445,83 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   };
 
   const mealTotals = meal ? getMealTotals(meal.ingredients) : null;
+
+  // Each tab is built on its own, so typing in one never rebuilds another.
+  const buildMeal = !editing && (!meal || paused) ? (
+    <View style={{ marginTop: 14 }}>
+      <Label>
+        <Row
+          title={paused ? 'Resume pending meal' : 'Build a meal'}
+          detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
+          chevron
+          disabled={busy}
+          onPress={() => (paused ? setPaused(false) : startMeal())}
+        />
+      </Label>
+    </View>
+  ) : null;
+  const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
+  const savedTab = tab === 'saved' ? (
+    <SavedTab
+      onNewSavedMeal={() => {
+        loadManual({ ...emptyManual, saveAsReusable: true });
+        setTab('manual');
+      }}
+      onEditSavedMeal={(saved) => {
+        if (decodeMealComposition(saved.description)) {
+          startMeal(saved, true);
+          return;
+        }
+        // Editing saved macros has its own sheet, as in You. Loading
+        // them into Manual would keep this sheet's logged-entry target.
+        // Seed the selected row because You may not have loaded yet.
+        useYouMealsStore.setState((state) => {
+          const meals = state.meals ?? [];
+          return { meals: meals.some((candidate) => candidate.id === saved.id)
+            ? meals.map((candidate) => candidate.id === saved.id ? saved : candidate)
+            : [...meals, saved] };
+        });
+        router.push({ pathname: '/saved-meal', params: { id: saved.id } });
+      }}
+    />
+  ) : null;
+  const searchTab = tab === 'search' ? <SearchTab /> : null;
+  const scanTab = tab === 'scan' ? (
+    <ScanTab
+      onCreateProduct={(barcode) => {
+        loadManual({ ...emptyManual, saveAsReusable: true, barcodeBinding: barcode });
+        setTab('manual');
+      }}
+    />
+  ) : null;
+  const manualTab = tab === 'manual' ? (
+    <ManualTab
+      draft={manual}
+      setDraft={(update) => setManual(update)}
+      onGeminiHandoff={
+        gemini
+          ? (description) => {
+              if (busy) {
+                Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
+                return;
+              }
+              const handOff = () => {
+                setAi(emptyAi(description));
+                setTab('photo');
+              };
+              if (!aiHasDraft(ai)) {
+                handOff();
+                return;
+              }
+              Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
+                { text: 'Keep', style: 'cancel' },
+                { text: 'Replace', style: 'destructive', onPress: handOff },
+              ]);
+            }
+          : undefined
+      }
+    />
+  ) : null;
 
   return (
     <LoggerContext.Provider value={context}>
@@ -548,81 +647,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           <FoodReview food={chosen.food} meta={chosen.meta} servings={chosen.servings} onBack={() => setChosen(null)} />
         ) : (
           <View key={captureKey}>
-            {!editing && (!meal || paused) ? (
-              <View style={{ marginTop: 14 }}>
-                <Label>
-                  <Row
-                    title={paused ? 'Resume pending meal' : 'Build a meal'}
-                    detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
-                    chevron
-                    disabled={busy}
-                    onPress={() => (paused ? setPaused(false) : startMeal())}
-                  />
-                </Label>
-              </View>
-            ) : null}
-            {tab === 'recent' ? <RecentTab userId={userId} /> : null}
-            {tab === 'saved' ? (
-              <SavedTab
-                onNewSavedMeal={() => {
-                  loadManual({ ...emptyManual, saveAsReusable: true });
-                  setTab('manual');
-                }}
-                onEditSavedMeal={(saved) => {
-                  if (decodeMealComposition(saved.description)) {
-                    startMeal(saved, true);
-                    return;
-                  }
-                  // Editing saved macros has its own sheet, as in You. Loading
-                  // them into Manual would keep this sheet's logged-entry target.
-                  // Seed the selected row because You may not have loaded yet.
-                  useYouMealsStore.setState((state) => {
-                    const meals = state.meals ?? [];
-                    return { meals: meals.some((candidate) => candidate.id === saved.id)
-                      ? meals.map((candidate) => candidate.id === saved.id ? saved : candidate)
-                      : [...meals, saved] };
-                  });
-                  router.push({ pathname: '/saved-meal', params: { id: saved.id } });
-                }}
-              />
-            ) : null}
-            {tab === 'search' ? <SearchTab /> : null}
-            {tab === 'scan' ? (
-              <ScanTab
-                onCreateProduct={(barcode) => {
-                  loadManual({ ...emptyManual, saveAsReusable: true, barcodeBinding: barcode });
-                  setTab('manual');
-                }}
-              />
-            ) : null}
-            {tab === 'manual' ? (
-              <ManualTab
-                draft={manual}
-                setDraft={(update) => setManual(update)}
-                onGeminiHandoff={
-                  gemini
-                    ? (description) => {
-                        if (busy) {
-                          Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
-                          return;
-                        }
-                        const handOff = () => {
-                          setAi(emptyAi(description));
-                          setTab('photo');
-                        };
-                        if (!aiHasDraft(ai)) {
-                          handOff();
-                          return;
-                        }
-                        Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
-                          { text: 'Keep', style: 'cancel' },
-                          { text: 'Replace', style: 'destructive', onPress: handOff },
-                        ]);
-                      }
-                    : undefined
-                }
-              />
-            ) : null}
+            {buildMeal}
+            {recentTab}
+            {savedTab}
+            {searchTab}
+            {scanTab}
+            {manualTab}
           </View>
         )}
         {/* Both analysis tabs stay mounted while hidden: work in flight and

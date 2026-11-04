@@ -25,7 +25,20 @@ platform :ios do
       api_key: api_key,
       app_identifier: "app.hyper.mobile",
     ).to_i + 1
-    UI.important("Shipping native hyPer build #{next_build}")
+
+    # The version people see goes up on every ship as well: the latest upload's
+    # 2.0.4 becomes 2.0.5. app.json's version is the floor, so raising it there
+    # (to 2.1.0, say) starts that line on the next ship. Nothing is written back.
+    latest_version = lane_context[SharedValues::LATEST_TESTFLIGHT_VERSION].to_s
+    next_version = sh("node", "#{native}/scripts/release-version.mjs", latest_version).strip
+    UI.user_error!("Could not choose the next version (got #{next_version.inspect})") unless next_version.match?(/\A\d+\.\d+\.\d+\z/)
+    # The Discord bot reads "hyPer build <n>" from this line; keep that part.
+    UI.important("Shipping native hyPer build #{next_build} as version #{next_version} (after #{latest_version.empty? ? "none" : latest_version})")
+
+    # In the environment for the archive too, not only the prebuild: Xcode
+    # embeds the app config the About screen reads while it archives.
+    ENV["HYPER_APP_VERSION"] = next_version
+    ENV["HYPER_BUILD_NUMBER"] = next_build.to_s
 
     signing = "-allowProvisioningUpdates " \
               "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
@@ -33,9 +46,9 @@ platform :ios do
               "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])}"
 
     # Install pods explicitly: Expo prebuild can exit successfully after a pod
-    # failure. The helper preserves the selected build number and release
-    # identity while checking that the workspace is ready for archiving.
-    sh("'#{native}/scripts/prepare-release.sh' '#{next_build}'")
+    # failure. The helper preserves the selected build number, version and
+    # release identity while checking that the workspace is ready for archiving.
+    sh("'#{native}/scripts/prepare-release.sh' '#{next_build}' '#{next_version}'")
 
     build_app(
       workspace: "#{native}/ios/hyPerNative.xcworkspace",
@@ -53,8 +66,8 @@ platform :ios do
     )
 
     # The archive must be the real app: the production host, no local test
-    # backend, the released bundle ID and the build number just chosen.
-    sh("'#{native}/scripts/check-release.sh' '#{native}/build/hyPer.ipa' '#{next_build}'")
+    # backend, the released bundle ID and the build number and version just chosen.
+    sh("'#{native}/scripts/check-release.sh' '#{native}/build/hyPer.ipa' '#{next_build}' '#{next_version}'")
 
     upload_to_testflight(
       api_key: api_key,

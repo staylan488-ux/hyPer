@@ -17,7 +17,7 @@ import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 
 import { useLogger } from './context';
-import { Empty, FoodRow, useQuickAdd } from './FoodLists';
+import { Empty, FoodRow, useQuickAdd, type AddState } from './FoodLists';
 import { useHiddenRecentFoods, useRecentLogs } from './recent';
 
 /** "150 g · 248 kcal · 31 g protein": what + logs. */
@@ -39,18 +39,17 @@ function usualLine(recent: RecentFood): string {
  */
 export function RecentTab({ userId }: { userId: string }) {
   const logger = useLogger();
-  const quick = useQuickAdd();
+  // Rows get `add` on its own: it stays the same function while `added` changes.
+  const { added, add: quickAdd, enabled } = useQuickAdd();
   const { logs, failed, version, settle, retry } = useRecentLogs(userId);
   const { hidden, hide } = useHiddenRecentFoods(userId);
   const foods = useMemo(() => (logs ? rankRecentFoods(logs, today(), { hidden }) : null), [logs, hidden]);
   useAnnounce(!foods && failed ? 'Recent foods could not load.' : null);
 
   const composed = (recent: RecentFood) => Boolean(decodeMealComposition(recent.food.description));
-  // A built meal logs again whole; as an ingredient it goes through the review, as on Saved.
-  const canQuickAdd = (recent: RecentFood) => quick.enabled && (logger.purpose === 'log' || !composed(recent));
   const add = (recent: RecentFood) => {
     settle();
-    void quick.add(recent.key, recent.food, { servings: recent.servings, source: recent.source });
+    void quickAdd(recent.key, recent.food, { servings: recent.servings, source: recent.source });
   };
   const open = (recent: RecentFood) => {
     settle();
@@ -61,20 +60,6 @@ export function RecentTab({ userId }: { userId: string }) {
     settle();
     haptics.success();
     hide(recent.key);
-  };
-
-  // A hold offers the usual amount at once, the review, and hiding the food.
-  const menu = (recent: RecentFood): MenuAction[] => {
-    const amount = servingLabel({ servings: recent.servings, food: recent.food });
-    return [
-      ...(canQuickAdd(recent)
-        ? [{ title: logger.purpose === 'ingredients' ? 'Add as ingredient' : `Log ${amount} now`, symbol: 'plus.circle', run: () => add(recent) }]
-        : []),
-      { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => open(recent) },
-      ...(logger.purpose === 'log'
-        ? [{ title: 'Hide from Recent', subtitle: 'It comes back when you log it again', symbol: 'eye.slash', destructive: true, removes: true, run: () => hideFood(recent) }]
-        : []),
-    ];
   };
 
   if (!foods) {
@@ -94,31 +79,19 @@ export function RecentTab({ userId }: { userId: string }) {
   return (
     <LayoutAnimationConfig key={version} skipEntering skipExiting>
       <View style={{ marginTop: 8 }}>
-        {foods.map((recent, index) => {
-          const row = (
-            <FoodRow
-              food={recent.food}
-              state={quick.added[recent.key]}
-              detail={usualLine(recent)}
-              servings={recent.servings}
-              onOpen={() => open(recent)}
-              onAdd={canQuickAdd(recent) ? () => add(recent) : undefined}
-              menu={menu(recent)}
-            />
-          );
-          return (
-            <Animated.View key={recent.key} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-              {index > 0 ? <Hairline inset={20} /> : null}
-              {logger.purpose === 'log' ? (
-                <SwipeRow name={recent.food.name} actions={[{ label: 'Hide', destructive: true, onPress: () => hideFood(recent) }]}>
-                  {row}
-                </SwipeRow>
-              ) : (
-                row
-              )}
-            </Animated.View>
-          );
-        })}
+        {foods.map((recent, index) => (
+          <RecentRow
+            key={recent.key}
+            recent={recent}
+            divided={index > 0}
+            state={added[recent.key]}
+            purpose={logger.purpose}
+            quickAdd={enabled}
+            onAdd={add}
+            onOpen={open}
+            onHide={hideFood}
+          />
+        ))}
         {foods.length === 0 ? (
           <Animated.View entering={rowEnter} layout={rowLayout}>
             <Empty text={logs && logs.length > 0 ? 'Hidden foods come back when you log them again.' : 'Foods you log show up here, the most eaten first.'} />
@@ -126,5 +99,54 @@ export function RecentTab({ userId }: { userId: string }) {
         ) : null}
       </View>
     </LayoutAnimationConfig>
+  );
+}
+
+/** One recent food; drawn again only when its own food or state, or the sheet's purpose, changes. */
+function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, onHide }: {
+  recent: RecentFood;
+  divided: boolean;
+  state?: AddState;
+  purpose: 'log' | 'ingredients';
+  quickAdd: boolean;
+  onAdd: (recent: RecentFood) => void;
+  onOpen: (recent: RecentFood) => void;
+  onHide: (recent: RecentFood) => void;
+}) {
+  // A built meal logs again whole; as an ingredient it goes through the review, as on Saved.
+  const canQuickAdd = quickAdd && (purpose === 'log' || !decodeMealComposition(recent.food.description));
+  // A hold offers the usual amount at once, the review, and hiding the food.
+  const amount = servingLabel({ servings: recent.servings, food: recent.food });
+  const menu: MenuAction[] = [
+    ...(canQuickAdd
+      ? [{ title: purpose === 'ingredients' ? 'Add as ingredient' : `Log ${amount} now`, symbol: 'plus.circle', run: () => onAdd(recent) }]
+      : []),
+    { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => onOpen(recent) },
+    ...(purpose === 'log'
+      ? [{ title: 'Hide from Recent', subtitle: 'It comes back when you log it again', symbol: 'eye.slash', destructive: true, removes: true, run: () => onHide(recent) }]
+      : []),
+  ];
+  const row = (
+    <FoodRow
+      food={recent.food}
+      state={state}
+      detail={usualLine(recent)}
+      servings={recent.servings}
+      onOpen={() => onOpen(recent)}
+      onAdd={canQuickAdd ? () => onAdd(recent) : undefined}
+      menu={menu}
+    />
+  );
+  return (
+    <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+      {divided ? <Hairline inset={20} /> : null}
+      {purpose === 'log' ? (
+        <SwipeRow name={recent.food.name} actions={[{ label: 'Hide', destructive: true, onPress: () => onHide(recent) }]}>
+          {row}
+        </SwipeRow>
+      ) : (
+        row
+      )}
+    </Animated.View>
   );
 }

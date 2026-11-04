@@ -20,12 +20,17 @@ Its configuration and environment seed live outside the public repository;
 check prerequisites without printing values. Do not change the saved checkout
 to main solely to run this pipeline.
 
-The native Fastfile chooses the latest TestFlight build number plus one and
-passes it to the prebuild (`HYPER_BUILD_NUMBER`), which gives the app and its
-widget extension the same number; nothing is written back to the repository.
+The native Fastfile chooses the latest TestFlight build number plus one, and
+the version people see from the latest upload with its last digit raised by
+one (2.0.4 becomes 2.0.5; [release-version.mjs](../../../../native/scripts/release-version.mjs)).
+`native/app.json`'s version is the floor: to start a new line, raise it there
+(to 2.1.0, say) and the next ship is 2.1.0. Both go to the prebuild and the
+archive (`HYPER_BUILD_NUMBER`, `HYPER_APP_VERSION`), which give the app, its
+widget extension and the app config the About screen reads the same values;
+nothing is written back to the repository.
 `native/scripts/check-release.sh` refuses an archive with the wrong bundle or
-extension IDs, mismatched build numbers, no production host or a local test
-backend.
+extension IDs, mismatched build numbers or versions, no production host or a
+local test backend.
 On exit, worked or not, the script removes the generated `native/ios`, the IPA
 and the Xcode build folder (`native/build`); the archive stays in Xcode's
 Archives for crash symbols. The ship bot saves each run's output as

@@ -57,12 +57,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   scheme `hyper-native`, installed beside the released app) and, with
   `HYPER_APP=release`, the released app (`app.hyper.mobile`, scheme
   `app.hyper.mobile`, widget extension `app.hyper.mobile.HyperWidgets`, shown
-  as "hyPer"). `HYPER_BUILD_NUMBER` sets
-  the build number. Prebuild with `--clean` when switching variant. The URL
-  scheme in JavaScript and Swift follows the bundle ID iOS reports
-  (`modules/hyper-keychain/bundle.ts`, `WidgetSnapshotStore.appScheme`), never
-  a hard-coded value. Links from outside go through
-  [+native-intent](../../../native/src/app/+native-intent.tsx): the email
+  as "hyPer"). Both carry app.json's version unless `HYPER_APP_VERSION`
+  sets another; `HYPER_BUILD_NUMBER` sets the build number. Prebuild with
+  `--clean` when switching variant. The URL scheme in JavaScript and Swift
+  follows the bundle ID iOS reports (`modules/hyper-keychain/bundle.ts`,
+  `WidgetSnapshotStore.appScheme`), never a hard-coded value. Links from
+  outside go through [+native-intent](../../../native/src/app/+native-intent.tsx): the email
   confirmation's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
@@ -358,7 +358,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   [liftShadow](../../../native/src/lib/liftShadow.ts) does. Near 0 JavaScript
   writes "1.6e-7", Reanimated's parser throws on it, and a release build
   closes (the reorder crash of 2026-10-31); a debug build shows a red screen
-  only on the rare frame that hits it.
+  only on the rare frame that hits it. Its resting value is written out too
+  (an empty shadow, a colour), never `undefined`: Reanimated sends nothing
+  for an undefined style value, so the view keeps the last one it drew (a
+  dropped row kept its lifted shadow until 2026-11-04).
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):
   the P blooms, "hyPer" unfolds from it and holds (longer while the account
   loads), folds back, and the P flies to the first screen's anchored BrandMark as
@@ -437,9 +440,11 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and the local anon key.
 - TestFlight: `scripts/ship.sh` (the ship bot's script, from main) builds this
   app as `app.hyper.mobile` through [native/fastlane](../../../native/fastlane/Fastfile):
-  the next TestFlight build number, a clean prebuild, an App Store archive,
+  the next TestFlight build number and version (the last digit up by one each
+  ship), a clean prebuild, an App Store archive,
   [check-release.sh](../../../native/scripts/check-release.sh) (bundle and
-  extension IDs, build numbers, production host, no local backend), upload.
+  extension IDs, build numbers and versions, production host, no local
+  backend), upload.
   Every upload needs the owner's approval.
 - Real-account phone builds: `native/scripts/build-phone.sh [device-id]` builds
   Release against production (the Supabase URL and anon key come from the main
