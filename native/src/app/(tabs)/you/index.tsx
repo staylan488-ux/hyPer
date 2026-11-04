@@ -126,7 +126,8 @@ function Initials({ text }: { text: string }) {
   const c = useBlanc();
   return (
     <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill }}>
-      <BlancText variant="secondary" weight="600">
+      {/* The circle doesn't grow, so the initials stop where they still fit. */}
+      <BlancText variant="secondary" weight="600" maxFontSizeMultiplier={1.3}>
         {text}
       </BlancText>
     </View>
@@ -161,7 +162,11 @@ function WeightCard() {
           accessibilityLabel={
             latest
               ? speak(`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}${line ? `, ${line.replace('/wk', ' a week')}` : ''}`)
-              : 'Body weight'
+              : loading
+                ? 'Body weight'
+                : failed
+                  ? 'Body weight, not loaded. Open to try again.'
+                  : 'Body weight, no weigh-ins yet. Log one to start your trend.'
           }
           onPress={() => {
             haptics.tap();

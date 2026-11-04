@@ -252,7 +252,13 @@ export function useQuickAdd() {
     if (current === 'saving' || current === 'done') return;
     const servings = options.servings ?? 1;
     if (logger.purpose === 'ingredients') {
-      logger.addIngredients([createMealIngredient(food, servings)]);
+      try {
+        logger.addIngredients([createMealIngredient(food, servings)]);
+      } catch (cause) {
+        // No FormNote on this path: the sheet's error line is all a sighted person gets.
+        announce(cause instanceof Error ? cause.message : 'Could not add ingredient.');
+        throw cause;
+      }
       return;
     }
     const pending = pendingIds.current.get(key) ?? createPendingEntryId();

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useMemo, useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
 import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
@@ -58,18 +58,15 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
     if (activatingNow.current) return;
     activatingNow.current = true;
     setActivating(true);
-    await setActiveProgram(split);
+    const prompted = await setActiveProgram(split);
+    // Make active goes away once it worked, taking VoiceOver's focus with it:
+    // say so, unless the plan-start alert already does.
+    if (!prompted && useAppStore.getState().splits.some((entry) => entry.id === split.id && entry.is_active)) announce(`${split.name} is active`);
     activatingNow.current = false;
     setActivating(false);
   };
   // Goes back as soon as Delete is chosen; the list brings it back if the delete fails.
   const remove = () => void deleteProgram(split, onLeave);
-  // Make active goes away once it worked, taking VoiceOver's focus with it: say so.
-  const wasActive = useRef(split.is_active);
-  useEffect(() => {
-    if (split.is_active && !wasActive.current) announce(`${split.name} is active`);
-    wasActive.current = split.is_active;
-  }, [split.is_active, split.name]);
 
   const options = useMemo(
     () => ({

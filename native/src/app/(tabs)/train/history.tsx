@@ -18,7 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, spokenClock, useAnnounce, useIncreaseContrast } from '~/lib/accessibility';
+import { announce, spokenClock, useAnnounce, useIncreaseContrast, useReduceMotion } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import {
   confirmDeleteActivity,
@@ -173,6 +173,7 @@ export default function HistoryScreen() {
  */
 function Calendar({ month, day, workouts, activities }: { month: Date; day: string; workouts: HistoryWorkout[]; activities: ActivitySession[] }) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const reduceMotion = useReduceMotion();
   // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
   const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
@@ -222,6 +223,12 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           symbol="chevron.left"
           label="Previous month"
           onPress={() => {
+            // Reduce Motion: change the month in place instead of sliding the grid.
+            if (reduceMotion) {
+              arrowTurn.current = true;
+              turn(-1);
+              return;
+            }
             arrowTurn.current = width > 0;
             scroller.current?.scrollTo({ x: 0, animated: true });
           }}
@@ -230,6 +237,11 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           symbol="chevron.right"
           label="Next month"
           onPress={() => {
+            if (reduceMotion) {
+              arrowTurn.current = true;
+              turn(1);
+              return;
+            }
             arrowTurn.current = width > 0;
             scroller.current?.scrollTo({ x: width * 2, animated: true });
           }}
@@ -392,7 +404,7 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
     .filter(Boolean)
     .join(', ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
-  const remove = () => void confirmDeleteWorkout(title, workout.id);
+  const remove = () => void confirmDeleteWorkout(title, workout.id, { onDeleted: () => announce(`${title} deleted`) });
   const menu: MenuAction[] = [
     { title: 'Open', symbol: 'arrow.up.right.square', run: open },
     { title: 'Delete workout', symbol: 'trash', destructive: true, run: remove },
@@ -427,7 +439,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
   const others = sameDay.filter((entry) => entry.id !== activity.id);
   const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
-  const remove = () => void confirmDeleteActivity(activity);
+  const remove = () => void confirmDeleteActivity(activity, { onDeleted: () => announce(`${title} deleted`) });
   // The day's other activities, to merge one WHOOP split into several.
   const mergeChoices: MenuAction[] = others.map((entry) => ({
     title: resolveActivityTitle(entry),

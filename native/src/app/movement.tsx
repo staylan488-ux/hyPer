@@ -2,7 +2,7 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { format, parseISO } from 'date-fns';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View, type AccessibilityActionEvent } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAppStore } from '@/stores/appStore';
@@ -15,7 +15,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
@@ -120,6 +120,7 @@ function MovementDetail({
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  const screenReader = useScreenReader();
   const [editing, setEditing] = useState<string | null>(null);
   const [changing, setChanging] = useState<'add' | 'remove' | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -218,20 +219,25 @@ function MovementDetail({
               </View>
             ) : null,
           )}
-          {/* One adjustable stop for VoiceOver: swipe up or down for a set more or less. */}
+          {/* With VoiceOver, one adjustable stop: swipe up or down for a set more or
+              less. Voice Control, Switch Control and keyboards keep the − and + buttons. */}
           <View
             style={styles.row}
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel="Number of sets"
-            accessibilityValue={{ text: speak([setCount, countLine].filter(Boolean).join(', ')) }}
-            accessibilityState={changing ? { busy: true } : undefined}
-            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-            onAccessibilityAction={(event) => {
-              const name = event.nativeEvent.actionName;
-              if (name === 'increment' && movement.canAddSet) void changeSets('add');
-              if (name === 'decrement' && movement.canRemoveSet) void changeSets('remove');
-            }}>
+            {...(screenReader
+              ? {
+                  accessible: true,
+                  accessibilityRole: 'adjustable' as const,
+                  accessibilityLabel: 'Number of sets',
+                  accessibilityValue: { text: speak([setCount, countLine].filter(Boolean).join(', ')) },
+                  accessibilityState: changing ? { busy: true } : undefined,
+                  accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+                  onAccessibilityAction: (event: AccessibilityActionEvent) => {
+                    const name = event.nativeEvent.actionName;
+                    if (name === 'increment' && movement.canAddSet) void changeSets('add');
+                    if (name === 'decrement' && movement.canRemoveSet) void changeSets('remove');
+                  },
+                }
+              : null)}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <RollingText variant="bodyStrong">{setCount}</RollingText>
               {countLine ? (

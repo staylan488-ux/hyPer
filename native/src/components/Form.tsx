@@ -3,7 +3,7 @@ import { datePickerStyle, disabled as swiftDisabled, labelsHidden, tint } from '
 import { Children, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
-import { fieldLabel, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { fieldLabel, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -68,7 +68,7 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
  * with its label and unit ("Protein, grams"); at the accessibility text
  * sizes the label sits over the field.
  */
-export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
+export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, accessibilityLabel, ...input }: FieldRowProps) {
   const c = useBlanc();
   const large = useLargeText();
   const field = useRef<TextField>(null);
@@ -76,12 +76,13 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
   const locked = input.editable === false;
   const wraps = Boolean(wide && grows);
   const { onChangeText } = input;
+  const name = accessibilityLabel ?? fieldLabel(label, unit);
   const textInput = (
       <TextInput
         ref={field}
         placeholderTextColor={c.upcoming}
         // The red label's meaning, in words.
-        accessibilityLabel={invalid ? `${fieldLabel(label, unit)}, invalid` : fieldLabel(label, unit)}
+        accessibilityLabel={invalid ? `${name}, invalid` : name}
         keyboardType={keyboardType}
         returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
         {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
@@ -219,9 +220,12 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  const screenReader = useScreenReader();
   return (
-    <View style={large ? [stackedRowStyle, { alignItems: 'flex-start' as const }] : rowStyle} pointerEvents={disabled ? 'none' : 'auto'}>
-      <BlancText variant="body" style={[large ? null : { flex: 1 }, { opacity: disabled ? 0.5 : 1 }]} {...spokenByControl}>
+    <View
+      style={[large ? [stackedRowStyle, { alignItems: 'flex-start' as const }] : rowStyle, { opacity: disabled ? 0.5 : 1 }]}
+      pointerEvents={disabled ? 'none' : 'auto'}>
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }} {...spokenByControl}>
         {label}
       </BlancText>
       <Host matchContents>
@@ -234,9 +238,10 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
             haptics.select();
             onChange(next);
           }}
-          // SwiftUI's own disabled state dims the picker and holds it for
-          // VoiceOver too, which acts without touches.
-          modifiers={[datePickerStyle('compact'), labelsHidden(), tint(c.ink), swiftDisabled(Boolean(disabled))]}
+          // pointerEvents stops touches only; VoiceOver acts without them, so while it
+          // runs SwiftUI's own disabled state holds the picker. Without VoiceOver the
+          // modifiers stay as they were, so the row's fade is the only dimming.
+          modifiers={[datePickerStyle('compact'), labelsHidden(), tint(c.ink), ...(disabled && screenReader ? [swiftDisabled(true)] : [])]}
         />
       </Host>
     </View>
@@ -257,8 +262,14 @@ function plainText(children: ReactNode): string | null {
  * Text under a form block: a hint, or an error in red. VoiceOver announces
  * an error when it appears or changes (iOS has no live regions).
  */
-export function FormNote({ children, alert, accessibilityLabel }: { children: ReactNode; alert?: boolean; accessibilityLabel?: string }) {
-  useAnnounce(alert ? (accessibilityLabel ?? plainText(children)) : null);
+export function FormNote({ children, alert, accessibilityLabel, announcement }: {
+  children: ReactNode;
+  alert?: boolean;
+  accessibilityLabel?: string;
+  /** What VoiceOver announces, when it should differ from what it reads: text with live numbers would be announced again on every keystroke. */
+  announcement?: string;
+}) {
+  useAnnounce(alert ? (announcement ?? accessibilityLabel ?? plainText(children)) : null);
   return (
     <BlancText
       variant="footnote"

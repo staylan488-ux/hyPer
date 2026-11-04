@@ -140,7 +140,7 @@ export default function TargetsEditSheet() {
         ))}
       </Label>
       {driftPct > TARGET_DRIFT_WARNING_PCT ? (
-        <FormNote alert>
+        <FormNote alert announcement="These macros don't add up to your calories. Check them before saving.">
           These macros add up to {formatWhole(kcalFromMacros)} kcal, not {formatWhole(draft.calories)}. Check them before saving.
         </FormNote>
       ) : (

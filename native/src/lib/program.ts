@@ -46,16 +46,18 @@ export function newProgram() {
 /**
  * After a program is created or set active: offers to set Day 1 and the
  * rhythm when it has no schedule yet, unless Later was chosen for it.
+ * Resolves true when it asked, since its alert already says the program is active.
  */
-export async function offerPlanStart(splitId: string, name: string) {
+export async function offerPlanStart(splitId: string, name: string): Promise<boolean> {
   const user = userId();
-  if (!user || !(await shouldPromptPlanStart(user, splitId))) return;
+  if (!user || !(await shouldPromptPlanStart(user, splitId))) return false;
   // Only for the program that is still the active one.
-  if (useAppStore.getState().activeSplit?.id !== splitId) return;
+  if (useAppStore.getState().activeSplit?.id !== splitId) return false;
   Alert.alert(`${name} is active`, 'Set your Day 1 and weekly rhythm now. It takes about 15 seconds and lets hyPer call your next session.', [
     { text: 'Later', style: 'cancel', onPress: () => dismissPlanStartPrompt(user, splitId) },
     { text: 'Set now', onPress: () => router.push('/schedule') },
   ]);
+  return true;
 }
 
 /** After the editor saves: a new program may need a schedule; an edit needs a fresh list. */
@@ -64,15 +66,16 @@ export function afterProgramSaved(saved: SavedSplit) {
   else void useAppStore.getState().fetchSplits({ force: true });
 }
 
-export async function setActiveProgram(split: Split) {
+/** Resolves true when the plan-start alert was shown. */
+export async function setActiveProgram(split: Split): Promise<boolean> {
   const result = await useAppStore.getState().setActiveSplit(split.id);
   if (!result.ok) {
     haptics.error();
     Alert.alert('Not changed', result.reason ?? 'Could not set the active program.');
-    return;
+    return false;
   }
   haptics.success();
-  await offerPlanStart(split.id, split.name);
+  return offerPlanStart(split.id, split.name);
 }
 
 /** The program a workout in progress came from, which must not be deleted under it. */

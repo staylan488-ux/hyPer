@@ -34,6 +34,13 @@ const UNITS: Unit[] = [
 
 const GAP = { attached: '', spaced: ' ', either: ' ?' } as const;
 
+// Built once: BlancText speaks every plain line it draws.
+const UNIT_PATTERNS = UNITS.map(({ written, one, many, space }) => ({
+  pattern: new RegExp(`(^|[^\\w.,])(\\d[\\d,]*(?:\\.\\d+)?)${GAP[space ?? 'either']}${written}\\b`, 'g'),
+  one,
+  many,
+}));
+
 /**
  * What VoiceOver should say for a line written in Blanc's shorthand: the
  * middle dot is a pause, a dash between numbers is "to", "x / y" is "x of
@@ -54,11 +61,8 @@ export function speak(text: string): string {
     // "add ~2 sets"
     .replace(/~(\d)/g, 'about $1')
     .replace(/↑\s*/g, '');
-  for (const { written, one, many, space } of UNITS) {
-    spoken = spoken.replace(
-      new RegExp(`(^|[^\\w.,])(\\d[\\d,]*(?:\\.\\d+)?)${GAP[space ?? 'either']}${written}\\b`, 'g'),
-      (_match, before: string, value: string) => `${before}${value} ${value === '1' ? one : many}`,
-    );
+  for (const { pattern, one, many } of UNIT_PATTERNS) {
+    spoken = spoken.replace(pattern, (_match, before: string, value: string) => `${before}${value} ${value === '1' ? one : many}`);
   }
   // A bare "kcal" (a column's unit) reads as calories too.
   return spoken.replace(/\bkcal\b/g, 'calories');
@@ -95,6 +99,11 @@ const UNIT_WORDS: Record<string, string> = {
   '%': 'percent',
   mi: 'miles',
   km: 'kilometers',
+  m: 'meters',
+  cm: 'centimeters',
+  ft: 'feet',
+  yr: 'years',
+  yrs: 'years',
 };
 
 /** A unit shown beside a field ("kcal", "g", "%") as VoiceOver should say it. */

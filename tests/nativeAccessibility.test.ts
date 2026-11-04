@@ -94,6 +94,8 @@ describe('VoiceOver words for Blanc shorthand', () => {
     expect(fieldLabel('Protein', 'g')).toBe('Protein, grams');
     expect(fieldLabel('Calories', 'kcal')).toBe('Calories');
     expect(fieldLabel('Name')).toBe('Name');
+    expect(fieldLabel('Plate diameter', 'cm')).toBe('Plate diameter, centimeters');
+    expect(fieldLabel('Age', 'yrs')).toBe('Age, years');
   });
 
   it('says clock readings in words', () => {

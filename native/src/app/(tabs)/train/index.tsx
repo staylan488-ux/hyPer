@@ -1029,6 +1029,7 @@ function useStartHeader(title: string) {
 
 /** Program mode: today's card by the schedule, then any other day to start instead. */
 function StartPlanned() {
+  const large = useLargeText();
   const split = useAppStore((state) => state.activeSplit);
   const { starting, start } = useStartSession();
   const plan = useTodayPlan();
@@ -1057,26 +1058,31 @@ function StartPlanned() {
         {split && split.days.length > 0 ? (
           <Section title="Other days">
             <Label>
-              {split.days.map((day, index) => (
-                <View key={day.id}>
-                  {index > 0 ? <Hairline /> : null}
-                  <Row
-                    title={day.day_name}
-                    detail={`${day.exercises.length} movements · ${day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0)} sets`}
-                    trailing={
-                      <Capsule
-                        title={starting === day.id ? 'Starting' : 'Start'}
-                        // Each day's button names its day.
-                        accessibilityLabel={`${starting === day.id ? 'Starting' : 'Start'} ${day.day_name}`}
-                        variant="quiet"
-                        busy={starting === day.id}
-                        disabled={starting !== null}
-                        onPress={() => void start(day.id)}
-                      />
-                    }
+              {split.days.map((day, index) => {
+                const startButton = (
+                  <Capsule
+                    title={starting === day.id ? 'Starting' : 'Start'}
+                    // Each day's button names its day.
+                    accessibilityLabel={`${starting === day.id ? 'Starting' : 'Start'} ${day.day_name}`}
+                    variant="quiet"
+                    busy={starting === day.id}
+                    disabled={starting !== null}
+                    onPress={() => void start(day.id)}
                   />
-                </View>
-              ))}
+                );
+                return (
+                  <View key={day.id}>
+                    {index > 0 ? <Hairline /> : null}
+                    <Row
+                      title={day.day_name}
+                      detail={`${day.exercises.length} movements · ${day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0)} sets`}
+                      trailing={large ? undefined : startButton}
+                    />
+                    {/* At the accessibility text sizes the button would squeeze the day's words: it goes under them. */}
+                    {large ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{startButton}</View> : null}
+                  </View>
+                );
+              })}
             </Label>
             {otherNote ? (
               <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>

@@ -16,7 +16,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, useScreenReader } from '~/lib/accessibility';
+import { announce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteProgram, editProgram, newProgram, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
@@ -133,11 +133,15 @@ function Programs({ splits }: { splits: Split[] }) {
     );
   }
 
-  const remove = (split: Split) => void deleteProgram(split);
-  // The row's "Active" changes by sight only; VoiceOver stays on the row.
+  const remove = (split: Split) =>
+    void deleteProgram(split).then((deleted) => {
+      if (deleted) announce(`${split.name} deleted`);
+    });
+  // The row's "Active" changes by sight only; VoiceOver stays on the row. The
+  // plan-start alert already says it is active, so only without that alert.
   const activate = (split: Split) =>
-    setActiveProgram(split).then(() => {
-      if (useAppStore.getState().splits.some((entry) => entry.id === split.id && entry.is_active)) announce(`${split.name} is active`);
+    setActiveProgram(split).then((prompted) => {
+      if (!prompted && useAppStore.getState().splits.some((entry) => entry.id === split.id && entry.is_active)) announce(`${split.name} is active`);
     });
 
   const menu = (split: Split): MenuAction[] => [
@@ -179,6 +183,7 @@ function Programs({ splits }: { splits: Split[] }) {
 
 function QuickStarts() {
   const c = useBlanc();
+  const large = useLargeText();
   const templates = useAppStore((state) => state.flexTemplates);
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   const [starting, setStarting] = useState<string | null>(null);
@@ -246,6 +251,16 @@ function QuickStarts() {
       <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((template, index) => {
           const items = visibleTemplateItems(template);
+          const startButton = (
+            <Capsule
+              title="Start"
+              variant="quiet"
+              busy={starting === template.id}
+              disabled={starting !== null}
+              accessibilityLabel={`Start ${template.label}`}
+              onPress={() => void start(template)}
+            />
+          );
           return (
             <Animated.View key={template.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
               {index > 0 ? <Hairline /> : null}
@@ -259,19 +274,12 @@ function QuickStarts() {
                   <Row
                     title={template.label}
                     detail={items.map((item) => item.exercise_name || 'Exercise').join(' · ') || 'No movements'}
-                    trailing={
-                      <Capsule
-                        title="Start"
-                        variant="quiet"
-                        busy={starting === template.id}
-                        disabled={starting !== null}
-                        accessibilityLabel={`Start ${template.label}`}
-                        onPress={() => void start(template)}
-                      />
-                    }
+                    trailing={large ? undefined : startButton}
                     onPress={() => details(template)}
                     menu={menu(template)}
                   />
+                  {/* At the accessibility text sizes the button would squeeze the words: it goes under them. */}
+                  {large ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{startButton}</View> : null}
                 </View>
               </SwipeRow>
             </Animated.View>

@@ -333,7 +333,7 @@ function MenuRow({ label, value, options, onChange }: {
       <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         {label}
       </BlancText>
-      <Host matchContents>
+      <Host matchContents={large ? { vertical: true } : true} style={large ? { alignSelf: 'stretch' } : undefined}>
         {/* The menu carries the label for VoiceOver (SwiftUI keeps a hidden label for it). */}
         <Picker
           label={label}
@@ -648,8 +648,8 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   };
 
   const fill = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
-  // VoiceOver cannot hold, so its double tap asks instead: a stray one never
-  // ends the run. The Finish run action, chosen on purpose, does what the hold does.
+  // VoiceOver cannot hold, so its double tap (and its Finish run action) asks
+  // instead: a stray one never ends the run.
   const confirmFinish = () =>
     Alert.alert('Finish this run?', undefined, [
       { text: 'Keep running', style: 'cancel' },
@@ -667,7 +667,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
       accessibilityActions={[{ name: 'finish', label: 'Finish run' }]}
       onAccessibilityTap={confirmFinish}
       onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === 'finish') complete();
+        if (event.nativeEvent.actionName === 'finish') confirmFinish();
       }}
       onPressIn={begin}
       onPressOut={cancel}

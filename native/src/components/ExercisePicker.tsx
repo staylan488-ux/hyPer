@@ -114,7 +114,9 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
     ![...extras, ...library].some((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(typed));
   const empty = library !== null && gym.length === 0 && skills.length === 0 && !canCreate;
   const emptyLine = searching ? 'Nothing matches.' : 'No other exercises for this muscle.';
-  useAnnounce(loadFailed && library === null ? 'Couldn’t load exercises.' : empty ? emptyLine : null);
+  // Silent while a pick saves or the sheet closes: the picked exercise leaves
+  // the list then, which can empty it.
+  useAnnounce(busyId !== null ? null : loadFailed && library === null ? 'Couldn’t load exercises.' : empty ? emptyLine : null);
 
   const create = () => {
     if (!library) return;

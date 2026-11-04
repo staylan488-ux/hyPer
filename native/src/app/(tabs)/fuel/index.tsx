@@ -31,7 +31,7 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
-import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -274,9 +274,10 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
   const go = (weeks: number) => {
     const target = addWeeks(selected, weeks);
     const next = isAfter(startOfDay(target), now) ? now : target;
-    if (isSameDay(next, selected)) return;
+    if (isSameDay(next, selected)) return null;
     haptics.select();
     useFuelStore.getState().select(dayKey(next));
+    return next;
   };
   const swipe = Gesture.Pan()
     .activeOffsetX([-24, 24])
@@ -296,20 +297,24 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
     <GestureDetector gesture={swipe}>
       {/* Each day is its own button, so VoiceOver can pick any of them. */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
-        {days.map((day) => {
+        {/* Keyed by weekday, so a week change updates the same buttons and VoiceOver keeps its place. */}
+        {days.map((day, index) => {
           const key = dayKey(day);
           const isSelected = isSameDay(day, selected);
           const isToday = isSameDay(day, now);
           const future = isAfter(startOfDay(day), now);
           return (
             <Pressable
-              key={key}
+              key={index}
               disabled={future}
               accessibilityRole="button"
               accessibilityLabel={`${isToday ? 'Today, ' : ''}${format(day, 'EEEE, MMMM d')}${daysWithLogs.has(key) ? ', food logged' : ''}`}
               accessibilityState={{ selected: isSelected, disabled: future }}
               accessibilityActions={weekActions}
-              onAccessibilityAction={(event) => go(event.nativeEvent.actionName === 'nextWeek' ? 1 : -1)}
+              onAccessibilityAction={(event) => {
+                const next = go(event.nativeEvent.actionName === 'nextWeek' ? 1 : -1);
+                if (next) announce(`${isSameDay(next, now) ? 'Today, ' : ''}${format(next, 'EEEE, MMMM d')}`);
+              }}
               onPress={() => {
                 haptics.select();
                 useFuelStore.getState().select(key);

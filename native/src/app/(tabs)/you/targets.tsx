@@ -13,7 +13,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
-import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
@@ -31,7 +31,11 @@ export default function TargetsScreen() {
   // A save's result (here or from the edit sheet over this screen), not one
   // left from an earlier visit; errors announce themselves (FormNote).
   const [earlier] = useState(message);
-  useAnnounce(message && message !== earlier && !message.alert ? message.text : null);
+  // Keyed on the object, not its text: a second save with the same words is
+  // a new message and is announced again.
+  useEffect(() => {
+    if (message && message !== earlier && !message.alert) announce(message.text);
+  }, [message, earlier]);
   const large = useLargeText();
   const [resuming, setResuming] = useState(false);
   const base = baseTargets(target);
@@ -176,7 +180,12 @@ export default function TargetsScreen() {
           </Section>
         ) : null}
 
-        {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
+        {/* A message left from an earlier visit shows until the mount effect clears it, but is not announced. */}
+        {message ? (
+          <FormNote alert={message.alert} announcement={message === earlier ? '' : undefined}>
+            {message.text}
+          </FormNote>
+        ) : null}
       </TabScroll>
     </>
   );

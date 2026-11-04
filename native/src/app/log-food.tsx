@@ -33,7 +33,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
-import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
@@ -244,7 +244,6 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [storageFailed, setStorageFailed] = useState(false);
   const [captureKey, setCaptureKey] = useState(0);
   const [mealError, setMealError] = useState('');
-  useAnnounce(mealError);
   const settledMealIds = useRef(new Set<string>());
 
   const updateMeal = useCallback(
@@ -476,7 +475,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                   ]);
                 }}
                 style={({ pressed }) => ({ width: 64, height: 44, alignItems: 'flex-end', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-                <BlancText variant="bodyStrong" size={15}>
+                {/* Capped like a bar button, so the word stays on one line in its 64-point box. */}
+                <BlancText variant="bodyStrong" size={15} maxFontSizeMultiplier={1.2}>
                   Discard
                 </BlancText>
               </Pressable>
