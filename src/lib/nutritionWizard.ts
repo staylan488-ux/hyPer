@@ -145,12 +145,18 @@ export function initialWizardDraft(
 export function switchWizardUnits(draft: WizardDraft, next: UnitSystem): WizardDraft {
   if (next === draft.unitSystem) return draft;
   if (next === 'metric') {
+    // A field that cannot be read falls back to 5 ft 10 in. 0 in is a height
+    // (6 ft 0 in is 183 cm, not 6 ft 10 in); 0 ft is not.
+    const inches = parseDecimal(draft.heightInches);
     return {
       ...draft,
       unitSystem: next,
       weight: weightText(lbsToKg(parseDecimal(draft.weight) || 170)),
       heightCm: String(
-        Math.round(feetInchesToCm(parseDecimal(draft.heightFeet) || 5, parseDecimal(draft.heightInches) || 10)),
+        Math.round(feetInchesToCm(
+          parseDecimal(draft.heightFeet) || 5,
+          Number.isFinite(inches) ? Math.max(0, Math.min(11, inches)) : 10,
+        )),
       ),
     };
   }

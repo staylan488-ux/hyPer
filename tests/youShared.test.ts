@@ -189,6 +189,20 @@ describe('target calculator draft', () => {
     expect(wizardOutcome(draft, profile, now).profile.height_cm).toBe(182.9);
   });
 
+  it('carries 6 ft 0 in across a unit switch as about 183 cm, never 6 ft 10 in', () => {
+    const imperial = initialWizardDraft({ ...profile, height_cm: 182 }, 78.4, now);
+    expect(switchWizardUnits(imperial, 'metric').heightCm).toBe('183');
+    const metric = initialWizardDraft({ ...profile, height_cm: 182, unit_system: 'metric' }, 78.4, now);
+    const there = switchWizardUnits(metric, 'imperial');
+    expect(there).toMatchObject({ heightFeet: '6', heightInches: '0' });
+    expect(switchWizardUnits(there, 'metric').heightCm).toBe('183');
+    // Inches are held to 0–11, as Save holds them.
+    expect(switchWizardUnits({ ...imperial, heightInches: '13' }, 'metric').heightCm).toBe('211');
+    // Only a field that cannot be read falls back to 5 ft 10 in; 0 ft is not a height.
+    expect(switchWizardUnits({ ...imperial, heightFeet: '', heightInches: '' }, 'metric').heightCm).toBe('178');
+    expect(switchWizardUnits({ ...imperial, heightFeet: '0', heightInches: '4' }, 'metric').heightCm).toBe('163');
+  });
+
   it('keeps the rate inside the goal and resets it with a new goal', () => {
     const cut = selectWizardGoal(initialWizardDraft(profile, 78.4, now), 'cut');
     expect(cut.rate).toBe(-0.7);
