@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { normalizeFoodName, numbersNearlyEqual } from '@/lib/foodLoggerUtils';
-import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersistence';
+import { insertOneServingFood, type KeptFoodFields, type OneServingFoodValues } from '@/lib/foodPersistence';
 import type { Food } from '@/types';
 
 // Saved meals are foods rows with one of these sources. Deleting or replacing
@@ -44,18 +44,19 @@ export function dedupeSavedMealsByName<Row extends { name?: string | null }, T>(
 }
 
 /** Inserts a one-serving saved meal and returns its id, or null with the error. */
-export function insertSavedMeal(userId: string, values: OneServingFoodValues) {
-  return insertOneServingFood(userId, values, 'saved_meal');
+export function insertSavedMeal(userId: string, values: OneServingFoodValues, kept?: KeptFoodFields) {
+  return insertOneServingFood(userId, values, 'saved_meal', kept);
 }
 
 /**
  * Takes a meal off the saved list by turning it into a plain manual entry.
- * Never hard-deletes: past logs still reference the row.
+ * Never hard-deletes: past logs still reference the row. Its barcode goes
+ * too, so a scan no longer logs a meal that was deleted or replaced.
  */
 export async function retireSavedMeal(userId: string, mealId: string): Promise<{ error: unknown }> {
   const { error } = await supabase
     .from('foods')
-    .update({ source: 'manual_entry' })
+    .update({ source: 'manual_entry', external_source: null, external_id: null })
     .eq('id', mealId)
     .eq('user_id', userId)
     .in('source', [...SAVED_MEAL_SOURCES]);
@@ -118,18 +119,44 @@ export function filterSavedMeals<T extends { name: string }>(meals: readonly T[]
   return meals.filter((meal) => normalizeFoodName(meal.name).includes(query));
 }
 
+type Barcode = { external_source: string | null; external_id: string | null };
+
+function setBarcode(userId: string, foodId: string, barcode: Barcode) {
+  return supabase.from('foods').update(barcode).eq('id', foodId).eq('user_id', userId);
+}
+
 /**
  * Replaces a saved meal with new values for future logs: inserts the new meal,
- * then retires the old one (past logs keep pointing at it). When retiring
- * fails the new meal still exists, so the caller warns that both are listed.
+ * with the old one's serving (250 g, 6 piece) and barcode, then retires the old
+ * one (past logs keep pointing at it). When retiring fails the new meal still
+ * exists, so the caller warns that both are listed.
  */
 export async function replaceSavedMeal(
   userId: string,
   oldMealId: string,
   values: OneServingFoodValues,
 ): Promise<{ id: string | null; retireFailed: boolean }> {
-  const { id } = await insertSavedMeal(userId, values);
-  if (!id) return { id: null, retireFailed: false };
+  const failed = { id: null, retireFailed: false };
+  const { data: old, error: readError } = await supabase
+    .from('foods')
+    .select('serving_size, serving_unit, external_source, external_id')
+    .eq('id', oldMealId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (readError) return failed;
+  const row = old as ({ serving_size: number | string | null; serving_unit: string | null } & Barcode) | null;
+  const barcode = row?.external_source && row.external_id ? { external_source: row.external_source, external_id: row.external_id } : null;
+  // A barcode belongs to one row (idx_foods_external_identity), so the old row lets go of it first.
+  if (barcode && (await setBarcode(userId, oldMealId, { external_source: null, external_id: null })).error) return failed;
+  const { id } = await insertSavedMeal(userId, values, {
+    serving_size: Number(row?.serving_size) || 1,
+    serving_unit: row?.serving_unit || 'serving',
+    ...barcode,
+  });
+  if (!id) {
+    if (barcode) await setBarcode(userId, oldMealId, barcode);
+    return failed;
+  }
   const { error } = await retireSavedMeal(userId, oldMealId);
   return { id, retireFailed: Boolean(error) };
 }

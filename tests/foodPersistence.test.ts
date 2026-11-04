@@ -34,6 +34,7 @@ import {
   dedupeSavedMealsByName,
   insertSavedMeal,
   listSavedMealRows,
+  replaceSavedMeal,
   retireSavedMeal,
 } from '@/lib/savedMeals';
 
@@ -119,7 +120,8 @@ describe('saved meal writes', () => {
     expect(await retireSavedMeal('user-a', 'meal-1')).toEqual({ error: null });
     expect(mocks.chains).toEqual([[
       ['from', 'foods'],
-      ['update', { source: 'manual_entry' }],
+      // a deleted product no longer answers a scan of its barcode
+      ['update', { source: 'manual_entry', external_source: null, external_id: null }],
       ['eq', 'id', 'meal-1'],
       ['eq', 'user_id', 'user-a'],
       ['in', 'source', ['saved_meal', 'custom']],
@@ -130,6 +132,90 @@ describe('saved meal writes', () => {
     const error = { message: 'offline' };
     mocks.results.push({ error });
     expect(await retireSavedMeal('user-a', 'meal-1')).toEqual({ error });
+  });
+});
+
+describe('replacing a saved meal', () => {
+  const read = [
+    ['from', 'foods'],
+    ['select', 'serving_size, serving_unit, external_source, external_id'],
+    ['eq', 'id', 'old'],
+    ['eq', 'user_id', 'user-a'],
+    ['maybeSingle'],
+  ];
+  const retire = [
+    ['from', 'foods'],
+    ['update', { source: 'manual_entry', external_source: null, external_id: null }],
+    ['eq', 'id', 'old'],
+    ['eq', 'user_id', 'user-a'],
+    ['in', 'source', ['saved_meal', 'custom']],
+  ];
+
+  it('keeps the serving basis of the meal it replaces', async () => {
+    mocks.results.push({ data: { serving_size: 250, serving_unit: 'g', external_source: null, external_id: null } }, { data: { id: 'new' } });
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([
+      read,
+      [['from', 'foods'], ['insert', { user_id: 'user-a', ...values, source: 'saved_meal', serving_size: 250, serving_unit: 'g' }], ['select', 'id'], ['single']],
+      retire,
+    ]);
+  });
+
+  it('moves a barcode to the new meal, so a scan logs the edited numbers', async () => {
+    mocks.results.push(
+      { data: { serving_size: '6.00', serving_unit: 'piece', external_source: 'barcode', external_id: '0123456789012' } },
+      {},
+      { data: { id: 'new' } },
+    );
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([
+      read,
+      // one row per barcode: the old row lets go of it before the new one takes it
+      [['from', 'foods'], ['update', { external_source: null, external_id: null }], ['eq', 'id', 'old'], ['eq', 'user_id', 'user-a']],
+      [
+        ['from', 'foods'],
+        ['insert', { user_id: 'user-a', ...values, source: 'saved_meal', external_source: 'barcode', external_id: '0123456789012', serving_size: 6, serving_unit: 'piece' }],
+        ['select', 'id'],
+        ['single'],
+      ],
+      retire,
+    ]);
+  });
+
+  it('gives the barcode back to the old meal when the new one cannot be saved', async () => {
+    mocks.results.push(
+      { data: { serving_size: 1, serving_unit: 'serving', external_source: 'barcode', external_id: '0123456789012' } },
+      {},
+      { error: { message: 'offline' } },
+    );
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toHaveLength(4);
+    expect(mocks.chains[3]).toEqual([
+      ['from', 'foods'],
+      ['update', { external_source: 'barcode', external_id: '0123456789012' }],
+      ['eq', 'id', 'old'],
+      ['eq', 'user_id', 'user-a'],
+    ]);
+  });
+
+  it('changes nothing when the old meal cannot be read or let go of its barcode', async () => {
+    mocks.results.push({ error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toHaveLength(1);
+
+    mocks.chains.length = 0;
+    mocks.results.push({ data: { serving_size: 1, serving_unit: 'serving', external_source: 'barcode', external_id: '0123' } }, { error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toHaveLength(2);
+  });
+
+  it('still saves as one serving when the old row is gone', async () => {
+    mocks.results.push({ data: null }, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains[1][1]).toEqual(['insert', { user_id: 'user-a', ...values, source: 'saved_meal', serving_size: 1, serving_unit: 'serving' }]);
   });
 });
 
