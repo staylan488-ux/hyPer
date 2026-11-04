@@ -3,7 +3,7 @@ import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, RefreshControl, View } from 'react-native';
+import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
@@ -13,18 +13,16 @@ import { formatWeight } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
-import { Capsule } from '~/components/Capsule';
-import { FormNote, PickerRow, ToggleRow } from '~/components/Form';
+import { FormNote, ToggleRow } from '~/components/Form';
+import { FuelReminderSetting } from '~/components/FuelReminderSetting';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
 import { formatWhole } from '~/lib/format';
-import { setFuelReminderEnabled, setFuelReminderTime, useFuelReminderStore } from '~/lib/fuelReminder';
-import { fuelReminderNote, hasReminderTarget, minutesOf, REMINDER_EARLIEST, REMINDER_LATEST, reminderTimeDate } from '~/lib/fuelReminderPlan';
 import { haptics } from '~/lib/haptics';
-import { blockExit, rowEnter, rowLayout } from '~/lib/motion';
+import { rowLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
   chooseAppearance,
@@ -87,7 +85,7 @@ export default function YouScreen() {
 
         <WeightCard />
 
-        <Label style={{ marginTop: space.section }}>
+        <Label layout={rowLayout} style={{ marginTop: space.section }}>
           <Row
             title="Targets"
             value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : 'Not set'}
@@ -162,7 +160,7 @@ function WeightCard() {
 
   return (
     <Section title="Body weight" action={{ title: 'Log', onPress: () => router.push('/log-weight') }}>
-      <Label style={{ overflow: 'hidden' }}>
+      <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
@@ -235,55 +233,6 @@ function AppearanceRow() {
           ))}
         </Picker>
       </Host>
-    </View>
-  );
-}
-
-const REMINDER_RANGE = { min: reminderTimeDate(REMINDER_EARLIEST), max: reminderTimeDate(REMINDER_LATEST) };
-
-/** The fuel reminder: a switch and an evening time, kept on this phone. */
-function FuelReminderSetting() {
-  const userId = useAuthStore((state) => state.user?.id ?? null);
-  const ready = useFuelReminderStore((state) => state.userId !== null && state.userId === userId);
-  const settings = useFuelReminderStore((state) => state.settings);
-  const denied = useFuelReminderStore((state) => state.permission === 'denied');
-  const goal = useAppStore((state) => state.nutritionProfile?.goal ?? null);
-  // Only once targets have loaded, so the note doesn't flash at launch.
-  const noTarget = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId && !hasReminderTarget(state.macroTarget));
-  const time = useMemo(() => reminderTimeDate(settings.minutes), [settings.minutes]);
-  return (
-    <View style={{ marginTop: space.section }}>
-      <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
-        <ToggleRow label="Fuel reminder" value={settings.enabled} disabled={!ready} onChange={setFuelReminderEnabled} />
-        {settings.enabled ? (
-          <Animated.View entering={rowEnter} exiting={blockExit}>
-            <Hairline />
-            <PickerRow
-              label="Time"
-              mode="time"
-              value={time}
-              min={REMINDER_RANGE.min}
-              max={REMINDER_RANGE.max}
-              onChange={(next) => setFuelReminderTime(minutesOf(next))}
-            />
-          </Animated.View>
-        ) : null}
-      </Label>
-      <Animated.View layout={rowLayout}>
-        {settings.enabled && denied ? (
-          <>
-            <FormNote alert>Notifications are off for hyPer. Allow them in Settings to get this reminder.</FormNote>
-            <Capsule
-              title="Open Settings"
-              variant="quiet"
-              onPress={() => void Linking.openSettings()}
-              style={{ alignSelf: 'flex-start', marginLeft: 32, marginTop: 12 }}
-            />
-          </>
-        ) : (
-          <FormNote>{fuelReminderNote(goal, !noTarget)}</FormNote>
-        )}
-      </Animated.View>
     </View>
   );
 }

@@ -132,12 +132,20 @@ const pendingReminderIds = async () =>
 async function hold(userId: string, now: Date, requests: ReminderRequest[], pending: string[]) {
   const wantedIds = new Set(requests.map((request) => request.id));
   const next: ReminderHistory = { ...(historyFor === userId ? history : parseReminderHistory(read(historyKey(userId)))) };
+  // Saved after every step, so an app suspended or closed part-way never
+  // leaves iOS holding a day the record lacks (that day could go out twice).
+  const save = () => {
+    const pruned = pruneReminderHistory(next, now);
+    if (historyFor === userId) history = pruned;
+    write(historyKey(userId), JSON.stringify(pruned));
+  };
   try {
     for (const id of pending) {
       if (wantedIds.has(id)) continue;
       await Notifications.cancelScheduledNotificationAsync(id);
       // Taken back before it was due: that day can still have one.
       delete next[reminderDay(id)];
+      save();
     }
     for (const request of requests) {
       await Notifications.scheduleNotificationAsync({
@@ -153,11 +161,11 @@ async function hold(userId: string, now: Date, requests: ReminderRequest[], pend
         trigger: { type: Notifications.SchedulableTriggerInputTypes.CALENDAR, ...request.at, second: 0, repeats: false },
       });
       next[request.day] = request.atMs;
+      save();
     }
   } finally {
-    const pruned = pruneReminderHistory(next, now);
-    if (historyFor === userId) history = pruned;
-    write(historyKey(userId), JSON.stringify(pruned));
+    // Also prunes when there was nothing to change.
+    save();
   }
 }
 
