@@ -201,6 +201,8 @@ describe('target calculator draft', () => {
     // Only a field that cannot be read falls back to 5 ft 10 in; 0 ft is not a height.
     expect(switchWizardUnits({ ...imperial, heightFeet: '', heightInches: '' }, 'metric').heightCm).toBe('178');
     expect(switchWizardUnits({ ...imperial, heightFeet: '0', heightInches: '4' }, 'metric').heightCm).toBe('163');
+    // Blank inches beside typed feet are 0, as Save reads them.
+    expect(switchWizardUnits({ ...imperial, heightFeet: '6', heightInches: '' }, 'metric').heightCm).toBe('183');
   });
 
   it('keeps the rate inside the goal and resets it with a new goal', () => {
