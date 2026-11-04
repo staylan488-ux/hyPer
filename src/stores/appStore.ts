@@ -1990,7 +1990,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isAccountCurrent = captureAccountScope();
     // One statement: sets and the day plan go with it via ON DELETE CASCADE,
     // so a failure part-way can no longer leave a workout with its sets wiped.
-    let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+    // The deleted row says whether WHOOP stats were attached.
+    const removeWorkout = () => supabase.from('workouts').delete().eq('id', workoutId).select('whoop_session_id, user_id');
+    let { data: deleted, error } = await removeWorkout();
 
     // Foreign-key violation means a database without the cascade. Nothing was
     // deleted, so fall back to removing the sets first, stopping if that fails.
@@ -2000,7 +2002,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.error('Error deleting workout sets:', setsError);
         throw setsError;
       }
-      ({ error } = await supabase.from('workouts').delete().eq('id', workoutId));
+      ({ data: deleted, error } = await removeWorkout());
     }
 
     if (error) {
@@ -2011,6 +2013,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A deleted in-progress workout must not stay on the Workout tab.
     if (isAccountCurrent() && get().currentWorkout?.id === workoutId) {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
+    }
+
+    // Attaching WHOOP stats hid their activity; it returns to its day, as when
+    // the stats are removed. The workout is gone either way, so this only logs.
+    const row = (deleted ?? [])[0] as { whoop_session_id: string | null; user_id: string } | undefined;
+    if (row?.whoop_session_id) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', row.whoop_session_id)
+        .eq('user_id', row.user_id);
+      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
   }),
 
@@ -2545,12 +2559,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       .update({ dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', session.id)
       .eq('user_id', userId);
-    if (dismissError) console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
 
     const updated = data as Workout;
     set((state) => ({
       currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
     }));
+    // Not hidden, the activity would show beside the stats it gave the
+    // workout. Both writes are safe to repeat, so a retry finishes the job.
+    if (dismissError) {
+      console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
+      throw new Error('Could not finish attaching the WHOOP stats. Try again.');
+    }
     return updated;
   }),
 
@@ -2558,7 +2577,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getSessionUserId();
     if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
+    // The activity comes back before the stats go: a failure between the two
+    // then shows it twice until a retry, instead of losing the WHOOP session.
     const sessionId = workout.whoop_session_id ?? null;
+    if (sessionId) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', userId);
+      if (restoreError) {
+        console.error('Error restoring the WHOOP session:', restoreError);
+        throw new Error(`Could not remove the WHOOP stats: ${restoreError.message}`);
+      }
+    }
+
     const { data, error } = await supabase
       .from('workouts')
       .update(CLEARED_WHOOP_STATS)
@@ -2570,15 +2603,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (error || !data) {
       console.error('Error detaching WHOOP stats from workout:', error);
       throw new Error(`Could not remove the WHOOP stats: ${error?.message ?? 'unknown error'}`);
-    }
-
-    if (sessionId) {
-      const { error: restoreError } = await supabase
-        .from('activity_sessions')
-        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
-        .eq('id', sessionId)
-        .eq('user_id', userId);
-      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
 
     const updated = data as Workout;

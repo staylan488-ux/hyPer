@@ -32,6 +32,7 @@ type History = {
   savePastNote: (workoutId: string, exerciseId: string, text: string) => Promise<boolean>;
   movePastMovement: (workoutId: string, exerciseId: string, direction: -1 | 1) => Promise<void>;
   deletePastWorkout: (workoutId: string) => Promise<boolean>;
+  attachStats: (workout: HistoryWorkout, activity: ActivitySession) => Promise<boolean>;
 };
 
 function deferred<T>() {
@@ -80,6 +81,7 @@ const store = {
   updateWorkoutNotes: vi.fn(async (_id: string, notes: string | null) => { server.notes = notes; }),
   calculateWeeklyVolume: vi.fn(async () => {}),
   deleteWorkout: vi.fn(async (id: string) => { server.workouts.delete(id); }),
+  attachWhoopToWorkout: vi.fn(async (): Promise<HistoryWorkout> => { throw new Error('Could not finish attaching the WHOOP stats. Try again.'); }),
   addSetToWorkout: vi.fn(async (id: string, exerciseId: string) => {
     const row = server.workouts.get(id)!;
     const added = set(`added-${row.sets.length}`, exerciseId, false);
@@ -252,6 +254,38 @@ describe('Today and Train follow History', () => {
     expect(bump).not.toHaveBeenCalled();
     await history.editPastWorkout('w1', async () => { await store.updateSet('added-2', { completed: true }); });
     expect(bump).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('deleting a workout with WHOOP stats', () => {
+  const whoopRun = { id: 'a1', date: '2026-11-02', source: 'whoop', activity_type: 'run' } as ActivitySession;
+
+  it('reads the month again, so the activity whose stats it carried is back on its day', async () => {
+    await show(workout('w1', [set('s1', 'bench')], { whoop_session_id: 'a1' }));
+    // The store brings the activity back as it deletes the workout.
+    monthRead.mockResolvedValueOnce({ workouts: [], activities: [whoopRun] });
+
+    await expect(history.deletePastWorkout('w1')).resolves.toBe(true);
+    await vi.waitFor(() => expect(history.useHistoryStore.getState().activities).toEqual([whoopRun]));
+    expect(shown('w1')).toBeUndefined();
+  });
+
+  it('keeps the activity on its day when attaching its stats did not finish', async () => {
+    const lift = workout('w1', [set('s1', 'bench')]);
+    server.workouts.set('w1', lift);
+    monthRead.mockResolvedValueOnce({ workouts: [lift], activities: [whoopRun] });
+    await history.loadHistoryMonth();
+
+    await expect(history.attachStats(lift, whoopRun)).resolves.toBe(false);
+    expect(history.useHistoryStore.getState().activities).toEqual([whoopRun]);
+    expect(shown('w1')!.whoop_session_id).toBeUndefined();
+  });
+
+  it('reads nothing again for a workout without WHOOP stats', async () => {
+    await show(workout('w1', [set('s1', 'bench')]));
+    monthRead.mockClear();
+    await history.deletePastWorkout('w1');
+    expect(monthRead).not.toHaveBeenCalled();
   });
 });
 

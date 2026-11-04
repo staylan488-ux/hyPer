@@ -352,6 +352,8 @@ export async function deletePastWorkout(workoutId: string): Promise<boolean> {
   void useAppStore.getState().calculateWeeklyVolume();
   // Today and Train re-read what was done: today's session, the plan's place.
   useWorkoutsRevision.getState().bump();
+  // The WHOOP activity whose stats it carried is back on its day.
+  if (workout?.whoop_session_id && isCurrent()) void loadHistoryMonth();
   return true;
 }
 

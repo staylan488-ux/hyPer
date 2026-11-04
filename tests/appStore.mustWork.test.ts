@@ -1888,7 +1888,8 @@ describe('must-work store contracts', () => {
     const workoutsChain = createChain();
     const setsChain = createChain();
     const results = [{ error: { code: '23503', message: 'foreign key violation' } }, { error: null }];
-    workoutsChain.eq.mockImplementation(() => results.shift());
+    // The delete reads back the removed row (its WHOOP link) after the filter.
+    workoutsChain.select.mockImplementation(() => results.shift());
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
