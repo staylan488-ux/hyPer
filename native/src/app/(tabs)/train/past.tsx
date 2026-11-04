@@ -10,7 +10,10 @@ import { historyDayKey, historyWorkoutTitle, moveHistoryMovement, orderHistoryMo
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
 import { getWorkoutDurationMs } from '@/lib/workoutSessions';
+import { fetchPreviousSetTargets } from '@/lib/previousSetTargets';
+import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { WorkoutSet } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
@@ -21,6 +24,7 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
+import { gainOnLastTime } from '~/lib/beatLastTime';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -53,6 +57,23 @@ export default function PastWorkoutScreen() {
 
   const movements = useMemo(() => (workout ? orderHistoryMovements(workout.sets, plan ?? null) : []), [workout, plan]);
   const notes = useMemo(() => parseWorkoutNotes(workout?.notes ?? null).movementNotes, [workout?.notes]);
+
+  // Last time's numbers for these movements, so a set that beat them shows its ↑ as it did live.
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const [previous, setPrevious] = useState<PreviousWorkoutSetMap>({});
+  const exerciseKey = movements.map((movement) => movement.exerciseId).sort().join(',');
+  const workoutId = workout?.id ?? null;
+  const workoutDate = workout?.date ?? null;
+  useEffect(() => {
+    if (!userId || !workoutId || !workoutDate || !exerciseKey) return;
+    let on = true;
+    void fetchPreviousSetTargets({ userId, workoutId, date: workoutDate, exerciseIds: exerciseKey.split(',') }).then((result) => {
+      if (on && result) setPrevious(result);
+    });
+    return () => {
+      on = false;
+    };
+  }, [userId, workoutId, workoutDate, exerciseKey]);
 
   if (!workout) {
     return (
@@ -149,7 +170,13 @@ export default function PastWorkoutScreen() {
 
         {movements.map((movement) => (
           <Animated.View key={movement.exerciseId} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-            <MovementBlock workout={workout} movement={movement} note={notes[movement.exerciseId] || movement.planNote} orderedIds={orderedIds} />
+            <MovementBlock
+              workout={workout}
+              movement={movement}
+              note={notes[movement.exerciseId] || movement.planNote}
+              orderedIds={orderedIds}
+              previous={previous}
+            />
           </Animated.View>
         ))}
 
@@ -189,7 +216,19 @@ function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not s
 }
 
 /** One movement: its sets (tap to correct, swipe to delete) and a menu for the rest. */
-function MovementBlock({ workout, movement, note, orderedIds }: { workout: HistoryWorkout; movement: HistoryMovement; note: string; orderedIds: string[] }) {
+function MovementBlock({
+  workout,
+  movement,
+  note,
+  orderedIds,
+  previous,
+}: {
+  workout: HistoryWorkout;
+  movement: HistoryMovement;
+  note: string;
+  orderedIds: string[];
+  previous: PreviousWorkoutSetMap;
+}) {
   const c = useBlanc();
   const store = useAppStore.getState;
   // One Add set at a time: taps while one is saving do nothing.
@@ -335,7 +374,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
         {movement.sets.map((set, index) => (
           <Animated.View key={set.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
-            <SetRow workoutId={workout.id} movement={movement} set={set} number={index + 1} rpeColumn={rpeColumn} />
+            <SetRow workoutId={workout.id} movement={movement} set={set} number={index + 1} rpeColumn={rpeColumn} previous={previous} />
           </Animated.View>
         ))}
         <Animated.View layout={rowLayout}>
@@ -348,7 +387,21 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
 }
 
 /** A set: tap to correct; swipe to delete (all the way deletes); hold for the menu. */
-function SetRow({ workoutId, movement, set, number, rpeColumn }: { workoutId: string; movement: HistoryMovement; set: WorkoutSet; number: number; rpeColumn: boolean }) {
+function SetRow({
+  workoutId,
+  movement,
+  set,
+  number,
+  rpeColumn,
+  previous,
+}: {
+  workoutId: string;
+  movement: HistoryMovement;
+  set: WorkoutSet;
+  number: number;
+  rpeColumn: boolean;
+  previous: PreviousWorkoutSetMap;
+}) {
   const c = useBlanc();
   const name = `${movement.name} set ${number}`;
   const edit = () => router.push({ pathname: '/past-set', params: { workout: workoutId, set: set.id, number: String(number) } });
@@ -369,7 +422,7 @@ function SetRow({ workoutId, movement, set, number, rpeColumn }: { workoutId: st
   return (
     <SwipeRow name={name} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} onPress={edit} menu={menu} />
+        <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} gain={set.completed ? gainOnLastTime(set, previous) : null} onPress={edit} menu={menu} />
       </View>
     </SwipeRow>
   );
