@@ -16,7 +16,7 @@ import { useBlanc } from '~/theme/blanc';
 // Today's training in one card: a title, at most one quiet line, at most one
 // button. Same rule as the web (todayHero), fewer words. Shown on Today and
 // at the top of Train before a session starts. A finished day stays as its
-// record: the session's name, sets and time, and its tally, opening the workout.
+// record: the session's name and time, and its tally, opening the workout.
 const PLAN_CARD_HEIGHT = 78;
 // A finished day's record: padding 14 + headline 22 + 2 + line 20 + 8 + tally 24 + 14.
 const RECORD_HEIGHT = 104;
@@ -69,14 +69,9 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       const at = next ? next.indexOf(' · ') : -1;
       const nextName = next && at >= 0 ? next.slice(at + 3) : next;
       title = finished.title;
+      // No set count: the tally under the line shows it.
       detail = [
         'Trained today',
-        // "3 of 9 sets" only when some sets were not logged, as session done and History write it.
-        finished.sets > 0
-          ? finished.sets < finished.marks.length
-            ? `${finished.sets} of ${finished.marks.length} sets`
-            : `${finished.sets} ${finished.sets === 1 ? 'set' : 'sets'}`
-          : null,
         finished.minutes ? formatMinutes(finished.minutes) : null,
         nextName ? `Next: ${nextName}` : null,
       ]
@@ -147,7 +142,10 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
             // With a button inside, VoiceOver reaches the button on its own.
             accessible={!action}
             accessibilityRole="button"
-            accessibilityLabel={[title, detail].filter(Boolean).join(', ')}
+            // VoiceOver reads the record as a whole, so the tally's count joins its label.
+            accessibilityLabel={[title, detail, record && record.marks.length > 0 ? `${record.sets} of ${record.marks.length} sets logged` : null]
+              .filter(Boolean)
+              .join(', ')}
             accessibilityHint={openRecord ? 'Opens the workout' : 'Opens Train'}
             onPress={() => {
               haptics.tap();
