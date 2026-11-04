@@ -132,6 +132,8 @@ function useTodayDone(userId: string | undefined, dayKey: string, refreshKey: st
 export type FinishedToday = {
   id: string;
   title: string;
+  /** The program day it was, if any. */
+  splitDayId: string | null;
   /** Logged or not, per set in the workout's order: its tally. */
   marks: boolean[];
   /** Logged sets. */
@@ -184,6 +186,7 @@ export function useFinishedToday(done: boolean): FinishedToday | null | undefine
     return {
       id: workout.id,
       title: historyWorkoutTitle(workout, plan),
+      splitDayId: workout.split_day_id ?? null,
       marks: sets.map((set) => set.completed),
       sets: sets.filter((set) => set.completed).length,
       minutes: duration ? Math.max(1, Math.round(duration / 60_000)) : null,

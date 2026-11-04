@@ -62,10 +62,21 @@ export function WorkoutAccessory() {
             <BlancText variant="footnote" weight="600">
               {session.dayName}
             </BlancText>
-            {/* A long name gives way in the middle, so the set count at the end stays. */}
-            <BlancText variant="footnote" tone="graphite" numberOfLines={1} ellipsizeMode="middle" style={{ fontVariant: ['tabular-nums'] }}>
-              {status}
-            </BlancText>
+            {session.current && !resting && !paused ? (
+              // A long name is cut at its end; the set count always shows.
+              <View style={{ flexDirection: 'row' }}>
+                <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ flexShrink: 1 }}>
+                  {session.current.movement.name}
+                </BlancText>
+                <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>
+                  {` · Set ${session.current.setNumber} of ${session.current.movement.sets.length}`}
+                </BlancText>
+              </View>
+            ) : (
+              <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>
+                {status}
+              </BlancText>
+            )}
           </View>
           <SymbolView name={resting ? 'timer' : paused ? 'pause.fill' : 'play.fill'} size={17} tintColor={c.ink} />
         </>

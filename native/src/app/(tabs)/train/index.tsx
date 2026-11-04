@@ -36,7 +36,7 @@ import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
-import { useTodayPlan } from '~/lib/today';
+import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -475,7 +475,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 const movement = byId.get(id);
                 return movement ? (
                   <View key={id}>
-                    {index > 0 ? <Hairline /> : null}
+                    {index > 0 ? <Hairline inset={46} /> : null}
                     {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                   </View>
                 ) : null;
@@ -484,13 +484,15 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             enabled={!reordering}
             revision={orderRevision}
             roundBottom={!session.flexible}
+            // Rules start at the names, past each row's 16 pt mark.
+            ruleInset={46}
             onMove={(key, index) => void moveBlock(key, index)}
             onHold={(key) => openMovement(key)}
             onDragging={setDragging}
           />
           {session.flexible ? (
             <Animated.View layout={rowLayout}>
-              <Hairline />
+              <Hairline inset={46} />
               <Row
                 title="Add movement"
                 leading={
@@ -525,13 +527,16 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         }}>
         <Elapsed startedAt={session.startedAt} done={session.doneCount} total={session.sets.length} />
 
-        <Tally
-          marks={session.sets.map((set) => set.completed)}
-          current={current?.index ?? null}
-          height={20}
-          style={{ marginHorizontal: space.gutter, marginTop: 16 }}
-          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
-        />
+        {/* An empty session has no marks to draw. */}
+        {session.sets.length > 0 ? (
+          <Tally
+            marks={session.sets.map((set) => set.completed)}
+            current={current?.index ?? null}
+            height={20}
+            style={{ marginHorizontal: space.gutter, marginTop: 16 }}
+            accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
+          />
+        ) : null}
 
         {current && draft ? (
           <View ref={cardRef} collapsable={false}>
@@ -961,9 +966,10 @@ function StartPlanned() {
       : plan.schedule.mode === 'fixed'
         ? 'Finishing a different day shifts the sessions after it.'
         : 'Finishing a different day moves the next session on from it.';
-  // The day the card above offers is not offered again.
+  // The day the card above offers, or shows as done today, is not offered again.
   const planned = plan.hero.kind === 'planned' ? plan.hero.day.id : null;
-  const otherDays = split ? split.days.filter((day) => day.id !== planned) : [];
+  const finished = useFinishedToday(plan.hero.kind === 'done');
+  const otherDays = split ? split.days.filter((day) => day.id !== planned && day.id !== finished?.splitDayId) : [];
 
   return (
     <>
