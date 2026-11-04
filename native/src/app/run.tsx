@@ -207,7 +207,12 @@ function Setup({ tracker }: { tracker: Tracker }) {
               </Host>
             </View>
           )}
-          {tracker.resumable ? null : <FormNote>{mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}</FormNote>}
+          {/* Under a bare control the note starts at the gutter, as on Program. */}
+          {tracker.resumable ? null : (
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+              {mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}
+            </BlancText>
+          )}
 
           {mode === 'intervals' && !tracker.resumable ? (
             <Section title="Auto-split">
@@ -549,7 +554,6 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
   const [exportError, setExportError] = useState(false);
   const splits = finishedRunSplits(run);
   const [distance, distanceUnit] = splitFigure(formatRunDistance(run.totalDistanceM));
-  const workSplits = splits.filter((split) => !split.isRest).length;
 
   const save = async () => {
     if (saving) return;
@@ -643,7 +647,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
           </View>
 
           {splits.length > 1 ? (
-            <Section title="Splits" note={String(workSplits)}>
+            <Section title="Splits">
               <Label style={{ paddingHorizontal: 18, paddingVertical: 10 }}>
                 {splits.map((split, index) => {
                   const pace = split.isRest ? null : formatRunPace(splitPaceSecPerMile(split));
@@ -664,7 +668,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                         {formatRunClock(split.durationS)}
                       </BlancText>
                       <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ flex: 1, textAlign: 'right' }}>
-                        {split.isRest ? 'rest' : formatRunDistance(split.distanceM)}
+                        {split.isRest ? 'Rest' : formatRunDistance(split.distanceM)}
                       </BlancText>
                       <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ width: 96, textAlign: 'right' }}>
                         {split.isRest ? '' : (pace ?? '–')}

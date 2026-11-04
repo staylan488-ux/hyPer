@@ -2,7 +2,6 @@ import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { datePickerStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { addDays, format, parseISO } from 'date-fns';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
@@ -12,7 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type { Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FormNote } from '~/components/Form';
+import { ChoiceRow, FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
@@ -175,23 +174,7 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
               {split.days.map((day, index) => (
                 <View key={day.id}>
                   {index > 0 ? <Hairline /> : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: index === flexDayIndex }}
-                    onPress={() => select(setFlexDayIndex)(index)}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      minHeight: 52,
-                      paddingLeft: 18,
-                      paddingRight: 16,
-                      backgroundColor: pressed ? c.pressed : 'transparent',
-                    })}>
-                    <BlancText variant="body" style={{ flex: 1 }}>
-                      {day.day_name}
-                    </BlancText>
-                    {index === flexDayIndex ? <SymbolView name="checkmark" size={15} weight="semibold" tintColor={c.ink} /> : null}
-                  </Pressable>
+                  <ChoiceRow title={day.day_name} checked={index === flexDayIndex} onPress={() => setFlexDayIndex(index)} />
                 </View>
               ))}
             </Label>

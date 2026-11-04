@@ -93,15 +93,18 @@ export default function MovementSheet() {
 function movementLine(movement: Movement): string {
   if (movement.skipped) return 'Skipped for this workout';
   if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
-  if (movement.superset) return `Superset ${movement.superset.role} · with ${movement.superset.partnerName}`;
-  return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${movement.sets.length} sets`;
+  if (movement.superset) return `Superset ${movement.superset.role} with ${movement.superset.partnerName}`;
+  const sets = movement.sets.length;
+  return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }
 
 /** "Plan: 3 sets" or "Plan: 3–4 sets", for reference; the count can still change. */
 function rangeLine(movement: Movement): string | null {
   const range = movement.range;
   if (!range) return null;
-  return range.minSets === range.maxSets ? `Plan: ${range.maxSets} sets` : `Plan: ${range.minSets}–${range.maxSets} sets`;
+  return range.minSets === range.maxSets
+    ? `Plan: ${range.maxSets} ${range.maxSets === 1 ? 'set' : 'sets'}`
+    : `Plan: ${range.minSets}–${range.maxSets} sets`;
 }
 
 function MovementDetail({
