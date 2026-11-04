@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
 import { checkFuelReminderSoon } from '~/lib/fuelReminder';
+import { receiveLaunchPress } from '~/lib/launchActions';
 import { setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { liveSessionModel, previousTargetsFor, useFocusStore } from '~/lib/session';
@@ -58,6 +59,11 @@ export function DevLaunchRunner() {
 
     if (action === 'logFood') {
       timers.push(setTimeout(() => router.push('/log-food'), 900));
+    }
+
+    if (action?.startsWith('launch:')) {
+      // A press of the Snap a meal control, an App Shortcut or a quick action, as iOS hands it over.
+      receiveLaunchPress({ action: action.slice('launch:'.length), atMs: Date.now() });
     }
 
     if (action === 'switchMovement') {

@@ -1,0 +1,234 @@
+// @vitest-environment happy-dom
+import { act, createElement, Fragment, useEffect, useState, type ComponentType, type PropsWithChildren } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import * as foodTrialReview from '@/lib/foodTrialReview';
+import * as pendingEntry from '@/lib/pendingEntryId';
+import { loadNativeModule } from './helpers/loadNativeModule';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// Snap a meal on the AI tab: each new camera request opens the camera once and
+// analyzes the photo with no tap; everything that holds work blocks it.
+
+const CAMERA_OFF = 'Camera access is off. Allow Camera for hyPer in Settings, then try again.';
+const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
+const Empty = () => null;
+const noop = () => {};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+type Photo = { uri: string; width: number; height: number };
+type Draft = { hint: string; answer: string; photos: Photo[]; clarificationUsed: boolean; result: unknown; items: unknown[]; saveAsReusable: boolean; saveStarted: boolean };
+type Button = { title: string; busy?: boolean; disabled?: boolean; onPress: () => void };
+type TabProps = { draft: Draft; setDraft: (update: (draft: Draft) => Draft) => void; cameraRequest?: number };
+type AnalyzeRequest = { images: unknown[]; hint: string };
+
+const capsules: Record<string, Button> = {};
+const pressables: Record<string, { onPress: () => void }> = {};
+let sheet: ((index: number) => Promise<void> | void) | undefined;
+let up = false;
+const pick = vi.fn<(source: 'camera' | 'library') => Promise<Photo | null>>();
+let analysis = deferred<unknown>();
+const analyze = vi.fn((request: AnalyzeRequest) => {
+  void request;
+  return analysis.promise;
+});
+const announce = vi.fn();
+const openSettings = vi.fn();
+const logger = { purpose: 'log', editing: null, beginBusy: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop };
+
+const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; emptyAi: (hint?: string) => Draft }>('fuel/AiTab.tsx', {
+  'expo-image': { Image: Empty },
+  'expo-symbols': { SymbolView: Empty },
+  'react-native': {
+    AccessibilityInfo: { announceForAccessibilityWithOptions: announce },
+    ActionSheetIOS: { showActionSheetWithOptions: (_options: unknown, callback: (index: number) => Promise<void>) => { sheet = callback; } },
+    Alert: { alert: vi.fn() },
+    Linking: { openSettings },
+    Pressable: (props: PropsWithChildren<{ accessibilityLabel?: string; onPress: () => void }>) => {
+      if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
+      return Wrap(props);
+    },
+    TextInput: Empty,
+    View: Wrap,
+  },
+  'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
+  '@/lib/foodTrialReview': foodTrialReview,
+  '@/lib/foodPersistence': {},
+  '@/lib/foodTrial': {
+    analyzeFoodTrial: analyze,
+    trialFoodTotals: () => ({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
+    trialIngredientFood: noop,
+    trialItemFood: noop,
+    trialLogSource: noop,
+  },
+  '@/lib/mealComposition': { createMealIngredient: noop },
+  '@/lib/pendingEntryId': pendingEntry,
+  '~/components/BlancText': { BlancText: Wrap },
+  '~/components/Capsule': {
+    Capsule: (props: Button) => {
+      capsules[props.title] = props;
+      return createElement('button', { 'data-title': props.title, 'data-busy': props.busy ? 'yes' : 'no' });
+    },
+  },
+  '~/components/Form': {
+    FieldRow: Empty,
+    FormNote: ({ alert, children }: PropsWithChildren<{ alert?: boolean }>) => createElement('p', alert ? { 'data-alert': 'yes' } : {}, children),
+    NumberFieldRow: Empty,
+    ToggleRow: Empty,
+  },
+  '~/components/Label': { Label: Wrap },
+  '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, showActionSheet: noop },
+  '~/components/Row': { Hairline: Empty },
+  '~/components/Section': { Section: Wrap },
+  '~/components/SwipeRow': { closeOpenSwipeRow: () => false, SwipeRow: Wrap },
+  '~/lib/format': { formatWhole: String },
+  '~/lib/foodLogger': { saveFoodEntry: vi.fn(), workerAccessToken: async () => 'token' },
+  '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
+  '~/lib/motion': { rowEnter: {}, rowExit: {}, rowLayout: {} },
+  '~/platform/previewFlag': { isPreviewActive: () => false },
+  '~/theme/blanc': { space: { gutter: 20, inset: 16 }, type: { fieldLines: {} }, useBlanc: () => ({}) },
+  './context': { useLogger: () => logger },
+  './PhotoTab': {
+    CAMERA_OFF,
+    prepareImage: async () => ({ imageBase64: 'b64', mimeType: 'image/jpeg' }),
+    pickFoodPhoto: pick,
+    foodPickerUp: () => up,
+  },
+  './WhenBlock': { WhenBlock: Empty },
+});
+
+const shot: Photo = { uri: 'shot', width: 10, height: 10 };
+let current: Draft;
+function Host({ request, initial }: { request: number; initial?: Draft }) {
+  const [draft, setDraft] = useState<Draft>(() => initial ?? emptyAi());
+  useEffect(() => { current = draft; });
+  return createElement(AiTab, { draft, setDraft: (update) => setDraft(update), cameraRequest: request });
+}
+
+let host: HTMLDivElement;
+let root: Root;
+const render = async (request: number, initial?: Draft) => {
+  await act(async () => { root.render(createElement(Host, { request, initial })); });
+};
+const settle = () => act(async () => { for (let tick = 0; tick < 20; tick += 1) await Promise.resolve(); });
+const alertText = () => host.querySelector('[data-alert]')?.textContent ?? null;
+const hasCapsule = (title: string) => host.querySelector(`button[data-title="${title}"]`) !== null;
+
+beforeEach(() => {
+  up = false;
+  sheet = undefined;
+  analysis = deferred();
+  pick.mockReset();
+  for (const key of Object.keys(capsules)) delete capsules[key];
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+describe('AI tab: Snap a meal', () => {
+  it('takes one photo and starts one analysis with it, without a tap', async () => {
+    const photo = deferred<Photo | null>();
+    pick.mockReturnValueOnce(photo.promise);
+    await render(0);
+    await render(1);
+    expect(pick).toHaveBeenCalledOnce();
+    expect(pick).toHaveBeenCalledWith('camera');
+    await act(async () => { photo.resolve(shot); });
+    await settle();
+    expect(analyze).toHaveBeenCalledOnce();
+    expect(analyze.mock.calls[0][0].images).toHaveLength(1);
+    expect(announce).toHaveBeenCalledWith('Analyzing meal', { queue: true });
+    expect(current.photos).toEqual([shot]);
+    expect(capsules['Analyzing…'].busy).toBe(true);
+  });
+
+  it('leaves the tab as it was when the camera is cancelled', async () => {
+    pick.mockResolvedValueOnce(null);
+    await render(0);
+    await render(1);
+    await settle();
+    expect(analyze).not.toHaveBeenCalled();
+    expect(alertText()).toBeNull();
+    expect(current.photos).toEqual([]);
+  });
+
+  it('says camera access is off, with the way to Settings', async () => {
+    pick.mockRejectedValueOnce(new Error(CAMERA_OFF));
+    await render(0);
+    await render(1);
+    await settle();
+    expect(alertText()).toBe(CAMERA_OFF);
+    expect(hasCapsule('Open Settings')).toBe(true);
+    capsules['Open Settings'].onPress();
+    expect(openSettings).toHaveBeenCalledOnce();
+    expect(analyze).not.toHaveBeenCalled();
+  });
+
+  it('never opens a second picker', async () => {
+    up = true;
+    await render(0);
+    await render(1);
+    expect(pick).not.toHaveBeenCalled();
+  });
+
+  it('does not open the camera while an analysis runs', async () => {
+    pick.mockResolvedValueOnce(shot);
+    await render(0);
+    await render(1);
+    await settle();
+    expect(analyze).toHaveBeenCalledOnce();
+    await render(2);
+    expect(pick).toHaveBeenCalledOnce();
+  });
+
+  it('does not open the camera over an estimate or with two photos', async () => {
+    await render(0, { ...emptyAi(), result: { items: [], clarification: 'Which sauce?', summary: '', sources: [] } });
+    await render(1, undefined);
+    expect(pick).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await render(0, { ...emptyAi(), photos: [shot, shot] });
+    await render(1);
+    expect(pick).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a request it was mounted with', async () => {
+    await render(1);
+    expect(pick).not.toHaveBeenCalled();
+    pick.mockResolvedValueOnce(null);
+    await render(2);
+    expect(pick).toHaveBeenCalledOnce();
+  });
+
+  it('analyzes the photo together with a typed description', async () => {
+    pick.mockResolvedValueOnce(shot);
+    await render(0, emptyAi('Two eggs on toast'));
+    await render(1);
+    await settle();
+    expect(analyze).toHaveBeenCalledOnce();
+    expect(analyze.mock.calls[0][0]).toMatchObject({ hint: 'Two eggs on toast' });
+    expect(analyze.mock.calls[0][0].images).toHaveLength(1);
+  });
+
+  it('uses the same picker for Add photo’s Take photo', async () => {
+    pick.mockRejectedValueOnce(new Error(CAMERA_OFF));
+    await render(0);
+    await act(async () => { pressables['Add photo'].onPress(); });
+    await act(async () => { await sheet!(0); });
+    expect(pick).toHaveBeenCalledWith('camera');
+    expect(alertText()).toBe(CAMERA_OFF);
+    expect(hasCapsule('Open Settings')).toBe(true);
+  });
+});

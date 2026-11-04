@@ -15,6 +15,7 @@ import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
+import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -38,6 +39,8 @@ installLaunchCache({
     });
   },
 });
+// A press of Snap a meal, Log food or Train that launched the app (lib/launch.ts).
+takeNativeLaunch();
 // Otherwise restore the saved session (Keychain) and follow auth changes, as
 // the web app does on launch.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();
@@ -54,9 +57,11 @@ export default function RootLayout() {
     colors: { ...base.colors, primary: p.ink, background: p.ground, card: p.ground, text: p.ink, border: p.hairline },
   };
   const screen = useAuthScreen();
-  // Cold launch only, and never under Reduce Motion or a scripted dev check.
+  // Cold launch only, and never under Reduce Motion, a scripted dev check or a launch from a press.
   const reducedMotion = useReducedMotion();
-  const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro));
+  const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro) || launchWaiting());
+  // A press from outside the app goes straight to its screen; one that arrives during the intro hurries it.
+  const hurryIntro = useLaunchActions(screen, introDone);
 
   useEffect(() => {
     if (introDone && screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
@@ -226,7 +231,7 @@ export default function RootLayout() {
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
         </Stack>
-        {introDone ? null : <BrandIntro ready={screen !== 'boot'} onDone={() => setIntroDone(true)} />}
+        {introDone ? null : <BrandIntro ready={screen !== 'boot'} hurry={hurryIntro} onDone={() => setIntroDone(true)} />}
         {__DEV__ ? <DevLaunchRunner /> : null}
       </ThemeProvider>
       </KeyboardProvider>

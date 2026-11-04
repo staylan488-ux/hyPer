@@ -15,6 +15,7 @@ import { useFuelReminder } from '~/lib/fuelReminder';
 import { haptics } from '~/lib/haptics';
 import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
+import { useLaunchActionRunner } from '~/lib/launch';
 import { useNotesStore } from '~/lib/notes';
 import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
 import {
@@ -55,6 +56,8 @@ export default function TabsLayout() {
   useWidgetSnapshot();
   // The optional fuel reminder (You) follows the same figures.
   useFuelReminder();
+  // Snap a meal, Log food or Train pressed outside the app, run once the app is up.
+  useLaunchActionRunner();
   // As in the web app's shell: WHOOP catches up when the app comes back, and
   // Apple Health weights flow in once turned on in You.
   const userId = useAuthStore((state) => state.user?.id);

@@ -1,9 +1,9 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -37,6 +37,8 @@ import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { refusePress } from '~/lib/launch';
+import { sheetSnap, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
@@ -44,8 +46,8 @@ import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
-import { aiHasDraft, AiTab, emptyAi, type AiDraft } from '~/fuel/AiTab';
-import { emptyPhoto, PhotoTab, type PhotoDraft } from '~/fuel/PhotoTab';
+import { aiHasDraft, AiTab, aiTakesPhoto, emptyAi, type AiDraft } from '~/fuel/AiTab';
+import { emptyPhoto, foodPickerUp, PhotoTab, photoTakesPhoto, type PhotoDraft } from '~/fuel/PhotoTab';
 import { RecentTab } from '~/fuel/RecentTab';
 import { ScanTab } from '~/fuel/ScanTab';
 import { useBlanc } from '~/theme/blanc';
@@ -77,10 +79,11 @@ const sameFoods = (a: Food[], b: Food[]) => a.length === b.length && JSON.string
  * a review for a chosen food, and the meal builder, by the web logger's rules.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
- * `saveEntries` (comma-separated logged entries to keep as a new saved meal).
+ * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
+ * `start=camera` (Snap a meal: a new entry, straight into the camera).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; start?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
@@ -95,23 +98,40 @@ export default function LogFoodSheet() {
     const found = params.saveEntries.split(',').flatMap((id) => logs.filter((log) => log.id === id));
     return found.length > 0 ? found : null;
   });
-  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? params.day ?? today();
+  // The sheet has finished sliding up; iOS can't present the camera before that.
+  const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
+  const [appeared, setAppeared] = useState(false);
+  useLayoutEffect(
+    () =>
+      navigation.addListener('transitionEnd', (event) => {
+        if (!event.data.closing) setAppeared(true);
+      }),
+    [navigation],
+  );
+  // Snap a meal pressed over this sheet while it holds nothing: start over for now.
+  const [snapRestart, setSnapRestart] = useState(0);
+  // Snap a meal (lib/launch.ts): a new entry, straight into the camera.
+  const startCamera = !editing && !savedMeal && !saveFrom && (snapRestart > 0 || params.start === 'camera');
+  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? (snapRestart > 0 ? today() : params.day ?? today());
   if (!userId) return <Empty text="Sign in to log food." />;
   if (params.saveEntries && !saveFrom) return <Empty text="Those foods are no longer in your log." />;
   return (
     <LoggerSession
-      key={`${userId}:${editing?.id ?? savedMeal?.id ?? (saveFrom ? `save:${params.saveEntries}` : 'new')}`}
+      key={`${userId}:${editing?.id ?? savedMeal?.id ?? (saveFrom ? `save:${params.saveEntries}` : snapRestart > 0 ? `snap:${snapRestart}` : 'new')}`}
       userId={userId}
       editing={editing}
       savedMeal={savedMeal}
       saveFrom={saveFrom}
       selectedKey={selectedKey}
-      groupParam={params.group ?? null}
+      groupParam={snapRestart > 0 ? null : params.group ?? null}
+      startCamera={startCamera}
+      appeared={appeared}
+      onSnapRestart={() => setSnapRestart((count) => count + 1)}
     />
   );
 }
 
-function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam }: {
+function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam, startCamera, appeared, onSnapRestart }: {
   userId: string;
   editing: FoodLog | null;
   savedMeal: Food | null;
@@ -119,6 +139,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   saveFrom: FoodLog[] | null;
   selectedKey: string;
   groupParam: string | null;
+  /** Snap a meal: open on the analysis tab and bring up the camera once the sheet is up. */
+  startCamera: boolean;
+  /** The sheet has finished sliding up. */
+  appeared: boolean;
+  /** Snap a meal over this sheet while it holds nothing: a fresh session for now. */
+  onSnapRestart: () => void;
 }) {
   const c = useBlanc();
   // Save as meal names the entries' day; read each render so it follows midnight.
@@ -162,7 +188,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     setWhenState((value) => (value.groupId || value.groupId === groupId ? value : { ...value, groupId }));
   }, [storeGroups, selectedKey]);
 
-  const [tab, setTab] = useState<Tab>(editing ? 'manual' : 'recent');
+  const [tab, setTab] = useState<Tab>(editing ? 'manual' : startCamera ? 'photo' : 'recent');
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(null);
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
@@ -258,7 +284,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // what Save as meal opened with, so closing asks only once it was changed
   const [savingFrom] = useState(() => (saveFrom ? meal : null));
   const [mealReview, setMealReview] = useState(Boolean(meal));
-  const [paused, setPaused] = useState(false);
+  // Snap a meal over a meal kept from last time: the meal waits under Resume pending meal.
+  const [paused, setPaused] = useState(() => startCamera && meal !== null);
   const [storageFailed, setStorageFailed] = useState(false);
   const [captureKey, setCaptureKey] = useState(0);
   const [mealError, setMealError] = useState('');
@@ -430,13 +457,63 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       ? `Unassigned on ${format(when.date, 'MMM d')}`
       : `Adds to ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
 
-  const openTab = (next: Tab) => {
-    haptics.select();
+  const showTab = (next: Tab) => {
     setTab(next);
     setChosen(null);
     // a barcode binding only survives the guided miss → manual path
     if (next !== 'manual') setManual((current) => (current.barcodeBinding ? { ...current, barcodeBinding: null } : current));
   };
+  const openTab = (next: Tab) => {
+    haptics.select();
+    showTab(next);
+  };
+
+  // ── Snap a meal (lib/launch.ts) ──
+  // The camera comes up once the sheet has (iOS can't present it mid-slide),
+  // and again when Snap a meal is pressed with this sheet on top.
+  const [cameraRequest, setCameraRequest] = useState(0);
+  const cameraPending = useRef(startCamera);
+  const requestCamera = useEffectEvent(() => {
+    cameraPending.current = false;
+    // only while the analysis tab is the one on screen
+    if (tab !== 'photo' || chosen || (meal && !paused)) return;
+    setCameraRequest((count) => count + 1);
+  });
+  useEffect(() => {
+    if (appeared && cameraPending.current) requestCamera();
+  }, [appeared]);
+  const cameraAsks = useLaunchStore((state) => state.cameraAsks);
+  const seenAsks = useRef(cameraAsks);
+  const snapAsked = useEffectEvent(() => {
+    const answer = sheetSnap({
+      newEntry: !editing && !savedMeal && !saveFrom,
+      pickerUp: foodPickerUp(),
+      occupied: closing || busy || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan',
+      holdsWork: unsaved,
+      analysisDraftOnly:
+        (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed),
+      forNow: selectedKey === today() && !groupTouched.current,
+    });
+    if (answer === 'ignore') return;
+    if (answer === 'refuse') {
+      refusePress();
+      return;
+    }
+    if (answer === 'restart') {
+      onSnapRestart();
+      return;
+    }
+    // Logs now, to the meal the clock picks, as a fresh sheet would.
+    setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups)));
+    showTab('photo');
+    if (appeared) setCameraRequest((count) => count + 1);
+    else cameraPending.current = true;
+  });
+  useEffect(() => {
+    if (cameraAsks === seenAsks.current) return;
+    seenAsks.current = cameraAsks;
+    snapAsked();
+  }, [cameraAsks]);
 
   const mealTotals = meal ? getMealTotals(meal.ingredients) : null;
 
@@ -645,11 +722,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             the next ingredient capture drops the old analysis. */}
         {gemini ? (
           <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <AiTab draft={ai} setDraft={(update) => setAi(update)} />
+            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} />
           </View>
         ) : (
           <View key={`photo-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} />
+            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} cameraRequest={cameraRequest} />
           </View>
         )}
       </KeyboardAwareScrollView>
