@@ -234,13 +234,8 @@ export const useFuelStore = create<FuelState>((set, get) => {
       const userId = await getSessionUserId();
       if (!userId || copied.length === 0) return false;
       const key = today();
-      // Today's meals, with Breakfast, Lunch and Dinner made if missing (also
-      // when Fuel shows another month, so a copy never falls to Unassigned for that).
-      let targetGroups = await loadDayGroups(key);
-      if (get().loadedMonth !== monthOf(key)) {
-        const made = await ensureDefaultGroups(userId, key, targetGroups).catch(() => null);
-        if (made?.ok) targetGroups = sortNutritionGroups(made.groups);
-      }
+      // Today's meals, with Breakfast, Lunch and Dinner made if missing.
+      const targetGroups = await loadDayGroups(key);
       const sourceGroups = group ? sortNutritionGroups(get().groups.filter((candidate) => candidate.date === group.date)) : [];
       const target = matchingGroup(group, sourceGroups, targetGroups);
       const retryKey = `${key}:${target?.id ?? ''}:${copied.map((log) => log.id).join(',')}`;
@@ -327,9 +322,15 @@ export function groupsForDay(key: string): NutritionGroup[] {
   return sortNutritionGroups(useFuelStore.getState().groups.filter((group) => group.date === key));
 }
 
+async function readDayGroups(userId: string, key: string): Promise<NutritionGroup[] | null> {
+  const { data, error } = await supabase.from('nutrition_groups').select('*').eq('user_id', userId).eq('date', key);
+  return error ? null : sortNutritionGroups((data ?? []) as NutritionGroup[]);
+}
+
 /**
- * A day's meal groups for the Log food sheet: from the loaded month (making
- * sure the day has its Breakfast, Lunch and Dinner), else read directly.
+ * A day's meal groups for the Log food sheet and Copy to today, with the day's
+ * Breakfast, Lunch and Dinner made if missing: from the loaded month, else
+ * read directly (Log food from Today while Fuel shows another month).
  */
 export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   const store = useFuelStore.getState();
@@ -339,8 +340,12 @@ export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   }
   const userId = await getSessionUserId();
   if (!userId) return [];
-  const { data, error } = await supabase.from('nutrition_groups').select('*').eq('user_id', userId).eq('date', key);
-  return error ? [] : sortNutritionGroups((data ?? []) as NutritionGroup[]);
+  const groups = await readDayGroups(userId, key);
+  if (!groups) return [];
+  const made = await ensureDefaultGroups(userId, key, groups).catch(() => null);
+  if (made?.ok) return sortNutritionGroups(made.groups);
+  // made by another save meanwhile (one Breakfast a day), or made but not put in order
+  return made ? (await readDayGroups(userId, key)) ?? groups : groups;
 }
 
 /** The day's named meal that fits the time (breakfast, lunch or dinner), if the day has it. */
