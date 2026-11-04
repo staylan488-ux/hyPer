@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createContext, createElement, Fragment, useContext, useEffect, type ComponentType, type PropsWithChildren } from 'react';
+import { act, createContext, createElement, Fragment, isValidElement, useContext, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +23,13 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
+/** The words a pressable shows, to find it the way a person would. */
+const textOf = (node: ReactNode): string =>
+  typeof node === 'string' || typeof node === 'number'
+    ? String(node)
+    : Array.isArray(node)
+      ? node.map(textOf).join('')
+      : isValidElement<PropsWithChildren>(node) ? textOf(node.props.children) : '';
 const Empty = () => null;
 const noop = () => {};
 const milk: Food = {
@@ -51,6 +58,9 @@ function deferred<T>() {
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
 type Field = { label: string; onChangeText: (text: string) => void };
+type Press = PropsWithChildren<{ onPress?: () => void }>;
+type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
+type AlertButton = { text: string; onPress?: () => void };
 type Input = { accessibilityLabel?: string; onChangeText?: (text: string) => void; onFocus?: () => void };
 type Context = { beginBusy: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null };
 type ReviewProps = {
@@ -88,7 +98,9 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     buttons: Record<string, Button>;
     fields: Record<string, Field>;
     inputs: Record<string, Input>;
-    picker?: { selection: string; onSelectionChange: (tab: string) => void };
+    pressables: Record<string, Press>;
+    sections: Record<string, SectionProps>;
+    picker?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean };
     saved?: { onEditSavedMeal: (food: Food) => void };
     review?: ReviewProps;
     foodReview?: { food: Food };
@@ -99,7 +111,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     scanCurrent?: () => boolean;
     guard?: { on: boolean; message: { title: string }; busy?: boolean };
     focus?: () => void;
-  } = { buttons: {}, fields: {}, inputs: {} };
+  } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
   const ContextProvider = createContext<Context | null>(null);
   const useLogger = () => useContext(ContextProvider)!;
   const Probe = () => {
@@ -116,6 +128,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
   const success = vi.fn();
   const error = vi.fn();
   const saveMeal = vi.fn(async () => {});
+  const resolveDestination = vi.fn(async (groupId: string | null) => ({ groupId, mealType: groupId ? 'lunch' as const : null }));
   const saveFood = vi.fn(async () => {});
   const ensureFood = vi.fn(async () => 'food-row');
   const resolveFood = vi.fn(async () => ({ foodId: savedMilk.id }));
@@ -139,8 +152,15 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
-    '@expo/ui/swift-ui': { Host: Wrap, Picker: (props: NonNullable<typeof captured.picker> & PropsWithChildren) => { captured.picker = props; return Wrap(props); }, Text: Wrap },
-    '@expo/ui/swift-ui/modifiers': { pickerStyle: noop, tag: noop },
+    '@expo/ui/swift-ui': {
+      Host: Wrap,
+      Picker: (props: NonNullable<typeof captured.picker> & PropsWithChildren<{ modifiers?: unknown[] }>) => {
+        captured.picker = { ...props, disabled: props.modifiers?.some((modifier) => (modifier as { disabled?: boolean } | undefined)?.disabled === true) };
+        return Wrap(props);
+      },
+      Text: Wrap,
+    },
+    '@expo/ui/swift-ui/modifiers': { pickerStyle: noop, tag: noop, disabled: (disabled = true) => ({ disabled }) },
     'expo-router': {
       router: { back, push },
       useLocalSearchParams: () => editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {},
@@ -154,7 +174,17 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     'expo-image-manipulator': {},
     'expo-image-picker': {},
     'react-native': {
-      ActionSheetIOS: {}, Alert: { alert }, Pressable: Wrap, View: Wrap, ScrollView: Wrap, Keyboard: { dismiss: noop }, ActivityIndicator: Empty, Linking: {}, Image: {},
+      ActionSheetIOS: {}, Alert: { alert }, View: Wrap,
+      // Kept while shown, by the words on it.
+      Pressable: (props: Press) => {
+        const label = textOf(props.children);
+        useEffect(() => {
+          if (!label) return;
+          captured.pressables[label] = props;
+          return () => { delete captured.pressables[label]; };
+        });
+        return Wrap(props);
+      }, ScrollView: Wrap, Keyboard: { dismiss: noop }, ActivityIndicator: Empty, Linking: {}, Image: {},
       TextInput: (props: Input) => { if (props.accessibilityLabel) captured.inputs[props.accessibilityLabel] = props; return null; },
     },
     'react-native-keyboard-controller': { KeyboardAwareScrollView: Wrap },
@@ -181,7 +211,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '@/lib/barcodeLookup': { lookupBarcode: (_barcode: string, current: () => boolean) => { captured.scanCurrent = current; return lookup.promise; } },
     '@/lib/photoAnalysis': { getPhotoWorkerSettings: () => ({ provider: 'openai' }), analyzeFoodPhoto: analyze },
     '@/lib/photoReview': { ...photoReview, groundPhotoItems: ground },
-    '@/lib/mealDestination': {},
+    '@/lib/mealDestination': { resolveMealDestination: resolveDestination },
     '@/lib/saveMealComposition': { assertComposedMealOptions, saveComposedMeal: saveMeal },
     '../../modules/hyper-barcode': { HyperBarcode: { getAvailability: async () => ({ available: false }) } },
     '~/components/BlancText': { BlancText: Wrap },
@@ -192,7 +222,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true },
     '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
-    '~/components/Section': { Section: Wrap },
+    '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/lib/format': { formatWhole: String },
     '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useFuelStore },
@@ -267,7 +297,10 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     await act(async () => { root!.render(createElement(Sheet)); });
   };
   const text = () => container?.textContent ?? '';
-  const tab = async (name: string) => { await act(async () => { captured.picker!.onSelectionChange(name); }); };
+  const tab = async (name: string) => {
+    expect(captured.picker!.disabled).not.toBe(true);
+    await act(async () => { captured.picker!.onSelectionChange(name); });
+  };
   const click = async (name: string) => {
     expect(captured.buttons[name].disabled).not.toBe(true);
     await act(async () => { captured.buttons[name].onPress(); });
@@ -288,7 +321,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     active.push(closeEditor);
     await act(async () => { editorRoot.render(createElement(Editor)); });
   };
-  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
+  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
 }
 
 describe('native food logger transitions', () => {
@@ -706,5 +739,51 @@ describe('native food logger holds the sheet while a save runs', () => {
     expect(h.captured.guard).toMatchObject({ on: true, busy: true });
     await act(async () => { write.resolve(); });
     expect(h.captured.guard!.on).toBe(false);
+  });
+
+  it('offers no Discard or Add while a built meal checks its meal, and logs it once', async () => {
+    const h = loggerHarness();
+    const read = deferred<{ groupId: string | null; mealType: 'lunch' | null }>();
+    h.resolveDestination.mockReturnValueOnce(read.promise);
+    await h.render();
+    await h.click('Build a meal');
+    await act(async () => { h.captured.context!.addIngredients([composition.createMealIngredient(milk, 1)]); });
+    await h.click('Review meal');
+    await act(async () => { h.captured.review!.update({ name: 'Milk meal', groupId: 'lunch' }); });
+    expect(h.captured.sections.Ingredients.action?.title).toBe('Add');
+    // A Discard alert opened just before the save.
+    await act(async () => { h.captured.pressables.Discard.onPress!(); });
+    const [, , buttons] = h.alert.mock.lastCall as unknown as [string, string, AlertButton[]];
+    await h.click('Log meal');
+    expect(h.resolveDestination).toHaveBeenCalledOnce();
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    expect(h.captured.pressables.Discard).toBeUndefined();
+    expect(h.captured.sections.Ingredients.action).toBeUndefined();
+    await act(async () => { buttons.find((button) => button.text === 'Discard')!.onPress!(); });
+    // The meal being saved is not cleared from under its save.
+    expect(composition.loadMealDraft('user-a', 'new')?.name).toBe('Milk meal');
+    await act(async () => { read.resolve({ groupId: 'lunch', mealType: 'lunch' }); });
+    expect(h.saveMeal).toHaveBeenCalledOnce();
+    expect(h.saveMeal).toHaveBeenCalledWith(expect.objectContaining({ name: 'Milk meal' }), 'user-a', expect.objectContaining({ mealType: 'lunch' }));
+    expect(h.back).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Manual on screen while its entry saves, so a failure is not lost on another tab', async () => {
+    const h = loggerHarness();
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await h.tab('manual');
+    await act(async () => { h.captured.fields.Name.onChangeText('Oats'); });
+    await h.click('Log entry');
+    // Another tab would unmount Manual with its error and retry-safe ids.
+    expect(h.captured.picker!.disabled).toBe(true);
+    await act(async () => { h.captured.manual!.onGeminiHandoff!('a cup of oats'); });
+    expect(h.captured.picker!.selection).toBe('manual');
+    await act(async () => { write.reject(new Error('offline')); });
+    expect(h.text()).toContain('Not logged. Try again.');
+    expect(h.captured.picker!.disabled).toBe(false);
+    await h.tab('recent');
+    expect(h.captured.picker!.selection).toBe('recent');
   });
 });

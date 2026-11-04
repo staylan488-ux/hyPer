@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -290,8 +290,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     startMeal(savedMeal, true);
   }, [savedMeal, startMeal]);
 
+  // Read when pressed: a Discard alert opened just before a save must not
+  // clear the meal that save is writing.
+  const mealHeld = useRef(false);
+  mealHeld.current = saving || Boolean(meal?.locked);
   const discardMeal = () => {
-    if (meal?.locked) return;
+    if (mealHeld.current) return;
     if (meal) settledMealIds.current.add(meal.entryId);
     clearMealDraft(userId, draftKey);
     setMeal(null);
@@ -468,7 +472,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
               ) : null}
             </View>
             {/* Save as meal has one way out: closing it cancels. */}
-            {inMeal && !meal?.locked && keepsDraft ? (
+            {inMeal && !meal?.locked && keepsDraft && !saving ? (
               <Pressable
                 accessibilityRole="button"
                 hitSlop={8}
@@ -491,7 +495,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
           {!chosen && !(meal && mealReview && !paused) ? (
             <Host matchContents={{ vertical: true }} style={{ marginHorizontal: 16, marginTop: 14 }}>
-              <Picker selection={tab} onSelectionChange={(value: Tab) => openTab(value)} modifiers={[pickerStyle('segmented')]}>
+              {/* Still while a save runs: Manual unmounts on a switch, losing a failure and its retry-safe ids. */}
+              <Picker
+                selection={tab}
+                onSelectionChange={(value: Tab) => openTab(value)}
+                modifiers={[pickerStyle('segmented'), disabled(saving)]}>
                 <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
                 <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
                 <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
@@ -598,6 +606,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 onGeminiHandoff={
                   gemini
                     ? (description) => {
+                        // the hand-off is a tab switch too
+                        if (saving) return;
                         if (busy) {
                           Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
                           return;

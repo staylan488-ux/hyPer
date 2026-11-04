@@ -130,7 +130,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         </BlancText>
       </View>
 
-      <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
+      <Section title="Ingredients" note={String(draft.ingredients.length)} action={frozen ? undefined : { title: 'Add', onPress: onAddIngredients }}>
         <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
             <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
