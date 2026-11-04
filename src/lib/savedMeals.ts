@@ -119,10 +119,14 @@ export function filterSavedMeals<T extends { name: string }>(meals: readonly T[]
   return meals.filter((meal) => normalizeFoodName(meal.name).includes(query));
 }
 
-type Barcode = { external_source: string | null; external_id: string | null };
+export type SavedMealBarcode = { external_source: string | null; external_id: string | null };
 
-function setBarcode(userId: string, foodId: string, barcode: Barcode) {
+function setBarcode(userId: string, foodId: string, barcode: SavedMealBarcode) {
   return supabase.from('foods').update(barcode).eq('id', foodId).eq('user_id', userId);
+}
+
+function boundBarcode(barcode: SavedMealBarcode | null | undefined) {
+  return barcode?.external_source && barcode.external_id ? { external_source: barcode.external_source, external_id: barcode.external_id } : null;
 }
 
 /**
@@ -130,32 +134,40 @@ function setBarcode(userId: string, foodId: string, barcode: Barcode) {
  * with the old one's serving (250 g, 6 piece) and barcode, then retires the old
  * one (past logs keep pointing at it). When retiring fails the new meal still
  * exists, so the caller warns that both are listed.
+ *
+ * A failure that leaves the barcode on no row hands it back as `barcode`; the
+ * caller passes it to the next try, which puts it on the new meal.
  */
 export async function replaceSavedMeal(
   userId: string,
   oldMealId: string,
   values: OneServingFoodValues,
-): Promise<{ id: string | null; retireFailed: boolean }> {
-  const failed = { id: null, retireFailed: false };
+  options: { barcode?: SavedMealBarcode | null } = {},
+): Promise<{ id: string | null; retireFailed: boolean; barcode?: SavedMealBarcode }> {
+  const held = boundBarcode(options.barcode);
+  const failed = (lost: SavedMealBarcode | null = null) => ({ id: null, retireFailed: false, ...(lost ? { barcode: lost } : {}) });
   const { data: old, error: readError } = await supabase
     .from('foods')
     .select('serving_size, serving_unit, external_source, external_id')
     .eq('id', oldMealId)
     .eq('user_id', userId)
     .maybeSingle();
-  if (readError) return failed;
-  const row = old as ({ serving_size: number | string | null; serving_unit: string | null } & Barcode) | null;
-  const barcode = row?.external_source && row.external_id ? { external_source: row.external_source, external_id: row.external_id } : null;
+  if (readError) return failed(held);
+  const row = old as ({ serving_size: number | string | null; serving_unit: string | null } & SavedMealBarcode) | null;
+  const onRow = boundBarcode(row);
+  const barcode = onRow ?? held;
   // A barcode belongs to one row (idx_foods_external_identity), so the old row lets go of it first.
-  if (barcode && (await setBarcode(userId, oldMealId, { external_source: null, external_id: null })).error) return failed;
+  if (onRow && (await setBarcode(userId, oldMealId, { external_source: null, external_id: null })).error) return failed();
   const { id } = await insertSavedMeal(userId, values, {
     serving_size: Number(row?.serving_size) || 1,
     serving_unit: row?.serving_unit || 'serving',
     ...barcode,
   });
   if (!id) {
-    if (barcode) await setBarcode(userId, oldMealId, barcode);
-    return failed;
+    if (!barcode) return failed();
+    const { error } = await setBarcode(userId, oldMealId, barcode);
+    // A unique clash (23505) means another row holds the barcode, so it is not lost.
+    return failed(error && error.code !== '23505' ? barcode : null);
   }
   const { error } = await retireSavedMeal(userId, oldMealId);
   return { id, retireFailed: Boolean(error) };
