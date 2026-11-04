@@ -432,7 +432,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         : null
     : !sameDay
       ? `Unassigned on ${format(when.date, 'MMM d')}`
-      : `Adds to ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
+      : `${editing ? 'In' : 'Adds to'} ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
   // The meal's running total, from the day Fuel holds: it rolls up as foods are logged into it.
   const dayLogs = useFuelStore((state) => (state.loadedMonth === selectedKey.slice(0, 7) ? state.logs : null));
   const groupIds = new Set(groups.map((group) => group.id));
@@ -622,9 +622,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
           {capturing && meal && mealTotals && !chosen ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }}>
-              <BlancText variant="secondary" tone="graphite" style={{ flex: 1 }}>
-                {meal.ingredients.length} ingredient{meal.ingredients.length === 1 ? '' : 's'} · {formatWhole(mealTotals.calories)} kcal
-              </BlancText>
+              <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
+                {`${meal.ingredients.length} ingredient${meal.ingredients.length === 1 ? '' : 's'} · ${formatWhole(mealTotals.calories)} kcal`}
+              </RollingText>
               <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
             </View>
           ) : null}
