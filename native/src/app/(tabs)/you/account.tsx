@@ -41,7 +41,6 @@ export default function AccountScreen() {
     }
     haptics.success();
     setName(null);
-    setMessage({ text: 'Name saved.' });
   };
 
   const signOut = () => {

@@ -12,6 +12,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { foodLine } from '~/fuel/FoodLists';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -88,6 +89,7 @@ export default function SavedMealsScreen() {
                   <View style={{ backgroundColor: c.label }}>
                     <Row
                       title={meal.name}
+                      detail={foodLine(meal) || undefined}
                       value={`${formatWhole(Number(meal.calories) || 0)} kcal`}
                       onPress={() => editSavedMeal(meal)}
                       menu={[

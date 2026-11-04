@@ -94,7 +94,7 @@ function Whoop() {
   };
 
   const synced = connection ? whoopSyncedLabel(connection) : '';
-  const status = action === 'sync' ? 'Syncing recent workouts…' : connection ? synced.charAt(0).toUpperCase() + synced.slice(1) : undefined;
+  const status = connection ? synced.charAt(0).toUpperCase() + synced.slice(1) : undefined;
 
   return (
     <Section title="WHOOP" style={{ marginTop: 8 }}>
