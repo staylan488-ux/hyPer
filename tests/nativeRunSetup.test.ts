@@ -18,7 +18,7 @@ type Permission = { location: string; precise?: boolean; motionAvailable?: boole
 const box = ({ children }: { children?: ReactNode }) => createElement('div', null, children);
 const tracker = {
   state: null,
-  finishedRun: null,
+  finishedRun: null as runTracker.FinishedRun | null,
   nowMs: 0,
   gpsError: null,
   resumable: false,
@@ -33,6 +33,9 @@ const tracker = {
 };
 const requestPermissions = vi.fn<() => Promise<Permission>>();
 const openSettings = vi.fn();
+const router = { dismiss: vi.fn(), navigate: vi.fn() };
+const saveTrackedRun = vi.fn<(run: runTracker.FinishedRun) => Promise<{ id: string } | null>>();
+const loadHistoryMonth = vi.fn<() => Promise<void>>();
 
 let root: Root;
 let host: HTMLDivElement;
@@ -42,7 +45,7 @@ async function renderRunScreen() {
     '@expo/ui/swift-ui': { Host: box, Picker: box, Text: box },
     '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null, tint: () => null },
     'date-fns': { format: () => '' },
-    'expo-router': { router: { dismiss: vi.fn(), navigate: vi.fn() } },
+    'expo-router': { router },
     'react-native': {
       ActionSheetIOS: { showActionSheetWithOptions: vi.fn() },
       Alert: { alert: vi.fn() },
@@ -66,7 +69,7 @@ async function renderRunScreen() {
     '@/lib/nativeBridge': { NativeRun: { requestPermissions, syncLiveActivity: vi.fn(async () => undefined) } },
     '@/lib/runDisplay': runDisplay,
     '@/lib/runTracker': runTracker,
-    '@/stores/appStore': { useAppStore: { getState: () => ({}) } },
+    '@/stores/appStore': { useAppStore: { getState: () => ({ saveTrackedRun }) } },
     '~/components/BlancText': { BlancText: ({ children }: { children?: ReactNode }) => createElement('p', null, children) },
     '~/components/Capsule': {
       Capsule: ({ title, onPress }: { title: string; onPress?: () => void }) => createElement('button', { onClick: onPress }, title),
@@ -77,6 +80,7 @@ async function renderRunScreen() {
     '~/components/Row': { Hairline: () => null, Row: () => null },
     '~/components/Section': { Section: box },
     '~/lib/haptics': { haptics: { error: vi.fn(), select: vi.fn(), success: vi.fn(), tap: vi.fn() } },
+    '~/lib/history': { loadHistoryMonth },
     '~/platform/previewFlag': { isPreviewActive: () => false },
     '~/theme/blanc': { space: { gutter: 16, inset: 16 }, useBlanc: () => ({}) },
   });
@@ -94,6 +98,7 @@ async function pressStart(permission: Permission) {
 
 describe('starting a run asks for location', () => {
   beforeEach(async () => {
+    tracker.finishedRun = null;
     tracker.start.mockReset();
     requestPermissions.mockReset();
     openSettings.mockReset();
@@ -130,5 +135,48 @@ describe('starting a run asks for location', () => {
     await pressStart({ location: 'always' });
     expect(tracker.start).toHaveBeenCalledTimes(2);
     expect(button('Open Settings')).toBeUndefined();
+  });
+});
+
+// History may already be open in Train. Save shows it again without a new
+// mount, so the save itself reads History's month and the run is listed.
+describe('saving a finished run', () => {
+  const run: runTracker.FinishedRun = {
+    runId: 'run-1', mode: 'free', startedAtMs: Date.parse('2026-11-04T07:00:00Z'), endedAtMs: Date.parse('2026-11-04T07:30:00Z'),
+    totalDistanceM: 5000, elapsedS: 1800, laps: [], reps: [],
+  };
+  beforeEach(async () => {
+    tracker.finishedRun = run;
+    saveTrackedRun.mockReset();
+    loadHistoryMonth.mockReset().mockResolvedValue();
+    router.dismiss.mockReset();
+    router.navigate.mockReset();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await renderRunScreen();
+  });
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    tracker.finishedRun = null;
+  });
+
+  it('reads History’s month again, then opens History', async () => {
+    saveTrackedRun.mockResolvedValue({ id: 'activity-1' });
+    await act(async () => { button('Save run')!.click(); });
+
+    expect(saveTrackedRun).toHaveBeenCalledWith(run);
+    expect(loadHistoryMonth).toHaveBeenCalledTimes(1);
+    expect(router.navigate).toHaveBeenCalledWith('/train/history');
+  });
+
+  it('reads nothing when the save fails', async () => {
+    saveTrackedRun.mockResolvedValue(null);
+    await act(async () => { button('Save run')!.click(); });
+
+    expect(loadHistoryMonth).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('Could not save the run.');
   });
 });

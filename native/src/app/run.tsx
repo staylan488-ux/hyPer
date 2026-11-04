@@ -52,6 +52,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { haptics } from '~/lib/haptics';
+import { loadHistoryMonth } from '~/lib/history';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -598,6 +599,8 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
       }
       haptics.success();
       discard();
+      // History already open in Train shows again without reading, so read its month here.
+      void loadHistoryMonth();
       router.dismiss();
       router.navigate('/train/history');
     } catch (error) {
