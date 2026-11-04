@@ -149,6 +149,14 @@ export function finishedRunSplits(run: FinishedRun): RunSplitRow[] {
   }));
 }
 
+/**
+ * Whether a saved run's split (an activity segment) was a rest. Runs saved
+ * before the split's kind was kept read as efforts, as they always did.
+ */
+export function isRestSegment(segment: { raw: Record<string, unknown> | null }): boolean {
+  return segment.raw?.kind === 'rest';
+}
+
 /** A split's pace, or null for a rest or a split too short to pace. */
 export function splitPaceSecPerMile(split: RunSplitRow): number | null {
   return split.isRest ? null : paceSecondsPerMile(split.distanceM, split.durationS);

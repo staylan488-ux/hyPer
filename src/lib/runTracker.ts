@@ -1190,7 +1190,8 @@ export function finishedRunToActivity(
       ended_at: new Date(lap.endedAtMs).toISOString(),
       duration_seconds: Math.max(1, lapActiveSeconds(lap)),
       distance_m: Math.round(lap.distanceM),
-      raw: { trigger: lap.trigger },
+      // kind keeps a rest a rest in History (raw is JSONB, no schema change)
+      raw: { trigger: lap.trigger, kind: lap.kind },
     }));
   } else {
     segments = [
