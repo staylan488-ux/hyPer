@@ -1466,21 +1466,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
-    const baseIndex = currentWorkoutDayPlan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (currentWorkoutDayPlan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+    // A removed copy of the partner gives way; left in, it would hide the new one.
+    const items = currentWorkoutDayPlan.items.filter((item) => item.exercise_id !== partner.id);
+
+    const baseIndex = items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
     if (baseIndex < 0) return;
 
-    if (currentWorkoutDayPlan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
-
-    const baseItem = currentWorkoutDayPlan.items[baseIndex];
+    const baseItem = items[baseIndex];
 
     if (baseItem.superset_group_id) {
-      const members = currentWorkoutDayPlan.items.filter((item) => item.superset_group_id === baseItem.superset_group_id && !item.hidden);
+      const members = items.filter((item) => item.superset_group_id === baseItem.superset_group_id && !item.hidden);
       if (members.length >= 2) return;
     }
 
     const groupId = baseItem.superset_group_id || globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const nextItems = [...currentWorkoutDayPlan.items].map((item) => {
+    const nextItems = items.map((item) => {
       if (item.exercise_id === baseExerciseId) {
         return { ...item, superset_group_id: groupId };
       }
@@ -3064,18 +3066,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const plan = await get().ensureWorkoutDayPlan(workoutId);
     if (!plan) return;
 
-    const baseIndex = plan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
-    if (baseIndex < 0) return;
     if (plan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+    // A removed copy of the partner gives way; left in, it would hide the new one.
+    const items = plan.items.filter((item) => item.exercise_id !== partner.id);
+    const baseIndex = items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (baseIndex < 0) return;
 
-    const baseItem = plan.items[baseIndex];
+    const baseItem = items[baseIndex];
     if (baseItem.superset_group_id) {
-      const members = plan.items.filter((item) => !item.hidden && item.superset_group_id === baseItem.superset_group_id);
+      const members = items.filter((item) => !item.hidden && item.superset_group_id === baseItem.superset_group_id);
       if (members.length >= 2) return;
     }
 
     const groupId = baseItem.superset_group_id || randomSupersetGroupId();
-    const nextItems = [...plan.items].map((item) => (
+    const nextItems = items.map((item) => (
       item.exercise_id === baseExerciseId
         ? { ...item, superset_group_id: groupId }
         : item

@@ -14,6 +14,7 @@ import { useSplitEditStore } from '@/stores/splitEditStore';
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { blankSplitDraft } from '@/lib/splitDraftSeed';
+import { buildSessionModel } from '../native/src/lib/sessionModel';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -199,6 +200,45 @@ describe('preview uses real program and workout store paths', () => {
     expect(current?.sets).toHaveLength(3);
     expect(current?.sets.every((set) => set.exercise?.name === 'Barbell Row')).toBe(true);
     expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].exercise_id).toBe('ex_row');
+  });
+
+  it('shows a movement removed from a flexible session again when it comes back as a superset partner', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    await useAppStore.getState().completeWorkout();
+    await useAppStore.getState().setWorkoutMode('flexible');
+    const started = await useAppStore.getState().startFlexibleWorkout('Pull');
+    const row = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
+    const curl = (await client.from('exercises').select('*').eq('id', 'ex_curl').single()).data;
+    await useAppStore.getState().addFlexibleExercise(row);
+    await useAppStore.getState().addFlexibleExercise(curl);
+    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex_curl');
+    await useAppStore.getState().addFlexibleSuperset('ex_row', curl);
+
+    const plan = useAppStore.getState().currentWorkoutDayPlan!;
+    expect(plan.items.map((item) => [item.exercise_id, item.order, item.hidden])).toEqual([['ex_row', 0, false], ['ex_curl', 1, false]]);
+    expect(plan.items[1].superset_group_id).toBe(plan.items[0].superset_group_id);
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split: null, plan }, null);
+    expect(model?.movements.map((movement) => [movement.exerciseId, movement.superset?.role])).toEqual([['ex_row', 'A'], ['ex_curl', 'B']]);
+    expect(started?.id).toBe(plan.workout_id);
+  });
+
+  it('keeps one plan item for a movement removed in History and added back as a superset partner', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const plan = await useAppStore.getState().ensureWorkoutDayPlan(workout.id);
+    const [base, partner] = plan!.items.filter((item) => !item.superset_group_id).map((item) => item.exercise_id);
+    const partnerRow = (await client.from('exercises').select('*').eq('id', partner).single()).data;
+    await useAppStore.getState().removeExerciseFromWorkout(workout.id, partner);
+    await useAppStore.getState().addSupersetToWorkout(workout.id, base, partnerRow);
+
+    const stored = await useAppStore.getState().fetchWorkoutDayPlanByWorkoutId(workout.id);
+    const copies = stored!.items.filter((item) => item.exercise_id === partner);
+    expect(copies).toHaveLength(1);
+    expect(copies[0].hidden).toBe(false);
+    const baseItem = stored!.items.find((item) => item.exercise_id === base)!;
+    expect(copies[0].superset_group_id).toBe(baseItem.superset_group_id);
+    expect(copies[0].order).toBe(baseItem.order + 1);
+    expect(stored!.items.map((item) => item.order)).toEqual(stored!.items.map((_, index) => index));
   });
 
   it('persists movement order without changing sets, targets or the source program', async () => {
