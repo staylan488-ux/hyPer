@@ -28,6 +28,9 @@ one (2.0.4 becomes 2.0.5; [release-version.mjs](../../../../native/scripts/relea
 archive (`HYPER_BUILD_NUMBER`, `HYPER_APP_VERSION`), which give the app, its
 widget extension and the app config the About screen reads the same values;
 nothing is written back to the repository.
+The same version and build number stamp the launch copy
+([launchCache.ts](../../../../native/src/lib/launchCache.ts)), so the first
+launch after each update reads the account from the network once.
 `native/scripts/check-release.sh` refuses an archive with the wrong bundle or
 extension IDs, mismatched build numbers or versions, no production host or a
 local test backend.

@@ -38,6 +38,22 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
   the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
+- The launch copy ([launchCache](../../../native/src/lib/launchCache.ts), rules in
+  [launchSnapshot](../../../native/src/lib/launchSnapshot.ts)) keeps the last
+  program, quick starts, the week's volume, the target, the profile and today's
+  food for the signed-in account in expo-sqlite's localStorage (one
+  `hyper-launch:<part>` key per part), so a cold start draws them the moment
+  sign-in is restored and the account load refreshes them in place. It never
+  sets a store's loaded marker, never feeds a widget or adaptive-target write,
+  never keeps the live workout (only whether one was live, so the plan card
+  waits for the workout read), saves a part only from this launch's reads or
+  the person's edits, and never runs in preview. Today's plan-card seed is
+  drawn only while its `planBasis` (program days, saved schedule, adaptive
+  scheduling) matches the live one. Sign-out, another account, a launch with
+  no saved sign-in and each new build drop it. While Fuel shows the copied
+  month it makes no default meals, and an edit re-reads the month
+  (`editsCopy` in `native/src/lib/fuel.ts`). Bump `LAUNCH_SNAPSHOT_VERSION`
+  when a kept type changes in a way a screen reads.
 - The live workout follows the shared session plan rules in `src/lib/sessionPlan.ts`
   (order, swaps, set ranges), the same ones the web Train page uses. Writes go
   through the store's own actions (`logSet`, `addWorkoutSet`,
@@ -238,6 +254,23 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   banner. The shared `restTimerWorkoutGuard` clears a rest whose workout ends
   elsewhere and on sign-out. Card updates go through the shared ordering rules
   in `src/lib/workoutActivitySync.ts` (also behind the web shell's card).
+- Fuel reminder ([lib/fuelReminder.ts](../../../native/src/lib/fuelReminder.ts),
+  rules in `fuelReminderPlan.ts`; the owner's pick, 2026-11-04): off by
+  default, an evening time in You (5:00 PM to 11:00 PM, 8:00 PM to start), kept
+  on this phone per account. A local notification goes out when a quarter or
+  more of today's target is still to go: calories only while bulking or lean
+  bulking, protein on any goal ("850 kcal and 40 g protein to go", or "Nothing
+  logged today"), and none without a saved target. Being past a target is
+  never mentioned. One calendar request per day for today and the next two,
+  handed over again whenever today's food, the targets, the goal, the setting
+  or the permission change and on every return to the front; at most one a
+  day (a per-account record). Logging enough cancels it and dismisses a shown
+  one; switching off, sign-out and the sign-in screen clear everything. In the
+  app it goes quietly to Notification Center (the one handler is in
+  `platform/restNotifications.ts`). A tap posts a Log food press and its Snap
+  a meal button (category `fuelReminder`) a Snap a meal press, so both run like
+  the quick actions below. The trigger has no time zone, so after travel it
+  follows the new zone from the next return to the front.
 - The Live Activity is SwiftUI in a widget extension, added on prebuild by
   [plugins/withHyperWidgets.js](../../../native/plugins/withHyperWidgets.js)
   from [targets/widgets](../../../native/targets/widgets/). The card's data,
@@ -308,6 +341,27 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   from Today's rules (`widgetPlan.ts`, two weeks of plan ahead) and clears it
   on sign-out. At midnight they turn to the next day on their own. Tapping
   one opens Fuel or Train (`hyper-native://fuel`, `://train`).
+- Snap a meal from anywhere (the owner's pick, 2026-11-04): the Snap a meal
+  control (`targets/widgets/SnapMealControl.swift`, iOS 18: Control Center,
+  the lock screen, the Action button), the App Shortcuts (Snap a meal, Log
+  food, Open Train; `native/modules/hyper-launch/shared`) and the Home Screen
+  quick actions (Snap a meal, Log food, Train; app.json) leave a press in
+  `native/modules/hyper-launch` (the App Group, one key per app). The app
+  takes it at launch, on the module's event and on return to the front
+  ([lib/launch.ts](../../../native/src/lib/launch.ts)) and runs it once, when
+  the signed-in tabs are up, the intro is gone and the app is active
+  (`launchActions.ts`: a minute at most; leaving the app or the sign-in screen
+  drops it). JavaScript posts one with `postLaunchPress(action)`. Snap a meal
+  opens Log food on AI (Photo for the worker) and the camera once the sheet
+  has slid up, and Use Photo analyzes at once. Nothing open is closed: an open
+  Log food sheet answers through `sheetSnap` (takes the photo as a new entry
+  for now, starts over in place when it holds nothing, otherwise refuses with
+  an error haptic and "Finish what's open, then try again." for VoiceOver).
+  Train only switches tabs when nothing covers them and never starts a
+  workout. One system picker at a time (`pickFoodPhoto`), none while a
+  photo's action sheet is up (`showPhotoChoices`). Intents that open the app
+  compile into the app (the control's also into the extension), App Shortcuts
+  only into the app, never into a pod.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
   closing asks first, and after Discard it steps aside before closing. Never
   re-dispatch the held action straight from `usePreventRemove`'s callback;
@@ -336,12 +390,14 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   for an undefined style value, so the view keeps the last one it drew (a
   dropped row kept its lifted shadow until 2026-11-04).
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):
-  the P blooms, "hyPer" unfolds from it and holds (longer while the account
-  loads), folds back, and the P flies to the first screen's anchored BrandMark as
+  the P blooms, "hyPer" unfolds from it and holds (longer while sign-in is
+  restored), folds back, and the P flies to the first screen's anchored BrandMark as
   the content rises in, with a soft haptic on landing. Geometry comes from the
   font metrics in `native/src/lib/brandGeometry.ts`. A tap skips it; Reduce
   Motion and scripted dev launches (`-hyperIntro off`, or any `-hyperRoute` or
-  `-hyperAction`) leave it out. It never replays on return from the background.
+  `-hyperAction`) leave it out, and so does a press waiting from outside the
+  app (a later one hurries it like a tap). It never replays on return from
+  the background.
 - Haptics match the web app's rule: a light tap on every tab, button, header
   item and chip; select for value changes; success or error for saves; none
   for typing or scrolling. iOS's own tab bar and header items are silent, so
@@ -373,7 +429,12 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   ([devLaunch](../../../native/src/platform/devLaunch.ts)), for example
   `xcrun simctl launch <udid> app.hyper.native -hyperRoute /train -hyperAction logSet`,
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
-  (`xcrun simctl ui <udid> appearance dark`).
+  (`xcrun simctl ui <udid> appearance dark`). `-hyperAction launch:snap-meal`
+  (or `launch:log-food`, `launch:train`) posts a press as iOS hands one over;
+  the simulator has no camera, so Snap a meal stops at "The camera isn't
+  available here." `-hyperAction fuelReminder` sets a Fuel reminder a minute
+  ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
+  needs `pod install`, which prebuild runs.
 - Lock screen and Dynamic Island: a UI test presses Home
   (`XCUIDevice.shared.press(.home)`) or locks the simulator with the private
   `pressLockButton` selector, then saves `XCUIScreen.main.screenshot()`. The
