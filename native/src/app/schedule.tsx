@@ -63,7 +63,6 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
 
   const startDate = choice === 'today' ? ymd(new Date()) : choice === 'tomorrow' ? ymd(addDays(new Date(), 1)) : ymd(picked);
   const trainingDays = buildFixedWeekdays(anchorDay, split.days_per_week);
-  const rhythm = trainingDays.map((day) => WEEKDAYS[day]).join(' / ');
 
   // Closing with changes asks first; Save closes once, after the guard steps aside.
   const [opened] = useState(() => ({ choice, startDate, mode, anchorDay, flexDayIndex }));
@@ -169,7 +168,6 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
                 );
               })}
             </View>
-            <FormNote>{rhythm}</FormNote>
           </>
         ) : (
           <>

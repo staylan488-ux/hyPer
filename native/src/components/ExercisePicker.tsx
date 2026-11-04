@@ -234,7 +234,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
         {loadFailed && library === null ? (
           <View style={{ alignItems: 'center', gap: 12, marginTop: 32 }}>
             <BlancText variant="secondary" tone="graphite">
-              Couldn&apos;t load exercises.
+              Couldn&apos;t load movements.
             </BlancText>
             <Capsule
               title="Retry"
@@ -262,7 +262,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 12,
-                  minHeight: 56,
+                  minHeight: 60,
                   paddingLeft: 18,
                   paddingRight: 16,
                   backgroundColor: pressed ? c.pressed : 'transparent',
@@ -290,7 +290,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 12,
-                    minHeight: 56,
+                    minHeight: 60,
                     paddingLeft: 18,
                     paddingRight: 16,
                     backgroundColor: pressed ? c.pressed : 'transparent',
@@ -315,7 +315,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
 
         {library !== null && gym.length === 0 && skills.length === 0 && !canCreate ? (
           <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center', marginTop: 32 }}>
-            {searching ? 'Nothing matches.' : 'No other exercises for this muscle.'}
+            {searching ? 'Nothing matches.' : 'No other movements for this muscle.'}
           </BlancText>
         ) : null}
       </ScrollView>
@@ -356,7 +356,7 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, tic
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
-          minHeight: 56,
+          minHeight: 60,
           paddingVertical: 10,
           paddingLeft: 18,
           paddingRight: 16,
@@ -364,11 +364,11 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, tic
           opacity: locked && !busy ? 0.4 : 1,
         })}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="body" numberOfLines={1}>
+          <BlancText variant="bodyStrong" numberOfLines={1}>
             {exercise.name}
           </BlancText>
           {showMuscle ? (
-            <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
               {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
             </BlancText>
           ) : null}

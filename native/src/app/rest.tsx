@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
 import { parseRestInput } from '@/lib/restTimer';
@@ -48,6 +49,9 @@ export default function RestSheet() {
   // The movement's saved length; +30 s changes only this rest.
   const length = restSecondsFor(exerciseId, prefs, chosen);
   const custom = !PRESETS.includes(length);
+  // A custom length keeps its place while the sheet is open, so picking a preset never moves the chips.
+  const [kept, setKept] = useState<number | null>(() => (custom ? length : null));
+  const extra = custom ? length : kept;
 
   const choose = (seconds: number) => {
     haptics.select();
@@ -70,6 +74,7 @@ export default function RestSheet() {
               Alert.alert('Not a rest length', 'Use 0:05 to 60:00, like 1:30 or 4.');
               return;
             }
+            if (!PRESETS.includes(seconds)) setKept(seconds);
             choose(seconds);
           },
         },
@@ -126,14 +131,23 @@ export default function RestSheet() {
 
       {/* Lengths in order: a custom one takes its place among the presets, and a tap on it types another. */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset }}>
-        {(custom ? [...PRESETS, length].sort((a, b) => a - b) : PRESETS).map((seconds) =>
-          custom && seconds === length ? (
-            <Chip key="custom" label={formatClock(length)} selected tabular haptic={false} accessibilityHint="Type another length" style={{ minWidth: 58 }} onPress={chooseCustom} />
+        {(extra !== null ? [...PRESETS, extra].sort((a, b) => a - b) : PRESETS).map((seconds) =>
+          seconds === extra ? (
+            <Chip
+              key="custom"
+              label={formatClock(extra)}
+              selected={length === extra}
+              tabular
+              haptic={false}
+              accessibilityHint={length === extra ? 'Type another length' : undefined}
+              style={{ minWidth: 58 }}
+              onPress={length === extra ? chooseCustom : () => choose(extra)}
+            />
           ) : (
             <Chip key={seconds} label={formatClock(seconds)} selected={length === seconds} tabular haptic={false} style={{ minWidth: 58 }} onPress={() => choose(seconds)} />
           ),
         )}
-        {custom ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
+        {extra !== null ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: space.inset }}>
