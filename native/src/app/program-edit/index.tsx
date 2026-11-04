@@ -233,6 +233,11 @@ function Choice<K extends keyof ProgramDesignAnswers, T extends string>({
 
 // ── Editor ───────────────────────────────────────────────────────────
 
+/** "2 minutes ago", read on every render: a hook by name, so the React Compiler doesn't keep the first answer. */
+function useSavedAgo(savedAt: number | undefined): string | null {
+  return savedAt === undefined ? null : formatDistanceToNowStrict(savedAt, { addSuffix: true });
+}
+
 function Editor({ notice }: { notice: string | null }) {
   const c = useBlanc();
   const draft = useSplitEditStore((state) => state.draft);
@@ -241,6 +246,7 @@ function Editor({ notice }: { notice: string | null }) {
   const error = useSplitEditStore((state) => state.error);
   const undo = useSplitEditStore((state) => state.undo);
   const restorable = useSplitEditStore((state) => state.restorable);
+  const restorableAgo = useSavedAgo(restorable?.savedAt);
   const baseSignature = useSplitEditStore((state) => state.baseSignature);
   // Text fields keep their own text while typing; a restored draft refills them.
   const [formKey, setFormKey] = useState(0);
@@ -311,7 +317,7 @@ function Editor({ notice }: { notice: string | null }) {
         {restorable && !isDirty ? (
           <Label style={{ marginTop: 12, padding: 18, gap: 12 }}>
             <BlancText variant="body">
-              Unsaved edits from {formatDistanceToNowStrict(restorable.savedAt, { addSuffix: true })} are on this device.
+              Unsaved edits from {restorableAgo} are on this device.
             </BlancText>
             {restorable.baseSignature && baseSignature && restorable.baseSignature !== baseSignature ? (
               <BlancText variant="secondary" tone="graphite">

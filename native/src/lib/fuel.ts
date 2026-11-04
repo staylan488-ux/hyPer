@@ -43,6 +43,11 @@ export const today = () => dayKey(new Date());
 export function useTodayKey(): string {
   return today();
 }
+
+/** The time now, read on every render for the same reason (a date picker's latest day). */
+export function useNow(): Date {
+  return new Date();
+}
 const monthOf = (key: string) => key.slice(0, 7);
 
 export { mealForTime } from './meals';

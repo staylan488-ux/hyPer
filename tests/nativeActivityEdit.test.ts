@@ -71,6 +71,7 @@ async function open() {
     '~/components/GlassButton': { GlassButton: Empty },
     '~/components/Label': { Label: Wrap },
     '~/components/Row': { Hairline: Empty, Row: Empty },
+    '~/lib/fuel': { useNow: () => new Date() },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/history': {
       confirmDeleteActivity: async () => false,

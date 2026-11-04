@@ -123,6 +123,10 @@ describe('body weight words', () => {
     expect(lastWeighInLabel({ kilograms: 80, measured_at: '2026-03-04T12:00:00Z' }, 'kg')).toBe('Last 80.0 kg · Mar 4');
     expect(lastWeighInLabel(null, 'lb')).toBe('First weigh-in');
     expect(lastWeighInLabel(null, 'lb', true)).toBe('History unavailable');
+    // a sheet left open past midnight passes the day it now is
+    const morning = new Date(2026, 10, 4, 7, 0);
+    expect(lastWeighInLabel({ kilograms: 80, measured_at: morning.toISOString() }, 'kg', false, '2026-11-04')).toBe('Last 80.0 kg · today');
+    expect(lastWeighInLabel({ kilograms: 80, measured_at: morning.toISOString() }, 'kg', false, '2026-11-05')).toBe('Last 80.0 kg · Nov 4');
   });
 
   it('reads a typed weigh-in in the chosen unit', () => {

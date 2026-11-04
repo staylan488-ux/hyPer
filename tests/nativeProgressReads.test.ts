@@ -37,6 +37,9 @@ const appStore = create(() => ({
   fetchMacroTarget: async () => {},
 }));
 
+// The account's day, which the midnight refresh moves on.
+const accountDay = create(() => ({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') }));
+
 // Eight weeks with 90 minutes this week.
 const trained = () => workoutSessions.buildWeeklyTrainingHours([
   { date: dates.format(new Date(), 'yyyy-MM-dd'), completed: true, created_at: new Date(Date.now() - 90 * 60_000).toISOString(), completed_at: new Date().toISOString() },
@@ -75,6 +78,7 @@ async function open() {
     '~/components/Row': { Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/TabScroll': { TabScroll: ({ children, refreshControl }: { children: ReactNode; refreshControl: ReactNode }) => createElement(Fragment, null, refreshControl, children) },
+    '~/lib/accountData': { useAccountDay: accountDay },
     '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/haptics': { haptics: { select: noop } },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
@@ -84,6 +88,7 @@ async function open() {
 const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
+  accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
   appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
   // A read that worked writes a new list, even an empty one.
@@ -146,5 +151,16 @@ describe('Progress after a failed read', () => {
 
     await act(async () => { finishRead(); });
     expect(shown()).toContain('Nothing trained yet this week');
+  });
+});
+
+describe("Progress's week", () => {
+  it("is the account's day's week, and moves on with it while the screen stays open", async () => {
+    accountDay.setState({ dayKey: '2026-11-04' });
+    await open();
+    expect(shown()).toContain('Week of November 2');
+    // Monday's refresh, the screen still on top
+    await act(async () => { accountDay.setState({ dayKey: '2026-11-09' }); });
+    expect(shown()).toContain('Week of November 9');
   });
 });

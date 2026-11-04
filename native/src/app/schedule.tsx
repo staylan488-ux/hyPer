@@ -26,6 +26,9 @@ type StartChoice = 'today' | 'tomorrow' | 'pick';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const ymd = (date: Date) => format(date, 'yyyy-MM-dd');
+/** Day 1 for the choice, by the clock as this runs. */
+const startDateFor = (choice: StartChoice, picked: Date) =>
+  choice === 'today' ? ymd(new Date()) : choice === 'tomorrow' ? ymd(addDays(new Date(), 1)) : ymd(picked);
 
 /**
  * When Day 1 is and how sessions follow: the same weekdays each week, or each
@@ -64,7 +67,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
   // Until the plan loads, nothing is checked and Save waits.
   const flexWaiting = mode === 'flex' && pickedFlexIndex === null && upNext === undefined;
 
-  const startDate = choice === 'today' ? ymd(new Date()) : choice === 'tomorrow' ? ymd(addDays(new Date(), 1)) : ymd(picked);
+  const startDate = startDateFor(choice, picked);
   const weekdays = buildFixedWeekdays(anchorDay, split.days_per_week);
   const rhythm = weekdays.map((day) => WEEKDAYS[day]).join(' / ');
 
@@ -86,7 +89,9 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
 
   const save = () => {
     if (!userId || done || flexWaiting) return;
-    savePlanSchedule(userId, buildPlanSchedule(split, { startDate, mode, anchorDay, flexDayIndex }));
+    // Read again here: the one above is kept with the choice, so a sheet left
+    // open past midnight would start the plan on yesterday.
+    savePlanSchedule(userId, buildPlanSchedule(split, { startDate: startDateFor(choice, picked), mode, anchorDay, flexDayIndex }));
     bump();
     haptics.success();
     setDone(true);

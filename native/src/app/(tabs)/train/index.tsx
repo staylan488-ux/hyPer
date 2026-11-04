@@ -25,7 +25,7 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
-import { useAccountRefresh } from '~/lib/accountData';
+import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
@@ -935,8 +935,10 @@ function StartPlanned() {
   const plan = useTodayPlan();
   const header = useStartHeader('Train');
   const { refreshing, refresh } = useAccountRefresh();
+  // The account's day, as the card below: the week moves on with it overnight.
+  const dayKey = useAccountDay((state) => state.dayKey);
   const week = plan.schedule
-    ? differenceInCalendarWeeks(new Date(), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
+    ? differenceInCalendarWeeks(parseISO(dayKey), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
     : null;
   // How finishing another day moves the plan, by the web's rule.
   const otherNote = !plan.schedule

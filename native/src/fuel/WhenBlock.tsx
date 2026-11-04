@@ -6,6 +6,7 @@ import { FormNote, PickerRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { useNow } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { timeAsDate, usesDayGroups } from '~/lib/foodLogger';
 
@@ -14,6 +15,8 @@ import { useLogger } from './context';
 /** Day, time and meal for the entry, as on the web logger's When row. */
 export function WhenBlock({ disabled }: { disabled?: boolean }) {
   const { when, setWhen, selectedKey, groups, purpose } = useLogger();
+  // Read every render: kept with the entry, a sheet open past midnight couldn't pick the new day.
+  const now = useNow();
   if (purpose === 'ingredients') return null;
   const sameDay = usesDayGroups(when, selectedKey);
   const group = sameDay ? groups.find((candidate) => candidate.id === when.groupId) ?? null : null;
@@ -34,7 +37,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
           label="Day"
           mode="date"
           value={when.date}
-          max={new Date()}
+          max={now}
           disabled={disabled}
           onChange={(date) => {
             const day = new Date(date);

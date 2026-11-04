@@ -20,6 +20,7 @@ import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { useAccountDay } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
@@ -29,6 +30,8 @@ const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 /** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
+  // The account's day, whose week the volume below was read for.
+  const dayKey = useAccountDay((state) => state.dayKey);
   // The first read that works always stores a new list (a failed one leaves it
   // as it was), and sign-out puts back initialAppData's, so a different list
   // means this account's week was read, by this screen or any other.
@@ -83,7 +86,7 @@ export default function ProgressScreen() {
       <Stack.Screen options={{ title: 'Progress' }} />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMMM d')}
+          Week of {format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}
         </BlancText>
 
         {volume.length === 0 ? (

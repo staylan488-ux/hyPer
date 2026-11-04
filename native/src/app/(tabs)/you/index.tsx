@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
-import { format, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
@@ -19,6 +19,7 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
 import { formatWhole } from '~/lib/format';
+import { dayKey, useTodayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import {
   APPEARANCE_LABELS,
@@ -145,10 +146,11 @@ function WeightCard() {
   const latest = history[0] ?? null;
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
   const latestDate = latest ? new Date(latest.measured_at) : null;
+  const todayKey = useTodayKey();
   const line = rateLabel
     ? `${rateLabel} over 3 weeks`
     : latestDate
-      ? isToday(latestDate)
+      ? dayKey(latestDate) === todayKey
         ? 'Today'
         : format(latestDate, 'MMM d')
       : null;

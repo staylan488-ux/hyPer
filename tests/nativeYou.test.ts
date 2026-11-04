@@ -545,6 +545,37 @@ describe('Food analysis after the Mac worker is saved', () => {
   });
 });
 
+// The clock Body weight reads; a test moves it past midnight ('' is the real clock).
+const clock = { key: '' };
+const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
+
+function loadWeightScreen(you: YouModule, seen: { charts?: Array<{ days: number }>; rows?: Array<{ title: string; detail?: string }> }, options: { compile?: boolean } = {}) {
+  const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', {
+    '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
+    '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null },
+    'date-fns': dateFns,
+    'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
+    'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
+    'react-native-reanimated': { default: { View: Wrap } },
+    '@/lib/bodyWeightSummary': bodyWeightSummary,
+    '@/lib/weightDisplayCore': weightDisplayCore,
+    '~/components/BlancText': { BlancText: text },
+    '~/components/Capsule': { Capsule: () => null },
+    '~/components/Label': { Label: Wrap },
+    '~/components/Row': { Hairline: () => null, Row: (props: { title: string; detail?: string }) => { seen.rows?.push(props); return null; } },
+    '~/components/Section': { Section: Wrap },
+    '~/components/SwipeRow': { SwipeRow: Wrap },
+    '~/components/TabScroll': { TabScroll: Wrap },
+    '~/components/WeightChart': { WeightChart: (props: { days: number }) => { seen.charts?.push(props); return null; } },
+    '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd'), today: clockKey, useTodayKey: clockKey },
+    '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+    '~/lib/motion': { rowEnter: null, rowExit: null, rowLayout: null },
+    '~/lib/you': you,
+    '~/theme/blanc': { space: { gutter: 20, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
+  }, options).default;
+}
+
 describe('Body weight chart', () => {
   it('reads every day the chart shows', async () => {
     const harness = youHarness();
@@ -554,35 +585,36 @@ describe('Body weight chart', () => {
       { id: 'w1', kilograms: 82, measured_at: '2026-10-01T07:00:00Z', source: 'manual' },
     ]);
     const charts: Array<{ days: number }> = [];
-    const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
-    const Screen = loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', {
-      '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
-      '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null },
-      'date-fns': dateFns,
-      'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
-      'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
-      'react-native-reanimated': { default: { View: Wrap } },
-      '@/lib/bodyWeightSummary': bodyWeightSummary,
-      '@/lib/weightDisplayCore': weightDisplayCore,
-      '~/components/BlancText': { BlancText: text },
-      '~/components/Capsule': { Capsule: () => null },
-      '~/components/Label': { Label: Wrap },
-      '~/components/Row': { Hairline: () => null, Row: () => null },
-      '~/components/Section': { Section: Wrap },
-      '~/components/SwipeRow': { SwipeRow: Wrap },
-      '~/components/TabScroll': { TabScroll: Wrap },
-      '~/components/WeightChart': { WeightChart: (props: { days: number }) => { charts.push(props); return null; } },
-      '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
-      '~/lib/motion': { rowEnter: null, rowExit: null, rowLayout: null },
-      '~/lib/you': you,
-      '~/theme/blanc': { space: { gutter: 20, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
-    }).default;
+    const Screen = loadWeightScreen(you, { charts });
     await mount(createElement(Screen));
 
     const shown = charts.at(-1)?.days;
     expect(shown).toBeGreaterThan(0);
     expect(harness.getBodyWeightHistorySince).toHaveBeenCalled();
     for (const [, days] of harness.getBodyWeightHistorySince.mock.calls) expect(days).toBeGreaterThanOrEqual(shown!);
+  });
+});
+
+describe("Body weight's recent weigh-ins, as the app compiles it", () => {
+  afterEach(() => { clock.key = ''; });
+
+  it("stop calling a weigh-in Today once midnight passes, though the weigh-ins did not change", async () => {
+    const harness = youHarness();
+    const you = loadNativeModule<YouModule>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
+    const weighedAt = new Date();
+    weighedAt.setHours(7, 0, 0, 0);
+    harness.getBodyWeightHistorySince.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: weighedAt.toISOString(), source: 'manual' }]);
+    clock.key = dateFns.format(weighedAt, 'yyyy-MM-dd');
+    const rows: Array<{ title: string; detail?: string }> = [];
+    const Screen = loadWeightScreen(you, { rows }, { compile: true });
+    await mount(createElement(Screen));
+    const weighIn = () => rows.filter((row) => row.detail?.includes('7:00 AM')).at(-1)?.detail;
+    expect(weighIn()).toBe('Today, 7:00 AM');
+
+    // left open overnight; the screen renders again with the same weigh-ins
+    clock.key = dateFns.format(dateFns.addDays(weighedAt, 1), 'yyyy-MM-dd');
+    await act(async () => { root!.render(createElement(Screen)); });
+    expect(weighIn()).toBe(`${dateFns.format(weighedAt, 'MMM d')}, 7:00 AM`);
   });
 });
 

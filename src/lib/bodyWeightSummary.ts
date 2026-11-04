@@ -1,7 +1,7 @@
 // The words around body weight that You shows: the latest weigh-in, the
 // three-week rate and the Log weight sheet's draft. Shared by the web You
 // page and the native app.
-import { format, isToday } from 'date-fns';
+import { format } from 'date-fns';
 
 import { WINDOW_DAYS as ADAPTIVE_WINDOW_DAYS } from '@/lib/adaptiveExpenditure';
 import { normalizeDecimalText, parseDecimal } from '@/lib/decimalText';
@@ -35,15 +35,17 @@ export function weeklyRateLabel(kgPerWeek: number | null, unit: WeightUnit): str
   return `${sign}${shown} ${unit}/wk`;
 }
 
-/** "Last 182.4 lb · today", the line under Log weight. */
+/** "Last 182.4 lb · today", the line under Log weight. "today" is by `todayKey` (yyyy-MM-dd), the clock's by default. */
 export function lastWeighInLabel(
   latest: { kilograms: number; measured_at: string } | null,
   unit: WeightUnit,
   failed = false,
+  todayKey = format(new Date(), 'yyyy-MM-dd'),
 ): string {
   if (latest) {
     const date = new Date(latest.measured_at);
-    return `Last ${formatWeight(Number(latest.kilograms), unit)} ${unit} · ${isToday(date) ? 'today' : format(date, 'MMM d')}`;
+    const day = format(date, 'yyyy-MM-dd') === todayKey ? 'today' : format(date, 'MMM d');
+    return `Last ${formatWeight(Number(latest.kilograms), unit)} ${unit} · ${day}`;
   }
   return failed ? 'History unavailable' : 'First weigh-in';
 }

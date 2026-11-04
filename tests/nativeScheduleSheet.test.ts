@@ -166,3 +166,17 @@ describe('Schedule sheet, set weekdays', () => {
     expect(leaveGuarded).toBe(false);
   });
 });
+
+describe('Schedule sheet, Day 1 today', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('starts the plan on the day Save is tapped, though the sheet opened the evening before', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 4, 23, 50));
+    todayPlan.setState({ hero: { kind: 'rest' }, schedule: null, upNext: null });
+    await open();
+    vi.setSystemTime(new Date(2026, 10, 5, 0, 10));
+    await act(async () => { saveButton().click(); });
+    expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ startDate: '2026-11-05' }));
+  });
+});
