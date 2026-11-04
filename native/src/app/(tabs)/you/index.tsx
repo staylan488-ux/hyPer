@@ -1,9 +1,9 @@
-import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { HStack, Host, Image, Menu, Text as SwiftText, Toggle } from '@expo/ui/swift-ui';
+import { accessibilityLabel, accessibilityValue, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, View } from 'react-native';
+import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
@@ -92,7 +92,7 @@ export default function YouScreen() {
           <Hairline />
           <Row
             title="Saved meals"
-            value={meals === null ? undefined : String(meals.length)}
+            value={meals && meals.length > 0 ? String(meals.length) : undefined}
             chevron
             onPress={() => router.push('/you/meals')}
           />
@@ -182,7 +182,8 @@ function WeightCard() {
                 </BlancText>
               ) : null}
               {trend.fittedDayCount >= 2 ? (
-                <View style={{ marginTop: 10 }} pointerEvents="none">
+                // The line runs to the card's edges, part of the tile rather than a chart inside it.
+                <View style={{ marginTop: 10, marginHorizontal: -18 }} pointerEvents="none">
                   <WeightChart points={trend.points} days={30} unit={unit} height={44} compact />
                 </View>
               ) : null}
@@ -203,30 +204,44 @@ function WeightCard() {
 
 const APPEARANCE_CHOICES: AppearanceChoice[] = ['system', 'light', 'dark'];
 
-/** Automatic, Light or Dark, in iOS's own menu. */
+/**
+ * Automatic, Light or Dark, in iOS's own menu. A menu picker draws its value
+ * at body size, so the menu has its own label: the value as the other rows'
+ * values and the ⌃⌄ on their chevrons' column.
+ */
 function AppearanceRow() {
   const c = useBlanc();
+  const { fontScale } = useWindowDimensions();
   const choice = useAppearanceStore((state) => state.choice);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 8 }}>
-      <BlancText variant="bodyStrong" style={{ flex: 1 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingLeft: 18, paddingRight: 16 }}>
+      {/* The menu says its own name to VoiceOver, with the choice as its value. */}
+      <BlancText variant="bodyStrong" accessible={false} style={{ flex: 1 }}>
         Appearance
       </BlancText>
       <Host matchContents>
-        <Picker
-          selection={choice}
-          onSelectionChange={(next) => {
-            if (next === choice) return;
-            haptics.select();
-            chooseAppearance(next as AppearanceChoice);
-          }}
-          modifiers={[pickerStyle('menu'), tint(c.graphite)]}>
+        <Menu
+          label={
+            <HStack spacing={10}>
+              <SwiftText modifiers={[font({ size: 15 * fontScale }), foregroundStyle(c.graphite)]}>{APPEARANCE_LABELS[choice]}</SwiftText>
+              <Image systemName="chevron.up.chevron.down" color={c.upcoming} modifiers={[font({ size: 13, weight: 'semibold' })]} />
+            </HStack>
+          }
+          modifiers={[accessibilityLabel('Appearance'), accessibilityValue(APPEARANCE_LABELS[choice])]}>
+          {/* Checked items whose state comes from the store, as iOS draws a menu picker's. */}
           {APPEARANCE_CHOICES.map((option) => (
-            <SwiftText key={option} modifiers={[tag(option)]}>
-              {APPEARANCE_LABELS[option]}
-            </SwiftText>
+            <Toggle
+              key={option}
+              label={APPEARANCE_LABELS[option]}
+              isOn={option === choice}
+              onIsOnChange={(on) => {
+                if (!on || option === choice) return;
+                haptics.select();
+                chooseAppearance(option);
+              }}
+            />
           ))}
-        </Picker>
+        </Menu>
       </Host>
     </View>
   );
@@ -258,7 +273,7 @@ function SchedulingSetting() {
   return (
     <View style={{ marginTop: space.section }}>
       <Label>
-        <ToggleRow label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
+        <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
       </Label>
       <FormNote alert={failed}>
         {failed

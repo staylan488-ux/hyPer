@@ -18,7 +18,8 @@ const PAD_Y = 8;
  * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
  * hollow). The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
- * compact one is a quiet sparkline.
+ * compact one is a quiet sparkline: the line alone, scaled to the line, so a
+ * slow trend still shows.
  */
 export function WeightChart({
   points,
@@ -46,16 +47,20 @@ export function WeightChart({
     const toUnit = (kg: number) => kgToUnit(kg, unit);
     const values = series.flatMap((point) => [
       toUnit(point.ewmaKg),
-      ...(point.observedKg != null ? [toUnit(point.observedKg)] : []),
+      ...(!compact && point.observedKg != null ? [toUnit(point.observedKg)] : []),
     ]);
-    const y = linearScale(paddedDomain(values, 0.14, unit === 'lb' ? 2 : 1), [height - PAD_Y, PAD_Y]);
+    // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
+    const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
+    const y = linearScale(paddedDomain(values, 0.14, minSpan), [height - PAD_Y, PAD_Y]);
     const x = (index: number) => xAtIndex(index, width, series.length, 'point');
     const line = series.map((point, index) => ({ x: x(index), y: y(toUnit(point.ewmaKg)) }));
-    const dots = series.flatMap((point, index) =>
-      point.observedKg == null ? [] : [{ index, x: x(index), y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
-    );
+    const dots = compact
+      ? []
+      : series.flatMap((point, index) =>
+          point.observedKg == null ? [] : [{ index, x: x(index), y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
+        );
     return { line, path: monotonePath(line), dots };
-  }, [series, width, height, unit]);
+  }, [series, width, height, unit, compact]);
 
   if (series.length < 2) return null;
 
@@ -135,11 +140,11 @@ export function WeightChart({
               key={dot.index}
               cx={dot.x}
               cy={dot.y}
-              r={compact ? 1.5 : 2.5}
+              r={2.5}
               fill={dot.outlier ? 'none' : c.graphite}
               stroke={dot.outlier ? c.graphite : 'none'}
               strokeWidth={1}
-              opacity={compact ? 0.45 : 0.6}
+              opacity={0.6}
             />
           ))}
           <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
