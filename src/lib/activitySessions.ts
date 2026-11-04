@@ -111,6 +111,27 @@ export function buildActivityInput(form: ActivityForm, existing: Pick<ActivitySe
   };
 }
 
+/**
+ * An edit's save with the stored start, end and duration kept where the
+ * person left them alone. The editor holds only HH:mm and whole minutes, so
+ * rebuilding untouched times would round a 27:34 run to 28:00 and move its pace.
+ */
+export function keepUntouchedTiming(
+  input: ActivitySessionInput,
+  existing: Pick<ActivitySession, 'started_at' | 'ended_at' | 'duration_seconds'>,
+  untouched: { start: boolean; duration: boolean },
+): ActivitySessionInput {
+  if (!untouched.start && !untouched.duration) return input;
+  const startedAt = untouched.start ? existing.started_at ?? null : input.started_at ?? null;
+  const durationSeconds = untouched.duration ? existing.duration_seconds ?? null : input.duration_seconds ?? null;
+  const endedAt = untouched.start && untouched.duration
+    ? existing.ended_at ?? null
+    : startedAt && durationSeconds
+      ? new Date(new Date(startedAt).getTime() + durationSeconds * 1000).toISOString()
+      : null;
+  return { ...input, started_at: startedAt, ended_at: endedAt, duration_seconds: durationSeconds };
+}
+
 /** Manual edits to an auto-grouped WHOOP import are marked so later syncs keep them. */
 export function guardActivityEdit(input: ActivitySessionInput, editing: Pick<ActivitySession, 'source' | 'auto_grouped'> | null): ActivitySessionInput {
   return editing && editing.source === 'whoop' && editing.auto_grouped ? { ...input, user_edited: true } : input;
