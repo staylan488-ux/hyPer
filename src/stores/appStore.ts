@@ -2395,6 +2395,29 @@ export const useAppStore = create<AppState>((set, get) => ({
                 }
                 return sessions;
               },
+              fetchWhoopSegmentsBySessionIds: async (ids) => {
+                const rows: ActivitySegment[] = [];
+                for (let offset = 0; offset < ids.length; offset += 100) {
+                  for (let page = 0; ; page++) {
+                    if (page >= 100) throw new Error('WHOOP history is too large to reconcile safely in one sync.');
+                    requireCurrentAccount();
+                    const { data, error } = await supabase
+                      .from('activity_segments')
+                      .select('*')
+                      .eq('user_id', userId)
+                      .eq('source', 'whoop')
+                      .in('session_id', ids.slice(offset, offset + 100))
+                      .order('started_at', { ascending: true })
+                      .order('id', { ascending: true })
+                      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+                    if (error) throw error;
+                    requireCurrentAccount();
+                    rows.push(...((data ?? []) as ActivitySegment[]));
+                    if (!data || data.length < PAGE_SIZE) break;
+                  }
+                }
+                return rows;
+              },
               // create/update/delete mirror createActivitySession,
               // updateActivitySession and deleteActivitySession but reuse the
               // user resolved above instead of a user lookup per item

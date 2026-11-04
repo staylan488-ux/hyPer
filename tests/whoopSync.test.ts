@@ -97,6 +97,8 @@ class FakeData {
         ),
       fetchSessionsByIds: async (ids: string[]) =>
         this.sessions.filter((s) => ids.includes(s.id)),
+      fetchWhoopSegmentsBySessionIds: async (ids: string[]) =>
+        this.segments.filter((s) => s.source === 'whoop' && s.session_id != null && ids.includes(s.session_id)),
       createSession: async (input: ActivitySessionInput) => {
         const created: ActivitySession = {
           id: `sess-${++this.seq}`,
@@ -386,6 +388,43 @@ describe('runWhoopSync', () => {
     expect(data.sessions).toHaveLength(1);
     expect(data.sessions[0].id).toBe('host-gps');
     expect(data.segments.find((s) => s.external_id === 'wf-lap-1')?.session_id).toBe('host-gps');
+  });
+
+  // sinceIso whose fetchStart (sinceMs - 7d) is T0 + 500 s: laps 1-3 (0, 215 and
+  // 430 s) start before the window, lap 4 (645 s) inside it
+  const midSessionSinceIso = new Date(T0 + 500_000 + 7 * 24 * 3600_000).toISOString();
+
+  it('leaves a multi-lap session whole when the window starts partway through it', async () => {
+    const data = new FakeData();
+    await runWhoopSync(makePorts(data, [[1, 2, 3, 4].map((n) => lapRecord(n))]), {});
+    expect(data.sessions).toHaveLength(1);
+    const before = structuredClone(data.sessions[0]);
+    expect(before.activity_type).toBe('interval_run');
+
+    const result = await runWhoopSync(makePorts(data, [[]]), { sinceIso: midSessionSinceIso });
+
+    expect(result).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(data.sessions).toEqual([before]);
+    expect(data.segments.every((s) => s.session_id === before.id)).toBe(true);
+  });
+
+  it('grows a session that started before the window from all of its laps', async () => {
+    const data = new FakeData();
+    await runWhoopSync(makePorts(data, [[1, 2, 3, 4].map((n) => lapRecord(n))]), {});
+    const sessionId = data.sessions[0].id;
+
+    const result = await runWhoopSync(makePorts(data, [[lapRecord(5)]]), { sinceIso: midSessionSinceIso });
+
+    expect(result).toMatchObject({ created: 0, updated: 1, deleted: 0 });
+    expect(data.sessions).toHaveLength(1);
+    expect(data.sessions[0]).toMatchObject({
+      id: sessionId,
+      activity_type: 'interval_run',
+      started_at: isoAt(0),
+      duration_seconds: 5 * 130,
+      distance_m: 2500,
+    });
+    expect(data.segments.filter((s) => s.session_id === sessionId)).toHaveLength(5);
   });
 
 });

@@ -3354,7 +3354,7 @@ function hasFilter(query: RecordedQuery, op: string, column: string): boolean {
   return query.filters.some(([filterOp, filterColumn]) => filterOp === op && filterColumn === column);
 }
 
-type WhoopRead = 'watermark' | 'segmentsWindow' | 'sessionsWindow' | 'sessionsByIds' | 'upsert';
+type WhoopRead = 'watermark' | 'segmentsWindow' | 'sessionsWindow' | 'sessionsByIds' | 'segmentsBySessions' | 'upsert';
 
 function whoopReadKind(query: RecordedQuery): WhoopRead | null {
   if (query.table === 'activity_segments' && query.action === 'upsert') return 'upsert';
@@ -3363,6 +3363,7 @@ function whoopReadKind(query: RecordedQuery): WhoopRead | null {
   if (query.table === 'activity_segments' && hasFilter(query, 'gte', 'started_at')) return 'segmentsWindow';
   if (query.table === 'activity_sessions' && hasFilter(query, 'gte', 'started_at')) return 'sessionsWindow';
   if (query.table === 'activity_sessions' && hasFilter(query, 'in', 'id')) return 'sessionsByIds';
+  if (query.table === 'activity_segments' && hasFilter(query, 'in', 'session_id')) return 'segmentsBySessions';
   return null;
 }
 
@@ -3426,6 +3427,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     segments?: ActivitySegment[];
     sessions?: ActivitySession[];
     byIds?: ActivitySession[];
+    sessionSegments?: ActivitySegment[];
   }) {
     const watermark = { started_at: new Date(Date.now() - 24 * HOUR_MS).toISOString() };
     return installRecordingSupabase((query) => {
@@ -3436,6 +3438,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
         case 'segmentsWindow': return { data: opts.segments ?? [], error: null };
         case 'sessionsWindow': return { data: opts.sessions ?? [], error: null };
         case 'sessionsByIds': return { data: opts.byIds ?? [], error: null };
+        case 'segmentsBySessions': return { data: opts.sessionSegments ?? [], error: null };
         case 'upsert': {
           const rows = query.payload as Array<Record<string, unknown>>;
           return { data: rows.map((row, i) => ({ id: `upserted-${i}`, session_id: null, ...row })), error: null };
@@ -3541,6 +3544,52 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     const db = installWhoopDb({
       fail: 'sessionsByIds',
       segments: [makeWhoopSegment({ id: 'seg-host', session_id: 'host-before-window' })],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('reads every lap of a session that started before the window and leaves it whole', async () => {
+    const firstLapMs = Date.now() - 10 * 24 * HOUR_MS;
+    const laps = [0, 1, 2, 3].map((n) => makeWhoopSegment({
+      id: `lap-${n + 1}`,
+      session_id: 'intervals',
+      started_at: new Date(firstLapMs + n * 215_000).toISOString(),
+      ended_at: new Date(firstLapMs + n * 215_000 + 130_000).toISOString(),
+      duration_seconds: 130,
+    }));
+    const intervals = makeActivitySession({
+      id: 'intervals',
+      activity_type: 'interval_run',
+      date: laps[0].started_at.slice(0, 10),
+      started_at: laps[0].started_at,
+      ended_at: laps[3].ended_at,
+      duration_seconds: 4 * 130,
+      energy_kcal: 4 * 400,
+    });
+    // the window starts between laps 3 and 4
+    const db = installWhoopDb({ segments: [laps[3]], byIds: [intervals], sessionSegments: laps });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(db.writes()).toEqual([]);
+    const read = db.queries.find((q) => whoopReadKind(q) === 'segmentsBySessions')!;
+    expect(read.filters).toEqual(expect.arrayContaining([
+      ['eq', 'user_id', 'user-1'],
+      ['eq', 'source', 'whoop'],
+      ['in', 'session_id', ['intervals']],
+    ]));
+  });
+
+  it('aborts without touching a straddling session when reading its other laps fails', async () => {
+    const db = installWhoopDb({
+      fail: 'segmentsBySessions',
+      segments: [makeWhoopSegment({ id: 'seg-host', session_id: 'host-before-window' })],
+      byIds: [makeActivitySession({ id: 'host-before-window' })],
     });
 
     const result = await useAppStore.getState().syncWhoop();
