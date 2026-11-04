@@ -5,7 +5,6 @@
 // permission change, and on every return to the front. One per day at most;
 // kept on this phone, per account. The rules are in ./fuelReminderPlan.
 import * as Notifications from 'expo-notifications';
-import { router, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
@@ -13,14 +12,14 @@ import { onAppVisible } from '@/lib/appVisibility';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
-import { introPlayed, introReveal, markShown } from './brand';
 import { useFuelStore } from './fuel';
 import {
-  clampReminderMinutes, DEFAULT_REMINDER_SETTINGS, FUEL_REMINDER_CATEGORY, fuelReminderId, fuelShortfall,
+  clampReminderMinutes, DEFAULT_REMINDER_SETTINGS, FUEL_REMINDER_CATEGORY, FUEL_REMINDER_SNAP_ACTION, fuelReminderId, fuelShortfall,
   hasReminderTarget, isFuelReminderId, parseReminderHistory, parseReminderSettings, planFuelReminders,
   pruneReminderHistory, reminderDay, reminderPermission,
   type FuelReminderSettings, type ReminderHistory, type ReminderPermission, type ReminderPlanInput, type ReminderRequest,
 } from './fuelReminderPlan';
+import { postLaunchPress } from './launchActions';
 
 type ReminderState = { userId: string | null; settings: FuelReminderSettings; permission: ReminderPermission | null };
 /** You reads this; useFuelReminder owns it. `permission` stays null until read. */
@@ -303,73 +302,52 @@ function followAccount(userId: string) {
   };
 }
 
-const INTRO_WAIT_MS = 10_000;
-// Whether a tab is in front (not a sheet or the run), so a tap may open Log food over it.
-let tabsInFront = false;
-let openTimer: ReturnType<typeof setTimeout> | undefined;
 // The response last acted on, so one tap that arrives both stored and as an event opens once.
 let lastOpened: string | null = null;
 
-function noteTabsInFront(value: boolean) {
-  tabsInFront = value;
-}
-
 /**
- * A tap on the reminder: Log food, on Recent, over the tab in front, once the
- * launch intro's P has landed. With a sheet or the run in front the tap only
- * brings the app back. Kept in one function so a launch press (Snap a meal)
- * can take its place.
+ * A tap on the reminder opens Log food on Recent; its Snap a meal button
+ * (press and hold the reminder) opens the camera. Both go through the launch
+ * press store, so they run exactly like the Home Screen quick actions of the
+ * same name: once, after the intro, with the app in front, and never closing
+ * a sheet that is open (lib/launch.ts).
  */
-export function openLogFoodFromReminder() {
-  clearTimeout(openTimer);
-  const started = Date.now();
-  let first = true;
-  const go = () => {
-    // introPlayed turns true once the P has landed. An intro that never mounted
-    // (Reduce Motion, a scripted launch) leaves both marks at 1; read them once.
-    const over = introPlayed() || (first && markShown.value >= 1 && introReveal.value >= 1);
-    first = false;
-    if (!over) {
-      if (Date.now() - started < INTRO_WAIT_MS) openTimer = setTimeout(go, 100);
-      return;
-    }
-    if (tabsInFront) router.push('/log-food');
-  };
-  openTimer = setTimeout(go, introPlayed() ? 0 : 300);
-}
-
 function onReminderResponse(response: Notifications.NotificationResponse | null) {
   if (!response || !isFuelReminderId(response.notification.request.identifier)) return;
   Notifications.clearLastNotificationResponse();
   const key = `${response.notification.request.identifier}:${response.notification.date}:${response.actionIdentifier}`;
   if (key === lastOpened) return;
   lastOpened = key;
-  // The plain tap. A "Snap a meal" action under FUEL_REMINDER_CATEGORY would branch here on its identifier.
-  if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-  openLogFoodFromReminder();
+  if (response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) postLaunchPress('log-food');
+  else if (response.actionIdentifier === FUEL_REMINDER_SNAP_ACTION) postLaunchPress('snap-meal');
+}
+
+/** The reminder's Snap a meal button. iOS keeps the category, so setting it again is harmless. */
+function registerReminderActions() {
+  try {
+    void Notifications.setNotificationCategoryAsync(FUEL_REMINDER_CATEGORY, [
+      { identifier: FUEL_REMINDER_SNAP_ACTION, buttonTitle: 'Snap a meal', options: { opensAppToForeground: true } },
+    ]).catch(() => {});
+  } catch {
+    // unavailable
+  }
 }
 
 /** Taps: one that launched the app (read once), then each one while it runs. */
 function followTaps() {
+  registerReminderActions();
   try {
     onReminderResponse(Notifications.getLastNotificationResponse());
   } catch {
     // unavailable
   }
   const subscription = Notifications.addNotificationResponseReceivedListener(onReminderResponse);
-  return () => {
-    clearTimeout(openTimer);
-    subscription.remove();
-  };
+  return () => subscription.remove();
 }
 
 /** Mounted once (tab layout). */
 export function useFuelReminder() {
   const userId = useAuthStore((state) => state.user?.id ?? null);
-  const atTabs = (useSegments() as string[])[0] === '(tabs)';
-  useEffect(() => {
-    noteTabsInFront(atTabs);
-  }, [atTabs]);
   useEffect(() => (userId ? followAccount(userId) : undefined), [userId]);
   useEffect(() => followTaps(), []);
 }

@@ -10,8 +10,10 @@ import type { MacroTotals } from '@/lib/nutritionMacros';
 import { formatWhole } from './format';
 
 export const FUEL_REMINDER_ID_PREFIX = 'hyper-fuel-reminder-';
-/** On every reminder; a "Snap a meal" action can be registered under it later. */
-export const FUEL_REMINDER_CATEGORY = 'fuel-reminder';
+/** On every reminder: it carries the Snap a meal button. No ':' or '-' (expo-notifications' rule for categories). */
+export const FUEL_REMINDER_CATEGORY = 'fuelReminder';
+/** The reminder's Snap a meal button (press and hold the reminder). */
+export const FUEL_REMINDER_SNAP_ACTION = 'snapMeal';
 /** Today and the next two: a day with the app closed still reminds; a long break ends them. */
 export const FUEL_REMINDER_DAYS = 3;
 /** You offers evening times only: 5:00 PM to 11:00 PM, 8:00 PM to start. */

@@ -71,6 +71,7 @@ const notifications = {
   clearLastNotificationResponse: vi.fn(() => {
     ios.last = null;
   }),
+  setNotificationCategoryAsync: vi.fn(async () => ({})),
   addNotificationResponseReceivedListener: vi.fn((listener: (response: Response) => void) => {
     ios.responder = listener;
     return { remove: () => { ios.responder = null; } };
@@ -90,10 +91,8 @@ const fuel = create(() => ({
   todayLoadedForUserId: 'user-1' as string | null,
   todayLoadedKey: DAY as string | null,
 }));
-const push = vi.fn();
-let segments: string[] = ['(tabs)', 'today'];
+const postLaunchPress = vi.fn((action: string) => Boolean(action));
 let visible: (() => void) | null = null;
-const intro = { played: true, mark: 1, reveal: 1 };
 
 type Mod = {
   useFuelReminder: () => void;
@@ -151,13 +150,11 @@ beforeEach(() => {
     nutritionProfileLoadedForUserId: 'user-1',
   });
   fuel.setState({ todayKey: DAY, todayTotals: totals(1950, 120), todayLoadedForUserId: 'user-1', todayLoadedKey: DAY });
-  push.mockReset();
-  segments = ['(tabs)', 'today'];
+  postLaunchPress.mockClear();
+  notifications.setNotificationCategoryAsync.mockClear();
   visible = null;
-  Object.assign(intro, { played: true, mark: 1, reveal: 1 });
   mod = loadNativeModule<Mod>('lib/fuelReminder.ts', {
     'expo-notifications': notifications,
-    'expo-router': { router: { push }, useSegments: () => segments },
     zustand: { create },
     '@/lib/appVisibility': {
       onAppVisible: (listener: () => void) => {
@@ -167,13 +164,9 @@ beforeEach(() => {
     },
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: auth },
-    './brand': {
-      introPlayed: () => intro.played,
-      introReveal: { get value() { return intro.reveal; } },
-      markShown: { get value() { return intro.mark; } },
-    },
     './fuel': { useFuelStore: fuel },
     './fuelReminderPlan': plan,
+    './launchActions': { postLaunchPress },
   });
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -216,8 +209,8 @@ describe('handing the reminder to iOS', () => {
         title: '850 kcal and 40 g protein to go',
         body: 'Still time for a good meal.',
         sound: 'default',
-        categoryIdentifier: 'fuel-reminder',
-        threadIdentifier: 'fuel-reminder',
+        categoryIdentifier: 'fuelReminder',
+        threadIdentifier: 'fuelReminder',
       },
     });
     expect(ios.pending.get(id('2026-11-05'))?.content.title).toBe('Nothing logged today');
@@ -454,75 +447,53 @@ describe('signing out', () => {
 });
 
 describe('a tap on the reminder', () => {
-  const advance = async (ms: number) => {
-    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
-  };
-
-  it('waits for the launch intro to land, then opens Log food once', async () => {
-    Object.assign(intro, { played: false, mark: 0, reveal: 0 });
+  // The press then runs like the Home Screen quick action of the same name
+  // (after the intro, with the app in front): see nativeLaunchRunner.test.ts.
+  it('opens Log food once, through the launch press store', async () => {
     await render();
     await act(async () => { ios.responder?.(response(id(DAY), 1)); });
-    await advance(400);
-    expect(push).not.toHaveBeenCalled();
-    intro.played = true;
-    await advance(100);
-    expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith('/log-food');
-    await advance(1000);
-    expect(push).toHaveBeenCalledTimes(1);
-  });
-
-  it('gives up after ten seconds when the intro never lands', async () => {
-    Object.assign(intro, { played: false, mark: 0, reveal: 0 });
-    await render();
+    expect(postLaunchPress).toHaveBeenCalledTimes(1);
+    expect(postLaunchPress).toHaveBeenCalledWith('log-food');
+    // The same tap again opens nothing more.
     await act(async () => { ios.responder?.(response(id(DAY), 1)); });
-    await advance(10_500);
-    expect(push).not.toHaveBeenCalled();
-    // A late landing opens nothing: the tap has been let go.
-    intro.played = true;
-    await advance(1000);
-    expect(push).not.toHaveBeenCalled();
+    expect(postLaunchPress).toHaveBeenCalledTimes(1);
   });
 
-  it('opens after a moment when the intro never played', async () => {
-    Object.assign(intro, { played: false, mark: 1, reveal: 1 });
+  it('opens the camera from the reminder’s Snap a meal button', async () => {
     await render();
-    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
-    await advance(250);
-    expect(push).not.toHaveBeenCalled();
-    await advance(60);
-    expect(push).toHaveBeenCalledWith('/log-food');
+    await act(async () => { ios.responder?.(response(id(DAY), 1, plan.FUEL_REMINDER_SNAP_ACTION)); });
+    expect(postLaunchPress).toHaveBeenCalledTimes(1);
+    expect(postLaunchPress).toHaveBeenCalledWith('snap-meal');
   });
 
-  it('leaves a sheet or the run in front as it is', async () => {
-    segments = ['run'];
+  it('registers the Snap a meal button, which brings the app to the front', async () => {
     await render();
-    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
-    await advance(500);
-    expect(push).not.toHaveBeenCalled();
+    expect(notifications.setNotificationCategoryAsync).toHaveBeenCalledWith('fuelReminder', [
+      { identifier: 'snapMeal', buttonTitle: 'Snap a meal', options: { opensAppToForeground: true } },
+    ]);
+    // No ':' or '-' in the category (expo-notifications' rule).
+    expect(plan.FUEL_REMINDER_CATEGORY).toMatch(/^[A-Za-z]+$/);
   });
 
-  it('ignores Rest over and other actions', async () => {
+  it('ignores Rest over, other notifications and unknown actions', async () => {
     await render();
     await act(async () => {
       ios.responder?.(response('hyper-rest-over', 1));
-      ios.responder?.(response(id(DAY), 2, 'snap-meal'));
+      ios.responder?.(response('something-else', 1));
+      ios.responder?.(response(id(DAY), 2, 'dismiss'));
     });
-    await advance(500);
-    expect(push).not.toHaveBeenCalled();
+    expect(postLaunchPress).not.toHaveBeenCalled();
   });
 
   it('opens Log food for the tap that launched the app, and forgets it', async () => {
     ios.last = response(id(DAY), 1);
     await render();
-    await advance(10);
-    expect(push).toHaveBeenCalledWith('/log-food');
+    expect(postLaunchPress).toHaveBeenCalledWith('log-food');
     expect(notifications.clearLastNotificationResponse).toHaveBeenCalled();
     expect(ios.last).toBeNull();
     // The same tap arriving again as an event opens nothing more.
     await act(async () => { ios.responder?.(response(id(DAY), 1)); });
-    await advance(500);
-    expect(push).toHaveBeenCalledTimes(1);
+    expect(postLaunchPress).toHaveBeenCalledTimes(1);
   });
 });
 
