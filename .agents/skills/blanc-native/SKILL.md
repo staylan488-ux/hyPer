@@ -331,7 +331,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   [liftShadow](../../../native/src/lib/liftShadow.ts) does. Near 0 JavaScript
   writes "1.6e-7", Reanimated's parser throws on it, and a release build
   closes (the reorder crash of 2026-10-31); a debug build shows a red screen
-  only on the rare frame that hits it.
+  only on the rare frame that hits it. Its resting value is written out too
+  (an empty shadow, a colour), never `undefined`: Reanimated sends nothing
+  for an undefined style value, so the view keeps the last one it drew (a
+  dropped row kept its lifted shadow until 2026-11-04).
 - The one branded animation is the cold-launch [intro](../../../native/src/components/BrandIntro.tsx):
   the P blooms, "hyPer" unfolds from it and holds (longer while the account
   loads), folds back, and the P flies to the first screen's anchored BrandMark as
