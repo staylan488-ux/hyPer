@@ -200,10 +200,11 @@ private struct FuelView: View {
       if let fuel = entry.fuel {
         switch family {
         case .accessoryCircular:
+          // Past target the figure is what's over (or extra), and the word says so.
           Gauge(value: min(fuel.eaten, fuel.target), in: 0...fuel.target) {
-            Text("kcal")
+            Text(fuel.left >= 0 ? "kcal" : leftWord(fuel.left, gaining: fuel.gaining))
           } currentValueLabel: {
-            Text(fuel.left >= 1_000 ? String(format: "%.1fk", fuel.left / 1_000) : whole(fuel.left))
+            Text(abs(fuel.left) >= 1_000 ? String(format: "%.1fk", abs(fuel.left) / 1_000) : whole(abs(fuel.left)))
           }
           .gaugeStyle(.accessoryCircular)
         case .accessoryRectangular:
