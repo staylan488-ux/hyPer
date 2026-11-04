@@ -173,9 +173,10 @@ function MovementDetail({
     } catch (error) {
       haptics.error();
       Alert.alert('Not unlinked', errorMessage(error, 'Could not unlink the superset. Try again.'));
-    } finally {
-      setEditingPlan(null);
     }
+    // After the try, not in a finally: the React Compiler can't compile a
+    // component holding try/finally, and nothing above throws.
+    setEditingPlan(null);
   };
 
   const confirmRemove = () =>
@@ -370,8 +371,9 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
     Keyboard.dismiss();
     setSaving(true);
     setFailed(false);
+    const rpeValue = rpe ?? undefined;
     try {
-      await logSet(set.id, weightValue, Math.round(repsValue), rpe ?? undefined);
+      await logSet(set.id, weightValue, Math.round(repsValue), rpeValue);
       haptics.success();
       onClose();
     } catch {

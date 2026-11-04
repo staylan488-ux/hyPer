@@ -3,7 +3,7 @@ import { Platform, ScrollView, Settings, View, type ScrollViewProps } from 'reac
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { scrollRoomExtra } from '~/lib/scrollRoom';
-import { useSessionModel } from '~/lib/session';
+import { useHasLiveSession } from '~/lib/session';
 
 import { dismissOpenSwipeRow } from './SwipeRow';
 
@@ -35,7 +35,7 @@ type TabScrollProps = Omit<ScrollViewProps, 'contentContainerStyle'> & {
  * ([scroll room](../lib/scrollRoom.ts)); pages that fit are left alone.
  */
 export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
-  const accessory = useSessionModel() !== null;
+  const accessory = useHasLiveSession();
   const [viewport, setViewport] = useState(0);
   const [content, setContent] = useState(0);
   const extra =

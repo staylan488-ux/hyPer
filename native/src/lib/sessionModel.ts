@@ -89,6 +89,43 @@ export type SessionSources = {
   skips?: Readonly<Record<string, boolean>>;
 };
 
+/** Whether a workout is in progress: exactly when buildSessionModel gives a model. */
+export function isLiveWorkout(workout: Workout | null | undefined): workout is Workout {
+  return Boolean(workout && !workout.completed);
+}
+
+/**
+ * buildSessionModel for the latest inputs, kept until they change. Every
+ * screen showing the live workout (the tab layout, each tab page, the workout
+ * bar, the sheets) reads the same store values, so they share one build and
+ * one model per change instead of each building its own.
+ */
+export function sessionModelCache() {
+  let last: {
+    workout: Workout | null;
+    split: Split | null;
+    plan: WorkoutDayPlan | null | undefined;
+    skips: Readonly<Record<string, boolean>> | undefined;
+    focused: string | null;
+    model: SessionModel | null;
+  } | null = null;
+  return (workout: Workout | null, { split, plan, skips }: SessionSources, focused: string | null): SessionModel | null => {
+    if (
+      last &&
+      last.workout === workout &&
+      last.split === split &&
+      last.plan === plan &&
+      last.skips === skips &&
+      last.focused === focused
+    ) {
+      return last.model;
+    }
+    const model = buildSessionModel(workout, { split, plan, skips }, focused);
+    last = { workout, split, plan, skips, focused, model };
+    return model;
+  };
+}
+
 /**
  * Groups the workout's sets into movements in session order, and picks the set
  * the next log applies to: the first unlogged set of the focused movement, or
@@ -101,7 +138,7 @@ export function buildSessionModel(
   focusedExerciseId: string | null,
   now = Date.now(),
 ): SessionModel | null {
-  if (!workout || workout.completed) return null;
+  if (!isLiveWorkout(workout)) return null;
   const day = split?.days.find((candidate) => candidate.id === workout.split_day_id) ?? null;
   const items = sessionPlanItems(plan, workout.id);
   const flexible = workout.split_day_id === null && items !== undefined;

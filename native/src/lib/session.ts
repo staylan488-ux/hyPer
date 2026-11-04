@@ -1,6 +1,6 @@
 // The live workout as the screens need it, derived from the shared app store.
 // Writes go through the store's own actions (startWorkout, logSet).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { create } from 'zustand';
 
@@ -10,7 +10,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
 import { haptics } from './haptics';
-import { buildSessionModel, type SessionModel } from './sessionModel';
+import { isLiveWorkout, sessionModelCache, type SessionModel } from './sessionModel';
 
 export type { Movement, SessionModel } from './sessionModel';
 
@@ -42,20 +42,31 @@ export const usePendingSkips = create<{ workoutId: string | null; skips: Record<
 
 const NO_SKIPS: Record<string, boolean> = {};
 
+// One build of the model per change, shared by every screen that shows it.
+const sharedSessionModel = sessionModelCache();
+
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
   const plan = useAppStore((state) => state.currentWorkoutDayPlan);
   const focused = useFocusStore((state) => state.exerciseId);
   const skips = usePendingSkips((state) => (workout && state.workoutId === workout.id ? state.skips : NO_SKIPS));
-  return useMemo(() => buildSessionModel(workout, { split, plan, skips }, focused), [workout, split, plan, skips, focused]);
+  return sharedSessionModel(workout, { split, plan, skips }, focused);
+}
+
+/**
+ * Whether a workout is live, for screens that need only that (the space the
+ * workout bar takes): they re-render when it starts or ends, not on every set.
+ */
+export function useHasLiveSession(): boolean {
+  return useAppStore((state) => isLiveWorkout(state.currentWorkout));
 }
 
 /** The same, outside a component. */
 export function liveSessionModel(): SessionModel | null {
   const { currentWorkout, activeSplit, currentWorkoutDayPlan } = useAppStore.getState();
   const pending = usePendingSkips.getState();
-  return buildSessionModel(
+  return sharedSessionModel(
     currentWorkout,
     { split: activeSplit, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
     useFocusStore.getState().exerciseId,
