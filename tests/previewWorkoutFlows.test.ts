@@ -333,6 +333,61 @@ describe('preview uses real program and workout store paths', () => {
     expect(template?.items[0].skipped).toBeUndefined();
   });
 
+  it('takes an unlogged set off a program movement in the store and the sample database', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    expect(workout.split_day_id).toBe('d1');
+    const exerciseId = workout.sets.find((set) => !set.completed)!.exercise_id;
+    const removed = workout.sets
+      .filter((set) => set.exercise_id === exerciseId && !set.completed)
+      .sort((a, b) => b.set_number - a.set_number)[0];
+
+    await useAppStore.getState().removeLastUncompletedSet(exerciseId);
+
+    expect(previewTables.sets.some((set) => set.id === removed.id)).toBe(false);
+    const sets = useAppStore.getState().currentWorkout!.sets;
+    expect(sets.some((set) => set.id === removed.id)).toBe(false);
+    expect(sets).toHaveLength(workout.sets.length - 1);
+  });
+
+  it('drops the sets a lower set count removed from the live workout', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const exerciseId = workout.sets.find((set) => !set.completed)!.exercise_id;
+
+    await useAppStore.getState().updateWorkoutExerciseTargetSets(workout.id, exerciseId, 1);
+
+    const left = (rows: Array<{ workout_id?: unknown; exercise_id?: unknown }>) =>
+      rows.filter((set) => set.workout_id === workout.id && set.exercise_id === exerciseId).length;
+    expect(left(previewTables.sets)).toBe(1);
+    expect(left(useAppStore.getState().currentWorkout!.sets)).toBe(1);
+  });
+
+  it('gives back the WHOOP activity when a workout with its stats is deleted', async () => {
+    const activity = (await client.from('activity_sessions').select('*').eq('id', 'act_intervals').single()).data;
+    const workout = (await useAppStore.getState().fetchWorkoutById('wh1'))!;
+    expect(workout.date).toBe(activity.date);
+    const month = new Date(`${activity.date}T12:00:00`);
+    const listed = async () => (await useAppStore.getState().fetchActivitySessionsByMonth(month)).some((entry) => entry.id === 'act_intervals');
+
+    await useAppStore.getState().attachWhoopToWorkout(workout, activity);
+    expect(await listed()).toBe(false);
+    await useAppStore.getState().deleteWorkout('wh1');
+
+    expect(previewTables.workouts.some((row) => row.id === 'wh1')).toBe(false);
+    expect(await listed()).toBe(true);
+  });
+
+  it('answers a delete with its rows only when asked to return them', async () => {
+    const plain = await client.from('sets').delete().eq('id', 'cs9');
+    expect(plain).toMatchObject({ data: null, error: null, count: 1 });
+    const returned = await client.from('sets').delete().eq('id', 'cs8').select('id');
+    expect(returned.data).toEqual([expect.objectContaining({ id: 'cs8' })]);
+    const one = await client.from('workouts').delete().eq('id', 'wh2').select('id, user_id').single();
+    expect(one.data).toMatchObject({ id: 'wh2', user_id: expect.any(String) });
+    expect((await client.from('sets').delete().eq('id', 'missing').select('id')).data).toEqual([]);
+  });
+
   it('deleting a program cascades its days and preserves workouts with an unlinked day', async () => {
     await useAppStore.getState().deleteSplit('split1');
     expect(useAppStore.getState().splits).toHaveLength(0);
