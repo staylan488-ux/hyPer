@@ -34,6 +34,9 @@ const Empty = () => null;
 const noop = () => {};
 
 const today = dates.format(new Date(), 'yyyy-MM-dd');
+const tomorrow = dates.format(dates.addDays(new Date(), 1), 'yyyy-MM-dd');
+// the clock Fuel reads; a test moves it past midnight
+const clock = { today };
 const oats: Food = {
   id: 'oats', user_id: null, name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 3,
   serving_size: 40, serving_unit: 'g', source: 'usda', fdc_id: '1',
@@ -46,8 +49,9 @@ let root: Root | undefined;
 const rows: Record<string, { menu?: MenuAction[] }> = {};
 const useYouMealsStore = create<{ meals: Food[] | null }>(() => ({ meals: null }));
 
-function renderFuel() {
-  const fuel = { logs: [log] };
+async function renderFuel({ compile = false } = {}) {
+  // the same lists on every render, as the store keeps them while nothing changes
+  const fuel = { logs: [log], groups: [] };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
     'expo-router': { router: { push: noop }, Stack: { Screen: Empty } },
@@ -84,25 +88,29 @@ function renderFuel() {
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': {
       dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'),
-      today: () => today,
-      useTodayKey: () => today,
+      today: () => clock.today,
+      useTodayKey: () => clock.today,
       todayLogsInMatchingMeal: () => null,
-      useFuelDay: () => ({ selected: today, loaded: true, status: 'ready', logs: fuel.logs, groups: [] }),
+      useFuelDay: () => ({ selected: today, loaded: true, status: 'ready', logs: fuel.logs, groups: fuel.groups }),
       useFuelStore: Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel }),
     },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/motion': {},
     '~/lib/you': { useYouMealsStore },
     '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 20 } },
-  }).default;
+  }, { compile }).default;
   root = createRoot(document.createElement('div'));
-  return act(async () => { root!.render(createElement(Fuel)); });
+  const render = () => act(async () => { root!.render(createElement(Fuel)); });
+  await render();
+  return render;
 }
 
 const offersSaveAsMeal = () => rows.Oats.menu!.some((action) => action.title === 'Save as meal');
+const offersCopyToToday = () => rows.Oats.menu!.some((action) => action.title === 'Copy to today');
 
 describe("Fuel's Save as meal offer", () => {
   beforeEach(() => {
+    clock.today = today;
     clearSavedFoodsCache();
     useYouMealsStore.setState({ meals: null });
   });
@@ -125,5 +133,26 @@ describe("Fuel's Save as meal offer", () => {
     expect(offersSaveAsMeal()).toBe(true);
     await act(async () => { useYouMealsStore.setState({ meals: [savedOats] }); });
     expect(offersSaveAsMeal()).toBe(false);
+  });
+});
+
+describe("Fuel's Copy to today, as the app compiles it", () => {
+  beforeEach(() => {
+    clock.today = today;
+    clearSavedFoodsCache();
+    writeSavedFoodsCache('user-a', []);
+  });
+  afterEach(async () => {
+    await act(async () => { root?.unmount(); });
+    root = undefined;
+  });
+
+  it("is offered on the day just gone once midnight passes, though the day's entries did not change", async () => {
+    const render = await renderFuel({ compile: true });
+    expect(offersCopyToToday()).toBe(false);
+    // Fuel left open overnight; the screen renders again with the same entries
+    clock.today = tomorrow;
+    await render();
+    expect(offersCopyToToday()).toBe(true);
   });
 });
