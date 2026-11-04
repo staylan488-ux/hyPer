@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  runOnUI,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
@@ -33,6 +34,8 @@ type Shared = {
   roundTop: boolean;
   roundBottom: boolean;
   order: SharedValue<string[]>;
+  /** An order that came while a dropped row settled; it takes over once the row rests. */
+  pending: SharedValue<string[] | null>;
   heights: SharedValue<Record<string, number>>;
   active: SharedValue<string | null>;
   startTop: SharedValue<number>;
@@ -87,19 +90,28 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
   const keys = items.map((item) => item.key);
   const signature = keys.join('|');
   const order = useSharedValue<string[]>(keys);
+  const pending = useSharedValue<string[] | null>(null);
   const heights = useSharedValue<Record<string, number>>({});
   const active = useSharedValue<string | null>(null);
   const startTop = useSharedValue(0);
   const dragY = useSharedValue(0);
   const lift = useSharedValue(0);
   const shared = useMemo<Shared>(
-    () => ({ roundTop, roundBottom, order, heights, active, startTop, dragY, lift }),
-    [roundTop, roundBottom, order, heights, active, startTop, dragY, lift],
+    () => ({ roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift }),
+    [roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift],
   );
 
-  // Follow the items' own order whenever it changes (not mid-drag).
+  // Follow the items' own order whenever it changes. Not mid-drag; one that
+  // comes while a dropped row settles (a save that failed at once puts the
+  // old order back) waits for the row to rest. Decided on the UI thread, where
+  // the row settles.
   useEffect(() => {
-    if (active.value === null) order.value = signature ? signature.split('|') : [];
+    const next = signature ? signature.split('|') : [];
+    runOnUI(() => {
+      'worklet';
+      if (active.value === null) order.value = next;
+      else pending.value = next;
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, revision]);
 
@@ -141,7 +153,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
   children: ReactNode;
 }) {
   const c = useBlanc();
-  const { order, heights, active, startTop, dragY, lift } = shared;
+  const { order, pending, heights, active, startTop, dragY, lift } = shared;
   // This row's resting place; it glides to a new one as rows move around it.
   const top = useSharedValue<number | null>(null);
   const startIndex = useSharedValue(-1);
@@ -206,6 +218,8 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
       }
     })
     .onEnd((event) => {
+      // An order from before the drop would undo it.
+      pending.value = null;
       const index = order.value.indexOf(id);
       const moved = index !== startIndex.value;
       const held = Math.abs(event.translationY) < HOLD_SLOP && Math.abs(event.translationX) < HOLD_SLOP;
@@ -217,7 +231,12 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
       const final = topOf(id, order.value, heights.value);
       lift.value = withTiming(0, SETTLE);
       dragY.value = withTiming(final - startTop.value, SETTLE, (done) => {
-        if (done && active.value === id) active.value = null;
+        if (!done || active.value !== id) return;
+        active.value = null;
+        if (pending.value) {
+          order.value = pending.value;
+          pending.value = null;
+        }
       });
     });
 
@@ -254,7 +273,12 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         exiting={blockExit}
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
-          if (heights.value[id] !== height) heights.value = { ...heights.value, [id]: height };
+          // Merged on the UI thread: a write from here lands later, so rows laid
+          // out together would each copy the same old heights and drop the others.
+          heights.modify((value) => {
+            'worklet';
+            return value[id] === height ? value : { ...value, [id]: height };
+          }, false);
         }}
         style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.label, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
         <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: 18, backgroundColor: c.hairline }, rule]} />
