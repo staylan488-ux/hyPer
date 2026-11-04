@@ -180,6 +180,17 @@ describe('manual food choice', () => {
     expect(await resolveManualFood({ ...base, originalEntry: { food_id: 'orig', food: values } })).toMatchObject({ foodId: 'orig' });
   });
 
+  it('keeps a stored food on its row when an edit changes only the time', async () => {
+    // foods keeps macros to one decimal (DECIMAL(10,1)), and Manual's fields
+    // show one decimal, so the fields always read back as the stored values
+    const misread = Array.from({ length: 20001 }, (_, tenths) => tenths / 10).filter((stored) => Number(formatMacroInput(stored)) !== stored);
+    expect(misread).toEqual([]);
+    const stored = { name: 'Rice, white, cooked', calories: 130, protein: 2.7, carbs: 28.2, fat: 0.3 };
+    const fields = { ...stored, calories: Number(formatMacroInput(stored.calories)), protein: Number(formatMacroInput(stored.protein)), carbs: Number(formatMacroInput(stored.carbs)), fat: Number(formatMacroInput(stored.fat)) };
+    expect(await resolveManualFood({ ...base, values: fields, originalEntry: { food_id: 'rice', food: stored } })).toMatchObject({ foodId: 'rice' });
+    expect(mocks.insertOneServingFood).not.toHaveBeenCalled();
+  });
+
   it('reuses the one-off row of a failed attempt, else creates one', async () => {
     mocks.insertOneServingFood.mockResolvedValue({ id: 'one-off', error: null });
     const first = await resolveManualFood(base);

@@ -219,6 +219,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     setBusyState('save');
     setError(null);
     setDraft((current) => ({ ...current, saveStarted: true }));
+    const release = logger.beginSave();
     try {
       for (const item of items) {
         const entryId = entryIds.current.get(item.key) ?? crypto.randomUUID();
@@ -251,6 +252,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       setError(`${cause instanceof Error ? cause.message : 'Could not save the meal.'} Saved foods are removed; retry the remaining foods.`);
     } finally {
       setBusyState(null);
+      release();
     }
   };
 

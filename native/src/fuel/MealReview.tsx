@@ -55,13 +55,14 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0;
   const frozen = busy || draft.locked;
   // Saved meals are one per name: a taken name puts this meal in that one's place.
-  const { savedMeals } = useLogger();
+  const { savedMeals, beginSave } = useLogger();
   const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
 
   const save = async () => {
     if (!valid || busy) return;
     setBusy(true);
     setError('');
+    const release = beginSave();
     try {
       // A draft can outlive its meal group, or be restored on another day:
       // check the group still exists before writing.
@@ -92,6 +93,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
       setError(`${failure instanceof Error ? failure.message : 'Could not save the meal.'} Your meal is kept here. Retry to finish saving.`);
     } finally {
       setBusy(false);
+      release();
     }
   };
 

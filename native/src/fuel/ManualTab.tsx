@@ -233,6 +233,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     setSaving(true);
     setError(null);
     setMealMessage(null);
+    const release = logger.beginSave();
     try {
       const userId = await getSessionUserId();
       if (!userId) {
@@ -282,6 +283,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       setError(SAVE_FAILED);
     } finally {
       setSaving(false);
+      release();
     }
   };
 

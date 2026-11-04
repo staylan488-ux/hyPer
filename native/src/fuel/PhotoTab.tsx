@@ -344,6 +344,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
     }
     setSaving(true);
     setError(null);
+    const release = logger.beginSave();
     try {
       await logPhotoItems({
         items,
@@ -371,6 +372,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
       setError(cause instanceof Error ? cause.message : 'Could not save the photo items.');
     } finally {
       setSaving(false);
+      release();
     }
   };
 

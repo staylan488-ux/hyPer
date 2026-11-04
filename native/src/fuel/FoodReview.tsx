@@ -78,6 +78,7 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
     }
     setSaving(true);
     setError(null);
+    const release = logger.beginSave();
     try {
       const foodId = await ensureFoodRow(food);
       if (!foodId) throw new Error(SAVE_FAILED);
@@ -97,6 +98,7 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
       setError(SAVE_FAILED);
     } finally {
       setSaving(false);
+      release();
     }
   };
 

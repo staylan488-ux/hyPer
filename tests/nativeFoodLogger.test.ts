@@ -6,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as barcodes from '@/lib/barcodes';
 import * as decimalText from '@/lib/decimalText';
+import * as foodTrial from '@/lib/foodTrial';
+import * as foodTrialReview from '@/lib/foodTrialReview';
+import * as foodUnits from '@/lib/foodUnits';
 import * as composition from '@/lib/mealComposition';
 import * as pendingEntry from '@/lib/pendingEntryId';
+import { usualAmountInput } from '@/lib/recentFoods';
 import * as photoReview from '@/lib/photoReview';
 import * as requestGate from '@/lib/requestGate';
 import { assertComposedMealOptions } from '@/lib/saveMealComposition';
@@ -48,7 +52,7 @@ function deferred<T>() {
 type Button = { title: string; disabled?: boolean; onPress: () => void };
 type Field = { label: string; onChangeText: (text: string) => void };
 type Input = { accessibilityLabel?: string; onChangeText?: (text: string) => void; onFocus?: () => void };
-type Context = { beginBusy: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null };
+type Context = { beginBusy: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null };
 type ReviewProps = {
   draft: composition.MealDraft;
   savedTarget?: Food;
@@ -59,6 +63,8 @@ type ManualDraft = { fields: Record<'name' | 'calories' | 'protein' | 'carbs' | 
 type ManualProps = { draft: ManualDraft; setDraft: (update: (draft: ManualDraft) => ManualDraft) => void; onGeminiHandoff?: (description: string) => void };
 type PhotoDraft = { photos: Record<string, unknown>; items: photoReview.PhotoReviewItem[]; summary: string };
 type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void };
+type AiDraft = { hint: string; result: foodTrial.FoodTrialResult | null; items: Array<foodTrial.TrialFoodItem & { key: string }> };
+type AiProps = { draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
 type NativeModule = Record<string, unknown>;
 
 const active: Array<() => Promise<void>> = [];
@@ -76,7 +82,7 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false } = {}) {
+function loggerHarness({ editing = false, worker = false, savedMeal = false, realReview = false, realAi = false } = {}) {
   const captured: {
     buttons: Record<string, Button>;
     fields: Record<string, Field>;
@@ -87,9 +93,10 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     foodReview?: { food: Food };
     manual?: ManualProps;
     photo?: PhotoProps;
+    ai?: AiProps;
     context?: Context;
     scanCurrent?: () => boolean;
-    guard?: { on: boolean; message: { title: string } };
+    guard?: { on: boolean; message: { title: string }; busy?: boolean };
     focus?: () => void;
   } = { buttons: {}, fields: {}, inputs: {} };
   const ContextProvider = createContext<Context | null>(null);
@@ -109,6 +116,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
   const error = vi.fn();
   const saveMeal = vi.fn(async () => {});
   const saveFood = vi.fn(async () => {});
+  const ensureFood = vi.fn(async () => 'food-row');
   const resolveFood = vi.fn(async () => ({ foodId: savedMilk.id }));
   let savedFoods = [recipe, savedMilk];
   const mealsState: { meals: Food[] | null } = { meals: [recipe] };
@@ -160,7 +168,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
     '@/stores/authStore': { useAuthStore: Object.assign((select: (state: { user: { id: string } }) => unknown) => select({ user: { id: 'user-a' } }), { getState: () => ({ user: { id: 'user-a' } }) }) },
     '@/lib/foodDescription': {},
-    '@/lib/foodPersistence': {},
+    '@/lib/foodPersistence': { ensureFoodRow: ensureFood },
     '@/lib/manualFood': { resolveManualFood: resolveFood },
     '@/lib/savedBarcodeFoods': {},
     '@/lib/foodUnits': { formatMacroInput: String },
@@ -176,18 +184,18 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     '../../modules/hyper-barcode': { HyperBarcode: { getAvailability: async () => ({ available: false }) } },
     '~/components/BlancText': { BlancText: Wrap },
     '~/components/Capsule': { Capsule: (props: Button) => { captured.buttons[props.title] = props; return null; } },
-    '~/components/GlassButton': { GlassButton: Empty },
+    '~/components/GlassButton': { GlassButton: (props: Button & { accessibilityLabel: string }) => { captured.buttons[props.accessibilityLabel] = props; return null; } },
     '~/components/Label': { Label: Wrap },
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true },
-    '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
+    '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: Wrap },
     '~/lib/format': { formatWhole: String },
-    '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood },
+    '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
-    '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }) => { captured.guard = { on, message }; } },
+    '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }, options: { busy?: boolean } = {}) => { captured.guard = { on, message, busy: options.busy }; } },
     '~/lib/you': { loadYouMeals: loadYou, useYouMealsStore },
     '~/lib/motion': {},
     '~/platform/previewFlag': { isPreviewActive: () => true },
@@ -218,16 +226,45 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     return createElement(photoModule.PhotoTab as ComponentType<PhotoProps>, props);
   } };
   imports['~/fuel/ScanTab'] = loadNativeModule('fuel/ScanTab.tsx', imports);
+  if (realReview) {
+    const foodReview = loadNativeModule<NativeModule>('fuel/FoodReview.tsx', {
+      ...imports,
+      '@/lib/foodUnits': foodUnits,
+      '@/lib/recentFoods': { usualAmountInput },
+      '@/lib/saveNutritionEntry': { chosenFoodLogSource: () => 'search' },
+      '@/lib/barcodeLookup': { barcodeProviderLabel: String },
+      './ServingHelper': { ServingHelper: Empty },
+    });
+    imports['~/fuel/FoodReview'] = { FoodReview: (props: { food: Food }) => {
+      captured.foodReview = props;
+      return createElement(foodReview.FoodReview as ComponentType<{ food: Food }>, props);
+    } };
+  }
+  if (realAi) {
+    const aiModule = loadNativeModule<NativeModule>('fuel/AiTab.tsx', {
+      ...imports,
+      '@/lib/foodTrial': { ...foodTrial, getFoodAnalysisMode: () => 'gemini' },
+      '@/lib/foodTrialReview': foodTrialReview,
+      './PhotoTab': photoModule,
+    });
+    imports['~/fuel/AiTab'] = { ...aiModule, AiTab: (props: AiProps) => {
+      captured.ai = props;
+      return createElement(aiModule.AiTab as ComponentType<AiProps>, props);
+    } };
+  }
   const Sheet = loadNativeModule<{ default: ComponentType }>('app/log-food.tsx', imports).default;
   let root: Root | undefined;
+  let container: HTMLElement | undefined;
   const close = async () => { await act(async () => { root?.unmount(); root = undefined; }); };
   active.push(close);
   const render = async () => {
     captured.review = undefined;
     captured.manual = undefined;
-    root = createRoot(document.createElement('div'));
+    container = document.createElement('div');
+    root = createRoot(container);
     await act(async () => { root!.render(createElement(Sheet)); });
   };
+  const text = () => container?.textContent ?? '';
   const tab = async (name: string) => { await act(async () => { captured.picker!.onSelectionChange(name); }); };
   const click = async (name: string) => {
     expect(captured.buttons[name].disabled).not.toBe(true);
@@ -249,7 +286,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     active.push(closeEditor);
     await act(async () => { editorRoot.render(createElement(Editor)); });
   };
-  return { captured, render, close, tab, click, startPhoto, openSavedEditor, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, saveFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
+  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
 }
 
 describe('native food logger transitions', () => {
@@ -514,5 +551,117 @@ describe('native food logger amounts and replacements', () => {
     expect(h.captured.buttons['Update saved meal']).toBeUndefined();
     await pick(savedMilk);
     expect(h.captured.buttons['Update saved meal']).toBeDefined();
+  });
+});
+
+describe('native food logger holds the sheet while a save runs', () => {
+  const oats: foodTrial.TrialFoodItem & { key: string } = {
+    key: 'oats', name: 'Oats', quantity: 1, unit: 'cup', basisQuantity: 1, calories: 300, protein: 10, carbs: 50, fat: 5,
+    evidence: 'estimate', notes: '', sourceIndexes: [], amountConfirmed: true,
+  };
+  const oatsResult = {
+    provider: 'gemini', model: 'test', modelVersion: null, responseId: null, summary: 'Oats',
+    clarification: null, items: [oats], sources: [], searchSuggestionsHtml: null, originalText: '',
+  } as unknown as foodTrial.FoodTrialResult;
+
+  it('ignores a close while a new Manual entry saves, then closes once it is logged', async () => {
+    const h = loggerHarness();
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await h.tab('manual');
+    await act(async () => { h.captured.fields.Name.onChangeText('Oats'); });
+    await h.click('Log entry');
+    // Asking "Discard this entry?" here would close the sheet while the entry still lands.
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.resolve(); });
+    expect(h.back).toHaveBeenCalledOnce();
+    expect(h.captured.guard!.on).toBe(false);
+  });
+
+  it('keeps a failed entry edit on screen with its error, and asks again only once the save is over', async () => {
+    const h = loggerHarness({ editing: true });
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await act(async () => { h.captured.fields.Calories.onChangeText('140'); });
+    await h.click('Save changes');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.reject(new Error('offline')); });
+    expect(h.back).not.toHaveBeenCalled();
+    expect(h.text()).toContain('Not logged. Try again.');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: false, message: { title: 'Discard your changes?' } });
+  });
+
+  it('holds a reviewed food while it logs, with Back off, and shows a failure instead of closing', async () => {
+    const h = loggerHarness({ realReview: true });
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    expect(h.captured.guard!.on).toBe(false);
+    await act(async () => { h.captured.context!.chooseFood(milk); });
+    await h.click('Log entry');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    expect(h.captured.buttons.Back.disabled).toBe(true);
+    await act(async () => { write.reject(new Error('offline')); });
+    expect(h.back).not.toHaveBeenCalled();
+    expect(h.text()).toContain('Not logged. Try again.');
+    expect(h.captured.foodReview!.food).toEqual(milk);
+    // Nothing is left unsaved, so the sheet closes freely again.
+    expect(h.captured.guard!.on).toBe(false);
+    expect(h.captured.buttons.Back.disabled).toBe(false);
+  });
+
+  it('holds the sheet while an AI estimate logs', async () => {
+    const h = loggerHarness({ realAi: true });
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'a cup of oats', result: oatsResult, items: [oats] })); });
+    await h.click('Log meal');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.resolve(); });
+    expect(h.back).toHaveBeenCalledOnce();
+    expect(h.captured.guard!.on).toBe(false);
+  });
+
+  it('holds the sheet while a photo plate logs', async () => {
+    const h = loggerHarness({ worker: true });
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await h.tab('photo');
+    await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: [photoItem] })); });
+    await h.click('Log 1 item');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.resolve(); });
+    expect(h.back).toHaveBeenCalledOnce();
+  });
+
+  it('holds the sheet while a built meal saves', async () => {
+    const h = loggerHarness({ savedMeal: true });
+    const write = deferred<void>();
+    h.saveMeal.mockReturnValueOnce(write.promise);
+    await h.render();
+    await h.click('Save changes');
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.resolve(); });
+    expect(h.back).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a save holding the sheet when a lookup ends meanwhile', async () => {
+    const h = loggerHarness();
+    const write = deferred<void>();
+    h.saveFood.mockReturnValueOnce(write.promise);
+    await h.render();
+    await h.tab('manual');
+    let lookup!: () => void;
+    await act(async () => { lookup = h.captured.context!.beginBusy(); });
+    await act(async () => { h.captured.fields.Name.onChangeText('Oats'); });
+    await h.click('Log entry');
+    await act(async () => { lookup(); });
+    expect(h.captured.guard).toMatchObject({ on: true, busy: true });
+    await act(async () => { write.resolve(); });
+    expect(h.captured.guard!.on).toBe(false);
   });
 });

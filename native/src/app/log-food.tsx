@@ -3,7 +3,7 @@ import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -94,6 +94,17 @@ export default function LogFoodSheet() {
   );
 }
 
+/** Counts one claim on the sheet; the returned cleanup lets go of only that claim, once. */
+function claim(setCount: Dispatch<SetStateAction<number>>) {
+  setCount((count) => count + 1);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    setCount((count) => count - 1);
+  };
+}
+
 function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam }: {
   userId: string;
   editing: FoodLog | null;
@@ -164,15 +175,13 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // finishing never clears another tab's lookup.
   const [busyClaims, setBusyClaims] = useState(0);
   const busy = busyClaims > 0;
-  const beginBusy = useCallback(() => {
-    setBusyClaims((count) => count + 1);
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      setBusyClaims((count) => count - 1);
-    };
-  }, []);
+  const beginBusy = useCallback(() => claim(setBusyClaims), []);
+  // A food save running holds the sheet until it lands or fails: a close then
+  // could not stop the entry, and a failure would show nowhere. Saves claim
+  // apart from lookups, so a lookup ending never lets go of a save.
+  const [saveClaims, setSaveClaims] = useState(0);
+  const saving = saveClaims > 0;
+  const beginSave = useCallback(() => claim(setSaveClaims), []);
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
@@ -338,14 +347,15 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       composeMeal: (food, editSaved) => startMeal(food, editSaved),
       complete,
       beginBusy,
+      beginSave,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginSave],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
   // analysis running, an estimate, typed or changed Manual fields, a meal
   // this device could not keep, or a changed Save as meal. A built meal is
-  // kept for next time anyway.
+  // kept for next time anyway. While a save runs, a close does nothing.
   const estimate = ai.items.length > 0 || photo.items.length > 0;
   const start = savingFrom.current;
   const savingChanged =
@@ -358,7 +368,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     manualHasChanges(manual, manualBase, savedMeals) ||
     (Boolean(meal) && storageFailed);
   useLeaveGuard(
-    unsaved && !closing,
+    (unsaved || saving) && !closing,
     busy
       ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
       : estimate
@@ -368,6 +378,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           : editing
             ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
             : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
+    { busy: saving },
   );
   // Closes once the guard has seen `closing`, as the other sheets do.
   useEffect(() => {
@@ -432,7 +443,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         <View style={{ backgroundColor: c.ground, paddingBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16 }}>
             {chosen ? (
-              <GlassButton symbol="chevron.left" accessibilityLabel="Back" onPress={() => setChosen(null)} />
+              <GlassButton symbol="chevron.left" accessibilityLabel="Back" disabled={saving} onPress={() => setChosen(null)} />
             ) : (
               <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
             )}
