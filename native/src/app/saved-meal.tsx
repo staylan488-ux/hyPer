@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, View } from 'react-native';
 
 import { parseDecimal } from '@/lib/decimalText';
-import { replaceSavedMeal, type SavedMealBarcode } from '@/lib/savedMeals';
+import { replaceSavedMeal } from '@/lib/savedMeals';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -47,8 +47,6 @@ export default function SavedMealSheet() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  // A barcode a failed save let go of and could not give back; the next try keeps it.
-  const heldBarcode = useRef<SavedMealBarcode | null>(null);
   // Next on the keyboard walks Name, then each number, in order.
   const fields = useRef<(TextField | null)[]>([]);
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
@@ -75,14 +73,13 @@ export default function SavedMealSheet() {
     Keyboard.dismiss();
     setSaving(true);
     setError(null);
-    const { id: replacement, retireFailed, barcode } = await replaceSavedMeal(userId, meal.id, {
+    const { id: replacement, retireFailed } = await replaceSavedMeal(userId, meal.id, {
       name,
       calories: parseDecimal(draft.calories) || 0,
       protein: parseDecimal(draft.protein) || 0,
       carbs: parseDecimal(draft.carbs) || 0,
       fat: parseDecimal(draft.fat) || 0,
-    }, { barcode: heldBarcode.current });
-    heldBarcode.current = barcode ?? null;
+    });
     if (!replacement) {
       haptics.error();
       setError('Could not save meal changes. Your edits are kept; try again.');

@@ -76,7 +76,6 @@ type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) =>
 type AiDraft = { hint: string; result: foodTrial.FoodTrialResult | null; items: Array<foodTrial.TrialFoodItem & { key: string }> };
 type AiProps = { draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
 type NativeModule = Record<string, unknown>;
-type HeldBarcode = { external_source: string; external_id: string };
 
 const active: Array<() => Promise<void>> = [];
 beforeEach(() => {
@@ -140,7 +139,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
   };
   const loadSaved = vi.fn(async () => ({ meals: savedFoods }));
   const loadYou = vi.fn(async () => { mealsState.meals = savedFoods; });
-  type Replaced = { id: string | null; retireFailed: boolean; barcode?: HeldBarcode };
+  type Replaced = { id: string | null; retireFailed: boolean };
   const replaceSimple = vi.fn(async (_userId: string, id: string, values: Pick<Food, 'name' | 'calories' | 'protein' | 'carbs' | 'fat'>): Promise<Replaced> => {
     const replacement = { ...savedMilk, ...values, id: `replacement-${id}` };
     savedFoods = [...savedFoods.filter((food) => food.id !== id), replacement];
@@ -371,7 +370,7 @@ describe('native food logger transitions', () => {
     await h.openSavedEditor();
     await act(async () => { h.captured.fields.Name.onChangeText('Saved milk corrected'); });
     await h.click('Save');
-    expect(h.replaceSimple).toHaveBeenCalledWith('user-a', savedMilk.id, expect.objectContaining({ name: 'Saved milk corrected' }), { barcode: null });
+    expect(h.replaceSimple).toHaveBeenCalledWith('user-a', savedMilk.id, expect.objectContaining({ name: 'Saved milk corrected' }));
     expect(h.saveFood).not.toHaveBeenCalled();
     expect(h.saveMeal).not.toHaveBeenCalled();
     expect(h.back).toHaveBeenCalledOnce();
@@ -547,47 +546,45 @@ describe('native food logger amounts and replacements', () => {
     await h.openSavedEditor();
     await act(async () => { h.captured.fields.Calories.onChangeText('130,5'); });
     await h.click('Save');
-    expect(h.replaceSimple).toHaveBeenCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130.5 }), { barcode: null });
+    expect(h.replaceSimple).toHaveBeenCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130.5 }));
   });
 
-  it('passes back a barcode a failed saved meal edit could not give back, on the retry', async () => {
-    const barcode = { external_source: 'barcode', external_id: '0123456789012' };
+  // A barcode a failed edit could not give back is kept by replaceSavedMeal for that meal, so a retry only has to name the same meal.
+  it('retries a failed saved meal edit on the same meal', async () => {
     const h = loggerHarness();
     await h.render();
     await h.tab('saved');
     await act(async () => { h.captured.saved!.onEditSavedMeal(savedMilk); });
     await h.openSavedEditor();
     await act(async () => { h.captured.fields.Calories.onChangeText('130'); });
-    h.replaceSimple.mockResolvedValueOnce({ id: null, retireFailed: false, barcode });
+    h.replaceSimple.mockResolvedValueOnce({ id: null, retireFailed: false });
     await h.click('Save');
     expect(h.back).not.toHaveBeenCalled();
 
     await h.click('Save');
-    expect(h.replaceSimple).toHaveBeenLastCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130 }), { barcode });
+    expect(h.replaceSimple).toHaveBeenLastCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130 }));
     expect(h.back).toHaveBeenCalledOnce();
   });
 
-  it('passes back a barcode a failed Update saved meal could not give back, on the retry', async () => {
-    const barcode = { external_source: 'barcode', external_id: '0123456789012' };
+  it('retries a failed Update saved meal on the same meal, after a tab switch too', async () => {
     const h = loggerHarness();
     await h.render();
     await h.tab('manual');
-    const pick = async (meal: Food) => {
-      await act(async () => {
-        h.captured.manual!.setDraft((draft) => ({
-          ...draft,
-          fields: { name: meal.name, calories: '130', protein: '8', carbs: '12', fat: '5' },
-          selectedSavedMealId: meal.id,
-        }));
-      });
-    };
-    await pick(savedMilk);
-    h.replaceSimple.mockResolvedValueOnce({ id: null, retireFailed: false, barcode });
+    await act(async () => {
+      h.captured.manual!.setDraft((draft) => ({
+        ...draft,
+        fields: { name: savedMilk.name, calories: '130', protein: '8', carbs: '12', fat: '5' },
+        selectedSavedMealId: savedMilk.id,
+      }));
+    });
+    h.replaceSimple.mockResolvedValueOnce({ id: null, retireFailed: false });
     await h.click('Update saved meal');
     expect(h.captured.manual!.draft.selectedSavedMealId).toBe(savedMilk.id);
 
+    await h.tab('recent');
+    await h.tab('manual');
     await h.click('Update saved meal');
-    expect(h.replaceSimple).toHaveBeenLastCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130 }), { barcode });
+    expect(h.replaceSimple).toHaveBeenLastCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130 }));
     expect(h.captured.manual!.draft.selectedSavedMealId).toBe(`replacement-${savedMilk.id}`);
   });
 

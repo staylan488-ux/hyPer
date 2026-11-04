@@ -13,7 +13,7 @@ import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { providerFallbackNote } from '@/lib/photoReview';
 import { createRequestGate } from '@/lib/requestGate';
 import { bindFoodToBarcode } from '@/lib/savedBarcodeFoods';
-import { foodValuesMatch, replaceSavedMeal, savedMealSuggestions, type SavedMealBarcode } from '@/lib/savedMeals';
+import { foodValuesMatch, replaceSavedMeal, savedMealSuggestions } from '@/lib/savedMeals';
 import { getSessionUserId } from '@/lib/sessionUser';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -94,8 +94,6 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   const [error, setError] = useState<string | null>(null);
   const [mealMessage, setMealMessage] = useState<{ text: string; alert?: boolean } | null>(null);
   const [updatingMeal, setUpdatingMeal] = useState(false);
-  // A barcode a failed update let go of and could not give back; the next try of that meal keeps it.
-  const heldBarcode = useRef<{ mealId: string; barcode: SavedMealBarcode } | null>(null);
   const pending = useRef(createPendingEntryId()).current;
   const oneOff = useRef<OneOffFood | null>(null);
 
@@ -193,11 +191,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
         setMealMessage({ text: 'Please sign in again to update saved meals.', alert: true });
         return;
       }
-      const mealId = draft.selectedSavedMealId;
-      const held = heldBarcode.current?.mealId === mealId ? heldBarcode.current.barcode : null;
-      const { id, retireFailed, barcode } = await replaceSavedMeal(userId, mealId, values, { barcode: held });
-      if (barcode) heldBarcode.current = { mealId, barcode };
-      else if (held) heldBarcode.current = null;
+      const { id, retireFailed } = await replaceSavedMeal(userId, draft.selectedSavedMealId, values);
       if (!id) {
         haptics.error();
         setMealMessage({ text: 'Could not update saved meal. Please try again.', alert: true });
