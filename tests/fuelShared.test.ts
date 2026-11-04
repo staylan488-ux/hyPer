@@ -357,6 +357,16 @@ describe('day ledger and calendar', () => {
     expect(servingLabel({ servings: 0.37, food: { serving_size: 28, serving_unit: 'g' } })).toBe('10.4 g');
     expect(servingLabel({ servings: 0.33, food: { serving_size: 6, serving_unit: 'piece' } })).toBe('2 piece');
     expect(servingLabel({ servings: 0.33, food: { serving_size: 1, serving_unit: 'cup' } })).toBe('0.33 cup');
+    // 45 g of a 40 g serving is 1.125 servings, saved as 1.13
+    expect(servingLabel({ servings: 1.13, food: { serving_size: 40, serving_unit: 'g' } })).toBe('45 g');
+  });
+
+  it('never shows an amount that would save as other servings', () => {
+    // 41 g of a 40 g serving is 1.025 servings, which saves as 1.03, not 1.02
+    expect(servingLabel({ servings: 1.02, food: { serving_size: 40, serving_unit: 'g' } })).toBe('40.8 g');
+    expect(servingLabel({ servings: 0.07, food: { serving_size: 40, serving_unit: 'g' } })).toBe('2.8 g');
+    expect(servingLabel({ servings: 1.03, food: { serving_size: 40, serving_unit: 'g' } })).toBe('41 g');
+    expect(servingLabel({ servings: 0.07, food: { serving_size: 80, serving_unit: 'g' } })).toBe('5.6 g');
   });
 
   it('orders a group by sort order, then time', () => {

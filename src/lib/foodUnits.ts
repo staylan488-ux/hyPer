@@ -25,15 +25,25 @@ export function formatMeasurementAmount(value: number): string {
 }
 
 /**
+ * Servings in hundredths as numeric(10,2) saves them: half away from zero, so
+ * 1.025 saves as 1.03. The nudge keeps a half-way value that floating point
+ * holds as 1.02499… from rounding down.
+ */
+function savedHundredths(servings: number): number {
+  return Math.round(servings * 100 + 1e-7);
+}
+
+/**
  * A logged amount for display: the roundest of whole, one decimal or two that
- * comes back to the same servings. Servings are saved with two decimals, so
- * 150 g of a 28 g serving is kept as 5.36 servings (150.08 g) and shows as 150 g.
+ * saves as the same servings. Servings are saved with two decimals, so 150 g
+ * of a 28 g serving is kept as 5.36 servings (150.08 g) and shows as 150 g.
  */
 export function roundestAmount(amount: number, servings: number, servingsFor: (amount: number) => number | null): number {
+  const saved = savedHundredths(servings);
   for (const scale of [1, 10]) {
     const candidate = Math.round(amount * scale) / scale;
     const back = candidate > 0 ? servingsFor(candidate) : null;
-    if (back !== null && Math.abs(back - servings) < 0.005) return candidate;
+    if (back !== null && savedHundredths(back) === saved) return candidate;
   }
   return Math.round(amount * 100) / 100;
 }

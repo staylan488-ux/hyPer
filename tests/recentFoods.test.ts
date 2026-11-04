@@ -163,6 +163,8 @@ describe('usual amount in the food review', () => {
     // 150 g of a 28 g serving is saved as 5.36 servings, which is 150.08 g
     expect(usualAmountInput({ serving_size: 28, serving_unit: 'g' }, 5.36)).toEqual({ amount: '150', unit: 'g' });
     expect(usualAmountInput({ serving_size: 28, serving_unit: 'g' }, 0.37)).toEqual({ amount: '10.4', unit: 'g' });
+    // 41 g would save as 1.03 servings (1.025 rounded half away from zero)
+    expect(usualAmountInput({ serving_size: 40, serving_unit: 'g' }, 1.02)).toEqual({ amount: '40.8', unit: 'g' });
   });
 
   it('keeps servings for a food counted in servings', () => {
