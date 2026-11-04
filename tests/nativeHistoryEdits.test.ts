@@ -6,10 +6,33 @@ import { captureAccountScope, invalidateAccountScope } from '@/lib/accountScope'
 import { runWorkoutEdit } from '@/lib/workoutEdit';
 import * as workoutNotes from '@/lib/workoutNotes';
 import { moveHistoryMovement, orderHistoryMovements, type HistoryWorkout } from '@/lib/historyMonth';
-import type { WorkoutDayPlan, WorkoutSet } from '@/types';
+import type { StoreApi, UseBoundStore } from 'zustand';
+import type { ActivitySession, WorkoutDayPlan, WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
-type History = typeof import('../native/src/lib/history');
+// native/src/lib/history.ts as this test uses it. Written out here: importing
+// its types would bring React Native's global types (its own fetch) into the
+// test build and break other tests' fetch mocks.
+type History = {
+  useHistoryStore: UseBoundStore<StoreApi<{
+    month: Date;
+    day: string;
+    workouts: HistoryWorkout[];
+    activities: ActivitySession[];
+    plans: Record<string, WorkoutDayPlan | null>;
+    loading: boolean;
+    failed: boolean;
+  }>>;
+  resetHistory: () => void;
+  loadHistoryMonth: (month?: Date) => Promise<void>;
+  selectHistoryDay: (date: Date) => void;
+  followToday: (now?: Date) => boolean;
+  loadPlan: (workoutId: string) => Promise<void>;
+  editPastWorkout: (workoutId: string, mutate: () => Promise<void>) => Promise<boolean>;
+  savePastNote: (workoutId: string, exerciseId: string, text: string) => Promise<boolean>;
+  movePastMovement: (workoutId: string, exerciseId: string, direction: -1 | 1) => Promise<void>;
+  deletePastWorkout: (workoutId: string) => Promise<boolean>;
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

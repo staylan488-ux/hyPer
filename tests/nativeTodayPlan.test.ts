@@ -42,7 +42,10 @@ async function render() {
     '@/lib/todayDay': { readTodayDone: async () => ({ title: 'Lower A' }) },
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: zustand.create(() => ({ user: { id: 'user-1' } })) },
-    './accountData': { useAccountDay: () => ({ dayKey: '2026-11-04', refreshedAt: Date.parse('2026-11-04T18:00:00Z'), loading: false }) },
+    './accountData': {
+      useAccountDay: () => ({ dayKey: '2026-11-04', refreshedAt: Date.parse('2026-11-04T18:00:00Z'), loading: false }),
+      useWorkoutsRevision: zustand.create(() => ({ revision: 0 })),
+    },
   });
   const Probe = () => {
     const current = useTodayPlan();

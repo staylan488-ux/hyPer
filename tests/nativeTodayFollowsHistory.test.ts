@@ -19,7 +19,9 @@ import * as todayModel from '@/lib/todayModel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-type TodayPlan = ReturnType<typeof import('../native/src/lib/today').useTodayPlan>;
+// The part of useTodayPlan (native/src/lib/today.ts) read here. Written out:
+// importing its types would bring React Native's global types into the test build.
+type TodayPlan = { hero: todayModel.HeroState };
 
 const split = {
   id: 'split-1', name: 'Upper lower', days_per_week: 2,
