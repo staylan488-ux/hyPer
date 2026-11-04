@@ -20,7 +20,7 @@ import { Track } from '~/components/Track';
 import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatSet, formatWhole } from '~/lib/format';
+import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
@@ -139,7 +139,7 @@ export default function TodayScreen() {
                   <Hairline />
                   <Row
                     title={`${week.inRange} of ${week.trained} muscles in range`}
-                    detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                    detail={insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over)}
                     chevron
                     onPress={() => router.push('/today/progress')}
                   />
@@ -167,19 +167,22 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       // VoiceOver reads the card's parts and reaches its button on its own.
       accessible={false}
       accessibilityRole="button"
-      accessibilityLabel={`${session.dayName}, in progress, ${minutes} min, ${session.doneCount} of ${session.sets.length} sets done`}
+      accessibilityLabel={`${session.dayName}, in progress, ${formatMinutes(minutes)}, ${session.doneCount} of ${session.sets.length} sets done`}
       accessibilityHint="Opens the workout"
       onPress={() => {
         haptics.tap();
         openWorkout();
       }}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <BlancText variant="headline">{session.dayName}</BlancText>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {/* A long day name gives way; the live state always shows. */}
+        <BlancText variant="headline" numberOfLines={1} style={{ flex: 1, minWidth: 0 }}>
+          {session.dayName}
+        </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
           <BlancText variant="footnote" tone="graphite">
-            In progress · {minutes} min
+            In progress · {formatMinutes(minutes)}
           </BlancText>
         </View>
       </View>
@@ -197,7 +200,7 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
-            {current ? current.movement.name : 'All sets done'}
+            {current ? current.movement.name : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}
           </BlancText>
           <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
             {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}

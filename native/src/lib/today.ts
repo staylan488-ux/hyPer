@@ -1,16 +1,20 @@
+import { format } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
+import { historyDayKey, historyWorkoutTitle, orderHistoryMovements } from '@/lib/historyMonth';
 import { nextPlannedSession, todayHero, weekSessionTarget } from '@/lib/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
 import { useWeekSessions } from '@/hooks/useWeekSessions';
 import { readTodayDone } from '@/lib/todayDay';
+import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
 import { useAccountDay } from './accountData';
+import { loadHistoryMonth, useHistoryStore } from './history';
 
 /** Bumped after the schedule is saved on this device, so screens re-read it. */
 export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
@@ -122,4 +126,71 @@ function useTodayDone(userId: string | undefined, dayKey: string, refreshKey: st
     };
   }, [userId, dayKey, refreshKey]);
   return result?.key === key ? result.done : undefined;
+}
+
+/** Today's finished workout as Today and Train show it once the day is done. */
+export type FinishedToday = {
+  id: string;
+  title: string;
+  /** Logged or not, per set in the workout's order: its tally. */
+  marks: boolean[];
+  /** Logged sets. */
+  sets: number;
+  minutes: number | null;
+};
+
+// One History read per account, day and refresh, however many cards ask.
+let finishedRead: { key: string; settled: Promise<void> } | null = null;
+
+/**
+ * The workout finished today, from History's month (where the past workout
+ * screen opens it), read again on each refresh while today is done. Undefined
+ * while that read runs with nothing to show yet; null when there is none, or
+ * History is on another month.
+ */
+export function useFinishedToday(done: boolean): FinishedToday | null | undefined {
+  const userId = useAuthStore((state) => state.user?.id);
+  const dayKey = useAccountDay((state) => state.dayKey);
+  const refreshedAt = useAccountDay((state) => state.refreshedAt);
+  const currentWorkout = useAppStore((state) => state.currentWorkout);
+  const month = useHistoryStore((state) => state.month);
+  const workouts = useHistoryStore((state) => state.workouts);
+  const plans = useHistoryStore((state) => state.plans);
+  // Only this month's History holds today; never move History off the month it shows.
+  const thisMonth = format(month, 'yyyy-MM') === dayKey.slice(0, 7);
+  // As useTodayPlan: a refresh, or starting or finishing a session, reads again.
+  const key = `${userId}:${dayKey}:${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
+  const [settled, setSettled] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!done || !userId || !thisMonth) return;
+    if (finishedRead?.key !== key) finishedRead = { key, settled: loadHistoryMonth() };
+    let cancelled = false;
+    void finishedRead.settled.then(() => {
+      if (!cancelled) setSettled(key);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [done, userId, thisMonth, key]);
+
+  // The latest one: History lists a day's workouts newest first.
+  const workout = done && thisMonth ? workouts.find((entry) => entry.completed && historyDayKey(entry) === dayKey) ?? null : null;
+  const plan = workout ? plans[workout.id] : undefined;
+  const finished = useMemo((): FinishedToday | null => {
+    if (!workout) return null;
+    const sets = orderHistoryMovements(workout.sets, plan ?? null).flatMap((movement) => movement.sets);
+    const duration = getWorkoutDurationMs(workout);
+    return {
+      id: workout.id,
+      title: historyWorkoutTitle(workout, plan),
+      marks: sets.map((set) => set.completed),
+      sets: sets.filter((set) => set.completed).length,
+      minutes: duration ? Math.max(1, Math.round(duration / 60_000)) : null,
+    };
+  }, [workout, plan]);
+
+  if (!done) return null;
+  if (finished) return finished;
+  return thisMonth && userId && settled !== key ? undefined : null;
 }
