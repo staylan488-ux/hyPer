@@ -166,6 +166,30 @@ function writeWorkoutModeFallback(mode: WorkoutMode): void {
   }
 }
 
+// An account's mode switch whose cloud save has not landed yet. It wins over
+// what the cloud reads back, and the next read sends it again.
+function pendingWorkoutModeKey(userId: string): string {
+  return `${WORKOUT_MODE_STORAGE_KEY}:pending:${userId}`;
+}
+
+function readPendingWorkoutMode(userId: string): WorkoutMode | null {
+  try {
+    const stored = globalThis.localStorage?.getItem(pendingWorkoutModeKey(userId));
+    return stored === 'flexible' || stored === 'split' ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingWorkoutMode(userId: string, mode: WorkoutMode | null): void {
+  try {
+    if (mode) globalThis.localStorage?.setItem(pendingWorkoutModeKey(userId), mode);
+    else globalThis.localStorage?.removeItem(pendingWorkoutModeKey(userId));
+  } catch {
+    // no-op
+  }
+}
+
 function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
   if (!Array.isArray(raw)) return [];
 
@@ -500,6 +524,10 @@ let workoutMutationSeq = 0;
 // before it.
 const splitsFlight = createReadFlight();
 const workoutModeFlight = createReadFlight();
+// Mode saves run one at a time, so an older one never lands after a newer one.
+let workoutModeSave: Promise<void> = Promise.resolve();
+// Moves with every mode switch; a save queued before the latest switch is dropped.
+let workoutModeSwitches = 0;
 const flexTemplatesFlight = createReadFlight();
 const currentWorkoutFlight = createKeyedSingleFlight<void>();
 const workoutDayPlanFlight = createKeyedSingleFlight<void>();
@@ -544,6 +572,32 @@ function startsWorkout<Args extends unknown[]>(action: (...args: Args) => Promis
     // first. Preserve that result when it joins a program Start in flight.
     return flexible && workout?.split_day_id != null ? null : workout;
   };
+}
+
+/** Saves the mode to the account; it stays pending on this device until a save lands. */
+function saveWorkoutMode(userId: string, mode: WorkoutMode, isAccountCurrent: () => boolean): Promise<void> {
+  const switchedAt = workoutModeSwitches;
+  const send = workoutModeSave.then(async () => {
+    if (switchedAt !== workoutModeSwitches || !isAccountCurrent()) return;
+    const { error } = await supabase
+      .from('program_preferences')
+      .upsert({
+        user_id: userId,
+        workout_mode: mode,
+      }, {
+        onConflict: 'user_id',
+      });
+    // Reads that ran meanwhile may hold the old mode.
+    if (isAccountCurrent()) workoutModeFlight.invalidate();
+    if (error) {
+      console.error('Error saving workout mode remotely, kept local mode:', error);
+      return;
+    }
+    // A switch made while this save ran is still to send.
+    if (switchedAt === workoutModeSwitches) writePendingWorkoutMode(userId, null);
+  });
+  workoutModeSave = send.catch(() => undefined);
+  return send;
 }
 
 function tracksSetSave(action: AppState['logSet']): AppState['logSet'] {
@@ -742,7 +796,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // A mode switch made while this read ran wins over what it read.
       if (!isCurrent() || !isAccountCurrent()) return;
-      const fallbackMode = readWorkoutModeFallback();
+      // So does one made earlier whose save has not landed.
+      const pendingMode = readPendingWorkoutMode(userId);
+      const fallbackMode = pendingMode ?? readWorkoutModeFallback();
 
       if (error) {
         console.error('Error fetching workout mode, using local fallback:', error);
@@ -750,10 +806,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       }
 
-      const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
+      const mode = pendingMode ?? ((data?.workout_mode as WorkoutMode) || fallbackMode);
       set({ workoutMode: mode });
       writeWorkoutModeFallback(mode);
       markHydrated(userId, 'mode');
+      if (pendingMode) void saveWorkoutMode(userId, pendingMode, isAccountCurrent).catch(() => undefined);
     });
   },
 
@@ -767,27 +824,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Reads running now, or until the save lands, may still see the old mode.
     workoutModeFlight.invalidate();
+    const switchedAt = ++workoutModeSwitches;
     set({ workoutMode: mode });
     writeWorkoutModeFallback(mode);
 
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return { ok: true };
+    if (!userId || !isAccountCurrent() || switchedAt !== workoutModeSwitches) return { ok: true };
 
-    const { error } = await supabase
-      .from('program_preferences')
-      .upsert({
-        user_id: userId,
-        workout_mode: mode,
-      }, {
-        onConflict: 'user_id',
-      });
-    if (isAccountCurrent()) workoutModeFlight.invalidate();
-
-    if (error) {
-      console.error('Error saving workout mode remotely, kept local mode:', error);
-      return { ok: true };
-    }
-
+    // Pending before the request, so a failed save (or a closed app) is sent again.
+    writePendingWorkoutMode(userId, mode);
+    await saveWorkoutMode(userId, mode, isAccountCurrent);
     return { ok: true };
   },
 
