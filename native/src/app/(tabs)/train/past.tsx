@@ -27,6 +27,7 @@ import {
   detachStats,
   editPastWorkout,
   loadPlan,
+  movePastMovement,
   removePastSet,
   savePastNote,
   useHistoryStore,
@@ -231,10 +232,10 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
       { label: 'Add set', run: () => addSet() },
       { label: note ? 'Edit note' : 'Add note', run: editNote },
     ];
-    const up = moveHistoryMovement(orderedIds, movement.exerciseId, -1);
-    const down = moveHistoryMovement(orderedIds, movement.exerciseId, 1);
-    if (up) actions.push({ label: 'Move up', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, up)) });
-    if (down) actions.push({ label: 'Move down', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, down)) });
+    // The order is worked out when the move runs, after any move before it.
+    const move = (direction: -1 | 1) => () => void runEdit(workout.id, () => movePastMovement(workout.id, movement.exerciseId, direction));
+    if (moveHistoryMovement(orderedIds, movement.exerciseId, -1)) actions.push({ label: 'Move up', run: move(-1) });
+    if (moveHistoryMovement(orderedIds, movement.exerciseId, 1)) actions.push({ label: 'Move down', run: move(1) });
     if (movement.supersetGroupId) {
       actions.push({ label: 'Unlink superset', run: () => void runEdit(workout.id, () => store().clearWorkoutSuperset(workout.id, movement.exerciseId)) });
     } else {

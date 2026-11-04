@@ -11,7 +11,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { SplitDay } from '@/types';
 
-import { useAccountDay } from './accountData';
+import { useAccountDay, useWorkoutsRevision } from './accountData';
 
 /** Bumped after the schedule is saved on this device, so screens re-read it. */
 export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
@@ -35,16 +35,18 @@ export function useTodayPlan() {
   const hydratedForUserId = useAppStore((state) => state.hydratedForUserId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const revision = useScheduleRevision((state) => state.revision);
+  // History's deletes and completions, and pull to refresh, re-read what was done.
+  const workoutsRevision = useWorkoutsRevision((state) => state.revision);
   const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplit?.id, revision);
   const {
     workouts: scheduleWorkouts,
     loading: scheduleWorkoutsLoading,
     error: scheduleError,
     retry: retrySchedule,
-  } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
+  } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled, workoutsRevision);
 
   // Starting or finishing a session changes whether today is done and the week's count.
-  const refreshKey = `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
+  const refreshKey = `${refreshedAt}:${workoutsRevision}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
   const todayDone = useTodayDone(userId, dayKey, refreshKey);
   const storeReady = Boolean(userId) && hydratedForUserId === userId;
 
