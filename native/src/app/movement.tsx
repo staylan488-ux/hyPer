@@ -140,7 +140,7 @@ function MovementDetail({
   const changeSets = async (change: 'add' | 'remove') => {
     if (changing) return;
     setChanging(change);
-    const changed = await changeSetCount(movement.exerciseId, change).catch(() => false);
+    const changed = await changeSetCount(workoutId, movement.exerciseId, change).catch(() => false);
     setChanging(null);
     if (changed) haptics.success();
     else {
