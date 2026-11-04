@@ -122,7 +122,7 @@ export function expenditureSummary(profile: {
     explanation:
       confidence === 'measured'
         ? 'Inferred from your food logs and weight trend. Updates weekly when enough data is available.'
-        : 'Being learned from your logs and weight trend. It sharpens as more days come in.',
+        : 'Learning from your logs and weight trend. It sharpens as more days come in.',
   };
 }
 
@@ -133,8 +133,8 @@ export function resumeAdaptiveMessage(
 ): string {
   if (!adaptiveEnabled) return 'Target source saved. Complete nutrition setup to turn on adaptive targets.';
   return refresh === 'failed'
-    ? 'Adaptive targets resumed, but recalculation could not run right now. It will retry automatically.'
-    : 'Adaptive targets resumed. Recalculation was requested; values may stay the same until enough data is available.';
+    ? 'Adaptive targets are on. They’ll update once the app can recalculate.'
+    : 'Adaptive targets are on. They update as your logs and weigh-ins come in.';
 }
 
 /** The sign-out question, which says what an unsaved edit would lose. */

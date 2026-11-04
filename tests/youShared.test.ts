@@ -95,8 +95,8 @@ describe('target rules shared by the web and native You', () => {
 
   it('words the resume result and the sign-out question', () => {
     expect(resumeAdaptiveMessage(false, 'updated')).toMatch(/Complete nutrition setup/);
-    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/could not run right now/);
-    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/Recalculation was requested/);
+    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/once the app can recalculate/);
+    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/as your logs and weigh-ins come in/);
     expect(signOutQuestion(false)).toBe('Sign out?');
     expect(signOutQuestion(true, true)).toBe('Sign out and discard unsaved edits? Already saved profile details and weight will be kept.');
   });

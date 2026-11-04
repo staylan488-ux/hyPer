@@ -254,14 +254,14 @@ export default function TargetsCalculateSheet() {
               <Hairline />
               <ChoiceRow
                 title={`Learned burn · ${formatWhole(burns.learned)} kcal`}
-                detail="From your food logs and weigh-ins; keeps adapting"
+                detail="Adapts as you log and weigh in"
                 checked={draft.burn === 'learned'}
                 onPress={() => update({ burn: 'learned' })}
               />
               <Hairline />
               <ChoiceRow
                 title={`Formula burn · ${formatWhole(burns.formula)} kcal`}
-                detail="From your body and activity; stays as set"
+                detail="Fixed, from your body and activity"
                 checked={draft.burn === 'formula'}
                 onPress={() => update({ burn: 'formula' })}
               />
@@ -291,7 +291,7 @@ export default function TargetsCalculateSheet() {
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule title="Save profile and review" size="large" fill busy={saving} disabled={!ready} onPress={() => void save()} />
       </View>
-      <FormNote>Keeps these details (and a changed weight) in your profile. The targets wait for Save on the next screen.</FormNote>
+      <FormNote>Saves your details and weight. You review the targets next.</FormNote>
     </ScrollView>
   );
 }
