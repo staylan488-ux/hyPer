@@ -43,7 +43,8 @@ function Whoop() {
     if (!result) return;
     if (result.ok) haptics.success();
     else haptics.error();
-    setMessage({ text: result.message, alert: !result.ok });
+    // The Connected row and the haptic say it worked; only a failure needs words.
+    if (!result.ok) setMessage({ text: result.message, alert: true });
   };
 
   const sync = async () => {
@@ -84,7 +85,6 @@ function Whoop() {
     try {
       await useAppStore.getState().disconnectWhoop();
       haptics.success();
-      setMessage({ text: 'WHOOP disconnected.' });
     } catch {
       haptics.error();
       setMessage({ text: 'Could not disconnect WHOOP.', alert: true });
@@ -109,11 +109,16 @@ function Whoop() {
             <Row title="Disconnect" destructive disabled={action !== null} onPress={() => void disconnect()} />
           </>
         ) : (
-          <Row title={action === 'connect' ? 'Connecting…' : 'Connect WHOOP'} disabled={action !== null} onPress={() => void connect()} />
+          <Row
+            title={action === 'connect' ? 'Connecting…' : 'Connect WHOOP'}
+            chevron={action === null}
+            disabled={action !== null}
+            onPress={() => void connect()}
+          />
         )}
       </Label>
       <FormNote alert={message?.alert}>
-        {message?.text ?? 'Workouts from WHOOP show in History; they sync each time you open the app.'}
+        {message?.text ?? 'Workouts from WHOOP show in History and sync each time you open the app.'}
       </FormNote>
     </Section>
   );

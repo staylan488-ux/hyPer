@@ -3,6 +3,7 @@ import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { recordManualBodyWeight } from '@/lib/healthWeights';
 import { macroCaloriePercentages } from '@/lib/nutritionCalculator';
@@ -32,12 +33,14 @@ import { Capsule } from '~/components/Capsule';
 import { ChoiceRow, FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { Stepper } from '~/components/Stepper';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
+import { figureLayout } from '~/lib/motion';
 import { loadWeights, stageTargets, useWeightStore } from '~/lib/you';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -164,7 +167,7 @@ export default function TargetsCalculateSheet() {
             <FieldRow label="Height" unit="cm" value={draft.heightCm} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(heightCm) => update({ heightCm })} />
           )}
           <Hairline />
-          <FieldRow label="Body fat" unit="%" value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
+          <FieldRow label="Body fat" unit={draft.bodyFat.trim() ? '%' : undefined} value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
         </Label>
         <FormNote>{latestKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
       </Section>
@@ -237,12 +240,14 @@ export default function TargetsCalculateSheet() {
         <Label style={{ paddingTop: 16 }}>
           <View style={{ paddingHorizontal: 18 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-              <BlancText variant="figure" size={48}>
+              <RollingText variant="figure" size={48}>
                 {ready ? formatWhole(result.calories) : '–'}
-              </BlancText>
-              <BlancText variant="secondary" tone="graphite">
-                kcal a day
-              </BlancText>
+              </RollingText>
+              <Animated.View layout={figureLayout}>
+                <BlancText variant="secondary" tone="graphite">
+                  kcal a day
+                </BlancText>
+              </Animated.View>
             </View>
             {/* The target explains itself: the burn it builds on, plus or minus the goal. */}
             <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, marginBottom: 10, fontVariant: ['tabular-nums'] }}>
@@ -291,7 +296,7 @@ export default function TargetsCalculateSheet() {
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule title="Save profile and review" size="large" fill busy={saving} disabled={!ready} onPress={() => void save()} />
       </View>
-      <FormNote>Saves your details and weight. You review the targets next.</FormNote>
+      <FormNote>Saves your details and weight. Targets come next.</FormNote>
     </ScrollView>
   );
 }

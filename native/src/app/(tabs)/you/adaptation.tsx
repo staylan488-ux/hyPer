@@ -32,8 +32,7 @@ export default function AdaptationScreen() {
           {burn.explanation}
         </BlancText>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 14 }}>
-          These are estimates, not measurements. Adaptive targets use your nutrition profile, food logs and weight
-          trend. Targets set by hand stay fixed until you resume adaptive targets.
+          These are estimates, not measurements. Targets set by hand stay fixed until you resume adaptive targets.
         </BlancText>
         <Label style={{ marginTop: 28 }}>
           <Row title="Body weight" chevron onPress={() => router.push('/you/weight')} />

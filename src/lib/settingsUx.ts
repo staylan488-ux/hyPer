@@ -113,7 +113,7 @@ export function expenditureSummary(profile: {
       kcal: null,
       source,
       explanation:
-        'Estimated from your profile. Food logs and regular weigh-ins help refine this estimate, often over about three weeks.',
+        'Not learned yet, so targets use an estimate from your profile. Log food and weigh in for about three weeks and your burn shows here.',
     };
   }
   return {
@@ -121,7 +121,7 @@ export function expenditureSummary(profile: {
     source,
     explanation:
       confidence === 'measured'
-        ? 'Inferred from your food logs and weight trend. Updates weekly when enough data is available.'
+        ? 'Inferred from your food logs and weight trend. Updates once a week.'
         : 'Learning from your logs and weight trend. It sharpens as more days come in.',
   };
 }

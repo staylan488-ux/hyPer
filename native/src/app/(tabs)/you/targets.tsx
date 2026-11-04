@@ -1,6 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { baseTargets, expenditureSummary, resumeAdaptiveMessage, targetModeLabel } from '@/lib/settingsUx';
@@ -9,11 +10,13 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { figureLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
@@ -111,12 +114,14 @@ export default function TargetsScreen() {
                 }}
                 style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <BlancText variant="figure" size={64}>
+                  <RollingText variant="figure" size={64}>
                     {ready ? formatWhole(base.calories) : ' '}
-                  </BlancText>
-                  <BlancText variant="secondary" tone="graphite">
-                    kcal a day
-                  </BlancText>
+                  </RollingText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      kcal a day
+                    </BlancText>
+                  </Animated.View>
                 </View>
                 <BlancText variant="secondary" tone="graphite">
                   {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}

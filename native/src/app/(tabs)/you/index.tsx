@@ -4,6 +4,7 @@ import { format, isToday } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
@@ -14,12 +15,14 @@ import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { figureLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
   chooseAppearance,
@@ -44,6 +47,9 @@ export default function YouScreen() {
   const profile = useAuthStore((state) => state.profile);
   const target = useAppStore((state) => state.macroTarget);
   const targetsFailed = useTargetsStore((state) => state.status === 'error') && target === null;
+  // Before the account's targets load, no "Not set": as on Today and Fuel.
+  const userId = user?.id;
+  const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
   const meals = useYouMealsStore((state) => state.meals);
@@ -85,7 +91,7 @@ export default function YouScreen() {
         <Label style={{ marginTop: space.section }}>
           <Row
             title="Targets"
-            value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : 'Not set'}
+            value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
             chevron
             onPress={() => router.push('/you/targets')}
           />
@@ -169,12 +175,14 @@ function WeightCard() {
           {latest ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <BlancText variant="figure" size={44}>
+                <RollingText variant="figure" size={44}>
                   {formatWeight(Number(latest.kilograms), unit)}
-                </BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {unit}
-                </BlancText>
+                </RollingText>
+                <Animated.View layout={figureLayout}>
+                  <BlancText variant="secondary" tone="graphite">
+                    {unit}
+                  </BlancText>
+                </Animated.View>
               </View>
               {line ? (
                 <BlancText variant="secondary" tone="graphite">

@@ -12,13 +12,14 @@ import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -78,12 +79,14 @@ export default function WeightScreen() {
               }}
               style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <BlancText variant="figure" size={64}>
+                <RollingText variant="figure" size={64}>
                   {formatWeight(Number(latest.kilograms), unit)}
-                </BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {unit}
-                </BlancText>
+                </RollingText>
+                <Animated.View layout={figureLayout}>
+                  <BlancText variant="secondary" tone="graphite">
+                    {unit}
+                  </BlancText>
+                </Animated.View>
               </View>
               <BlancText variant="secondary" tone="graphite">
                 {measuredLabel(latest)}

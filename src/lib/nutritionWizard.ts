@@ -58,7 +58,7 @@ export const GOAL_OPTIONS: WizardOption<NutritionGoal>[] = [
   { value: 'cut', label: 'Cut', hint: 'Lose fat, preserve muscle' },
   { value: 'maintain', label: 'Maintain', hint: 'Stay at current composition' },
   { value: 'lean_bulk', label: 'Lean Bulk', hint: 'Slow, controlled muscle gain' },
-  { value: 'bulk', label: 'Bulk', hint: 'Maximise muscle growth' },
+  { value: 'bulk', label: 'Bulk', hint: 'Maximize muscle growth' },
 ];
 
 export const RATE_STEP = 0.05;
@@ -264,7 +264,7 @@ export function wizardRateDisplay(draft: WizardDraft, result: MacroTargetResult)
 export function wizardMethodNote(result: MacroTargetResult): string {
   return result.bmrMethod === 'cunningham'
     ? `Resting burn ${result.bmr.toLocaleString('en-US')} kcal from your lean mass (Cunningham, the best fit for lean lifters), protein set per kg of lean mass.`
-    : `Resting burn ${result.bmr.toLocaleString('en-US')} kcal (Mifflin-St Jeor), protein set per kg of bodyweight. Add body fat for a lean-mass estimate.`;
+    : `Resting burn ${result.bmr.toLocaleString('en-US')} kcal (Mifflin-St Jeor). Protein is set per kg of body weight.`;
 }
 
 /**

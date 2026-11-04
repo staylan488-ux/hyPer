@@ -145,8 +145,8 @@ export default function TargetsEditSheet() {
       ) : (
         <FormNote>
           {draft.source === 'manual'
-            ? 'Set by hand: they stay fixed until you resume adaptive targets.'
-            : 'Calculated: they can adapt when adaptive targets are on.'}
+            ? 'Set by hand: fixed until you resume adaptive targets.'
+            : 'Calculated: these adapt while adaptive targets are on.'}
         </FormNote>
       )}
 
