@@ -100,11 +100,12 @@ export function useTodayPlan() {
       ? nextPlannedDay({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
       : null;
   // The session up next: today's, or after a rest day or a day trained, the
-  // next planned one. undefined while loading; null when there is none to go by.
+  // next planned one. undefined while unknown (loading, or the completions
+  // failed to load); null when there is none to go by.
   let upNext: SplitDay | null | undefined = null;
   if (hero.kind === 'planned') upNext = hero.day;
-  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? next?.day ?? null : aheadLoading ? undefined : null;
-  else if (hero.kind === 'loading') upNext = undefined;
+  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? next?.day ?? null : undefined;
+  else if (hero.kind === 'loading' || hero.kind === 'schedule-error') upNext = undefined;
   const week = useWeekSessions(userId, dayKey, refreshKey);
 
   return {

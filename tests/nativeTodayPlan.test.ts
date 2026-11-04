@@ -25,6 +25,8 @@ const app = zustand.create(() => ({
   activeSplit: split, currentWorkout: null, currentWorkoutDayPlan: null, splits: [split], workoutMode: 'split', hydratedForUserId: 'user-1',
 }));
 const completions = zustand.create(() => ({ workouts: [] as ScheduleWorkout[], loading: true, error: false, retry: () => {} }));
+let trainedToday: { title: string } | null = { title: 'Lower A' };
+let saved: PlanSchedule | null = schedule;
 
 type Plan = { next: string | null; upNext: SplitDay | null | undefined; aheadKnown: boolean; hero: todayModel.HeroState };
 let plan: Plan | null = null;
@@ -36,10 +38,10 @@ async function render() {
     zustand,
     '@/lib/todayModel': todayModel,
     '@/hooks/useAdaptiveSplitScheduling': { useAdaptiveSplitScheduling: () => true },
-    '@/hooks/usePlanSchedule': { usePlanSchedule: () => ({ schedule, loading: false }) },
+    '@/hooks/usePlanSchedule': { usePlanSchedule: () => ({ schedule: saved, loading: false }) },
     '@/hooks/useScheduleWorkouts': { useScheduleWorkouts: () => completions() },
     '@/hooks/useWeekSessions': { useWeekSessions: () => ({ dates: [] }) },
-    '@/lib/todayDay': { readTodayDone: async () => ({ title: 'Lower A' }) },
+    '@/lib/todayDay': { readTodayDone: async () => trainedToday },
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: zustand.create(() => ({ user: { id: 'user-1' } })) },
     './accountData': {
@@ -57,6 +59,8 @@ async function render() {
 
 beforeEach(() => {
   plan = null;
+  trainedToday = { title: 'Lower A' };
+  saved = schedule;
   completions.setState({ workouts: [], loading: true, error: false });
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -81,9 +85,29 @@ describe('Today’s plan on a day already trained', () => {
     expect(plan).toMatchObject({ next: 'Tomorrow · Upper B', upNext: days[2], aheadKnown: true });
   });
 
-  it('names none when the completions fail, rather than one planned without them', async () => {
+  it('leaves the session up next unknown when the completions fail, rather than one planned without them', async () => {
     completions.setState({ workouts: [], loading: false, error: true });
     await render();
-    expect(plan).toMatchObject({ next: null, upNext: null, aheadKnown: false });
+    expect(plan?.hero.kind).toBe('done');
+    expect(plan).toMatchObject({ next: null, upNext: undefined, aheadKnown: false });
+  });
+});
+
+describe('Today’s plan before a session', () => {
+  it('leaves the session up next unknown, so the schedule sheet does not check the saved day', async () => {
+    trainedToday = null;
+    completions.setState({ workouts: [], loading: false, error: true });
+    await render();
+    expect(plan?.hero.kind).toBe('schedule-error');
+    expect(plan).toMatchObject({ next: null, upNext: undefined, aheadKnown: false });
+  });
+
+  it('still names none without a schedule', async () => {
+    trainedToday = null;
+    saved = null;
+    completions.setState({ workouts: [], loading: false, error: false });
+    await render();
+    expect(plan?.hero.kind).toBe('no-schedule');
+    expect(plan).toMatchObject({ upNext: null });
   });
 });
