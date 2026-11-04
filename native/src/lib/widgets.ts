@@ -14,7 +14,7 @@ import * as WidgetData from '../../modules/hyper-widget-data';
 import { useAccountDay } from './accountData';
 import { useFuelStore } from './fuel';
 import { useTodayPlan } from './today';
-import { buildWidgetSnapshot, widgetPlan, type WidgetPlanDay, type WidgetSnapshot } from './widgetPlan';
+import { buildWidgetSnapshot, widgetPlan, widgetPlanFromToday, type WidgetPlanDay, type WidgetSnapshot } from './widgetPlan';
 
 // What was last handed to the widgets, so an unchanged snapshot is not rewritten.
 let written: string | null = null;
@@ -32,6 +32,7 @@ export function useWidgetSnapshot() {
     && state.macroTargetLoadedForUserId === userId
     && state.nutritionProfileLoadedForUserId === userId);
   const plan = useTodayPlan();
+  const hero = plan.hero;
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
   const target = useAppStore((state) => state.macroTarget);
@@ -61,10 +62,13 @@ export function useWidgetSnapshot() {
     if (loading || !loaded || !targetsLoaded || !fuelLoaded) return null;
     // While the plan is unknown (a completions read loading or failed), Fuel
     // still updates beside the plan last written for this account today.
-    const plan = days ?? (userId && writtenPlan?.userId === userId && writtenPlan.plan[0]?.day === dayKey ? writtenPlan.plan : null);
+    // Today still follows a known hero (a session just finished); only the
+    // days after it are reused.
+    const last = userId && writtenPlan?.userId === userId && writtenPlan.plan[0]?.day === dayKey ? writtenPlan.plan : null;
+    const plan = days ?? (last && (widgetPlanFromToday(hero, dayKey, last.slice(1)) ?? last));
     if (!plan) return null;
     return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan }));
-  }, [loading, loaded, targetsLoaded, fuelLoaded, days, userId, dayKey, fuelDay, target, totals, goal]);
+  }, [loading, loaded, targetsLoaded, fuelLoaded, days, hero, userId, dayKey, fuelDay, target, totals, goal]);
 
   useEffect(() => {
     if (!json || json === written || !userId) return;

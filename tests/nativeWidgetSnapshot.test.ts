@@ -174,6 +174,26 @@ describe('home-screen widget snapshot readiness', () => {
       expect(written(1).plan).toEqual(plan);
     });
 
+    it('still turns today to trained when a session ends, keeping the days after it', async () => {
+      todayPlan.setState({ hero: { kind: 'resume', dayName: 'Upper A' }, aheadKnown: true });
+      await render();
+      await settle();
+      expect(setSnapshot).toHaveBeenCalledTimes(1);
+      const live = written(0).plan;
+      expect(live[0]).toEqual({ day: DAY, title: 'Upper A', detail: 'In progress', kind: 'live' });
+
+      // Finishing changes the completions key; their re-read then fails.
+      await act(async () => { trained(false); });
+      await settle();
+      await act(async () => { fuel.setState({ todayTotals: { calories: 1250, protein: 90 } }); });
+      await settle();
+      const last = written(setSnapshot.mock.calls.length - 1);
+      expect(last.fuel).toMatchObject({ calories: 1250, protein: 90 });
+      expect(last.plan[0]).toMatchObject({ day: DAY, title: 'Trained today', kind: 'done' });
+      expect(last.plan[0].detail).toMatch(/^Next: Tomorrow · /);
+      expect(last.plan.slice(1)).toEqual(live.slice(1));
+    });
+
     it('never reuses another day’s plan', async () => {
       await render();
       await settle();

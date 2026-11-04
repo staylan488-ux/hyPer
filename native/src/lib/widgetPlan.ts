@@ -58,6 +58,27 @@ export function widgetPlan(input: WidgetPlanInput): WidgetPlanDay[] | null {
   // A live or trained day shows before the completions load.
   if (!aheadKnown && workoutMode !== 'flexible' && activeSplit && schedule) return null;
 
+  const later: WidgetPlanDay[] = [];
+  for (let offset = 1; offset < WIDGET_PLAN_DAYS; offset += 1) {
+    const day = format(addDays(base, offset), 'yyyy-MM-dd');
+    if (workoutMode === 'flexible') {
+      later.push({ day, title: 'Flexible session', detail: null, kind: 'flexible' });
+    } else if (activeSplit && schedule) {
+      const planned = plannedDayForDate(parseISO(day), activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
+      later.push(planned ? { day, title: planned.day_name, detail: movements(planned), kind: 'planned' } : { day, title: 'Rest day', detail: null, kind: 'rest' });
+    } else {
+      break;
+    }
+  }
+  return widgetPlanFromToday(hero, dayKey, later);
+}
+
+/**
+ * Today from the hero, then the given later days. Also used with the days
+ * last written while the ones ahead are unknown, so today still follows the
+ * hero. Null while the hero is loading or failed.
+ */
+export function widgetPlanFromToday(hero: HeroState, dayKey: string, later: WidgetPlanDay[]): WidgetPlanDay[] | null {
   let today: WidgetPlanDay;
   switch (hero.kind) {
     case 'loading':
@@ -86,20 +107,8 @@ export function widgetPlan(input: WidgetPlanInput): WidgetPlanDay[] | null {
       break;
   }
 
-  const days: WidgetPlanDay[] = [today];
-  for (let offset = 1; offset < WIDGET_PLAN_DAYS; offset += 1) {
-    const day = format(addDays(base, offset), 'yyyy-MM-dd');
-    if (workoutMode === 'flexible') {
-      days.push({ day, title: 'Flexible session', detail: null, kind: 'flexible' });
-    } else if (activeSplit && schedule) {
-      const planned = plannedDayForDate(parseISO(day), activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
-      days.push(planned ? { day, title: planned.day_name, detail: movements(planned), kind: 'planned' } : { day, title: 'Rest day', detail: null, kind: 'rest' });
-    } else {
-      break;
-    }
-  }
-
   // A day off (or one already trained) names the next session, as Today does.
+  const days = [today, ...later];
   return days.map((entry, index) => {
     if (entry.kind !== 'rest' && entry.kind !== 'done') return entry;
     const next = days.slice(index + 1).find((candidate) => candidate.kind === 'planned');
