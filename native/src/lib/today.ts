@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 import { useAccountDay } from './accountData';
 import { noteTodayPlan, useLaunchHint } from './launchCache';
-import { heroFromSeed, seedHero, type TodaySeed } from './launchSnapshot';
+import { heroFromSeed, planBasis, seedHero, type TodaySeed } from './launchSnapshot';
 
 /** Bumped after the schedule is saved on this device, so screens re-read it. */
 export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
@@ -96,12 +96,17 @@ export function useTodayPlan() {
     ],
   );
 
-  // The plan decided earlier today, while this launch decides it again.
+  // The plan decided earlier today, while this launch decides it again, and
+  // only from the same schedule and days (a change shows the card's place).
+  const basis = useMemo(
+    () => planBasis({ activeSplit, schedule, adaptiveSchedulingEnabled }),
+    [activeSplit, schedule, adaptiveSchedulingEnabled],
+  );
   const fromSeed = useMemo(
     () => (!currentWorkout && !heldForWorkout && (!storeReady || hero.kind === 'loading')
-      ? heroFromSeed(launchSeed, { dayKey, activeSplit, workoutMode })
+      ? heroFromSeed(launchSeed, { dayKey, activeSplit, workoutMode, basis })
       : null),
-    [currentWorkout, heldForWorkout, storeReady, hero.kind, launchSeed, dayKey, activeSplit, workoutMode],
+    [currentWorkout, heldForWorkout, storeReady, hero.kind, launchSeed, dayKey, activeSplit, workoutMode, basis],
   );
 
   const next = fromSeed
@@ -119,6 +124,7 @@ export function useTodayPlan() {
       dayKey,
       splitId: activeSplit?.id ?? null,
       mode: workoutMode,
+      basis,
       hero: stable,
       next,
       weekDone: week.dates?.length ?? null,

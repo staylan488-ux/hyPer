@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, View } from 'react-native';
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { baseTargets, expenditureSummary, resumeAdaptiveMessage, targetModeLabel } from '@/lib/settingsUx';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
@@ -17,6 +18,13 @@ import { haptics } from '~/lib/haptics';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
+
+/** The target and profile in the store came from this launch's own reads, not the phone's copy (launchCache). */
+function readThisLaunch() {
+  const userId = useAuthStore.getState().user?.id;
+  const app = useAppStore.getState();
+  return Boolean(userId) && app.macroTargetLoadedForUserId === userId && app.nutritionProfileLoadedForUserId === userId;
+}
 
 /**
  * Nutrition targets: the daily calories and macros, how they are kept (by
@@ -50,13 +58,22 @@ export default function TargetsScreen() {
     setResuming(true);
     useTargetsStore.setState({ message: null });
     try {
+      // Re-learning writes a new target, so it starts from this launch's own
+      // reads, never from the phone's copy after a read failed.
+      if (!readThisLaunch()) {
+        await loadTargets();
+        if (!readThisLaunch()) throw new Error('Targets not loaded');
+      }
       const store = useAppStore.getState();
+      const current = baseTargets(store.macroTarget);
+      // The read says they are no longer set by hand: nothing to resume.
+      if (current.source !== 'manual') return;
       // Hand the target back to the loop, then let it recompute now rather
       // than at the next weekly window.
-      await store.updateMacroTarget({ ...base, source: 'calculated' });
+      await store.updateMacroTarget({ ...current, source: 'calculated' });
       const refresh = await useAppStore.getState().refreshAdaptiveTargets({ force: true });
       haptics.success();
-      useTargetsStore.setState({ message: { text: resumeAdaptiveMessage(profile?.adaptive_enabled, refresh) } });
+      useTargetsStore.setState({ message: { text: resumeAdaptiveMessage(useAppStore.getState().nutritionProfile?.adaptive_enabled, refresh) } });
     } catch {
       haptics.error();
       useTargetsStore.setState({ message: { text: 'Could not resume adaptive targets. Please try again.', alert: true } });

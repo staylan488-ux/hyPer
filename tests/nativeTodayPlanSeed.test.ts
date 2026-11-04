@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as zustand from 'zustand';
 import { create } from 'zustand';
 
+import type { PlanSchedule } from '@/lib/planSchedule';
 import * as todayModel from '@/lib/todayModel';
 import type { HeroState } from '@/lib/todayModel';
 import type { Split, Workout, WorkoutMode } from '@/types';
@@ -23,8 +24,11 @@ const ppl: Split = {
     { id: 'legs', split_id: 'ppl', day_name: 'Legs', day_order: 1, exercises: [] },
   ],
 };
+// In order from Push, saved this morning.
+const SCHEDULE: PlanSchedule = { splitId: 'ppl', startDate: DAY, mode: 'flex', weekdays: [], flexAnchorIndex: 0, updatedAt: `${DAY}T08:00:00.000Z` };
+const BASIS = launchSnapshot.planBasis({ activeSplit: ppl, schedule: null, adaptiveSchedulingEnabled: false });
 const plannedSeed = (overrides: Partial<TodaySeed> = {}): TodaySeed => ({
-  dayKey: DAY, splitId: 'ppl', mode: 'split', hero: { kind: 'planned', dayId: 'push' }, next: null, weekDone: 2, ...overrides,
+  dayKey: DAY, splitId: 'ppl', mode: 'split', basis: BASIS, hero: { kind: 'planned', dayId: 'push' }, next: null, weekDone: 2, ...overrides,
 });
 const liveWorkout = { id: 'w1', user_id: USER, split_day_id: 'push', date: DAY, notes: null, completed: false, created_at: `${DAY}T12:00:00Z`, sets: [] } as Workout;
 
@@ -41,7 +45,8 @@ const app = create(() => ({
 const hint = create<{ seed: TodaySeed | null; holdPlan: boolean }>(() => ({ seed: null, holdPlan: false }));
 const retry = () => {};
 const reads = create(() => ({
-  schedule: null as null,
+  adaptive: false,
+  schedule: null as PlanSchedule | null,
   scheduleLoading: false,
   scheduleWorkouts: [] as never[],
   scheduleWorkoutsLoading: false,
@@ -83,13 +88,13 @@ beforeEach(() => {
   accountDay.setState({ dayKey: DAY, refreshedAt: 1, loading: true });
   app.setState({ activeSplit: ppl, currentWorkout: null, workoutMode: 'split', hydratedForUserId: null, workoutLoadedForUserId: null });
   hint.setState({ seed: plannedSeed(), holdPlan: false });
-  reads.setState({ schedule: null, scheduleLoading: false, scheduleWorkouts: [], scheduleWorkoutsLoading: false, scheduleError: false, weekDates: null, tick: 0 });
+  reads.setState({ adaptive: false, schedule: null, scheduleLoading: false, scheduleWorkouts: [], scheduleWorkoutsLoading: false, scheduleError: false, weekDates: null, tick: 0 });
   readTodayDone.mockReset().mockReturnValue(new Promise(() => {}));
   noteTodayPlan.mockReset();
   ({ useTodayPlan } = loadNativeModule<{ useTodayPlan: () => Plan }>('lib/today.ts', {
     zustand,
     '@/lib/todayModel': todayModel,
-    '@/hooks/useAdaptiveSplitScheduling': { useAdaptiveSplitScheduling: () => false },
+    '@/hooks/useAdaptiveSplitScheduling': { useAdaptiveSplitScheduling: () => reads((state) => state.adaptive) },
     '@/hooks/usePlanSchedule': {
       usePlanSchedule: () => {
         const state = reads();
@@ -144,6 +149,9 @@ describe('today’s plan from the phone’s copy', () => {
     ['another program', () => hint.setState({ seed: plannedSeed({ splitId: 'other' }) })],
     ['another mode', () => hint.setState({ seed: plannedSeed({ mode: 'flexible' }) })],
     ['a day no longer in the program', () => hint.setState({ seed: plannedSeed({ hero: { kind: 'planned', dayId: 'gone' } }) })],
+    ['another schedule', () => reads.setState({ schedule: SCHEDULE })],
+    ['adaptive scheduling turned on', () => reads.setState({ adaptive: true })],
+    ['the program’s days in another order', () => app.setState({ activeSplit: { ...ppl, days: [...ppl.days].reverse() } })],
     ['a workout on screen', () => app.setState({ currentWorkout: liveWorkout })],
     ['the plan held for the workout read', () => hint.setState({ holdPlan: true })],
   ])('shows no seed for %s', async (_name, change) => {
@@ -203,7 +211,7 @@ describe('noting today’s plan for the next cold start', () => {
     await update(() => reads.setState({ tick: 1 }));
     expect(noteTodayPlan).toHaveBeenCalledTimes(1);
     expect(noteTodayPlan).toHaveBeenCalledWith({
-      dayKey: DAY, splitId: 'ppl', mode: 'split', hero: { kind: 'done', title: 'Push' }, next: null, weekDone: 1,
+      dayKey: DAY, splitId: 'ppl', mode: 'split', basis: BASIS, hero: { kind: 'done', title: 'Push' }, next: null, weekDone: 1,
     });
   });
 
@@ -242,5 +250,53 @@ describe('noting today’s plan for the next cold start', () => {
     });
     expect(latest.hero.kind).toBe('resume');
     expect(noteTodayPlan).not.toHaveBeenCalled();
+  });
+});
+
+describe('a plan decided earlier this session', () => {
+  // What launchCache does with a note: screens hold the latest decision.
+  const holdNoted = () => hint.setState({ seed: noteTodayPlan.mock.calls.at(-1)?.[0] ?? null });
+
+  it('shows the card’s place, never the decision from before, while a changed schedule is read', async () => {
+    readTodayDone.mockResolvedValue(null);
+    ready();
+    accountDay.setState({ loading: false });
+    hint.setState({ seed: null });
+    await render();
+    expect(latest.hero.kind).toBe('no-schedule');
+    await update(holdNoted);
+    expect(latest.seeded).toBe(false);
+    // Set up saves a schedule: shown at once, while its sessions are read.
+    await update(() => reads.setState({ schedule: SCHEDULE, scheduleWorkoutsLoading: true }));
+    expect(latest).toMatchObject({ seeded: false, hero: { kind: 'loading' } });
+    await update(() => reads.setState({ scheduleWorkoutsLoading: false }));
+    expect(latest).toMatchObject({ seeded: false, hero: { kind: 'planned', day: ppl.days[0] } });
+  });
+
+  it('does the same when the program’s days change', async () => {
+    readTodayDone.mockResolvedValue(null);
+    ready();
+    accountDay.setState({ loading: false });
+    hint.setState({ seed: null });
+    reads.setState({ schedule: SCHEDULE });
+    await render();
+    expect(latest.hero).toEqual({ kind: 'planned', day: ppl.days[0] });
+    await update(holdNoted);
+    const legsFirst = { ...ppl, days: [...ppl.days].reverse() };
+    await update(() => {
+      app.setState({ activeSplit: legsFirst });
+      reads.setState({ scheduleWorkoutsLoading: true });
+    });
+    expect(latest).toMatchObject({ seeded: false, hero: { kind: 'loading' } });
+  });
+
+  it('still fills a screen mounted later from the same schedule at once', async () => {
+    reads.setState({ schedule: SCHEDULE });
+    hint.setState({ seed: plannedSeed({ basis: launchSnapshot.planBasis({ activeSplit: ppl, schedule: SCHEDULE, adaptiveSchedulingEnabled: false }) }) });
+    ready();
+    accountDay.setState({ loading: false });
+    await render();
+    // Its own done read is still out.
+    expect(latest).toMatchObject({ seeded: true, hero: { kind: 'planned', day: ppl.days[0] } });
   });
 });

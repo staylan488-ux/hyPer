@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 
 import { sumMacros, type MacroTotals } from '@/lib/nutritionMacros';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
+import type { PlanSchedule } from '@/lib/planSchedule';
 import type { HeroState } from '@/lib/todayModel';
 import { todayKey } from '@/lib/todayRefresh';
 import { trainingWeekRange } from '@/lib/weeklyVolume';
@@ -50,6 +51,8 @@ export type TodaySeed = {
   dayKey: string;
   splitId: string | null;
   mode: WorkoutMode;
+  /** planBasis: what else the hero was decided from. */
+  basis: string;
   hero: SeedHero;
   next: string | null;
   weekDone: number | null;
@@ -155,6 +158,7 @@ function isSeed(value: unknown): value is TodaySeed {
     && typeof value.dayKey === 'string'
     && (value.splitId === null || typeof value.splitId === 'string')
     && isMode(value.mode)
+    && typeof value.basis === 'string'
     && isSeedHero(value.hero)
     && (value.next === null || typeof value.next === 'string')
     && (value.weekDone === null || finite(value.weekDone));
@@ -243,12 +247,33 @@ export function seedHero(hero: HeroState): SeedHero | null {
   }
 }
 
-/** The kept hero, only for the same day, program and mode, with the planned day taken from the live program. */
+/**
+ * What today's plan is decided from besides the day, program and mode: the
+ * program's days in order, the saved schedule (its updatedAt too, which decides
+ * the sessions that count) and adaptive scheduling. A seed stands in only while
+ * these are unchanged, so after a schedule save, a change to the program's days
+ * or a newer schedule from another device the plan card keeps its place until
+ * it is decided again, never showing the decision from before.
+ */
+export function planBasis(input: { activeSplit: Split | null; schedule: PlanSchedule | null; adaptiveSchedulingEnabled: boolean }): string {
+  const { activeSplit, schedule, adaptiveSchedulingEnabled } = input;
+  return JSON.stringify([
+    activeSplit?.days.map((day) => day.id) ?? null,
+    // Field by field, so the device copy read at the next cold start matches.
+    schedule
+      ? [schedule.splitId, schedule.startDate, schedule.mode, schedule.weekdays, schedule.anchorDay ?? null, schedule.flexAnchorIndex ?? null, schedule.updatedAt ?? null]
+      : null,
+    adaptiveSchedulingEnabled,
+  ]);
+}
+
+/** The kept hero, only for the same day, program, mode and basis, with the planned day taken from the live program. */
 export function heroFromSeed(
   seed: TodaySeed | null,
-  live: { dayKey: string; activeSplit: Split | null; workoutMode: WorkoutMode },
+  live: { dayKey: string; activeSplit: Split | null; workoutMode: WorkoutMode; basis: string },
 ): HeroState | null {
   if (!seed || seed.dayKey !== live.dayKey || seed.mode !== live.workoutMode || seed.splitId !== (live.activeSplit?.id ?? null)) return null;
+  if (seed.basis !== live.basis) return null;
   const hero = seed.hero;
   if (hero.kind === 'planned') {
     const day = live.activeSplit?.days.find((candidate) => candidate.id === hero.dayId);

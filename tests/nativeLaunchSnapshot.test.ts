@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { trainingWeekRange } from '@/lib/weeklyVolume';
+import type { PlanSchedule } from '@/lib/planSchedule';
 import type { HeroState } from '@/lib/todayModel';
 import type { Split } from '@/types';
 import {
@@ -9,6 +10,7 @@ import {
   MAX_AGE_MS,
   backendOf,
   heroFromSeed,
+  planBasis,
   planLaunchRestore,
   readEnvelope,
   seedHero,
@@ -56,8 +58,9 @@ const log = (id: string, date: string, calories: number, protein = 10, user = US
 const group = (id: string, date: string, user = USER) => ({ id, user_id: user, date, kind: 'meal', label: 'lunch', sort_order: 0 });
 const totals = (calories: number, protein: number, carbs: number, fat: number) => ({ calories, protein, carbs, fat });
 const target = (user = USER) => ({ id: 't1', user_id: user, calories: 2800, protein: 160, carbs: 350, fat: 80 });
+const BASIS = planBasis({ activeSplit: split('ppl', true), schedule: null, adaptiveSchedulingEnabled: true });
 const seed = (overrides: Partial<TodaySeed> = {}): TodaySeed => ({
-  dayKey: DAY, splitId: 'ppl', mode: 'split', hero: { kind: 'planned', dayId: 'ppl-push' }, next: null, weekDone: 2, ...overrides,
+  dayKey: DAY, splitId: 'ppl', mode: 'split', basis: BASIS, hero: { kind: 'planned', dayId: 'ppl-push' }, next: null, weekDone: 2, ...overrides,
 });
 const plan = (copies: Partial<Record<Part, Envelope>>, now = NOW) => planLaunchRestore(copies, USER, now);
 
@@ -201,6 +204,10 @@ describe('the workout and the plan card', () => {
     expect(plan({ program: program(), training: training(null, seed({ dayKey: '2026-11-03' })) }).seed).toBeNull();
     expect(plan({ training: training(null, seed()) }).seed).toBeNull();
     expect(plan({ program: program(), training: training(null, { ...seed(), hero: { kind: 'resume' } }) }).seed).toBeNull();
+    // A seed saved without what it was decided from is not a seed.
+    const unbased: Partial<TodaySeed> = seed();
+    delete unbased.basis;
+    expect(plan({ program: program(), training: training(null, unbased) }).seed).toBeNull();
   });
 
   it('restores nothing when any part belongs to another account', () => {
@@ -228,7 +235,7 @@ describe('launch copy helpers', () => {
   });
 
   it('draws a seeded planned day from the live program, and only for the same day, program and mode', () => {
-    const live = { dayKey: DAY, activeSplit: ppl, workoutMode: 'split' as const };
+    const live = { dayKey: DAY, activeSplit: ppl, workoutMode: 'split' as const, basis: BASIS };
     const hero = heroFromSeed(seed(), live);
     expect(hero).toEqual({ kind: 'planned', day: ppl.days[0] });
     expect(hero?.kind === 'planned' && hero.day).toBe(ppl.days[0]);
@@ -238,6 +245,32 @@ describe('launch copy helpers', () => {
     expect(heroFromSeed(seed({ dayKey: '2026-11-03' }), live)).toBeNull();
     expect(heroFromSeed(seed({ hero: { kind: 'rest' } }), live)).toEqual({ kind: 'rest' });
     expect(heroFromSeed(null, live)).toBeNull();
+  });
+
+  it('draws a seed only while the schedule, the program’s days and adaptive scheduling are as decided', () => {
+    const schedule: PlanSchedule = {
+      splitId: 'ppl', startDate: '2026-11-02', mode: 'fixed', weekdays: [1, 3], anchorDay: 1, updatedAt: '2026-11-02T08:00:00.000Z',
+    };
+    const basis = planBasis({ activeSplit: ppl, schedule, adaptiveSchedulingEnabled: true });
+    const live = (change: Partial<{ activeSplit: Split; schedule: PlanSchedule | null; adaptiveSchedulingEnabled: boolean }> = {}) => {
+      const input = { activeSplit: ppl, schedule, adaptiveSchedulingEnabled: true, ...change };
+      return { dayKey: DAY, activeSplit: input.activeSplit, workoutMode: 'split' as const, basis: planBasis(input) };
+    };
+    const decided = seed({ basis });
+    expect(heroFromSeed(decided, live())).toEqual({ kind: 'planned', day: ppl.days[0] });
+    // The device copy read again at the next cold start (a round trip through JSON) still matches.
+    expect(heroFromSeed(decided, live({ schedule: JSON.parse(JSON.stringify(schedule)) as PlanSchedule }))).not.toBeNull();
+    expect(heroFromSeed(decided, live({ schedule: null }))).toBeNull();
+    expect(heroFromSeed(decided, live({ schedule: { ...schedule, weekdays: [2, 4] } }))).toBeNull();
+    // A save with the same choices still decides again: its time changes which sessions count.
+    expect(heroFromSeed(decided, live({ schedule: { ...schedule, updatedAt: '2026-11-04T09:00:00.000Z' } }))).toBeNull();
+    expect(heroFromSeed(decided, live({ adaptiveSchedulingEnabled: false }))).toBeNull();
+    expect(heroFromSeed(decided, live({ activeSplit: { ...ppl, days: [...ppl.days].reverse() } }))).toBeNull();
+    expect(heroFromSeed(decided, live({ activeSplit: { ...ppl, days: ppl.days.slice(0, 1) } }))).toBeNull();
+    // A program edit that keeps its days (sets, reps, movements) keeps the seed, drawn from the live day.
+    const edited = { ...ppl, days: ppl.days.map((day) => ({ ...day, day_name: `${day.day_name} A` })) };
+    const hero = heroFromSeed(decided, live({ activeSplit: edited }));
+    expect(hero?.kind === 'planned' && hero.day).toBe(edited.days[0]);
   });
 
   it('refuses an envelope over the limit and dedups without the time', () => {

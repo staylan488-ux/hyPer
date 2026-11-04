@@ -36,7 +36,9 @@ export default function ScheduleSheet() {
   const split = useAppStore((state) => state.activeSplit);
   const plan = useTodayPlan();
   if (!split) return null;
-  return <ScheduleEditor split={split} saved={plan.schedule} todayDayId={plan.hero.kind === 'planned' ? plan.hero.day.id : null} />;
+  // A plan shown from the phone's copy (launchCache) never picks what Save writes.
+  const todayDayId = !plan.seeded && plan.hero.kind === 'planned' ? plan.hero.day.id : null;
+  return <ScheduleEditor split={split} saved={plan.schedule} todayDayId={todayDayId} />;
 }
 
 function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: PlanSchedule | null; todayDayId: string | null }) {
