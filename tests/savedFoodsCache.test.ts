@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { useAuthStore } from '@/stores/authStore';
-import { clearSavedFoodsCache, readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { clearSavedFoodsCache, readSavedFoodsCache, subscribeSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 
 const oats: Food = {
   id: 'food-1', user_id: 'user-a', name: 'Overnight oats', calories: 320, protein: 18, carbs: 44, fat: 9,
@@ -54,6 +54,20 @@ describe('saved foods cache', () => {
     signIn('user-a');
 
     expect(readSavedFoodsCache('user-a')).toBeNull();
+  });
+
+  it('tells watchers when the list is written or dropped, so a screen showing it follows', () => {
+    const listener = vi.fn();
+    const stop = subscribeSavedFoodsCache(listener);
+    writeSavedFoodsCache('user-a', [oats]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    signIn('user-b');
+    expect(listener).toHaveBeenCalledTimes(2);
+    clearSavedFoodsCache();
+    expect(listener).toHaveBeenCalledTimes(3);
+    stop();
+    writeSavedFoodsCache('user-a', [oats]);
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 
   it('survives unrelated store updates for the same account', () => {

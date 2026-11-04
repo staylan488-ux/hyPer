@@ -1,7 +1,7 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
@@ -16,7 +16,7 @@ import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
-import { readSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { readSavedFoodsCache, subscribeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { canSaveAsMeal } from '@/lib/savedMealFromLog';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -80,8 +80,15 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
 /**
  * The saved meals this session last read (Log food's Saved list, else You's),
  * so a built saved meal logged from Saved does not offer Save as meal again.
+ * Watched, not read once: Save as meal closes without refreshing Fuel, and the
+ * offer follows the list it reloads.
  */
-const knownSavedMeals = () => readSavedFoodsCache(useAuthStore.getState().user?.id) ?? useYouMealsStore.getState().meals;
+function useKnownSavedMeals() {
+  const userId = useAuthStore((state) => state.user?.id);
+  const logged = useSyncExternalStore(subscribeSavedFoodsCache, () => readSavedFoodsCache(userId));
+  const you = useYouMealsStore((state) => state.meals);
+  return logged ?? you;
+}
 
 /** Opens the meal builder with these foods at the amounts eaten, to keep as a saved meal; nothing is logged. */
 function saveAsMeal(logs: FoodLog[]) {
@@ -331,10 +338,11 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
 }) {
   const c = useBlanc();
   const kcal = logs.reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0);
+  const savedMeals = useKnownSavedMeals();
   // A past day's meal can be logged again today, and any day's kept as a
   // saved meal (Unassigned too).
   const copyable = day !== today() && logs.some((log) => log.food);
-  const savable = canSaveAsMeal(logs, knownSavedMeals());
+  const savable = canSaveAsMeal(logs, savedMeals);
 
   const groupMenu = () => {
     const reuse = [
@@ -428,6 +436,7 @@ function entryDetail(log: FoodLog): string {
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
 function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean }) {
   const c = useBlanc();
+  const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
   // The row slides away at once; it comes back if the delete fails.
@@ -458,7 +467,7 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
       ? [{ title: 'Copy to today', symbol: 'doc.on.doc', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) }]
       : []),
     // Any entry can be kept as a saved meal, unless it is one already.
-    ...(canSaveAsMeal([log], knownSavedMeals()) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
+    ...(canSaveAsMeal([log], savedMeals) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
     { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
