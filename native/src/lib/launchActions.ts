@@ -133,9 +133,9 @@ export type SheetSnap = 'join' | 'restart' | 'refuse' | 'ignore';
 export type SheetState = {
   /** Not editing an entry, changing a saved meal or saving logged foods as a meal. */
   newEntry: boolean;
-  /** The camera, the photo library or the camera prompt is already up. */
+  /** The camera, the photo library, the camera prompt or Add photo's choices are already up. */
   pickerUp: boolean;
-  /** Closing, a lookup running, a food under review, a meal being built or reviewed, or Scan open. */
+  /** Closing, a lookup running, a food under review, a meal being built or reviewed, Scan open, or text in Manual's Describe with AI. */
   occupied: boolean;
   /** Closing would ask first (the leave guard's rule). */
   holdsWork: boolean;

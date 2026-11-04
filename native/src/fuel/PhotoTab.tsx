@@ -4,7 +4,7 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { AccessibilityInfo, ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, Image as RNImage, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, Image as RNImage, TextInput, View, type ActionSheetIOSOptions } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -76,8 +76,23 @@ export const CAMERA_UNAVAILABLE = 'The camera isn’t available here.';
 
 // One system picker at a time: a second (Snap a meal while Add photo is open) would stack on the first.
 let pickerUp = false;
-/** The camera, the photo library or the camera prompt is on screen. */
-export const foodPickerUp = () => pickerUp;
+// Add photo's choices (or a photo's own menu) are up: a camera presented now would sit on them.
+let choosingPhoto = false;
+/** The camera, the photo library, the camera prompt or Add photo's choices are on screen. */
+export const foodPickerUp = () => pickerUp || choosingPhoto;
+
+/** A photo's action sheet (Take photo, Choose from library, Remove photo); the callback runs for every answer, Cancel included. */
+export function showPhotoChoices(options: ActionSheetIOSOptions, onChoice: (index: number) => void): void {
+  choosingPhoto = true;
+  ActionSheetIOS.showActionSheetWithOptions(options, (index) => {
+    choosingPhoto = false;
+    onChoice(index);
+  });
+}
+/** A tab closed under its choices never hears back from them. */
+export const dropPhotoChoices = (): void => {
+  choosingPhoto = false;
+};
 
 /** A photo from the camera (asking for access the first time) or the library. Null when cancelled or a picker is already up. */
 export async function pickFoodPhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
@@ -136,6 +151,8 @@ export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
   const [error, setError] = useState<string | null>(null);
   const [analysisGate] = useState(createRequestGate);
   useEffect(() => () => analysisGate.invalidate(), [analysisGate]);
+  // Closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them.
+  useEffect(() => dropPhotoChoices, []);
   const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
@@ -145,7 +162,7 @@ export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
 
   const pick = (angle: PhotoAnalysisAngle) => {
     const options = ['Take photo', 'Choose from library', ...(draft.photos[angle] ? ['Remove photo'] : []), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions(
+    showPhotoChoices(
       { options, cancelButtonIndex: options.length - 1, destructiveButtonIndex: draft.photos[angle] ? 2 : undefined },
       async (index) => {
         if (index === options.length - 1) return;

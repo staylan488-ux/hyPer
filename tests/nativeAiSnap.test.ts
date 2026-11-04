@@ -49,7 +49,6 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   'expo-symbols': { SymbolView: Empty },
   'react-native': {
     AccessibilityInfo: { announceForAccessibilityWithOptions: announce },
-    ActionSheetIOS: { showActionSheetWithOptions: (_options: unknown, callback: (index: number) => Promise<void>) => { sheet = callback; } },
     Alert: { alert: vi.fn() },
     Linking: { openSettings },
     Pressable: (props: PropsWithChildren<{ accessibilityLabel?: string; onPress: () => void }>) => {
@@ -101,6 +100,9 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
     prepareImage: async () => ({ imageBase64: 'b64', mimeType: 'image/jpeg' }),
     pickFoodPhoto: pick,
     foodPickerUp: () => up,
+    // Add photo's choices (PhotoTab holds them as up until they answer)
+    showPhotoChoices: (_options: unknown, callback: (index: number) => Promise<void>) => { sheet = callback; },
+    dropPhotoChoices: noop,
   },
   './WhenBlock': { WhenBlock: Empty },
 });

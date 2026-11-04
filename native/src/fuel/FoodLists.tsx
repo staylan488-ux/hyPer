@@ -506,6 +506,12 @@ export function SearchTab() {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
+  // A result's detail read is a lookup: it claims the sheet until the review opens, as Scan's does.
+  const { beginBusy } = logger;
+  useEffect(() => {
+    if (!opening) return;
+    return beginBusy();
+  }, [opening, beginBusy]);
 
   useEffect(() => {
     if (trimmed.length < 2) {

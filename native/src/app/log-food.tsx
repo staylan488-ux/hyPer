@@ -113,6 +113,14 @@ export default function LogFoodSheet() {
   // Snap a meal (lib/launch.ts): a new entry, straight into the camera.
   const startCamera = !editing && !savedMeal && !saveFrom && (snapRestart > 0 || params.start === 'camera');
   const selectedKey = editing?.date ?? saveFrom?.[0].date ?? (snapRestart > 0 ? today() : params.day ?? today());
+  // A sheet with nothing to log into still answers Snap a meal pressed over it: it can't take it.
+  const blank = !userId || (Boolean(params.saveEntries) && !saveFrom);
+  useEffect(() => {
+    if (!blank) return;
+    return useLaunchStore.subscribe((state, previous) => {
+      if (state.cameraAsks !== previous.cameraAsks) refusePress();
+    });
+  }, [blank]);
   if (!userId) return <Empty text="Sign in to log food." />;
   if (params.saveEntries && !saveFrom) return <Empty text="Those foods are no longer in your log." />;
   return (
@@ -198,6 +206,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const loadManual = useCallback((next: ManualDraft) => {
     setManual(next);
     setManualBase(next);
+  }, []);
+  // Text typed in Manual's Describe with AI, which only ManualTab keeps (Snap a meal must not drop it).
+  const manualDescribed = useRef(false);
+  const describedInManual = useCallback((typed: boolean) => {
+    manualDescribed.current = typed;
   }, []);
   const [photo, setPhoto] = useState<PhotoDraft>(emptyPhoto);
   // The owner logs food with Gemini; the worker photo flow stays for a device set to it.
@@ -488,7 +501,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     const answer = sheetSnap({
       newEntry: !editing && !savedMeal && !saveFrom,
       pickerUp: foodPickerUp(),
-      occupied: closing || busy || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan',
+      occupied: closing || busy || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan' || manualDescribed.current,
       holdsWork: unsaved,
       analysisDraftOnly:
         (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed),
@@ -569,6 +582,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     <ManualTab
       draft={manual}
       setDraft={(update) => setManual(update)}
+      onDescribeText={describedInManual}
       onGeminiHandoff={
         gemini
           ? (description) => {

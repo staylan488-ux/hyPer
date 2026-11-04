@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { AccessibilityInfo, ActionSheetIOS, Alert, Linking, Pressable, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Alert, Linking, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
@@ -33,7 +33,7 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
-import { CAMERA_OFF, foodPickerUp, pickFoodPhoto, prepareImage, type PickedPhoto } from './PhotoTab';
+import { CAMERA_OFF, dropPhotoChoices, foodPickerUp, pickFoodPhoto, prepareImage, showPhotoChoices, type PickedPhoto } from './PhotoTab';
 import { WhenBlock } from './WhenBlock';
 
 /** A food from the estimate, with a key that stays with it while foods are removed. */
@@ -104,6 +104,8 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
     live.current = true;
     return () => {
       live.current = false;
+      // closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them
+      dropPhotoChoices();
     };
   }, []);
 
@@ -114,7 +116,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
 
   const addPhoto = () => {
     if (draft.photos.length >= MAX_PHOTOS) return;
-    ActionSheetIOS.showActionSheetWithOptions({ options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 }, async (index) => {
+    showPhotoChoices({ options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 }, async (index) => {
       if (index === 2) return;
       setError(null);
       try {
@@ -221,7 +223,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
     setDraft((current) => ({ ...current, photos: current.photos.filter((candidate) => candidate !== photo) }));
   };
   const photoMenu = (photo: PickedPhoto, index: number) =>
-    ActionSheetIOS.showActionSheetWithOptions(
+    showPhotoChoices(
       { title: `Photo ${index + 1}`, options: ['Remove photo', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 },
       (choice) => {
         if (choice === 0) removePhoto(photo);

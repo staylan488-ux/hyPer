@@ -122,4 +122,18 @@ describe('Snap a meal surfaces', () => {
     expect(read('modules/hyper-launch/ios/HyperLaunchModule.swift')).toContain('Name("HyperLaunch")');
     expect(read('modules/hyper-launch/index.ts')).toContain("requireOptionalNativeModule<HyperLaunchNative>('HyperLaunch')");
   });
+
+  // The root layout and the intro are too heavy to render here, so their few lines are read.
+  it('leaves the intro out for a press waiting at launch, and hurries it for one that comes during it', () => {
+    const layout = read('src/app/_layout.tsx');
+    const intro = read('src/components/BrandIntro.tsx');
+    // taken at module scope, so the first render already sees the press
+    expect(layout.slice(0, layout.indexOf('export default function RootLayout'))).toMatch(/^takeNativeLaunch\(\);$/m);
+    expect(layout).toMatch(/const \[introDone, setIntroDone\] = useState\(\(\) => [^\n]*\|\| launchWaiting\(\)\);/);
+    expect(layout).toContain('const hurryIntro = useLaunchActions(screen, introDone);');
+    expect(layout).toMatch(/<BrandIntro [^>]*hurry=\{hurryIntro\}/);
+    // the same landing as a tap
+    expect(intro).toMatch(/useEffect\(\(\) => \{\s*if \(hurry\) setSkipped\(true\);\s*\}, \[hurry\]\);/);
+    expect(intro).toContain('onTouchStart={() => setSkipped(true)}');
+  });
 });
