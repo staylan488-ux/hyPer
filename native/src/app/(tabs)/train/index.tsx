@@ -385,12 +385,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       ...(blockIndex < blocks.length - 1 ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1) }] : []),
     ];
     // Each movement ends with its own tally; the next set stands taller on the row up now.
+    // The tally keeps 4 pt on top for that stroke; the same below centres the strokes on the row.
     const tally = (
       <Tally
         compact
         marks={movement.sets.map((set) => set.completed)}
         current={isCurrent && current ? current.setNumber - 1 : null}
         accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
+        style={{ marginBottom: 4 }}
       />
     );
     // Up now, the card above says the rest; later rows give the target (this
@@ -969,7 +971,10 @@ function StartPlanned() {
   // The day the card above offers, or shows as done today, is not offered again.
   const planned = plan.hero.kind === 'planned' ? plan.hero.day.id : null;
   const finished = useFinishedToday(plan.hero.kind === 'done');
-  const otherDays = split ? split.days.filter((day) => day.id !== planned && day.id !== finished?.splitDayId) : [];
+  // While the plan, or History's read of today's workout, loads the list waits,
+  // so a day is never offered and then taken back.
+  const holding = plan.hero.kind === 'loading' || (plan.hero.kind === 'done' && finished === undefined);
+  const otherDays = split && !holding ? split.days.filter((day) => day.id !== planned && day.id !== finished?.splitDayId) : [];
 
   return (
     <>
@@ -983,29 +988,32 @@ function StartPlanned() {
         ) : null}
         <PlanCard hero={plan.hero} next={plan.next} place="train" />
         {otherDays.length > 0 ? (
-          <Section title="Other days">
-            <Label>
-              {otherDays.map((day, index) => (
-                <View key={day.id}>
-                  {index > 0 ? <Hairline /> : null}
-                  <Row
-                    title={day.day_name}
-                    detail={dayLine(day)}
-                    trailing={
-                      <Capsule
-                        title={starting === day.id ? 'Starting' : 'Start'}
-                        variant="quiet"
-                        busy={starting === day.id}
-                        disabled={starting !== null}
-                        onPress={() => void start(day.id)}
-                      />
-                    }
-                  />
-                </View>
-              ))}
-            </Label>
-            {otherNote ? <FormNote>{otherNote}</FormNote> : null}
-          </Section>
+          // Arrives with the card's fade, once its rows are known.
+          <Animated.View entering={FadeIn.duration(220)}>
+            <Section title="Other days">
+              <Label>
+                {otherDays.map((day, index) => (
+                  <View key={day.id}>
+                    {index > 0 ? <Hairline /> : null}
+                    <Row
+                      title={day.day_name}
+                      detail={dayLine(day)}
+                      trailing={
+                        <Capsule
+                          title={starting === day.id ? 'Starting' : 'Start'}
+                          variant="quiet"
+                          busy={starting === day.id}
+                          disabled={starting !== null}
+                          onPress={() => void start(day.id)}
+                        />
+                      }
+                    />
+                  </View>
+                ))}
+              </Label>
+              {otherNote ? <FormNote>{otherNote}</FormNote> : null}
+            </Section>
+          </Animated.View>
         ) : null}
       </TabScroll>
     </>
