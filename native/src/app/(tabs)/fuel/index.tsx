@@ -31,6 +31,7 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { DayMark } from '~/fuel/DayMark';
 import { formatWhole } from '~/lib/format';
 import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -106,6 +107,11 @@ function useLateNight(live: boolean, logs: FoodLog[]) {
 
 export default function FuelScreen() {
   const target = useAppStore((state) => state.macroTarget);
+  const userId = useAuthStore((state) => state.user?.id);
+  // Only a saved target is measured against: before the account's targets
+  // load nothing is shown, and with none saved, one quiet line asks for one.
+  const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
+  const kcalTarget = target && target.calories > 0 ? target.calories : null;
   // Bulking, going past a target is a good day, not a red one.
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const { selected, logs, groups, loaded, status } = useFuelDay();
@@ -114,7 +120,12 @@ export default function FuelScreen() {
   const live = selected === useTodayKey();
   const totals = sumMacros(logs);
   const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
-  const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
+  // Each day's kcal in the loaded month, for the week strip's marks.
+  const dayKcal = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const log of monthLogs) byDay.set(log.date, (byDay.get(log.date) ?? 0) + (logMacro(log, 'calories') ?? 0));
+    return byDay;
+  }, [monthLogs]);
   const lateNight = useLateNight(live, logs);
 
   // The day's groups in order, Unassigned first when it has entries. Empty
@@ -167,13 +178,17 @@ export default function FuelScreen() {
           {fuelDayTitle(selectedDate)}
         </BlancText>
 
-        <WeekStrip selected={selectedDate} daysWithLogs={daysWithLogs} />
+        <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} />
 
         {/* The day's figure and the macros open the targets, the numbers they measure against. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={loaded ? `${formatWhole(totals.calories)} of ${formatWhole(summary.targets.calories)} kcal` : `Target ${formatWhole(summary.targets.calories)} kcal`}
-          accessibilityHint="Edits your calorie target"
+          accessibilityLabel={
+            kcalTarget
+              ? loaded ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal` : `Target ${formatWhole(kcalTarget)} kcal`
+              : loaded ? `${formatWhole(totals.calories)} kcal` : 'Calories'
+          }
+          accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
           onPress={() => editTarget('calories')}
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
@@ -183,27 +198,34 @@ export default function FuelScreen() {
             </RollingText>
             <Animated.View layout={figureLayout}>
               <BlancText variant="secondary" tone="graphite">
-                of {formatWhole(summary.targets.calories)} kcal
+                {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
               </BlancText>
             </Animated.View>
           </View>
-          <View style={{ marginTop: 10 }}>
-            <Track progress={totals.calories / summary.targets.calories} warnOver={warnsOverTarget('calories', goal)} />
-          </View>
-          {live && loaded ? (
+          {kcalTarget ? (
+            <View style={{ marginTop: 10 }}>
+              <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
+            </View>
+          ) : null}
+          {kcalTarget && live && loaded ? (
             <BlancText variant="secondary" tone={summary.kcalOverWarns ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
               {summary.logLine}
+            </BlancText>
+          ) : null}
+          {!kcalTarget && targetKnown ? (
+            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
+              Set a calorie target
             </BlancText>
           ) : null}
         </Pressable>
 
         <Section title="Macros">
           <Label style={{ overflow: 'hidden' }}>
-            <MacroRow macro="protein" value={totals.protein} target={summary.targets.protein} goal={goal} />
+            <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
             <Hairline />
-            <MacroRow macro="carbs" value={totals.carbs} target={summary.targets.carbs} goal={goal} />
+            <MacroRow macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} />
             <Hairline />
-            <MacroRow macro="fat" value={totals.fat} target={summary.targets.fat} goal={goal} />
+            <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
           </Label>
         </Section>
 
@@ -224,16 +246,14 @@ export default function FuelScreen() {
 
             {loaded && logs.length === 0 ? (
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
-                <BlancText variant="bodyStrong">Nothing logged yet</BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {live ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
-                </BlancText>
+                <BlancText variant="bodyStrong">{live ? 'Nothing logged yet' : 'Nothing logged'}</BlancText>
                 <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
 
-            {loaded ? (
-              <Animated.View layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
+            {/* Another meal is for a day that has begun. */}
+            {loaded && logs.length > 0 ? (
+              <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
                 <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
@@ -257,8 +277,11 @@ function addMealOrSnack() {
   });
 }
 
-/** Sunday-first week; swipe for the week before or after. Future days are not selectable. */
-function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: Set<string> }) {
+/**
+ * Sunday-first week; swipe for the week before or after. Future days are not
+ * selectable. Under each date, how far its food went toward the target.
+ */
+function WeekStrip({ selected, dayKcal, target, goal }: { selected: Date; dayKcal: Map<string, number>; target: number | null; goal: NutritionGoal | undefined }) {
   const c = useBlanc();
   const days = weekDays(selected);
   const now = startOfDay(new Date());
@@ -292,12 +315,13 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
           const isSelected = isSameDay(day, selected);
           const isToday = isSameDay(day, now);
           const future = isAfter(startOfDay(day), now);
+          const kcal = dayKcal.get(key);
           return (
             <Pressable
               key={key}
               disabled={future}
               accessibilityRole="button"
-              accessibilityLabel={format(day, 'EEEE, MMMM d')}
+              accessibilityLabel={`${format(day, 'EEEE, MMMM d')}${kcal === undefined ? '' : `, ${formatWhole(kcal)} kcal`}`}
               accessibilityState={{ selected: isSelected, disabled: future }}
               onPress={() => {
                 haptics.select();
@@ -320,7 +344,7 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
                   {format(day, 'd')}
                 </BlancText>
               </View>
-              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: daysWithLogs.has(key) ? c.graphite : 'transparent' }} />
+              <DayMark logged={kcal !== undefined} kcal={kcal} target={target} goal={goal} />
             </Pressable>
           );
         })}
@@ -498,15 +522,22 @@ const MACRO_NAMES: Record<Exclude<FuelMacro, 'calories'>, string> = { protein: '
 /**
  * One macro against its target; a tap opens that target to change. Its line
  * turns red past target only where that is a warning for the goal: never for
- * protein, never while gaining.
+ * protein, never while gaining. Without a saved target it is the grams alone,
+ * and "–" until the day has loaded.
  */
-function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'calories'>; value: number; target: number; goal: NutritionGoal | undefined }) {
+function MacroRow({ macro, value, target, loaded, goal }: {
+  macro: Exclude<FuelMacro, 'calories'>;
+  value: number;
+  target: number | null;
+  loaded: boolean;
+  goal: NutritionGoal | undefined;
+}) {
   const c = useBlanc();
   const name = MACRO_NAMES[macro];
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(target)} g`}
+      accessibilityLabel={loaded ? `${name}, ${formatWhole(value)}${target ? ` of ${formatWhole(target)}` : ''} g` : name}
       accessibilityHint={`Edits your ${name.toLowerCase()} target`}
       onPress={() => editTarget(macro)}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
@@ -514,14 +545,14 @@ function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'c
         <BlancText variant="body">{name}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
-            {formatWhole(value)}
+            {loaded ? formatWhole(value) : '–'}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {` / ${formatWhole(target)} g`}
+            {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
           </BlancText>
         </View>
       </View>
-      <Track progress={target > 0 ? value / target : 0} warnOver={warnsOverTarget(macro, goal)} />
+      {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : null}
     </Pressable>
   );
 }
