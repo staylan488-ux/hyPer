@@ -1,7 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
 import { AccessibilityInfo, Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -49,6 +49,23 @@ type Draft = { setId: string; weight: string; reps: string; rpe: number | null; 
 const BEAT_MOMENT_MS = 4000;
 /** How long Undo stays after a skip, as in the program editor. */
 const UNDO_MS = 5000;
+/** Each skip's own token, so Undo and a failed save only ever clear their own skip. */
+let skipCount = 0;
+const nextSkipKey = () => (skipCount += 1);
+
+/**
+ * Runs `work` and tells whether it finished without throwing. The try lives
+ * out here because the React Compiler can't yet compile a component whose
+ * own code branches inside a try.
+ */
+async function succeeds(work: () => Promise<void>): Promise<boolean> {
+  try {
+    await work();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The web's autofill rule: set 1 starts from last workout's set 1, later sets
@@ -117,11 +134,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   };
   const focusedId = useFocusStore((state) => state.exerciseId);
   const focusSeen = useRef(focusedId);
+  const onFocusChange = useEffectEvent(() => revealCard());
   useEffect(() => {
     if (focusSeen.current === focusedId) return;
     focusSeen.current = focusedId;
-    revealCard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    onFocusChange();
   }, [focusedId]);
 
   const current = session.current;
@@ -153,23 +170,23 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // A new set starts from its suggested numbers; the same set keeps any edits,
   // including after a failed save.
   const currentSetId = current?.set.id ?? null;
-  useEffect(() => {
+  const onSetChange = useEffectEvent(() => {
     setDraft((existing) => {
       if (!current) return null;
       return existing?.setId === current.set.id ? existing : suggestedDraft(current, previous);
     });
     setFailedSetId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSetId]);
+  });
+  useEffect(() => onSetChange(), [currentSetId]);
 
   // "Last time" arrives after the screen opens: fill it into an untouched set.
-  useEffect(() => {
+  const onPreviousChange = useEffectEvent(() => {
     setDraft((existing) => {
       if (!current || !existing || existing.touched || existing.setId !== current.set.id) return existing;
       return suggestedDraft(current, previous);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previous]);
+  });
+  useEffect(() => onPreviousChange(), [previous]);
 
   const weight = draft ? parseNumber(draft.weight) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
@@ -187,7 +204,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     setBeat(null);
     const logged = current.set;
     const loggedReps = Math.round(reps);
-    try {
+    const saved = await succeeds(async () => {
       await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
       // Beating the same set last time gets a firmer haptic and a quiet line.
       const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous);
@@ -204,12 +221,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       const chosen = useFocusStore.getState().exerciseId;
       if (after.nextExerciseId && (!chosen || chosen === logged.exercise_id)) focus(after.nextExerciseId);
       if (after.rest) startRest(current.movement.exerciseId);
-    } catch {
+    });
+    if (!saved) {
       haptics.error();
       setFailedSetId(logged.id);
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const bump = (field: 'weight' | 'reps', delta: number) => {
@@ -234,7 +251,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const skip = (movement: Movement) => {
     Keyboard.dismiss();
     const wasCurrent = movement.exerciseId === current?.movement.exerciseId;
-    const key = Date.now();
+    const key = nextSkipKey();
     setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent });
     AccessibilityInfo.announceForAccessibility(`${movement.name} skipped`);
     void setSkipped(session.workoutId, movement, true).then((saved) => {
@@ -253,41 +270,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
   const { finish, closing } = useFinishWorkout(session);
 
-  const rename = () => {
-    Alert.prompt(
-      'Workout name',
-      undefined,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (text?: string) => {
-            const name = text?.trim().slice(0, 40);
-            if (!name || name === session.dayName) return;
-            renameSession(session.workoutId, name).then(
-              () => haptics.success(),
-              (error: unknown) => {
-                haptics.error();
-                Alert.alert('Not renamed', errorMessage(error, 'Could not save the workout name. Try again.'));
-              },
-            );
-          },
-        },
-      ],
-      'plain-text',
-      session.dayName,
-    );
-  };
-
   // The header is built once per name and state, never per keystroke or
   // clock tick, so its buttons are not re-sent to iOS under the finger.
-  const renameRef = useRef(rename);
-  renameRef.current = rename;
-  const flexible = session.flexible;
+  const { workoutId, dayName, flexible } = session;
   const headerOptions = useMemo(
     () =>
       ({
-        title: session.dayName,
+        title: dayName,
         unstable_headerRightItems: () => [
           {
             type: 'button',
@@ -321,26 +310,27 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   disabled: closing,
                   onPress: () => {
                     haptics.tap();
-                    renameRef.current();
+                    renameWorkout(workoutId, dayName);
                   },
                 },
               ]
             : []),
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [session.dayName, closing, c.ink, flexible, finish],
+    [workoutId, dayName, closing, c.ink, flexible, finish],
   );
 
-  // Blocks: a superset pair moves as one.
-  const blocks = movementBlocks(
-    session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
-  );
-  const byId = new Map(session.movements.map((movement) => [movement.exerciseId, movement]));
   // A drop saves this session's order at once (never the program); while it
   // saves rows stay put, and a failed save puts the old order back.
   const [reordering, setReordering] = useState(false);
   const [orderRevision, setOrderRevision] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // Blocks: a superset pair moves as one. (Computed after every hook, so the
+  // React Compiler can keep the movement list from rebuilding as you type.)
+  const blocks = movementBlocks(
+    session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
+  );
+  const byId = new Map(session.movements.map((movement) => [movement.exerciseId, movement]));
   const moveBlock = async (key: string, index: number) => {
     if (reordering) return;
     const ids = moveMovementBlock(blocks, key, index);
@@ -351,9 +341,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       haptics.error();
       setOrderRevision((value) => value + 1);
       Alert.alert('Order not saved', errorMessage(failure, 'Check your connection and try again.'));
-    } finally {
-      setReordering(false);
     }
+    setReordering(false);
   };
 
   const movementRow = (movement: Movement, blockIndex: number) => {
@@ -433,6 +422,47 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     );
   };
   const addMovement = () => router.push({ pathname: '/swap', params: { mode: 'add' } });
+
+  // Built before the set card, so typing in the card never rebuilds the list.
+  const movementList =
+    session.movements.length > 0 ? (
+      <Section title="Movements">
+        {/* Hold a movement to lift it and drag it into place; hold and let
+            go for its sets, note and swap. The card's corners are the rows'. */}
+        <Label>
+          <DragList
+            items={blocks.map((block) => ({
+              key: block[0],
+              node: block.map((id, index) => {
+                const movement = byId.get(id);
+                return movement ? (
+                  <View key={id}>
+                    {index > 0 ? <Hairline /> : null}
+                    {movementRow(movement, blocks.findIndex((entry) => entry === block))}
+                  </View>
+                ) : null;
+              }),
+            }))}
+            enabled={!reordering}
+            revision={orderRevision}
+            roundBottom={!session.flexible}
+            onMove={(key, index) => void moveBlock(key, index)}
+            onHold={(key) => openMovement(key)}
+            onDragging={setDragging}
+          />
+          {session.flexible ? (
+            <Animated.View layout={rowLayout}>
+              <Hairline />
+              <Row
+                title="Add movement"
+                leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
+                onPress={addMovement}
+              />
+            </Animated.View>
+          ) : null}
+        </Label>
+      </Section>
+    ) : null;
 
   return (
     <>
@@ -613,44 +643,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           </Label>
         )}
 
-        {session.movements.length > 0 ? (
-        <Section title="Movements">
-          {/* Hold a movement to lift it and drag it into place; hold and let
-              go for its sets, note and swap. The card's corners are the rows'. */}
-          <Label>
-            <DragList
-              items={blocks.map((block) => ({
-                key: block[0],
-                node: block.map((id, index) => {
-                  const movement = byId.get(id);
-                  return movement ? (
-                    <View key={id}>
-                      {index > 0 ? <Hairline /> : null}
-                      {movementRow(movement, blocks.findIndex((entry) => entry === block))}
-                    </View>
-                  ) : null;
-                }),
-              }))}
-              enabled={!reordering}
-              revision={orderRevision}
-              roundBottom={!session.flexible}
-              onMove={(key, index) => void moveBlock(key, index)}
-              onHold={(key) => openMovement(key)}
-              onDragging={setDragging}
-            />
-            {session.flexible ? (
-              <Animated.View layout={rowLayout}>
-                <Hairline />
-                <Row
-                  title="Add movement"
-                  leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
-                  onPress={addMovement}
-                />
-              </Animated.View>
-            ) : null}
-          </Label>
-        </Section>
-        ) : null}
+        {movementList}
       </TabScroll>
 
       <UndoBar
@@ -672,6 +665,33 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         </KeyboardStickyView>
       ) : null}
     </>
+  );
+}
+
+/** A flexible session's name, asked for in place. */
+function renameWorkout(workoutId: string, dayName: string) {
+  Alert.prompt(
+    'Workout name',
+    undefined,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Save',
+        onPress: (text?: string) => {
+          const name = text?.trim().slice(0, 40);
+          if (!name || name === dayName) return;
+          renameSession(workoutId, name).then(
+            () => haptics.success(),
+            (error: unknown) => {
+              haptics.error();
+              Alert.alert('Not renamed', errorMessage(error, 'Could not save the workout name. Try again.'));
+            },
+          );
+        },
+      },
+    ],
+    'plain-text',
+    dayName,
   );
 }
 

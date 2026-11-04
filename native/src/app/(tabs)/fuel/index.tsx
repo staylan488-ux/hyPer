@@ -32,7 +32,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
-import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, type FoodLog } from '~/lib/fuel';
+import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
@@ -95,6 +95,15 @@ const editTarget = (focus: 'calories' | 'protein' | 'carbs' | 'fat') => {
   router.push({ pathname: '/targets-edit', params: { focus } });
 };
 
+/**
+ * Whether the day's entries offer Move to yesterday, read from the clock on
+ * every render like today's key: the offer ends at 5 am, and the compiler
+ * would otherwise keep the answer until the day's entries change.
+ */
+function useLateNight(live: boolean, logs: FoodLog[]) {
+  return live && offersMoveToPreviousDay(logs);
+}
+
 export default function FuelScreen() {
   const target = useAppStore((state) => state.macroTarget);
   // Bulking, going past a target is a good day, not a red one.
@@ -102,11 +111,11 @@ export default function FuelScreen() {
   const { selected, logs, groups, loaded, status } = useFuelDay();
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
-  const live = selected === dayKey(new Date());
+  const live = selected === useTodayKey();
   const totals = sumMacros(logs);
   const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
   const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
-  const lateNight = live && offersMoveToPreviousDay(logs);
+  const lateNight = useLateNight(live, logs);
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -118,13 +127,12 @@ export default function FuelScreen() {
 
   // Pull down: the shown day's month and the targets, fresh.
   const [refreshing, setRefreshing] = useState(false);
+  // .finally rather than try/finally, which the React Compiler can't compile.
   const refresh = async () => {
     setRefreshing(true);
-    try {
-      await Promise.all([useFuelStore.getState().refresh(), useAppStore.getState().fetchMacroTarget().catch(() => {})]);
-    } finally {
-      setRefreshing(false);
-    }
+    await Promise.all([useFuelStore.getState().refresh(), useAppStore.getState().fetchMacroTarget().catch(() => {})]).finally(() =>
+      setRefreshing(false),
+    );
   };
 
   return (
