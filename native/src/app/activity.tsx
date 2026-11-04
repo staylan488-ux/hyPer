@@ -1,14 +1,14 @@
 import { format, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { activityTimeValue, buildActivityInput } from '@/lib/activitySessions';
 import { ACTIVITY_TYPE_LABELS, ACTIVITY_TYPES, type ActivityType } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, PickerRow } from '~/components/Form';
+import { FieldRow, FormNote, MenuRow, PickerRow, ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
@@ -64,17 +64,6 @@ export default function ActivitySheet() {
     if (done) router.back();
   }, [done]);
 
-  const chooseType = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: 'Activity', options: [...ACTIVITY_TYPES.map((value) => ACTIVITY_TYPE_LABELS[value]), 'Cancel'], cancelButtonIndex: ACTIVITY_TYPES.length },
-      (index) => {
-        if (index >= ACTIVITY_TYPES.length) return;
-        haptics.select();
-        setType(ACTIVITY_TYPES[index]);
-      },
-    );
-  };
-
   const save = async () => {
     if (busy) return;
     setBusy('save');
@@ -117,11 +106,16 @@ export default function ActivitySheet() {
         <BlancText variant="headline" style={{ flex: 1, textAlign: 'center' }} accessibilityRole="header">
           {editing ? 'Edit activity' : 'Add activity'}
         </BlancText>
-        <Capsule title="Save" busy={busy === 'save'} disabled={busy === 'delete'} onPress={() => void save()} />
+        <View style={{ width: 44 }} />
       </View>
 
       <Label style={{ marginTop: 22 }}>
-        <Row title="Activity" quiet value={ACTIVITY_TYPE_LABELS[type]} onPress={chooseType} />
+        <MenuRow
+          label="Activity"
+          value={type}
+          options={ACTIVITY_TYPES.map((value) => ({ value, label: ACTIVITY_TYPE_LABELS[value] }))}
+          onChange={(value) => setType(value as ActivityType)}
+        />
         {type === 'other' ? (
           <>
             <Hairline />
@@ -135,13 +129,24 @@ export default function ActivitySheet() {
       <Label style={{ marginTop: 18 }}>
         <PickerRow label="Date" mode="date" value={date} max={new Date()} onChange={setDate} />
         <Hairline />
+        {/* Off leaves the start out; on, it starts at now. */}
+        <ToggleRow label="Start time" value={start !== null} onChange={(on) => setStart(on ? new Date() : null)} />
         {start ? (
-          <PickerRow label="Start" mode="time" value={start} onChange={setStart} />
-        ) : (
-          <Row title="Add start time" quiet onPress={() => setStart(new Date())} />
-        )}
+          <>
+            <Hairline />
+            <PickerRow label="Start" mode="time" value={start} onChange={setStart} />
+          </>
+        ) : null}
         <Hairline />
-        <FieldRow label="Duration" unit="min" value={minutes} onChangeText={(text) => setMinutes(text.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="0" maxLength={4} />
+        <FieldRow
+          label="Duration"
+          unit={minutes ? 'min' : undefined}
+          value={minutes}
+          onChangeText={(text) => setMinutes(text.replace(/[^0-9]/g, ''))}
+          keyboardType="number-pad"
+          placeholder="Optional"
+          maxLength={4}
+        />
       </Label>
 
       <Label style={{ marginTop: 18 }}>
@@ -150,23 +155,13 @@ export default function ActivitySheet() {
 
       {failed ? <FormNote alert>Not saved. Check your connection and try again.</FormNote> : null}
 
+      <View style={{ marginHorizontal: space.inset, marginTop: 24 }}>
+        <Capsule title="Save" size="large" fill busy={busy === 'save'} disabled={busy === 'delete'} onPress={() => void save()} />
+      </View>
+
       {editing ? (
-        <Label style={{ marginTop: 30 }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={busy !== null ? { disabled: true } : undefined}
-            disabled={busy !== null}
-            onPress={() => {
-              haptics.tap();
-              remove();
-            }}
-            style={{ minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 }}>
-            {({ pressed }) => (
-              <BlancText variant="body" tone="live" style={{ opacity: pressed || busy !== null ? 0.5 : 1 }}>
-                Delete activity
-              </BlancText>
-            )}
-          </Pressable>
+        <Label style={{ marginTop: space.section }}>
+          <Row title="Delete activity" destructive disabled={busy !== null} onPress={remove} />
         </Label>
       ) : null}
       <View style={{ height: space.section }} />
@@ -175,15 +170,6 @@ export default function ActivitySheet() {
 }
 
 function FieldNotes({ value, onChange }: { value: string; onChange: (text: string) => void }) {
-  return (
-    <FieldRow
-      label="Notes"
-      wide
-      value={value}
-      onChangeText={onChange}
-      placeholder="Optional"
-      multiline
-      maxLength={NOTES_LIMIT}
-    />
-  );
+  // Wraps and grows from the label's line, as the program editor's names do.
+  return <FieldRow label="Notes" wide grows value={value} onChangeText={onChange} placeholder="Optional" maxLength={NOTES_LIMIT} />;
 }

@@ -6,9 +6,9 @@ import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native
 import Animated from 'react-native-reanimated';
 
 import { formatDistanceMi } from '@/lib/activityMetrics';
-import { formatActivityDuration, formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle, sortActivitySessionsByStart } from '@/lib/activitySessions';
+import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle, sortActivitySessionsByStart } from '@/lib/activitySessions';
 import { buildCalendarDays, historyDayKey, historyWorkoutTitle, progressFromSets, type HistoryWorkout } from '@/lib/historyMonth';
-import { formatWorkoutDuration, getWorkoutDurationMs } from '@/lib/workoutSessions';
+import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -18,6 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
   confirmDeleteActivity,
@@ -30,10 +31,14 @@ import {
   workoutsOnDay,
 } from '~/lib/history';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { useSessionModel, type SessionModel } from '~/lib/session';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc, type Palette } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/** A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one. */
+const lengthOf = (ms: number | null | undefined) => (ms && ms > 0 ? formatMinutes(Math.max(1, Math.round(ms / 60000))) : null);
 
 /** History: a month of training at a glance, and each day's workouts and activities. */
 export default function HistoryScreen() {
@@ -44,6 +49,8 @@ export default function HistoryScreen() {
   const loading = useHistoryStore((state) => state.loading);
   const failed = useHistoryStore((state) => state.failed);
   const whoop = useAppStore((state) => state.whoopConnection);
+  // The workout running now is not a past one: its row leads back to Train.
+  const live = useSessionModel();
   const [syncing, setSyncing] = useState(false);
   // Only while the person's own pull runs.
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +109,7 @@ export default function HistoryScreen() {
               ? [
                   {
                     type: 'button' as const,
-                    label: syncing ? 'Syncing' : 'Sync WHOOP',
+                    label: syncing ? 'Syncing…' : 'Sync WHOOP',
                     icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
                     disabled: syncing,
                     onPress: () => {
@@ -139,7 +146,7 @@ export default function HistoryScreen() {
               dayWorkouts.map((workout, index) => (
                 <Animated.View key={workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                   {index > 0 ? <Hairline /> : null}
-                  <WorkoutRow workout={workout} />
+                  <WorkoutRow workout={workout} live={live?.workoutId === workout.id ? live : null} />
                 </Animated.View>
               ))}
             {!loading &&
@@ -406,14 +413,30 @@ function AddActivityButton({ day }: { day: string }) {
 }
 
 
-/** A workout: tap to open; swipe to delete (asks first); hold for the menu. */
-function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
+/**
+ * A workout: tap to open; swipe to delete (asks first); hold for the menu.
+ * The one running now reads "Now" by a live dot and opens Train, with no Delete.
+ */
+function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
   const title = historyWorkoutTitle(workout);
+  if (live) {
+    const train = () => router.dismissTo('/train');
+    return (
+      <Row
+        title={title}
+        detail={`Now · ${live.doneCount} of ${live.sets.length} sets`}
+        leading={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
+        chevron
+        onPress={train}
+        menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}
+      />
+    );
+  }
   const progress = progressFromSets(workout.sets);
-  const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
+  const duration = lengthOf(getWorkoutDurationMs(workout));
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
-  const detail = [duration === '—' ? null : duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
+  const detail = [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id);
   const menu: MenuAction[] = [
@@ -431,10 +454,9 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
 }
 
 function activityDetail(activity: ActivitySession): string {
-  const duration = formatActivityDuration(activity.duration_seconds);
   return [
     formatActivityStartTime(activity.started_at),
-    duration === '-' ? null : duration,
+    lengthOf((activity.duration_seconds ?? 0) * 1000),
     formatDistanceMi(activity.distance_m),
     activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
   ]

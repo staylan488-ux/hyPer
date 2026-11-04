@@ -1,6 +1,6 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   activityTypeLabel,
@@ -10,7 +10,7 @@ import {
   formatSegmentDistance,
   paceSecondsPerMile,
 } from '@/lib/activityMetrics';
-import { formatActivityDuration, formatActivityStartTime, resolveActivityTitle } from '@/lib/activitySessions';
+import { formatActivityStartTime, resolveActivityTitle } from '@/lib/activitySessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySegment } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -18,9 +18,10 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useHistoryStore } from '~/lib/history';
-import { space } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded in hyPer', manual: 'Added by hand' };
 
@@ -30,6 +31,7 @@ const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded i
  * the activity sheet.
  */
 export default function ActivityViewScreen() {
+  const c = useBlanc();
   const { id } = useLocalSearchParams<{ id: string }>();
   const stored = useHistoryStore((state) => state.activities.find((entry) => entry.id === id) ?? null);
   // The last one seen: deleted from its edit sheet, it stays drawn under the
@@ -72,12 +74,12 @@ export default function ActivityViewScreen() {
 
   const title = resolveActivityTitle(activity);
   const typeLabel = activityTypeLabel(activity);
-  const duration = formatActivityDuration(activity.duration_seconds);
+  const duration = activity.duration_seconds && activity.duration_seconds > 0 ? formatMinutes(Math.max(1, Math.round(activity.duration_seconds / 60))) : null;
   const pace = activity.activity_type === 'run' ? formatPace(paceSecondsPerMile(activity.distance_m, activity.duration_seconds)) : null;
   const rows: [string, string][] = [
     ...(typeLabel !== title ? [['Activity', typeLabel] as [string, string]] : []),
     ...(activity.started_at ? [['Started', formatActivityStartTime(activity.started_at)] as [string, string]] : []),
-    ...(duration !== '-' ? [['Duration', duration] as [string, string]] : []),
+    ...(duration ? [['Duration', duration] as [string, string]] : []),
     ...(formatDistanceMi(activity.distance_m) ? [['Distance', formatDistanceMi(activity.distance_m) as string] as [string, string]] : []),
     ...(pace ? [['Pace', pace] as [string, string]] : []),
     ...(activity.strain != null ? [['Strain', activity.strain.toFixed(1)] as [string, string]] : []),
@@ -89,6 +91,7 @@ export default function ActivityViewScreen() {
   // As on the web: only the recording's own laps are splits; a WHOOP record
   // absorbed into a run adds its numbers, not rows. One segment is the whole run.
   const splits = (segments ?? []).filter((segment) => segment.source === activity.source);
+  const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
 
   return (
     <>
@@ -101,7 +104,7 @@ export default function ActivityViewScreen() {
               label: 'Edit',
               onPress: () => {
                 haptics.tap();
-                router.push({ pathname: '/activity', params: { id: activity.id } });
+                edit();
               },
             },
           ],
@@ -113,7 +116,7 @@ export default function ActivityViewScreen() {
             {rows.map(([label, value], index) => (
               <View key={label}>
                 {index > 0 ? <Hairline inset={18} /> : null}
-                <Row title={label} quiet value={value} />
+                <ValueRow label={label} value={value} />
               </View>
             ))}
           </Label>
@@ -121,10 +124,18 @@ export default function ActivityViewScreen() {
 
         {activity.notes?.trim() ? (
           <Section title="Notes">
-            <Label>
-              <BlancText variant="body" style={{ paddingHorizontal: 18, paddingVertical: 14 }}>
-                {activity.notes.trim()}
-              </BlancText>
+            {/* The note opens the editor, as Edit does. */}
+            <Label style={{ overflow: 'hidden' }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint="Edit activity"
+                onPress={() => {
+                  haptics.tap();
+                  edit();
+                }}
+                style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+                <BlancText variant="body">{activity.notes.trim()}</BlancText>
+              </Pressable>
             </Label>
           </Section>
         ) : null}
@@ -135,16 +146,15 @@ export default function ActivityViewScreen() {
               {splits.map((segment, index) => (
                 <View key={segment.id}>
                   {index > 0 ? <Hairline inset={18} /> : null}
-                  <Row
-                    title={`${index + 1}`}
-                    quiet
+                  <ValueRow
+                    label={`${index + 1}`}
                     detail={formatSegmentDistance(segment.distance_m) ?? undefined}
                     value={[
                       formatClockDuration(segment.duration_seconds),
                       formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
                     ]
                       .filter(Boolean)
-                      .join('  ·  ')}
+                      .join(' · ')}
                     accessibilityLabel={`Split ${index + 1}, ${[
                       formatSegmentDistance(segment.distance_m),
                       formatClockDuration(segment.duration_seconds),
@@ -165,5 +175,23 @@ export default function ActivityViewScreen() {
         ) : null}
       </TabScroll>
     </>
+  );
+}
+
+/** A measured value as the receipt at Finish writes one: the label in graphite, the figure in ink, read as one. */
+function ValueRow({ label, detail, value, accessibilityLabel }: { label: string; detail?: string; value: string; accessibilityLabel?: string }) {
+  return (
+    <View accessible accessibilityLabel={accessibilityLabel ?? `${label}, ${value}`}>
+      <Row
+        title={label}
+        detail={detail}
+        quiet
+        trailing={
+          <BlancText variant="body" style={{ fontVariant: ['tabular-nums'] }}>
+            {value}
+          </BlancText>
+        }
+      />
+    </View>
   );
 }

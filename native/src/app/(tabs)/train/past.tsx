@@ -9,7 +9,7 @@ import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitl
 import { historyDayKey, historyWorkoutTitle, moveHistoryMovement, orderHistoryMovements, type HistoryMovement, type HistoryWorkout } from '@/lib/historyMonth';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { activityHasStats, searchWhoopForWorkout, workoutHasWhoopStats } from '@/lib/workoutWhoop';
-import { formatWorkoutDuration, getWorkoutDurationMs } from '@/lib/workoutSessions';
+import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import type { WorkoutSet } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -20,6 +20,8 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { Tally } from '~/components/Tally';
+import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
   attachStats,
@@ -32,6 +34,7 @@ import {
   useHistoryStore,
 } from '~/lib/history';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { planTarget } from '~/lib/program';
 import { space, useBlanc } from '~/theme/blanc';
 
 /** One past workout: correct any set, add or take out sets and movements, keep notes, or delete it. */
@@ -63,8 +66,17 @@ export default function PastWorkoutScreen() {
   }
 
   const title = historyWorkoutTitle(workout, plan);
-  const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
+  const durationMs = getWorkoutDurationMs(workout);
   const day = historyDayKey(workout);
+  // Read like the receipt at Finish: when it started and how long it ran.
+  const started = workout.created_at ? new Date(workout.created_at) : null;
+  const meta = [
+    started && !Number.isNaN(started.getTime()) ? format(started, 'EEE · MMM d · h:mm a') : format(parseISO(day), 'EEE · MMM d'),
+    durationMs ? formatMinutes(Math.max(1, Math.round(durationMs / 60000))) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const marks = movements.flatMap((movement) => movement.sets.map((set) => set.completed));
   const orderedIds = movements.map((movement) => movement.exerciseId);
   const remove = () =>
     void confirmDeleteWorkout(title, workout.id, {
@@ -112,9 +124,17 @@ export default function PastWorkoutScreen() {
         }}
       />
       <TabScroll>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {[format(parseISO(day), 'EEEE, MMMM d'), duration === '—' ? null : duration].filter(Boolean).join(' · ')}
+        <BlancText variant="meta" size={13} tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+          {meta}
         </BlancText>
+        {marks.length > 0 ? (
+          <Tally
+            marks={marks}
+            current={null}
+            accessibilityLabel={`${marks.filter(Boolean).length} of ${marks.length} sets logged`}
+            style={{ marginHorizontal: space.gutter, marginTop: 14 }}
+          />
+        ) : null}
 
         <Stats workout={workout} activities={activities.filter((activity) => getActivitySessionDateKey(activity) === day)} />
 
@@ -137,19 +157,7 @@ export default function PastWorkoutScreen() {
             <Row title="Add movement" leading={<Plus />} onPress={() => addMovement(workout.id)} />
           </Label>
           <Label style={{ marginTop: 18 }}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                haptics.tap();
-                remove();
-              }}
-              style={{ minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 }}>
-              {({ pressed }) => (
-                <BlancText variant="body" tone="live" style={{ opacity: pressed ? 0.5 : 1 }}>
-                  Delete workout
-                </BlancText>
-              )}
-            </Pressable>
+            <Row title="Delete workout" destructive onPress={remove} />
           </Label>
         </Animated.View>
       </TabScroll>
@@ -188,6 +196,8 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
   const [addingShown, setAddingShown] = useState(false);
   // One set with an RPE keeps the column on every row, so the numbers line up.
   const rpeColumn = movement.sets.some((set) => set.rpe);
+  // What the plan asked for, beside the name: "4 × 8–10".
+  const target = movement.plan ? planTarget(movement.plan) : null;
   const line = [
     movement.substitutesFor ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}` : null,
     movement.partnerName ? `Superset with ${movement.partnerName}` : null,
@@ -279,6 +289,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
   return (
     <Section
       title={movement.name}
+      note={target ?? undefined}
       accessory={
         <Pressable
           accessibilityRole="button"
@@ -328,7 +339,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
         ))}
         <Animated.View layout={rowLayout}>
           <Hairline />
-          <Row title={addingShown ? 'Adding…' : 'Add set'} quiet leading={<Plus />} onPress={addSet} />
+          <Row title={addingShown ? 'Adding…' : 'Add set'} leading={<Plus />} onPress={addSet} />
         </Animated.View>
       </Label>
     </Section>
