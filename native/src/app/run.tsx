@@ -27,6 +27,7 @@ import {
   gpsDiagnosticsExport,
   isAutoLapValid,
   livePaceSecPerMile,
+  runLocationBlock,
   runSaveErrorMessage,
   runStatus,
   splitFigure,
@@ -126,7 +127,7 @@ function Setup({ tracker }: { tracker: Tracker }) {
   const [autoLap, setAutoLap] = useState<AutoLapChoice>(DEFAULT_AUTO_LAP);
   const [customMetres, setCustomMetres] = useState(DEFAULT_CUSTOM_AUTO_LAP_M);
   const [source, setSource] = useState<SourceChoice>(preview ? gpsScenarios[0].id : 'gps');
-  const [locationBlocked, setLocationBlocked] = useState(false);
+  const [locationBlocked, setLocationBlocked] = useState<'off' | 'approximate' | null>(null);
   const [starting, setStarting] = useState(false);
   const valid = mode === 'free' || isAutoLapValid(autoLap, customMetres);
 
@@ -152,13 +153,14 @@ function Setup({ tracker }: { tracker: Tracker }) {
       setStarting(true);
       const permission = await NativeRun.requestPermissions().catch(() => null);
       setStarting(false);
-      if (permission && (permission.location === 'denied' || permission.location === 'restricted')) {
+      const blocked = runLocationBlock(permission);
+      if (blocked) {
         haptics.error();
-        setLocationBlocked(true);
+        setLocationBlocked(blocked);
         return;
       }
     }
-    setLocationBlocked(false);
+    setLocationBlocked(null);
     tracker.start(mode, mode === 'intervals' ? autoLapDistanceM(autoLap, customMetres) : null, positions);
   };
 
@@ -252,7 +254,7 @@ function Setup({ tracker }: { tracker: Tracker }) {
           {locationBlocked ? (
             <View style={{ marginTop: 24, marginHorizontal: space.gutter, gap: 12 }}>
               <BlancText variant="secondary" tone="live" accessibilityRole="alert">
-                Location is off for hyPer. Allow it, with Precise Location, to track runs.
+                Location is {locationBlocked === 'approximate' ? 'approximate' : 'off'} for hyPer. Allow it, with Precise Location, to track runs.
               </BlancText>
               <Capsule title="Open Settings" variant="quiet" onPress={() => void Linking.openSettings()} />
             </View>

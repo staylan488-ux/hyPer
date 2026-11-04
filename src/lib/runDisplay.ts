@@ -107,6 +107,21 @@ export function livePaceSecPerMile(state: TrackerState, nowMs: number): number |
   return currentLapAveragePaceSecPerMile(state, nowMs) ?? averagePaceSecPerMile(state, nowMs);
 }
 
+/**
+ * Why Start cannot track, from the location permission it asks for: location
+ * refused ('off'), or allowed without Precise Location ('approximate'), when
+ * every fix is a kilometre or more out and GPS never locks. A device that
+ * does not say whether location is precise goes ahead.
+ */
+export function runLocationBlock(
+  permission: { location: string; precise?: boolean } | null,
+): 'off' | 'approximate' | null {
+  if (!permission) return null;
+  if (permission.location === 'denied' || permission.location === 'restricted') return 'off';
+  const allowed = permission.location === 'whenInUse' || permission.location === 'always';
+  return allowed && permission.precise === false ? 'approximate' : null;
+}
+
 export type RunStatus = 'resting' | 'acquiring' | 'weak' | 'ok';
 
 /** The live status line, most urgent first. */

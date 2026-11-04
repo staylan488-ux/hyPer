@@ -12,6 +12,7 @@ import {
   isRestSegment,
   isRunResting,
   livePaceSecPerMile,
+  runLocationBlock,
   runSaveErrorMessage,
   runStatus,
   splitFigure,
@@ -124,6 +125,19 @@ describe('run display', () => {
     // Runs saved before the kind was kept stay as they read.
     expect(isRestSegment({ raw: { trigger: 'manual' } })).toBe(false);
     expect(isRestSegment({ raw: null })).toBe(false);
+  });
+
+  it('stops Start when location is refused or allowed without Precise Location', () => {
+    expect(runLocationBlock({ location: 'denied', precise: false })).toBe('off');
+    expect(runLocationBlock({ location: 'restricted', precise: false })).toBe('off');
+    // Approximate fixes are a kilometre or more out: the run would never lock.
+    expect(runLocationBlock({ location: 'whenInUse', precise: false })).toBe('approximate');
+    expect(runLocationBlock({ location: 'always', precise: false })).toBe('approximate');
+    expect(runLocationBlock({ location: 'whenInUse', precise: true })).toBeNull();
+    // A device that does not report precision, or a failed ask, still starts.
+    expect(runLocationBlock({ location: 'whenInUse' })).toBeNull();
+    expect(runLocationBlock(null)).toBeNull();
+    expect(runLocationBlock({ location: 'prompt', precise: false })).toBeNull();
   });
 
   it('keeps the run when a save fails, saying why', () => {
