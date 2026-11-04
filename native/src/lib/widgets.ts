@@ -14,10 +14,12 @@ import * as WidgetData from '../../modules/hyper-widget-data';
 import { useAccountDay } from './accountData';
 import { useFuelStore } from './fuel';
 import { useTodayPlan } from './today';
-import { buildWidgetSnapshot, widgetPlan } from './widgetPlan';
+import { buildWidgetSnapshot, widgetPlan, type WidgetPlanDay, type WidgetSnapshot } from './widgetPlan';
 
 // What was last handed to the widgets, so an unchanged snapshot is not rewritten.
 let written: string | null = null;
+// The plan in it, so Fuel still updates while the days ahead are unknown.
+let writtenPlan: { userId: string; plan: WidgetPlanDay[] } | null = null;
 
 /** Mounted once with the tabs: keeps the widgets' snapshot current and clears it on sign-out. */
 export function useWidgetSnapshot() {
@@ -56,26 +58,32 @@ export function useWidgetSnapshot() {
   );
 
   const json = useMemo(() => {
-    if (loading || !loaded || !targetsLoaded || !fuelLoaded || !days) return null;
-    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan: days }));
-  }, [loading, loaded, targetsLoaded, fuelLoaded, days, fuelDay, target, totals, goal]);
+    if (loading || !loaded || !targetsLoaded || !fuelLoaded) return null;
+    // While the plan is unknown (a completions read loading or failed), Fuel
+    // still updates beside the plan last written for this account today.
+    const plan = days ?? (userId && writtenPlan?.userId === userId && writtenPlan.plan[0]?.day === dayKey ? writtenPlan.plan : null);
+    if (!plan) return null;
+    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan }));
+  }, [loading, loaded, targetsLoaded, fuelLoaded, days, userId, dayKey, fuelDay, target, totals, goal]);
 
   useEffect(() => {
-    if (!json || json === written) return;
+    if (!json || json === written || !userId) return;
     // Settle first: an account load changes several figures in a row.
     const timer = setTimeout(() => {
       written = json;
+      writtenPlan = { userId, plan: (JSON.parse(json) as WidgetSnapshot).plan };
       void WidgetData.setSnapshot(json).catch(() => {
         written = null;
       });
     }, 600);
     return () => clearTimeout(timer);
-  }, [json]);
+  }, [json, userId]);
 
   // The tabs unmount only on sign-out: the widgets show nothing of the account after it.
   useEffect(
     () => () => {
       written = null;
+      writtenPlan = null;
       void WidgetData.clear().catch(() => {});
     },
     [],
