@@ -77,7 +77,7 @@ export default function LogWeightSheet() {
         <View style={{ width: 44 }} />
       </View>
 
-      <View style={{ paddingHorizontal: 24, paddingTop: 18 }}>
+      <View style={{ paddingHorizontal: space.inset, paddingTop: 18 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
           <FigureInput
             value={draft}

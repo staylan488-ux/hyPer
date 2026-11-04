@@ -182,8 +182,7 @@ function WeightCard() {
                 </BlancText>
               ) : null}
               {trend.fittedDayCount >= 2 ? (
-                // The line runs to the card's edges, part of the tile rather than a chart inside it.
-                <View style={{ marginTop: 10, marginHorizontal: -18 }} pointerEvents="none">
+                <View style={{ marginTop: 10 }} pointerEvents="none">
                   <WeightChart points={trend.points} days={30} unit={unit} height={44} compact />
                 </View>
               ) : null}

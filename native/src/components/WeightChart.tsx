@@ -19,7 +19,7 @@ const PAD_Y = 8;
  * hollow). The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * compact one is a quiet sparkline: the line alone, scaled to the line, so a
- * slow trend still shows.
+ * slow trend still shows, ending on a dot at the latest trend.
  */
 export function WeightChart({
   points,
@@ -148,6 +148,9 @@ export function WeightChart({
             />
           ))}
           <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          {compact ? (
+            <Circle cx={geometry.line[geometry.line.length - 1].x} cy={geometry.line[geometry.line.length - 1].y} r={3} fill={c.ink} />
+          ) : null}
           {activePoint ? (
             <>
               <Line x1={activePoint.x} x2={activePoint.x} y1={0} y2={height} stroke={c.hairline} strokeWidth={1} />
