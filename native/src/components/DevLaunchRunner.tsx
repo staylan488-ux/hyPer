@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
+import { checkFuelReminderSoon } from '~/lib/fuelReminder';
 import { setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { liveSessionModel, previousTargetsFor, useFocusStore } from '~/lib/session';
@@ -104,6 +105,12 @@ export function DevLaunchRunner() {
           });
         }, 1200),
       );
+    }
+
+    if (action === 'fuelReminder') {
+      // Today's reminder a minute from now through the real setting and schedule
+      // (tap Allow at the prompt); Metro logs what iOS then holds.
+      checkFuelReminderSoon();
     }
 
     if (action === 'noWorkout') {

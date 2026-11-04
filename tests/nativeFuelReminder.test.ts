@@ -1,0 +1,462 @@
+// @vitest-environment happy-dom
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { create } from 'zustand';
+
+import * as plan from '../native/src/lib/fuelReminderPlan';
+import { loadNativeModule } from './helpers/loadNativeModule';
+
+// The fuel reminder handed to iOS through the real hook, with a fake
+// expo-notifications that holds pending and shown notifications and, like
+// iOS, refuses to schedule without permission.
+
+const savedTz = process.env.TZ;
+process.env.TZ = 'America/Los_Angeles';
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const DAY = '2026-11-04';
+const DEFAULT_ACTION = 'expo.modules.notifications.actions.DEFAULT';
+const id = (day: string) => `hyper-fuel-reminder-${day}`;
+const totals = (calories: number, protein: number) => ({ calories, protein, carbs: 0, fat: 0 });
+
+type Permission = {
+  granted: boolean;
+  canAskAgain: boolean;
+  ios?: { status: number; allowsAlert: boolean; allowsDisplayOnLockScreen: boolean; allowsDisplayInNotificationCenter: boolean };
+};
+type Response = { actionIdentifier: string; notification: { date: number; request: { identifier: string } } };
+type Scheduled = { content: Record<string, unknown>; trigger: Record<string, unknown> };
+
+const allowed = (): Permission => ({
+  granted: true,
+  canAskAgain: true,
+  ios: { status: 2, allowsAlert: true, allowsDisplayOnLockScreen: true, allowsDisplayInNotificationCenter: true },
+});
+
+const ios = {
+  pending: new Map<string, Scheduled>(),
+  presented: [] as string[],
+  permission: allowed(),
+  answer: allowed(),
+  last: null as Response | null,
+  responder: null as ((response: Response) => void) | null,
+};
+const schedule = async ({ identifier, content, trigger }: { identifier: string } & Scheduled) => {
+  if (!ios.permission.granted) throw new Error('Notifications are not allowed');
+  ios.pending.set(identifier, { content, trigger });
+  return identifier;
+};
+const notifications = {
+  SchedulableTriggerInputTypes: { CALENDAR: 'calendar' },
+  DEFAULT_ACTION_IDENTIFIER: DEFAULT_ACTION,
+  getPermissionsAsync: vi.fn(async () => ios.permission),
+  requestPermissionsAsync: vi.fn(async () => {
+    ios.permission = ios.answer;
+    return ios.answer;
+  }),
+  getAllScheduledNotificationsAsync: vi.fn(async () =>
+    [...ios.pending].map(([identifier, request]) => ({ identifier, content: request.content, trigger: request.trigger }))),
+  scheduleNotificationAsync: vi.fn(schedule),
+  cancelScheduledNotificationAsync: vi.fn(async (identifier: string) => {
+    ios.pending.delete(identifier);
+  }),
+  getPresentedNotificationsAsync: vi.fn(async () => ios.presented.map((identifier) => ({ date: 0, request: { identifier } }))),
+  dismissNotificationAsync: vi.fn(async (identifier: string) => {
+    ios.presented = ios.presented.filter((shown) => shown !== identifier);
+  }),
+  getLastNotificationResponse: vi.fn(() => ios.last),
+  clearLastNotificationResponse: vi.fn(() => {
+    ios.last = null;
+  }),
+  addNotificationResponseReceivedListener: vi.fn((listener: (response: Response) => void) => {
+    ios.responder = listener;
+    return { remove: () => { ios.responder = null; } };
+  }),
+};
+
+const auth = create<{ user: { id: string } | null }>(() => ({ user: { id: 'user-1' } }));
+const app = create(() => ({
+  macroTarget: { calories: 2800, protein: 160 } as { calories: number; protein: number } | null,
+  nutritionProfile: { goal: 'bulk' } as { goal: string } | null,
+  macroTargetLoadedForUserId: 'user-1' as string | null,
+  nutritionProfileLoadedForUserId: 'user-1' as string | null,
+}));
+const fuel = create(() => ({
+  todayKey: DAY,
+  todayTotals: totals(1950, 120),
+  todayLoadedForUserId: 'user-1' as string | null,
+  todayLoadedKey: DAY as string | null,
+}));
+const push = vi.fn();
+let segments: string[] = ['(tabs)', 'today'];
+let visible: (() => void) | null = null;
+const intro = { played: true, mark: 1, reveal: 1 };
+
+type Mod = {
+  useFuelReminder: () => void;
+  useFuelReminderStore: { getState: () => { userId: string | null; settings: { enabled: boolean; minutes: number }; permission: string | null } };
+  setFuelReminderEnabled: (enabled: boolean) => void;
+  setFuelReminderTime: (minutes: number) => void;
+  clearFuelReminders: () => Promise<void>;
+  fuelReminderSettled: () => Promise<void>;
+};
+let mod: Mod;
+let root: Root;
+let host: HTMLDivElement;
+
+function Probe() {
+  mod.useFuelReminder();
+  return null;
+}
+const render = async () => {
+  await act(async () => { root.render(createElement(Probe)); });
+};
+const settle = async () => {
+  for (let i = 0; i < 5; i += 1) await act(async () => { await mod.fuelReminderSettled(); });
+};
+const pendingIds = () => [...ios.pending.keys()].sort();
+const storedHistory = () => JSON.parse(localStorage.getItem('hyper:fuel-reminder-sent:user-1') ?? '{}') as Record<string, number>;
+const seedSettings = (settings: { enabled: boolean; minutes: number }) =>
+  localStorage.setItem('hyper:fuel-reminder:user-1', JSON.stringify(settings));
+const scheduledIds = () => notifications.scheduleNotificationAsync.mock.calls.map(([request]) => request.identifier);
+const response = (identifier: string, date: number, actionIdentifier = DEFAULT_ACTION): Response => ({
+  actionIdentifier,
+  notification: { date, request: { identifier } },
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 10, 4, 13, 0));
+  seedSettings({ enabled: true, minutes: 1200 });
+  ios.pending = new Map();
+  ios.presented = [];
+  ios.permission = allowed();
+  ios.answer = allowed();
+  ios.last = null;
+  ios.responder = null;
+  notifications.scheduleNotificationAsync.mockImplementation(schedule);
+  auth.setState({ user: { id: 'user-1' } });
+  app.setState({
+    macroTarget: { calories: 2800, protein: 160 },
+    nutritionProfile: { goal: 'bulk' },
+    macroTargetLoadedForUserId: 'user-1',
+    nutritionProfileLoadedForUserId: 'user-1',
+  });
+  fuel.setState({ todayKey: DAY, todayTotals: totals(1950, 120), todayLoadedForUserId: 'user-1', todayLoadedKey: DAY });
+  push.mockReset();
+  segments = ['(tabs)', 'today'];
+  visible = null;
+  Object.assign(intro, { played: true, mark: 1, reveal: 1 });
+  mod = loadNativeModule<Mod>('lib/fuelReminder.ts', {
+    'expo-notifications': notifications,
+    'expo-router': { router: { push }, useSegments: () => segments },
+    zustand: { create },
+    '@/lib/appVisibility': {
+      onAppVisible: (listener: () => void) => {
+        visible = listener;
+        return () => { visible = null; };
+      },
+    },
+    '@/stores/appStore': { useAppStore: app },
+    '@/stores/authStore': { useAuthStore: auth },
+    './brand': {
+      introPlayed: () => intro.played,
+      introReveal: { get value() { return intro.reveal; } },
+      markShown: { get value() { return intro.mark; } },
+    },
+    './fuel': { useFuelStore: fuel },
+    './fuelReminderPlan': plan,
+  });
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  vi.useRealTimers();
+});
+
+afterAll(() => {
+  if (savedTz === undefined) delete process.env.TZ;
+  else process.env.TZ = savedTz;
+});
+
+describe('handing the reminder to iOS', () => {
+  it('waits for targets, the goal and today’s food, then holds today and the next two days', async () => {
+    app.setState({ macroTargetLoadedForUserId: null, nutritionProfileLoadedForUserId: null });
+    fuel.setState({ todayLoadedForUserId: null, todayLoadedKey: null });
+    await render();
+    await settle();
+    app.setState({ macroTargetLoadedForUserId: 'user-1' });
+    await settle();
+    app.setState({ nutritionProfileLoadedForUserId: 'user-1' });
+    await settle();
+    // Yesterday's figures still on screen while today loads.
+    fuel.setState({ todayLoadedForUserId: 'user-1', todayLoadedKey: '2026-11-03' });
+    await settle();
+    expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+
+    fuel.setState({ todayLoadedKey: DAY });
+    await settle();
+    expect(pendingIds()).toEqual([id('2026-11-04'), id('2026-11-05'), id('2026-11-06')]);
+    expect(ios.pending.get(id(DAY))).toEqual({
+      trigger: { type: 'calendar', year: 2026, month: 11, day: 4, hour: 20, minute: 0, second: 0, repeats: false },
+      content: {
+        title: '850 kcal and 40 g protein to go',
+        body: 'Still time for a good meal.',
+        sound: 'default',
+        categoryIdentifier: 'fuel-reminder',
+        threadIdentifier: 'fuel-reminder',
+      },
+    });
+    expect(ios.pending.get(id('2026-11-05'))?.content.title).toBe('Nothing logged today');
+    expect(Object.keys(storedHistory())).toEqual(['2026-11-04', '2026-11-05', '2026-11-06']);
+  });
+
+  it('takes today’s back once enough is logged, and clears one already shown', async () => {
+    await render();
+    await settle();
+    ios.presented = [id(DAY), 'hyper-rest-over'];
+    fuel.setState({ todayTotals: totals(2500, 150) });
+    await settle();
+    expect(notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(id(DAY));
+    expect(pendingIds()).toEqual([id('2026-11-05'), id('2026-11-06')]);
+    expect(Object.keys(storedHistory())).toEqual(['2026-11-05', '2026-11-06']);
+    expect(ios.presented).toEqual(['hyper-rest-over']);
+  });
+
+  it('skips an unchanged plan and hands everything over again on return to the front', async () => {
+    await render();
+    await settle();
+    const handed = notifications.scheduleNotificationAsync.mock.calls.length;
+    expect(handed).toBe(3);
+    fuel.setState({ todayTotals: totals(1950, 120) });
+    await settle();
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(handed);
+
+    ios.presented = [id('2026-11-03'), 'hyper-rest-over'];
+    await act(async () => { visible?.(); });
+    await settle();
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(handed + 3);
+    expect(ios.presented).toEqual(['hyper-rest-over']);
+  });
+
+  it('takes every reminder back when switched off, leaving Rest over', async () => {
+    await render();
+    await settle();
+    ios.pending.set('hyper-rest-over', { content: {}, trigger: {} });
+    mod.setFuelReminderEnabled(false);
+    await settle();
+    expect(pendingIds()).toEqual(['hyper-rest-over']);
+    expect(JSON.parse(localStorage.getItem('hyper:fuel-reminder:user-1')!)).toEqual({ enabled: false, minutes: 1200 });
+  });
+
+  it('sends at most one a day, even when the time moves later after it went out', async () => {
+    await render();
+    await settle();
+    ios.pending.delete(id(DAY)); // delivered
+    vi.setSystemTime(new Date(2026, 10, 4, 20, 1));
+    notifications.scheduleNotificationAsync.mockClear();
+    mod.setFuelReminderTime(1290);
+    await settle();
+    expect(scheduledIds()).toEqual([id('2026-11-05'), id('2026-11-06')]);
+  });
+
+  it('counts a reminder that went out while the app was closed', async () => {
+    seedSettings({ enabled: true, minutes: 1320 });
+    localStorage.setItem('hyper:fuel-reminder-sent:user-1', JSON.stringify({ [DAY]: new Date(2026, 10, 4, 20, 0).getTime() }));
+    vi.setSystemTime(new Date(2026, 10, 4, 21, 0));
+    await render();
+    await settle();
+    expect(pendingIds()).toEqual([id('2026-11-05'), id('2026-11-06')]);
+  });
+
+  it('retries the whole plan after a failed hand-over', async () => {
+    notifications.scheduleNotificationAsync
+      .mockImplementationOnce(schedule)
+      .mockImplementationOnce(async () => { throw new Error('add failed'); });
+    await render();
+    await settle();
+    expect(Object.keys(storedHistory())).toEqual([DAY]);
+
+    fuel.setState({ todayTotals: totals(1950, 120) });
+    await settle();
+    expect(pendingIds()).toEqual([id('2026-11-04'), id('2026-11-05'), id('2026-11-06')]);
+    expect(Object.keys(storedHistory())).toEqual(['2026-11-04', '2026-11-05', '2026-11-06']);
+  });
+});
+
+describe('permission', () => {
+  it('asks when switched on and holds the plan the moment it is allowed', async () => {
+    seedSettings({ enabled: false, minutes: 1200 });
+    ios.permission = { granted: false, canAskAgain: true, ios: { ...allowed().ios!, status: 0 } };
+    let scheduledBeforeAnswer = -1;
+    notifications.requestPermissionsAsync.mockImplementationOnce(async () => {
+      scheduledBeforeAnswer = notifications.scheduleNotificationAsync.mock.calls.length;
+      ios.permission = ios.answer;
+      return ios.answer;
+    });
+    await render();
+    await settle();
+    expect(notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+
+    mod.setFuelReminderEnabled(true);
+    await settle();
+    expect(notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(scheduledBeforeAnswer).toBe(0);
+    expect(pendingIds()).toHaveLength(3);
+  });
+
+  it('stays on when refused, holds nothing, and picks up once Settings allows it', async () => {
+    seedSettings({ enabled: false, minutes: 1200 });
+    ios.permission = { granted: false, canAskAgain: true };
+    ios.answer = { granted: false, canAskAgain: false };
+    await render();
+    await settle();
+    mod.setFuelReminderEnabled(true);
+    await settle();
+    expect(mod.useFuelReminderStore.getState().settings.enabled).toBe(true);
+    expect(mod.useFuelReminderStore.getState().permission).toBe('denied');
+    expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(pendingIds()).toEqual([]);
+
+    ios.permission = allowed();
+    await act(async () => { visible?.(); });
+    await settle();
+    expect(pendingIds()).toHaveLength(3);
+  });
+
+  it('treats allowed but shown nowhere as off', async () => {
+    ios.permission = {
+      granted: true,
+      canAskAgain: true,
+      ios: { status: 2, allowsAlert: false, allowsDisplayOnLockScreen: false, allowsDisplayInNotificationCenter: false },
+    };
+    await render();
+    await settle();
+    expect(mod.useFuelReminderStore.getState().permission).toBe('denied');
+    expect(pendingIds()).toEqual([]);
+  });
+});
+
+describe('signing out', () => {
+  it('takes this account’s reminders back, keeps Rest over, and starts again on the next sign-in', async () => {
+    await render();
+    await settle();
+    ios.pending.set('hyper-rest-over', { content: {}, trigger: {} });
+    ios.presented = [id('2026-11-03'), 'hyper-rest-over'];
+    await act(async () => {
+      auth.setState({ user: null });
+      root.render(null);
+    });
+    await settle();
+    expect(pendingIds()).toEqual(['hyper-rest-over']);
+    expect(ios.presented).toEqual(['hyper-rest-over']);
+    expect(mod.useFuelReminderStore.getState().userId).toBeNull();
+    expect(storedHistory()).toEqual({});
+
+    await act(async () => { auth.setState({ user: { id: 'user-1' } }); });
+    await render();
+    await settle();
+    expect(pendingIds()).toContain(id(DAY));
+  });
+
+  it('clears everything with nobody signed in, and a stored tap only when it is a reminder’s', async () => {
+    ios.pending.set(id(DAY), { content: {}, trigger: {} });
+    ios.pending.set('hyper-rest-over', { content: {}, trigger: {} });
+    ios.presented = [id('2026-11-03')];
+    ios.last = response('hyper-rest-over', 1);
+    await mod.clearFuelReminders();
+    expect(pendingIds()).toEqual(['hyper-rest-over']);
+    expect(ios.presented).toEqual([]);
+    expect(notifications.clearLastNotificationResponse).not.toHaveBeenCalled();
+
+    ios.last = response(id('2026-11-03'), 2);
+    await mod.clearFuelReminders();
+    expect(notifications.clearLastNotificationResponse).toHaveBeenCalledTimes(1);
+    expect(ios.last).toBeNull();
+  });
+});
+
+describe('a tap on the reminder', () => {
+  const advance = async (ms: number) => {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  };
+
+  it('waits for the launch intro to land, then opens Log food once', async () => {
+    Object.assign(intro, { played: false, mark: 0, reveal: 0 });
+    await render();
+    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
+    await advance(400);
+    expect(push).not.toHaveBeenCalled();
+    intro.played = true;
+    await advance(100);
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith('/log-food');
+    await advance(1000);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens after a moment when the intro never played', async () => {
+    Object.assign(intro, { played: false, mark: 1, reveal: 1 });
+    await render();
+    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
+    await advance(250);
+    expect(push).not.toHaveBeenCalled();
+    await advance(60);
+    expect(push).toHaveBeenCalledWith('/log-food');
+  });
+
+  it('leaves a sheet or the run in front as it is', async () => {
+    segments = ['run'];
+    await render();
+    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
+    await advance(500);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('ignores Rest over and other actions', async () => {
+    await render();
+    await act(async () => {
+      ios.responder?.(response('hyper-rest-over', 1));
+      ios.responder?.(response(id(DAY), 2, 'snap-meal'));
+    });
+    await advance(500);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('opens Log food for the tap that launched the app, and forgets it', async () => {
+    ios.last = response(id(DAY), 1);
+    await render();
+    await advance(10);
+    expect(push).toHaveBeenCalledWith('/log-food');
+    expect(notifications.clearLastNotificationResponse).toHaveBeenCalled();
+    expect(ios.last).toBeNull();
+    // The same tap arriving again as an event opens nothing more.
+    await act(async () => { ios.responder?.(response(id(DAY), 1)); });
+    await advance(500);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the notification handler', () => {
+  it('sends the reminder quietly to Notification Center and keeps Rest over as it was', async () => {
+    const setNotificationHandler = vi.fn();
+    loadNativeModule('platform/restNotifications.ts', {
+      'expo-notifications': { setNotificationHandler, SchedulableTriggerInputTypes: { DATE: 'date' } },
+      '~/lib/fuelReminderPlan': plan,
+    });
+    const { handleNotification } = setNotificationHandler.mock.calls[0][0] as {
+      handleNotification: (notification: { request: { identifier: string } }) => Promise<Record<string, boolean>>;
+    };
+    const handled = (identifier: string) => handleNotification({ request: { identifier } });
+    expect(await handled(id(DAY))).toEqual({ shouldShowBanner: false, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false });
+    expect(await handled('hyper-rest-over')).toMatchObject({ shouldShowBanner: false, shouldShowList: false, shouldPlaySound: true });
+    expect(await handled('something-else')).toMatchObject({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true });
+  });
+});

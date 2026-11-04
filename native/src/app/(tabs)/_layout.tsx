@@ -11,6 +11,7 @@ import { WorkoutAccessory } from '~/components/WorkoutAccessory';
 import { useAccountData, useAccountDay } from '~/lib/accountData';
 import { useFinishedStore } from '~/lib/finished';
 import { resetFuel } from '~/lib/fuel';
+import { useFuelReminder } from '~/lib/fuelReminder';
 import { haptics } from '~/lib/haptics';
 import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
@@ -52,6 +53,8 @@ export default function TabsLayout() {
   useAccountData();
   // The home-screen widgets' Fuel and Training figures.
   useWidgetSnapshot();
+  // The optional fuel reminder (You) follows the same figures.
+  useFuelReminder();
   // As in the web app's shell: WHOOP catches up when the app comes back, and
   // Apple Health weights flow in once turned on in You.
   const userId = useAuthStore((state) => state.user?.id);
@@ -64,7 +67,8 @@ export default function TabsLayout() {
   useNativeHealthSync(healthReady && healthOn ? userId : undefined);
   // The tabs unmount only on sign-out: leave nothing of this account behind.
   // (The rest, its notification and the lock-screen card are cleared by the
-  // shared sign-out guard in useRestLifecycle.)
+  // shared sign-out guard in useRestLifecycle. The fuel reminder clears itself
+  // (useFuelReminder).)
   useEffect(
     () => () => {
       useFocusStore.getState().focus(null);

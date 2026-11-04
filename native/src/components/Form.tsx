@@ -168,10 +168,12 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
 }
 
 /** A row holding iOS's compact date or time picker. */
-export function PickerRow({ label, value, mode, max, onChange, disabled }: {
+export function PickerRow({ label, value, mode, min, max, onChange, disabled }: {
   label: string;
   value: Date;
   mode: 'date' | 'time';
+  /** The earliest selectable value (a time on the same day as value). */
+  min?: Date;
   max?: Date;
   onChange: (value: Date) => void;
   disabled?: boolean;
@@ -186,7 +188,7 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
         <DatePicker
           selection={value}
           displayedComponents={[mode === 'date' ? 'date' : 'hourAndMinute']}
-          range={max ? { end: max } : undefined}
+          range={min || max ? { start: min, end: max } : undefined}
           onDateChange={(next) => {
             haptics.select();
             onChange(next);
