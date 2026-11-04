@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { planExerciseSubstitution } from '@/lib/exerciseSubstitution';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 import { mealForTime } from '../native/src/lib/meals';
@@ -266,6 +267,43 @@ describe('buildSessionModel with supersets and flexible sessions', () => {
     const model = buildSessionModel(flexWorkout(sets), { split, plan: paired }, 'bench');
     expect(model?.current?.set.id).toBe('bench-2');
     expect(model?.current?.blocked).toBe('Complete B1 before starting A2.');
+  });
+
+  // Logs whatever is up next until nothing is, and lists the order; a blocked set stops it.
+  const logThrough = (sets: WorkoutSet[], dayPlan: WorkoutDayPlan) => {
+    const logged: string[] = [];
+    let current = sets;
+    for (let step = 0; step < 20; step += 1) {
+      const next = buildSessionModel(flexWorkout(current), { split, plan: dayPlan }, null)?.current;
+      if (!next) return logged;
+      if (next.blocked) return [...logged, `blocked: ${next.blocked}`];
+      logged.push(next.set.id);
+      current = current.map((candidate) => (candidate.id === next.set.id ? { ...candidate, completed: true } : candidate));
+    }
+    return logged;
+  };
+
+  it('carries on through a pair after B is swapped part way through', () => {
+    const pullup = exercise('pullup', 'Pull-Up');
+    const pair = flexPlan([item(bench, 0, { superset_group_id: 'g1', target_sets: 3 }), item(row, 1, { superset_group_id: 'g1', target_sets: 3 })]);
+    const before = [set(bench, 1, true), set(bench, 2, false), set(bench, 3, false), set(row, 1, true), set(row, 2, false), set(row, 3, false)];
+    const swap = planExerciseSubstitution({ items: pair.items, sets: before, sourceId: 'row', replacement: pullup, splitSession: false });
+    const after = [...before.filter((candidate) => candidate.exercise_id !== 'row' || candidate.completed), ...swap.setNumbers.map((n) => set(pullup, n, false))];
+    expect(logThrough(after, flexPlan(swap.items))).toEqual(['bench-2', 'pullup-2', 'bench-3', 'pullup-3']);
+  });
+
+  it('carries on through a pair after A is swapped between A1 and B1', () => {
+    const pullup = exercise('pullup', 'Pull-Up');
+    const pair = flexPlan([item(bench, 0, { superset_group_id: 'g1', target_sets: 3 }), item(row, 1, { superset_group_id: 'g1', target_sets: 3 })]);
+    const before = [set(bench, 1, true), set(bench, 2, false), set(bench, 3, false), set(row, 1, false), set(row, 2, false), set(row, 3, false)];
+    const swap = planExerciseSubstitution({ items: pair.items, sets: before, sourceId: 'bench', replacement: pullup, splitSession: false });
+    const after = [...before.filter((candidate) => candidate.exercise_id !== 'bench' || candidate.completed), ...swap.setNumbers.map((n) => set(pullup, n, false))];
+    expect(logThrough(after, flexPlan(swap.items))).toEqual(['row-1', 'pullup-2', 'row-2', 'pullup-3', 'row-3']);
+  });
+
+  it('finishes the extra sets of an uneven pair', () => {
+    const sets = [set(bench, 1, false), set(bench, 2, false), set(row, 1, false), set(row, 2, false), set(row, 3, false)];
+    expect(logThrough(sets, paired)).toEqual(['bench-1', 'row-1', 'bench-2', 'row-2', 'row-3']);
   });
 
   it('leaves a removed movement out of the list but keeps its logged sets in the totals', () => {
