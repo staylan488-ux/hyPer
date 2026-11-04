@@ -57,12 +57,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   scheme `hyper-native`, installed beside the released app) and, with
   `HYPER_APP=release`, the released app (`app.hyper.mobile`, scheme
   `app.hyper.mobile`, widget extension `app.hyper.mobile.HyperWidgets`, shown
-  as "hyPer"). `HYPER_BUILD_NUMBER` sets
-  the build number. Prebuild with `--clean` when switching variant. The URL
-  scheme in JavaScript and Swift follows the bundle ID iOS reports
-  (`modules/hyper-keychain/bundle.ts`, `WidgetSnapshotStore.appScheme`), never
-  a hard-coded value. Links from outside go through
-  [+native-intent](../../../native/src/app/+native-intent.tsx): the email
+  as "hyPer"). Both carry app.json's version unless `HYPER_APP_VERSION`
+  sets another; `HYPER_BUILD_NUMBER` sets the build number. Prebuild with
+  `--clean` when switching variant. The URL scheme in JavaScript and Swift
+  follows the bundle ID iOS reports (`modules/hyper-keychain/bundle.ts`,
+  `WidgetSnapshotStore.appScheme`), never a hard-coded value. Links from
+  outside go through [+native-intent](../../../native/src/app/+native-intent.tsx): the email
   confirmation's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
@@ -405,9 +405,11 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   `EXPO_PUBLIC_HYPER_PREVIEW=0`, `EXPO_PUBLIC_SUPABASE_URL` and the local anon key.
 - TestFlight: `scripts/ship.sh` (the ship bot's script, from main) builds this
   app as `app.hyper.mobile` through [native/fastlane](../../../native/fastlane/Fastfile):
-  the next TestFlight build number, a clean prebuild, an App Store archive,
+  the next TestFlight build number and version (the last digit up by one each
+  ship), a clean prebuild, an App Store archive,
   [check-release.sh](../../../native/scripts/check-release.sh) (bundle and
-  extension IDs, build numbers, production host, no local backend), upload.
+  extension IDs, build numbers and versions, production host, no local
+  backend), upload.
   Every upload needs the owner's approval.
 - Real-account phone builds: `native/scripts/build-phone.sh [device-id]` builds
   Release against production (the Supabase URL and anon key come from the main

@@ -110,11 +110,14 @@ client.on('interactionCreate', async (interaction) => {
     child.on('close', async (code) => {
       shipping = false;
       log?.end();
-      const build = (out.match(/Shipping (?:native )?hyPer build (\d+)/) || [])[1] || '?';
+      const shipped = out.match(/Shipping (?:native )?hyPer build (\d+)(?: as version (\d+\.\d+\.\d+))?/) || [];
+      const build = shipped[1] || '?';
+      const version = shipped[2];
       const ok = code === 0 && /Successfully uploaded the new binary/.test(out);
-      console.log(`[${stamp()}] ship by ${tag} finished: exit ${code}, ok=${ok}, build=${build}`);
+      console.log(`[${stamp()}] ship by ${tag} finished: exit ${code}, ok=${ok}, build=${build}, version=${version || '?'}`);
+      const name = version ? `hyPer ${version} (${build})` : `Build ${build}`;
       const msg = ok
-        ? `✅ **Build ${build}** uploaded to TestFlight by **${who}** — Apple is processing it now (usually 5–30 min), then it shows in the app.`
+        ? `✅ **${name}** uploaded to TestFlight by **${who}** — Apple is processing it now (usually 5–30 min), then it shows in the app.`
         : `❌ Ship by **${who}** failed (exit ${code}).\n\`\`\`\n${errorTail(out)}\n\`\`\``;
       try { await channel?.send(msg); } catch (err) { console.error('could not post result:', err); }
     });

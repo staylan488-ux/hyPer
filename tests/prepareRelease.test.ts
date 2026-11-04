@@ -16,7 +16,7 @@ function executable(relative: string, contents: string) {
   fs.writeFileSync(file, `#!/bin/bash\nset -eu\n${contents}\n`, { mode: 0o755 });
 }
 
-function prepare(mode = 'healthy', args = ['65'], overrides: NodeJS.ProcessEnv = {}) {
+function prepare(mode = 'healthy', args = ['65', '2.0.1'], overrides: NodeJS.ProcessEnv = {}) {
   const result = spawnSync('/bin/bash', [path.join(native, 'scripts/prepare-release.sh'), ...args], {
     cwd: temporaryDirectory,
     env: { ...fixtureEnv, TEST_MODE: mode, ...overrides },
@@ -43,7 +43,7 @@ beforeEach(() => {
   };
 
   executable('bin/npx', `
-printf 'prebuild|%s|%s|%s|%s|%s\\n' "$HYPER_BUILD_NUMBER" "$HYPER_APP" "$EXPO_PUBLIC_HYPER_PREVIEW" "$PWD" "$*" >> "$TEST_ROOT/events"
+printf 'prebuild|%s|%s|%s|%s|%s|%s\\n' "$HYPER_BUILD_NUMBER" "$HYPER_APP_VERSION" "$HYPER_APP" "$EXPO_PUBLIC_HYPER_PREVIEW" "$PWD" "$*" >> "$TEST_ROOT/events"
 [ "$TEST_MODE" != prebuild-failure ] || exit 13
 mkdir -p ios/Pods/hermes-engine ios/Pods/React-Core-prebuilt ios/Pods/UnrelatedPod
 touch ios/Pods/hermes-engine/incomplete ios/Pods/React-Core-prebuilt/incomplete ios/Pods/UnrelatedPod/preserve
@@ -89,11 +89,11 @@ afterEach(() => {
 });
 
 describe('release project preparation', () => {
-  it('exports the build number, separates prebuild from pods, then selects Release frameworks', () => {
+  it('exports the build number and version, separates prebuild from pods, then selects Release frameworks', () => {
     const result = prepare();
     expect(result.status, result.output).toBe(0);
     expect(result.events).toEqual([
-      `prebuild|65|release|0|${native}|expo prebuild --platform ios --clean --no-install`,
+      `prebuild|65|2.0.1|release|0|${native}|expo prebuild --platform ios --clean --no-install`,
       'pod install',
       'frameworks Release',
     ]);
@@ -154,7 +154,17 @@ describe('release project preparation', () => {
     expect(result.events.at(-1)).toBe('frameworks Release');
   });
 
-  it.each([[], [''], ['abc'], ['65; touch unsafe'], ['1.5'], ['-1']].map((args) => ({ args })))('rejects invalid build arguments $args before running tools', ({ args }) => {
+  it.each([
+    [], [''], ['abc'], ['65; touch unsafe'], ['1.5'], ['-1'],
+    ['', '2.0.1'], ['abc', '2.0.1'], ['1.5', '2.0.1'],
+  ].map((args) => ({ args })))('rejects invalid build arguments $args before running tools', ({ args }) => {
+    const result = prepare('healthy', args);
+    expect(result.status).not.toBe(0);
+    expect(result.events).toEqual([]);
+  });
+
+  it.each([['65'], ['65', ''], ['65', '2.0'], ['65', '2.0.1-beta'], ['65', 'v2.0.1'], ['65', '02.0.1'], ['65', '2.0.1; touch unsafe']]
+    .map((args) => ({ args })))('rejects invalid version arguments $args before running tools', ({ args }) => {
     const result = prepare('healthy', args);
     expect(result.status).not.toBe(0);
     expect(result.events).toEqual([]);
@@ -164,7 +174,7 @@ describe('release project preparation', () => {
     { HYPER_APP: undefined }, { HYPER_APP: 'preview' },
     { EXPO_PUBLIC_HYPER_PREVIEW: undefined }, { EXPO_PUBLIC_HYPER_PREVIEW: '1' },
   ])('rejects non-release environment %j before running tools', (overrides) => {
-    const result = prepare('healthy', ['65'], overrides);
+    const result = prepare('healthy', ['65', '2.0.1'], overrides);
     expect(result.status).not.toBe(0);
     expect(result.output).toContain('is required');
     expect(result.events).toEqual([]);

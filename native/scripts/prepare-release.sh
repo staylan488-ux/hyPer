@@ -3,11 +3,17 @@
 # not archive, sign or upload; it can also be used to validate ship setup locally.
 set -euo pipefail
 
-build_number="${1:?usage: prepare-release.sh BUILD_NUMBER}"
+build_number="${1:?usage: prepare-release.sh BUILD_NUMBER VERSION}"
+version="${2:?usage: prepare-release.sh BUILD_NUMBER VERSION}"
 case "$build_number" in ''|*[!0-9]*) echo "FATAL: BUILD_NUMBER must be a whole number" >&2; exit 1 ;; esac
+release_version='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+[[ "$version" =~ $release_version ]] || {
+  echo "FATAL: VERSION must be three whole numbers, like 2.0.1" >&2
+  exit 1
+}
 [ "${HYPER_APP:-}" = release ] || { echo "FATAL: HYPER_APP=release is required" >&2; exit 1; }
 [ "${EXPO_PUBLIC_HYPER_PREVIEW:-}" = 0 ] || { echo "FATAL: EXPO_PUBLIC_HYPER_PREVIEW=0 is required" >&2; exit 1; }
-export HYPER_BUILD_NUMBER="$build_number"
+export HYPER_BUILD_NUMBER="$build_number" HYPER_APP_VERSION="$version"
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 native_dir="$(cd "$(dirname "$0")/.." && pwd)"
