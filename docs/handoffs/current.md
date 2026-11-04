@@ -55,6 +55,25 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   iOS bundle export and eight review agents; not run in a simulator or on a
   phone. Worth a hand check: swipe, the press spring, drag-to-reorder and
   logging food.
+- 2026-11-04: a design review of every screen (branch
+  `claude/project-thread-5xt4wh`), inside Blanc. Shared pieces first: one way
+  to write a set ("80 lb × 10", bodyweight "10 reps"), a target ("4 × 8–10"),
+  a length ("1 h 5 min"); one stepper, pill, logged-set row and radio row;
+  disabled primaries in track grey; footnotes on the row text edge. Then each
+  area: Today's finished day stays a record of the session; Progress shows
+  words only where a muscle needs something; session done's tally draws itself
+  in; Train's movement rows share one layout with a small tally each and the
+  set figures shrink to fit; History shows the running workout as live and a
+  past workout as a receipt; Log food's lists sit in cards with one food line
+  and quiet add buttons; Fuel invents no target; You's figures roll. Judged
+  from web captures of the real app (SF Pro, sample data, light and dark,
+  side by side with main) by three rounds of fresh juries; checked with the
+  web suite, lint, build and native `tsc`. Not run in a simulator or on a
+  phone. Worth a hand check: the Appearance menu (now a SwiftUI Menu with its
+  own label), session done's draw-in and its ticks, the set card's figure
+  steps while typing, hold-to-repeat on the program editor's steppers, swipe
+  and hold on Log food's rows, and the Train and Today record after a real
+  workout with a schedule.
 - 2026-11-01: Skip a movement in a live workout (the owner's ask). Run in the
   simulator on 2026-11-04 (sample data, light and dark): Skip on the card, a
   row's swipe and the movement sheet, Undo, bringing it back, the counts,
@@ -144,6 +163,16 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   VoiceOver, the run screen's live view, SwiftUI pickers' spoken names, and
   that announcements made as a sheet closes are not cut off. Magic Tap is
   wired but React Native 0.88 drops it (see the blanc-native skill).
+- 2026-11-04: the bug hunt, accessibility pass and design review above were
+  stacked in that order on one branch (`claude/project-thread-n0vtco`), one
+  PR that supersedes the three. Where the design review rebuilt a control,
+  the accessibility pass's VoiceOver, large-text and announcement work was put
+  on the new one (Row, Form's MenuRow and ChoiceRow, LoggedSetRow, the shared
+  Stepper inside adjustable rows, Tally's draw-in follows Reduce Motion live),
+  and every bug-hunt fix was kept under the new look. Checked with the web
+  suite, lint, build, native `tsc`, an iOS bundle export and a React Compiler
+  audit (no function skipped that main or the design review compiles); not
+  run in a simulator, on a phone or with VoiceOver.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.
@@ -160,5 +189,5 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal
-  headers; removing an activity's start time; quick start chips' long press;
+  headers; quick start chips' long press;
   header ⋯ menus stay silent (iOS gives them no tap callback).

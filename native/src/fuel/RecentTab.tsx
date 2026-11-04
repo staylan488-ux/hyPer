@@ -8,28 +8,21 @@ import { rankRecentFoods, type RecentFood } from '@/lib/recentFoods';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import type { MenuAction } from '~/components/HoldMenu';
+import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { useAnnounce } from '~/lib/accessibility';
-import { formatWhole } from '~/lib/format';
 import { today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 
 import { useLogger } from './context';
-import { Empty, FoodRow, useQuickAdd, type AddState } from './FoodLists';
+import { Empty, FoodRow, foodLine, useQuickAdd, type AddState } from './FoodLists';
 import { useHiddenRecentFoods, useRecentLogs } from './recent';
 
-/** "150 g · 248 kcal · 31 g protein": what + logs. */
-function usualLine(recent: RecentFood): string {
-  const protein = Math.round(recent.food.protein * recent.servings);
-  return [
-    servingLabel({ servings: recent.servings, food: recent.food }),
-    `${formatWhole(recent.food.calories * recent.servings)} kcal`,
-    protein > 0 ? `${protein} g protein` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+/** "150 g · 31 g protein": what + logs (its kcal sits on the right). */
+function usualLine(recent: RecentFood, amount: string): string {
+  return foodLine(recent.food, recent.servings, amount);
 }
 
 /**
@@ -78,20 +71,24 @@ export function RecentTab({ userId }: { userId: string }) {
   // The first list shows at once; fresh data swaps it without motion; a hidden food slides away.
   return (
     <LayoutAnimationConfig key={version} skipEntering skipExiting>
-      <View style={{ marginTop: 8 }}>
-        {foods.map((recent, index) => (
-          <RecentRow
-            key={recent.key}
-            recent={recent}
-            divided={index > 0}
-            state={added[recent.key]}
-            purpose={logger.purpose}
-            quickAdd={enabled}
-            onAdd={add}
-            onOpen={open}
-            onHide={hideFood}
-          />
-        ))}
+      <View>
+        {foods.length > 0 ? (
+          <Label style={{ marginTop: 14, overflow: 'hidden' }} exiting={blockExit} layout={rowLayout}>
+            {foods.map((recent, index) => (
+              <RecentRow
+                key={recent.key}
+                recent={recent}
+                divided={index > 0}
+                state={added[recent.key]}
+                purpose={logger.purpose}
+                quickAdd={enabled}
+                onAdd={add}
+                onOpen={open}
+                onHide={hideFood}
+              />
+            ))}
+          </Label>
+        ) : null}
         {foods.length === 0 ? (
           <Animated.View entering={rowEnter} layout={rowLayout}>
             <Empty text={logs && logs.length > 0 ? 'Hidden foods come back when you log them again.' : 'Foods you log show up here, the most eaten first.'} />
@@ -130,7 +127,7 @@ function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, o
     <FoodRow
       food={recent.food}
       state={state}
-      detail={usualLine(recent)}
+      detail={usualLine(recent, amount)}
       servings={recent.servings}
       onOpen={() => onOpen(recent)}
       onAdd={canQuickAdd ? () => onAdd(recent) : undefined}
@@ -139,7 +136,7 @@ function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, o
   );
   return (
     <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-      {divided ? <Hairline inset={20} /> : null}
+      {divided ? <Hairline /> : null}
       {purpose === 'log' ? (
         <SwipeRow name={recent.food.name} actions={[{ label: 'Hide', destructive: true, onPress: () => onHide(recent) }]}>
           {row}

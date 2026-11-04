@@ -154,7 +154,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
       </View>
 
       {available ? (
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
+        <View style={{ paddingHorizontal: space.inset, marginTop: 16 }}>
           <Capsule
             title={state === 'idle' && message === BARCODE_MESSAGES.found ? 'Scan again' : 'Scan barcode'}
             size="large"
@@ -183,11 +183,11 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
       <View style={{ marginTop: 26 }}>
         <Label>
           <FieldRow
-            label="Barcode digits"
+            label="Barcode"
             value={digits}
             onChangeText={(text) => setDigits(text.replace(/\D/g, '').slice(0, 14))}
             keyboardType="number-pad"
-            placeholder="0 41570 05416 1"
+            placeholder="Digits"
             // The number pad's bar then carries Search, which looks the digits up.
             returnKeyType="search"
             onSubmitEditing={() => {
@@ -195,8 +195,9 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
             }}
           />
         </Label>
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 12 }}>
-          <Capsule title="Look up barcode" variant="quiet" disabled={!typedValid || busy} onPress={() => void resolve(typed)} />
+        {/* Scan's size; the main action when this phone cannot scan. */}
+        <View style={{ paddingHorizontal: space.inset, marginTop: 12 }}>
+          <Capsule title="Look up barcode" variant={available ? 'quiet' : 'primary'} size="large" fill disabled={!typedValid || busy} onPress={() => void resolve(typed)} />
         </View>
       </View>
 

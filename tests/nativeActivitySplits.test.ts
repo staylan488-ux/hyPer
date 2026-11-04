@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import * as dateFns from 'date-fns';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as activityMetrics from '@/lib/activityMetrics';
@@ -8,6 +9,7 @@ import * as activitySessions from '@/lib/activitySessions';
 import * as runDisplay from '@/lib/runDisplay';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import type { ActivitySegment, ActivitySession } from '@/types';
+import * as format from '../native/src/lib/format';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -75,13 +77,19 @@ let segments: ActivitySegment[];
 
 async function renderScreen() {
   const { default: ActivityViewScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/train/activity-view.tsx', {
+    'date-fns': dateFns,
     'expo-router': {
       router: { back: vi.fn(), push: vi.fn() },
       Stack: { Screen: () => null },
       useFocusEffect: vi.fn(),
       useLocalSearchParams: () => ({ id: 'activity-1' }),
     },
-    'react-native': { View: ({ children }: { children?: ReactNode }) => createElement('div', null, children) },
+    'react-native': {
+      // A value row is one VoiceOver stop: the View around it carries the label.
+      View: ({ children, accessible, accessibilityLabel }: { children?: ReactNode; accessible?: boolean; accessibilityLabel?: string }) =>
+        createElement('div', accessible ? { role: 'group', 'aria-label': accessibilityLabel } : null, children),
+      Pressable: ({ children }: { children?: ReactNode }) => createElement('button', null, children),
+    },
     '@/lib/activityMetrics': activityMetrics,
     '@/lib/activitySessions': activitySessions,
     '@/lib/runDisplay': runDisplay,
@@ -92,8 +100,8 @@ async function renderScreen() {
     '~/components/Label': { Label: ({ children }: { children?: ReactNode }) => createElement('div', null, children) },
     '~/components/Row': {
       Hairline: () => null,
-      Row: (props: { title: string; detail?: string; value?: string; accessibilityLabel?: string }) =>
-        createElement('div', { role: 'row', 'aria-label': props.accessibilityLabel }, [props.title, props.detail, props.value].filter(Boolean).join(' | ')),
+      Row: (props: { title: string; detail?: string; trailing?: ReactNode }) =>
+        createElement('div', { role: 'row' }, [props.title, props.detail].filter(Boolean).join(' | '), props.trailing ? ' | ' : null, props.trailing),
     },
     '~/components/Section': {
       Section: ({ title, children }: { title: string; children?: ReactNode }) => createElement('section', { 'aria-label': title }, children),
@@ -102,13 +110,14 @@ async function renderScreen() {
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn() } },
     '~/lib/history': { useHistoryStore: (select: (state: { activities: ActivitySession[] }) => unknown) => select({ activities: [activity] }) },
-    '~/theme/blanc': { space: { gutter: 16 } },
+    '~/lib/format': format,
+    '~/theme/blanc': { space: { gutter: 16 }, useBlanc: () => ({ pressed: '#eee' }) },
   });
   await act(async () => { root.render(createElement(ActivityViewScreen)); });
 }
 
 function splitRows() {
-  return [...host.querySelectorAll('section[aria-label="Splits"] [role="row"]')].map((row) => ({
+  return [...host.querySelectorAll('section[aria-label="Splits"] [role="group"]')].map((row) => ({
     text: row.textContent,
     label: row.getAttribute('aria-label'),
   }));
@@ -130,9 +139,9 @@ describe('a saved run’s splits in History', () => {
     await renderScreen();
 
     expect(splitRows()).toEqual([
-      { text: '1 | 400 m | 1:30  ·  6:02 /mi', label: 'Split 1, 400 meters, 1 minute 30 seconds, 6 minutes 2 seconds per mile' },
+      { text: '1 | 400 m | 1:30 · 6:02 /mi', label: 'Split 1, 400 meters, 1 minute 30 seconds, 6 minutes 2 seconds per mile' },
       { text: '· | rest | 1:00', label: 'Rest, 1 minute' },
-      { text: '3 | 333 m | 1:30  ·  7:15 /mi', label: 'Split 3, 333 meters, 1 minute 30 seconds, 7 minutes 15 seconds per mile' },
+      { text: '3 | 333 m | 1:30 · 7:15 /mi', label: 'Split 3, 333 meters, 1 minute 30 seconds, 7 minutes 15 seconds per mile' },
     ]);
   });
 
@@ -140,6 +149,6 @@ describe('a saved run’s splits in History', () => {
     segments = savedSegments([{ trigger: 'manual' }, { trigger: 'manual' }, { trigger: 'finish' }]);
     await renderScreen();
 
-    expect(splitRows()[1]).toEqual({ text: '2 | 67 m | 1:00  ·  24:01 /mi', label: 'Split 2, 67 meters, 1 minute, 24 minutes 1 second per mile' });
+    expect(splitRows()[1]).toEqual({ text: '2 | 67 m | 1:00 · 24:01 /mi', label: 'Split 2, 67 meters, 1 minute, 24 minutes 1 second per mile' });
   });
 });

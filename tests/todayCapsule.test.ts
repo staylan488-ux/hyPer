@@ -100,7 +100,7 @@ describe('week volume summary', () => {
 
   it('flags the most-under muscle with main’s gap rule', () => {
     const insight = pickInsight([volume('chest', 2, 'below_mev'), volume('back', 5, 'below_mev')]);
-    expect(insight).toMatchObject({ tone: 'under', muscle: 'Chest', flag: 'under · add ~6 sets this week' });
+    expect(insight).toMatchObject({ tone: 'under', muscle: 'Chest', flag: 'add about 6 sets this week' });
     expect(insight?.headline).toBe('Chest is under-stimulated');
   });
 });

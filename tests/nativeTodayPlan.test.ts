@@ -48,6 +48,11 @@ async function render() {
       useAccountDay: () => ({ dayKey: '2026-11-04', refreshedAt: Date.parse('2026-11-04T18:00:00Z'), loading: false }),
       useWorkoutsRevision: zustand.create(() => ({ revision: 0 })),
     },
+    // useFinishedToday's imports; useTodayPlan reads none of them.
+    'date-fns': {},
+    '@/lib/historyMonth': {},
+    '@/lib/workoutSessions': {},
+    './history': {},
   });
   const Probe = () => {
     const current = useTodayPlan();

@@ -2,7 +2,6 @@ import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { datePickerStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { addDays, format, parseISO } from 'date-fns';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
@@ -12,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type { Split, SplitDay } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { ChoiceRow, FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
@@ -72,8 +72,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
 
   const startDate = startDateFor(choice, picked);
   const weekdays = buildFixedWeekdays(anchorDay, split.days_per_week);
-  const rhythm = weekdays.map((day) => WEEKDAYS[day]).join(' / ');
-  /** "Mon / Wed / Fri" in words, for a first day: "Monday, Wednesday, Friday". */
+  /** The training days for a first day, in words: "Monday, Wednesday, Friday". */
   const spokenRhythm = (first: number) => buildFixedWeekdays(first, split.days_per_week).map((day) => WEEKDAY_NAMES[day]).join(', ');
 
   // Closing with changes asks first; Save closes once, after the guard steps aside.
@@ -156,14 +155,18 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
 
         {mode === 'fixed' ? (
           <>
+            {/* The week as the rhythm runs it: the first day in ink, the other
+                training days on a label, rest days bare. A tap picks the first day. */}
             <View style={{ flexDirection: 'row', gap: 6, marginHorizontal: space.inset, marginTop: 14 }}>
               {LETTERS.map((letter, weekday) => {
                 const selected = anchorDay === weekday;
+                const training = weekdays.includes(weekday);
                 return (
                   <Pressable
                     key={WEEKDAYS[weekday]}
                     accessibilityRole="button"
-                    accessibilityLabel={`First training day, ${WEEKDAY_NAMES[weekday]}`}
+                    accessibilityLabel={`${WEEKDAY_NAMES[weekday]}, ${selected ? 'first training day' : training ? 'training day' : 'rest day'}`}
+                    accessibilityHint={selected ? undefined : 'Makes it the first training day'}
                     accessibilityState={{ selected }}
                     onPress={() => {
                       // The week's training days below follow the first; VoiceOver hears them.
@@ -176,19 +179,16 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
                       borderRadius: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.label,
+                      backgroundColor: selected ? c.capsule : pressed ? c.pressed : training ? c.label : 'transparent',
                     })}>
                     {/* Seven 44-point circles share the width; the letter grows no further than they hold. */}
-                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : 'ink'} maxFontSizeMultiplier={2}>
+                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : training ? 'ink' : 'graphite'} maxFontSizeMultiplier={2}>
                       {letter}
                     </BlancText>
                   </Pressable>
                 );
               })}
             </View>
-            <BlancText variant="footnote" tone="graphite" accessibilityLabel={spokenRhythm(anchorDay)} style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
-              {rhythm}
-            </BlancText>
           </>
         ) : (
           <>
@@ -196,29 +196,12 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
               {split.days.map((day, index) => (
                 <View key={day.id}>
                   {index > 0 ? <Hairline /> : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: index === flexDayIndex && !flexWaiting }}
-                    onPress={() => select(setFlexDayIndex)(index)}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      minHeight: 52,
-                      paddingLeft: 18,
-                      paddingRight: 16,
-                      backgroundColor: pressed ? c.pressed : 'transparent',
-                    })}>
-                    <BlancText variant="body" style={{ flex: 1 }}>
-                      {day.day_name}
-                    </BlancText>
-                    {index === flexDayIndex && !flexWaiting ? <SymbolView name="checkmark" size={15} weight="semibold" tintColor={c.ink} /> : null}
-                  </Pressable>
+                  {/* Until the plan loads, nothing is checked. */}
+                  <ChoiceRow title={day.day_name} checked={index === flexDayIndex && !flexWaiting} onPress={() => setFlexDayIndex(index)} />
                 </View>
               ))}
             </Label>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
-              The checked day is up next. Each session follows the last, whatever the day.
-            </BlancText>
+            <FormNote>The checked day is up next. Each session follows the last, whatever the day.</FormNote>
           </>
         )}
       </Section>

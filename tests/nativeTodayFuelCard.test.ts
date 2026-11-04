@@ -79,7 +79,7 @@ async function open() {
   await act(async () => { root.render(createElement(TodayScreen)); });
 }
 
-const ASK = 'Set a calorie target in You';
+const ASK = 'Set a calorie target';
 
 beforeEach(() => {
   appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null });

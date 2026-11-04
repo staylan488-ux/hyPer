@@ -75,6 +75,11 @@ beforeEach(async () => {
       useAccountDay: create(() => ({ dayKey: '2026-11-03', refreshedAt: 1, loading: false })),
       useWorkoutsRevision,
     },
+    // useFinishedToday's imports; useTodayPlan reads none of them.
+    'date-fns': {},
+    '@/lib/historyMonth': {},
+    '@/lib/workoutSessions': {},
+    './history': {},
   }));
   host = document.createElement('div');
   document.body.appendChild(host);

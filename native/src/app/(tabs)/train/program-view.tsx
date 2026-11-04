@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
-import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
+import { exerciseTotal, plural } from '@/lib/programSummary';
 import { exerciseBlocks } from '@/lib/splitDraft';
 import { useAppStore } from '@/stores/appStore';
 import type { Split } from '@/types';
@@ -14,12 +14,18 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { deleteProgram, editProgram, setActiveProgram } from '~/lib/program';
+import { deleteProgram, editProgram, planTarget, setActiveProgram } from '~/lib/program';
 import { space } from '~/theme/blanc';
 
-/** "3×8–12" or "3–4×8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps" (Row speaks the range). */
-function spokenSetReps(label: string): string {
-  return `${label.replace(/^(\S+?)×/, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`;
+/**
+ * A target ("4 × 8–10", "3–5 × 8–12", "4 sets") as VoiceOver should say it:
+ * "4 sets of 8 to 10 reps" (Row speaks the ranges).
+ */
+function spokenTarget(target: string): string {
+  const match = /^(\S+) × (\S+)$/.exec(target);
+  if (!match) return target;
+  const [, sets, reps] = match;
+  return `${sets} ${sets === '1' ? 'set' : 'sets'} of ${reps} ${reps === '1' ? 'rep' : 'reps'}`;
 }
 
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
@@ -148,21 +154,22 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
           return (
             <Section key={day.id} title={day.day_name}>
               <Label>
-                {day.exercises.length === 0 ? <Row title="No exercises" quiet /> : null}
+                {day.exercises.length === 0 ? <Row title="No exercises yet" quiet /> : null}
                 {blocks.map((block, index) => (
                   <View key={block[0].id}>
                     {index > 0 ? <Hairline /> : null}
                     {block.map((exercise, offset) => {
                       const name = exercise.exercise?.name ?? 'Exercise';
                       const partner = block.length > 1 ? block[offset === 0 ? 1 : 0].exercise?.name : null;
+                      const target = planTarget(exercise) ?? '';
                       return (
                         <View key={exercise.id}>
                           {offset > 0 ? <Hairline /> : null}
                           <Row
                             title={name}
                             detail={partner ? `Superset with ${partner}` : undefined}
-                            value={setRepLabel(exercise)}
-                            accessibilityLabel={[name, spokenSetReps(setRepLabel(exercise)), partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
+                            value={target}
+                            accessibilityLabel={[name, spokenTarget(target), partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
                           />
                         </View>
                       );

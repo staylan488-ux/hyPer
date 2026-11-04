@@ -1,23 +1,26 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { format, parseISO } from 'date-fns';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, StyleSheet, TextInput, useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAppStore } from '@/stores/appStore';
 import type { WorkoutSet } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
+import { FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
+import { LoggedSetRow } from '~/components/LoggedSetRow';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { announce, speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
+import { Stepper } from '~/components/Stepper';
+import { announce, speak, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { gainOnLastTime } from '~/lib/beatLastTime';
-import { formatLoad, formatRepRange } from '~/lib/format';
+import { formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { changeSetCount, confirmRemoveMovement, errorMessage, setSkipped, switchBack, unlinkSuperset } from '~/lib/movement';
@@ -92,15 +95,18 @@ export default function MovementSheet() {
 function movementLine(movement: Movement): string {
   if (movement.skipped) return 'Skipped for this workout';
   if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
-  if (movement.superset) return `Superset ${movement.superset.role} · with ${movement.superset.partnerName}`;
-  return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${movement.sets.length} sets`;
+  if (movement.superset) return `Superset ${movement.superset.role} with ${movement.superset.partnerName}`;
+  const sets = movement.sets.length;
+  return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }
 
 /** "Plan: 3 sets" or "Plan: 3–4 sets", for reference; the count can still change. */
 function rangeLine(movement: Movement): string | null {
   const range = movement.range;
   if (!range) return null;
-  return range.minSets === range.maxSets ? `Plan: ${range.maxSets} sets` : `Plan: ${range.minSets}–${range.maxSets} sets`;
+  return range.minSets === range.maxSets
+    ? `Plan: ${range.maxSets} ${range.maxSets === 1 ? 'set' : 'sets'}`
+    : `Plan: ${range.minSets}–${range.maxSets} sets`;
 }
 
 function MovementDetail({
@@ -131,6 +137,8 @@ function MovementDetail({
   // Logged sets that beat the same set last time carry an up mark.
   const previous = usePreviousTargets(workoutId);
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
+  // One set with an RPE keeps the column on every row, so the numbers line up.
+  const rpeColumn = movement.sets.some((set) => set.completed && set.rpe);
   // After a switch back or a removal saves, the sheet closes only if it is
   // still on top: closed while it saved, the back would close the next screen.
   const navigation = useNavigation();
@@ -188,8 +196,8 @@ function MovementDetail({
   };
 
   const setCount = `${movement.sets.length} ${movement.sets.length === 1 ? 'set' : 'sets'}`;
-  // "2 logged · Plan: 3–4 sets" under the count.
-  const countLine = movement.done || movement.range ? [movement.done ? `${movement.done} logged` : null, rangeLine(movement)].filter(Boolean).join(' · ') : null;
+  // "Plan: 3–4 sets" under the count. The logged sets show above; the plan's count is for reference.
+  const countLine = rangeLine(movement);
 
   const confirmRemove = () =>
     confirmRemoveMovement(workoutId, movement, {
@@ -209,11 +217,13 @@ function MovementDetail({
                 {editing === set.id ? (
                   <SetEditor set={set} number={index + 1} onClose={() => setEditing(null)} />
                 ) : (
-                  <SetRow
+                  <LoggedSetRow
                     set={set}
                     number={index + 1}
                     gain={gainOnLastTime(set, previous)}
-                    onEdit={editing ? undefined : () => setEditing(set.id)}
+                    rpeColumn={rpeColumn}
+                    disabled={editing !== null}
+                    onPress={() => setEditing(set.id)}
                   />
                 )}
                 <Hairline />
@@ -251,6 +261,8 @@ function MovementDetail({
               busy={changing !== null}
               canMinus={movement.canRemoveSet}
               canPlus={movement.canAddSet}
+              minusLabel="Remove a set"
+              plusLabel="Add a set"
               onMinus={() => void changeSets('remove')}
               onPlus={() => void changeSets('add')}
             />
@@ -276,9 +288,9 @@ function MovementDetail({
         </Label>
         <NoteFooter status={note.status} length={note.text.length} />
         {lastNote ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Last time, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
-          </BlancText>
+          <FormNote>
+            Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
+          </FormNote>
         ) : null}
       </Section>
 
@@ -312,9 +324,7 @@ function MovementDetail({
               }}
             />
           </Label>
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Your program stays the same.
-          </BlancText>
+          <FormNote>Your program stays the same.</FormNote>
         </Section>
       ) : null}
 
@@ -350,45 +360,8 @@ function MovementDetail({
   );
 }
 
-/** A logged set; tap to correct it. One that beat the same set last time is marked ↑. */
-function SetRow({ set, number, gain, onEdit }: { set: WorkoutSet; number: number; gain: string | null; onEdit?: () => void }) {
-  const c = useBlanc();
-  // At the accessibility text sizes the numbers wrap under "Set 1".
-  const large = useLargeText();
-  const numbers = `${formatLoad(set.weight)} lb × ${set.reps ?? '–'}`;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={speak(`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`)}
-      disabled={!onEdit}
-      onPress={() => {
-        haptics.tap();
-        onEdit?.();
-      }}
-      style={({ pressed }) => [styles.row, large ? { flexWrap: 'wrap', rowGap: 2 } : null, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
-      <BlancText variant="bodyStrong" style={large ? { flexBasis: '100%' } : { flex: 1 }}>
-        Set {number}
-      </BlancText>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(large ? { flexShrink: 1 } : null) }}>
-        {gain ? <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} /> : null}
-        <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], ...(large ? { flexShrink: 1 } : null) }}>
-          {numbers}
-        </BlancText>
-      </View>
-      {set.rpe ? (
-        <BlancText variant="secondary" tone="graphite">
-          RPE {set.rpe}
-        </BlancText>
-      ) : null}
-      <SymbolView name="pencil" size={13} weight="semibold" tintColor={c.upcoming} />
-    </Pressable>
-  );
-}
-
 /** Corrects a logged set. Saving never starts rest, as on the web. */
 function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; onClose: () => void }) {
-  const c = useBlanc();
-  const large = useLargeText();
   const logSet = useAppStore((state) => state.logSet);
   const [weight, setWeight] = useState(set.weight === null ? '' : String(set.weight));
   const [reps, setReps] = useState(set.reps === null ? '' : String(set.reps));
@@ -427,23 +400,12 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
     <View style={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BlancText variant="bodyStrong">Set {number}</BlancText>
-        <Pressable
-          accessibilityRole="button"
+        <Chip
+          label={rpe ? `RPE ${rpe}` : 'Add RPE'}
           accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
+          haptic={false}
           onPress={() => chooseRpe(setRpe)}
-          // 32 points drawn, 44 to touch.
-          hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-          style={({ pressed }) => ({
-            ...(large ? { minHeight: 32, paddingVertical: 6 } : { height: 32 }),
-            paddingHorizontal: 12,
-            borderRadius: 16,
-            justifyContent: 'center',
-            backgroundColor: pressed ? c.pressed : c.fill,
-          })}>
-          <BlancText variant="footnote" weight="500">
-            {rpe ? `RPE ${rpe}` : 'Add RPE'}
-          </BlancText>
-        </Pressable>
+        />
       </View>
 
       {/* The fields name themselves and their units; "×" and the units are only drawn. */}
@@ -529,51 +491,6 @@ function SetFigures({ weight, reps }: { weight: ReactNode; reps: ReactNode }) {
   );
 }
 
-/** iOS-style stepper: minus and plus halves of one pill. */
-function Stepper({
-  canMinus,
-  canPlus,
-  busy,
-  onMinus,
-  onPlus,
-}: {
-  canMinus: boolean;
-  canPlus: boolean;
-  busy: boolean;
-  onMinus: () => void;
-  onPlus: () => void;
-}) {
-  const c = useBlanc();
-  const half = (symbol: SFSymbol, enabled: boolean, onPress: () => void, label: string) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !enabled || busy, busy }}
-      disabled={!enabled || busy}
-      hitSlop={{ top: 6, bottom: 6 }}
-      onPress={() => {
-        haptics.select();
-        onPress();
-      }}
-      style={({ pressed }) => ({
-        width: 48,
-        height: 34,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : 'transparent',
-      })}>
-      <SymbolView name={symbol} size={15} weight="semibold" tintColor={enabled && !busy ? c.ink : c.upcoming} />
-    </Pressable>
-  );
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 9, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.fill }}>
-      {half('minus', canMinus, onMinus, 'Remove a set')}
-      <View style={{ width: StyleSheet.hairlineWidth, height: 18, backgroundColor: c.hairline }} />
-      {half('plus', canPlus, onPlus, 'Add a set')}
-    </View>
-  );
-}
-
 function NoteFooter({ status, length }: { status: 'saving' | 'saved' | 'failed' | null; length: number }) {
   const text =
     status === 'failed'
@@ -585,18 +502,11 @@ function NoteFooter({ status, length }: { status: 'saving' | 'saved' | 'failed' 
           : length >= 160
             ? `${length} of ${NOTE_LIMIT}`
             : null;
-  // Only a failed save is announced: the note saves on every pause in
-  // typing, and "Saving…", "Saved" or the count each time would talk over it.
-  useAnnounce(status === 'failed' ? text : null);
   if (!text) return null;
-  return (
-    <BlancText
-      variant="footnote"
-      tone={status === 'failed' ? 'live' : 'graphite'}
-      style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-      {text}
-    </BlancText>
-  );
+  // Only a failed save is announced (FormNote announces an alert): the note
+  // saves on every pause in typing, and "Saving…", "Saved" or the count each
+  // time would talk over it.
+  return <FormNote alert={status === 'failed'}>{text}</FormNote>;
 }
 
 const styles = StyleSheet.create({

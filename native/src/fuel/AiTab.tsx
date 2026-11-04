@@ -23,6 +23,7 @@ import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { RollingText } from '~/components/RollingText';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
@@ -30,7 +31,7 @@ import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -269,7 +270,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   };
 
   const photoControls = (
-    <Section title="Photos" note={`${draft.photos.length} of ${MAX_PHOTOS}`}>
+    <Section title="Photos">
       <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: space.inset, ...(large ? { flexWrap: 'wrap' } : null) }}>
         {draft.photos.map((photo, index) => (
           // A hold lifts the photo with Remove beside it, as in Photos.
@@ -345,7 +346,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   if (!result) {
     return (
       <View>
-        <Section title="Your meal">
+        <Section title="Your meal" style={{ marginTop: 0 }}>
           <Label>
             <TextInput
               value={draft.hint}
@@ -358,14 +359,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               placeholder="e.g. Six Trader Joe’s chicken tikka samosas"
               placeholderTextColor={c.upcoming}
               accessibilityLabel="Your meal"
-              style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, padding: 16, paddingTop: 14 }]}
+              style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }]}
             />
           </Label>
           <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>
         </Section>
         {photoControls}
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
+        <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
           <Capsule
             title={busy === 'analysis' ? 'Analyzing…' : 'Analyze meal'}
             size="large"
@@ -415,10 +416,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
         {error ? <FormNote alert>{error}</FormNote> : null}
         {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
-        <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-          <Capsule title="Change meal" variant="quiet" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
+        <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
+          <Capsule title="Change meal" variant="quiet" size="large" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
           <Capsule
             title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
+            size="large"
             busy={busy === 'analysis'}
             onPress={() => void analyze(true)}
             style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
@@ -449,12 +451,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               `${formatWhole(totals.calories)} kcal · protein ${round1(totals.protein)} g · carbs ${round1(totals.carbs)} g · fat ${round1(totals.fat)} g`,
             )}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <BlancText variant="figure" size={56}>
+              <RollingText variant="figure" size={56}>
                 {formatWhole(totals.calories)}
-              </BlancText>
-              <BlancText variant="secondary" tone="graphite">
-                kcal
-              </BlancText>
+              </RollingText>
+              <Animated.View layout={figureLayout}>
+                <BlancText variant="secondary" tone="graphite">
+                  kcal
+                </BlancText>
+              </Animated.View>
             </View>
             <BlancText variant="secondary" tone="graphite">
               P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
@@ -473,13 +477,19 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
             {items.map((item, index) => {
               const each = trialFoodTotals(item);
               const expanded = open === item.key;
+              // "6 samosas · 24 g protein · Estimate": no protein that rounds to none.
+              const line = [
+                `${item.quantity} ${item.unit}`.trim(),
+                Math.round(each.protein) > 0 ? `${formatWhole(each.protein)} g protein` : null,
+                item.evidence === 'label' ? 'From label' : 'Estimate',
+              ]
+                .filter(Boolean)
+                .join(' · ');
               // Tap to adjust; hold for Adjust and Remove; swipe to remove.
               const face = (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={speak(
-                    `${item.name} · ${item.quantity} ${item.unit} · ${item.evidence === 'label' ? 'Label-based' : 'Estimated'} · protein ${round1(each.protein)} g · ${formatWhole(each.calories)} kcal`,
-                  )}
+                  accessibilityLabel={speak(`${item.name} · ${line} · ${formatWhole(each.calories)} kcal`)}
                   accessibilityHint={expanded ? undefined : 'Opens it to adjust'}
                   accessibilityState={{ expanded }}
                   accessibilityActions={frozen ? undefined : [{ name: 'remove', label: 'Remove' }]}
@@ -507,7 +517,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                       {item.name}
                     </BlancText>
                     <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-                      {item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'} · P {round1(each.protein)} g
+                      {line}
                     </BlancText>
                   </View>
                   <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
@@ -578,7 +588,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         {/* Closes up under the foods as one is removed. */}
         <Animated.View layout={rowLayout}>
           {result.sources.length > 0 ? (
-            <Section title="Sources" note={String(result.sources.length)}>
+            <Section title="Sources">
               <Label>
                 {result.sources.map((source, index) => (
                   <View key={source.url}>
@@ -617,10 +627,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           ) : null}
 
           {error ? <FormNote alert>{error}</FormNote> : null}
-          <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-            <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
+          <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
+            <Capsule title="Change meal" variant="quiet" size="large" disabled={frozen} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
             <Capsule
               title={logger.purpose === 'ingredients' ? 'Add ingredients' : editing ? 'Save changes' : 'Log meal'}
+              size="large"
               busy={busy === 'save'}
               disabled={!valid || busy !== null}
               onPress={() => void save()}

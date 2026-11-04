@@ -6,6 +6,7 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import Animated from 'react-native-reanimated';
 
 import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/lib/mealComposition';
 import { getFoodAnalysisMode } from '@/lib/foodTrial';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
+import { logMacro } from '@/lib/nutritionMacros';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { mealFromLoggedFoods } from '@/lib/savedMealFromLog';
 import { loadSavedMeals } from '@/lib/savedMeals';
@@ -31,14 +33,16 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
-import { announce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
+import { figureLayout } from '~/lib/motion';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
@@ -451,7 +455,17 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         : null
     : !sameDay
       ? `Unassigned on ${format(when.date, 'MMM d')}`
-      : `Adds to ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
+      : `${editing ? 'In' : 'Adds to'} ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
+  // The meal's running total, from the day Fuel holds: it rolls up as foods are logged into it.
+  const dayLogs = useFuelStore((state) => (state.loadedMonth === selectedKey.slice(0, 7) ? state.logs : null));
+  const groupIds = new Set(groups.map((group) => group.id));
+  const mealKcal =
+    dayLogs && sameDay && !inMeal && !editing
+      ? dayLogs
+          .filter((log) => log.date === selectedKey && (destination ? log.group_id === destination.id : !log.group_id || !groupIds.has(log.group_id)))
+          .reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0)
+      : 0;
+  const spokenSubtitle = mealKcal > 0 ? `${subtitle}, ${speak(`${formatWhole(mealKcal)} kcal`)}` : subtitle;
 
   const openTab = (next: Tab) => {
     haptics.select();
@@ -462,9 +476,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   };
 
   const mealTotals = meal ? getMealTotals(meal.ingredients) : null;
+  const mealCount = meal && mealTotals ? `${meal.ingredients.length} ingredient${meal.ingredients.length === 1 ? '' : 's'} · ${formatWhole(mealTotals.calories)} kcal` : '';
 
   // Each tab is built on its own, so typing in one never rebuilds another.
-  const buildMeal = !editing && (!meal || paused) ? (
+  // Starting a meal is offered with the foods it is built from; a pending meal shows on every tab.
+  const buildMeal = !editing && (meal ? paused : tab === 'recent' || tab === 'saved') ? (
     <View style={{ marginTop: 14 }}>
       <Label>
         <Row
@@ -565,19 +581,34 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 {title}
               </BlancText>
               {subtitle ? (
-                <Pressable
-                  accessibilityRole={sameDay && !inMeal ? 'button' : 'text'}
-                  accessibilityLabel={sameDay && !inMeal ? `${subtitle}. Change` : subtitle}
-                  disabled={!sameDay || inMeal}
-                  // a 13-point line, 44 points to touch
-                  hitSlop={{ top: 13, bottom: 13, left: 16, right: 16 }}
-                  onPress={chooseDestination}
-                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.5 : 1 })}>
-                  <BlancText variant="footnote" tone="graphite">
-                    {subtitle}
-                  </BlancText>
-                  {sameDay && !inMeal ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} /> : null}
-                </Pressable>
+                // The line re-centres on the figure's spring when the total gains a digit.
+                <Animated.View layout={figureLayout}>
+                  <Pressable
+                    accessibilityRole={sameDay && !inMeal ? 'button' : 'text'}
+                    accessibilityLabel={sameDay && !inMeal ? `${spokenSubtitle}. Change` : spokenSubtitle ?? undefined}
+                    disabled={!sameDay || inMeal}
+                    // a 13-point line, 44 points to touch
+                    hitSlop={{ top: 13, bottom: 13, left: 16, right: 16 }}
+                    onPress={chooseDestination}
+                    style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', opacity: pressed ? 0.5 : 1 })}>
+                    <BlancText variant="footnote" tone="graphite">
+                      {subtitle}
+                    </BlancText>
+                    {mealKcal > 0 ? (
+                      <RollingText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+                        {` · ${formatWhole(mealKcal)}`}
+                      </RollingText>
+                    ) : null}
+                    <Animated.View layout={figureLayout} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      {mealKcal > 0 ? (
+                        <BlancText variant="footnote" tone="graphite">
+                          {' kcal'}
+                        </BlancText>
+                      ) : null}
+                      {sameDay && !inMeal ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} /> : null}
+                    </Animated.View>
+                  </Pressable>
+                </Animated.View>
               ) : null}
             </View>
             {/* Save as meal has one way out: closing it cancels. */}
@@ -628,9 +659,16 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 // At the accessibility sizes Review meal goes under the count instead of squeezing it.
                 large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
               }>
-              <BlancText variant="secondary" tone="graphite" style={large ? undefined : { flex: 1 }}>
-                {meal.ingredients.length} ingredient{meal.ingredients.length === 1 ? '' : 's'} · {formatWhole(mealTotals.calories)} kcal
-              </BlancText>
+              {/* The total rolls on one line; at the accessibility sizes it wraps instead. */}
+              {large ? (
+                <BlancText variant="secondary" tone="graphite">
+                  {mealCount}
+                </BlancText>
+              ) : (
+                <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
+                  {mealCount}
+                </RollingText>
+              )}
               <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
             </View>
           ) : null}
@@ -667,7 +705,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             }}
           />
         ) : chosen ? (
-          <FoodReview food={chosen.food} meta={chosen.meta} servings={chosen.servings} onBack={() => setChosen(null)} />
+          <FoodReview food={chosen.food} meta={chosen.meta} servings={chosen.servings} />
         ) : (
           <View key={captureKey}>
             {buildMeal}

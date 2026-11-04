@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { parseRestInput } from '@/lib/restTimer';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { GlassButton } from '~/components/GlassButton';
 import { RollingText } from '~/components/RollingText';
 import { announce, spokenClock, useLargeText } from '~/lib/accessibility';
@@ -54,6 +56,9 @@ export default function RestSheet() {
   // The movement's saved length; +30 s changes only this rest.
   const length = restSecondsFor(exerciseId, prefs, chosen);
   const custom = !PRESETS.includes(length);
+  // A custom length keeps its place while the sheet is open, so picking a preset never moves the chips.
+  const [kept, setKept] = useState<number | null>(() => (custom ? length : null));
+  const extra = custom ? length : kept;
 
   const choose = (seconds: number) => {
     haptics.select();
@@ -76,6 +81,7 @@ export default function RestSheet() {
               Alert.alert('Not a rest length', 'Use 0:05 to 60:00, like 1:30 or 4.');
               return;
             }
+            if (!PRESETS.includes(seconds)) setKept(seconds);
             choose(seconds);
           },
         },
@@ -161,23 +167,36 @@ export default function RestSheet() {
         </BlancText>
       </Pressable>
 
-      {/* At the accessibility text sizes the lengths wrap onto more lines. */}
+      {/* Lengths in order: a custom one takes its place among the presets, and a tap on it types another.
+          At the accessibility text sizes the lengths wrap onto more lines. */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset, ...(large ? { flexWrap: 'wrap' } : null) }}>
-        {PRESETS.map((preset) => (
-          <Chip
-            key={preset}
-            label={formatClock(preset)}
-            accessibilityLabel={spokenClock(preset)}
-            selected={length === preset}
-            onPress={() => choose(preset)}
-          />
-        ))}
-        <Chip
-          label={custom ? formatClock(length) : 'Custom'}
-          accessibilityLabel={custom ? `Custom, ${spokenClock(length)}` : 'Custom'}
-          selected={custom}
-          onPress={chooseCustom}
-        />
+        {(extra !== null ? [...PRESETS, extra].sort((a, b) => a - b) : PRESETS).map((seconds) =>
+          seconds === extra ? (
+            <Chip
+              key="custom"
+              label={formatClock(extra)}
+              accessibilityLabel={`Custom, ${spokenClock(extra)}`}
+              selected={length === extra}
+              tabular
+              haptic={false}
+              accessibilityHint={length === extra ? 'Type another length' : undefined}
+              style={{ minWidth: 58 }}
+              onPress={length === extra ? chooseCustom : () => choose(extra)}
+            />
+          ) : (
+            <Chip
+              key={seconds}
+              label={formatClock(seconds)}
+              accessibilityLabel={spokenClock(seconds)}
+              selected={length === seconds}
+              tabular
+              haptic={false}
+              style={{ minWidth: 58 }}
+              onPress={() => choose(seconds)}
+            />
+          ),
+        )}
+        {extra !== null ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
       </View>
 
       {/* At the accessibility text sizes the buttons stack, each as wide as the sheet. */}
@@ -217,32 +236,5 @@ export default function RestSheet() {
     <View onMagicTap={magicTap} style={{ backgroundColor: c.ground, paddingBottom: 36 }}>
       {content}
     </View>
-  );
-}
-
-function Chip({ label, accessibilityLabel, selected, onPress }: { label: string; accessibilityLabel: string; selected: boolean; onPress: () => void }) {
-  const c = useBlanc();
-  // At the accessibility text sizes the chip grows with its label.
-  const large = useLargeText();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      hitSlop={{ top: 5, bottom: 5 }}
-      style={({ pressed }) => ({
-        ...(large ? { minHeight: 36, paddingVertical: 6 } : { height: 36 }),
-        minWidth: 58,
-        paddingHorizontal: 12,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.fill,
-      })}>
-      <BlancText variant="footnote" weight="600" tone={selected ? 'onCapsule' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
-        {label}
-      </BlancText>
-    </Pressable>
   );
 }

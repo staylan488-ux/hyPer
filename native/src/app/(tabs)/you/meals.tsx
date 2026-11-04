@@ -12,17 +12,18 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { foodLine } from '~/fuel/FoodLists';
 import { announce } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { editSavedMeal, loadYouMeals, usePullRefresh, useYouMealsStore } from '~/lib/you';
-import { space, useBlanc } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 /**
  * Saved meals: the meals kept for quick logging. Tap to edit; swipe for Edit
  * and Delete (a full swipe deletes); hold for the same. Deleting keeps past
- * logged entries as they were.
+ * logged entries as they were (the hold menu's Delete says so).
  */
 export default function SavedMealsScreen() {
   const c = useBlanc();
@@ -91,6 +92,7 @@ export default function SavedMealsScreen() {
                   <View style={{ backgroundColor: c.label }}>
                     <Row
                       title={meal.name}
+                      detail={foodLine(meal) || undefined}
                       value={`${formatWhole(Number(meal.calories) || 0)} kcal`}
                       onPress={() => editSavedMeal(meal)}
                       menu={[
@@ -104,13 +106,6 @@ export default function SavedMealsScreen() {
             ))}
           </Label>
         )}
-        {shown.length > 0 ? (
-          <Animated.View layout={rowLayout}>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter + 12, marginTop: 8 }}>
-              Deleting a meal keeps past logged entries.
-            </BlancText>
-          </Animated.View>
-        ) : null}
       </TabScroll>
     </>
   );

@@ -15,7 +15,7 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 
 // Today's card for the live workout (native/src/app/(tabs)/today/index.tsx).
 // A flexible session starts with no movements: Today says what Train says,
-// not "All sets done" with a Finish button.
+// not "All sets logged" with a Finish button.
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 const Empty = () => null;
@@ -57,7 +57,7 @@ async function open() {
     '~/lib/accountData': { useAccountRefresh: () => ({ refreshing: false, refresh: noop }) },
     '~/lib/brand': { useIntroRise: () => ({}) },
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish, closing: false }) },
-    '~/lib/format': { formatLoad: String, formatWhole: String },
+    '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min`, formatSet: (weight: number | null, reps: number | null) => (weight !== null && reps !== null ? `${weight} lb × ${reps}` : ''), formatWhole: String },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop } },
     '~/lib/fuel': { today: () => '2026-11-04', todayTotalsShown: () => null, useFuelStore: create(() => ({})) },
@@ -94,8 +94,9 @@ describe('Today\'s live workout card', () => {
     session = live([], null);
     await open();
 
-    expect(host.textContent).toContain('Add your first movement');
-    expect(host.textContent).not.toContain('All sets done');
+    expect(host.textContent).toContain('No movements yet');
+    expect(host.textContent).toContain('Add your first movement in Train');
+    expect(host.textContent).not.toContain('All sets logged');
     expect(host.textContent).not.toContain('Finish to save the session');
     expect(buttons()).toEqual(['Resume']);
     await act(async () => { host.querySelector('button')!.click(); });
@@ -107,7 +108,7 @@ describe('Today\'s live workout card', () => {
     session = live([movement([set('s1', true)])], null);
     await open();
 
-    expect(host.textContent).toContain('All sets done');
+    expect(host.textContent).toContain('All sets logged');
     expect(host.textContent).toContain('Finish to save the session');
     expect(buttons()).toEqual(['Finish']);
   });

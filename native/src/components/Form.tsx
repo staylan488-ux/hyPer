@@ -1,11 +1,12 @@
-import { DatePicker, Host } from '@expo/ui/swift-ui';
-import { datePickerStyle, disabled as swiftDisabled, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
+import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
+import { accessibilityLabel as swiftAccessibilityLabel, datePickerStyle, disabled as swiftDisabled, labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { SymbolView } from 'expo-symbols';
 import { Children, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
-import { fieldLabel, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
+import { fieldLabel, speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { type as typeScale, useBlanc } from '~/theme/blanc';
+import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
@@ -58,6 +59,8 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
    * it, as the program editor's names do; Return finishes instead of adding a line.
    */
   grows?: boolean;
+  /** With grows: Return adds a line and line breaks are kept (notes). */
+  paragraphs?: boolean;
   invalid?: boolean;
 };
 
@@ -68,7 +71,7 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
  * with its label and unit ("Protein, grams"); at the accessibility text
  * sizes the label sits over the field.
  */
-export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, accessibilityLabel, ...input }: FieldRowProps) {
+export function FieldRow({ ref, label, unit, wide, grows, paragraphs, invalid, keyboardType, returnKeyType, accessibilityLabel, ...input }: FieldRowProps) {
   const c = useBlanc();
   const large = useLargeText();
   const field = useRef<TextField>(null);
@@ -84,12 +87,12 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
         // The red label's meaning, in words.
         accessibilityLabel={invalid ? `${name}, invalid` : name}
         keyboardType={keyboardType}
-        returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
-        {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
+        returnKeyType={wraps ? (paragraphs ? returnKeyType : returnKeyType ?? 'done') : numberPadReturnKey(keyboardType, returnKeyType)}
+        {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: paragraphs ? ('newline' as const) : ('blurAndSubmit' as const) } : null)}
         // Tail truncation is for one line only: in a wrapping field it would cut each paragraph short.
         lineBreakModeIOS={wraps ? undefined : 'tail'}
         {...input}
-        onChangeText={wraps && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
+        onChangeText={wraps && !paragraphs && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
         style={[
           // Wrapped lines keep body's line height; one line takes none (see type.field).
           wraps ? typeScale.fieldLines : typeScale.field,
@@ -170,23 +173,25 @@ export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRow
  * VoiceOver finds one element, the switch, named with the label and the
  * quiet line, as iOS reads a settings cell with a subtitle.
  */
-export function ToggleRow({ label, detail, value, onChange, disabled }: {
+export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
   label: string;
   detail?: string;
   value: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
+  /** Among list Rows rather than form fields: 60 pt, label and line as a Row's. */
+  list?: boolean;
 }) {
   const [pending, setPending] = useState<boolean | null>(null);
   useEffect(() => {
     if (!disabled) setPending(null);
   }, [disabled, value]);
   return (
-    <View style={[rowStyle, { paddingVertical: 10 }]}>
+    <View style={[rowStyle, { paddingVertical: 10 }, list ? { minHeight: 60 } : null]}>
       <View style={{ flex: 1 }} {...spokenByControl}>
-        <BlancText variant="body">{label}</BlancText>
+        <BlancText variant={list ? 'bodyStrong' : 'body'}>{label}</BlancText>
         {detail ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }}>
+          <BlancText variant={list ? 'secondary' : 'footnote'} tone="graphite" style={{ marginTop: list ? 1 : 2 }}>
             {detail}
           </BlancText>
         ) : null}
@@ -248,6 +253,84 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
   );
 }
 
+/**
+ * A label and iOS's pull-down menu of choices, like a Settings row. The menu
+ * carries the name for VoiceOver (one stop: "Type, Run"); at the
+ * accessibility text sizes it sits under its label.
+ */
+export function MenuRow({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  const c = useBlanc();
+  const large = useLargeText();
+  return (
+    <View
+      style={
+        large
+          ? { alignItems: 'flex-start', minHeight: 52, paddingVertical: 10, paddingLeft: 18, paddingRight: 8, gap: 4 }
+          : { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }
+      }>
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }} {...spokenByControl}>
+        {label}
+      </BlancText>
+      <Host matchContents>
+        <Picker
+          selection={value}
+          onSelectionChange={(next) => {
+            if (next === value) return;
+            haptics.select();
+            onChange(String(next));
+          }}
+          modifiers={[pickerStyle('menu'), tint(c.graphite), swiftAccessibilityLabel(label)]}>
+          {options.map((option) => (
+            <SwiftText key={option.value} modifiers={[tag(option.value)]}>
+              {option.label}
+            </SwiftText>
+          ))}
+        </Picker>
+      </Host>
+    </View>
+  );
+}
+
+/** One choice of a list (a radio row): a fixed title, an optional quiet line, a checkmark when chosen. */
+export function ChoiceRow({ title, detail, checked, onPress }: { title: string; detail?: string; checked: boolean; onPress: () => void }) {
+  const c = useBlanc();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked }}
+      accessibilityLabel={speak(detail ? `${title}, ${detail}` : title)}
+      onPress={() => {
+        if (!checked) haptics.select();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 60,
+        paddingVertical: 10,
+        paddingLeft: 18,
+        paddingRight: 16,
+        backgroundColor: pressed ? c.pressed : 'transparent',
+      })}>
+      <View style={{ flex: 1 }}>
+        <BlancText variant="bodyStrong">{title}</BlancText>
+        {detail ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1 }}>
+            {detail}
+          </BlancText>
+        ) : null}
+      </View>
+      {checked ? <SymbolView name="checkmark" size={15} weight="semibold" tintColor={c.ink} /> : null}
+    </Pressable>
+  );
+}
+
 /** Plain text children as one string (null when they hold anything else). */
 function plainText(children: ReactNode): string | null {
   let text = '';
@@ -259,8 +342,9 @@ function plainText(children: ReactNode): string | null {
 }
 
 /**
- * Text under a form block: a hint, or an error in red. VoiceOver announces
- * an error when it appears or changes (iOS has no live regions).
+ * Text under a form block: a hint, or an error in red. Starts on the row
+ * text's edge. VoiceOver announces an error when it appears or changes (iOS
+ * has no live regions).
  */
 export function FormNote({ children, alert, accessibilityLabel, announcement }: {
   children: ReactNode;
@@ -276,7 +360,7 @@ export function FormNote({ children, alert, accessibilityLabel, announcement }: 
       tone={alert ? 'live' : 'graphite'}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={alert ? 'alert' : undefined}
-      style={{ marginHorizontal: 32, marginTop: 8 }}>
+      style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
       {children}
     </BlancText>
   );

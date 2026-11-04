@@ -59,15 +59,15 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
         <Hairline />
         {sameDay ? (
           <Row
+            form
             title="Add to"
-            quiet={false}
             value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'}
             chevron={!disabled}
             onPress={disabled ? undefined : chooseGroup}
           />
         ) : (
           <View>
-            <Row title="Add to" value={`Unassigned on ${format(when.date, 'MMM d')}`} />
+            <Row form title="Add to" value={`Unassigned on ${format(when.date, 'MMM d')}`} />
           </View>
         )}
       </Label>

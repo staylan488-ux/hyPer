@@ -159,14 +159,10 @@ export default function TargetsCoachSheet() {
       </Label>
       <FormNote>
         Your profile, current targets and goal are sent either way.{' '}
-        {coachSource() === 'gemini' ? 'Gemini answers; it counts toward the daily analysis limit.' : 'Your Mac worker answers.'}
+        {coachSource() === 'gemini' ? 'Gemini answers, and it counts toward the daily analysis limit.' : 'Your Mac worker answers.'}
       </FormNote>
 
-      {error ? (
-        <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">
-          {error}
-        </BlancText>
-      ) : null}
+      {error ? <FormNote alert>{error}</FormNote> : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule
           title={asking ? 'Asking the coach' : 'Get suggestions'}

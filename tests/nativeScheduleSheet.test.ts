@@ -76,6 +76,11 @@ async function open() {
       Capsule: ({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) =>
         createElement('button', { 'data-capsule': title, disabled: Boolean(disabled), onClick: onPress }, title),
     },
+    '~/components/Form': {
+      ChoiceRow: ({ title, checked, onPress }: { title: string; checked: boolean; onPress: () => void }) =>
+        createElement('button', { onClick: onPress }, title, checked ? createElement('i', { 'data-symbol': 'checkmark' }) : null),
+      FormNote: ({ children }: PropsWithChildren) => createElement('p', null, children),
+    },
     '~/components/GlassButton': { GlassButton: Empty },
     '~/components/Label': { Label: Wrap },
     '~/components/Row': { Hairline: Empty },
@@ -92,6 +97,9 @@ async function open() {
 const dayRow = (name: string) => [...host.querySelectorAll('button')].find((button) => button.textContent === name)!;
 const checked = () => [...host.querySelectorAll('button')].filter((button) => button.querySelector('[data-symbol="checkmark"]')).map((button) => button.textContent);
 const saveButton = () => host.querySelector<HTMLButtonElement>('[data-capsule="Save"]')!;
+// The week's circles, as VoiceOver reads the training days among them.
+const trainingDays = () =>
+  [...host.querySelectorAll('button')].map((button) => button.getAttribute('aria-label') ?? '').filter((label) => label.endsWith('training day'));
 const loaded = (plan: Partial<Plan>) => act(async () => { todayPlan.setState(plan); });
 
 beforeEach(() => {
@@ -154,7 +162,7 @@ describe('Schedule sheet, set weekdays', () => {
     todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
     await open();
 
-    expect(host.textContent).toContain('Mon / Tue / Thu / Fri');
+    expect(trainingDays()).toEqual(['Monday, first training day', 'Tuesday, training day', 'Thursday, training day', 'Friday, training day']);
     expect(leaveGuarded).toBe(true);
     await act(async () => { saveButton().click(); });
     expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ mode: 'fixed', weekdays: [1, 2, 4, 5] }));
@@ -164,7 +172,7 @@ describe('Schedule sheet, set weekdays', () => {
     todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
     await open();
 
-    expect(host.textContent).toContain('Mon / Wed / Fri');
+    expect(trainingDays()).toEqual(['Monday, first training day', 'Wednesday, training day', 'Friday, training day']);
     expect(leaveGuarded).toBe(false);
   });
 });

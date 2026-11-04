@@ -217,11 +217,14 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/components/Capsule': { Capsule: (props: Button) => { captured.buttons[props.title] = props; return null; } },
     '~/components/GlassButton': { GlassButton: (props: Button & { accessibilityLabel: string }) => { captured.buttons[props.accessibilityLabel] = props; return null; } },
     '~/components/Label': { Label: Wrap },
+    '~/components/RollingText': { RollingText: Wrap },
+    '@/lib/nutritionMacros': { logMacro: () => null },
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true },
     '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
+    '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
     // VoiceOver and the text size are device services: silent, standard size.
     '~/lib/accessibility': { announce: noop, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
@@ -323,7 +326,9 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     active.push(closeEditor);
     await act(async () => { editorRoot.render(createElement(Editor)); });
   };
-  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
+  // A lookup holds the sheet: closing then asks to stop the analysis (Build a meal shows on Recent and Saved only).
+  const busy = () => captured.guard!.message.title === 'Stop the analysis?';
+  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, busy, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
 }
 
 describe('native food logger transitions', () => {
@@ -416,12 +421,12 @@ describe('native food logger transitions', () => {
     const h = loggerHarness();
     await h.render();
     await h.tab('scan');
-    await act(async () => { h.captured.fields['Barcode digits'].onChangeText('012345678905'); });
+    await act(async () => { h.captured.fields['Barcode'].onChangeText('012345678905'); });
     await h.click('Look up barcode');
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
+    expect(h.busy()).toBe(true);
     await h.tab('manual');
     expect(h.captured.scanCurrent!()).toBe(false);
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
+    expect(h.busy()).toBe(false);
     expect(h.captured.guard!.on).toBe(false);
     await act(async () => { h.captured.manual!.onGeminiHandoff!('chicken and rice'); });
     expect(h.alert).not.toHaveBeenCalled();
@@ -429,9 +434,22 @@ describe('native food logger transitions', () => {
     let release!: () => void;
     await act(async () => { release = h.captured.context!.beginBusy(); });
     await act(async () => { h.lookup.resolve({ status: 'stale' }); });
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
+    expect(h.busy()).toBe(true);
     await act(async () => { release(); });
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
+    expect(h.busy()).toBe(false);
+  });
+
+  it('offers Build a meal with the lists it is built from, Recent and Saved', async () => {
+    const h = loggerHarness();
+    await h.render();
+    expect(h.captured.buttons['Build a meal']).toBeDefined();
+    for (const name of ['search', 'scan', 'manual', 'photo']) {
+      delete h.captured.buttons['Build a meal'];
+      await h.tab(name);
+      expect(h.captured.buttons['Build a meal']).toBeUndefined();
+    }
+    await h.tab('saved');
+    expect(h.captured.buttons['Build a meal']).toBeDefined();
   });
 
   it('releases each busy owner once without clearing another owner', async () => {
@@ -485,9 +503,9 @@ describe('native food logger transitions', () => {
     await h.render();
     await h.startPhoto();
     await h.tab('manual');
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
+    expect(h.busy()).toBe(true);
     await act(async () => { h.analysis.resolve(photoResult); });
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
+    expect(h.busy()).toBe(false);
     await h.tab('photo');
     expect(h.captured.photo!.draft.items).toEqual([photoItem]);
     expect(h.captured.photo!.draft.summary).toBe('Fresh plate');
@@ -773,19 +791,21 @@ describe('native food logger holds the sheet while a save runs', () => {
     const write = deferred<void>();
     h.saveFood.mockReturnValueOnce(write.promise);
     await h.render();
+    // Build a meal shows on Recent and Saved only, so Manual offers no way into a meal mid-save.
+    delete h.captured.buttons['Build a meal'];
     await h.tab('manual');
     await act(async () => { h.captured.fields.Name.onChangeText('Oats'); });
     await h.click('Log entry');
     // Another tab would unmount Manual with its error and retry-safe ids.
     expect(h.captured.picker!.disabled).toBe(true);
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
+    expect(h.captured.buttons['Build a meal']).toBeUndefined();
     await act(async () => { h.captured.manual!.onGeminiHandoff!('a cup of oats'); });
     expect(h.captured.picker!.selection).toBe('manual');
     await act(async () => { write.reject(new Error('offline')); });
     expect(h.text()).toContain('Not logged. Try again.');
     expect(h.captured.picker!.disabled).toBe(false);
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
     await h.tab('recent');
     expect(h.captured.picker!.selection).toBe('recent');
+    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
   });
 });

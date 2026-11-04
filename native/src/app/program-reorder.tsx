@@ -5,6 +5,7 @@ import {
   environment,
   font,
   foregroundStyle,
+  lineLimit,
   listRowBackground,
   listStyle,
   scrollContentBackground,
@@ -23,7 +24,7 @@ import { useBlanc } from '~/theme/blanc';
 
 type Item = { id: string; title: string; line: string; spoken: string };
 
-/** "3 × 8–12" or "3–4 sets × 8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps". */
+/** "3 × 8–12" or "2–4 × 8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps". */
 function spokenTargets(line: string): string {
   return speak(`${line.replace(/^(\S+)(?: sets)? × /, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`);
 }
@@ -96,8 +97,9 @@ export default function ProgramReorderSheet() {
                 alignment="leading"
                 spacing={2}
                 modifiers={[listRowBackground(c.label), accessibilityElement('ignore'), accessibilityLabel(item.spoken)]}>
-                <SwiftText modifiers={[font({ textStyle: 'body', weight: 'medium' }), foregroundStyle(c.ink)]}>{item.title}</SwiftText>
-                <SwiftText modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(c.graphite)]}>{item.line}</SwiftText>
+                {/* One line each, as a row elsewhere: a long name ends in "…" (wrapping at the accessibility text sizes). */}
+                <SwiftText modifiers={[font({ textStyle: 'body', weight: 'medium' }), foregroundStyle(c.ink), ...(large ? [] : [lineLimit(1)])]}>{item.title}</SwiftText>
+                <SwiftText modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(c.graphite), ...(large ? [] : [lineLimit(1)])]}>{item.line}</SwiftText>
               </VStack>
             )}
           </List.ForEach>

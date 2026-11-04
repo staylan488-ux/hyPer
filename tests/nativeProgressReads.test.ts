@@ -12,6 +12,7 @@ import * as volumeStatus from '@/lib/volumeStatus';
 import * as workoutSessions from '@/lib/workoutSessions';
 import * as types from '@/types';
 import type { MuscleVolume } from '@/types';
+import { formatMinutes } from '../native/src/lib/format';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -79,8 +80,8 @@ async function open() {
     '~/components/Row': { Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/TabScroll': { TabScroll: ({ children, refreshControl }: { children: ReactNode; refreshControl: ReactNode }) => createElement(Fragment, null, refreshControl, children) },
-    '~/lib/accountData': { useAccountDay: accountDay },
-    '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
+    '~/lib/accountData': { useAccountDay: accountDay, useCurrentDayKey: () => accountDay.getState().dayKey },
+    '~/lib/format': { formatMinutes, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },

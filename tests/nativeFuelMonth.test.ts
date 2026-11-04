@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as calendar from '@/lib/nutritionCalendar';
+import * as macros from '@/lib/nutritionMacros';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -31,7 +32,7 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
   vi.setSystemTime(new Date('2026-11-04T10:00:00'));
   const read = vi.fn(() => reads.shift() ?? Promise.resolve({ data: [], error: null }));
   const query = { select: () => query, eq: () => query, gte: () => query, lte: read };
-  const fuel = { selected: '2026-11-03', loadedMonth: '2026-11', logs: [{ date: '2026-11-02' }], select: vi.fn() };
+  const fuel = { selected: '2026-11-03', loadedMonth: '2026-11', logs: [{ date: '2026-11-02', food: { calories: 520 }, servings: 1 }], select: vi.fn() };
   const pan = { activeOffsetX: () => pan, failOffsetY: () => pan, runOnJS: () => pan, onEnd: () => pan };
   const Box = ({ children }: { children?: ReactNode }) => createElement('div', null, children);
   const Press = ({ accessibilityLabel, onPress, children }: { accessibilityLabel?: string; onPress?: () => void; children?: ReactNode }) =>
@@ -42,12 +43,16 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
     'react-native': { Pressable: Press, View: Box },
     'react-native-gesture-handler': { Gesture: { Pan: () => pan }, GestureDetector: Box },
     '@/lib/nutritionCalendar': calendar,
+    '@/lib/nutritionMacros': macros,
     '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
     '@/lib/supabase': { supabase: { from: () => query } },
+    '@/stores/appStore': { useAppStore: (select: (state: object) => unknown) => select({ macroTarget: null, nutritionProfile: null }) },
     '~/components/BlancText': { BlancText: ({ children }: { children?: ReactNode }) => createElement('span', null, children) },
     '~/components/GlassButton': { GlassButton: ({ accessibilityLabel, onPress }: { accessibilityLabel: string; onPress: () => void }) => createElement('button', { 'aria-label': accessibilityLabel, onClick: onPress }) },
+    '~/fuel/DayMark': { DayMark: () => null },
     '~/lib/fuel': { dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'), useFuelStore: { getState: () => fuel } },
     '~/lib/accessibility': silentAccessibility,
+    '~/lib/format': { formatWhole: String },
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
     '~/theme/blanc': { useBlanc: () => ({}) },
   }).default;
@@ -59,7 +64,8 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
     expect(button, label).toBeDefined();
     await act(async () => { button!.click(); });
   };
-  const hasEntries = (day: string) => container.querySelector(`[aria-label="${day}, food logged"]`) !== null;
+  // A day with food says so: its kcal in the month Fuel holds, "food logged" in a month whose dates alone are read.
+  const hasEntries = (day: string) => container.querySelector(`[aria-label="${day}, food logged"], [aria-label="${day}, 520 calories"]`) !== null;
   return { container, press, hasEntries, read };
 }
 

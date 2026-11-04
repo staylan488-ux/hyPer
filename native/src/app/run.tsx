@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -47,7 +47,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote } from '~/components/Form';
+import { FieldRow, FormNote, MenuRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
@@ -71,10 +71,11 @@ const SIMULATOR_TIME_SCALE = 10;
 /**
  * A run reading as VoiceOver should say it: "7:59 /mi" as "7 minutes 59
  * seconds per mile", "1:05 · 200 m" as "1 minute 5 seconds, 200 meters", a
- * dash as "none". For the run's own figures only (a time of day is no clock).
+ * dash (no pace yet: "–" on screen, "—" on the lock screen) as "none". For
+ * the run's own figures only (a time of day is no clock).
  */
 function spokenRun(text: string): string {
-  if (text === '—') return 'none';
+  if (text === '—' || text === '–') return 'none';
   return speak(
     text
       .replace(/60:00\+/g, 'over 60 minutes')
@@ -99,7 +100,8 @@ export default function RunScreen() {
   const running = state?.status === 'running';
 
   // The lock screen and Dynamic Island follow every tick (the module sends at
-  // most one update every 3 seconds; iOS ticks the clock in between).
+  // most one update every 3 seconds; iOS ticks the clock in between). The
+  // widget reads "—" as no pace yet, so these keep the em dash.
   const paceLabel = running ? (formatRunPace(livePaceSecPerMile(state, tracker.nowMs)) ?? '—') : null;
   const averageLabel = running ? (formatRunPace(averagePaceSecPerMile(state, tracker.nowMs)) ?? '—') : null;
   const elapsedS = running ? elapsedSeconds(state, tracker.nowMs) : 0;
@@ -241,10 +243,13 @@ function Setup({ tracker }: { tracker: Tracker }) {
                   ))}
                 </Picker>
               </Host>
-              <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: 4, marginTop: 10 }}>
-                {mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}
-              </BlancText>
             </View>
+          )}
+          {/* Under a bare control the note starts at the gutter, as on Program. */}
+          {tracker.resumable ? null : (
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+              {mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}
+            </BlancText>
           )}
 
           {mode === 'intervals' && !tracker.resumable ? (
@@ -313,51 +318,6 @@ function Setup({ tracker }: { tracker: Tracker }) {
   );
 }
 
-/**
- * A label and iOS's pull-down menu of choices, like a Settings row. VoiceOver
- * finds one element, the menu, named with the label; at the accessibility
- * text sizes the label sits over the menu.
- */
-function MenuRow({ label, value, options, onChange }: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-}) {
-  const c = useBlanc();
-  const large = useLargeText();
-  return (
-    <View
-      style={
-        large
-          ? { alignItems: 'flex-start', gap: 4, minHeight: 52, paddingLeft: 18, paddingRight: 8, paddingVertical: 12 }
-          : { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }
-      }>
-      <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
-        {label}
-      </BlancText>
-      <Host matchContents={large ? { vertical: true } : true} style={large ? { alignSelf: 'stretch' } : undefined}>
-        {/* The menu carries the label for VoiceOver (SwiftUI keeps a hidden label for it). */}
-        <Picker
-          label={label}
-          selection={value}
-          onSelectionChange={(next) => {
-            if (next === value) return;
-            haptics.select();
-            onChange(String(next));
-          }}
-          modifiers={[pickerStyle('menu'), labelsHidden(), tint(c.graphite)]}>
-          {options.map((option) => (
-            <SwiftText key={option.value} modifiers={[tag(option.value)]}>
-              {option.label}
-            </SwiftText>
-          ))}
-        </Picker>
-      </Host>
-    </View>
-  );
-}
-
 /* ── During the run ── */
 
 function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
@@ -367,10 +327,11 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const now = tracker.nowMs;
   const intervals = state.config.mode === 'intervals';
   const status = runStatus(state, now);
-  const alert = status !== 'ok';
+  // Only weak GPS is a warning; resting and finding GPS are not.
+  const alert = status === 'weak';
   // A rest lap has no pace; its clock is the figure worth reading.
   const restHero = tracker.resting && intervals;
-  const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '—';
+  const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '–';
   const [figure, unit] = restHero ? [formatRunClock(currentLapSeconds(state, now)), ''] : splitFigure(pace);
   const caption = restHero ? 'Rest' : tracker.resting ? 'Paused' : intervals ? 'Lap pace' : 'Pace';
   const lastLap = state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
@@ -459,7 +420,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
         <View style={large ? { marginTop: 16, gap: 14 } : { flexDirection: 'row', marginTop: 16 }}>
           <Stat label="Time" value={formatRunClock(elapsedSeconds(state, now))} />
           <Stat label="Distance" value={formatRunDistance(state.totalDistanceM)} />
-          <Stat label="Avg pace" name="Average pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '—'} />
+          <Stat label="Avg pace" name="Average pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '–'} />
         </View>
 
         {intervals ? (
@@ -470,10 +431,13 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
                 label={tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}
                 value={`${formatRunClock(currentLapSeconds(state, now))} · ${formatRunDistance(currentLapDistanceM(state))}`}
               />
-              <Detail
-                label="Last split"
-                value={lastLap ? `${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}` : '—'}
-              />
+              {/* Shown once there is a split to show. */}
+              {lastLap ? (
+                <Detail
+                  label="Last split"
+                  value={`${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}`}
+                />
+              ) : null}
             </View>
           </>
         ) : null}
@@ -487,14 +451,12 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
                 value={`${state.reps.length}${state.sprintPhase === 'active' ? ' ●' : ''}`}
                 spoken={`${state.reps.length}${state.sprintPhase === 'active' ? ', sprinting now' : ''}`}
               />
-              <Detail
-                label="Last rep"
-                value={
-                  state.reps.length > 0
-                    ? `${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`
-                    : '—'
-                }
-              />
+              {state.reps.length > 0 ? (
+                <Detail
+                  label="Last rep"
+                  value={`${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`}
+                />
+              ) : null}
             </View>
           </>
         ) : null}
@@ -709,7 +671,6 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
   const [exportError, setExportError] = useState(false);
   const splits = finishedRunSplits(run);
   const [distance, distanceUnit] = splitFigure(formatRunDistance(run.totalDistanceM));
-  const workSplits = splits.filter((split) => !split.isRest).length;
   useAnnounce(saveError);
 
   const save = async () => {
@@ -810,12 +771,12 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
             </View>
             <View style={large ? { marginTop: 18, gap: 14 } : { flexDirection: 'row', marginTop: 18 }}>
               <Stat label="Time" value={formatRunClock(run.elapsedS)} />
-              <Stat label="Avg pace" name="Average pace" value={finishedRunPace(run) ?? '—'} />
+              <Stat label="Avg pace" name="Average pace" value={finishedRunPace(run) ?? '–'} />
             </View>
           </View>
 
           {splits.length > 1 ? (
-            <Section title="Splits" note={String(workSplits)}>
+            <Section title="Splits">
               <Label style={{ paddingHorizontal: 18, paddingVertical: 10 }}>
                 {splits.map((split, index) => {
                   const pace = split.isRest ? null : formatRunPace(splitPaceSecPerMile(split));
@@ -837,10 +798,10 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                         {formatRunClock(split.durationS)}
                       </BlancText>
                       <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={large ? undefined : { flex: 1, textAlign: 'right' }}>
-                        {split.isRest ? 'rest' : formatRunDistance(split.distanceM)}
+                        {split.isRest ? 'Rest' : formatRunDistance(split.distanceM)}
                       </BlancText>
                       <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={large ? undefined : { width: 96, textAlign: 'right' }}>
-                        {split.isRest ? '' : (pace ?? '—')}
+                        {split.isRest ? '' : (pace ?? '–')}
                       </BlancText>
                     </View>
                   );

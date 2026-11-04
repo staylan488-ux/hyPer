@@ -86,6 +86,7 @@ async function renderFuel({ compile = false } = {}) {
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
+    '~/fuel/DayMark': { DayMark: Empty },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': {
       dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'),

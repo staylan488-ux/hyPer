@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, View } from 'react-native';
+import { Keyboard, ScrollView, View } from 'react-native';
 
 import { buildPastSetUpdate } from '@/lib/historyMonth';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
 import type { TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
@@ -14,7 +15,7 @@ import { haptics } from '~/lib/haptics';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 /** Text VoiceOver skips: the fields are named "Weight in pounds" and "Reps", and the × is read as part of neither. */
 const spokenByField = { accessibilityElementsHidden: true, importantForAccessibility: 'no' as const };
@@ -98,7 +99,7 @@ export default function PastSetSheet() {
       </View>
 
       {set ? (
-        <View style={{ paddingHorizontal: 24, paddingTop: 18 }}>
+        <View style={{ paddingHorizontal: space.inset, paddingTop: 18 }}>
           {/* At the accessibility text sizes the reps go under the weight when both do not fit. */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
@@ -147,26 +148,14 @@ export default function PastSetSheet() {
             </View>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
+          <Chip
+            label={rpe ? `RPE ${rpe}` : 'Add RPE'}
             accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
             disabled={saving}
-            // 34 points drawn, 44 to touch.
-            hitSlop={{ top: 5, bottom: 5 }}
+            haptic={false}
             onPress={() => chooseRpe(setRpe)}
-            style={({ pressed }) => ({
-              alignSelf: 'flex-start',
-              ...(large ? { minHeight: 34, paddingVertical: 6 } : { height: 34 }),
-              paddingHorizontal: 14,
-              marginTop: 14,
-              borderRadius: 17,
-              justifyContent: 'center',
-              backgroundColor: pressed ? c.pressed : c.fill,
-            })}>
-            <BlancText variant="footnote" weight="500">
-              {rpe ? `RPE ${rpe}` : 'Add RPE'}
-            </BlancText>
-          </Pressable>
+            style={{ alignSelf: 'flex-start', marginTop: 14 }}
+          />
 
           {failed ? (
             <BlancText variant="footnote" tone="live" style={{ marginTop: 12 }} accessibilityRole="alert">
@@ -175,7 +164,7 @@ export default function PastSetSheet() {
           ) : null}
 
           <View style={{ marginTop: 20 }}>
-            <Capsule title={failed ? 'Retry' : 'Save'} fill busy={saving} onPress={() => void save()} />
+            <Capsule title={failed ? 'Retry' : 'Save'} size="large" fill busy={saving} onPress={() => void save()} />
           </View>
         </View>
       ) : (

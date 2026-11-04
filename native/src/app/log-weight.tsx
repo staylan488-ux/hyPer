@@ -15,7 +15,7 @@ import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { logWeighIn, setWeightUnit, useWeightStore } from '~/lib/you';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 /** Log weight: one number in the unit you weigh in, saved as a typed weigh-in. */
 export default function LogWeightSheet() {
@@ -85,7 +85,7 @@ export default function LogWeightSheet() {
         <View style={{ width: 44 }} />
       </View>
 
-      <View style={{ paddingHorizontal: 24, paddingTop: 18 }}>
+      <View style={{ paddingHorizontal: space.inset, paddingTop: 18 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
           <FigureInput
             value={draft}
@@ -113,7 +113,7 @@ export default function LogWeightSheet() {
         {/* At the accessibility text sizes the unit switch sits under the last weigh-in. */}
         <View style={large ? { alignItems: 'flex-start', marginTop: 10, gap: 10 } : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 12 }}>
           <BlancText variant="footnote" tone="graphite" style={large ? undefined : { flex: 1 }}>
-            {lastWeighInLabel(latest, unit, failedHistory, todayKey)}
+            {lastWeighInLabel(latest, failedHistory, todayKey)}
           </BlancText>
           <Host matchContents style={{ width: 110 }}>
             <Picker selection={unit} onSelectionChange={(next) => switchUnit(next as WeightUnit)} modifiers={[pickerStyle('segmented')]}>
@@ -128,10 +128,11 @@ export default function LogWeightSheet() {
             {error}
           </BlancText>
         ) : null}
+      </View>
 
-        <View style={{ marginTop: 22 }}>
-          <Capsule title={saveFailed ? 'Retry' : 'Save'} fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
-        </View>
+      {/* The sheet's action, as large and at the same inset as the other sheets'. */}
+      <View style={{ marginHorizontal: space.inset, marginTop: 22 }}>
+        <Capsule title={saveFailed ? 'Retry' : 'Save'} size="large" fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
       </View>
     </ScrollView>
   );

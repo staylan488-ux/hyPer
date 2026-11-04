@@ -33,6 +33,8 @@ type Shared = {
   /** Round the first row's top and the last row's bottom (the list starts or ends its card). */
   roundTop: boolean;
   roundBottom: boolean;
+  /** Where the rule between rows starts: the rows' text edge. */
+  ruleInset: number;
   order: SharedValue<string[]>;
   /** An order that came while a dropped row settled; it takes over once the row rests. */
   pending: SharedValue<string[] | null>;
@@ -72,12 +74,14 @@ function totalOf(order: string[], heights: Record<string, number>): number {
  * jumps while the new order saves; the list follows `items` again whenever
  * their order changes (a save landed, or failed and put the old order back).
  */
-export function DragList({ items, enabled, onMove, onHold, onDragging, revision = 0, roundTop = true, roundBottom = true }: {
+export function DragList({ items, enabled, onMove, onHold, onDragging, revision = 0, roundTop = true, roundBottom = true, ruleInset = 18 }: {
   items: DragItem[];
   /** Bump to put the rows back in the items' order (a move that did not save). */
   revision?: number;
   roundTop?: boolean;
   roundBottom?: boolean;
+  /** Where the rule between rows starts, as Hairline's inset: the rows' text edge. */
+  ruleInset?: number;
   /** False while a move saves: rows don't lift. */
   enabled: boolean;
   /** A row was set down in a new place: its key and its index there. */
@@ -97,8 +101,8 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
   const dragY = useSharedValue(0);
   const lift = useSharedValue(0);
   const shared = useMemo<Shared>(
-    () => ({ roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift }),
-    [roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift],
+    () => ({ roundTop, roundBottom, ruleInset, order, pending, heights, active, startTop, dragY, lift }),
+    [roundTop, roundBottom, ruleInset, order, pending, heights, active, startTop, dragY, lift],
   );
 
   // Follow the items' own order whenever it changes. Not mid-drag; one that
@@ -302,7 +306,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
           }, false);
         }}
         style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.label, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
-        <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: 18, backgroundColor: c.hairline }, rule]} />
+        <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: shared.ruleInset, backgroundColor: c.hairline }, rule]} />
         <View>{children}</View>
       </Animated.View>
     </GestureDetector>

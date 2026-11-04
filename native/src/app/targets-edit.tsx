@@ -21,7 +21,6 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { useAnnounce } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -68,8 +67,6 @@ export default function TargetsEditSheet() {
   const [saved, setSaved] = useState(false);
   const changed = targetsChanged(draft, base) || !target;
   const { kcalFromMacros, driftPct } = targetDrift(draft);
-  // A failed save shows above the button, which stays where it was.
-  useAnnounce(error);
 
   useEffect(() => {
     useTargetsStore.setState({ staged: null });
@@ -103,8 +100,10 @@ export default function TargetsEditSheet() {
     setError(null);
     try {
       await useAppStore.getState().updateMacroTarget(macroTargetColumns(draft));
+      // The figure on Targets and the haptic say it saved; no line lingers
+      // there, and an earlier Resume's line goes with the change.
       haptics.success();
-      useTargetsStore.setState({ message: { text: 'Daily targets saved.' } });
+      useTargetsStore.setState({ message: null });
       void loadTargets();
       setSaved(true);
     } catch {
@@ -166,8 +165,8 @@ export default function TargetsEditSheet() {
       ) : (
         <FormNote>
           {draft.source === 'manual'
-            ? 'Set by hand: they stay fixed until you resume adaptive targets.'
-            : 'Calculated: they can adapt when automatic adjustments are on.'}
+            ? 'Set by hand: fixed until you resume adaptive targets.'
+            : 'Calculated: these adapt while adaptive targets are on.'}
         </FormNote>
       )}
 
@@ -187,11 +186,8 @@ export default function TargetsEditSheet() {
         </Section>
       ) : null}
 
-      {error || loadFailed ? (
-        <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">
-          {error ?? 'Your saved targets did not load. Check your connection and try again.'}
-        </BlancText>
-      ) : null}
+      {/* A failed save or read shows above the button, which stays where it was; the note announces it. */}
+      {error || loadFailed ? <FormNote alert>{error ?? 'Your saved targets did not load. Check your connection and try again.'}</FormNote> : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         {loadFailed ? (
           <Capsule title="Try again" size="large" fill onPress={read.retry} />

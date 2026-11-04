@@ -7,7 +7,7 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { indexAtX, linearScale, monotonePath, paddedDomain, xAtIndex } from '@/lib/chartGeometry';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
-import { spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
+import { speak, spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -20,7 +20,9 @@ const PAD_Y = 8;
  * hollow). The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * day read is the chart's value, which VoiceOver speaks as it changes, so the
- * readout line above is hidden from it. The compact one is a quiet sparkline.
+ * readout line above is hidden from it. The compact one is a quiet sparkline:
+ * the line alone, scaled to the line, so a slow trend still shows, ending on a
+ * dot at the latest trend.
  */
 export function WeightChart({
   points,
@@ -51,16 +53,20 @@ export function WeightChart({
     const toUnit = (kg: number) => kgToUnit(kg, unit);
     const values = series.flatMap((point) => [
       toUnit(point.ewmaKg),
-      ...(point.observedKg != null ? [toUnit(point.observedKg)] : []),
+      ...(!compact && point.observedKg != null ? [toUnit(point.observedKg)] : []),
     ]);
-    const y = linearScale(paddedDomain(values, 0.14, unit === 'lb' ? 2 : 1), [height - PAD_Y, PAD_Y]);
+    // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
+    const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
+    const y = linearScale(paddedDomain(values, 0.14, minSpan), [height - PAD_Y, PAD_Y]);
     const x = (index: number) => xAtIndex(index, width, series.length, 'point');
     const line = series.map((point, index) => ({ x: x(index), y: y(toUnit(point.ewmaKg)) }));
-    const dots = series.flatMap((point, index) =>
-      point.observedKg == null ? [] : [{ index, x: x(index), y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
-    );
+    const dots = compact
+      ? []
+      : series.flatMap((point, index) =>
+          point.observedKg == null ? [] : [{ index, x: x(index), y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
+        );
     return { line, path: monotonePath(line), dots };
-  }, [series, width, height, unit]);
+  }, [series, width, height, unit, compact]);
 
   if (series.length < 2) return null;
 
@@ -113,13 +119,13 @@ export function WeightChart({
         selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} · ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${unit}`
     : summary;
-  // The same day in words. With no day chosen there is nothing to read: the
-  // summary tells touch how to start, and the hint tells VoiceOver.
+  // The same day in words. With no day chosen it reads the summary (the
+  // trend and its weekly rate), and the hint tells VoiceOver how to start.
   const spokenReadout = selected
     ? `${format(parseISO(selected.date), 'EEEE, MMMM d')}, ${
         selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} ${spokenUnit(unit)}, ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${spokenUnit(unit)}`
-    : '';
+    : speak(summary ?? '');
   const activePoint = active !== null && geometry ? geometry.line[active] : null;
 
   const chart = (
@@ -148,14 +154,17 @@ export function WeightChart({
               key={dot.index}
               cx={dot.x}
               cy={dot.y}
-              r={compact ? 1.5 : 2.5}
+              r={2.5}
               fill={dot.outlier ? 'none' : c.graphite}
               stroke={dot.outlier ? c.graphite : 'none'}
               strokeWidth={1}
-              opacity={contrast ? 1 : compact ? 0.45 : 0.6}
+              opacity={contrast ? 1 : 0.6}
             />
           ))}
           <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          {compact ? (
+            <Circle cx={geometry.line[geometry.line.length - 1].x} cy={geometry.line[geometry.line.length - 1].y} r={3} fill={c.ink} />
+          ) : null}
           {activePoint ? (
             <>
               <Line x1={activePoint.x} x2={activePoint.x} y1={0} y2={height} stroke={c.hairline} strokeWidth={1} />

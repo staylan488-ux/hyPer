@@ -7,9 +7,11 @@ import { create } from 'zustand';
 
 import * as programQuestions from '@/lib/programQuestions';
 import * as programSummary from '@/lib/programSummary';
+import * as setRangeNotes from '@/lib/setRangeNotes';
 import * as splitDraft from '@/lib/splitDraft';
 import type { DraftDay, DraftSplit } from '@/lib/splitDraft';
 import type { Split, Workout } from '@/types';
+import * as format from '../native/src/lib/format';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -60,10 +62,12 @@ function load() {
     zustand: { create },
     '@/lib/planSchedule': { dismissPlanStartPrompt: noop, shouldPromptPlanStart: async () => false },
     '@/lib/programSummary': programSummary,
+    '@/lib/setRangeNotes': setRangeNotes,
     '@/lib/splitDraft': splitDraft,
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },
     '@/stores/splitEditStore': { useSplitEditStore: splitEdit },
+    './format': format,
     './haptics': { haptics: { error: noop, success: noop } },
   });
   return loadNativeModule<{ default: () => ReactNode }>('app/program-edit/index.tsx', {

@@ -4,12 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
+import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import { warnsOverTarget } from '@/lib/fuelSummary';
 import { fetchTrainingHours } from '@/lib/trainingHours';
 import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
-import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { initialAppData, useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
@@ -20,9 +19,9 @@ import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
-import { useAccountDay } from '~/lib/accountData';
+import { useAccountDay, useCurrentDayKey } from '~/lib/accountData';
 import { speak, spokenClock, useAnnounce, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
-import { formatWhole } from '~/lib/format';
+import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -43,6 +42,7 @@ export default function ProgressScreen() {
   const [round, setRound] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const active = useRef(true);
+  const large = useLargeText();
 
   const load = useCallback(async () => {
     await Promise.all([
@@ -71,7 +71,6 @@ export default function ProgressScreen() {
 
   const coached = useMemo(() => coachMuscles(volume), [volume]);
   const week = summarizeWeekVolume(volume);
-  const insight = pickInsight(volume);
   const rows = useMemo(() => new Set(volume.map((entry) => entry.muscle_group)), [volume]);
 
   // A tapped delt with no row of its own opens the general shoulders row.
@@ -83,7 +82,7 @@ export default function ProgressScreen() {
   const chosen = open ? volume.find((entry) => entry.muscle_group === open) ?? null : null;
   const caption = chosen
     ? `${MUSCLE_GROUP_LABELS[chosen.muscle_group]} · ${formatSets(chosen.weekly_sets)}`
-    : `${week.inRange} of ${week.trained} muscles in range${insight && insight.tone !== 'zone' ? ` · ${insight.muscle} ${insight.flag}` : ''}`;
+    : `${week.inRange} of ${week.trained} muscles in range`;
 
   return (
     <>
@@ -109,10 +108,17 @@ export default function ProgressScreen() {
           <>
             <Label style={{ marginTop: 18, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 }}>
               {/*
-                No announcement when the choice changes: VoiceOver chooses on the
-                figure (which speaks its new value) or on a muscle's row.
+                One line either way, so a tap on a muscle never moves the figure
+                (at the accessibility text sizes it wraps). No announcement when
+                the choice changes: VoiceOver chooses on the figure (which speaks
+                its new value) or on a muscle's row.
               */}
-              <BlancText variant="secondary" tone="graphite" style={{ paddingHorizontal: 6, minHeight: 20 }} accessibilityLabel={inWords(caption)}>
+              <BlancText
+                variant="secondary"
+                tone="graphite"
+                numberOfLines={large ? undefined : 1}
+                style={{ paddingHorizontal: 6, minHeight: 20 }}
+                accessibilityLabel={inWords(caption)}>
                 {caption}
               </BlancText>
               <MuscleFigure volume={volume} selected={open} onPick={pick} />
@@ -131,7 +137,7 @@ export default function ProgressScreen() {
           </>
         )}
 
-        <Section title="Training time" note="8 weeks">
+        <Section title="Training time" note="Last 8 weeks">
           <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>{hours ? <HoursChart points={hours} /> : <View style={{ height: 150 }} />}</Label>
         </Section>
 
@@ -146,16 +152,20 @@ const formatSets = (sets: number) => `${formatWhole(sets) === String(sets) ? set
 function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: CoachingCall; open: boolean; onToggle: () => void }) {
   const c = useBlanc();
   const large = useLargeText();
-  const hot = call.tone === 'berry';
+  // Red only past the ceiling, as on the figure.
+  const hot = mv.status === 'above_mrv';
+  // Words only when something needs doing: under, over or near the ceiling.
+  const words = call.priority <= 2;
   const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
-  const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
   const landmarks = mv.landmark
     ? `Maintain ${mv.landmark.mv} · grow from ${mv.landmark.mev} · best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · ceiling ${mv.landmark.mrv}`
     : 'No landmarks set for this muscle.';
-  // One fact for VoiceOver, the rail's best range included; an open row adds what it shows.
+  // One fact for VoiceOver, the rail's best range included, with the words the
+  // row shows; an open row adds what it shows.
   const spoken = [
-    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}. ${call.headline}`,
-    ...(open ? [landmarks, recommendation?.message] : []),
+    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}`,
+    words ? call.headline : null,
+    open ? landmarks : null,
   ]
     .filter(Boolean)
     .join('. ');
@@ -175,16 +185,17 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
           {formatSets(mv.weekly_sets)}
         </BlancText>
       </View>
-      <BlancText variant="secondary" tone={hot ? 'live' : 'graphite'} numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-        {call.headline}
-      </BlancText>
+      {words ? (
+        <BlancText variant="secondary" tone={hot ? 'live' : 'graphite'} numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+          {call.headline}
+        </BlancText>
+      ) : null}
       {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} /> : null}
       {open ? (
-        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 10, gap: 6 }}>
+        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 10 }}>
           <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
             {landmarks}
           </BlancText>
-          {recommendation ? <BlancText variant="secondary">{recommendation.message}</BlancText> : null}
         </Animated.View>
       ) : null}
     </Pressable>
@@ -240,13 +251,6 @@ function inWords(text: string): string {
 
 /** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
 const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
-
-function formatMinutes(minutes: number): string {
-  if (minutes <= 0) return '0 min';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
-}
 
 /** Eight weeks of training time; this week in ink. */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
@@ -332,8 +336,9 @@ function NutritionSection() {
 }
 
 /**
- * One macro across the last seven days, against its daily target (dashed). A
- * day well past target is red only where that is a warning for the goal.
+ * One macro across the last seven days, against its daily target (dashed);
+ * today in ink, as in the training chart. A day well past target is red only
+ * where that is a warning for the goal.
  */
 function MacroBars({
   days,
@@ -352,9 +357,15 @@ function MacroBars({
 }) {
   const c = useBlanc();
   const large = useLargeText();
-  // Increase Contrast draws the target line at full strength.
+  // Increase Contrast draws the target line and past days at full strength.
   const contrast = useIncreaseContrast();
-  const average = averageLoggedDays(days, macro);
+  // The clock's day, so a screen left open past midnight moves today on.
+  const todayKey = useCurrentDayKey();
+  // Today is still being eaten: the average is of the days before it, or
+  // today's own figure while it is the only day logged.
+  const pastAverage = averageLoggedDays(days.filter((day) => day.date !== todayKey), macro);
+  const todayOnly = pastAverage === 0 && averageLoggedDays(days, macro) > 0;
+  const average = todayOnly ? averageLoggedDays(days, macro) : pastAverage;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const share = target > 0 && average > 0 ? ` · ${Math.round((average / target) * 100)}%` : '';
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
@@ -362,18 +373,20 @@ function MacroBars({
     <View
       accessible
       accessibilityLabel={speak(
-        `${label}, daily average ${formatWhole(average)} ${unit}${share}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+        `${label}, ${todayOnly ? 'today' : 'daily average'} ${formatWhole(average)} ${unit}${share}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
           .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${formatWhole(day[macro])}${isOver(day) ? ', over' : ''}`)
           .join('; ')}`,
       )}>
       {/* At the accessibility text sizes the average wraps under the name. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
-        <BlancText variant="bodyStrong">{label}</BlancText>
+        <BlancText variant="secondary" tone="graphite">
+          {label}
+        </BlancText>
         <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           <BlancText variant="secondary" weight="500">
             {formatWhole(average)}
           </BlancText>{' '}
-          {unit} a day{share}
+          {unit} {todayOnly ? 'today' : 'a day'}{share}
         </BlancText>
       </View>
       <View style={{ height: 72, marginTop: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
@@ -393,6 +406,7 @@ function MacroBars({
         ) : null}
         {days.map((day) => {
           const over = isOver(day);
+          const current = day.date === todayKey;
           return (
             <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
               <View
@@ -400,7 +414,8 @@ function MacroBars({
                   height: `${Math.max(day[macro] > 0 ? 3 : 1.5, (day[macro] / max) * 100)}%`,
                   borderRadius: 3,
                   borderCurve: 'continuous',
-                  backgroundColor: day[macro] === 0 ? c.track : over ? c.live : c.ink,
+                  backgroundColor: day[macro] === 0 ? c.track : over ? c.live : current ? c.ink : c.graphite,
+                  opacity: contrast || day[macro] === 0 || over || current ? 1 : 0.5,
                 }}
               />
             </View>

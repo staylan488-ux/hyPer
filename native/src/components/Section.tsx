@@ -31,16 +31,18 @@ export function Section({ title, action, note, accessory, children, style }: Sec
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: 12,
           minHeight: 44,
           paddingHorizontal: space.gutter,
           ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null),
         }}>
+        {/* A long title wraps rather than pushing the action off the screen. */}
         <BlancText
           variant="section"
           accessibilityRole="header"
           // The note is a nested text, which VoiceOver reads raw.
           accessibilityLabel={speak(note ? `${title}, ${note}` : title)}
-          style={large ? { flexShrink: 1 } : undefined}>
+          style={{ flexShrink: 1 }}>
           {title}
           {note ? (
             <BlancText variant="secondary" tone="graphite">

@@ -1,21 +1,17 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, View } from 'react-native';
+import { ActionSheetIOS } from 'react-native';
 
 import { whoopSyncMessage, whoopSyncedLabel } from '@/lib/whoopStatus';
 import { useAppStore } from '@/stores/appStore';
-import { Capsule } from '~/components/Capsule';
 import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { confirmAlert } from '~/lib/program';
 import { connectOrSyncHealth, connectWhoop, stopHealthSync, useHealthStore } from '~/lib/you';
-import { space, useBlanc } from '~/theme/blanc';
 
 /** WHOOP (workouts and recovery stats) and Apple Health (body weight). */
 export default function ConnectionsScreen() {
@@ -31,7 +27,6 @@ export default function ConnectionsScreen() {
 }
 
 function Whoop() {
-  const c = useBlanc();
   const connection = useAppStore((state) => state.whoopConnection);
   const [action, setAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
@@ -51,7 +46,8 @@ function Whoop() {
     if (!result) return;
     if (result.ok) haptics.success();
     else haptics.error();
-    setMessage({ text: result.message, alert: !result.ok });
+    // The Connected row and the haptic say it worked; only a failure needs words.
+    if (!result.ok) setMessage({ text: result.message, alert: true });
   };
 
   const sync = async () => {
@@ -71,21 +67,27 @@ function Whoop() {
     }
   };
 
+  // Asks first in an action sheet, as Sign out does.
   const disconnect = async () => {
     if (action) return;
-    const sure = await confirmAlert({
-      title: 'Disconnect WHOOP?',
-      message: 'Activities already imported stay in History.',
-      confirmLabel: 'Disconnect',
-      destructive: true,
-    });
+    const sure = await new Promise<boolean>((resolve) =>
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Disconnect WHOOP?',
+          message: 'Activities already imported stay in History.',
+          options: ['Disconnect', 'Cancel'],
+          destructiveButtonIndex: 0,
+          cancelButtonIndex: 1,
+        },
+        (index) => resolve(index === 0),
+      ),
+    );
     if (!sure) return;
     setAction('disconnect');
     setMessage(null);
     try {
       await useAppStore.getState().disconnectWhoop();
       haptics.success();
-      setMessage({ text: 'WHOOP disconnected.' });
     } catch {
       haptics.error();
       setMessage({ text: 'Could not disconnect WHOOP.', alert: true });
@@ -95,70 +97,31 @@ function Whoop() {
   };
 
   const synced = connection ? whoopSyncedLabel(connection) : '';
-  const status = action === 'sync' ? 'Syncing recent workouts…' : connection ? synced.charAt(0).toUpperCase() + synced.slice(1) : undefined;
-
-  // The connection's own actions, from a tap or a hold on it.
-  const menu = () =>
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: 'WHOOP',
-        message: status,
-        options: ['Sync now', 'Disconnect', 'Cancel'],
-        destructiveButtonIndex: 1,
-        cancelButtonIndex: 2,
-      },
-      (index) => {
-        if (index === 0) void sync();
-        if (index === 1) void disconnect();
-      },
-    );
+  const status = connection ? synced.charAt(0).toUpperCase() + synced.slice(1) : undefined;
 
   return (
     <Section title="WHOOP" style={{ marginTop: 8 }}>
       <Label style={{ overflow: 'hidden' }}>
         {connection ? (
-          // Swipe for Sync and Disconnect (which still asks first).
-          <SwipeRow
-            name="WHOOP"
-            actions={[
-              { label: 'Sync', onPress: () => void sync() },
-              { label: 'Disconnect', destructive: true, onPress: () => void disconnect() },
-            ]}>
-            <View style={{ backgroundColor: c.label }}>
-              <Row
-                title="Connected"
-                detail={status}
-                onPress={action ? undefined : menu}
-                menu={
-                  action
-                    ? undefined
-                    : [
-                        { title: 'Sync now', symbol: 'arrow.triangle.2.circlepath', run: () => void sync() },
-                        { title: 'Disconnect', symbol: 'xmark.circle', destructive: true, run: () => void disconnect() },
-                      ]
-                }
-              />
-            </View>
-          </SwipeRow>
-        ) : (
-          <Row title="Not connected" />
-        )}
-        {connection ? (
+          // The status alone: Sync now and Disconnect are the rows under it.
           <>
+            <Row title="Connected" detail={status} />
             <Hairline />
-            <Row title={action === 'sync' ? 'Syncing' : 'Sync now'} disabled={action !== null} onPress={() => void sync()} />
+            <Row title={action === 'sync' ? 'Syncing…' : 'Sync now'} disabled={action !== null} onPress={() => void sync()} />
             <Hairline />
             <Row title="Disconnect" destructive disabled={action !== null} onPress={() => void disconnect()} />
           </>
-        ) : null}
+        ) : (
+          <Row
+            title={action === 'connect' ? 'Connecting…' : 'Connect WHOOP'}
+            chevron={action === null}
+            disabled={action !== null}
+            onPress={() => void connect()}
+          />
+        )}
       </Label>
-      {connection ? null : (
-        <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
-          <Capsule title="Connect WHOOP" fill busy={action === 'connect'} onPress={() => void connect()} />
-        </View>
-      )}
       <FormNote alert={message?.alert}>
-        {message?.text ?? 'Workouts from WHOOP show in History; they sync each time you open the app.'}
+        {message?.text ?? 'Workouts from WHOOP show in History and sync each time you open the app.'}
       </FormNote>
     </Section>
   );
@@ -183,12 +146,12 @@ function Health() {
   return (
     <Section title="Apple Health">
       <Label>
-        <ToggleRow label="Weight from Apple Health" value={enabled} disabled={busy} onChange={toggle} />
+        <ToggleRow list label="Weight from Apple Health" value={enabled} disabled={busy} onChange={toggle} />
         {enabled ? (
           <>
             <Hairline />
             <Row
-              title={busy ? 'Syncing' : 'Sync now'}
+              title={busy ? 'Syncing…' : 'Sync now'}
               disabled={busy}
               onPress={() => void connectOrSyncHealth().then((ok) => (ok ? haptics.success() : haptics.error()))}
             />

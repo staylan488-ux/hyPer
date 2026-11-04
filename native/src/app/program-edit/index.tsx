@@ -77,10 +77,12 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  // The line under it says the days, so the name, and the program it starts, leave out its "(4 days)".
+  const shownName = guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(');
   const guidedLine = `${plural(guided.days.length, 'day')} a week · ${plural(templateExerciseCount(guided), 'exercise')}`;
   // The plan follows the answers: VoiceOver hears it change once one is chosen.
   const [answered, setAnswered] = useState(false);
-  useAnnounce(answered && `${guided.name} · ${guidedLine}`);
+  useAnnounce(answered && `${shownName} · ${guidedLine}`);
 
   const startGuided = async () => {
     setLoading(true);
@@ -89,13 +91,12 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
       const { draft, notice } = await seedGuidedDraft(guided);
       haptics.success();
       onNotice(notice);
-      useSplitEditStore.getState().startNew(draft, { userId });
+      useSplitEditStore.getState().startNew({ ...draft, name: shownName }, { userId });
     } catch {
       haptics.error();
       setError(LIBRARY_LOAD_FAILED);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const answer = <K extends keyof ProgramDesignAnswers>(key: K, value: ProgramDesignAnswers[K]) => {
@@ -171,8 +172,8 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
             <Choice question={EXPERIENCE_QUESTION} value={answers.experience} onChange={(value) => answer('experience', value)} />
           </View>
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <View accessible accessibilityLabel={speak(`${guided.name} · ${guidedLine}`)}>
-              <BlancText variant="headline">{guided.name}</BlancText>
+            <View accessible accessibilityLabel={speak(`${shownName} · ${guidedLine}`)}>
+              <BlancText variant="headline">{shownName}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                 {guidedLine}
               </BlancText>
@@ -290,7 +291,7 @@ function Editor({ notice }: { notice: string | null }) {
         unstable_headerRightItems: () => [
           {
             type: 'button',
-            label: saving ? 'Saving' : isNew ? 'Create' : 'Save',
+            label: saving ? 'Saving…' : isNew ? 'Create' : 'Save',
             variant: 'prominent',
             tintColor: c.ink,
             disabled: saving,

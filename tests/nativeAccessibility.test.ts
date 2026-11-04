@@ -252,8 +252,10 @@ describe('native accessibility', () => {
 
   it('names or hides every image', () => {
     const images = elements('Image');
+    // A SwiftUI Image (Expo UI) takes these as modifiers instead of props.
+    const swiftNamedOrHidden = (tag: string) => /accessibilityHidden\(true\)|accessibilityLabel\(/.test(tag);
     const wrong = images
-      .filter(({ tag }) => !hasProp(tag, 'accessibilityLabel') && !hasProp(tag, 'accessible') && !hasProp(tag, 'accessibilityElementsHidden'))
+      .filter(({ tag }) => !hasProp(tag, 'accessibilityLabel') && !hasProp(tag, 'accessible') && !hasProp(tag, 'accessibilityElementsHidden') && !swiftNamedOrHidden(tag))
       .map(({ where }) => where);
     expect(wrong).toEqual([]);
   });

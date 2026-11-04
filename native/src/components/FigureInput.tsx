@@ -11,21 +11,25 @@ type FigureInputProps = Omit<TextInputProps, 'style'> & { ref?: Ref<TextField>; 
 /**
  * A big thin number you can type into. A text input keeps the width it was
  * first given, so an invisible copy of the text measures the width the
- * number needs and the field hugs it as the value changes (never narrower
- * than a fingertip). Number pads get iOS's Done bar unless the screen brings
- * its own keys. It grows with the text size like the figures it sits among,
- * up to their cap.
+ * number needs and the field hugs it as the value changes, so a "9" sits
+ * beside its unit. A figure narrower than a fingertip reaches 44 pt to touch
+ * through hit slop, inside a box that overhangs it by the same amount (a
+ * touch outside the parent's box would not land). Number pads get iOS's
+ * Done bar unless the screen brings its own keys. It grows with the text
+ * size like the figures it sits among, up to their cap.
  */
 export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboardType, returnKeyType, ...rest }: FigureInputProps) {
   const c = useBlanc();
   const [width, setWidth] = useState(0);
+  const fieldWidth = Math.ceil(width) + 2;
+  const slop = Math.max(0, Math.ceil((44 - fieldWidth) / 2));
   const style: TextStyle[] = [
     typeScale.figure,
     { fontSize, lineHeight: Math.round(fontSize * 1.1), letterSpacing: -fontSize * 0.026, color: c.ink, padding: 0 },
   ];
 
   return (
-    <View>
+    <View style={{ paddingHorizontal: slop, marginHorizontal: -slop }}>
       <Text
         maxFontSizeMultiplier={FIGURE_MAX_SCALE}
         style={[...style, { position: 'absolute', opacity: 0 }]}
@@ -43,7 +47,8 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
         value={value}
         placeholder={placeholder}
         placeholderTextColor={c.upcoming}
-        style={[...style, { width: Math.max(44, Math.ceil(width) + 2) }]}
+        hitSlop={{ left: slop, right: slop }}
+        style={[...style, { width: fieldWidth }]}
       />
     </View>
   );

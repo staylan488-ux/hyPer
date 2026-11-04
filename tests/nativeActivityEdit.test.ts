@@ -64,6 +64,8 @@ async function open() {
         return null;
       },
       FormNote: Wrap,
+      MenuRow: Empty,
+      ToggleRow: Empty,
       PickerRow: (props: PickerProps & { label: string }) => {
         pickers[props.label] = props;
         return null;

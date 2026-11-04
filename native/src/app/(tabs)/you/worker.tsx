@@ -104,7 +104,7 @@ export default function WorkerScreen() {
         </Label>
         <FormNote>On a phone, use the worker’s Tailscale HTTPS address. It signs in with your own Codex or Claude login.</FormNote>
         <View style={{ marginHorizontal: space.inset, marginTop: 22 }}>
-          <Capsule title="Save and test" fill busy={busy} disabled={!draft.url.trim()} onPress={() => void save()} />
+          <Capsule title="Save and test" size="large" fill busy={busy} disabled={!draft.url.trim()} onPress={() => void save()} />
         </View>
         {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
       </TabScroll>

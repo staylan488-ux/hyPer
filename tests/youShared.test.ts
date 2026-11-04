@@ -95,8 +95,8 @@ describe('target rules shared by the web and native You', () => {
 
   it('words the resume result and the sign-out question', () => {
     expect(resumeAdaptiveMessage(false, 'updated')).toMatch(/Complete nutrition setup/);
-    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/could not run right now/);
-    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/Recalculation was requested/);
+    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/once the app can recalculate/);
+    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/as your logs and weigh-ins come in/);
     expect(signOutQuestion(false)).toBe('Sign out?');
     expect(signOutQuestion(true, true)).toBe('Sign out and discard unsaved edits? Already saved profile details and weight will be kept.');
   });
@@ -119,14 +119,16 @@ describe('body weight words', () => {
 
   it('says when the last weigh-in was, or why there is none', () => {
     const now = new Date();
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: now.toISOString() }, 'kg')).toBe('Last 80.0 kg · today');
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: '2026-03-04T12:00:00Z' }, 'kg')).toBe('Last 80.0 kg · Mar 4');
-    expect(lastWeighInLabel(null, 'lb')).toBe('First weigh-in');
-    expect(lastWeighInLabel(null, 'lb', true)).toBe('History unavailable');
+    now.setHours(8, 0, 0, 0);
+    expect(lastWeighInLabel({ measured_at: now.toISOString() })).toBe('Last weighed today, 8:00 AM');
+    // Local time, so the day and hour do not depend on the machine's zone.
+    expect(lastWeighInLabel({ measured_at: '2026-03-04T18:30:00' })).toBe('Last weighed Mar 4, 6:30 PM');
+    expect(lastWeighInLabel(null)).toBe('First weigh-in');
+    expect(lastWeighInLabel(null, true)).toBe('History unavailable');
     // a sheet left open past midnight passes the day it now is
     const morning = new Date(2026, 10, 4, 7, 0);
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: morning.toISOString() }, 'kg', false, '2026-11-04')).toBe('Last 80.0 kg · today');
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: morning.toISOString() }, 'kg', false, '2026-11-05')).toBe('Last 80.0 kg · Nov 4');
+    expect(lastWeighInLabel({ measured_at: morning.toISOString() }, false, '2026-11-04')).toBe('Last weighed today, 7:00 AM');
+    expect(lastWeighInLabel({ measured_at: morning.toISOString() }, false, '2026-11-05')).toBe('Last weighed Nov 4, 7:00 AM');
   });
 
   it('reads a typed weigh-in in the chosen unit', () => {

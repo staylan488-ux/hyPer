@@ -22,7 +22,7 @@ import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatLoad, formatWhole } from '~/lib/format';
+import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
@@ -131,7 +131,7 @@ export default function TodayScreen() {
                 }}
                 style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 <BlancText variant="secondary" tone="graphite">
-                  Set a calorie target in You to see what's left today.
+                  Set a calorie target
                 </BlancText>
               </Pressable>
             )}
@@ -154,7 +154,7 @@ export default function TodayScreen() {
                   <Hairline />
                   <Row
                     title={`${week.inRange} of ${week.trained} muscles in range`}
-                    detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                    detail={insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over)}
                     chevron
                     onPress={() => router.push('/today/progress')}
                   />
@@ -172,12 +172,18 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const c = useBlanc();
   const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
-  // A flexible session starts empty: Train asks for its first movement.
+  // A flexible session starts empty: nothing to finish yet, as on Train,
+  // which asks for its first movement.
   const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
   const large = useLargeText();
-  const line = current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session';
+  const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
+  const line = current
+    ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
+    : empty
+      ? 'Add your first movement in Train'
+      : 'Finish to save the session';
 
   return (
     // The whole card returns to the workout; its button resumes or finishes.
@@ -193,41 +199,42 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View
         accessible
-        accessibilityLabel={speak(`${session.dayName} · In progress · ${minutes} min`)}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(large ? { flexWrap: 'wrap', columnGap: 12, rowGap: 4 } : null) }}>
-        <BlancText variant="headline">{session.dayName}</BlancText>
+        accessibilityLabel={speak(`${session.dayName} · In progress · ${formatMinutes(minutes)}`)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
+        {/* A long day name gives way; the live state always shows. At the
+            accessibility text sizes the name wraps and the live state moves under it. */}
+        <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+          {session.dayName}
+        </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
           <BlancText variant="footnote" tone="graphite">
-            In progress · {minutes} min
+            In progress · {formatMinutes(minutes)}
           </BlancText>
         </View>
       </View>
 
-      <Tally
-        marks={session.sets.map((set) => set.completed)}
-        current={current?.index ?? null}
-        height={16}
-        style={{ marginTop: 14 }}
-        accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
-      />
+      {empty ? null : (
+        <Tally
+          marks={session.sets.map((set) => set.completed)}
+          current={current?.index ?? null}
+          height={16}
+          style={{ marginTop: 14 }}
+          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
+        />
+      )}
 
       <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
 
       {/* At the accessibility text sizes the button moves under the words. */}
       <View style={large ? { gap: 12, marginTop: 14 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
-        <View
-          accessible
-          accessibilityLabel={speak(empty ? 'Add your first movement' : `${current ? current.movement.name : 'All sets done'} · ${line}`)}
-          style={large ? undefined : { flex: 1, minWidth: 0 }}>
+        <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
-            {current ? current.movement.name : empty ? 'Add your first movement' : 'All sets done'}
+            {title}
           </BlancText>
-          {empty ? null : (
-            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-              {line}
-            </BlancText>
-          )}
+          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+            {line}
+          </BlancText>
         </View>
         {current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
@@ -269,7 +276,8 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
 /** "Set 2 of 3", with the load only once it is known. */
 function setLine(setNumber: number, sets: number, weight: number | null, reps: number | null): string {
   const base = `Set ${setNumber} of ${sets}`;
-  return weight !== null && reps !== null ? `${base} · ${formatLoad(weight)} lb × ${reps}` : base;
+  const load = formatSet(weight, reps);
+  return load ? `${base} · ${load}` : base;
 }
 
 /** "2 under · 1 over", leaving out zeros. */

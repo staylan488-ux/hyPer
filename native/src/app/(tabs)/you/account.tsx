@@ -45,7 +45,6 @@ export default function AccountScreen() {
     }
     haptics.success();
     setName(null);
-    setMessage({ text: 'Name saved.' });
   };
 
   const signOut = () => {
@@ -86,7 +85,7 @@ export default function AccountScreen() {
         </Label>
         {changed ? (
           <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
-            <Capsule title="Save name" fill busy={saving} onPress={() => void save()} />
+            <Capsule title="Save name" size="large" fill busy={saving} onPress={() => void save()} />
           </View>
         ) : null}
         {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}

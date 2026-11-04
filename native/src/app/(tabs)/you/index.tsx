@@ -1,9 +1,10 @@
-import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { accessibilityLabel, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { HStack, Host, Image, Menu, Text as SwiftText, Toggle } from '@expo/ui/swift-ui';
+import { accessibilityHidden, accessibilityLabel, accessibilityValue, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, View } from 'react-native';
+import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
@@ -14,6 +15,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
@@ -23,6 +25,7 @@ import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { figureLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
   chooseAppearance,
@@ -47,6 +50,9 @@ export default function YouScreen() {
   const profile = useAuthStore((state) => state.profile);
   const target = useAppStore((state) => state.macroTarget);
   const targetsFailed = useTargetsStore((state) => state.status === 'error') && target === null;
+  // Before the account's targets load, no "Not set": as on Today and Fuel.
+  const userId = user?.id;
+  const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
   const meals = useYouMealsStore((state) => state.meals);
@@ -88,14 +94,14 @@ export default function YouScreen() {
         <Label style={{ marginTop: space.section }}>
           <Row
             title="Targets"
-            value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : 'Not set'}
+            value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
             chevron
             onPress={() => router.push('/you/targets')}
           />
           <Hairline />
           <Row
             title="Saved meals"
-            value={meals === null ? undefined : String(meals.length)}
+            value={meals && meals.length > 0 ? String(meals.length) : undefined}
             chevron
             onPress={() => router.push('/you/meals')}
           />
@@ -182,12 +188,14 @@ function WeightCard() {
             <>
               {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                <BlancText variant="figure" size={44}>
+                <RollingText variant="figure" size={44}>
                   {formatWeight(Number(latest.kilograms), unit)}
-                </BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {unit}
-                </BlancText>
+                </RollingText>
+                <Animated.View layout={figureLayout}>
+                  <BlancText variant="secondary" tone="graphite">
+                    {unit}
+                  </BlancText>
+                </Animated.View>
               </View>
               {line ? (
                 <BlancText variant="secondary" tone="graphite">
@@ -216,38 +224,51 @@ function WeightCard() {
 
 const APPEARANCE_CHOICES: AppearanceChoice[] = ['system', 'light', 'dark'];
 
-/** Automatic, Light or Dark, in iOS's own menu. */
+/**
+ * Automatic, Light or Dark, in iOS's own menu. A menu picker draws its value
+ * at body size, so the menu has its own label: the value as the other rows'
+ * values and the ⌃⌄ on their chevrons' column.
+ */
 function AppearanceRow() {
   const c = useBlanc();
   const large = useLargeText();
+  const { fontScale } = useWindowDimensions();
   const choice = useAppearanceStore((state) => state.choice);
   return (
     // At the accessibility text sizes the menu sits under its label.
     <View
       style={
         large
-          ? { alignItems: 'flex-start', minHeight: 60, paddingVertical: 10, paddingLeft: 18, paddingRight: 8, gap: 4 }
-          : { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 8 }
+          ? { alignItems: 'flex-start', minHeight: 60, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, gap: 4 }
+          : { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingLeft: 18, paddingRight: 16 }
       }>
-      {/* The menu carries the name for VoiceOver: one stop, "Appearance, Automatic". */}
+      {/* The menu says its own name to VoiceOver, with the choice as its value: one stop, "Appearance, Automatic". */}
       <BlancText variant="bodyStrong" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         Appearance
       </BlancText>
       <Host matchContents>
-        <Picker
-          selection={choice}
-          onSelectionChange={(next) => {
-            if (next === choice) return;
-            haptics.select();
-            chooseAppearance(next as AppearanceChoice);
-          }}
-          modifiers={[pickerStyle('menu'), tint(c.graphite), accessibilityLabel('Appearance')]}>
+        <Menu
+          label={
+            <HStack spacing={10}>
+              <SwiftText modifiers={[font({ size: 15 * fontScale }), foregroundStyle(c.graphite)]}>{APPEARANCE_LABELS[choice]}</SwiftText>
+              <Image systemName="chevron.up.chevron.down" color={c.upcoming} modifiers={[font({ size: 13, weight: 'semibold' }), accessibilityHidden(true)]} />
+            </HStack>
+          }
+          modifiers={[accessibilityLabel('Appearance'), accessibilityValue(APPEARANCE_LABELS[choice])]}>
+          {/* Checked items whose state comes from the store, as iOS draws a menu picker's. */}
           {APPEARANCE_CHOICES.map((option) => (
-            <SwiftText key={option} modifiers={[tag(option)]}>
-              {APPEARANCE_LABELS[option]}
-            </SwiftText>
+            <Toggle
+              key={option}
+              label={APPEARANCE_LABELS[option]}
+              isOn={option === choice}
+              onIsOnChange={(on) => {
+                if (!on || option === choice) return;
+                haptics.select();
+                chooseAppearance(option);
+              }}
+            />
           ))}
-        </Picker>
+        </Menu>
       </Host>
     </View>
   );
@@ -279,7 +300,7 @@ function SchedulingSetting() {
   return (
     <View style={{ marginTop: space.section }}>
       <Label>
-        <ToggleRow label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
+        <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
       </Label>
       <FormNote alert={failed}>
         {failed
