@@ -1843,7 +1843,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!removableSet) return;
 
     // Only while it is still unlogged on the server: a set whose Log set is
-    // still saving must survive. Nothing deleted leaves the count as it was.
+    // still saving must survive.
     const { data: deleted, error } = await supabase
       .from('sets')
       .delete()
@@ -1855,7 +1855,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error('Error removing workout set:', error);
       return;
     }
-    if (!deleted?.some((row) => row.id === removableSet.id)) return;
+    if (!deleted?.some((row) => row.id === removableSet.id)) {
+      // Nothing deleted: it was logged meanwhile, or an earlier attempt whose
+      // answer was lost already deleted it. Only a set that is gone leaves.
+      const { data: still, error: readError } = await supabase
+        .from('sets')
+        .select('id, completed')
+        .eq('id', removableSet.id)
+        .maybeSingle();
+      if (readError || still) return;
+    }
 
     const latestWorkout = get().currentWorkout;
     if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
