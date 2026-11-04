@@ -43,6 +43,8 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
    * it, as the program editor's names do; Return finishes instead of adding a line.
    */
   grows?: boolean;
+  /** With grows: Return adds a line and line breaks are kept (notes). */
+  paragraphs?: boolean;
   invalid?: boolean;
 };
 
@@ -51,7 +53,7 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
  * anywhere on the row puts the cursor in its field. A field that cannot be
  * edited reads in graphite.
  */
-export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
+export function FieldRow({ ref, label, unit, wide, grows, paragraphs, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
   const c = useBlanc();
   const field = useRef<TextField>(null);
   useImperativeHandle(ref, () => field.current as TextField);
@@ -73,12 +75,12 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
         placeholderTextColor={c.upcoming}
         accessibilityLabel={label}
         keyboardType={keyboardType}
-        returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
-        {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
+        returnKeyType={wraps ? (paragraphs ? returnKeyType : returnKeyType ?? 'done') : numberPadReturnKey(keyboardType, returnKeyType)}
+        {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: paragraphs ? ('newline' as const) : ('blurAndSubmit' as const) } : null)}
         // Tail truncation is for one line only: in a wrapping field it would cut each paragraph short.
         lineBreakModeIOS={wraps ? undefined : 'tail'}
         {...input}
-        onChangeText={wraps && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
+        onChangeText={wraps && !paragraphs && onChangeText ? (text) => onChangeText(text.replace(/\n/g, ' ')) : onChangeText}
         style={[
           // Wrapped lines keep body's line height; one line takes none (see type.field).
           wraps ? typeScale.fieldLines : typeScale.field,

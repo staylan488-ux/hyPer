@@ -129,8 +129,8 @@ export default function ActivitySheet() {
       <Label style={{ marginTop: 18 }}>
         <PickerRow label="Date" mode="date" value={date} max={new Date()} onChange={setDate} />
         <Hairline />
-        {/* Off leaves the start out; on, it starts at now. */}
-        <ToggleRow label="Start time" value={start !== null} onChange={(on) => setStart(on ? new Date() : null)} />
+        {/* Off leaves the start out; on brings back the saved start, else now. */}
+        <ToggleRow label="Start time" value={start !== null} onChange={(on) => setStart(on ? new Date(initial.start ?? Date.now()) : null)} />
         {start ? (
           <>
             <Hairline />
@@ -156,7 +156,8 @@ export default function ActivitySheet() {
       {failed ? <FormNote alert>Not saved. Check your connection and try again.</FormNote> : null}
 
       <View style={{ marginHorizontal: space.inset, marginTop: 24 }}>
-        <Capsule title="Save" size="large" fill busy={busy === 'save'} disabled={busy === 'delete'} onPress={() => void save()} />
+        {/* An edit saves once something changed; a new activity can save as it opened. */}
+        <Capsule title="Save" size="large" fill busy={busy === 'save'} disabled={busy === 'delete' || (Boolean(editing) && !dirty)} onPress={() => void save()} />
       </View>
 
       {editing ? (
@@ -170,6 +171,6 @@ export default function ActivitySheet() {
 }
 
 function FieldNotes({ value, onChange }: { value: string; onChange: (text: string) => void }) {
-  // Wraps and grows from the label's line, as the program editor's names do.
-  return <FieldRow label="Notes" wide grows value={value} onChangeText={onChange} placeholder="Optional" maxLength={NOTES_LIMIT} />;
+  // Wraps and grows from the label's line, as the program editor's names do, and keeps its line breaks.
+  return <FieldRow label="Notes" wide grows paragraphs value={value} onChangeText={onChange} placeholder="Optional" maxLength={NOTES_LIMIT} />;
 }
