@@ -322,7 +322,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   if (!result) {
     return (
       <View>
-        <Section title="Your meal">
+        <Section title="Your meal" style={{ marginTop: 0 }}>
           <Label>
             <TextInput
               value={draft.hint}

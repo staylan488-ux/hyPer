@@ -295,7 +295,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   return (
     <View>
       {/* Describe with AI */}
-      <Section title="Describe with AI">
+      <Section title="Describe with AI" style={{ marginTop: 0 }}>
         <Label>
           {describeOpen ? (
             <View style={{ padding: 16, gap: 12 }}>

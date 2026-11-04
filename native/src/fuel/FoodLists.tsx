@@ -85,11 +85,13 @@ async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEn
 }
 
 /** A search or filter field in the quiet fill capsule. */
-export function SearchField({ value, onChange, placeholder, onSubmit }: {
+export function SearchField({ value, onChange, placeholder, onSubmit, autoFocus }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   onSubmit?: () => void;
+  /** Picking the tab means typing next. */
+  autoFocus?: boolean;
 }) {
   const c = useBlanc();
   return (
@@ -111,6 +113,7 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
         value={value}
         onChangeText={onChange}
         onSubmitEditing={onSubmit}
+        autoFocus={autoFocus}
         placeholder={placeholder}
         placeholderTextColor={c.graphite}
         returnKeyType="search"
@@ -219,7 +222,8 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           minHeight: 60,
           paddingVertical: 10,
           paddingLeft: 18,
-          paddingRight: 12,
+          // with no round button the row keeps its 32 points, so kcal stays in its column
+          paddingRight: editing || onAdd || opening ? 12 : 44,
         }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
@@ -573,7 +577,7 @@ export function SearchTab() {
 
   return (
     <View>
-      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" />
+      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" autoFocus />
       {results && results.length > 0 ? (
         <Label style={{ marginTop: 14, overflow: 'hidden' }}>
           {results.map((food, index) => {
