@@ -91,6 +91,7 @@ export default function SessionDone() {
               marks={summary.marks}
               current={null}
               height={22}
+              drawIn
               accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
             />
 

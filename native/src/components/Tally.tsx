@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 
+import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
 type TallyProps = {
@@ -13,12 +14,17 @@ type TallyProps = {
   height?: number;
   /** The small size for a list row: thin strokes, height 12, tight gaps. */
   compact?: boolean;
+  /** Draw the strokes in one by one as it appears, each group's diagonal after its fifth. */
+  drawIn?: boolean;
   accessibilityLabel: string;
   style?: ViewStyle;
 };
 
 const spring = { damping: 16, stiffness: 240, mass: 0.7 };
 const GROUP = 5;
+/** Drawing in: wait for a full-screen modal to slide in, then one stroke every 45 ms. */
+const DRAW_START = 350;
+const DRAW_STEP = 45;
 
 /** Stroke width, gaps and how much taller the next stroke stands, per size. */
 const SIZES = {
@@ -32,7 +38,9 @@ type Size = (typeof SIZES)['regular'];
  * set in groups of five. Logged strokes are ink, the next set's stroke stands
  * taller, and a group of five logged sets is closed with a diagonal stroke.
  */
-export function Tally({ marks, current, height: tall, compact, accessibilityLabel, style }: TallyProps) {
+export function Tally({ marks, current, height: tall, compact, drawIn, accessibilityLabel, style }: TallyProps) {
+  const reduced = useReducedMotion();
+  const draw = drawIn && !reduced;
   const size = compact ? SIZES.compact : SIZES.regular;
   const height = tall ?? (compact ? 12 : 18);
   const groups: number[][] = [];
@@ -57,9 +65,14 @@ export function Tally({ marks, current, height: tall, compact, accessibilityLabe
           // Each group keeps room for the taller next stroke, so wrapped lines never shift.
           <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: size.gap, minHeight: height + size.grow }}>
             {indexes.map((index) => (
-              <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} />
+              <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} appear={draw ? DRAW_START + index * DRAW_STEP : null} />
             ))}
-            <ClosingStroke closed={closed} height={height} size={size} />
+            <ClosingStroke
+              closed={closed}
+              height={height}
+              size={size}
+              appear={draw ? DRAW_START + (indexes[indexes.length - 1] + 1) * DRAW_STEP : null}
+            />
           </View>
         );
       })}
@@ -67,16 +80,22 @@ export function Tally({ marks, current, height: tall, compact, accessibilityLabe
   );
 }
 
-function Stroke({ logged, next, height, size }: { logged: boolean; next: boolean; height: number; size: Size }) {
+/** `appear`: ms after mounting to draw the stroke in, or null to show it drawn. */
+function Stroke({ logged, next, height, size, appear }: { logged: boolean; next: boolean; height: number; size: Size; appear: number | null }) {
   const c = useBlanc();
   const grow = useSharedValue(next ? 1 : 0);
+  const shown = useSharedValue(appear === null ? 1 : 0);
 
   useEffect(() => {
     grow.value = withSpring(next ? 1 : 0, spring);
   }, [next, grow]);
 
+  useEffect(() => {
+    shown.value = appear === null ? 1 : withDelay(appear, withSpring(1, spring));
+  }, [appear, shown]);
+
   const rise = size.grow;
-  const animated = useAnimatedStyle(() => ({ height: height + grow.value * rise }));
+  const animated = useAnimatedStyle(() => ({ height: height * shown.value + grow.value * rise }));
 
   return (
     <Animated.View
@@ -92,14 +111,20 @@ function Stroke({ logged, next, height, size }: { logged: boolean; next: boolean
   );
 }
 
-/** The diagonal that closes a finished group of five. */
-function ClosingStroke({ closed, height, size }: { closed: boolean; height: number; size: Size }) {
+/** The diagonal that closes a finished group of five; drawn in after `appear` ms, with a tick. */
+function ClosingStroke({ closed, height, size, appear }: { closed: boolean; height: number; size: Size; appear: number | null }) {
   const c = useBlanc();
-  const drawn = useSharedValue(closed ? 1 : 0);
+  const drawn = useSharedValue(closed && appear === null ? 1 : 0);
 
   useEffect(() => {
-    drawn.value = withSpring(closed ? 1 : 0, spring);
-  }, [closed, drawn]);
+    if (appear === null || !closed) {
+      drawn.value = withSpring(closed ? 1 : 0, spring);
+      return;
+    }
+    drawn.value = withDelay(appear, withSpring(1, spring));
+    const tick = setTimeout(haptics.select, appear);
+    return () => clearTimeout(tick);
+  }, [closed, appear, drawn]);
 
   // Five strokes span 4 gaps plus five widths: about 34 pt, 23.5 compact.
   const span = 4 * size.gap + 5 * size.width;
