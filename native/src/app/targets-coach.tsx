@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, TextInput, View } from 'react-native';
 
 import { getBodyWeightHistorySince } from '@/lib/healthWeights';
-import { buildCoachContext, coachSource, requestTargetSuggestion, type CoachRecommendation } from '@/lib/nutritionCoach';
+import {
+  buildCoachContext,
+  coachSource,
+  coachTrendKgPerWeek,
+  requestTargetSuggestion,
+  type CoachRecommendation,
+} from '@/lib/nutritionCoach';
 import { COACH_GOALS_KEY } from '@/lib/photoAnalysis';
 import { supabase } from '@/lib/supabase';
 import { buildWeightTrend } from '@/lib/weightTrend';
@@ -78,7 +84,9 @@ export default function TargetsCoachSheet() {
       let trendKgPerWeek: number | null = null;
       if (share) {
         try {
-          trendKgPerWeek = buildWeightTrend(await getBodyWeightHistorySince(userId, 21), { windowDays: 21 }).kgPerWeek;
+          trendKgPerWeek = coachTrendKgPerWeek(
+            buildWeightTrend(await getBodyWeightHistorySince(userId, 21), { windowDays: 21 }),
+          );
         } catch {
           // A missing trend does not stop a suggestion from the basic stats.
         }
