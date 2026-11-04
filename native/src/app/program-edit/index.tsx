@@ -162,7 +162,8 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
           </View>
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <View accessibilityLiveRegion="polite">
-              <BlancText variant="headline">{guided.name}</BlancText>
+              {/* The line under it says the days, so the name leaves out its "(4 days)". */}
+              <BlancText variant="headline">{guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(')}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                 {plural(guided.days.length, 'day')} a week · {plural(templateExerciseCount(guided), 'exercise')}
               </BlancText>
@@ -270,7 +271,7 @@ function Editor({ notice }: { notice: string | null }) {
         unstable_headerRightItems: () => [
           {
             type: 'button',
-            label: saving ? 'Saving' : isNew ? 'Create' : 'Save',
+            label: saving ? 'Saving…' : isNew ? 'Create' : 'Save',
             variant: 'prominent',
             tintColor: c.ink,
             disabled: saving,

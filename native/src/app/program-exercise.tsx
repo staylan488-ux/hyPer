@@ -5,14 +5,14 @@ import { ScrollView, View } from 'react-native';
 import { normalizeSetRange } from '@/lib/setRangeNotes';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
+import { ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
-import { Section } from '~/components/Section';
 import { Stepper } from '~/components/Stepper';
 import { haptics } from '~/lib/haptics';
-import { space, useBlanc } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 const SET_LIMIT = 10;
 const REP_LIMIT = 100;
@@ -54,6 +54,12 @@ export default function ProgramExerciseSheet() {
     const range = normalizeSetRange(min, exercise.target_sets, max);
     update(day.id, exercise.id, { target_sets_min: range.minSets, target_sets: range.targetSets, target_sets_max: range.maxSets });
   };
+  // On, a session may run a set shorter or longer; off, the count is the range.
+  const toggleRange = (on: boolean) => {
+    const sets = exercise.target_sets;
+    if (on) setRange(Math.max(1, sets - 1), Math.min(SET_LIMIT, sets + 1));
+    else update(day.id, exercise.id, { target_sets_min: sets, target_sets_max: sets });
+  };
 
   return (
     <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} scrollEnabled={false}>
@@ -91,16 +97,18 @@ export default function ProgramExerciseSheet() {
         />
       </Label>
 
-      <Section title="Set range" note={ranged ? undefined : 'Off'} style={{ marginTop: 22 }}>
-        <Label>
-          <StepperRow label="Fewest" value={exercise.target_sets_min} min={1} max={SET_LIMIT} onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))} />
-          <Hairline />
-          <StepperRow label="Most" value={exercise.target_sets_max} min={1} max={SET_LIMIT} onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)} />
-        </Label>
-        <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-          Sessions can add or drop sets within this range.
-        </BlancText>
-      </Section>
+      <Label style={{ marginTop: 22 }}>
+        <ToggleRow label="Set range" value={ranged} onChange={toggleRange} />
+        {ranged ? (
+          <>
+            {/* Fewest stays under Most, so the range never closes up and folds away under the finger. */}
+            <Hairline />
+            <StepperRow label="Fewest" value={exercise.target_sets_min} min={1} max={exercise.target_sets_max - 1} onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))} />
+            <Hairline />
+            <StepperRow label="Most" value={exercise.target_sets_max} min={exercise.target_sets_min + 1} max={SET_LIMIT} onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)} />
+          </>
+        ) : null}
+      </Label>
 
       <Label style={{ marginTop: 22 }}>
         <Row

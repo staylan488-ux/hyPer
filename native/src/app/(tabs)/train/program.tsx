@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { exerciseTotal, plural, shownActiveProgram, templateItemLabel, visibleTemplateItems } from '@/lib/programSummary';
+import { exerciseTotal, plural, shownActiveProgram, visibleTemplateItems } from '@/lib/programSummary';
 import { useAppStore } from '@/stores/appStore';
 import type { FlexDayTemplate, Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -18,7 +18,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
-import { deleteProgram, editProgram, newProgram, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
+import { deleteProgram, editProgram, newProgram, planTarget, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -32,6 +32,9 @@ export default function ProgramScreen() {
   const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
   const flexible = mode === 'flexible';
   const active = shownActiveProgram(splits, mode);
+  // Only what the rows below do not already say: the picker names the mode,
+  // the active program's row says Active, and the empty card says there is none.
+  const subtitle = flexible ? 'Build each session as you go' : !active && splits.length > 0 ? 'None active' : null;
   // Only while the person's own pull runs.
   const [refreshing, setRefreshing] = useState(false);
 
@@ -83,9 +86,11 @@ export default function ProgramScreen() {
     <>
       <Stack.Screen options={options} />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {flexible ? 'Flexible · build each session as you go' : active ? `${active.name} · active` : splits.length > 0 ? 'None active' : 'No program yet'}
-        </BlancText>
+        {subtitle ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+            {subtitle}
+          </BlancText>
+        ) : null}
 
         <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.5 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
           <Picker selection={mode} onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')} modifiers={[pickerStyle('segmented')]}>
@@ -222,7 +227,7 @@ function QuickStarts() {
       template.label,
       menu(template),
       visibleTemplateItems(template)
-        .map((item) => `${item.exercise_name || 'Exercise'}  ${templateItemLabel(item)}`)
+        .map((item) => [item.exercise_name || 'Exercise', planTarget(item)].filter(Boolean).join(' · '))
         .join('\n') || undefined,
     );
 

@@ -8,12 +8,14 @@ import { create } from 'zustand';
 import type { ConfirmOptions } from '@/lib/confirmDialog';
 import { dismissPlanStartPrompt, shouldPromptPlanStart } from '@/lib/planSchedule';
 import { renameTemplateWithConfirm } from '@/lib/programSummary';
+import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
 import type { DraftExercise } from '@/lib/splitDraft';
 import type { FlexDayTemplate, Split } from '@/types';
 
+import { formatTarget } from './format';
 import { haptics } from './haptics';
 
 /** The web's confirm question as an iOS alert. */
@@ -180,11 +182,28 @@ export async function startQuickStart(template: FlexDayTemplate): Promise<void> 
   }
 }
 
-/** "3 × 8–12", or "2–4 sets × 8–12" with a set range. */
+/** "3 × 8–12", "5 × 5", or "2–4 × 8–12" with a set range. */
 export function targetsLine(exercise: DraftExercise): string {
-  const sets = exercise.target_sets_min === exercise.target_sets_max
-    ? `${exercise.target_sets}`
-    : `${exercise.target_sets_min}–${exercise.target_sets_max} sets`;
-  return `${sets} × ${exercise.target_reps_min}–${exercise.target_reps_max}`;
+  return formatTarget(exercise.target_sets, exercise.target_reps_min, exercise.target_reps_max, {
+    min: exercise.target_sets_min,
+    max: exercise.target_sets_max,
+  });
+}
+
+/**
+ * A saved program exercise or planned movement written the same way, its set
+ * range read from its notes; null when it names no set count.
+ */
+export function planTarget(item: {
+  notes?: string | null;
+  target_sets?: number | null;
+  target_reps_min?: number | null;
+  target_reps_max?: number | null;
+}): string | null {
+  if (typeof item.target_sets !== 'number' || item.target_sets < 1) return null;
+  const range = parseSetRangeNotes(item.notes, item.target_sets);
+  // Without a range the count stays as saved (a session may hold up to 12).
+  if (range.minSets === range.maxSets) return formatTarget(item.target_sets, item.target_reps_min, item.target_reps_max);
+  return formatTarget(range.targetSets, item.target_reps_min, item.target_reps_max, { min: range.minSets, max: range.maxSets });
 }
 

@@ -1,5 +1,5 @@
 import { Host, List, Text as SwiftText, VStack } from '@expo/ui/swift-ui';
-import { environment, font, foregroundStyle, listRowBackground, listStyle, scrollContentBackground } from '@expo/ui/swift-ui/modifiers';
+import { environment, font, foregroundStyle, lineLimit, listRowBackground, listStyle, scrollContentBackground } from '@expo/ui/swift-ui/modifiers';
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
@@ -65,8 +65,9 @@ export default function ProgramReorderSheet() {
           <List.ForEach data={items} keyExtractor={(item) => item.id} onMove={move}>
             {({ item }) => (
               <VStack alignment="leading" spacing={2} modifiers={[listRowBackground(c.label)]}>
-                <SwiftText modifiers={[font({ size: 17, weight: 'medium' }), foregroundStyle(c.ink)]}>{item.title}</SwiftText>
-                <SwiftText modifiers={[font({ size: 15 }), foregroundStyle(c.graphite)]}>{item.line}</SwiftText>
+                {/* One line each, as a row elsewhere: a long name ends in "…". */}
+                <SwiftText modifiers={[font({ size: 17, weight: 'medium' }), foregroundStyle(c.ink), lineLimit(1)]}>{item.title}</SwiftText>
+                <SwiftText modifiers={[font({ size: 15 }), foregroundStyle(c.graphite), lineLimit(1)]}>{item.line}</SwiftText>
               </VStack>
             )}
           </List.ForEach>

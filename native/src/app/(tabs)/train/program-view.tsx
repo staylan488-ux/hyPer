@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
-import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
+import { exerciseTotal, plural } from '@/lib/programSummary';
 import { exerciseBlocks } from '@/lib/splitDraft';
 import { useAppStore } from '@/stores/appStore';
 import type { Split } from '@/types';
@@ -13,7 +13,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { haptics } from '~/lib/haptics';
-import { deleteProgram, editProgram, setActiveProgram } from '~/lib/program';
+import { deleteProgram, editProgram, planTarget, setActiveProgram } from '~/lib/program';
 import { space } from '~/theme/blanc';
 
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
@@ -139,21 +139,22 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
           return (
             <Section key={day.id} title={day.day_name}>
               <Label>
-                {day.exercises.length === 0 ? <Row title="No exercises" quiet /> : null}
+                {day.exercises.length === 0 ? <Row title="No exercises yet" quiet /> : null}
                 {blocks.map((block, index) => (
                   <View key={block[0].id}>
                     {index > 0 ? <Hairline /> : null}
                     {block.map((exercise, offset) => {
                       const name = exercise.exercise?.name ?? 'Exercise';
                       const partner = block.length > 1 ? block[offset === 0 ? 1 : 0].exercise?.name : null;
+                      const target = planTarget(exercise) ?? '';
                       return (
                         <View key={exercise.id}>
                           {offset > 0 ? <Hairline /> : null}
                           <Row
                             title={name}
                             detail={partner ? `Superset with ${partner}` : undefined}
-                            value={setRepLabel(exercise)}
-                            accessibilityLabel={[name, `${setRepLabel(exercise).replace('×', ' sets of ')} reps`, partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
+                            value={target}
+                            accessibilityLabel={[name, target.includes(' × ') ? `${target.replace(' × ', ' sets of ')} reps` : target, partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
                           />
                         </View>
                       );
