@@ -11,7 +11,7 @@ import { fetchTrainingHours } from '@/lib/trainingHours';
 import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
 import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
-import { useAppStore } from '@/stores/appStore';
+import { initialAppData, useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -26,10 +26,14 @@ import { space, useBlanc } from '~/theme/blanc';
 
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
+// A read that worked always stores a new list, and sign-out puts back
+// initialAppData's, so a different list means this account's week was read.
+const weekRead = () => useAppStore.getState().weeklyVolume !== initialAppData.weeklyVolume;
+
 /** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
-  const [volumeRead, setVolumeRead] = useState(false);
+  const [volumeRead, setVolumeRead] = useState(weekRead);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   const [open, setOpen] = useState<MuscleGroup | null>(null);
   // Pull to refresh reads everything again; the nutrition block remounts to refetch.
@@ -38,14 +42,14 @@ export default function ProgressScreen() {
   const active = useRef(true);
 
   const load = useCallback(async () => {
-    // A failed read leaves the store's volume as it was, so only a new one
-    // may say nothing was trained; a failure keeps what is shown.
+    // A failed read leaves the store's volume as it was, so only a read that
+    // worked, this one or an earlier one, may say nothing was trained.
     const shown = useAppStore.getState().weeklyVolume;
     await Promise.all([
       Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
         .catch(() => {})
         .finally(() => {
-          if (active.current && useAppStore.getState().weeklyVolume !== shown) setVolumeRead(true);
+          if (active.current && (useAppStore.getState().weeklyVolume !== shown || weekRead())) setVolumeRead(true);
         }),
       fetchTrainingHours().then((points) => {
         if (active.current && points) setHours(points);

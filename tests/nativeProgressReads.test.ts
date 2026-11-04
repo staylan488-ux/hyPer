@@ -27,8 +27,10 @@ const Text = ({ children }: PropsWithChildren) => createElement('span', null, ch
 let pull: () => void;
 const fetchTrainingHours = vi.fn();
 const calculateWeeklyVolume = vi.fn();
+// The store's never-read list; resetAppData puts this same array back.
+const initialAppData = { weeklyVolume: [] as MuscleVolume[] };
 const appStore = create(() => ({
-  weeklyVolume: [] as MuscleVolume[],
+  weeklyVolume: initialAppData.weeklyVolume,
   macroTarget: null,
   nutritionProfile: null,
   calculateWeeklyVolume,
@@ -64,7 +66,7 @@ async function open() {
     '@/lib/volumeCoaching': volumeCoaching,
     '@/lib/volumeStatus': volumeStatus,
     '@/lib/workoutSessions': workoutSessions,
-    '@/stores/appStore': { useAppStore: appStore },
+    '@/stores/appStore': { initialAppData, useAppStore: appStore },
     '@/types': types,
     '~/components/BlancText': { BlancText: Text },
     '~/components/Capsule': { Capsule: Empty },
@@ -82,7 +84,7 @@ async function open() {
 const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
-  appStore.setState({ weeklyVolume: [] });
+  appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
   // A read that worked writes a new list, even an empty one.
   calculateWeeklyVolume.mockReset().mockImplementation(async () => { appStore.setState({ weeklyVolume: [] }); });
@@ -121,6 +123,18 @@ describe('Progress after a failed read', () => {
 
     calculateWeeklyVolume.mockImplementation(async () => { appStore.setState({ weeklyVolume: [] }); });
     await refresh();
+    expect(shown()).toContain('Nothing trained yet this week');
+  });
+
+  it('still says nothing was trained when an earlier read found an empty week', async () => {
+    // The account load read the week and found nothing; Progress's own read fails.
+    appStore.setState({ weeklyVolume: [] });
+    let finishRead = noop;
+    calculateWeeklyVolume.mockImplementation(() => new Promise<void>((resolve) => { finishRead = resolve; }));
+    await open();
+    expect(shown()).toContain('Nothing trained yet this week');
+
+    await act(async () => { finishRead(); });
     expect(shown()).toContain('Nothing trained yet this week');
   });
 });
