@@ -12,7 +12,7 @@ import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
 import { useFinishedStore } from '~/lib/finished';
-import { formatSet, formatWhole } from '~/lib/format';
+import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { space, useBlanc } from '~/theme/blanc';
 
 /** Sessions completed this Monday–Sunday training week. */
@@ -62,12 +62,13 @@ export default function SessionDone() {
 
   const slots = Math.max(planned ?? 0, weekCount ?? 0);
   const rows: [string, string][] = [
-    ['Sets', String(summary.sets)],
+    // "3 of 9" only when some sets were not logged.
+    ['Sets', summary.sets === summary.marks.length ? String(summary.sets) : `${summary.sets} of ${summary.marks.length}`],
     // Only when some set beat the same set last time: no zero.
     ...(summary.beat > 0 ? [['Beat last time', `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'}`] as [string, string]] : []),
     // A bodyweight session moves no load: leave the zero out.
     ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
-    ['Time', `${summary.minutes} min`],
+    ['Time', formatMinutes(summary.minutes)],
     ...(summary.best
       ? [['Best set', formatSet(summary.best.weight, summary.best.reps)] as [string, string]]
       : []),
@@ -77,54 +78,59 @@ export default function SessionDone() {
     <>
       <ScrollView
         style={{ backgroundColor: c.ground }}
-        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 56, paddingBottom: insets.bottom + 16, paddingHorizontal: space.gutter }}>
-        <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center' }}>
-          Session complete
-        </BlancText>
-
-        <Label bleed style={{ alignSelf: 'center', width: '88%', marginTop: 34, paddingHorizontal: 26, paddingTop: 28, paddingBottom: 26, boxShadow: `0 18px 40px rgba(0, 0, 0, 0.07), 0 0 0 0.5px ${c.labelEdge}` }}>
-          <Tally
-            marks={summary.marks}
-            current={null}
-            height={22}
-            accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
-          />
-
-          <BlancText variant="title" size={30} style={{ marginTop: 22, lineHeight: 36 }}>
-            {summary.dayName}
-          </BlancText>
-          <BlancText variant="meta" size={13} tone="graphite" style={{ marginTop: 4 }}>
-            {format(summary.finishedAt, 'EEE · MMM d · h:mm a')}
+        contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 16 }}>
+        {/* The title and its label sit centred in the room above Done. */}
+        <View style={{ flex: 1, justifyContent: 'center', paddingBottom: 32 }}>
+          <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center' }}>
+            Session complete
           </BlancText>
 
-          <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} />
-          <View style={{ paddingVertical: 10 }}>
-            {rows.map(([label, value]) => (
-              <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6 }}>
-                <BlancText variant="meta" size={14} tone="graphite">
-                  {label}
+          {/* At the cards' inset, so its edges line up with Done; a faint lift over the label's own edge. */}
+          <Label style={{ marginTop: 34, paddingHorizontal: 26, paddingTop: 28, paddingBottom: 26, boxShadow: `0 0 0 0.5px ${c.labelEdge}, 0 1px 2px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.05)` }}>
+            <Tally
+              marks={summary.marks}
+              current={null}
+              height={22}
+              accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
+            />
+
+            <BlancText variant="title" size={30} style={{ marginTop: 22, lineHeight: 36 }}>
+              {summary.dayName}
+            </BlancText>
+            <BlancText variant="meta" size={13} tone="graphite" style={{ marginTop: 4 }}>
+              {format(summary.finishedAt, 'EEE · MMM d · h:mm a')}
+            </BlancText>
+
+            <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} />
+            <View style={{ paddingVertical: 10 }}>
+              {rows.map(([label, value]) => (
+                <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6 }}>
+                  <BlancText variant="meta" size={14} tone="graphite">
+                    {label}
+                  </BlancText>
+                  <BlancText variant="meta" size={14}>
+                    {value}
+                  </BlancText>
+                </View>
+              ))}
+              {summary.best ? (
+                <BlancText variant="meta" size={12} tone="graphite" numberOfLines={1} style={{ textAlign: 'right', marginTop: -2 }}>
+                  {summary.best.name}
                 </BlancText>
-                <BlancText variant="meta" size={14}>
-                  {value}
-                </BlancText>
-              </View>
-            ))}
-            {summary.best ? (
-              <BlancText variant="meta" size={12} tone="graphite" numberOfLines={1} style={{ textAlign: 'right', marginTop: -2 }}>
-                {summary.best.name}
-              </BlancText>
-            ) : null}
-          </View>
-          <View style={{ height: 0.5, backgroundColor: c.hairline }} />
-          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 14 }}>
-            {weekCount !== null && slots > 0
-              ? `Saved to History · session ${weekCount}${planned ? ` of ${planned}` : ''} this week`
-              : 'Saved to History'}
-          </BlancText>
-        </Label>
+              ) : null}
+            </View>
+            <View style={{ height: 0.5, backgroundColor: c.hairline }} />
+            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 14 }}>
+              {weekCount !== null && slots > 0
+                ? `Saved to History · session ${weekCount}${planned ? ` of ${planned}` : ''} this week`
+                : 'Saved to History'}
+            </BlancText>
+          </Label>
+        </View>
 
-        <View style={{ flex: 1, minHeight: 32 }} />
-        <Capsule title="Done" size="large" fill onPress={done} />
+        <View style={{ marginHorizontal: space.inset }}>
+          <Capsule title="Done" size="large" fill onPress={done} />
+        </View>
       </ScrollView>
     </>
   );
