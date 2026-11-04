@@ -1,6 +1,6 @@
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { getFoodTrialStatus } from '@/lib/foodTrial';
@@ -25,7 +25,15 @@ const MODES: { mode: AnalysisMode; title: string; detail: string }[] = [
 export default function AnalysisScreen() {
   const mode = useAnalysisModeStore((state) => state.mode);
   const [usage, setUsage] = useState<{ text: string; failed?: boolean } | null>(null);
-  const worker = getPhotoWorkerSettings().url;
+  const [worker, setWorker] = useState(() => getPhotoWorkerSettings().url);
+
+  // Read again on the way back: the address is saved on the Mac worker screen,
+  // which opens on top of this one.
+  useFocusEffect(
+    useCallback(() => {
+      setWorker(getPhotoWorkerSettings().url);
+    }, []),
+  );
 
   useEffect(() => {
     if (mode !== 'gemini') return;

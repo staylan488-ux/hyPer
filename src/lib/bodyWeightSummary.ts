@@ -9,8 +9,11 @@ import { lbsToKg } from '@/lib/nutritionCalculator';
 import { formatWeight, kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { buildWeightTrend, type WeightSampleLike } from '@/lib/weightTrend';
 
-/** Enough history for a stable trend without pulling a year of rows. */
-export const WEIGHT_TREND_WINDOW_DAYS = 60;
+/**
+ * The weigh-ins You reads: Body weight's chart shows this many days, and it is
+ * enough for a stable trend without pulling a year of rows.
+ */
+export const WEIGHT_TREND_WINDOW_DAYS = 90;
 
 /**
  * The full series (charts and the smoothed caption) and the weekly rate,

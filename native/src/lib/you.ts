@@ -80,7 +80,7 @@ export const useWeightStore = create<WeightState>(() => ({
   unit: getPreferredWeightUnit(),
 }));
 
-/** The last 60 days of weigh-ins, newest first. A failed read keeps what is shown. */
+/** The weigh-ins of the last WEIGHT_TREND_WINDOW_DAYS days, newest first. A failed read keeps what is shown. */
 export async function loadWeights(): Promise<void> {
   const userId = currentUserId();
   if (!userId) return;

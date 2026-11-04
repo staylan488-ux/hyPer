@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
+import { WEIGHT_TREND_WINDOW_DAYS, bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import type { BodyWeightMeasurement } from '@/lib/healthWeights';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { BlancText } from '~/components/BlancText';
@@ -115,7 +115,7 @@ export default function WeightScreen() {
 
         {trend.fittedDayCount >= 2 ? (
           <Label style={{ marginTop: space.section, padding: 18 }}>
-            <WeightChart points={trend.points} days={90} unit={unit} height={168} summary="Tap or hold to read a day" />
+            <WeightChart points={trend.points} days={WEIGHT_TREND_WINDOW_DAYS} unit={unit} height={168} summary="Tap or hold to read a day" />
           </Label>
         ) : null}
 

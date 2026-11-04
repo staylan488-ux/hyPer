@@ -102,8 +102,13 @@ function SheetHeader() {
 function Calculator() {
   const c = useBlanc();
   const profile = useAppStore((state) => state.nutritionProfile);
-  const latestKg = useWeightStore((state) => (state.history[0] ? Number(state.history[0].kilograms) : null));
-  const [initial] = useState(() => initialWizardDraft(profile, latestKg));
+  // The latest weigh-in as the form opened. An Apple Health import can reload
+  // the weights while it is open; only a typed change records a weigh-in.
+  const [openedKg] = useState(() => {
+    const latest = useWeightStore.getState().history[0];
+    return latest ? Number(latest.kilograms) : null;
+  });
+  const [initial] = useState(() => initialWizardDraft(profile, openedKg));
   const [draft, setDraft] = useState<WizardDraft>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +143,7 @@ function Calculator() {
       return;
     }
     const userId = useAuthStore.getState().user?.id;
-    if (userId && wizardWeightChanged(latestKg, outcome.weightKg)) {
+    if (userId && wizardWeightChanged(openedKg, outcome.weightKg)) {
       try {
         await recordManualBodyWeight(userId, outcome.weightKg);
         void loadWeights();
@@ -211,7 +216,7 @@ function Calculator() {
           <Hairline />
           <FieldRow label="Body fat" unit="%" value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
         </Label>
-        <FormNote>{latestKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
+        <FormNote>{openedKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
       </Section>
 
       <Section title="Activity">

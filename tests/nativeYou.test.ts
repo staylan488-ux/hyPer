@@ -4,11 +4,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
+import * as dateFns from 'date-fns';
+
 import { captureAccountScope } from '@/lib/accountScope';
+import * as bodyWeightSummary from '@/lib/bodyWeightSummary';
 import * as nutritionCalculator from '@/lib/nutritionCalculator';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
 import * as nutritionWizard from '@/lib/nutritionWizard';
 import * as settingsUx from '@/lib/settingsUx';
+import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -222,6 +226,36 @@ describe('Edit targets opened before the targets are read', () => {
     );
   });
 
+  it('lets a cleared field stay empty while a new number is typed, and saves only with a number in it', async () => {
+    const { Sheet, reads, fields, buttons, useAppStore } = sheetHarness();
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    await act(async () => { fields.Calories.onChangeText(''); });
+    expect(fields.Calories.value).toBe('');
+    expect(buttons['Save targets'].disabled).toBe(true);
+    await act(async () => { buttons['Save targets'].onPress(); });
+    expect(useAppStore.getState().updateMacroTarget).not.toHaveBeenCalled();
+
+    await act(async () => { fields.Calories.onChangeText('2'); });
+    expect(fields.Calories.value).toBe('2');
+    await act(async () => { fields.Calories.onChangeText('2300'); });
+    expect(buttons['Save targets'].disabled).toBe(false);
+    await act(async () => { buttons['Save targets'].onPress(); });
+    expect(useAppStore.getState().updateMacroTarget).toHaveBeenCalledWith(expect.objectContaining({ calories: 2300 }));
+  });
+
+  it('still saves a 0 that was typed', async () => {
+    const { Sheet, reads, fields, buttons, useAppStore } = sheetHarness();
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    await act(async () => { fields.Fat.onChangeText('0'); });
+    expect(fields.Fat.value).toBe('0');
+    await act(async () => { buttons['Save targets'].onPress(); });
+    expect(useAppStore.getState().updateMacroTarget).toHaveBeenCalledWith(expect.objectContaining({ fat: 0 }));
+  });
+
   it('puts the cursor in the field it was opened from once the targets arrive', async () => {
     const { Sheet, reads, fields, focused } = sheetHarness('protein');
     await mount(createElement(Sheet));
@@ -267,6 +301,7 @@ describe('Calculate targets opened before the profile is read', () => {
     const fields: Record<string, FieldProps> = {};
     const buttons: Record<string, ButtonProps> = {};
     const spinner = vi.fn();
+    const recordManualBodyWeight = vi.fn<(userId: string, kilograms: number) => Promise<void>>(async () => {});
     const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
     const Sheet = loadNativeModule<{ default: ComponentType }>('app/targets-calculate.tsx', {
       '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
@@ -281,7 +316,7 @@ describe('Calculate targets opened before the profile is read', () => {
         TextInput: () => null,
         View: Wrap,
       },
-      '@/lib/healthWeights': { recordManualBodyWeight: vi.fn(async () => {}) },
+      '@/lib/healthWeights': { recordManualBodyWeight },
       '@/lib/nutritionCalculator': nutritionCalculator,
       '@/lib/nutritionWizard': nutritionWizard,
       '@/stores/appStore': { useAppStore: harness.useAppStore },
@@ -299,7 +334,7 @@ describe('Calculate targets opened before the profile is read', () => {
       '~/lib/you': harness.you,
       '~/theme/blanc': { type: { field: {} }, useBlanc: () => ({ ground: '#fff', ink: '#000', pressed: '#eee', fill: '#ddd' }) },
     }).default;
-    return { ...harness, Sheet, fields, buttons, spinner };
+    return { ...harness, Sheet, fields, buttons, spinner, recordManualBodyWeight };
   }
 
   it('waits for the saved profile, then keeps its learned burn when saved', async () => {
@@ -329,6 +364,37 @@ describe('Calculate targets opened before the profile is read', () => {
 
     await act(async () => { await (you as unknown as { loadWeights: () => Promise<void> }).loadWeights(); });
     expect(fields.Age.value).toBe('40');
+  });
+
+  it('records no weigh-in when an Apple Health import lands while it is open and the weight is left alone', async () => {
+    const { Sheet, reads, fields, buttons, you, getNutritionProfile, getBodyWeightHistorySince, recordManualBodyWeight } = calculatorHarness();
+    getNutritionProfile.mockResolvedValue(profile);
+    getBodyWeightHistorySince.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: '2026-11-03T07:00:00Z', source: 'manual' }]);
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+    expect(fields.Weight.value).toBe('81');
+
+    getBodyWeightHistorySince.mockResolvedValue([
+      { id: 'w2', kilograms: 80.4, measured_at: '2026-11-04T07:00:00Z', source: 'healthkit' },
+      { id: 'w1', kilograms: 81, measured_at: '2026-11-03T07:00:00Z', source: 'manual' },
+    ]);
+    await act(async () => { await (you as unknown as { loadWeights: () => Promise<void> }).loadWeights(); });
+    expect(fields.Weight.value).toBe('81');
+
+    await act(async () => { buttons['Save profile and review'].onPress(); });
+    expect(recordManualBodyWeight).not.toHaveBeenCalled();
+  });
+
+  it('records a weigh-in when the weight is changed', async () => {
+    const { Sheet, reads, fields, buttons, getNutritionProfile, getBodyWeightHistorySince, recordManualBodyWeight } = calculatorHarness();
+    getNutritionProfile.mockResolvedValue(profile);
+    getBodyWeightHistorySince.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: '2026-11-03T07:00:00Z', source: 'manual' }]);
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    await act(async () => { (fields.Weight as FieldProps & { onChangeText: (text: string) => void }).onChangeText('79.5'); });
+    await act(async () => { buttons['Save profile and review'].onPress(); });
+    expect(recordManualBodyWeight).toHaveBeenCalledWith('user-1', 79.5);
   });
 
   it('offers Try again when the profile does not load', async () => {
@@ -410,6 +476,88 @@ describe('Connecting WHOOP', () => {
       ok: false,
       message: 'Could not start the WHOOP connection. You are signed out. Sign in and try again.',
     });
+  });
+});
+
+describe('Food analysis after the Mac worker is saved', () => {
+  it('shows the saved address on the way back', async () => {
+    type RowProps = { title: string; value?: string };
+    const rows: Record<string, RowProps> = {};
+    const settings = { url: '', provider: 'openai' };
+    let focus: (() => void) | null = null;
+    const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+    const Screen = loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/analysis.tsx', {
+      'expo-router': {
+        router: { push: vi.fn() },
+        Stack: { Screen: () => null },
+        useFocusEffect: (effect: () => void) => {
+          focus = effect;
+          useEffect(() => effect(), [effect]);
+        },
+      },
+      'expo-symbols': { SymbolView: () => null },
+      'react-native': { Pressable: Wrap, View: Wrap },
+      '@/lib/foodTrial': { getFoodTrialStatus: vi.fn() },
+      '@/lib/foodTrialUsage': { foodTrialUsageLine: vi.fn() },
+      '@/lib/photoAnalysis': { getPhotoWorkerSettings: () => ({ ...settings }) },
+      '@/lib/supabase': { supabase: {} },
+      '~/components/BlancText': { BlancText: text },
+      '~/components/Form': { FormNote: text },
+      '~/components/Label': { Label: Wrap },
+      '~/components/Row': { Hairline: () => null, Row: (props: RowProps) => { rows[props.title] = props; return null; } },
+      '~/components/TabScroll': { TabScroll: Wrap },
+      '~/lib/haptics': { haptics: { select: vi.fn() } },
+      '~/lib/you': { chooseAnalysisMode: vi.fn(), useAnalysisModeStore: create(() => ({ mode: 'worker' })) },
+      '~/theme/blanc': { space: { section: 32 }, useBlanc: () => ({ ink: '#000', pressed: '#eee' }) },
+    }).default;
+    await mount(createElement(Screen));
+    expect(rows['Mac worker'].value).toBe('Not set');
+
+    // Saved on the Mac worker screen, then Back.
+    settings.url = 'https://studio.tail1234.ts.net';
+    await act(async () => { focus?.(); });
+    expect(rows['Mac worker'].value).toBe('studio.tail1234.ts.net');
+  });
+});
+
+describe('Body weight chart', () => {
+  it('reads every day the chart shows', async () => {
+    const harness = youHarness();
+    const you = loadNativeModule<YouModule>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
+    harness.getBodyWeightHistorySince.mockResolvedValue([
+      { id: 'w2', kilograms: 81, measured_at: '2026-11-03T07:00:00Z', source: 'manual' },
+      { id: 'w1', kilograms: 82, measured_at: '2026-10-01T07:00:00Z', source: 'manual' },
+    ]);
+    const charts: Array<{ days: number }> = [];
+    const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+    const Screen = loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', {
+      '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
+      '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null },
+      'date-fns': dateFns,
+      'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
+      'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
+      'react-native-reanimated': { default: { View: Wrap } },
+      '@/lib/bodyWeightSummary': bodyWeightSummary,
+      '@/lib/weightDisplayCore': weightDisplayCore,
+      '~/components/BlancText': { BlancText: text },
+      '~/components/Capsule': { Capsule: () => null },
+      '~/components/Label': { Label: Wrap },
+      '~/components/Row': { Hairline: () => null, Row: () => null },
+      '~/components/Section': { Section: Wrap },
+      '~/components/SwipeRow': { SwipeRow: Wrap },
+      '~/components/TabScroll': { TabScroll: Wrap },
+      '~/components/WeightChart': { WeightChart: (props: { days: number }) => { charts.push(props); return null; } },
+      '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+      '~/lib/motion': { rowEnter: null, rowExit: null, rowLayout: null },
+      '~/lib/you': you,
+      '~/theme/blanc': { space: { gutter: 20, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
+    }).default;
+    await mount(createElement(Screen));
+
+    const shown = charts.at(-1)?.days;
+    expect(shown).toBeGreaterThan(0);
+    expect(harness.getBodyWeightHistorySince).toHaveBeenCalled();
+    for (const [, days] of harness.getBodyWeightHistorySince.mock.calls) expect(days).toBeGreaterThanOrEqual(shown!);
   });
 });
 

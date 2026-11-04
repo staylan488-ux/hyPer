@@ -58,6 +58,10 @@ export default function TargetsEditSheet() {
   // Untouched, the draft is the saved targets, so it follows them in.
   const [edited, setEdited] = useState<TargetDraft | null>(() => staged?.draft ?? null);
   const draft = edited ?? base;
+  // A field cleared to retype stays empty rather than turning into 0; Save
+  // waits for a number in it.
+  const [empty, setEmpty] = useState<Partial<Record<keyof TargetNumbers, boolean>>>({});
+  const anyEmpty = FIELDS.some((field) => empty[field.key]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -90,7 +94,7 @@ export default function TargetsEditSheet() {
   }, [ready, readyOnOpen, focus]);
 
   const save = async () => {
-    if (saving || !ready) return;
+    if (saving || !ready || anyEmpty) return;
     Keyboard.dismiss();
     setSaving(true);
     setError(null);
@@ -134,7 +138,7 @@ export default function TargetsEditSheet() {
               }}
               label={field.label}
               unit={field.unit}
-              value={ready ? String(draft[field.key]) : ''}
+              value={ready && !empty[field.key] ? String(draft[field.key]) : ''}
               editable={ready}
               keyboardType="number-pad"
               selectTextOnFocus
@@ -145,6 +149,7 @@ export default function TargetsEditSheet() {
               onSubmitEditing={() => fields.current[index + 1]?.focus()}
               onChangeText={(text) => {
                 setError(null);
+                setEmpty((current) => ({ ...current, [field.key]: text.trim() === '' }));
                 setEdited((current) => editTargetField(current ?? base, field.key, text));
               }}
             />
@@ -193,7 +198,7 @@ export default function TargetsEditSheet() {
             size="large"
             fill
             busy={saving || !ready}
-            disabled={!changed}
+            disabled={!changed || anyEmpty}
             onPress={() => void save()}
           />
         )}
