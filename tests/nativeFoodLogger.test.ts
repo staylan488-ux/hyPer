@@ -778,11 +778,13 @@ describe('native food logger holds the sheet while a save runs', () => {
     await h.click('Log entry');
     // Another tab would unmount Manual with its error and retry-safe ids.
     expect(h.captured.picker!.disabled).toBe(true);
+    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
     await act(async () => { h.captured.manual!.onGeminiHandoff!('a cup of oats'); });
     expect(h.captured.picker!.selection).toBe('manual');
     await act(async () => { write.reject(new Error('offline')); });
     expect(h.text()).toContain('Not logged. Try again.');
     expect(h.captured.picker!.disabled).toBe(false);
+    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
     await h.tab('recent');
     expect(h.captured.picker!.selection).toBe('recent');
   });

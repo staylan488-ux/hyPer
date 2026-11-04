@@ -559,7 +559,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                     title={paused ? 'Resume pending meal' : 'Build a meal'}
                     detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
                     chevron
-                    disabled={busy}
+                    disabled={busy || saving}
                     onPress={() => (paused ? setPaused(false) : startMeal())}
                   />
                 </Label>
