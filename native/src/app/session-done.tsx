@@ -11,7 +11,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
-import { useFinishedStore } from '~/lib/finished';
+import { savedLine, useFinishedStore } from '~/lib/finished';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -60,7 +60,6 @@ export default function SessionDone() {
     );
   }
 
-  const slots = Math.max(planned ?? 0, weekCount ?? 0);
   const rows: [string, string][] = [
     ['Sets', String(summary.sets)],
     // Only when some set beat the same set last time: no zero.
@@ -117,9 +116,7 @@ export default function SessionDone() {
           </View>
           <View style={{ height: 0.5, backgroundColor: c.hairline }} />
           <BlancText variant="footnote" tone="graphite" style={{ marginTop: 14 }}>
-            {weekCount !== null && slots > 0
-              ? `Saved to History · session ${weekCount}${planned ? ` of ${planned}` : ''} this week`
-              : 'Saved to History'}
+            {savedLine(weekCount, planned)}
           </BlancText>
         </Label>
 

@@ -35,7 +35,7 @@ import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, s
 import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useTodayPlan } from '~/lib/today';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -171,7 +171,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previous]);
 
-  const weight = draft ? parseNumber(draft.weight) : null;
+  // On a bodyweight movement an empty weight logs as 0: no "0" to type first.
+  const weight = draft ? weightToLog(draft.weight, isBodyweight(current?.set.exercise)) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
