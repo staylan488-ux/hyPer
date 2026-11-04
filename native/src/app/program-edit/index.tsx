@@ -42,7 +42,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
-import { afterProgramSaved, confirmAlert } from '~/lib/program';
+import { afterProgramSaved, confirmAlert, liveWorkoutDayId, refuseRemovingLiveDay, refuseSavingWithoutLiveDay } from '~/lib/program';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
@@ -250,6 +250,8 @@ function Editor({ notice }: { notice: string | null }) {
 
   const save = () => {
     Keyboard.dismiss();
+    const editing = useSplitEditStore.getState().draft;
+    if (editing && refuseSavingWithoutLiveDay(editing)) return;
     void saveSplitEdit({
       createSplit: useAppStore.getState().createSplit,
       onSaved: (saved) => {
@@ -430,9 +432,12 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
   const c = useBlanc();
   const label = dayLabel(day, index);
   const store = useSplitEditStore.getState;
+  // The live workout's day stays: removing it would drop that session.
+  const live = useAppStore((state) => liveWorkoutDayId(state.currentWorkout) === day.id);
   const open = () => router.push({ pathname: '/program-edit/day', params: { id: day.id } });
   // A draft change: the Undo bar can bring it back.
   const remove = () => {
+    if (refuseRemovingLiveDay(day.id, label)) return;
     store().removeDay(day.id);
     haptics.success();
   };
@@ -471,7 +476,8 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
           },
         ]
       : []),
-    { title: 'Remove day', symbol: 'trash', destructive: true, removes: true, run: remove },
+    // On the live day it is refused with an alert, which waits for the menu to close.
+    { title: 'Remove day', symbol: 'trash', destructive: true, removes: !live, run: remove },
   ];
 
   return (
