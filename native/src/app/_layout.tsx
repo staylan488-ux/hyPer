@@ -12,6 +12,7 @@ import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { pendingLaunchLink } from '~/lib/launchLink';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -41,6 +42,8 @@ export default function RootLayout() {
   // Cold launch only, and never under Reduce Motion or a scripted dev check.
   const reducedMotion = useReducedMotion();
   const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro));
+  // A widget or card that launched the app opens a screen with no P to land on.
+  const [launchedToScreen] = useState(() => pendingLaunchLink() !== null);
 
   useEffect(() => {
     if (introDone && screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
@@ -210,7 +213,9 @@ export default function RootLayout() {
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
         </Stack>
-        {introDone ? null : <BrandIntro ready={screen !== 'boot'} onDone={() => setIntroDone(true)} />}
+        {introDone ? null : (
+          <BrandIntro ready={screen !== 'boot'} markless={launchedToScreen} onDone={() => setIntroDone(true)} />
+        )}
         {__DEV__ ? <DevLaunchRunner /> : null}
       </ThemeProvider>
       </KeyboardProvider>

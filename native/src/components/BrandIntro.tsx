@@ -110,9 +110,15 @@ type BrandIntroProps = {
   ready: boolean;
   /** The intro has handed over; unmount it. */
   onDone: () => void;
+  /**
+   * The first screen has no resting mark to land on (a widget or card opened
+   * Fuel, Train or Targets), so the intro fades out in place without waiting
+   * for one.
+   */
+  markless?: boolean;
 };
 
-export function BrandIntro({ ready, onDone }: BrandIntroProps) {
+export function BrandIntro({ ready, onDone, markless = false }: BrandIntroProps) {
   const c = useBlanc();
   const { width, height } = useWindowDimensions();
   const origin = { x: width / 2, y: height * ORIGIN_Y };
@@ -174,9 +180,9 @@ export function BrandIntro({ ready, onDone }: BrandIntroProps) {
       setFirstScreen(true);
       return;
     }
-    const timer = setTimeout(() => setFirstScreen(true), ms.firstScreen);
+    const timer = setTimeout(() => setFirstScreen(true), markless ? 0 : ms.firstScreen);
     return () => clearTimeout(timer);
-  }, [ready, measure, firstScreen]);
+  }, [ready, measure, firstScreen, markless]);
 
   const frames = useFrameCallback((frame) => {
     const gap = frame.timeSincePreviousFrame;
@@ -282,12 +288,12 @@ export function BrandIntro({ ready, onDone }: BrandIntroProps) {
   useEffect(() => {
     if (!started || leaving || !(spelled || skipped) || !ready) return;
     if (!measure) {
-      const timer = setTimeout(() => setNoAnchor(true), ms.noAnchor);
+      const timer = setTimeout(() => setNoAnchor(true), markless ? 0 : ms.noAnchor);
       return () => clearTimeout(timer);
     }
     setLeaving(true);
     void land(measure, skipped);
-  }, [started, leaving, spelled, skipped, ready, measure]);
+  }, [started, leaving, spelled, skipped, ready, measure, markless]);
 
   useEffect(() => {
     if (!noAnchor || leaving) return;
