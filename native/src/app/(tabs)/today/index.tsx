@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -33,6 +34,9 @@ export default function TodayScreen() {
   const session = useSessionModel();
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
+  // Before the account's targets load, no prompt for one: as on Fuel.
+  const userId = useAuthStore((state) => state.user?.id);
+  const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
   const weekly = useAppStore((state) => state.weeklyVolume);
   const totals = useFuelStore((state) => state.todayTotals);
   const week = summarizeWeekVolume(weekly);
@@ -106,7 +110,7 @@ export default function TodayScreen() {
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
-            ) : (
+            ) : targetKnown ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityHint="Opens your targets"
@@ -116,10 +120,10 @@ export default function TodayScreen() {
                 }}
                 style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 <BlancText variant="secondary" tone="graphite">
-                  Set a calorie target in You to see what's left today.
+                  Set a calorie target
                 </BlancText>
               </Pressable>
-            )}
+            ) : null}
           </Section>
 
           <Section title="This week" action={{ title: 'Progress', onPress: () => router.push('/today/progress') }}>
@@ -157,6 +161,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const c = useBlanc();
   const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
+  // A flexible session starts empty: nothing to finish yet, as on Train.
+  const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
 
@@ -187,26 +193,32 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         </View>
       </View>
 
-      <Tally
-        marks={session.sets.map((set) => set.completed)}
-        current={current?.index ?? null}
-        height={16}
-        style={{ marginTop: 14 }}
-        accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
-      />
+      {empty ? null : (
+        <Tally
+          marks={session.sets.map((set) => set.completed)}
+          current={current?.index ?? null}
+          height={16}
+          style={{ marginTop: 14 }}
+          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
+        />
+      )}
 
       <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
-            {current ? current.movement.name : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}
+            {current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}
           </BlancText>
           <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-            {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
+            {current
+              ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
+              : empty
+                ? 'Add your first movement in Train'
+                : 'Finish to save the session'}
           </BlancText>
         </View>
-        {current ? (
+        {current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.
