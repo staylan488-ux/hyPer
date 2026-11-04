@@ -14,6 +14,7 @@ import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, PickerRow, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
@@ -21,7 +22,7 @@ import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
 import { groupsForDay } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
@@ -115,19 +116,21 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
 
       <View style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <BlancText variant="figure" size={56}>
+          <RollingText variant="figure" size={56}>
             {formatWhole(totals.calories)}
-          </BlancText>
-          <BlancText variant="secondary" tone="graphite">
-            kcal
-          </BlancText>
+          </RollingText>
+          <Animated.View layout={figureLayout}>
+            <BlancText variant="secondary" tone="graphite">
+              kcal
+            </BlancText>
+          </Animated.View>
         </View>
         <BlancText variant="secondary" tone="graphite">
           P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g
         </BlancText>
       </View>
 
-      <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
+      <Section title="Ingredients" action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
         <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
             <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -184,7 +187,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
                 onChange={(date) => update({ time: format(date, 'HH:mm') })}
               />
               <Hairline />
-              <Row title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
+              <Row form title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
               <Hairline />
               <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
             </Label>
@@ -192,7 +195,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         ) : null}
 
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 20, gap: 12 }}>
+        <View style={{ paddingHorizontal: space.inset, marginTop: 20, gap: 12 }}>
           <Capsule
             title={draft.locked ? 'Retry save' : saveOnly ? 'Save meal' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
             size="large"
@@ -244,8 +247,9 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           <BlancText variant="bodyStrong" numberOfLines={1}>
             {item.food.name}
           </BlancText>
-          <BlancText variant="meta" tone="graphite" style={{ marginTop: 2 }} numberOfLines={1}>
-            {Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g
+          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1 }} numberOfLines={1}>
+            {formatWhole(item.food.calories * item.servings)} kcal
+            {Math.round(item.food.protein * item.servings) > 0 ? ` · ${formatWhole(item.food.protein * item.servings)} g protein` : ''}
           </BlancText>
         </View>
         <TextInput

@@ -31,13 +31,14 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, ToggleRow, useDecimalText } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -225,7 +226,7 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
       </Section>
 
       {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 20 }}>
+      <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
           title={analyzing ? 'Reading the plate…' : 'Analyze'}
           size="large"
@@ -423,8 +424,9 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                       <SymbolView name="xmark" size={13} weight="semibold" tintColor={c.graphite} />
                     </Pressable>
                   </View>
-                  <BlancText variant="meta" style={{ marginTop: 4 }}>
-                    {Math.round(totals.calories)} kcal · P {Math.round(totals.protein)} · C {Math.round(totals.carbs)} · F {Math.round(totals.fat)}
+                  <BlancText variant="secondary" tone="graphite" style={{ marginTop: 4 }}>
+                    {formatWhole(totals.calories)} kcal
+                    {Math.round(totals.protein) > 0 ? ` · ${formatWhole(totals.protein)} g protein` : ''}
                   </BlancText>
                   <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, paddingRight: 10 }}>
                     {photoItemStatus(item)}
@@ -487,19 +489,22 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
           <WhenBlock disabled={saving} />
 
           <View style={{ paddingHorizontal: space.gutter, marginTop: 28, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <BlancText variant="figure" size={44}>
+            <RollingText variant="figure" size={56}>
               {formatWhole(total)}
-            </BlancText>
-            <BlancText variant="secondary" tone="graphite">
-              kcal plate total
-            </BlancText>
+            </RollingText>
+            <Animated.View layout={figureLayout}>
+              <BlancText variant="secondary" tone="graphite">
+                kcal plate total
+              </BlancText>
+            </Animated.View>
           </View>
 
           {error ? <FormNote alert>{error}</FormNote> : null}
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
             <Capsule
               title="Retake"
               variant="quiet"
+              size="large"
               disabled={saving}
               onPress={() =>
                 Alert.alert('Discard this estimate?', 'The photos and the review are cleared.', [
@@ -516,6 +521,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                     ? 'Log 1 meal'
                     : `Log ${items.length} item${items.length === 1 ? '' : 's'}`
               }
+              size="large"
               busy={saving}
               disabled={items.length === 0}
               onPress={() => void save()}

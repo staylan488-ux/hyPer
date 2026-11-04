@@ -381,8 +381,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 }}
                 style={({ pressed }) => ({ paddingVertical: 10, paddingLeft: 32, paddingRight: 16, backgroundColor: pressed ? c.pressed : 'transparent' })}>
                 <BlancText variant="secondary">{meal.name}</BlancText>
-                <BlancText variant="meta" tone="graphite">
-                  {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)}
+                <BlancText variant="footnote" tone="graphite">
+                  {Math.round(meal.calories)} kcal
+                  {Math.round(meal.protein) > 0 ? ` · ${Math.round(meal.protein)} g protein` : ''}
                 </BlancText>
               </Pressable>
             </View>
@@ -459,7 +460,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       <WhenBlock disabled={saving} />
 
       {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 20 }}>
+      <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
           title={logger.purpose === 'ingredients' ? 'Add ingredient' : logger.editing ? 'Save changes' : 'Log entry'}
           size="large"

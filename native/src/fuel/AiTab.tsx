@@ -23,13 +23,14 @@ import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { RollingText } from '~/components/RollingText';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -255,7 +256,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
   };
 
   const photoControls = (
-    <Section title="Photos" note={`${draft.photos.length} of ${MAX_PHOTOS}`}>
+    <Section title="Photos">
       <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: space.inset }}>
         {draft.photos.map((photo, index) => (
           // A hold lifts the photo with Remove beside it, as in Photos.
@@ -341,7 +342,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         </Section>
         {photoControls}
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
+        <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
           <Capsule
             title={busy === 'analysis' ? 'Analyzing…' : 'Analyze meal'}
             size="large"
@@ -390,10 +391,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         {photoControls}
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-          <Capsule title="Change meal" variant="quiet" disabled={busy !== null} onPress={changeMeal} />
+        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
+          <Capsule title="Change meal" variant="quiet" size="large" disabled={busy !== null} onPress={changeMeal} />
           <Capsule
             title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
+            size="large"
             busy={busy === 'analysis'}
             onPress={() => void analyze(true)}
             style={{ flex: 1, alignSelf: 'stretch' }}
@@ -418,12 +420,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       <View>
         <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <BlancText variant="figure" size={56}>
+            <RollingText variant="figure" size={56}>
               {formatWhole(totals.calories)}
-            </BlancText>
-            <BlancText variant="secondary" tone="graphite">
-              kcal
-            </BlancText>
+            </RollingText>
+            <Animated.View layout={figureLayout}>
+              <BlancText variant="secondary" tone="graphite">
+                kcal
+              </BlancText>
+            </Animated.View>
           </View>
           <BlancText variant="secondary" tone="graphite">
             P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
@@ -471,7 +475,13 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                       {item.name}
                     </BlancText>
                     <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-                      {item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'} · P {round1(each.protein)} g
+                      {[
+                        `${item.quantity} ${item.unit}`.trim(),
+                        Math.round(each.protein) > 0 ? `${formatWhole(each.protein)} g protein` : null,
+                        item.evidence === 'label' ? 'From label' : 'Estimate',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </BlancText>
                   </View>
                   <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
@@ -542,7 +552,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         {/* Closes up under the foods as one is removed. */}
         <Animated.View layout={rowLayout}>
           {result.sources.length > 0 ? (
-            <Section title="Sources" note={String(result.sources.length)}>
+            <Section title="Sources">
               <Label>
                 {result.sources.map((source, index) => (
                   <View key={source.url}>
@@ -581,10 +591,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           ) : null}
 
           {error ? <FormNote alert>{error}</FormNote> : null}
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-            <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} />
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
+            <Capsule title="Change meal" variant="quiet" size="large" disabled={frozen} onPress={changeMeal} />
             <Capsule
               title={logger.purpose === 'ingredients' ? 'Add ingredients' : editing ? 'Save changes' : 'Log meal'}
+              size="large"
               busy={busy === 'save'}
               disabled={!valid || busy !== null}
               onPress={() => void save()}
