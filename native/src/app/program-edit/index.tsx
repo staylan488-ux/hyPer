@@ -75,6 +75,8 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  // The line under it says the days, so the name, and the program it starts, leave out its "(4 days)".
+  const shownName = guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(');
 
   const startGuided = async () => {
     setLoading(true);
@@ -83,13 +85,12 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
       const { draft, notice } = await seedGuidedDraft(guided);
       haptics.success();
       onNotice(notice);
-      useSplitEditStore.getState().startNew(draft, { userId });
+      useSplitEditStore.getState().startNew({ ...draft, name: shownName }, { userId });
     } catch {
       haptics.error();
       setError(LIBRARY_LOAD_FAILED);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const answer = <K extends keyof ProgramDesignAnswers>(key: K, value: ProgramDesignAnswers[K]) => {
@@ -162,8 +163,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
           </View>
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <View accessibilityLiveRegion="polite">
-              {/* The line under it says the days, so the name leaves out its "(4 days)". */}
-              <BlancText variant="headline">{guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(')}</BlancText>
+              <BlancText variant="headline">{shownName}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                 {plural(guided.days.length, 'day')} a week · {plural(templateExerciseCount(guided), 'exercise')}
               </BlancText>

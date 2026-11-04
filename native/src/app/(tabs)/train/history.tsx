@@ -425,7 +425,13 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
     return (
       <Row
         title={title}
-        detail={`In progress · ${live.doneCount} of ${live.sets.length} sets`}
+        detail={
+          live.sets.length > 0
+            ? `In progress · ${live.doneCount} of ${live.sets.length} sets`
+            : live.movements.length === 0
+              ? 'In progress · No movements yet'
+              : 'In progress'
+        }
         // On the detail line, as Today writes live, so the title keeps the card's text edge.
         detailMark={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
         chevron

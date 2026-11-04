@@ -14,7 +14,7 @@ import { haptics } from '~/lib/haptics';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 /**
  * Corrects one set of a past workout. Clearing weight or reps leaves the set
@@ -85,7 +85,7 @@ export default function PastSetSheet() {
       </View>
 
       {set ? (
-        <View style={{ paddingHorizontal: 24, paddingTop: 18 }}>
+        <View style={{ paddingHorizontal: space.inset, paddingTop: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
               <FigureInput
@@ -149,7 +149,7 @@ export default function PastSetSheet() {
           ) : null}
 
           <View style={{ marginTop: 20 }}>
-            <Capsule title={failed ? 'Retry' : 'Save'} fill busy={saving} onPress={() => void save()} />
+            <Capsule title={failed ? 'Retry' : 'Save'} size="large" fill busy={saving} onPress={() => void save()} />
           </View>
         </View>
       ) : (
