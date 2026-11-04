@@ -57,9 +57,17 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   logging food.
 - 2026-11-04: the last three picks from the improvement menu (branch
   `claude/project-thread-n7auph`), checked with the web suite, lint, build,
-  native `tsc`, scratch prebuilds of both app variants and review agents. Not
-  checked: a Swift compile (none in the cloud), a simulator run, the phone. The
-  next device build needs a prebuild with pod install (new HyperLaunch pod).
+  native `tsc`, scratch prebuilds of both app variants and review agents. On
+  the Mac (2026-11-04, at 23cd2d9) the app and HyperWidgets built with no
+  errors or warnings in hyPer's Swift, the three intents and quick actions
+  were present, Snap a meal, Log food and Train opened cold and warm (real
+  quick actions included), and the Fuel reminder scheduled, showed on the lock
+  screen once and opened Log food cold and from the background (sample data,
+  simulator). In sample mode a cold press shows Today for 1 to 2 s before Log
+  food rises. Not yet checked (needs the phone): the reminder's Snap a meal
+  button, the control in Control Center and on the Action button, Siri and
+  Spotlight, the real camera, and instant launch on the real account. A
+  device build needs a prebuild with pod install (new HyperLaunch pod).
   - Snap a meal from anywhere: the Snap a meal control (Control Center, lock
     screen, Action button), App Shortcuts (Snap a meal, Log food, Open Train)
     and quick actions (Snap a meal, Log food, Train). The menu's "Start
