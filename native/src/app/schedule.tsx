@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type { Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
@@ -61,7 +62,8 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
   });
 
   const startDate = choice === 'today' ? ymd(new Date()) : choice === 'tomorrow' ? ymd(addDays(new Date(), 1)) : ymd(picked);
-  const rhythm = buildFixedWeekdays(anchorDay, split.days_per_week).map((day) => WEEKDAYS[day]).join(' / ');
+  const trainingDays = buildFixedWeekdays(anchorDay, split.days_per_week);
+  const rhythm = trainingDays.map((day) => WEEKDAYS[day]).join(' / ');
 
   // Closing with changes asks first; Save closes once, after the guard steps aside.
   const [opened] = useState(() => ({ choice, startDate, mode, anchorDay, flexDayIndex }));
@@ -138,14 +140,18 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
 
         {mode === 'fixed' ? (
           <>
+            {/* The week as the rhythm runs it: the first day in ink, the other
+                training days on a label, rest days bare. A tap picks the first day. */}
             <View style={{ flexDirection: 'row', gap: 6, marginHorizontal: space.inset, marginTop: 14 }}>
               {LETTERS.map((letter, weekday) => {
                 const selected = anchorDay === weekday;
+                const training = trainingDays.includes(weekday);
                 return (
                   <Pressable
                     key={WEEKDAYS[weekday]}
                     accessibilityRole="button"
-                    accessibilityLabel={`First training day ${WEEKDAYS[weekday]}`}
+                    accessibilityLabel={`${WEEKDAYS[weekday]}, ${selected ? 'first training day' : training ? 'training day' : 'rest day'}`}
+                    accessibilityHint={selected ? undefined : 'Makes it the first training day'}
                     accessibilityState={{ selected }}
                     onPress={() => select(setAnchorDay)(weekday)}
                     style={({ pressed }) => ({
@@ -154,18 +160,16 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
                       borderRadius: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.label,
+                      backgroundColor: selected ? c.capsule : pressed ? c.pressed : training ? c.label : 'transparent',
                     })}>
-                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : 'ink'}>
+                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : training ? 'ink' : 'graphite'}>
                       {letter}
                     </BlancText>
                   </Pressable>
                 );
               })}
             </View>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
-              {rhythm}
-            </BlancText>
+            <FormNote>{rhythm}</FormNote>
           </>
         ) : (
           <>
@@ -193,9 +197,7 @@ function ScheduleEditor({ split, saved, todayDayId }: { split: Split; saved: Pla
                 </View>
               ))}
             </Label>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
-              The checked day is up next. Each session follows the last, whatever the day.
-            </BlancText>
+            <FormNote>The checked day is up next. Each session follows the last, whatever the day.</FormNote>
           </>
         )}
       </Section>

@@ -124,11 +124,16 @@ export default function RestSheet() {
         </BlancText>
       </Pressable>
 
+      {/* Lengths in order: a custom one takes its place among the presets, and a tap on it types another. */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset }}>
-        {PRESETS.map((preset) => (
-          <Chip key={preset} label={formatClock(preset)} selected={length === preset} tabular haptic={false} style={{ minWidth: 58 }} onPress={() => choose(preset)} />
-        ))}
-        <Chip label={custom ? formatClock(length) : 'Custom'} selected={custom} tabular haptic={false} style={{ minWidth: 58 }} onPress={chooseCustom} />
+        {(custom ? [...PRESETS, length].sort((a, b) => a - b) : PRESETS).map((seconds) =>
+          custom && seconds === length ? (
+            <Chip key="custom" label={formatClock(length)} selected tabular haptic={false} accessibilityHint="Type another length" style={{ minWidth: 58 }} onPress={chooseCustom} />
+          ) : (
+            <Chip key={seconds} label={formatClock(seconds)} selected={length === seconds} tabular haptic={false} style={{ minWidth: 58 }} onPress={() => choose(seconds)} />
+          ),
+        )}
+        {custom ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: space.inset }}>

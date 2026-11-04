@@ -10,6 +10,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
+import { FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { LoggedSetRow } from '~/components/LoggedSetRow';
@@ -217,9 +218,10 @@ function MovementDetail({
           <View style={styles.row}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <RollingText variant="bodyStrong">{`${movement.sets.length} ${movement.sets.length === 1 ? 'set' : 'sets'}`}</RollingText>
-              {movement.done || movement.range ? (
+              {/* The logged sets show above; the plan's count is for reference. */}
+              {movement.range ? (
                 <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-                  {[movement.done ? `${movement.done} logged` : null, rangeLine(movement)].filter(Boolean).join(' · ')}
+                  {rangeLine(movement)}
                 </BlancText>
               ) : null}
             </View>
@@ -254,9 +256,9 @@ function MovementDetail({
         </Label>
         <NoteFooter status={note.status} length={note.text.length} />
         {lastNote ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Last time, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
-          </BlancText>
+          <FormNote>
+            Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
+          </FormNote>
         ) : null}
       </Section>
 
@@ -286,9 +288,7 @@ function MovementDetail({
               onPress={() => void setSkipped(workoutId, movement, !movement.skipped)}
             />
           </Label>
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Your program stays the same.
-          </BlancText>
+          <FormNote>Your program stays the same.</FormNote>
         </Section>
       ) : null}
 
@@ -433,15 +433,7 @@ function NoteFooter({ status, length }: { status: 'saving' | 'saved' | 'failed' 
             ? `${length} of ${NOTE_LIMIT}`
             : null;
   if (!text) return null;
-  return (
-    <BlancText
-      variant="footnote"
-      tone={status === 'failed' ? 'live' : 'graphite'}
-      accessibilityLiveRegion="polite"
-      style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-      {text}
-    </BlancText>
-  );
+  return <FormNote alert={status === 'failed'}>{text}</FormNote>;
 }
 
 const styles = StyleSheet.create({

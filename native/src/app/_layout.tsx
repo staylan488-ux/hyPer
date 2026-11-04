@@ -199,7 +199,7 @@ export default function RootLayout() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                contentStyle: { backgroundColor: p.label },
+                contentStyle: { backgroundColor: p.ground },
               }}
             />
           </Stack.Protected>
